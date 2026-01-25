@@ -1,0 +1,32 @@
+{
+    "telegram": {
+        "apiId": "YOUR_API_ID_HERE",
+        "apiHash": "YOUR_API_HASH_HERE",
+        "phoneNumber": "+66xxxxxxxxx"
+    },
+    "download": {
+        "concurrent": 3,
+        "path": "./data/downloads",
+        "autoResume": true,
+        "duplicateCheck": true
+    },
+    "rateLimits": {
+        "maxPerMinute": 30,
+        "floodWaitThreshold": 60
+    },
+    "groups": [
+        {
+            "id": "-1001234567890",
+            "name": "Example Group",
+            "enabled": true,
+            "filters": {
+                "photos": true,
+                "videos": true,
+                "files": false,
+                "links": false,
+                "voice": false,
+                "gifs": false
+            }
+        }
+    ]
+}

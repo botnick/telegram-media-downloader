@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Environment & Config
+.env
+data/config.json
+data/session*
+data/*.enc
+data/*.json
+
+# Sensitive Data (Downloads & Logs)
+data/downloads/
+data/logs/
+data/downloaded/
+protection_log.txt
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI/Temp
+brain/
+.gemini/
+.agent/
+SKILL.md
+docs/
+history/
+*.log

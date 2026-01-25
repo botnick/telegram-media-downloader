@@ -1,0 +1,41 @@
+{
+  "name": "telegram-media-downloader",
+  "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/botnick/telegram-media-downloader.git"
+  },
+  "description": "Telegram Media Downloader CLI",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "safe": "node runner.js",
+    "prod": "node runner.js",
+    "monitor": "node src/index.js monitor",
+    "history": "node src/index.js history",
+    "dialogs": "node src/index.js dialogs",
+    "setup": "node src/setup.js",
+    "help": "node src/index.js --help"
+  },
+  "keywords": [
+    "telegram",
+    "downloader",
+    "media-downloader",
+    "telegram-bot",
+    "scraper",
+    "backup",
+    "channel-backup",
+    "gramjs",
+    "automation",
+    "telegram-api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "telegram": "^2.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
