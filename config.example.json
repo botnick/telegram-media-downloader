@@ -1,9 +1,9 @@
 {
     "telegram": {
         "apiId": "YOUR_API_ID_HERE",
-        "apiHash": "YOUR_API_HASH_HERE",
-        "phoneNumber": "+66xxxxxxxxx"
+        "apiHash": "YOUR_API_HASH_HERE"
     },
+    "pollingInterval": 10,
     "download": {
         "concurrent": 3,
         "path": "./data/downloads",
@@ -25,7 +25,8 @@
                 "files": false,
                 "links": false,
                 "voice": false,
-                "gifs": false
+                "gifs": false,
+                "stickers": false
             }
         }
     ]

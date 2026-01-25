@@ -10,6 +10,7 @@ const DEFAULT_CONFIG = {
         apiId: '',
         apiHash: ''
     },
+    pollingInterval: 10,
     groups: [],
     download: {
         path: './data/downloads',
@@ -27,6 +28,16 @@ const DEFAULT_CONFIG = {
     }
 };
 
+const DEFAULT_FILTERS = {
+    images: true,
+    videos: true,
+    files: true,
+    audio: false,
+    gifs: false,
+    stickers: false, // Default false for stickers
+    urls: true
+};
+
 export function loadConfig() {
     try {
         if (!fs.existsSync(CONFIG_PATH)) {
@@ -42,16 +53,36 @@ export function loadConfig() {
         const userConfig = JSON.parse(data);
         
         // Deep Merge to ensure new defaults are present in old configs
-        return {
+        const config = {
             ...DEFAULT_CONFIG,
-            ...userConfig,
+            ...userConfig, // User values overwrite defaults
             telegram: { ...DEFAULT_CONFIG.telegram, ...userConfig.telegram },
             download: { ...DEFAULT_CONFIG.download, ...userConfig.download },
             rateLimits: { ...DEFAULT_CONFIG.rateLimits, ...userConfig.rateLimits },
             diskManagement: { ...DEFAULT_CONFIG.diskManagement, ...userConfig.diskManagement },
-            // Groups are array, keep user's array
-            groups: userConfig.groups || []
+            // Heal Groups: Ensure every group has latest filter keys
+            groups: (userConfig.groups || []).map(group => ({
+                ...group,
+                filters: { ...DEFAULT_FILTERS, ...(group.filters || {}) }
+            }))
         };
+
+        // Self-Healing: If structure changed (new keys added), save back to disk
+        // We compare the keys or string length to decide if update is needed
+        const hasMissingKeys = JSON.stringify(userConfig) !== JSON.stringify(config);
+        // Better check: If stringified output is different, it means we added something
+        // Note: Simple stringify comparison order check is risky, but for adding keys it works.
+        // Or we just save it always? No, disk write spam.
+        // Lets checks if keys count changed or important keys missing.
+        
+        // Robust check: Compare loaded 'userConfig' vs 'config' (merged)
+        // If 'config' (merged) has keys that 'userConfig' didn't, we should save.
+        if (JSON.stringify(config) !== JSON.stringify(userConfig)) {
+             // console.log('🔄 Updating config file with new defaults...');
+             fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4));
+        }
+
+        return config;
     } catch (error) {
         console.error('Config error:', error.message);
         return DEFAULT_CONFIG;

@@ -689,6 +689,7 @@ export class DownloadManager extends EventEmitter {
         else if (type === 'videos' || type === 'video') typeFolder = 'videos';
         else if (type === 'audio' || type === 'voice') typeFolder = 'audio';
         else if (type === 'gifs') typeFolder = 'gifs';
+        else if (type === 'stickers') typeFolder = 'stickers'; // New Folder
         else typeFolder = 'documents';
         
         const fullDir = path.join(basePath, groupDir, typeFolder);
@@ -714,6 +715,15 @@ export class DownloadManager extends EventEmitter {
         if (message.audio) return '.mp3';
         if (message.videoNote) return '.mp4';
         
+        if (message.sticker) {
+            // Stickers often come as documents with specific mime types
+            const mime = message.sticker.mimeType;
+            if (mime === 'application/x-tgsticker') return '.tgs'; // Animated sticker
+            if (mime === 'image/webp') return '.webp'; // Static sticker
+            if (mime === 'video/webm') return '.webm'; // Video sticker (WebM)
+            if (mime === 'application/x-bad-tgsticker') return '.tgs'; 
+        }
+
         if (message.document) {
             // Check for filename in attributes
             const attrs = message.document.attributes || [];
@@ -724,15 +734,18 @@ export class DownloadManager extends EventEmitter {
                 }
             }
             // Use MIME type
+            const mime = message.document.mimeType;
             const mimeMap = {
                 'application/pdf': '.pdf',
                 'application/zip': '.zip',
                 'image/png': '.png',
                 'image/jpeg': '.jpg',
                 'image/gif': '.gif',
-                'video/mp4': '.mp4'
+                'video/mp4': '.mp4',
+                'application/x-tgsticker': '.tgs',
+                'image/webp': '.webp'
             };
-            return mimeMap[message.document.mimeType] || '.bin';
+            return mimeMap[mime] || '.bin';
         }
         
         return '.bin';

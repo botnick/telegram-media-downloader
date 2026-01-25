@@ -566,7 +566,8 @@ async function configureGroups(client, config) {
                 { key: 'files', label: '📁 Files' },
                 { key: 'links', label: '🔗 Links' },
                 { key: 'voice', label: '🎤 Voice' },
-                { key: 'gifs', label: '🎞️ GIFs' }
+                { key: 'gifs', label: '🎞️ GIFs' },
+                { key: 'stickers', label: '😊 Stickers' } // New Option
             ];
 
             filters.forEach((f, i) => {
@@ -585,7 +586,8 @@ async function configureGroups(client, config) {
 
         // Render Group List
         console.log(colorize('⚙️  CONFIGURE MONITOR GROUPS', 'cyan', 'bold'));
-        console.log(colorize('Use ↑/↓ move, SPACE toggle, RIGHT edit filters, ENTER save', 'yellow'));
+        console.log(colorize('Use ↑/↓ move, SPACE toggle, RIGHT edit filters, enter save', 'yellow'));
+        console.log(colorize('Shortcuts: [A] Select All  [U] Unselect All', 'cyan'));
         console.log('─'.repeat(60));
 
         const start = Math.floor(cursor / pageSize) * pageSize;
@@ -647,6 +649,10 @@ async function configureGroups(client, config) {
                 } else if (key.name === 'right') {
                     editingFiltersFor = cursor;
                     cursor = 0;
+                } else if (key.name === 'a') {
+                    selection.forEach(s => s.enabled = true);
+                } else if (key.name === 'u' || key.name === 'n') {
+                    selection.forEach(s => s.enabled = false);
                 } else if (key.name === 'return') {
                     process.stdin.removeListener('keypress', onKeypress);
                     if (process.stdin.isTTY) process.stdin.setRawMode(false);
@@ -1285,10 +1291,20 @@ async function startMonitor(client, config) {
 
     // Keep running until Ctrl+C
     await new Promise((resolve) => {
+        let isShuttingDown = false;
+        
         const shutdown = async () => {
+            if (isShuttingDown) return;
+            isShuttingDown = true;
+
             console.log();
             console.log(colorize('🛑 Stopping monitor...', 'yellow'));
-            await monitor.stop(); // AWAIT the async stop
+            
+            try {
+                await monitor.stop(); // AWAIT the async stop
+            } catch (err) {
+                // Suppress shutdown errors (e.g. TIMEOUT)
+            }
             
             const stats = monitor.getStats();
             console.log();
@@ -1303,6 +1319,7 @@ async function startMonitor(client, config) {
             console.log(colorize('═══════════════════════════════════════', 'cyan'));
             
             resolve();
+            process.exit(0); // Force exit
         };
 
         process.removeAllListeners('SIGINT');
