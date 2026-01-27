@@ -1832,22 +1832,64 @@ async function toggleGroupFilter(el) {
 }
 
 // ============ Settings Page ============
+// ============ Settings Page ============
 async function loadSettings() {
     try {
         const config = await api.get('/api/config');
         state.config = config;
         
-        document.getElementById('setting-concurrent').value = config.download?.concurrent || 3;
-        document.getElementById('setting-retries').value = config.download?.retries || 5;
+        // Download
+        const concurrent = config.download?.concurrent || 3;
+        document.getElementById('setting-concurrent').value = concurrent;
+        document.getElementById('concurrent-value').textContent = concurrent;
+        
+        const retries = config.download?.retries || 5;
+        document.getElementById('setting-retries').value = retries;
+        document.getElementById('retries-value').textContent = retries;
+        
         document.getElementById('setting-path').value = config.download?.path || './data/downloads';
-        document.getElementById('setting-rpm').value = config.rateLimits?.requestsPerMinute || 15;
-        document.getElementById('setting-polling').value = config.pollingInterval || 10;
+        
+        // Rate Limits
+        const rpm = config.rateLimits?.requestsPerMinute || 15;
+        document.getElementById('setting-rpm').value = rpm;
+        document.getElementById('rpm-value').textContent = rpm;
+        
+        const polling = config.pollingInterval || 10;
+        document.getElementById('setting-polling').value = polling;
+        document.getElementById('polling-value').textContent = polling + 's';
+        
+        // Disk
         document.getElementById('setting-max-disk').value = config.diskManagement?.maxTotalSize || '';
         document.getElementById('setting-max-video').value = config.diskManagement?.maxVideoSize || '';
         document.getElementById('setting-max-image').value = config.diskManagement?.maxImageSize || '';
     } catch (e) {
         showToast('Failed to load settings', 'error');
     }
+}
+
+function applyPreset(type) {
+    const presets = {
+        safe: { concurrent: 1, retries: 5, rpm: 5, polling: 30 },
+        balanced: { concurrent: 3, retries: 5, rpm: 15, polling: 10 },
+        fast: { concurrent: 5, retries: 10, rpm: 30, polling: 5 }
+    };
+    
+    const p = presets[type];
+    if (!p) return;
+    
+    document.getElementById('setting-concurrent').value = p.concurrent;
+    document.getElementById('concurrent-value').textContent = p.concurrent;
+    
+    document.getElementById('setting-retries').value = p.retries;
+    document.getElementById('retries-value').textContent = p.retries;
+    
+    document.getElementById('setting-rpm').value = p.rpm;
+    document.getElementById('rpm-value').textContent = p.rpm;
+    
+    document.getElementById('setting-polling').value = p.polling;
+    document.getElementById('polling-value').textContent = p.polling + 's';
+    
+    showToast(`Applied ${type} preset`);
 }
 
 async function saveSettings() {

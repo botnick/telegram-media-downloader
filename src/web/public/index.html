@@ -551,20 +551,38 @@
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
                             <i class="ri-download-line text-tg-blue"></i> Download
                         </h3>
-                        <div class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <label class="text-tg-textSecondary">Concurrent</label>
-                                <input type="number" id="setting-concurrent" class="tg-input w-20 text-center" min="1"
-                                    max="10">
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-tg-textSecondary">Retries</label>
-                                <input type="number" id="setting-retries" class="tg-input w-20 text-center" min="1"
-                                    max="10">
+                        <div class="space-y-5">
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-tg-text text-sm">Concurrent Downloads</label>
+                                    <span id="concurrent-value" class="text-tg-blue font-medium">3</span>
+                                </div>
+                                <input type="range" id="setting-concurrent" class="w-full accent-tg-blue" min="1"
+                                    max="5" value="3"
+                                    oninput="document.getElementById('concurrent-value').textContent = this.value">
+                                <div class="flex justify-between text-xs text-tg-textSecondary mt-1">
+                                    <span>1 (Slow)</span>
+                                    <span>5 (Fast)</span>
+                                </div>
                             </div>
                             <div>
-                                <label class="text-tg-textSecondary block mb-2">Download Path</label>
-                                <input type="text" id="setting-path" class="tg-input text-sm">
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-tg-text text-sm">Retry Attempts</label>
+                                    <span id="retries-value" class="text-tg-blue font-medium">5</span>
+                                </div>
+                                <input type="range" id="setting-retries" class="w-full accent-tg-blue" min="1" max="10"
+                                    value="5"
+                                    oninput="document.getElementById('retries-value').textContent = this.value">
+                            </div>
+                            <div>
+                                <label class="text-tg-text text-sm block mb-2">Download Folder</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="setting-path" class="tg-input flex-1 text-sm" readonly>
+                                    <button class="tg-btn-secondary px-3" onclick="showToast('Use CLI to change path')">
+                                        <i class="ri-folder-line"></i>
+                                    </button>
+                                </div>
+                                <p class="text-xs text-tg-textSecondary mt-1">Change via CLI: Edit config.json</p>
                             </div>
                         </div>
                     </div>
@@ -573,39 +591,95 @@
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
                             <i class="ri-speed-line text-tg-orange"></i> Rate Limits
+                            <span
+                                class="text-xs bg-tg-orange/20 text-tg-orange px-2 py-0.5 rounded-full ml-auto">Anti-Ban</span>
                         </h3>
-                        <div class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <label class="text-tg-textSecondary">Requests/Minute</label>
-                                <input type="number" id="setting-rpm" class="tg-input w-20 text-center" min="1"
-                                    max="60">
+                        <div class="space-y-5">
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-tg-text text-sm">Requests/Minute</label>
+                                    <span id="rpm-value" class="text-tg-orange font-medium">15</span>
+                                </div>
+                                <input type="range" id="setting-rpm" class="w-full accent-tg-orange" min="5" max="30"
+                                    value="15" oninput="document.getElementById('rpm-value').textContent = this.value">
+                                <div class="flex justify-between text-xs text-tg-textSecondary mt-1">
+                                    <span>5 (Safe)</span>
+                                    <span>30 (Risky)</span>
+                                </div>
                             </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-tg-textSecondary">Polling Interval (sec)</label>
-                                <input type="number" id="setting-polling" class="tg-input w-20 text-center" min="5"
-                                    max="60">
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-tg-text text-sm">Polling Interval</label>
+                                    <span id="polling-value" class="text-tg-orange font-medium">10s</span>
+                                </div>
+                                <input type="range" id="setting-polling" class="w-full accent-tg-orange" min="5"
+                                    max="60" value="10"
+                                    oninput="document.getElementById('polling-value').textContent = this.value + 's'">
+                                <p class="text-xs text-tg-textSecondary mt-1">How often to check for new messages</p>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Disk Management -->
+                    <!-- Size Limits -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-hard-drive-2-line text-tg-green"></i> Disk Management
+                            <i class="ri-hard-drive-2-line text-tg-green"></i> Size Limits
                         </h3>
                         <div class="space-y-4">
-                            <div>
-                                <label class="text-tg-textSecondary block mb-2">Max Total Size (e.g. 50GB)</label>
-                                <input type="text" id="setting-max-disk" class="tg-input">
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="text-tg-textSecondary text-xs block mb-1">Total Disk</label>
+                                    <select id="setting-max-disk" class="tg-input w-full text-sm">
+                                        <option value="">No limit</option>
+                                        <option value="10GB">10 GB</option>
+                                        <option value="50GB">50 GB</option>
+                                        <option value="100GB">100 GB</option>
+                                        <option value="500GB">500 GB</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-tg-textSecondary text-xs block mb-1">Per Video</label>
+                                    <select id="setting-max-video" class="tg-input w-full text-sm">
+                                        <option value="">No limit</option>
+                                        <option value="100MB">100 MB</option>
+                                        <option value="500MB">500 MB</option>
+                                        <option value="1GB">1 GB</option>
+                                        <option value="2GB">2 GB</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-tg-textSecondary text-xs block mb-1">Per Image</label>
+                                    <select id="setting-max-image" class="tg-input w-full text-sm">
+                                        <option value="">No limit</option>
+                                        <option value="10MB">10 MB</option>
+                                        <option value="50MB">50 MB</option>
+                                        <option value="100MB">100 MB</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-tg-textSecondary block mb-2">Max Video Size (e.g. 500MB)</label>
-                                <input type="text" id="setting-max-video" class="tg-input">
-                            </div>
-                            <div>
-                                <label class="text-tg-textSecondary block mb-2">Max Image Size (e.g. 50MB)</label>
-                                <input type="text" id="setting-max-image" class="tg-input">
-                            </div>
+                            <p class="text-xs text-tg-textSecondary">Files exceeding these limits will be skipped</p>
+                        </div>
+                    </div>
+
+                    <!-- Quick Presets -->
+                    <div class="bg-tg-panel rounded-xl p-4 mb-4">
+                        <h3 class="text-tg-text font-medium mb-3">Quick Presets</h3>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="applyPreset('safe')"
+                                class="py-2 px-3 rounded-lg bg-tg-green/10 text-tg-green text-sm border border-tg-green/30 hover:bg-tg-green/20 transition-colors">
+                                <i class="ri-shield-check-line block text-lg mb-1"></i>
+                                Safe
+                            </button>
+                            <button onclick="applyPreset('balanced')"
+                                class="py-2 px-3 rounded-lg bg-tg-blue/10 text-tg-blue text-sm border border-tg-blue/30 hover:bg-tg-blue/20 transition-colors">
+                                <i class="ri-scales-3-line block text-lg mb-1"></i>
+                                Balanced
+                            </button>
+                            <button onclick="applyPreset('fast')"
+                                class="py-2 px-3 rounded-lg bg-tg-orange/10 text-tg-orange text-sm border border-tg-orange/30 hover:bg-tg-orange/20 transition-colors">
+                                <i class="ri-rocket-line block text-lg mb-1"></i>
+                                Fast
+                            </button>
                         </div>
                     </div>
 
