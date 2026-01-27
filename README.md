@@ -18,9 +18,9 @@
 
 ---
 
-## � Table of Contents
+## 📋 Table of Contents
 - [✨ Why Use This Tool?](#-why-use-this-tool)
-- [�🚀 Key Features](#-key-features)
+- [🚀 Key Features](#-key-features)
 - [💻 Web Dashboard (New)](#-web-dashboard-new)
 - [⚙️ Installation & Setup](#%EF%B8%8F-installation--setup)
 - [📖 Usage Guide](#-usage-guide)
