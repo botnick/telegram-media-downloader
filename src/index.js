@@ -1384,7 +1384,7 @@ async function startMonitor(client, config) {
     await downloader.init();
 
     // Start systems
-    const monitor = new RealtimeMonitor(client, downloader, config);
+    const monitor = new RealtimeMonitor(client, downloader, config, CONFIG_PATH);
     const forwarder = new AutoForwarder(client, config); // Init Forwarder
 
     // === AUTO FORWARD HOOK ===

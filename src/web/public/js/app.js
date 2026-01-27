@@ -1192,7 +1192,7 @@ function navigateTo(page) {
     }
     
     // Load page data
-    if (page === 'groups') loadGroupsConfig();
+    if (page === 'groups') loadAllDialogs();
     if (page === 'settings') loadSettings();
     if (page === 'viewer' && !state.currentGroup && state.files.length === 0) showAllMedia();
     
@@ -1210,7 +1210,7 @@ function refreshCurrentPage() {
     if (state.currentPage === 'viewer') {
         if (state.currentGroup) loadGroupFiles(state.currentGroup, state.currentFilter);
         else showAllMedia();
-    } else if (state.currentPage === 'groups') loadGroupsConfig();
+    } else if (state.currentPage === 'groups') loadAllDialogs();
     else if (state.currentPage === 'settings') loadSettings();
     
     showToast('Refreshed');
@@ -1388,29 +1388,193 @@ async function saveGroupSettings() {
 }
 
 // ============ Groups Config Page ============
+let groupsTabMode = 'all'; // 'all' or 'monitored'
+let allDialogsCache = []; // Cache for all dialogs
+
+function switchGroupsTab(mode) {
+    groupsTabMode = mode;
+    
+    // Update tab UI
+    const allTab = document.getElementById('groups-tab-all');
+    const monitoredTab = document.getElementById('groups-tab-monitored');
+    
+    if (mode === 'all') {
+        allTab.classList.add('border-tg-blue', 'text-tg-blue');
+        allTab.classList.remove('border-transparent', 'text-tg-textSecondary');
+        monitoredTab.classList.remove('border-tg-blue', 'text-tg-blue');
+        monitoredTab.classList.add('border-transparent', 'text-tg-textSecondary');
+        loadAllDialogs();
+    } else {
+        monitoredTab.classList.add('border-tg-blue', 'text-tg-blue');
+        monitoredTab.classList.remove('border-transparent', 'text-tg-textSecondary');
+        allTab.classList.remove('border-tg-blue', 'text-tg-blue');
+        allTab.classList.add('border-transparent', 'text-tg-textSecondary');
+        loadGroupsConfig();
+    }
+}
+
+async function loadAllDialogs() {
+    const container = document.getElementById('groups-config-list');
+    if (!container) return;
+    
+    container.innerHTML = `<div class="flex justify-center py-8"><div class="w-8 h-8 border-2 border-tg-blue border-t-transparent rounded-full animate-spin"></div></div>`;
+    
+    try {
+        const result = await api.get('/api/dialogs');
+        if (!result.success) throw new Error(result.error);
+        
+        allDialogsCache = result.dialogs;
+        renderAllDialogs(result.dialogs);
+    } catch (e) {
+        container.innerHTML = `<div class="text-center text-red-400 py-8"><i class="ri-error-warning-line text-3xl mb-2"></i><p>Failed to load dialogs</p><p class="text-sm opacity-70">${e.message}</p></div>`;
+    }
+}
+
+function renderAllDialogs(dialogs) {
+    const container = document.getElementById('groups-config-list');
+    if (!container || !dialogs) return;
+    
+    let html = '';
+    
+    if (dialogs.length === 0) {
+        html = `<div class="text-center text-tg-textSecondary py-8">
+            <i class="ri-group-line text-4xl mb-2 opacity-50"></i>
+            <p>No groups/channels found</p>
+        </div>`;
+    }
+    
+    html += dialogs.map(d => {
+        const typeIcon = d.type === 'channel' ? 'ri-megaphone-fill' : 'ri-group-fill';
+        const typeLabel = d.type === 'channel' ? 'Channel' : 'Group';
+        const avatarHtml = createAvatar(d.id, d.name, typeLabel);
+        
+        return `
+            <div class="bg-tg-panel rounded-xl p-4 transition-all hover:bg-tg-hover/50">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3 overflow-hidden cursor-pointer flex-1" onclick="openGroupSettingsById('${d.id}', '${escapeHtml(d.name)}')">
+                        ${avatarHtml}
+                        <div class="min-w-0">
+                            <h3 class="font-medium text-tg-text truncate">${escapeHtml(d.name)}</h3>
+                            <p class="text-xs text-tg-textSecondary flex items-center gap-1">
+                                <i class="${typeIcon} text-[10px]"></i> ${typeLabel}
+                                ${d.enabled ? '<span class="text-tg-green ml-2">● Monitoring</span>' : ''}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="tg-toggle ${d.enabled ? 'active' : ''}" 
+                         data-group-id="${d.id}" 
+                         data-group-name="${escapeHtml(d.name)}"
+                         onclick="quickToggleMonitoring(this, event)"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = html;
+}
+
+async function quickToggleMonitoring(el, e) {
+    if (e) e.stopPropagation();
+    
+    const groupId = el.dataset.groupId;
+    const groupName = el.dataset.groupName;
+    const isCurrentlyActive = el.classList.contains('active');
+    const newEnabled = !isCurrentlyActive;
+    
+    // Optimistic UI update
+    el.classList.toggle('active');
+    
+    try {
+        await api.put(`/api/groups/${groupId}`, { 
+            name: groupName,
+            enabled: newEnabled 
+        });
+        showToast(newEnabled ? 'Monitoring enabled' : 'Monitoring disabled');
+        
+        // Refresh groups list for sidebar
+        loadGroups();
+    } catch (err) {
+        // Revert on error
+        el.classList.toggle('active');
+        showToast('Failed to update', 'error');
+    }
+}
+
+async function openGroupSettingsById(groupId, groupName) {
+    // Find in dialogs cache or create minimal object
+    const dialog = allDialogsCache.find(d => d.id === groupId) || {
+        id: groupId,
+        name: groupName,
+        enabled: false,
+        filters: { photos: true, videos: true, files: true, links: true, voice: false, gifs: false },
+        autoForward: { enabled: false, destination: null, deleteAfterForward: false }
+    };
+    
+    currentEditingGroup = dialog;
+    currentGroupSettings = {
+        enabled: dialog.enabled,
+        filters: { ...dialog.filters },
+        autoForward: { ...dialog.autoForward }
+    };
+    
+    // Populate modal
+    document.getElementById('group-name').textContent = dialog.name;
+    updateToggle('group-enable-toggle', currentGroupSettings.enabled);
+    
+    // Render filter options
+    const filterContainer = document.getElementById('filter-options');
+    const filterDefs = [
+        { key: 'photos', label: 'Photos', icon: 'ri-image-line' },
+        { key: 'videos', label: 'Videos', icon: 'ri-video-line' },
+        { key: 'files', label: 'Files', icon: 'ri-file-line' },
+        { key: 'links', label: 'Links', icon: 'ri-link' },
+        { key: 'voice', label: 'Voice', icon: 'ri-mic-line' },
+        { key: 'gifs', label: 'GIFs', icon: 'ri-film-line' },
+        { key: 'stickers', label: 'Stickers', icon: 'ri-emotion-line' }
+    ];
+    
+    filterContainer.innerHTML = filterDefs.map(f => {
+        const isEnabled = currentGroupSettings.filters[f.key] !== false;
+        return `
+            <div onclick="toggleFilter('${f.key}')" class="flex items-center justify-between p-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
+                <span class="text-tg-text text-sm">${f.label}</span>
+                <div class="w-5 h-5 rounded-md border ${isEnabled ? 'bg-tg-blue border-tg-blue' : 'border-tg-textSecondary'} flex items-center justify-center">
+                    ${isEnabled ? '<i class="ri-check-line text-white text-sm"></i>' : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Auto Forward
+    updateToggle('fwd-enable-toggle', currentGroupSettings.autoForward.enabled);
+    updateToggle('fwd-delete-toggle', currentGroupSettings.autoForward.deleteAfterForward);
+    document.getElementById('fwd-destination').value = currentGroupSettings.autoForward.destination || '';
+    
+    const fwdSettings = document.getElementById('fwd-settings');
+    fwdSettings.style.opacity = currentGroupSettings.autoForward.enabled ? '1' : '0.5';
+    fwdSettings.style.pointerEvents = currentGroupSettings.autoForward.enabled ? 'auto' : 'none';
+    
+    document.getElementById('group-modal').classList.remove('hidden');
+}
+
 async function loadGroupsConfig() {
     const container = document.getElementById('groups-config-list');
     if (!container) return;
     
-    // Add "Add Group" Button at the top
-    let html = `
-        <div class="col-span-full mb-4 flex justify-end">
-            <button onclick="openAddGroupModal()" class="bg-tg-blue hover:bg-opacity-90 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg">
-                <i class="ri-add-line text-lg"></i>
-                <span class="font-medium">Add Group</span>
-            </button>
-        </div>
-    `;
+    let html = '';
     
-    if (state.groups.length === 0) {
-        html += `<div class="col-span-full text-center text-tg-textSecondary p-8 bg-tg-panel rounded-xl border border-dashed border-tg-border">
+    // Filter only monitored groups
+    const monitoredGroups = state.groups.filter(g => g.enabled);
+    
+    if (monitoredGroups.length === 0) {
+        html = `<div class="text-center text-tg-textSecondary p-8 bg-tg-panel rounded-xl border border-dashed border-tg-border">
             <i class="ri-group-line text-4xl mb-2 opacity-50"></i>
             <p>No groups being monitored.</p>
-            <p class="text-sm mt-1">Click "Add Group" to start.</p>
+            <p class="text-sm mt-1">Switch to "All Dialogs" tab to enable groups.</p>
         </div>`;
     }
 
-    html += state.groups.map(group => {
+    html += monitoredGroups.map(group => {
         const download = state.downloads.find(d => d.name === group.name);
         const filters = group.filters || {};
         const groupType = getGroupType(group.id);

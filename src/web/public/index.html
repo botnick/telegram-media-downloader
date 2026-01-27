@@ -520,6 +520,17 @@
 
                 <!-- Groups Config Page -->
                 <div id="page-groups" class="hidden max-w-2xl mx-auto">
+                    <!-- Tabs -->
+                    <div class="flex border-b border-tg-border mb-4">
+                        <button id="groups-tab-all" onclick="switchGroupsTab('all')"
+                            class="px-4 py-2 text-sm font-medium border-b-2 border-tg-blue text-tg-blue">
+                            All Dialogs
+                        </button>
+                        <button id="groups-tab-monitored" onclick="switchGroupsTab('monitored')"
+                            class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-tg-textSecondary hover:text-white transition-colors">
+                            Monitored Only
+                        </button>
+                    </div>
                     <div id="groups-config-list" class="space-y-3"></div>
                 </div>
 

@@ -11,11 +11,12 @@ import fsSync from 'fs';
 import path from 'path';
 
 export class RealtimeMonitor extends EventEmitter {
-    constructor(client, downloader, config) {
+    constructor(client, downloader, config, configPath = null) {
         super();
         this.client = client;
         this.downloader = downloader;
         this.config = config;
+        this.configPath = configPath;
         this.running = false;
         this.handler = null;
         this.stats = {
@@ -26,6 +27,52 @@ export class RealtimeMonitor extends EventEmitter {
             urls: 0
         };
         this.spamGuard = new SpamGuard(); // Active Defense System
+        
+        // Config file watcher for live sync with Web UI
+        if (configPath && fsSync.existsSync(configPath)) {
+            this.watchConfig();
+        }
+    }
+    
+    watchConfig() {
+        let debounce = null;
+        fsSync.watch(this.configPath, (eventType) => {
+            if (eventType !== 'change') return;
+            clearTimeout(debounce);
+            debounce = setTimeout(() => this.reloadConfig(), 500);
+        });
+    }
+    
+    async reloadConfig() {
+        try {
+            const newConfig = JSON.parse(await fs.readFile(this.configPath, 'utf8'));
+            const oldGroupIds = this.config.groups.map(g => String(g.id));
+            const newGroupIds = newConfig.groups.map(g => String(g.id));
+            
+            // Detect changes
+            const added = newConfig.groups.filter(g => !oldGroupIds.includes(String(g.id)));
+            const removed = this.config.groups.filter(g => !newGroupIds.includes(String(g.id)));
+            const changed = newConfig.groups.filter(g => {
+                const old = this.config.groups.find(og => String(og.id) === String(g.id));
+                return old && (old.enabled !== g.enabled);
+            });
+            
+            this.config = newConfig;
+            
+            // Log changes
+            if (added.length) console.log(colorize(`📋 Config: ${added.length} group(s) added`, 'green'));
+            if (removed.length) console.log(colorize(`📋 Config: ${removed.length} group(s) removed`, 'yellow'));
+            if (changed.length) {
+                changed.forEach(g => {
+                    const status = g.enabled ? '✓ enabled' : '✗ disabled';
+                    console.log(colorize(`📋 Config: ${g.name} ${status}`, g.enabled ? 'green' : 'dim'));
+                });
+            }
+            
+            this.emit('configReloaded', newConfig);
+        } catch (err) {
+            // Ignore read errors
+        }
     }
 
     async start() {

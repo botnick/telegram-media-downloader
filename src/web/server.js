@@ -24,21 +24,35 @@ const SESSION_PATH = path.join(DATA_DIR, 'session.enc');
 const SESSION_PASSWORD = 'telegram-dl-2026';
 
 const app = express();
-// [NEW] Get all dialogs (groups/channels) for selection
+// [NEW] Get all dialogs (groups/channels) with config status
 app.get('/api/dialogs', async (req, res) => {
     try {
         if (!telegramClient || !telegramClient.connected) {
             return res.status(503).json({ error: 'Telegram client not connected' });
         }
         
+        // Get config for status
+        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const configGroups = config.groups || [];
+        
         const dialogs = await telegramClient.getDialogs({ limit: 200 });
         const results = dialogs
-            .map(d => ({
-                id: d.id.toString(),
-                name: d.title || d.name || 'Unknown',
-                type: d.isUser ? 'user' : (d.isChannel ? 'channel' : 'group'),
-                username: d.username
-            }));
+            .filter(d => d.isGroup || d.isChannel) // Only groups and channels
+            .map(d => {
+                const id = d.id.toString();
+                const configGroup = configGroups.find(g => String(g.id) === id);
+                return {
+                    id,
+                    name: d.title || d.name || 'Unknown',
+                    type: d.isChannel ? 'channel' : 'group',
+                    username: d.username,
+                    // Config status (from config.json)
+                    enabled: configGroup?.enabled || false,
+                    inConfig: !!configGroup,
+                    filters: configGroup?.filters || { photos: true, videos: true, files: true, links: true, voice: false, gifs: false },
+                    autoForward: configGroup?.autoForward || { enabled: false, destination: null, deleteAfterForward: false }
+                };
+            });
             
         res.json({ success: true, dialogs: results });
     } catch (error) {
@@ -483,10 +497,20 @@ app.put('/api/groups/:id', async (req, res) => {
     try {
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
         const groupId = req.params.id;
-        const groupIndex = config.groups.findIndex(g => String(g.id) === groupId);
+        let groupIndex = config.groups.findIndex(g => String(g.id) === groupId);
         
+        // Auto-create if not in config
         if (groupIndex === -1) {
-            return res.status(404).json({ error: 'Group not found' });
+            const newGroup = {
+                id: groupId.startsWith('-') ? parseInt(groupId) : groupId,
+                name: req.body.name || `Group ${groupId}`,
+                enabled: false,
+                filters: { photos: true, videos: true, files: true, links: true, voice: false, gifs: false },
+                autoForward: { enabled: false, destination: null, deleteAfterForward: false }
+            };
+            config.groups.push(newGroup);
+            groupIndex = config.groups.length - 1;
+            console.log(`📋 Auto-created group config: ${newGroup.name}`);
         }
         
         if (req.body.filters) {
@@ -499,7 +523,11 @@ app.put('/api/groups/:id', async (req, res) => {
         
         config.groups[groupIndex] = { ...config.groups[groupIndex], ...req.body };
         await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        
+        // Broadcast for CLI sync
+        broadcast({ type: 'config_updated', config });
         broadcast({ type: 'group_updated', group: config.groups[groupIndex] });
+        
         res.json({ success: true, group: config.groups[groupIndex] });
     } catch (error) {
         res.status(500).json({ error: error.message });
