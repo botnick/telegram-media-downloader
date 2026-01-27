@@ -48,6 +48,11 @@ const api = {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
+    },
+    async delete(url) {
+        const res = await fetch(url, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
     }
 };
 
@@ -460,10 +465,13 @@ async function showAllMedia() {
     showSkeletonGrid();
     
     let allFiles = [];
+    let totalCount = 0;
+    
     for (const download of state.downloads) {
+        totalCount += download.totalFiles || 0;
         try {
-            // Use 1,000,000 to effectively remove limit (User requested "unlimited")
-            const result = await api.get(`/api/downloads/${encodeURIComponent(download.name)}?limit=1000000`);
+            // Fetch latest 500 files per group for fast initial load
+            const result = await api.get(`/api/downloads/${encodeURIComponent(download.name)}?limit=500`);
             result.files.forEach(f => {
                 f.groupName = download.name;
                 f.fullPath = download.name + '/' + f.path;
@@ -476,7 +484,8 @@ async function showAllMedia() {
     state.files = allFiles;
     state.allFiles = allFiles;
     
-    document.getElementById('page-subtitle').textContent = `${allFiles.length} files total`;
+    // Show actual total count (from downloads metadata), not just fetched count
+    document.getElementById('page-subtitle').textContent = `${totalCount.toLocaleString()} files total`;
     
     // Ensure tabs are visible
     document.getElementById('media-tabs')?.classList.remove('hidden');
@@ -558,17 +567,64 @@ function renderMediaGrid() {
     
     empty?.classList.add('hidden');
     
+    // Performance: Render in batches to avoid blocking UI
+    const INITIAL_BATCH = 60;  // Show first batch immediately
+    const CHUNK_SIZE = 40;     // Render rest in chunks
+    
+    const initialFiles = filesToShow.slice(0, INITIAL_BATCH);
+    const remainingFiles = filesToShow.slice(INITIAL_BATCH);
+    
     if (state.viewMode === 'list') {
         grid.className = 'space-y-2';
-        grid.innerHTML = filesToShow.map((file, index) => createListItem(file, index)).join('');
+        grid.innerHTML = initialFiles.map((file, index) => createListItem(file, index)).join('');
     } else {
         grid.className = 'media-grid';
-        grid.innerHTML = filesToShow.map((file, index) => createMediaItem(file, index)).join('');
+        grid.innerHTML = initialFiles.map((file, index) => createMediaItem(file, index)).join('');
     }
     
+    // Observe initial batch for lazy loading
     grid.querySelectorAll('[data-src]').forEach(el => {
         state.imageObserver.observe(el);
     });
+    
+    // Render remaining files in background chunks (non-blocking)
+    if (remainingFiles.length > 0) {
+        let offset = INITIAL_BATCH;
+        const renderChunk = () => {
+            const chunk = remainingFiles.splice(0, CHUNK_SIZE);
+            if (chunk.length === 0) return;
+            
+            const fragment = document.createDocumentFragment();
+            const tempDiv = document.createElement('div');
+            
+            if (state.viewMode === 'list') {
+                tempDiv.innerHTML = chunk.map((file, i) => createListItem(file, offset + i)).join('');
+            } else {
+                tempDiv.innerHTML = chunk.map((file, i) => createMediaItem(file, offset + i)).join('');
+            }
+            
+            while (tempDiv.firstChild) {
+                fragment.appendChild(tempDiv.firstChild);
+            }
+            
+            grid.appendChild(fragment);
+            offset += CHUNK_SIZE;
+            
+            // Observe new images
+            grid.querySelectorAll('[data-src]:not([data-observed])').forEach(el => {
+                el.dataset.observed = 'true';
+                state.imageObserver.observe(el);
+            });
+            
+            // Schedule next chunk
+            if (remainingFiles.length > 0) {
+                requestAnimationFrame(renderChunk);
+            }
+        };
+        
+        // Start chunked rendering after initial paint
+        requestAnimationFrame(renderChunk);
+    }
 }
 
 function appendMediaItems(files, startIndex) {
@@ -1661,6 +1717,82 @@ function showToast(message, type = 'success') {
     
     toast?.classList.remove('hidden');
     setTimeout(() => toast?.classList.add('hidden'), 2000);
+}
+
+// ============ Delete File ============
+function confirmDeleteFile() {
+    const file = state.files[state.currentFileIndex];
+    if (!file) return;
+    
+    // Create confirmation modal
+    const modal = document.createElement('div');
+    modal.id = 'delete-confirm-modal';
+    modal.className = 'fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-tg-panel rounded-2xl p-6 max-w-sm w-full text-center">
+            <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i class="ri-delete-bin-line text-3xl text-red-500"></i>
+            </div>
+            <h3 class="text-lg font-medium text-white mb-2">Delete File?</h3>
+            <p class="text-tg-textSecondary text-sm mb-6">Are you sure you want to delete<br><span class="text-white">${escapeHtml(file.name)}</span>?</p>
+            <div class="flex gap-3">
+                <button onclick="closeDeleteConfirm()" class="flex-1 py-2.5 px-4 rounded-lg bg-tg-bg hover:bg-tg-hover text-white font-medium transition">
+                    Cancel
+                </button>
+                <button onclick="deleteFile()" class="flex-1 py-2.5 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition">
+                    Delete
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function closeDeleteConfirm() {
+    document.getElementById('delete-confirm-modal')?.remove();
+}
+
+async function deleteFile() {
+    const file = state.files[state.currentFileIndex];
+    if (!file) return;
+    
+    const filePath = file.fullPath || file.path;
+    
+    try {
+        const result = await api.delete(`/api/file?path=${encodeURIComponent(filePath)}`);
+        
+        if (result.success) {
+            closeDeleteConfirm();
+            showToast('File deleted successfully');
+            
+            // Remove from arrays
+            const indexInAll = state.allFiles.findIndex(f => (f.fullPath || f.path) === filePath);
+            if (indexInAll > -1) state.allFiles.splice(indexInAll, 1);
+            
+            const indexInFiles = state.files.findIndex(f => (f.fullPath || f.path) === filePath);
+            if (indexInFiles > -1) state.files.splice(indexInFiles, 1);
+            
+            // Navigate or close modal
+            if (state.files.length === 0) {
+                closeMediaViewer();
+                renderMediaGrid();
+            } else {
+                // Move to next or previous file
+                if (state.currentFileIndex >= state.files.length) {
+                    state.currentFileIndex = state.files.length - 1;
+                }
+                // Re-render the current viewer with new file
+                openMediaViewer(state.currentFileIndex);
+                renderMediaGrid();
+            }
+        } else {
+            showToast(result.error || 'Delete failed', 'error');
+        }
+    } catch (e) {
+        closeDeleteConfirm();
+        showToast('Failed to delete file', 'error');
+        console.error(e);
+    }
 }
 
 // ============ Event Listeners ============

@@ -433,15 +433,15 @@
                                 </p>
                             </div>
 
-                            <label
+                            <div onclick="toggleFwdDelete(event)"
                                 class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
                                 <div>
                                     <span class="text-white text-sm">Delete after forward</span>
                                     <p class="text-xs text-tg-textSecondary mt-0.5">Remove local file after successful
                                         upload</p>
                                 </div>
-                                <div class="tg-toggle" id="fwd-delete-toggle" onclick="toggleFwdDelete(event)"></div>
-                            </label>
+                                <div class="tg-toggle" id="fwd-delete-toggle"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -733,10 +733,17 @@
                         <h4 id="modal-filename" class="text-white font-medium truncate text-base"></h4>
                         <p id="modal-meta" class="text-sm text-gray-300"></p>
                     </div>
-                    <a id="modal-download" href="#" download
-                        class="px-4 py-2 bg-tg-blue hover:bg-tg-darkBlue rounded-lg text-sm text-white flex items-center font-medium transition">
-                        <i class="ri-download-line mr-2"></i>Download
-                    </a>
+                    <div class="flex items-center gap-2">
+                        <button id="modal-delete" onclick="confirmDeleteFile()"
+                            class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm text-white flex items-center font-medium transition"
+                            title="Delete File">
+                            <i class="ri-delete-bin-line mr-2"></i>Delete
+                        </button>
+                        <a id="modal-download" href="#" download
+                            class="px-4 py-2 bg-tg-blue hover:bg-tg-darkBlue rounded-lg text-sm text-white flex items-center font-medium transition">
+                            <i class="ri-download-line mr-2"></i>Download
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

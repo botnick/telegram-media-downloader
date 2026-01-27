@@ -70,11 +70,10 @@ Manage your downloads from any browser with our modern, responsive UI.
 
 | Feature | Description |
 | :--- | :--- |
-| **Dashboard** | View active downloads, disk usage, and total file stats. |
-| **All Media** | Browse your entire downloaded library in an infinite-scroll gallery. |
-| **Group Manager** | Search & Add new groups/channels without leaving the app. |
-| **Real-time Config** | Toggle settings (e.g., "Stop Monitoring") and see results instantly in the CLI. |
-| **Visual Settings** | Configure download paths, concurrency, and rate limits visually. |
+| **Media Gallery** | View, zoom, swipe through photos/videos with EXIF info. Delete files directly! |
+| **Group Manager** | Search & Add new groups/channels. Configure filters and Auto Forward. |
+| **Real-time Config** | Toggle settings and see results instantly in CLI. |
+| **File Management** | Delete unwanted files from the gallery with confirmation. |
 
 > **Pro Tip:** The Web UI works on **localhost:3000** by default, allowing you to run the bot on a VPS and manage it from your phone!
 

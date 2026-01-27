@@ -12,6 +12,7 @@ data/*.json
 data/downloads/
 data/logs/
 data/downloaded/
+data/photos/
 protection_log.txt
 
 # OS Files

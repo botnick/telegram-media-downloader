@@ -1,3 +1,4 @@
+
 /**
  * Web GUI Server - Configuration + Profile Photos
  * Features: Groups, Settings, Viewer, Real Telegram Profile Photos
@@ -659,6 +660,68 @@ app.get('/api/file-info', async (req, res) => {
     }
 });
 
+// ============ DELETE FILE API ============
+
+app.delete('/api/file', async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        
+        if (!filePath) {
+            return res.status(400).json({ error: 'File path is required' });
+        }
+        
+        // Parse the path: GroupName/subpath/file.ext
+        const pathParts = filePath.split('/');
+        if (pathParts.length < 2) {
+            return res.status(400).json({ error: 'Invalid path format' });
+        }
+        
+        const groupName = pathParts[0];
+        const remainingPath = pathParts.slice(1).join('/');
+        
+        // Find matching folder (fuzzy match like file serving)
+        const entries = await fs.readdir(DOWNLOADS_DIR, { withFileTypes: true });
+        const directories = entries.filter(e => e.isDirectory());
+        
+        const normalizedTarget = normalizeName(groupName);
+        const matchedDir = directories.find(d => normalizeName(d.name) === normalizedTarget);
+        
+        if (!matchedDir) {
+            console.log(`Delete: No match for group "${groupName}" (normalized: "${normalizedTarget}")`);
+            return res.status(404).json({ error: 'Group folder not found' });
+        }
+        
+        // Build full path
+        const fullPath = path.join(DOWNLOADS_DIR, matchedDir.name, remainingPath);
+        
+        // Security check
+        if (!fullPath.startsWith(DOWNLOADS_DIR)) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        
+        if (!fsSync.existsSync(fullPath)) {
+            console.log(`Delete: File not found at "${fullPath}"`);
+            return res.status(404).json({ error: 'File not found' });
+        }
+        
+        // Check if it's actually a file (not a directory)
+        const stats = await fs.stat(fullPath);
+        if (stats.isDirectory()) {
+            return res.status(400).json({ error: 'Cannot delete directories' });
+        }
+        
+        // Delete the file
+        await fs.unlink(fullPath);
+        
+        console.log(`🗑️  Deleted: ${matchedDir.name}/${remainingPath}`);
+        res.json({ success: true, message: 'File deleted successfully' });
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ============ STATS API ============
 
 app.get('/api/stats', async (req, res) => {
@@ -824,6 +887,50 @@ async function getImageDimensions(filePath) {
     }
     return null;
 }
+
+// ============ DELETE FILE API ============
+
+app.delete('/api/file', async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        
+        if (!filePath) {
+            return res.status(400).json({ error: 'Path is required' });
+        }
+        
+        // Security: Ensure path is within DOWNLOADS_DIR
+        const absolutePath = path.resolve(filePath);
+        const relative = path.relative(DOWNLOADS_DIR, absolutePath);
+        
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+            return res.status(403).json({ error: 'Access denied - path outside downloads folder' });
+        }
+        
+        // Check file exists
+        if (!fsSync.existsSync(absolutePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+        
+        // Check it's a file not directory
+        const stat = fsSync.statSync(absolutePath);
+        if (stat.isDirectory()) {
+            return res.status(400).json({ error: 'Cannot delete directories' });
+        }
+        
+        // Delete the file
+        await fs.unlink(absolutePath);
+        
+        console.log(`🗑️ Deleted file: ${path.basename(absolutePath)}`);
+        
+        // Broadcast deletion
+        broadcast({ type: 'file_deleted', path: filePath });
+        
+        res.json({ success: true, message: 'File deleted' });
+    } catch (error) {
+        console.error('Delete file error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // ============ WEBSOCKET ============
 

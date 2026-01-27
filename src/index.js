@@ -562,34 +562,33 @@ async function configureGroups(client, config) {
             const isFwdMode = editingFiltersFor.mode === 'fwd';
             
             if (isFwdMode) {
-                // AUTO FORWARD MENU
-                const af = item.autoForward || {};
-                console.log(colorize(`➡️  AUTO FORWARD: ${item.name}`, 'cyan', 'bold'));
-                console.log(colorize('Example: Forward to Saved Messages or Channel', 'dim'));
-                console.log('─'.repeat(40));
+                // AUTO FORWARD MENU - Simplified like Web UI
+                const af = item.autoForward || { enabled: false, destination: null, deleteAfterForward: false };
+                if (!item.autoForward) item.autoForward = af;
                 
-                const opts = [
-                    { key: 'enabled', label: 'Enable Auto Forward', val: af.enabled },
-                    { key: 'dest', label: 'Destination', val: af.destination ? (af.destination === 'me' ? 'Saved Messages' : `ID: ${af.destination}`) : 'Auto Storage Channel' },
-                    { key: 'delete', label: 'Delete after forward', val: af.deleteAfterForward }
-                ];
+                console.log(colorize(`➡️  AUTO FORWARD: ${item.name.slice(0, 25)}`, 'cyan', 'bold'));
+                console.log('─'.repeat(50));
                 
-                opts.forEach((opt, i) => {
-                    const isSelected = i === cursor;
-                    const cursorChar = isSelected ? colorize('>', 'cyan', 'bold') : ' ';
-                    
-                    let valDisplay = '';
-                    if (typeof opt.val === 'boolean') {
-                        valDisplay = opt.val ? colorize('[ON]', 'green') : colorize('[OFF]', 'dim');
-                    } else {
-                        valDisplay = colorize(opt.val, 'yellow');
-                    }
-                    
-                    console.log(`${cursorChar} ${opt.label.padEnd(25)} ${valDisplay}`);
-                });
+                // Status bar
+                const enabledText = af.enabled ? colorize('✓ ENABLED', 'green', 'bold') : colorize('✗ DISABLED', 'dim');
+                const destText = af.destination === 'me' ? colorize('Saved Messages', 'yellow') : 
+                                 af.destination ? colorize(af.destination, 'yellow') : colorize('Storage Channel', 'cyan');
+                const deleteText = af.deleteAfterForward ? colorize('✓ Delete after', 'red') : colorize('Keep files', 'dim');
                 
-                console.log('─'.repeat(40));
-                console.log(colorize('[Enter] Toggle/Edit  [Esc] Back', 'dim'));
+                console.log();
+                console.log(`  Status:      ${enabledText}`);
+                console.log(`  Destination: ${destText}`);
+                console.log(`  After FWD:   ${deleteText}`);
+                console.log();
+                console.log('─'.repeat(50));
+                console.log(colorize('🚀 Quick Actions:', 'white', 'bold'));
+                console.log(`  ${colorize('1', 'cyan', 'bold')} = Toggle ON/OFF`);
+                console.log(`  ${colorize('2', 'cyan', 'bold')} = Set → Saved Messages (me)`);
+                console.log(`  ${colorize('3', 'cyan', 'bold')} = Set → Storage Channel`);
+                console.log(`  ${colorize('4', 'cyan', 'bold')} = Pick from list 📋`);
+                console.log(`  ${colorize('D', 'cyan', 'bold')} = Toggle Delete after forward`);
+                console.log('─'.repeat(50));
+                console.log(colorize('[Esc/Enter] Back to list', 'dim'));
                 
             } else {
                 // FILTERS MENU
@@ -624,7 +623,7 @@ async function configureGroups(client, config) {
 
         // Render Group List
         console.log(colorize('⚙️  CONFIGURE MONITOR GROUPS', 'cyan', 'bold'));
-        console.log(colorize('Use ↑/↓ move, SPACE: Toggle, F: Forward Settings, Enter: Save', 'yellow'));
+        console.log(colorize('↑/↓: move  SPACE: toggle  F: ➡️Forward  →: Filters  Enter: Save', 'yellow'));
         console.log(colorize('Shortcuts: [A] Select All  [U] Unselect All', 'cyan'));
         console.log('─'.repeat(60));
 
@@ -673,42 +672,66 @@ async function configureGroups(client, config) {
                 // Ensure struct exists
                 if (!item.autoForward) item.autoForward = { enabled: false, destination: null, deleteAfterForward: false };
 
-                if (key.name === 'up') {
-                    cursor = Math.max(0, cursor - 1);
-                } else if (key.name === 'down') {
-                    cursor = Math.min(2, cursor + 1); // 3 items
-                } else if (key.name === 'escape' || key.name === 'left') {
-                    // Back
+                // Quick Actions - No navigation needed, just press key!
+                if (key.name === 'escape' || key.name === 'return' || key.name === 'left') {
+                    // Back to list
                     editingFiltersFor = -1;
                     cursor = 0;
-                } else if (key.name === 'return' || key.name === 'space') {
-                    // Toggle / Edit
-                    if (cursor === 0) {
-                        // Toggle Enabled
-                        item.autoForward.enabled = !item.autoForward.enabled;
-                    } else if (cursor === 1) {
-                        // Edit Destination
-                        cleanup(); // Pause raw mode for input
+                } else if (str === '1') {
+                    // Toggle ON/OFF
+                    item.autoForward.enabled = !item.autoForward.enabled;
+                } else if (str === '2') {
+                    // Set → Saved Messages
+                    item.autoForward.destination = 'me';
+                    item.autoForward.enabled = true; // Auto-enable
+                } else if (str === '3') {
+                    // Set → Storage Channel
+                    item.autoForward.destination = null;
+                    item.autoForward.enabled = true; // Auto-enable
+                } else if (str === '4') {
+                    // Pick from list - เหมือน Web!
+                    cleanup();
+                    console.log();
+                    console.log(colorize('📋 Select Destination:', 'cyan', 'bold'));
+                    console.log(colorize('Loading dialogs...', 'dim'));
+                    
+                    try {
+                        // Get dialogs
+                        const allDialogs = await client.getDialogs({ limit: 50 });
+                        const dialogs = allDialogs.filter(d => d.isGroup || d.isChannel || d.isUser);
                         
-                        console.log();
-                        console.log(colorize('Select Destination:', 'cyan'));
-                        console.log('1. Saved Messages (Me)');
-                        console.log('2. Auto Storage Channel (Default)');
-                        console.log('3. Custom ID / Username');
-                        
-                        const ans = await question(colorize('Choice (1-3): ', 'yellow'));
-                        if (ans === '1') item.autoForward.destination = 'me';
-                        else if (ans === '2') item.autoForward.destination = null;
-                        else if (ans === '3') {
-                            const id = await question('Enter ID/Username: ');
-                            if (id.trim()) item.autoForward.destination = id.trim();
+                        if (dialogs.length === 0) {
+                            console.log(colorize('No dialogs found!', 'red'));
+                        } else {
+                            console.log();
+                            dialogs.forEach((d, i) => {
+                                const icon = d.isChannel ? '📢' : d.isGroup ? '👥' : '👤';
+                                const name = (d.title || d.name || 'Unknown').slice(0, 35);
+                                console.log(`  ${colorize(String(i + 1).padStart(2), 'cyan')}. ${icon} ${name}`);
+                            });
+                            console.log();
+                            console.log(colorize('  0. Cancel', 'dim'));
+                            console.log();
+                            
+                            const choice = await question(colorize('Enter number: ', 'yellow'));
+                            const num = parseInt(choice);
+                            
+                            if (num > 0 && num <= dialogs.length) {
+                                const selected = dialogs[num - 1];
+                                item.autoForward.destination = String(selected.id);
+                                item.autoForward.enabled = true;
+                                console.log(colorize(`✓ Selected: ${selected.title || selected.name}`, 'green'));
+                            }
                         }
-                        
-                        resume(); // Resume raw mode
-                    } else if (cursor === 2) {
-                        // Toggle Delete
-                        item.autoForward.deleteAfterForward = !item.autoForward.deleteAfterForward;
+                    } catch (err) {
+                        console.log(colorize(`Error: ${err.message}`, 'red'));
                     }
+                    
+                    await new Promise(r => setTimeout(r, 800));
+                    resume();
+                } else if (key.name === 'd' || str === 'd' || str === 'D') {
+                    // Toggle Delete
+                    item.autoForward.deleteAfterForward = !item.autoForward.deleteAfterForward;
                 }
                 render();
                 return;
