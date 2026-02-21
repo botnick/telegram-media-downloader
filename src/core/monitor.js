@@ -59,27 +59,18 @@ export class RealtimeMonitor extends EventEmitter {
 
     /**
      * Try every available client to find one that can access a group
-     * @returns {{ client: TelegramClient, lastId: number }|null}
+     * @returns {TelegramClient|null}
      */
     async discoverClientForGroup(group) {
-        if (!this.accountManager) {
-            try {
-                const history = await this.client.getMessages(group.id, { limit: 1 });
-                const lastId = (history && history.length > 0) ? history[0].id : 0;
-                this.groupClientCache.set(group.id, this.client);
-                return { client: this.client, lastId };
-            } catch (e) {
-                return null;
-            }
-        }
+        if (!this.accountManager) return this.client;
 
         for (const [id, acctClient] of this.accountManager.clients) {
             try {
                 const history = await acctClient.getMessages(group.id, { limit: 1 });
                 if (history) {
-                    const lastId = history.length > 0 ? history[0].id : 0;
+                    // Cache the working client
                     this.groupClientCache.set(group.id, acctClient);
-                    return { client: acctClient, lastId };
+                    return acctClient;
                 }
             } catch (e) {
                 // This client can't access the group, try next
@@ -163,14 +154,15 @@ export class RealtimeMonitor extends EventEmitter {
         // Auto-discover which client works for each group
         for (const group of enabledGroups) {
             try {
-                const result = await this.discoverClientForGroup(group);
-                if (!result) {
+                const workingClient = await this.discoverClientForGroup(group);
+                if (!workingClient) {
                     console.log(colorize(`⚠️ Skipping "${group.name}" — no account has access`, 'yellow'));
                     group.enabled = false;
                     continue;
                 }
-                if (result.lastId) {
-                    this.lastIds.set(group.id, result.lastId);
+                const history = await workingClient.getMessages(group.id, { limit: 1 });
+                if (history && history.length > 0) {
+                    this.lastIds.set(group.id, history[0].id);
                 }
             } catch (e) {
                 if (e.errorMessage === 'CHANNEL_INVALID') {
