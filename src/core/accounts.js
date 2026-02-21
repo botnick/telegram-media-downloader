@@ -30,6 +30,9 @@ function createLogger(label) {
         canSend: () => true,
         warn: (msg) => {
             if (msg?.includes('Disconnecting') || msg?.includes('Connection closed')) return;
+            if (msg?.includes('Reconnect') || msg?.includes('reconnect')) return;
+            if (msg?.includes('Not connected') || msg?.includes('TIMEOUT')) return;
+            if (msg?.includes('Closing current connection')) return;
             console.log(colorize(`⚠️  [${label}] ${msg}`, 'yellow'));
         },
         info: (msg) => {
@@ -37,12 +40,17 @@ function createLogger(label) {
             if (msg?.includes('Disconnecting')) return;
             if (msg?.includes('connection closed')) return;
             if (msg?.includes('Running gramJS')) return;
+            if (msg?.includes('Reconnect') || msg?.includes('reconnect')) return;
         },
         debug: () => {},
         error: (msg) => {
-            if (msg?.includes('WebSocket connection failed')) return;
-            if (typeof msg === 'object' && msg.message?.includes('Not connected')) return;
-            console.error(colorize(`❌ [${label}] ${msg}`, 'red'));
+            const str = typeof msg === 'object' ? (msg.message || String(msg)) : String(msg);
+            if (str.includes('Not connected')) return;
+            if (str.includes('TIMEOUT')) return;
+            if (str.includes('WebSocket connection failed')) return;
+            if (str.includes('Connection closed')) return;
+            if (str.includes('disconnect')) return;
+            console.error(colorize(`❌ [${label}] ${str}`, 'red'));
         },
         setLevel: () => {}
     };

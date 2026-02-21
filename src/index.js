@@ -25,9 +25,25 @@ const CONFIG_PATH = path.join(__dirname, '../data/config.json');
 
 // Suppress gramJS internal TIMEOUT errors (update loop noise)
 process.on('unhandledRejection', (reason) => {
-    if (reason?.message === 'TIMEOUT') return; // gramJS update loop - safe to ignore
+    const msg = reason?.message || String(reason);
+    if (msg === 'TIMEOUT') return;
+    if (msg.includes('Not connected')) return;
+    if (msg.includes('Connection closed')) return;
     console.error('Unhandled rejection:', reason);
 });
+
+// Global filter: suppress gramJS internal stack traces that bypass our logger
+const _origConsoleError = console.error;
+console.error = (...args) => {
+    const msg = args.map(a => (a instanceof Error ? a.message : String(a))).join(' ');
+    if (msg.includes('Not connected')) return;
+    if (msg.includes('TIMEOUT')) return;
+    if (msg.includes('Connection closed')) return;
+    if (msg.includes('Reconnect')) return;
+    if (msg.includes('Closing current connection')) return;
+    if (msg.includes('CHANNEL_INVALID')) return;
+    _origConsoleError.apply(console, args);
+};
 
 // Transient Readline Interface
 function question(query) {
@@ -922,14 +938,62 @@ async function startMonitor(accountManager, config) {
 }
 
 async function startHistory(accountManager, config, connManager) {
-    const client = accountManager.getDefaultClient();
-    client.setLogLevel('none'); // Suppress verbose download logs
-    const startTime = Date.now(); // Defined at start of function
+    const startTime = Date.now();
     clearScreen();
     console.log(colorize('╔════════════════════════════════════════╗', 'magenta'));
     console.log(colorize('║    📚 HISTORY DOWNLOAD                 ║', 'magenta', 'bold'));
     console.log(colorize('╚════════════════════════════════════════╝', 'magenta'));
     console.log();
+
+    // --- Account Picker (Arrow-key navigation) ---
+    let client;
+    const accounts = accountManager.getList();
+    if (accounts.length > 1) {
+        readline.emitKeypressEvents(process.stdin);
+        if (process.stdin.isTTY) process.stdin.setRawMode(true);
+
+        let accCursor = 0;
+        client = await new Promise(resolve => {
+            const renderAccounts = () => {
+                clearScreen();
+                console.log(colorize('� HISTORY DOWNLOADER', 'cyan', 'bold'));
+                console.log(colorize('�👤 Select account to use', 'yellow'));
+                console.log(colorize('Use ↑/↓ to move, ENTER to select', 'dim'));
+                console.log('─'.repeat(50));
+                accounts.forEach((acc, i) => {
+                    const isSelected = i === accCursor;
+                    const cursorChar = isSelected ? colorize('>', 'cyan', 'bold') : ' ';
+                    const name = acc.name || acc.id;
+                    const user = acc.username ? colorize(` @${acc.username}`, 'dim') : '';
+                    const def = (i === 0) ? colorize(' ⭐', 'yellow') : '';
+                    const label = isSelected ? colorize(name, 'white', 'bold') : name;
+                    console.log(`${cursorChar} ${label}${user}${def}`);
+                });
+                console.log('─'.repeat(50));
+            };
+
+            const onKey = (str, key) => {
+                if (key.name === 'up') accCursor = Math.max(0, accCursor - 1);
+                else if (key.name === 'down') accCursor = Math.min(accounts.length - 1, accCursor + 1);
+                else if (key.name === 'return') {
+                    process.stdin.removeListener('keypress', onKey);
+                    if (process.stdin.isTTY) process.stdin.setRawMode(false);
+                    resolve(accountManager.getClient(accounts[accCursor].id));
+                    return;
+                } else if (key.ctrl && key.name === 'c') {
+                    process.exit(0);
+                }
+                renderAccounts();
+            };
+
+            process.stdin.on('keypress', onKey);
+            renderAccounts();
+        });
+    } else {
+        client = accountManager.getDefaultClient();
+    }
+    client.setLogLevel('none');
+
     // Import dynamically
     const { DownloadManager } = await import('./core/downloader.js');
     const { HistoryDownloader } = await import('./core/history.js');
@@ -939,13 +1003,13 @@ async function startHistory(accountManager, config, connManager) {
     // Migrate old folder names (space → underscore) before downloading
     await migrateFolders(config.download?.path);
 
-    // Get dialogs
+    // Get dialogs using selected client
     console.log(colorize('Fetching dialogs...', 'dim'));
     const dialogs = await client.getDialogs({ limit: 100 });
     const groups = dialogs.filter(d => d.isGroup || d.isChannel);
 
     if (groups.length === 0) {
-        console.log(colorize('❌ No groups found!', 'red'));
+        console.log(colorize('❌ No groups found for this account!', 'red'));
         return;
     }
 
@@ -1105,7 +1169,7 @@ async function startHistory(accountManager, config, connManager) {
     const downloader = new DownloadManager(client, config, rateLimiter);
     await downloader.init();
 
-    const history = new HistoryDownloader(client, downloader, config);
+    const history = new HistoryDownloader(client, downloader, config, accountManager);
 
     if (choice === '2') limit = 1000;
     else if (choice === '3') limit = Number.MAX_SAFE_INTEGER;

@@ -9,17 +9,38 @@ import fsSync from 'fs';
 import { Api } from 'telegram';
 
 export class HistoryDownloader extends EventEmitter {
-    constructor(client, downloader, config) {
+    constructor(client, downloader, config, accountManager = null) {
         super();
         this.client = client;
         this.downloader = downloader;
         this.config = config;
+        this.accountManager = accountManager;
         this.stats = {
             processed: 0,
             downloaded: 0,
             skipped: 0,
             urls: 0
         };
+    }
+
+    /**
+     * Try every available client to find one that can access a group
+     * @returns {TelegramClient|null}
+     */
+    async discoverClientForGroup(groupId) {
+        if (!this.accountManager) return this.client;
+
+        for (const [id, acctClient] of this.accountManager.clients) {
+            try {
+                const history = await acctClient.getMessages(groupId, { limit: 1 });
+                if (history) {
+                    return acctClient;
+                }
+            } catch (e) {
+                // This client can't access the group, try next
+            }
+        }
+        return null; // No client can access
     }
 
     async scan(groupId, limit = 0) {
@@ -33,8 +54,13 @@ export class HistoryDownloader extends EventEmitter {
             total: 0
         };
 
-
         try {
+            const workingClient = await this.discoverClientForGroup(groupId);
+            if (!workingClient) {
+                console.error('Scan failed: No account has access to this group');
+                return counts;
+            }
+
             // Parallel fetch for speed
             const queries = [
                 { key: 'photos', filter: new Api.InputMessagesFilterPhotos() },
@@ -47,7 +73,7 @@ export class HistoryDownloader extends EventEmitter {
 
             const results = await Promise.all(queries.map(async (q) => {
                 try {
-                    const res = await this.client.getMessages(groupId, {
+                    const res = await workingClient.getMessages(groupId, {
                         limit: 1, // We just need count
                         filter: q.filter
                     });
@@ -69,6 +95,8 @@ export class HistoryDownloader extends EventEmitter {
     }
 
     async downloadHistory(groupId, options = {}) {
+        this.running = true;
+        this.cancelFlag = false;
         this.stats = { processed: 0, downloaded: 0, skipped: 0, urls: 0 };
         
         const limit = options.limit || 100;
@@ -86,11 +114,16 @@ export class HistoryDownloader extends EventEmitter {
         let lastId = offsetId;
 
         try {
+            const workingClient = await this.discoverClientForGroup(groupId);
+            if (!workingClient) {
+                throw new Error('No available account has access to this group');
+            }
+
             // Iterate messages
             // Using iterMessages is more memory efficient than getMessages for large history
             // SAFETY: Process in small batches with rest intervals
             
-            for await (const message of this.client.iterMessages(groupId, { 
+            for await (const message of workingClient.iterMessages(groupId, { 
                 limit: limit,
                 offsetId: offsetId,
                 offsetDate: options.offsetDate
