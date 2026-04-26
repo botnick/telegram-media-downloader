@@ -341,7 +341,7 @@ function renderMediaGrid() {
                 ev.preventDefault();
                 return;
             }
-            openMediaViewer(idx);
+            Viewer.openMediaViewer(idx);
         });
     });
 
