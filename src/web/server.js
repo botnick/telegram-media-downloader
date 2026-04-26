@@ -1710,23 +1710,29 @@ async function loadSession() {
 
 async function connectTelegram() {
     if (telegramClient && isConnected) return telegramClient;
+    // Quiet, configuration-aware: no creds → no work, no scary warning.
+    let config;
+    try { config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8')); }
+    catch (e) {
+        if (e.code !== 'ENOENT') console.log('⚠️ Could not read config.json:', e.message);
+        return null;
+    }
+    if (!config.telegram?.apiId || !config.telegram?.apiHash) return null;
+
     try {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
         const sessionString = await loadSession();
         if (!sessionString) return null;
-
         const stringSession = new StringSession(sessionString);
         telegramClient = new TelegramClient(stringSession, parseInt(config.telegram.apiId), config.telegram.apiHash, { connectionRetries: 3, useWSS: false });
         telegramClient.setLogLevel('none');
         await telegramClient.connect();
-
         if (await telegramClient.isUserAuthorized()) {
             isConnected = true;
-            console.log('✅ Connected to Telegram (for profile photos)');
+            console.log('✅ Telegram connected (legacy single-session client; AccountManager is the canonical source)');
             return telegramClient;
         }
     } catch (error) {
-        console.log('⚠️ Telegram connection failed:', error.message);
+        console.log('⚠️ Telegram connect attempt failed:', error.message);
     }
     return null;
 }
@@ -1817,13 +1823,36 @@ server.listen(PORT, async () => {
         if (updated > 0) console.log(`📝 Backfilled group names for ${updated} records`);
     } catch (e) { /* config not ready yet */ }
 
+    // Friendly boot banner. Tells the user where to go and what state we're
+    // in (configured vs first-run) instead of dumping a generic header.
+    let cfgState = 'first-run';
+    try {
+        const cfg = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
+        if (isAuthConfigured(cfg.web)) cfgState = 'ready';
+        else if (cfg.telegram?.apiId) cfgState = 'needs-password';
+    } catch { /* no config → first-run */ }
+
+    let appVersion = process.env.npm_package_version;
+    if (!appVersion) {
+        try {
+            appVersion = JSON.parse(fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')).version;
+        } catch { appVersion = '?'; }
+    }
+    const url = `http://localhost:${PORT}`;
+    const tip = cfgState === 'first-run'
+        ? `   First run? Open ${url} from this machine to set up the dashboard password.`
+        : cfgState === 'needs-password'
+            ? `   Open ${url} and run \`npm run auth\` to set the dashboard password.`
+            : `   Sign in at ${url}`;
     console.log(`
-╔════════════════════════════════════════════════════════════╗
-║   🌐 Telegram Downloader - SQLite Edition                 ║
-║   Server: http://localhost:${PORT}                          ║
-╚════════════════════════════════════════════════════════════╝
+🌐  Telegram Downloader   v${appVersion}
+    Dashboard: ${url}
+${tip}
 `);
-    await connectTelegram();
+    // Try to bring up the legacy client in the background — if there are no
+    // credentials yet, this is a silent no-op (see connectTelegram). The
+    // AccountManager-driven path covers everything else lazily.
+    connectTelegram().catch(() => {});
 
     // Resolve group names from Telegram for any DB records still unnamed
     await resolveGroupNamesFromTelegram();
