@@ -1,0 +1,64 @@
+{
+    "nav.library": "คลัง",
+    "nav.chats": "แชต",
+    "nav.engine": "เครื่องยนต์",
+    "nav.settings": "ตั้งค่า",
+
+    "fab.actions": "เมนูลัด",
+    "fab.paste_link": "วางลิงก์ Telegram",
+    "fab.paste_link_sub": "ดาวน์โหลดจาก URL t.me/...",
+    "fab.stories": "Stories",
+    "fab.stories_sub": "บันทึก Stories ที่ใครก็ตามโพสต์อยู่",
+    "fab.add_account": "เพิ่มบัญชี Telegram",
+    "fab.add_account_sub": "ตัวช่วย เบอร์ → OTP → 2FA",
+    "fab.browse_chats": "เลือกแชต",
+    "fab.browse_chats_sub": "เลือกแชตเพื่อมอนิเตอร์หรือดึงประวัติ",
+
+    "header.refresh": "รีเฟรช",
+    "header.paste_link": "ดาวน์โหลดจากลิงก์ Telegram",
+    "header.stories": "ดาวน์โหลด Stories ของ Telegram",
+    "header.menu": "เปิดเมนู",
+
+    "settings.appearance": "การแสดงผล",
+    "settings.theme.light": "สว่าง",
+    "settings.theme.dark": "มืด",
+    "settings.theme.auto": "อัตโนมัติ",
+    "settings.language": "ภาษา",
+    "settings.language.auto": "ตามระบบ",
+    "settings.notifications": "การแจ้งเตือนของเบราว์เซอร์",
+    "settings.notifications_help": "แจ้งเตือนเมื่อดาวน์โหลดเสร็จ",
+
+    "settings.security": "ความปลอดภัยของแดชบอร์ด",
+    "settings.security.current": "รหัสปัจจุบัน",
+    "settings.security.new": "รหัสใหม่ (อย่างน้อย 8 ตัว)",
+    "settings.security.change": "เปลี่ยนรหัส",
+    "settings.security.signout": "ออกจากระบบ",
+
+    "settings.engine": "เครื่องยนต์",
+    "settings.engine.start": "เริ่มมอนิเตอร์",
+    "settings.engine.stop": "หยุด",
+    "settings.engine.queue": "คิว",
+    "settings.engine.active": "กำลังโหลด",
+    "settings.engine.downloaded": "ดาวน์โหลดแล้ว",
+    "settings.engine.uptime": "เวลาทำงาน",
+    "settings.engine.live": "กำลังดาวน์โหลด",
+
+    "groups.empty.title": "ยังไม่มีแชต",
+    "groups.empty.body": "เพิ่มแชต Telegram ที่หน้าแชตเพื่อเริ่มดาวน์โหลด",
+    "groups.empty.cta": "เลือกแชต",
+
+    "viewer.empty": "ยังไม่มีไฟล์มีเดีย",
+    "viewer.search.placeholder": "ค้นหาไฟล์…",
+    "viewer.select_mode": "สลับโหมดเลือกหลายไฟล์",
+
+    "common.cancel": "ยกเลิก",
+    "common.save": "บันทึก",
+    "common.close": "ปิด",
+    "common.loading": "กำลังโหลด…",
+    "common.delete": "ลบ",
+    "common.confirm": "ยืนยัน",
+
+    "onboard.configure_api.title": "ขั้นตอนที่ 1 / 3 — วางข้อมูล Telegram API",
+    "onboard.add_account.title": "ขั้นตอนที่ 2 / 3 — เพิ่มบัญชี Telegram",
+    "onboard.enable_group.title": "ขั้นตอนที่ 3 / 3 — เลือกแชตที่จะมอนิเตอร์"
+}

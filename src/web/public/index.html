@@ -886,9 +886,10 @@
 
             <!-- Header -->
             <header id="content-header" class="h-14 bg-tg-bg border-b border-tg-border flex items-center px-3 sm:px-4">
-                <button id="menu-btn"
-                    class="md:hidden w-10 h-10 flex items-center justify-center rounded-full hover:bg-tg-hover mr-2">
-                    <i class="ri-menu-line text-xl text-tg-textSecondary"></i>
+                <button id="menu-btn" type="button"
+                    class="md:hidden w-10 h-10 flex items-center justify-center rounded-full hover:bg-tg-hover mr-2"
+                    data-i18n-aria-label="header.menu" aria-label="Open menu">
+                    <i class="ri-menu-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                 </button>
 
                 <div class="flex items-center gap-3 flex-1 min-w-0">
@@ -902,22 +903,28 @@
                 </div>
 
                 <div class="flex items-center gap-1">
-                    <button id="paste-url-btn" title="Download from a Telegram link"
-                        class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center">
-                        <i class="ri-link-m text-xl text-tg-textSecondary"></i>
+                    <button id="paste-url-btn" type="button"
+                        class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
+                        data-i18n-aria-label="header.paste_link" aria-label="Download from a Telegram link"
+                        data-i18n-title="header.paste_link" title="Download from a Telegram link">
+                        <i class="ri-link-m text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
-                    <button id="stories-btn" title="Download Telegram Stories"
-                        class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center">
-                        <i class="ri-camera-line text-xl text-tg-textSecondary"></i>
+                    <button id="stories-btn" type="button"
+                        class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
+                        data-i18n-aria-label="header.stories" aria-label="Download Telegram Stories"
+                        data-i18n-title="header.stories" title="Download Telegram Stories">
+                        <i class="ri-camera-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
-                    <button id="view-mode-btn"
-                        class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center">
-                        <i class="ri-layout-grid-line text-xl text-tg-textSecondary"></i>
+                    <button id="view-mode-btn" type="button"
+                        class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
+                        aria-label="Change view mode">
+                        <i class="ri-layout-grid-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
-                    <button id="refresh-btn"
-                        class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center"
+                    <button id="refresh-btn" type="button"
+                        class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
+                        data-i18n-aria-label="header.refresh" aria-label="Refresh"
                         onclick="refreshCurrentPage()">
-                        <i class="ri-refresh-line text-xl text-tg-textSecondary"></i>
+                        <i class="ri-refresh-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
                 </div>
             </header>
@@ -1185,20 +1192,31 @@
                     </div>
 
                     <!-- Appearance -->
-                    <div class="bg-tg-panel rounded-xl p-4 mb-4">
+                    <div class="bg-tg-panel rounded-xl p-4 mb-4" data-settings-section="appearance">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-palette-line text-tg-blue"></i> Appearance
+                            <i class="ri-palette-line text-tg-blue" aria-hidden="true"></i>
+                            <span data-i18n="settings.appearance">Appearance</span>
                         </h3>
                         <div class="grid grid-cols-3 gap-2 text-sm mb-4">
-                            <button data-theme-set="light" class="theme-btn py-2 px-3 rounded-lg bg-tg-bg/40 hover:bg-tg-hover transition flex items-center gap-2 justify-center"><i class="ri-sun-line"></i> Light</button>
-                            <button data-theme-set="dark" class="theme-btn py-2 px-3 rounded-lg bg-tg-bg/40 hover:bg-tg-hover transition flex items-center gap-2 justify-center"><i class="ri-moon-line"></i> Dark</button>
-                            <button data-theme-set="auto" class="theme-btn py-2 px-3 rounded-lg bg-tg-bg/40 hover:bg-tg-hover transition flex items-center gap-2 justify-center"><i class="ri-contrast-2-line"></i> Auto</button>
+                            <button data-theme-set="light" class="theme-btn py-2 px-3 rounded-lg bg-tg-bg/40 hover:bg-tg-hover transition flex items-center gap-2 justify-center" type="button"><i class="ri-sun-line" aria-hidden="true"></i> <span data-i18n="settings.theme.light">Light</span></button>
+                            <button data-theme-set="dark" class="theme-btn py-2 px-3 rounded-lg bg-tg-bg/40 hover:bg-tg-hover transition flex items-center gap-2 justify-center" type="button"><i class="ri-moon-line" aria-hidden="true"></i> <span data-i18n="settings.theme.dark">Dark</span></button>
+                            <button data-theme-set="auto" class="theme-btn py-2 px-3 rounded-lg bg-tg-bg/40 hover:bg-tg-hover transition flex items-center gap-2 justify-center" type="button"><i class="ri-contrast-2-line" aria-hidden="true"></i> <span data-i18n="settings.theme.auto">Auto</span></button>
                         </div>
-                        <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer">
-                            <div class="text-tg-text text-sm">Browser notifications</div>
+                        <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-3">
+                            <div class="text-tg-text text-sm" data-i18n="settings.notifications">Browser notifications</div>
                             <div id="setting-notifications" class="tg-toggle"></div>
                         </label>
-                        <p class="text-xs text-tg-textSecondary mt-1">Get a system toast when downloads finish.</p>
+                        <p class="text-xs text-tg-textSecondary mt-1 mb-3" data-i18n="settings.notifications_help">Get a system toast when downloads finish.</p>
+
+                        <label for="setting-language" class="text-tg-text text-sm block mb-2 flex items-center gap-2">
+                            <i class="ri-translate-2 text-tg-textSecondary" aria-hidden="true"></i>
+                            <span data-i18n="settings.language">Language</span>
+                        </label>
+                        <select id="setting-language" class="tg-input w-full text-sm">
+                            <option value="auto" data-i18n="settings.language.auto">Auto-detect</option>
+                            <option value="en">English</option>
+                            <option value="th">ไทย</option>
+                        </select>
                     </div>
 
                     <!-- Proxy -->
@@ -1511,8 +1529,8 @@
 
     <!-- Floating Action Button (mobile only) — opens an action sheet for
          the most common workflows so the user never has to dig for them. -->
-    <button id="fab" class="fab" aria-label="Quick actions" type="button">
-        <i class="ri-add-line"></i>
+    <button id="fab" class="fab" data-i18n-aria-label="fab.actions" aria-label="Quick actions" type="button">
+        <i class="ri-add-line" aria-hidden="true"></i>
     </button>
 
     <!-- Bottom navigation (mobile only) — replaces the drawer-only
@@ -1520,18 +1538,18 @@
          reachable via the FAB action sheet so we keep this row to the 4
          most-frequented destinations. -->
     <nav class="bottom-nav" aria-label="Primary">
-        <a class="bottom-nav-item" href="#/viewer" data-nav="viewer" aria-label="Library">
-            <i class="ri-gallery-line"></i><span>Library</span>
+        <a class="bottom-nav-item" href="#/viewer" data-nav="viewer" data-i18n-aria-label="nav.library" aria-label="Library">
+            <i class="ri-gallery-line" aria-hidden="true"></i><span data-i18n="nav.library">Library</span>
         </a>
-        <a class="bottom-nav-item" href="#/groups" data-nav="groups" aria-label="Chats">
-            <i class="ri-chat-3-line"></i><span>Chats</span>
+        <a class="bottom-nav-item" href="#/groups" data-nav="groups" data-i18n-aria-label="nav.chats" aria-label="Chats">
+            <i class="ri-chat-3-line" aria-hidden="true"></i><span data-i18n="nav.chats">Chats</span>
         </a>
-        <a class="bottom-nav-item" href="#/engine" data-nav="engine" aria-label="Engine">
-            <i class="ri-broadcast-line"></i><span>Engine</span>
+        <a class="bottom-nav-item" href="#/engine" data-nav="engine" data-i18n-aria-label="nav.engine" aria-label="Engine">
+            <i class="ri-broadcast-line" aria-hidden="true"></i><span data-i18n="nav.engine">Engine</span>
             <span id="engine-nav-badge" class="nav-badge hidden"></span>
         </a>
-        <a class="bottom-nav-item" href="#/settings" data-nav="settings" aria-label="Settings">
-            <i class="ri-settings-3-line"></i><span>Settings</span>
+        <a class="bottom-nav-item" href="#/settings" data-nav="settings" data-i18n-aria-label="nav.settings" aria-label="Settings">
+            <i class="ri-settings-3-line" aria-hidden="true"></i><span data-i18n="nav.settings">Settings</span>
         </a>
     </nav>
 

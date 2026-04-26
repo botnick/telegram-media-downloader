@@ -20,6 +20,7 @@ import { openSheet } from './sheet.js';
 import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkeletons } from './components.js';
 import { formatRelativeTime } from './utils.js';
 import { attachLongPress, attachPullToRefresh } from './gestures.js';
+import { initI18n, setLang, getLang, applyToDOM as applyI18n } from './i18n.js';
 
 // ============ Initialization ============
 async function init() {
@@ -123,6 +124,15 @@ async function init() {
     setupMediaSearch();
     setupStoriesPanel();
     setupGalleryGestures();
+
+    // Initialise i18n + the language picker. The fall-through is English so
+    // a missing-key during a translation roll-out still renders something.
+    await initI18n();
+    const langSelect = document.getElementById('setting-language');
+    if (langSelect) {
+        langSelect.value = getLang();
+        langSelect.addEventListener('change', () => setLang(langSelect.value));
+    }
 
     // Appearance toggle
     initTheme();

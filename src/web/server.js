@@ -185,7 +185,7 @@ async function readConfigSafe() {
 }
 
 // Paths that may be reached without an authenticated session.
-const PUBLIC_PATH_PREFIXES = ['/login', '/setup-needed', '/css/', '/js/', '/favicon'];
+const PUBLIC_PATH_PREFIXES = ['/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon'];
 const PUBLIC_API_PATHS = new Set([
     '/api/login',
     '/api/auth_check',

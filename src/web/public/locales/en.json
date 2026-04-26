@@ -1,0 +1,64 @@
+{
+    "nav.library": "Library",
+    "nav.chats": "Chats",
+    "nav.engine": "Engine",
+    "nav.settings": "Settings",
+
+    "fab.actions": "Quick actions",
+    "fab.paste_link": "Paste a Telegram link",
+    "fab.paste_link_sub": "Download from a t.me/... URL",
+    "fab.stories": "Stories",
+    "fab.stories_sub": "Save someone's active Stories",
+    "fab.add_account": "Add Telegram account",
+    "fab.add_account_sub": "Phone → OTP → 2FA wizard",
+    "fab.browse_chats": "Browse chats",
+    "fab.browse_chats_sub": "Pick a chat to monitor or backfill",
+
+    "header.refresh": "Refresh",
+    "header.paste_link": "Download from a Telegram link",
+    "header.stories": "Download Telegram Stories",
+    "header.menu": "Open menu",
+
+    "settings.appearance": "Appearance",
+    "settings.theme.light": "Light",
+    "settings.theme.dark": "Dark",
+    "settings.theme.auto": "Auto",
+    "settings.language": "Language",
+    "settings.language.auto": "Auto-detect",
+    "settings.notifications": "Browser notifications",
+    "settings.notifications_help": "Get a system toast when downloads finish.",
+
+    "settings.security": "Dashboard security",
+    "settings.security.current": "Current password",
+    "settings.security.new": "New password (min 8)",
+    "settings.security.change": "Change password",
+    "settings.security.signout": "Sign out",
+
+    "settings.engine": "Engine",
+    "settings.engine.start": "Start monitor",
+    "settings.engine.stop": "Stop",
+    "settings.engine.queue": "Queue",
+    "settings.engine.active": "Active",
+    "settings.engine.downloaded": "Downloaded",
+    "settings.engine.uptime": "Uptime",
+    "settings.engine.live": "Live downloads",
+
+    "groups.empty.title": "No groups yet",
+    "groups.empty.body": "Add a Telegram chat from the Chats page to start downloading.",
+    "groups.empty.cta": "Browse chats",
+
+    "viewer.empty": "No media files",
+    "viewer.search.placeholder": "Search files…",
+    "viewer.select_mode": "Toggle selection mode",
+
+    "common.cancel": "Cancel",
+    "common.save": "Save",
+    "common.close": "Close",
+    "common.loading": "Loading…",
+    "common.delete": "Delete",
+    "common.confirm": "Confirm",
+
+    "onboard.configure_api.title": "Step 1 of 3 — paste your Telegram API credentials",
+    "onboard.add_account.title": "Step 2 of 3 — add a Telegram account",
+    "onboard.enable_group.title": "Step 3 of 3 — pick a chat to monitor"
+}
