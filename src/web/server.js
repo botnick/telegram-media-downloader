@@ -1261,7 +1261,15 @@ app.post('/api/config', async (req, res) => {
         if (req.body.download) newConfig.download = { ...currentConfig.download, ...req.body.download };
         if (req.body.rateLimits) newConfig.rateLimits = { ...currentConfig.rateLimits, ...req.body.rateLimits };
         if (req.body.diskManagement) newConfig.diskManagement = { ...currentConfig.diskManagement, ...req.body.diskManagement };
-        if (req.body.proxy !== undefined) newConfig.proxy = req.body.proxy; // full replace; null clears
+        if (req.body.proxy === null) newConfig.proxy = null; // explicit clear
+        else if (req.body.proxy && typeof req.body.proxy === 'object') {
+            // Deep-merge so the SPA can omit unchanged fields (e.g., the
+            // password) without wiping them. Pass an explicit `null` for a
+            // field to remove it.
+            const merged = { ...(currentConfig.proxy || {}), ...req.body.proxy };
+            for (const k of Object.keys(merged)) if (merged[k] === null) delete merged[k];
+            newConfig.proxy = merged;
+        }
         if (req.body.web) {
             // Allow toggling enabled flag, but never let the route alter
             // password/passwordHash regardless of source.
