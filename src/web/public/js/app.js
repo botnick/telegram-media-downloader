@@ -13,6 +13,7 @@ import { ws } from './ws.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
 import { initStatusBar } from './statusbar.js';
 import * as Notifications from './notifications.js';
+import { initOnboarding, refreshOnboarding } from './onboarding.js';
 
 // ============ Initialization ============
 async function init() {
@@ -35,6 +36,12 @@ async function init() {
 
     // Sticky status bar (engine state + counters + WS link)
     initStatusBar();
+
+    // First-run / mid-flow guidance — banner that walks the user through
+    // configure-API → add-account → enable-group based on /api/monitor/status.
+    initOnboarding();
+    ws.on('config_updated', refreshOnboarding);
+    ws.on('monitor_state', refreshOnboarding);
 
     await loadGroups();
     await loadStats();
