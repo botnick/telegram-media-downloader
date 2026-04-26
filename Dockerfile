@@ -9,12 +9,12 @@
 #
 # Pin a specific patch version. Floating tags drift; this image is reproducible.
 
-FROM node:20.18.1-alpine AS deps
+FROM node:20.20.2-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-FROM node:20.18.1-alpine AS runtime
+FROM node:20.20.2-alpine AS runtime
 ENV NODE_ENV=production \
     PORT=3000 \
     TGDL_RUN=monitor
