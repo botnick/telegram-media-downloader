@@ -1,21 +1,94 @@
-name: Notify Telegram On Push
+name: Notify Telegram
+
+# Posts a message to the configured Telegram chat on:
+#   - every push to main (commit summary)
+#   - every published release (release notes)
+#
+# Required repo secrets:
+#   TELEGRAM_BOT_TOKEN  — bot token from @BotFather
+#   TELEGRAM_CHAT_ID    — target chat id (-100... for channels)
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  release:
+    types: [published]
 
 jobs:
-  notify:
+  notify-push:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-
     steps:
-      - name: Send Telegram notification
+      - name: Send commit notification
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT:  ${{ secrets.TELEGRAM_CHAT_ID }}
+          REPO:     ${{ github.repository }}
+          BRANCH:   ${{ github.ref_name }}
+          ACTOR:    ${{ github.actor }}
+          SHA:      ${{ github.sha }}
+          MSG:      ${{ github.event.head_commit.message }}
         run: |
-          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          set -e
+          # First line of the commit message; HTML-escape it.
+          summary=$(printf '%s\n' "$MSG" | head -n1 \
+            | python3 -c 'import html,sys; print(html.escape(sys.stdin.read().rstrip()))')
+          text=$(cat <<EOF
+🚀 <b>Update</b>
 
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d parse_mode="HTML" \
-            -d disable_web_page_preview=true \
-            -d text="🚀 <b>Update</b>%0A%0A<b>Repo:</b> ${{ github.repository }}%0A<b>Branch:</b> ${{ github.ref_name }}%0A<b>By:</b> ${{ github.actor }}%0A%0A<a href=\"${COMMIT_URL}\">View Commit</a>"
+<b>Repo:</b> ${REPO}
+<b>Branch:</b> ${BRANCH}
+<b>By:</b> ${ACTOR}
+<b>Commit:</b> ${summary}
+
+<a href="https://github.com/${REPO}/commit/${SHA}">View commit</a>
+EOF
+)
+          curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "disable_web_page_preview=true" \
+            --data-urlencode "text=${text}"
+
+  notify-release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send release notification
+        env:
+          TG_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          REPO:      ${{ github.repository }}
+          ACTOR:     ${{ github.actor }}
+          REL_TAG:   ${{ github.event.release.tag_name }}
+          REL_NAME:  ${{ github.event.release.name }}
+          REL_URL:   ${{ github.event.release.html_url }}
+          REL_BODY:  ${{ github.event.release.body }}
+          REL_PRE:   ${{ github.event.release.prerelease }}
+        run: |
+          set -e
+          badge="🎉 New release"
+          [ "$REL_PRE" = "true" ] && badge="🧪 Pre-release"
+          title=$(printf '%s' "${REL_NAME:-$REL_TAG}" \
+            | python3 -c 'import html,sys; print(html.escape(sys.stdin.read()))')
+          # Trim release notes to fit Telegram's 4096-char limit comfortably,
+          # then HTML-escape so markdown syntax inside doesn't break parsing.
+          body=$(printf '%s' "$REL_BODY" | head -c 3500 \
+            | python3 -c 'import html,sys; print(html.escape(sys.stdin.read()))')
+          text=$(cat <<EOF
+${badge}: <b>${title}</b>
+
+<b>Repo:</b> ${REPO}
+<b>Tag:</b> ${REL_TAG}
+<b>By:</b> ${ACTOR}
+
+${body}
+
+<a href="${REL_URL}">View release</a>
+EOF
+)
+          curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "parse_mode=HTML" \
+            --data-urlencode "disable_web_page_preview=true" \
+            --data-urlencode "text=${text}"
