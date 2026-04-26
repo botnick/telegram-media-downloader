@@ -105,13 +105,78 @@ function setupVideoPlayer(fileId) {
     if (playBtn) {
         playBtn.onclick = () => video.paused ? video.play() : video.pause();
     }
-    
+
     video.onplay = () => {
         playBtn.innerHTML = '<i class="ri-pause-fill text-2xl"></i>';
     };
     video.onpause = () => {
         playBtn.innerHTML = '<i class="ri-play-fill text-2xl"></i>';
     };
+
+    // Seek bar — click + drag to scrub. Pointer events cover mouse,
+    // touch, and pen with the same code path; setPointerCapture so the
+    // drag keeps tracking even when the cursor leaves the bar.
+    const progressBar = document.getElementById('video-progress-container');
+    if (progressBar) {
+        let dragging = false;
+        const seekTo = (clientX) => {
+            if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+            const rect = progressBar.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            video.currentTime = ratio * video.duration;
+        };
+        progressBar.onpointerdown = (e) => {
+            dragging = true;
+            try { progressBar.setPointerCapture?.(e.pointerId); } catch {}
+            seekTo(e.clientX);
+            e.preventDefault();
+        };
+        progressBar.onpointermove = (e) => { if (dragging) seekTo(e.clientX); };
+        const endDrag = (e) => {
+            if (!dragging) return;
+            dragging = false;
+            try { progressBar.releasePointerCapture?.(e.pointerId); } catch {}
+        };
+        progressBar.onpointerup = endDrag;
+        progressBar.onpointercancel = endDrag;
+    }
+
+    // Volume slider — bind oninput so dragging updates live.
+    const volumeSlider = document.getElementById('video-volume');
+    if (volumeSlider) {
+        volumeSlider.value = video.volume;
+        volumeSlider.oninput = () => {
+            const v = parseFloat(volumeSlider.value);
+            if (Number.isFinite(v)) {
+                video.volume = Math.max(0, Math.min(1, v));
+                if (video.muted && v > 0) video.muted = false;
+            }
+        };
+    }
+
+    // Mute toggle.
+    const muteBtn = document.getElementById('video-mute-btn');
+    if (muteBtn) {
+        const refreshMute = () => {
+            muteBtn.innerHTML = (video.muted || video.volume === 0)
+                ? '<i class="ri-volume-mute-line text-lg"></i>'
+                : '<i class="ri-volume-up-line text-lg"></i>';
+        };
+        refreshMute();
+        muteBtn.onclick = () => {
+            video.muted = !video.muted;
+            refreshMute();
+        };
+        video.onvolumechange = refreshMute;
+    }
+
+    // Playback speed selector (any .speed-opt[data-speed] button).
+    document.querySelectorAll('.speed-opt[data-speed]').forEach(btn => {
+        btn.onclick = () => {
+            const r = parseFloat(btn.dataset.speed);
+            if (Number.isFinite(r) && r > 0) video.playbackRate = r;
+        };
+    });
 }
 
 function updateVideoUI(video) {
