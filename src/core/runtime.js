@@ -134,6 +134,7 @@ class Runtime extends EventEmitter {
         }));
         this._downloader.on('scale', fwd('scale'));
         this._downloader.on('queue', (length) => this.emit('event', { type: 'queue_length', payload: { length } }));
+        this._downloader.on('progress', (p) => this.emit('event', { type: 'download_progress', payload: p }));
 
         this._monitor.on('configReloaded', (newConfig) => {
             if (this._forwarder) this._forwarder.config = newConfig;

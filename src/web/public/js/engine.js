@@ -1,7 +1,7 @@
 // Engine (monitor runtime) controller — drives the Engine card in Settings.
 
 import { api } from './api.js';
-import { showToast } from './utils.js';
+import { showToast, formatBytes, escapeHtml } from './utils.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,6 +13,57 @@ function formatUptime(ms) {
     if (m < 60) return `${m}m ${s % 60}s`;
     const h = Math.floor(m / 60);
     return `${h}h ${m % 60}m`;
+}
+
+// Live in-flight downloads, keyed by job.key. Updated from WS
+// download_progress events; entries auto-expire 8 s after their last update so
+// a stuck job doesn't sit forever.
+const activeJobs = new Map();
+const ACTIVE_TTL = 8000;
+let activeRenderTimer = null;
+
+function pruneActive() {
+    const cutoff = Date.now() - ACTIVE_TTL;
+    for (const [k, v] of activeJobs) if (v.ts < cutoff) activeJobs.delete(k);
+}
+
+function renderActive() {
+    pruneActive();
+    const host = $('engine-active-list');
+    if (!host) return;
+    if (activeJobs.size === 0) {
+        host.classList.add('hidden');
+        host.innerHTML = '<div class="text-tg-textSecondary text-xs">Live downloads</div>';
+        return;
+    }
+    host.classList.remove('hidden');
+    const rows = Array.from(activeJobs.values())
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, 6)
+        .map(j => {
+            const pct = Math.max(0, Math.min(100, j.progress || 0));
+            const sizeLine = j.total
+                ? `${formatBytes(j.received || 0)} / ${formatBytes(j.total)}`
+                : (j.received ? formatBytes(j.received) : '');
+            const speed = j.bps ? `${formatBytes(j.bps)}/s` : '';
+            return `
+                <div class="bg-tg-bg/40 rounded p-2 text-xs">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-tg-text truncate">${escapeHtml(j.groupName || j.groupId || '?')} <span class="text-tg-textSecondary">· ${escapeHtml(j.mediaType || '')} #${j.messageId ?? ''}</span></span>
+                        <span class="text-tg-textSecondary tabular-nums">${pct}%${speed ? ' · ' + speed : ''}</span>
+                    </div>
+                    <div class="mt-1 h-1 bg-tg-bg rounded overflow-hidden">
+                        <div class="h-full bg-tg-blue transition-all" style="width: ${pct}%"></div>
+                    </div>
+                    <div class="text-[10px] text-tg-textSecondary mt-1">${escapeHtml(sizeLine)}</div>
+                </div>`;
+        }).join('');
+    host.innerHTML = '<div class="text-tg-textSecondary text-xs">Live downloads</div>' + rows;
+}
+
+function scheduleRender() {
+    if (activeRenderTimer) return;
+    activeRenderTimer = setTimeout(() => { activeRenderTimer = null; renderActive(); }, 200);
 }
 
 function applyStatus(status) {
@@ -96,9 +147,34 @@ export function handleEngineWsMessage(msg) {
     if (msg.type === 'monitor_state') {
         applyStatus({ state: msg.state, error: msg.error });
         setTimeout(refresh, 100);
-    } else if (msg.type === 'monitor_event' || msg.type === 'history_progress' ||
-               msg.type === 'history_done'  || msg.type === 'history_error') {
-        // Most engine + history events are informational; keep counters fresh.
+        if (msg.state === 'stopped' || msg.state === 'error') {
+            activeJobs.clear();
+            renderActive();
+        }
+        return;
+    }
+    if (msg.type === 'history_progress' || msg.type === 'history_done' || msg.type === 'history_error') {
+        refresh();
+        return;
+    }
+    // server.js does `broadcast({type:'monitor_event', ...e})` where `e` is
+    // `{type, payload}` — the spread overwrites the outer type, so engine
+    // events arrive at the WS as `{type:'download_progress', payload:{...}}`
+    // (or _complete / _error / _start, etc.). Handle them directly.
+    if (msg.type === 'download_progress' && msg.payload?.key) {
+        const j = activeJobs.get(msg.payload.key) || {};
+        Object.assign(j, msg.payload, { ts: Date.now() });
+        activeJobs.set(msg.payload.key, j);
+        scheduleRender();
+        return;
+    }
+    if (msg.type === 'download_complete') {
+        if (msg.payload?.key) activeJobs.delete(msg.payload.key);
+        scheduleRender();
+        refresh();
+        return;
+    }
+    if (msg.type === 'download_start' || msg.type === 'download_error' || msg.type === 'queue_length') {
         refresh();
     }
 }

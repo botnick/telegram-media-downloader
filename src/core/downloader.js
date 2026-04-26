@@ -388,16 +388,39 @@ export class DownloadManager extends EventEmitter {
 
             // 5. Execute Download
             try {
+                let prevBytes = 0n;
+                let prevTs = Date.now();
                 await this.client.downloadMedia(job.message, {
                     outputFile: partPath,
                     progressCallback: (downloaded, total) => {
-                        if (total) {
-                            const pct = Number((BigInt(downloaded) * 100n) / BigInt(total));
-                            const active = this.active.get(job.key);
-                            if (active) active.progress = pct;
-                            this.emit('progress', { job, progress: pct });
+                        const downloadedN = BigInt(downloaded || 0);
+                        const totalN = total ? BigInt(total) : 0n;
+                        const pct = totalN ? Number((downloadedN * 100n) / totalN) : 0;
+                        const now = Date.now();
+                        const dtMs = Math.max(now - prevTs, 1);
+                        const dB = Number(downloadedN - prevBytes);
+                        const bps = dtMs > 50 ? Math.max(0, Math.round(dB * 1000 / dtMs)) : null;
+                        if (dtMs > 200) { prevTs = now; prevBytes = downloadedN; }
+
+                        const active = this.active.get(job.key);
+                        if (active) {
+                            active.progress = pct;
+                            active.received = Number(downloadedN);
+                            active.total = Number(totalN);
+                            if (bps !== null) active.bps = bps;
                         }
-                    }
+                        this.emit('progress', {
+                            key: job.key,
+                            groupId: job.groupId,
+                            groupName: job.groupName,
+                            mediaType: job.mediaType,
+                            messageId: job.message?.id,
+                            received: Number(downloadedN),
+                            total: Number(totalN),
+                            progress: pct,
+                            bps,
+                        });
+                    },
                 });
 
                 // 7. Success - Verify and Rename
