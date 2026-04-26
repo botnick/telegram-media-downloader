@@ -563,8 +563,36 @@ app.delete('/api/accounts/:id', async (req, res) => {
 runtime.on('state', (s) => broadcast({ type: 'monitor_state', state: s.state, error: s.error }));
 runtime.on('event', (e) => broadcast({ type: 'monitor_event', ...e }));
 
-app.get('/api/monitor/status', (req, res) => {
-    res.json(runtime.status());
+app.get('/api/monitor/status', async (req, res) => {
+    const status = runtime.status();
+    // Report on-disk session count even when the runtime is stopped, so the
+    // dashboard can tell the user "you have N accounts saved" before they
+    // hit Start. Fall back to a directory listing when the lazy AM can't be
+    // built (e.g. no API creds yet).
+    if (status.accounts === 0) {
+        try {
+            const am = await getAccountManager();
+            status.accounts = am.count;
+        } catch {
+            try {
+                const dir = path.join(DATA_DIR, 'sessions');
+                if (existsSync(dir)) {
+                    status.accounts = fsSync.readdirSync(dir).filter(f => f.endsWith('.enc')).length;
+                }
+            } catch { /* ignore */ }
+        }
+    }
+    // Surface the next-step hint so the SPA can render an empty-state
+    // call-to-action without re-deriving it from multiple endpoints.
+    const config = await readConfigSafe();
+    status.hint = !config.telegram?.apiId || !config.telegram?.apiHash
+        ? 'configure-api'
+        : status.accounts === 0
+            ? 'add-account'
+            : (config.groups || []).filter(g => g.enabled).length === 0
+                ? 'enable-group'
+                : null;
+    res.json(status);
 });
 
 app.post('/api/monitor/start', async (req, res) => {
@@ -916,21 +944,37 @@ app.get('/api/stats', async (req, res) => {
             diskUsage = d.size;
         }
 
+        // Account count: reflect the on-disk session files even when no
+        // TelegramClient is currently connected.
+        let accountCount = 0;
+        try {
+            const am = await getAccountManager();
+            accountCount = am.count;
+        } catch {
+            try {
+                const dir = path.join(DATA_DIR, 'sessions');
+                if (existsSync(dir)) {
+                    accountCount = fsSync.readdirSync(dir).filter(f => f.endsWith('.enc')).length;
+                }
+            } catch { /* ignore */ }
+        }
+
         res.json({
             // DB Stats
             totalFiles: dbStats.totalFiles,
             totalSize: dbStats.totalSize,
-            
+
             // Disk Stats
             diskUsage: diskUsage,
             diskUsageFormatted: formatBytes(diskUsage),
             maxDiskSize: config.diskManagement?.maxTotalSize || '0',
-            
+
             // Config Stats
             totalGroups: config.groups?.length || 0,
             enabledGroups: config.groups?.filter(g => g.enabled).length || 0,
-            
-            telegramConnected: isConnected
+            accounts: accountCount,
+            apiConfigured: !!(config.telegram?.apiId && config.telegram?.apiHash),
+            telegramConnected: isConnected || (runtime.state === 'running'),
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
