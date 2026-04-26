@@ -22,6 +22,7 @@ import { RealtimeMonitor } from './monitor.js';
 import { RateLimiter } from './security.js';
 import { AutoForwarder } from './forwarder.js';
 import { migrateFolders } from './downloader.js';
+import { metrics } from './metrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
@@ -44,6 +45,7 @@ class Runtime extends EventEmitter {
         this.state = s;
         this.error = error;
         this.emit('state', { state: s, error });
+        metrics.set('tgdl_monitor_state', s === 'running' ? 1 : 0);
     }
 
     /**
@@ -115,25 +117,38 @@ class Runtime extends EventEmitter {
         this._rateLimiter.on('wait', (seconds) => this.emit('event', { type: 'rate_wait', payload: { seconds } }));
         this._rateLimiter.on('flood', (seconds) => this.emit('event', { type: 'flood_wait', payload: { seconds } }));
 
-        this._downloader.on('start', (job) => this.emit('event', {
-            type: 'download_start',
-            payload: this._serializeJob(job),
-        }));
-        this._downloader.on('complete', (job) => this.emit('event', {
-            type: 'download_complete',
-            payload: this._serializeJob(job),
-        }));
+        this._downloader.on('start', (job) => {
+            this.emit('event', { type: 'download_start', payload: this._serializeJob(job) });
+            // Stash the start time on the job so we can record duration on
+            // completion. job objects come straight from enqueue() so we can
+            // mutate them safely.
+            if (job) job.__startedAt = Date.now();
+        });
+        this._downloader.on('complete', (job) => {
+            this.emit('event', { type: 'download_complete', payload: this._serializeJob(job) });
+            metrics.inc('tgdl_downloads_total', 1, { type: job?.mediaType || 'other' });
+            if (job?.__startedAt) {
+                const sec = (Date.now() - job.__startedAt) / 1000;
+                metrics.observe('tgdl_download_duration_seconds', sec, { type: job.mediaType || 'other' });
+            }
+        });
         this._downloader.on('download_complete', async (info) => {
             try { await this._forwarder.process(info); } catch (e) {
                 this.emit('event', { type: 'forward_error', payload: { error: e.message } });
             }
         });
-        this._downloader.on('error', ({ job, error }) => this.emit('event', {
-            type: 'download_error',
-            payload: { job: this._serializeJob(job), error: String(error) },
-        }));
+        this._downloader.on('error', ({ job, error }) => {
+            this.emit('event', {
+                type: 'download_error',
+                payload: { job: this._serializeJob(job), error: String(error) },
+            });
+            metrics.inc('tgdl_downloads_failed_total', 1, { type: job?.mediaType || 'other' });
+        });
         this._downloader.on('scale', fwd('scale'));
-        this._downloader.on('queue', (length) => this.emit('event', { type: 'queue_length', payload: { length } }));
+        this._downloader.on('queue', (length) => {
+            this.emit('event', { type: 'queue_length', payload: { length } });
+            metrics.set('tgdl_queue_size', length);
+        });
         this._downloader.on('progress', (p) => this.emit('event', { type: 'download_progress', payload: p }));
 
         this._monitor.on('configReloaded', (newConfig) => {
@@ -158,7 +173,7 @@ class Runtime extends EventEmitter {
     }
 
     status() {
-        return {
+        const out = {
             state: this.state,
             error: this.error,
             startedAt: this.startedAt,
@@ -169,6 +184,14 @@ class Runtime extends EventEmitter {
             workers: this._downloader?.workerCount ?? 0,
             accounts: this._accountManager?.count ?? 0,
         };
+        // Cheap to refresh the gauges every status() call — this is what
+        // /api/monitor/status drives the SPA from, and it's also the natural
+        // moment to refresh the Prometheus snapshot.
+        metrics.set('tgdl_queue_size', out.queue);
+        metrics.set('tgdl_active_downloads', out.active);
+        metrics.set('tgdl_workers', out.workers);
+        metrics.set('tgdl_accounts_loaded', out.accounts);
+        return out;
     }
 }
 

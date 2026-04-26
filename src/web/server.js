@@ -27,6 +27,7 @@ import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
+import { metrics } from '../core/metrics.js';
 import {
     hashPassword, loginVerify, isAuthConfigured,
     issueSession, validateSession, revokeSession, startSessionGc,
@@ -185,7 +186,7 @@ async function readConfigSafe() {
 }
 
 // Paths that may be reached without an authenticated session.
-const PUBLIC_PATH_PREFIXES = ['/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon'];
+const PUBLIC_PATH_PREFIXES = ['/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon', '/metrics'];
 const PUBLIC_API_PATHS = new Set([
     '/api/login',
     '/api/auth_check',
@@ -266,6 +267,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         }
 
         const result = loginVerify(password, config.web);
+        metrics.inc('tgdl_login_total', 1, { result: result.ok ? 'ok' : 'fail' });
         if (!result.ok) return res.status(401).json({ error: 'Invalid password' });
 
         // Auto-upgrade legacy plaintext to scrypt hash on first successful login.
@@ -414,6 +416,19 @@ async function getAccountManager() {
     await _accountManager.loadAll();
     return _accountManager;
 }
+
+// Public Prometheus / OpenMetrics scrape — registered BEFORE the global
+// auth gate so a scrape job without a session cookie can still reach it.
+// Set TGDL_METRICS_TOKEN if you want gating; clients then need ?token=…
+app.get('/metrics', (req, res) => {
+    const wanted = process.env.TGDL_METRICS_TOKEN;
+    if (wanted && req.query.token !== wanted) {
+        res.status(401).type('text/plain').send('# unauthorized\n');
+        return;
+    }
+    runtime.status(); // refresh gauges
+    res.type('text/plain; version=0.0.4').send(metrics.render());
+});
 
 // Apply Auth Globally
 app.use(checkAuth);
