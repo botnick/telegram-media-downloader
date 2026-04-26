@@ -488,10 +488,23 @@
                         <div class="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                             <p class="text-xs text-yellow-400">
                                 <i class="ri-information-line mr-1"></i>
-                                Accounts are managed via CLI: <code
-                                    class="bg-black/30 px-1.5 py-0.5 rounded">node src/index.js accounts</code>
+                                Manage accounts under Settings → Telegram Accounts.
                             </p>
                         </div>
+                    </div>
+
+                    <!-- History backfill -->
+                    <div class="bg-tg-panel rounded-xl p-4 mt-4">
+                        <h3 class="text-sm text-tg-text font-medium mb-2 flex items-center gap-2">
+                            <i class="ri-history-line text-tg-blue"></i> Backfill history
+                        </h3>
+                        <p class="text-xs text-tg-textSecondary mb-3">Pull older messages from this group into the downloader.</p>
+                        <div class="grid grid-cols-3 gap-2 mb-2 text-xs">
+                            <button class="tg-btn-secondary py-1" data-history-limit="100">Last 100</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="1000">Last 1k</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="10000">Last 10k</button>
+                        </div>
+                        <p id="history-progress" class="text-xs text-tg-textSecondary mt-2 hidden"></p>
                     </div>
 
                 </div>

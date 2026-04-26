@@ -482,6 +482,30 @@ async function openGroupSettings(groupId, groupName) {
         }).join('');
     }
     
+    // Wire history backfill buttons (re-attach each time the modal opens
+    // so the closure captures the current group).
+    const progressEl = document.getElementById('history-progress');
+    if (progressEl) progressEl.classList.add('hidden');
+    document.querySelectorAll('[data-history-limit]').forEach(btn => {
+        btn.onclick = async () => {
+            const limit = parseInt(btn.dataset.historyLimit, 10) || 100;
+            if (!confirm(`Download the last ${limit} messages of "${groupName}" into the queue?`)) return;
+            btn.disabled = true;
+            try {
+                const r = await api.post('/api/history', { groupId, limit });
+                if (progressEl) {
+                    progressEl.textContent = `Job ${r.jobId} queued — watch the Engine card for progress.`;
+                    progressEl.classList.remove('hidden');
+                }
+                showToast(`History job started (${limit} messages)`, 'success');
+            } catch (e) {
+                showToast(`History failed: ${e.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+    });
+
     // Show media tab by default
     switchSettingsTab('media');
     modal.classList.remove('hidden');

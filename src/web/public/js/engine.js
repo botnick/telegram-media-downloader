@@ -95,12 +95,10 @@ export function initEngine() {
 export function handleEngineWsMessage(msg) {
     if (msg.type === 'monitor_state') {
         applyStatus({ state: msg.state, error: msg.error });
-        // refresh full status to repopulate uptime/queue
         setTimeout(refresh, 100);
-    } else if (msg.type === 'monitor_event') {
-        // Most engine events are informational; keep numbers fresh.
-        if (['download_complete', 'download_start', 'download_error', 'queue_length'].includes(msg.type)) {
-            refresh();
-        }
+    } else if (msg.type === 'monitor_event' || msg.type === 'history_progress' ||
+               msg.type === 'history_done'  || msg.type === 'history_error') {
+        // Most engine + history events are informational; keep counters fresh.
+        refresh();
     }
 }

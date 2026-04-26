@@ -548,6 +548,83 @@ app.post('/api/monitor/stop', async (req, res) => {
     }
 });
 
+// ====== History batch download =============================================
+//
+// Run an out-of-band backfill against a configured group. Re-uses the
+// runtime's downloader if it's running so the worker pool isn't doubled;
+// otherwise spins one up just for this request and tears it down on
+// completion.
+
+const _historyJobs = new Map(); // jobId → { state, processed, downloaded, error }
+
+app.post('/api/history', async (req, res) => {
+    try {
+        const { groupId, limit = 100, offsetId = 0 } = req.body || {};
+        if (!groupId) return res.status(400).json({ error: 'groupId required' });
+        const lim = Math.max(1, Math.min(50000, parseInt(limit, 10) || 100));
+
+        const am = await getAccountManager();
+        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
+
+        const config = loadConfig();
+        const group = (config.groups || []).find(g => String(g.id) === String(groupId));
+        if (!group) return res.status(404).json({ error: 'Group not configured' });
+
+        const { HistoryDownloader } = await import('../core/history.js');
+        const { DownloadManager } = await import('../core/downloader.js');
+        const { RateLimiter } = await import('../core/security.js');
+
+        const standalone = !runtime._downloader;
+        const downloader = runtime._downloader || new DownloadManager(
+            am.getDefaultClient(), config, new RateLimiter(config.rateLimits),
+        );
+        if (standalone) {
+            await downloader.init();
+            downloader.start();
+        }
+
+        const history = new HistoryDownloader(am.getDefaultClient(), downloader, config, am);
+
+        const jobId = crypto.randomBytes(6).toString('hex');
+        const job = { id: jobId, state: 'running', processed: 0, downloaded: 0, error: null, group: group.name };
+        _historyJobs.set(jobId, job);
+
+        history.on('progress', (s) => {
+            job.processed = s.processed; job.downloaded = s.downloaded;
+            broadcast({ type: 'history_progress', jobId, ...s, group: group.name });
+        });
+
+        history.downloadHistory(groupId, { limit: lim, offsetId: parseInt(offsetId, 10) || 0 })
+            .then(() => {
+                job.state = 'done';
+                broadcast({ type: 'history_done', jobId, group: group.name, ...job });
+                if (standalone) downloader.stop().catch(() => {});
+                setTimeout(() => _historyJobs.delete(jobId), 5 * 60 * 1000);
+            })
+            .catch((err) => {
+                job.state = 'error';
+                job.error = err?.message || String(err);
+                broadcast({ type: 'history_error', jobId, error: job.error });
+                if (standalone) downloader.stop().catch(() => {});
+            });
+
+        res.json({ success: true, jobId, group: group.name, limit: lim });
+    } catch (e) {
+        console.error('POST /api/history:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/history/:jobId', (req, res) => {
+    const job = _historyJobs.get(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    res.json(job);
+});
+
+app.get('/api/history', (req, res) => {
+    res.json(Array.from(_historyJobs.values()));
+});
+
 // 1. Stats API (SQLite)
 app.get('/api/stats', async (req, res) => {
     try {
