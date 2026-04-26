@@ -11,6 +11,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { loadConfig, saveConfig, addGroup } from './config/manager.js';
+import { hashPassword } from './core/web-auth.js';
+import { suppressNoise, wrapConsoleMethod } from './core/logger.js';
 import { RateLimiter, SecureSession } from './core/security.js';
 import { ConnectionManager } from './core/connection.js';
 import { AccountManager } from './core/accounts.js';
@@ -23,27 +25,19 @@ import { sanitizeName, migrateFolders } from './core/downloader.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, '../data/config.json');
 
-// Suppress gramJS internal TIMEOUT errors (update loop noise)
+// gramJS surfaces a steady trickle of recoverable internal errors during
+// reconnects (TIMEOUT, "Not connected", "Connection closed", etc). The
+// noise classifier in core/logger.js sends those to data/logs/network.log
+// at debug level instead of dropping them silently — a previous version
+// of this file used a regex-string-includes filter that swallowed real
+// errors that happened to contain the same words.
 process.on('unhandledRejection', (reason) => {
     const msg = reason?.message || String(reason);
-    if (msg === 'TIMEOUT') return;
-    if (msg.includes('Not connected')) return;
-    if (msg.includes('Connection closed')) return;
+    if (suppressNoise(msg, 'unhandledRejection')) return;
     console.error('Unhandled rejection:', reason);
 });
 
-// Global filter: suppress gramJS internal stack traces that bypass our logger
-const _origConsoleError = console.error;
-console.error = (...args) => {
-    const msg = args.map(a => (a instanceof Error ? a.message : String(a))).join(' ');
-    if (msg.includes('Not connected')) return;
-    if (msg.includes('TIMEOUT')) return;
-    if (msg.includes('Connection closed')) return;
-    if (msg.includes('Reconnect')) return;
-    if (msg.includes('Closing current connection')) return;
-    if (msg.includes('CHANNEL_INVALID')) return;
-    _origConsoleError.apply(console, args);
-};
+console.error = wrapConsoleMethod(console.error, 'console.error');
 
 // Transient Readline Interface
 function question(query) {
@@ -112,7 +106,8 @@ async function main() {
         console.log();
     }
 
-    console.log(colorize('📦 API ID: ', 'dim') + config.telegram.apiId);
+    // Don't echo the apiId — it's not strictly secret but there's no
+    // operational reason to log it on every CLI start.
     console.log();
 
     // ============ MULTI-ACCOUNT SYSTEM ============
@@ -1372,7 +1367,7 @@ async function startHistory(accountManager, config, connManager) {
     // Wait for remaining downloads to finish
     console.log();
     console.log(colorize('⏳ Waiting for remaining downloads to finish...', 'yellow'));
-    while (downloader.queue.length > 0 || downloader.active.size > 0) {
+    while (downloader.pendingCount > 0 || downloader.active.size > 0) {
         await new Promise(r => setTimeout(r, 1000));
     }
     await downloader.stop();
@@ -1599,10 +1594,25 @@ async function purgeData(client, config) {
     }
 }
 
-// Handle Ctrl+C
-process.on('SIGINT', () => {
-    console.log(colorize('\n🛑 Shutting down...', 'yellow'));
+// Restore the terminal to a sane state on any kind of exit. The interactive
+// menus enable raw mode while waiting for arrow-key input; if something throws
+// before the explicit `setRawMode(false)` runs, the user is left with a dead
+// shell. This catch-all guarantees recovery on SIGINT / SIGTERM / normal exit.
+function restoreTerminal() {
+    try {
+        if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    } catch { /* nothing to restore */ }
+    try { process.stdout.write('\x1b[?25h'); } catch {} // cursor on
+}
 
+process.on('exit', restoreTerminal);
+process.on('SIGINT', () => {
+    restoreTerminal();
+    console.log(colorize('\n🛑 Shutting down...', 'yellow'));
+    process.exit(0);
+});
+process.on('SIGTERM', () => {
+    restoreTerminal();
     process.exit(0);
 });
 
@@ -1614,14 +1624,14 @@ async function setupWebAuth(config) {
     
     // Status Display
     const currentEnabled = config.web?.enabled !== false; // Default true if not set
-    const currentPass = config.web?.password ? '********' : 'Not Set';
-    
-    const statusText = currentEnabled 
-        ? colorize('🟢 ENABLED ', 'green', 'bold') 
+    const hasPassword = !!(config.web?.passwordHash || config.web?.password);
+
+    const statusText = currentEnabled
+        ? colorize('🟢 ENABLED ', 'green', 'bold')
         : colorize('🔴 DISABLED', 'red', 'bold');
-        
-    const passText = config.web?.password
-        ? colorize('********', 'green')
+
+    const passText = hasPassword
+        ? colorize('******** (scrypt-hashed)', 'green')
         : colorize('Not Set', 'yellow');
 
     headerStr += colorize('   System Status:  ', 'dim') + statusText + '\n';
@@ -1640,7 +1650,7 @@ async function setupWebAuth(config) {
         config.web.enabled = !currentEnabled;
         if (config.web.enabled) {
             console.log(colorize('\n✅ Security has been ENABLED. A password is now required.', 'green'));
-            if (!config.web.password) {
+            if (!hasPassword) {
                 console.log(colorize('⚠️  WARNING: No password is set! Please set one below.', 'yellow'));
                 await new Promise(r => setTimeout(r, 1500));
                 return setupWebAuth(config);
@@ -1654,8 +1664,10 @@ async function setupWebAuth(config) {
         console.log(colorize('   (Leave blank to cancel)', 'dim'));
         const pass = await question(colorize('\n> ', 'white', 'bold'));
         if (pass.trim()) {
-            config.web.password = pass.trim();
-            config.web.enabled = true; // Auto-enable when a password is set
+            // Store as a scrypt hash. The web server compares with timingSafeEqual.
+            config.web.passwordHash = hashPassword(pass.trim());
+            delete config.web.password; // drop any legacy plaintext
+            config.web.enabled = true;
             console.log(colorize('\n✅ Password updated successfully! Security is ENABLED.', 'green'));
         } else {
             console.log(colorize('\n❌ Cancelled. Password was not changed.', 'red'));

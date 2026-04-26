@@ -266,11 +266,11 @@ function renderMediaGrid() {
     
     grid.innerHTML = filtered.map((file, i) => `
         <div class="media-item relative aspect-square bg-tg-panel rounded overflow-hidden cursor-pointer" data-index="${i}">
-            ${file.type === 'images' ? 
-                `<img data-src="/files/${encodeURIComponent(file.fullPath)}" class="w-full h-full object-cover" onerror="this.style.display='none'">` :
+            ${file.type === 'images' ?
+                `<img data-src="/files/${encodeURIComponent(file.fullPath)}?inline=1" class="w-full h-full object-cover" onerror="this.style.display='none'">` :
                 file.type === 'videos' ?
                 `<div class="relative w-full h-full bg-black">
-                    <video data-src="/files/${encodeURIComponent(file.fullPath)}" class="w-full h-full object-cover" preload="none" muted></video>
+                    <video data-src="/files/${encodeURIComponent(file.fullPath)}?inline=1" class="w-full h-full object-cover" preload="none" muted></video>
                     <div class="absolute inset-0 flex items-center justify-center">
                         <div class="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center">
                             <i class="ri-play-fill text-white text-xl ml-0.5"></i>

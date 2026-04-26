@@ -5,6 +5,8 @@
  */
 
 import express from 'express';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import fs from 'fs/promises';
@@ -18,6 +20,11 @@ import crypto from 'crypto';
 import { getOrGenerateSecret } from '../core/secret.js';
 import { getDb, getDownloads, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
+import { SecureSession } from '../core/security.js';
+import {
+    hashPassword, loginVerify, isAuthConfigured,
+    issueSession, validateSession, revokeSession, startSessionGc,
+} from '../core/web-auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -29,8 +36,53 @@ const SESSION_PASSWORD = getOrGenerateSecret();
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+// noServer: we authenticate the upgrade ourselves before handing the socket
+// off to the WebSocketServer. Without this, ws auto-binds to `server` and
+// accepts every connection including unauthenticated ones.
+const wss = new WebSocketServer({ noServer: true });
 const clients = new Set();
+
+function parseCookieHeader(header) {
+    const out = {};
+    if (!header) return out;
+    for (const cookie of header.split(';')) {
+        const eq = cookie.indexOf('=');
+        if (eq < 0) continue;
+        const k = cookie.slice(0, eq).trim();
+        const v = cookie.slice(eq + 1).trim();
+        if (k) out[k] = decodeURIComponent(v);
+    }
+    return out;
+}
+
+server.on('upgrade', async (req, socket, head) => {
+    try {
+        const config = await readConfigSafe();
+        const enabled = config.web?.enabled !== false;
+        const configured = isAuthConfigured(config.web);
+
+        // Fail-closed: drop unauth'd upgrades unless auth is intentionally off
+        // (which we no longer allow — !configured ⇒ block).
+        if (!enabled || !configured) {
+            socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+            socket.destroy();
+            return;
+        }
+
+        const cookies = parseCookieHeader(req.headers.cookie);
+        if (!validateSession(cookies['tg_dl_session'])) {
+            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+            socket.destroy();
+            return;
+        }
+
+        wss.handleUpgrade(req, socket, head, (ws) => {
+            wss.emit('connection', ws, req);
+        });
+    } catch {
+        try { socket.destroy(); } catch {}
+    }
+});
 
 // Telegram client
 let telegramClient = null;
@@ -41,8 +93,28 @@ if (!fsSync.existsSync(PHOTOS_DIR)) {
     fsSync.mkdirSync(PHOTOS_DIR, { recursive: true });
 }
 
-// Body parsing middleware
-app.use(express.json());
+// Trust the first reverse proxy if running behind one (rate-limit needs the
+// real client IP via X-Forwarded-For). Disabled when not behind a proxy.
+if (process.env.TRUST_PROXY) {
+    const v = process.env.TRUST_PROXY;
+    app.set('trust proxy', /^\d+$/.test(v) ? parseInt(v, 10) : v);
+}
+
+// Security headers (CSP relaxed for the existing inline-handler SPA — tightened
+// further in M3 once the SPA stops using inline event attributes).
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+}));
+
+// Body parsing middleware — small, JSON only. Bigger payloads (e.g., bulk
+// imports) should get their own dedicated route with a larger limit.
+app.use(express.json({ limit: '256kb' }));
+
+// Rolling expiry-cleanup for session tokens. Unref'd so it doesn't keep the
+// process alive on shutdown.
+startSessionGc();
 
 // ============ AUTHENTICATION ============
 
@@ -60,75 +132,220 @@ app.use((req, res, next) => {
     next();
 });
 
-// Auth Middleware
+async function readConfigSafe() {
+    try { return JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8')); }
+    catch { return {}; }
+}
+
+// Paths that may be reached without an authenticated session.
+const PUBLIC_PATH_PREFIXES = ['/login', '/setup-needed', '/css/', '/js/', '/favicon'];
+const PUBLIC_API_PATHS = new Set([
+    '/api/login',
+    '/api/auth_check',
+    '/api/auth/setup', // first-run only — guarded inside the handler
+]);
+
+// Treat connections from the local machine as "trusted enough" to bootstrap
+// the very first password without prior auth. Any other origin still has to
+// go through the CLI to set the password.
+function isLocalRequest(req) {
+    const ip = req.ip || req.socket?.remoteAddress || '';
+    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+function isPublicPath(p) {
+    if (PUBLIC_API_PATHS.has(p)) return true;
+    return PUBLIC_PATH_PREFIXES.some(pre => p === pre || p.startsWith(pre));
+}
+
 async function checkAuth(req, res, next) {
-    // 1. Check if auth is enabled in config
-    let config = {};
-    try {
-        config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-    } catch (e) {}
+    const config = await readConfigSafe();
+    const enabled = config.web?.enabled !== false; // default ON
 
-    const password = config.web?.password;
-    const isEnabled = config.web?.enabled !== false; // Default true if not explicitly false
-
-    // If disabled or no password configured, Open Access
-    if (!isEnabled || !password) return next();
-
-    // 2. Check Cookie
-    const sessionCookie = req.cookies['tg_dl_session'];
-    
-    // Simple verification: Cookie value = Password
-    // In prod, use real sessions/JWT. For this tool, this is sufficient.
-    if (sessionCookie === password) {
+    // Fail-closed: dashboard is locked (or not yet configured).
+    if (!enabled || !isAuthConfigured(config.web)) {
+        if (req.path.startsWith('/api/') && !PUBLIC_API_PATHS.has(req.path)) {
+            return res.status(503).json({
+                error: 'Web dashboard not initialised. Run `npm run auth` to set a password.',
+                setupRequired: true,
+            });
+        }
+        if (!isPublicPath(req.path)) {
+            return res.redirect('/setup-needed.html');
+        }
         return next();
     }
 
-    // 3. API Request? Return 401
-    if (req.path.startsWith('/api/') && req.path !== '/api/login') {
+    if (isPublicPath(req.path)) return next();
+
+    const token = req.cookies['tg_dl_session'];
+    if (validateSession(token)) return next();
+
+    if (req.path.startsWith('/api/')) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-
-    // 4. Page Request? Redirect to Login
-    if (!req.path.startsWith('/api/') && !req.path.startsWith('/login') && !req.path.startsWith('/css') && !req.path.startsWith('/js')) {
-         return res.redirect('/login.html');
-    }
-    
-    next();
+    return res.redirect('/login.html');
 }
 
-app.post('/api/login', async (req, res) => {
+// Stricter rate limit for the login endpoint to slow brute-force attempts.
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many login attempts. Try again in 15 minutes.' },
+});
+
+const SESSION_COOKIE_OPTS = {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+};
+
+app.post('/api/login', loginLimiter, async (req, res) => {
     try {
-        const { password } = req.body;
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        const target = config.web?.password;
-
-        if (!target) {
-            return res.json({ success: true, message: 'No password set' });
+        const { password } = req.body || {};
+        if (typeof password !== 'string' || password.length === 0) {
+            return res.status(400).json({ error: 'Password required' });
         }
 
-        if (password === target) {
-            // Set Cookie (HttpOnly)
-            res.cookie('tg_dl_session', password, { 
-                httpOnly: true, 
-                maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        const config = await readConfigSafe();
+        if (!isAuthConfigured(config.web)) {
+            return res.status(503).json({
+                error: 'Web dashboard not initialised. Run `npm run auth`.',
+                setupRequired: true,
             });
-            // Express doesn't auto-set cookie header without cookie-parser response helper in some versions, matches standard?
-            // Actually `res.cookie` is provided by `express`.
-            
-            return res.json({ success: true });
         }
 
-        res.status(401).json({ error: 'Invalid password' });
+        const result = loginVerify(password, config.web);
+        if (!result.ok) return res.status(401).json({ error: 'Invalid password' });
+
+        // Auto-upgrade legacy plaintext to scrypt hash on first successful login.
+        if (result.upgrade) {
+            try {
+                config.web.passwordHash = hashPassword(password);
+                delete config.web.password;
+                await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+            } catch (e) {
+                console.error('Password rehash failed (non-fatal):', e.message);
+            }
+        }
+
+        const { token, maxAgeMs } = issueSession();
+        res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
+        res.json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error('Login error:', e);
+        res.status(500).json({ error: 'Internal error' });
     }
 });
 
-app.get('/api/auth_check', async (req, res) => {
-    // If it hit this endpoint, middleware passed (or no password set)
-    // But middleware might have passed because it wasn't applied globally yet? 
-    // We need to apply it globally.
+app.post('/api/logout', (req, res) => {
+    const token = req.cookies['tg_dl_session'];
+    if (token) revokeSession(token);
+    res.clearCookie('tg_dl_session', SESSION_COOKIE_OPTS);
     res.json({ success: true });
+});
+
+// First-run password setup. Allowed only when no password is configured AND
+// the request originates from the local machine. After first use, this
+// endpoint behaves like /api/auth/change-password (which requires auth +
+// current-password). This lets a fresh install be completed entirely from the
+// browser instead of having to drop into the CLI.
+const setupLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, limit: 20,
+    standardHeaders: 'draft-7', legacyHeaders: false,
+});
+
+app.post('/api/auth/setup', setupLimiter, async (req, res) => {
+    try {
+        const { password } = req.body || {};
+        if (typeof password !== 'string' || password.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        }
+        const config = await readConfigSafe();
+        if (isAuthConfigured(config.web)) {
+            return res.status(409).json({
+                error: 'Already configured — use POST /api/auth/change-password',
+            });
+        }
+        if (!isLocalRequest(req)) {
+            return res.status(403).json({
+                error: 'Initial setup must be done from the local machine. Run `npm run auth` instead.',
+            });
+        }
+
+        if (!config.web) config.web = {};
+        config.web.enabled = true;
+        config.web.passwordHash = hashPassword(password);
+        delete config.web.password;
+        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+
+        const { token, maxAgeMs } = issueSession();
+        res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Setup error:', e);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+// Change password from inside the dashboard. Requires the *current* password
+// to be supplied along with the new one — even an active session can't be used
+// alone, so a stolen cookie can't take over the account.
+//
+// This route is registered BEFORE the global checkAuth middleware (so it can
+// share definition order with the rest of the /api/auth/* routes), so it must
+// enforce its own auth check explicitly.
+app.post('/api/auth/change-password', loginLimiter, async (req, res) => {
+    try {
+        if (!validateSession(req.cookies['tg_dl_session'])) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const { currentPassword, newPassword } = req.body || {};
+        if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+            return res.status(400).json({ error: 'currentPassword and newPassword required' });
+        }
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: 'New password must be at least 8 characters' });
+        }
+        const config = await readConfigSafe();
+        if (!isAuthConfigured(config.web)) {
+            return res.status(409).json({ error: 'No password configured yet — use /api/auth/setup' });
+        }
+        const verify = loginVerify(currentPassword, config.web);
+        if (!verify.ok) return res.status(401).json({ error: 'Current password is incorrect' });
+
+        config.web.passwordHash = hashPassword(newPassword);
+        delete config.web.password;
+        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+
+        // Issue a fresh session and let the SPA replace the old cookie. We
+        // don't revoke other sessions automatically — the SPA exposes a
+        // separate "Sign out everywhere" affordance that hits revokeAllSessions.
+        const { token, maxAgeMs } = issueSession();
+        res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
+        res.json({ success: true });
+    } catch (e) {
+        console.error('change-password:', e);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+// Tells the SPA whether auth is configured + whether the current request is
+// authenticated. Always returns 200; the SPA decides what to render.
+app.get('/api/auth_check', async (req, res) => {
+    const config = await readConfigSafe();
+    const configured = isAuthConfigured(config.web);
+    const enabled = config.web?.enabled !== false;
+    const authed = configured && enabled && validateSession(req.cookies['tg_dl_session']);
+    res.json({
+        configured,
+        enabled,
+        authenticated: !!authed,
+        setupRequired: !configured || !enabled,
+    });
 });
 
 // Apply Auth Globally
@@ -352,34 +569,46 @@ app.get('/api/downloads/:groupId', async (req, res) => {
     }
 });
 
+// Resolve a user-supplied path inside DOWNLOADS_DIR safely. Rejects NUL bytes,
+// normalizes, and resolves symlinks so a symlink inside downloads/ can't be
+// used to escape the root. Returns null if the request is unsafe or the file
+// doesn't exist.
+async function safeResolveDownload(userPath) {
+    if (typeof userPath !== 'string' || userPath.length === 0) return null;
+    if (userPath.includes('\0')) return null;
+    const normalized = path.normalize(userPath);
+    if (path.isAbsolute(normalized)) return null;
+    const candidate = path.join(DOWNLOADS_DIR, normalized);
+    const rootReal = await fs.realpath(DOWNLOADS_DIR).catch(() => path.resolve(DOWNLOADS_DIR));
+    let real;
+    try { real = await fs.realpath(candidate); } catch { return null; }
+    if (!real.startsWith(rootReal + path.sep) && real !== rootReal) return null;
+    return real;
+}
+
 // 6. Delete File (Physical + DB)
 app.delete('/api/file', async (req, res) => {
     try {
         const filePath = req.query.path;
         if (!filePath) return res.status(400).json({ error: 'Path required' });
 
-        // Security check
-        const absolutePath = path.resolve(path.join(DOWNLOADS_DIR, filePath));
-        if (!absolutePath.startsWith(path.resolve(DOWNLOADS_DIR))) {
-             return res.status(403).json({ error: 'Access denied' });
-        }
+        const real = await safeResolveDownload(filePath);
+        if (!real) return res.status(403).json({ error: 'Access denied' });
 
-        if (existsSync(absolutePath)) {
-            await fs.unlink(absolutePath);
-            console.log(`🗑️ Deleted: ${filePath}`);
-            
-            // Remove from DB
-            const db = getDb();
-            const fileName = path.basename(filePath);
-            db.prepare('DELETE FROM downloads WHERE file_name = ?').run(fileName);
-            
-            broadcast({ type: 'file_deleted', path: filePath });
-            res.json({ success: true });
-        } else {
-            res.status(404).json({ error: 'File not found' });
-        }
+        await fs.unlink(real);
+        console.log(`🗑️ Deleted: ${filePath}`);
+
+        // Remove from DB (by basename — the DB stores filenames, not paths).
+        const db = getDb();
+        const fileName = path.basename(real);
+        db.prepare('DELETE FROM downloads WHERE file_name = ?').run(fileName);
+
+        broadcast({ type: 'file_deleted', path: filePath });
+        res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
+        console.error('DELETE /api/file:', error);
+        res.status(500).json({ error: 'Internal error' });
     }
 });
 
@@ -488,12 +717,35 @@ app.delete('/api/purge/all', async (req, res) => {
 app.get('/api/config', async (req, res) => {
     try {
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        // Strip sensitive fields
-        const safe = { ...config };
-        if (safe.web) safe.web = { ...safe.web, password: undefined };
+        const safe = JSON.parse(JSON.stringify(config));
+        // Strip secrets — never let the API expose credentials or hashes.
+        if (safe.telegram) {
+            delete safe.telegram.apiHash;
+            delete safe.telegram.apiId;
+        }
+        if (safe.web) {
+            delete safe.web.password;
+            delete safe.web.passwordHash;
+        }
+        if (Array.isArray(safe.accounts)) {
+            safe.accounts = safe.accounts.map(a => ({
+                id: a.id, name: a.name, username: a.username,
+            }));
+        }
+        // Per-group account assignments are an internal mapping; surface only
+        // a boolean so the SPA can show "(custom account)".
+        if (Array.isArray(safe.groups)) {
+            safe.groups = safe.groups.map(g => {
+                const out = { ...g };
+                if (out.monitorAccount) { out.hasMonitorAccount = true; delete out.monitorAccount; }
+                if (out.forwardAccount) { out.hasForwardAccount = true; delete out.forwardAccount; }
+                return out;
+            });
+        }
         res.json(safe);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('GET /api/config:', error);
+        res.status(500).json({ error: 'Internal error' });
     }
 });
 
@@ -609,28 +861,30 @@ app.post('/api/groups/refresh-photos', async (req, res) => {
 // ============ FILE SERVING (Performance) ============
 const directoryCache = new Map(); // Normalized -> Real Name
 
-// Serve static files with Optimized Caching Strategy
+// Serve files from data/downloads. Uses safeResolveDownload to reject path
+// traversal, NUL bytes, and symlink escapes. Adds Content-Disposition so a
+// rogue HTML file can't be rendered inline (the browser still inlines images
+// and videos via the explicit ?inline=1 query parameter the SPA passes).
 app.use('/files', async (req, res, next) => {
     try {
-        const reqPath = decodeURIComponent(req.path).replace(/^\//, '');
+        let reqPath;
+        try { reqPath = decodeURIComponent(req.path).replace(/^\//, ''); }
+        catch { return res.status(400).send('Bad request'); }
         if (!reqPath) return next();
+        if (reqPath.includes('\0')) return res.status(400).send('Bad request');
 
-        // Need to match strict path for DB consistency?
-        // Actually, frontend requests /files/GroupName/images/file.jpg
-        // We can just rely on reqPath
-        
-        const fullPath = path.join(DOWNLOADS_DIR, reqPath);
-        
-        // Security check
-        if (!fullPath.startsWith(path.resolve(DOWNLOADS_DIR))) {
-            return res.status(403).send('Forbidden');
-        }
+        const real = await safeResolveDownload(reqPath);
+        if (!real) return res.status(403).send('Forbidden');
 
-        if (existsSync(fullPath)) {
-            res.sendFile(fullPath);
-        } else {
-            next();
-        }
+        const inline = req.query.inline === '1';
+        const baseName = path.basename(real);
+        // Quote-safe filename (RFC 6266 fallback handled by encodeURIComponent).
+        const dispKind = inline ? 'inline' : 'attachment';
+        res.setHeader(
+            'Content-Disposition',
+            `${dispKind}; filename*=UTF-8''${encodeURIComponent(baseName)}`
+        );
+        res.sendFile(real);
     } catch (e) {
         next();
     }
@@ -639,16 +893,13 @@ app.use('/files', async (req, res, next) => {
 
 // ============ TELEGRAM CONNECTION ============
 
+const _secureSession = new SecureSession(SESSION_PASSWORD);
 async function loadSession() {
     try {
         if (existsSync(SESSION_PATH)) {
             const encryptedStr = await fs.readFile(SESSION_PATH, 'utf8');
             const encrypted = JSON.parse(encryptedStr);
-            const key = crypto.scryptSync(SESSION_PASSWORD, 'tg-dl-salt-v1', 32);
-            const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(encrypted.iv, 'hex'));
-            decipher.setAuthTag(Buffer.from(encrypted.tag, 'hex'));
-            const decrypted = Buffer.concat([decipher.update(Buffer.from(encrypted.data, 'hex')), decipher.final()]);
-            return decrypted.toString('utf8');
+            return _secureSession.decrypt(encrypted);
         }
     } catch (e) {
         console.log('Could not load session:', e.message);

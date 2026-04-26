@@ -96,6 +96,12 @@ export class DownloadManager extends EventEmitter {
         this.client = client;
         this.config = config;
         this.rateLimiter = rateLimiter;
+        // Two-lane queue. Realtime (priority 1) jobs land in `_high` and
+        // are drained first by every worker; history backfill (priority 2)
+        // lands in `queue`. Disk spillover only ever displaces history —
+        // realtime always stays in RAM. External code reads `pendingCount`
+        // (the sum) rather than `queue.length` directly.
+        this._high = [];
         this.queue = [];
         this.active = new Map(); // Key -> Promise/Status
         this.concurrency = config.download?.concurrent || 10;
@@ -184,9 +190,13 @@ export class DownloadManager extends EventEmitter {
         this._scalerInterval = setInterval(() => this._autoScale(), 5000);
     }
 
+    get pendingCount() {
+        return this._high.length + this.queue.length;
+    }
+
     _autoScale() {
         if (!this.running) return;
-        const queueLen = this.queue.length;
+        const queueLen = this.pendingCount;
         const activeLen = this.active.size;
 
         // Scale UP: queue is building up, add more workers
@@ -240,16 +250,17 @@ export class DownloadManager extends EventEmitter {
         if (this.isDownloaded(job.groupId, job.message.id)) return false;
 
         // --- DYNAMIC DEFENSE: DISK SPILLOVER ---
-        if (this.queue.length > 2000) {
+        // Only history (priority 2) ever spills; realtime stays in RAM so
+        // a long backfill can't push live messages off the front of the queue.
+        if (priority === 2 && this.queue.length > 2000) {
             await this.spillToDisk(job);
             return true;
         }
 
-        // Priority Insertion
-        if (priority === 2) this.queue.push(job); // History: End
-        else this.queue.unshift(job); // Realtime: Front
+        if (priority === 2) this.queue.push(job);   // history: FIFO normal lane
+        else this._high.push(job);                  // realtime: FIFO high lane
 
-        this.emit('queue', this.queue.length);
+        this.emit('queue', this.pendingCount);
         return true;
     }
 
@@ -296,14 +307,14 @@ export class DownloadManager extends EventEmitter {
 
     async runWorker(id) {
         while (this.running) {
-            // 1. Try to get job from RAM
-            let job = this.queue.shift();
+            // 1. Drain high-priority (realtime) lane first, then history.
+            let job = this._high.shift() || this.queue.shift();
 
             // 2. If RAM empty, check Disk Backlog
             if (!job) {
                 const hasMore = await this.rehydrateFromDisk();
                 if (hasMore) {
-                    job = this.queue.shift(); 
+                    job = this._high.shift() || this.queue.shift();
                 }
             }
 
@@ -624,7 +635,7 @@ export class DownloadManager extends EventEmitter {
 
     getStatus() {
         return {
-            queued: this.queue.length,
+            queued: this.pendingCount,
             active: this.active.size,
             completed: 0, // Could track via counter if needed
             downloads: Array.from(this.active.values())

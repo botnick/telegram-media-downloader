@@ -50,38 +50,73 @@ export class RateLimiter extends EventEmitter {
 }
 
 /**
- * Session Encryption - AES-256-GCM
+ * Session Encryption — AES-256-GCM with per-blob random salt for the scrypt
+ * key derivation.
+ *
+ * Wire format:
+ *   v=2 (new):  { v: 2, salt, iv, data, tag }   ← random salt per blob
+ *   v=1 (old):  { v: 1, iv, data, tag }          ← hardcoded salt 'tg-dl-salt-v1'
+ *   undefined:  treated as v=1
+ *
+ * Decrypting still accepts v=1 so existing on-disk session files continue to
+ * load. Anything we write goes out as v=2.
  */
+const LEGACY_SALT = Buffer.from('tg-dl-salt-v1');
+const KEY_LEN = 32; // AES-256
+
 export class SecureSession {
     constructor(password) {
-        this.key = crypto.scryptSync(password, 'tg-dl-salt-v1', 32);
+        this.password = String(password);
+        // Cache derived keys so we don't pay scrypt cost on every encrypt.
+        // Keyed by salt-hex; bounded to a few entries.
+        this._keyCache = new Map();
+    }
+
+    _deriveKey(salt) {
+        const k = salt.toString('hex');
+        let key = this._keyCache.get(k);
+        if (!key) {
+            key = crypto.scryptSync(this.password, salt, KEY_LEN);
+            // keep the cache small
+            if (this._keyCache.size > 4) this._keyCache.clear();
+            this._keyCache.set(k, key);
+        }
+        return key;
     }
 
     encrypt(data) {
+        const salt = crypto.randomBytes(16);
         const iv = crypto.randomBytes(16);
-        const cipher = crypto.createCipheriv('aes-256-gcm', this.key, iv);
+        const key = this._deriveKey(salt);
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
         const encrypted = Buffer.concat([
             cipher.update(data, 'utf8'),
-            cipher.final()
+            cipher.final(),
         ]);
         return {
-            v: 1,
+            v: 2,
+            salt: salt.toString('hex'),
             iv: iv.toString('hex'),
             data: encrypted.toString('hex'),
-            tag: cipher.getAuthTag().toString('hex')
+            tag: cipher.getAuthTag().toString('hex'),
         };
     }
 
     decrypt(obj) {
+        const version = obj.v || 1;
+        const salt = version >= 2 && obj.salt
+            ? Buffer.from(obj.salt, 'hex')
+            : LEGACY_SALT;
+        const key = this._deriveKey(salt);
         const decipher = crypto.createDecipheriv(
             'aes-256-gcm',
-            this.key,
-            Buffer.from(obj.iv, 'hex')
+            key,
+            Buffer.from(obj.iv, 'hex'),
         );
         decipher.setAuthTag(Buffer.from(obj.tag, 'hex'));
         return Buffer.concat([
             decipher.update(Buffer.from(obj.data, 'hex')),
-            decipher.final()
+            decipher.final(),
         ]).toString('utf8');
     }
 }

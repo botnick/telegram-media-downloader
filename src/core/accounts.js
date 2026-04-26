@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { SecureSession } from './security.js';
 import { getOrGenerateSecret } from './secret.js';
 import { colorize } from '../cli/colors.js';
+import { suppressNoise } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_DIR = path.join(__dirname, '../../data/sessions');
@@ -29,30 +30,20 @@ function createLogger(label) {
     return {
         canSend: () => true,
         warn: (msg) => {
-            if (msg?.includes('Disconnecting') || msg?.includes('Connection closed')) return;
-            if (msg?.includes('Reconnect') || msg?.includes('reconnect')) return;
-            if (msg?.includes('Not connected') || msg?.includes('TIMEOUT')) return;
-            if (msg?.includes('Closing current connection')) return;
+            if (suppressNoise(msg, label)) return;
             console.log(colorize(`⚠️  [${label}] ${msg}`, 'yellow'));
         },
         info: (msg) => {
-            if (msg?.includes('Connecting to')) return;
-            if (msg?.includes('Disconnecting')) return;
-            if (msg?.includes('connection closed')) return;
-            if (msg?.includes('Running gramJS')) return;
-            if (msg?.includes('Reconnect') || msg?.includes('reconnect')) return;
+            // Info-level gramJS chatter is always demoted; nothing user-actionable.
+            suppressNoise(msg, label);
         },
         debug: () => {},
         error: (msg) => {
             const str = typeof msg === 'object' ? (msg.message || String(msg)) : String(msg);
-            if (str.includes('Not connected')) return;
-            if (str.includes('TIMEOUT')) return;
-            if (str.includes('WebSocket connection failed')) return;
-            if (str.includes('Connection closed')) return;
-            if (str.includes('disconnect')) return;
+            if (suppressNoise(str, label)) return;
             console.error(colorize(`❌ [${label}] ${str}`, 'red'));
         },
-        setLevel: () => {}
+        setLevel: () => {},
     };
 }
 

@@ -19,10 +19,18 @@ export class ConnectionManager {
         this.running = true;
         this.check(); // Initial check
         this.timer = setInterval(() => this.check(), this.interval);
+        // Don't keep the process alive just for the health-check timer.
+        if (this.timer && typeof this.timer.unref === 'function') this.timer.unref();
         console.log(colorize('💓 Connection health check started', 'dim'));
     }
 
-
+    stop() {
+        this.running = false;
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+    }
 
     async check() {
         if (!this.running) return;

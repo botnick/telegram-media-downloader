@@ -108,16 +108,22 @@ export function addGroup(config, group) {
 }
 
 export function watchConfig(callback) {
-    let fsWait = false;
-    fs.watch(CONFIG_PATH, (event, filename) => {
+    let debounceTimer = null;
+    const watcher = fs.watch(CONFIG_PATH, (event, filename) => {
         if (filename && event === 'change') {
-            if (fsWait) return;
-            fsWait = setTimeout(() => {
-                fsWait = false;
+            if (debounceTimer) return;
+            debounceTimer = setTimeout(() => {
+                debounceTimer = null;
                 console.log('\x1b[36m%s\x1b[0m', '🔄 Config change detected. Reloading...');
                 const newConfig = loadConfig();
                 callback(newConfig);
-            }, 100); // 100ms Debounce
+            }, 100);
         }
     });
+    // Returns an unsubscriber so callers can release the watcher + pending
+    // debounce timer cleanly on shutdown / reconfigure.
+    return () => {
+        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+        try { watcher.close(); } catch { /* already closed */ }
+    };
 }

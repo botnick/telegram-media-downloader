@@ -81,11 +81,15 @@ export class RealtimeMonitor extends EventEmitter {
     
     watchConfig() {
         let debounce = null;
-        fsSync.watch(this.configPath, (eventType) => {
+        const watcher = fsSync.watch(this.configPath, (eventType) => {
             if (eventType !== 'change') return;
             clearTimeout(debounce);
             debounce = setTimeout(() => this.reloadConfig(), 500);
         });
+        this._configWatcher = watcher;
+        this._configWatchDebounceClear = () => {
+            if (debounce) { clearTimeout(debounce); debounce = null; }
+        };
     }
     
     async reloadConfig() {
@@ -257,14 +261,25 @@ export class RealtimeMonitor extends EventEmitter {
         // Restore console.error
         if (this._origConsoleError) {
             console.error = this._origConsoleError;
+            this._origConsoleError = null;
         }
         if (this.urlFlushInterval) {
             clearInterval(this.urlFlushInterval);
+            this.urlFlushInterval = null;
             await this.flushUrls(); // Final sync (awaited)
         }
         if (this.pollTimeout) {
             clearTimeout(this.pollTimeout); // Stop Hybrid Polling
             this.pollTimeout = null;
+        }
+        // Release the config-file watcher + any pending debounce timer.
+        if (this._configWatcher) {
+            try { this._configWatcher.close(); } catch { /* already closed */ }
+            this._configWatcher = null;
+        }
+        if (this._configWatchDebounceClear) {
+            this._configWatchDebounceClear();
+            this._configWatchDebounceClear = null;
         }
         // Remove event handlers from ALL registered clients
         if (this.handler && this.handlerClients.length > 0) {

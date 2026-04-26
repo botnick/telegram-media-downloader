@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set up your dashboard — Telegram Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { background-color: #0F172A; color: #E2E8F0; }</style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-6">
+    <div class="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
+        <div class="text-center mb-6">
+            <div class="text-5xl mb-3">🔐</div>
+            <h1 class="text-2xl font-bold text-blue-400">First-time setup</h1>
+            <p class="text-gray-400 text-sm mt-2">Choose a password to unlock the dashboard.</p>
+        </div>
+
+        <form id="setupForm" class="space-y-4">
+            <input type="password" id="password" placeholder="New password (min 8 chars)" minlength="8" required
+                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500 transition">
+            <input type="password" id="confirm" placeholder="Confirm password" minlength="8" required
+                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500 transition">
+            <button type="submit"
+                class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">
+                Set password &amp; continue
+            </button>
+            <p id="error" class="text-red-400 text-sm text-center hidden"></p>
+            <p id="info" class="text-amber-400 text-xs text-center"></p>
+        </form>
+
+        <div class="mt-6 text-xs text-gray-500 space-y-2">
+            <p><strong>Note:</strong> first-time setup only works from the local machine. If you're seeing this page from another device, run <code class="bg-black px-1 rounded">npm run auth</code> on the host instead.</p>
+        </div>
+    </div>
+
+    <script>
+    (async () => {
+        // If somehow already configured (race), bounce to login.
+        try {
+            const r = await fetch('/api/auth_check');
+            const j = await r.json();
+            if (j.configured) { window.location.href = '/login.html'; return; }
+        } catch {}
+    })();
+
+    document.getElementById('setupForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const password = document.getElementById('password').value;
+        const confirm = document.getElementById('confirm').value;
+        const errorEl = document.getElementById('error');
+        const btn = e.target.querySelector('button');
+        errorEl.classList.add('hidden');
+
+        if (password !== confirm) {
+            errorEl.textContent = 'Passwords do not match';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        btn.disabled = true; btn.textContent = 'Saving...';
+        try {
+            const res = await fetch('/api/auth/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) { window.location.href = '/'; return; }
+            errorEl.textContent = data.error || 'Setup failed';
+            errorEl.classList.remove('hidden');
+        } catch (err) {
+            errorEl.textContent = 'Network error';
+            errorEl.classList.remove('hidden');
+        } finally {
+            btn.disabled = false; btn.textContent = 'Set password & continue';
+        }
+    });
+    </script>
+</body>
+</html>

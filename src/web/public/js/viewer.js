@@ -15,7 +15,7 @@ export function openMediaViewer(index) {
     const image = document.getElementById('modal-image');
     const videoContainer = document.getElementById('video-container');
     const video = document.getElementById('modal-video');
-    const url = `/files/${encodeURIComponent(file.fullPath)}`;
+    const url = `/files/${encodeURIComponent(file.fullPath)}?inline=1`;
     
     // Reset Views
     imageContainer.classList.add('hidden');

@@ -134,11 +134,20 @@ export class HistoryDownloader extends EventEmitter {
                 this.emit('progress', this.stats); // Emit progress immediately after processing count
 
                 // --- Backpressure: Limit Queue Size to 500 ---
-                // Prevents RAM explosion for 100k+ items
-                // Keeps file references fresh
-                while (this.downloader.queue.length > 500) {
-                    await this.sleep(1000);
-                    if (!this.running || this.cancelFlag) break; // Check cancel flag inside loop
+                // Prevents RAM explosion for 100k+ items.
+                // Keeps file references fresh. We bound the wait so a stuck
+                // downloader can't hang the whole history command forever
+                // — after MAX_WAIT we abort with a clear error.
+                {
+                    const MAX_WAIT_MS = 5 * 60 * 1000;
+                    const start = Date.now();
+                    while (this.downloader.pendingCount > 500) {
+                        await this.sleep(1000);
+                        if (!this.running || this.cancelFlag) break;
+                        if (Date.now() - start > MAX_WAIT_MS) {
+                            throw new Error('History backpressure timed out (5min) — downloader appears stuck');
+                        }
+                    }
                 }
                 // ---------------------------------------------
 
