@@ -68,6 +68,23 @@ export async function loadSettings() {
             };
         }
 
+        const httpsToggle = document.getElementById('setting-force-https');
+        if (httpsToggle) {
+            const refresh = () => httpsToggle.classList.toggle('active', config.web?.forceHttps === true);
+            refresh();
+            httpsToggle.onclick = async (e) => {
+                e.preventDefault();
+                const next = !httpsToggle.classList.contains('active');
+                try {
+                    await api.post('/api/config', { web: { forceHttps: next } });
+                    httpsToggle.classList.toggle('active', next);
+                    showToast(next ? 'Force HTTPS enabled' : 'Force HTTPS disabled', next ? 'success' : 'info');
+                } catch (err) {
+                    showToast(`Save failed: ${err.message}`, 'error');
+                }
+            };
+        }
+
         // Telegram API: only the apiId is exposed; apiHash is server-only.
         const apiIdEl = document.getElementById('setting-api-id');
         if (apiIdEl) apiIdEl.value = tg.apiId || '';

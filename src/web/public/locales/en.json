@@ -29,6 +29,8 @@
     "settings.notifications_help": "Get a system toast when downloads finish.",
 
     "settings.security": "Dashboard security",
+    "settings.security.force_https": "Force HTTPS",
+    "settings.security.force_https_help": "Redirect HTTP requests to HTTPS. Localhost is exempt. Set TRUST_PROXY=1 if running behind a reverse proxy.",
     "settings.security.current": "Current password",
     "settings.security.new": "New password (min 8)",
     "settings.security.change": "Change password",

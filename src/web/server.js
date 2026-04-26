@@ -107,6 +107,26 @@ if (process.env.TRUST_PROXY) {
     app.set('trust proxy', /^\d+$/.test(v) ? parseInt(v, 10) : v);
 }
 
+// Force HTTPS — opt-in via config.web.forceHttps (default off, plain HTTP).
+// Skips localhost so it doesn't lock you out of local dev. `req.secure`
+// honours `X-Forwarded-Proto` only when `trust proxy` is set above, so
+// reverse-proxy users must export TRUST_PROXY=1 for this to work.
+// Non-GET/HEAD requests get a 403 instead of a 308 — clients shouldn't
+// silently retry mutations on a different scheme.
+app.use(async (req, res, next) => {
+    const config = await readConfigSafe();
+    if (!config.web?.forceHttps) return next();
+    if (req.secure) return next();
+    const ip = req.ip || req.socket?.remoteAddress || '';
+    if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return next();
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return res.status(403).json({ error: 'HTTPS required' });
+    }
+    const host = req.headers.host;
+    if (!host) return res.status(400).end();
+    return res.redirect(308, `https://${host}${req.originalUrl}`);
+});
+
 // Security headers. CSP is on but allows the SPA's two CDN dependencies
 // (Tailwind + Remixicon) and the inline event-handlers we still use in
 // index.html. Tightening "self"-only is a follow-up once the inline handlers

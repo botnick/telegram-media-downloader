@@ -1304,9 +1304,16 @@
                     <!-- Security (web auth) -->
                     <div class="mt-6 bg-tg-panel rounded-xl p-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-lock-2-line text-tg-blue"></i> Dashboard security
+                            <i class="ri-lock-2-line text-tg-blue"></i> <span data-i18n="settings.security">Dashboard security</span>
                         </h3>
                         <div class="space-y-3">
+                            <div class="flex items-start justify-between gap-3 py-1">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="settings.security.force_https">Force HTTPS</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="settings.security.force_https_help">Redirect HTTP requests to HTTPS. Localhost is exempt. Set <code>TRUST_PROXY=1</code> if running behind a reverse proxy.</p>
+                                </div>
+                                <div id="setting-force-https" class="tg-toggle shrink-0 mt-0.5"></div>
+                            </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label class="text-tg-text text-sm block mb-1">Current password</label>

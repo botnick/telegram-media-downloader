@@ -29,6 +29,8 @@
     "settings.notifications_help": "แจ้งเตือนเมื่อดาวน์โหลดเสร็จ",
 
     "settings.security": "ความปลอดภัยของแดชบอร์ด",
+    "settings.security.force_https": "บังคับใช้ HTTPS",
+    "settings.security.force_https_help": "เปลี่ยนเส้นทาง HTTP ไปเป็น HTTPS อัตโนมัติ (ยกเว้น localhost). ถ้าอยู่หลัง reverse proxy ต้องตั้ง TRUST_PROXY=1 ด้วย",
     "settings.security.current": "รหัสปัจจุบัน",
     "settings.security.new": "รหัสใหม่ (อย่างน้อย 8 ตัว)",
     "settings.security.change": "เปลี่ยนรหัส",
