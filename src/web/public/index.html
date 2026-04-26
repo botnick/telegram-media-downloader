@@ -595,6 +595,10 @@
                         class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center">
                         <i class="ri-link-m text-xl text-tg-textSecondary"></i>
                     </button>
+                    <button id="stories-btn" title="Download Telegram Stories"
+                        class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center">
+                        <i class="ri-camera-line text-xl text-tg-textSecondary"></i>
+                    </button>
                     <button id="view-mode-btn"
                         class="w-10 h-10 rounded-full hover:bg-tg-hover flex items-center justify-center">
                         <i class="ri-layout-grid-line text-xl text-tg-textSecondary"></i>
@@ -606,6 +610,19 @@
                     </button>
                 </div>
             </header>
+
+            <!-- Stories drawer -->
+            <div id="stories-panel" class="hidden border-b border-tg-border bg-tg-panel px-4 py-3">
+                <div class="max-w-3xl mx-auto">
+                    <label class="text-tg-text text-sm block mb-2">Download stories from a username</label>
+                    <div class="flex gap-2">
+                        <input id="stories-username" type="text" class="tg-input flex-1 text-sm" placeholder="@username (or numeric id)">
+                        <button id="stories-fetch" class="tg-btn-secondary px-4 py-1.5 text-sm">Fetch</button>
+                    </div>
+                    <div id="stories-list" class="mt-3 space-y-2"></div>
+                    <div id="stories-result" class="mt-2 text-xs text-tg-textSecondary"></div>
+                </div>
+            </div>
 
             <!-- Paste-URL drawer (hidden by default) -->
             <div id="paste-url-panel" class="hidden border-b border-tg-border bg-tg-panel px-4 py-3">

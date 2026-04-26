@@ -26,6 +26,7 @@ import { AccountManager } from '../core/accounts.js';
 import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
+import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import {
     hashPassword, loginVerify, isAuthConfigured,
     issueSession, validateSession, revokeSession, startSessionGc,
@@ -633,6 +634,76 @@ app.get('/api/history', (req, res) => {
 // reachable. We don't speak SOCKS/MTProto here — that's the job of gramJS at
 // the next monitor start — but a TCP open is enough to catch typos and DNS
 // misconfiguration without needing a full Telegram round-trip.
+
+// ====== Stories (Xinomo parity) ============================================
+
+app.post('/api/stories/user', async (req, res) => {
+    try {
+        const { username } = req.body || {};
+        if (!username) return res.status(400).json({ error: 'username required' });
+        const am = await getAccountManager();
+        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
+        const r = await listUserStories(am.getDefaultClient(), username);
+        res.json({ success: true, ...r });
+    } catch (e) {
+        const { status, body } = tgAuthErrorBody(e);
+        res.status(status === 400 ? 502 : status).json(body.error ? body : { error: e.message });
+    }
+});
+
+app.post('/api/stories/all', async (req, res) => {
+    try {
+        const am = await getAccountManager();
+        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
+        const r = await listAllStories(am.getDefaultClient());
+        res.json({ success: true, ...r });
+    } catch (e) {
+        const { status, body } = tgAuthErrorBody(e);
+        res.status(status === 400 ? 502 : status).json(body.error ? body : { error: e.message });
+    }
+});
+
+app.post('/api/stories/download', async (req, res) => {
+    try {
+        const { username, storyIds } = req.body || {};
+        if (!username || !Array.isArray(storyIds) || storyIds.length === 0) {
+            return res.status(400).json({ error: 'username and storyIds required' });
+        }
+        const am = await getAccountManager();
+        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
+        const client = am.getDefaultClient();
+        const entity = await client.getEntity(username);
+        const r = await client.invoke(new (await import('telegram')).Api.stories.GetPeerStories({ peer: entity }));
+        const stories = r?.stories?.stories || [];
+        const wanted = new Set(storyIds.map(Number));
+        const matched = stories.filter(s => wanted.has(Number(s.id)));
+
+        const { DownloadManager } = await import('../core/downloader.js');
+        const { RateLimiter } = await import('../core/security.js');
+        const config = loadConfig();
+        const standalone = !runtime._downloader;
+        const downloader = runtime._downloader || new DownloadManager(client, config, new RateLimiter(config.rateLimits));
+        if (standalone) { await downloader.init(); downloader.start(); }
+
+        let queued = 0;
+        for (const story of matched) {
+            const job = storyToJob({ peer: entity, story, peerLabel: entity.username || entity.firstName || username });
+            if (await downloader.enqueue(job, 1)) queued++;
+        }
+        if (standalone) {
+            (async () => {
+                while (downloader.pendingCount > 0 || downloader.active.size > 0) {
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+                downloader.stop().catch(() => {});
+            })();
+        }
+        res.json({ success: true, queued, requested: storyIds.length });
+    } catch (e) {
+        console.error('POST /api/stories/download:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
 
 app.post('/api/proxy/test', async (req, res) => {
     const { host, port } = req.body || {};

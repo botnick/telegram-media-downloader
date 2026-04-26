@@ -74,6 +74,7 @@ async function init() {
     // Paste-URL drawer
     setupPasteUrl();
     setupMediaSearch();
+    setupStoriesPanel();
 
     // Appearance toggle
     initTheme();
@@ -831,6 +832,60 @@ function setupEventListeners() {
     
     // Media tabs
     setupMediaTabs();
+}
+
+function setupStoriesPanel() {
+    const btn = document.getElementById('stories-btn');
+    const panel = document.getElementById('stories-panel');
+    const fetch = document.getElementById('stories-fetch');
+    const userInput = document.getElementById('stories-username');
+    const list = document.getElementById('stories-list');
+    const result = document.getElementById('stories-result');
+    if (!btn || !panel) return;
+
+    btn.addEventListener('click', () => {
+        panel.classList.toggle('hidden');
+        if (!panel.classList.contains('hidden')) userInput?.focus();
+    });
+
+    fetch?.addEventListener('click', async () => {
+        const username = userInput.value.trim();
+        if (!username) { showToast('Enter a username', 'warning'); return; }
+        list.innerHTML = '<div class="text-tg-textSecondary text-sm">Loading…</div>';
+        result.textContent = '';
+        try {
+            const r = await api.post('/api/stories/user', { username });
+            if (!r.stories.length) {
+                list.innerHTML = `<div class="text-tg-textSecondary text-sm">No active stories visible to your account.</div>`;
+                return;
+            }
+            list.innerHTML = r.stories.map(s => `
+                <label class="flex items-center justify-between bg-tg-bg/40 rounded p-2 cursor-pointer">
+                    <div class="text-sm">
+                        <span class="text-tg-text">#${s.id}</span>
+                        <span class="text-tg-textSecondary">${s.media?.type || 'unknown'}${s.caption ? ` — ${escapeHtml(s.caption.slice(0, 40))}` : ''}</span>
+                    </div>
+                    <input type="checkbox" data-story-id="${s.id}" checked class="w-4 h-4 accent-tg-blue">
+                </label>
+            `).join('') + `
+                <button id="stories-go" class="tg-btn w-full mt-2 text-sm"><i class="ri-download-line mr-1"></i>Download selected</button>
+            `;
+            document.getElementById('stories-go')?.addEventListener('click', async () => {
+                const ids = Array.from(list.querySelectorAll('input[type=checkbox]:checked'))
+                    .map(cb => parseInt(cb.dataset.storyId, 10)).filter(Number.isFinite);
+                if (!ids.length) { showToast('Pick at least one story', 'warning'); return; }
+                try {
+                    const dl = await api.post('/api/stories/download', { username, storyIds: ids });
+                    result.textContent = `Queued ${dl.queued} of ${dl.requested} stories.`;
+                    showToast(`Queued ${dl.queued} stories`, 'success');
+                } catch (e) {
+                    showToast(`Download failed: ${e.message}`, 'error');
+                }
+            });
+        } catch (e) {
+            list.innerHTML = `<div class="text-red-400 text-sm">${escapeHtml(e.message)}</div>`;
+        }
+    });
 }
 
 function highlightThemeButtons() {
