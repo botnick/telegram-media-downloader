@@ -384,5 +384,9 @@
     "shortcuts.play_pause": "(in viewer) play / pause video",
     "shortcuts.prev_next": "(in viewer) previous / next item",
     "shortcuts.fullscreen": "(in viewer) toggle fullscreen",
-    "shortcuts.tip": "Tip — none of these fire while you're typing in a text field."
+    "shortcuts.tip": "Tip — none of these fire while you're typing in a text field.",
+
+    "pwa.install": "Install app",
+    "pwa.installed": "App installed",
+    "pwa.update_available": "Update available — reload to apply"
 }

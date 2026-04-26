@@ -7,6 +7,17 @@
     <meta name="color-scheme" content="dark">
     <title>Telegram Downloader</title>
 
+    <!-- PWA: web-app manifest, theme colour for the address bar / status bar,
+         and an apple-touch-icon so iOS picks up a proper home-screen tile. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#3390EC">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TG Downloader">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+
     <!-- Apply persisted theme before paint to avoid the "dark flash" on
          light-mode reloads. Inline because we need it pre-CSS. -->
     <script>
@@ -1006,6 +1017,20 @@
                 <!-- Settings Page -->
                 <div id="page-settings" class="hidden max-w-xl mx-auto">
 
+                    <!-- PWA install affordance — hidden until the browser
+                         fires `beforeinstallprompt` (handled in js/pwa.js).
+                         Sits above the Engine card so it appears front-and-
+                         centre on first visit, then disappears once installed
+                         or on platforms that don't expose a programmatic
+                         prompt (Safari, Firefox desktop). -->
+                    <button type="button" id="pwa-install-btn" data-pwa-install hidden
+                        onclick="installPwa()"
+                        class="w-full bg-tg-panel hover:bg-tg-hover rounded-xl p-3 mb-4 flex items-center gap-3 text-left transition-colors">
+                        <i class="ri-install-line text-tg-blue text-xl" aria-hidden="true"></i>
+                        <span class="text-tg-text text-sm font-medium" data-i18n="pwa.install">Install app</span>
+                        <i class="ri-arrow-right-s-line text-tg-textSecondary ml-auto" aria-hidden="true"></i>
+                    </button>
+
                     <!-- Engine / monitor -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
@@ -1587,6 +1612,7 @@
     </nav>
 
     <!-- Scripts -->
+    <script type="module" src="/js/pwa.js"></script>
     <script type="module" src="/js/app.js"></script>
 </body>
 

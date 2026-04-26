@@ -236,7 +236,12 @@ async function readConfigSafe() {
 }
 
 // Paths that may be reached without an authenticated session.
-const PUBLIC_PATH_PREFIXES = ['/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon', '/metrics'];
+// PWA bits (manifest, service worker, icons) MUST be reachable pre-login
+// — the browser fetches them before the user has a session cookie.
+const PUBLIC_PATH_PREFIXES = [
+    '/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon', '/metrics',
+    '/icons/', '/manifest.webmanifest', '/sw.js',
+];
 const PUBLIC_API_PATHS = new Set([
     '/api/login',
     '/api/auth_check',
@@ -466,6 +471,26 @@ async function getAccountManager() {
     await _accountManager.loadAll();
     return _accountManager;
 }
+
+// PWA: serve the service worker and the web app manifest BEFORE the auth
+// middleware so they're reachable on a fresh / logged-out browser. Both
+// have explicit Content-Type headers (some hosts mis-detect .webmanifest)
+// and the SW gets `Service-Worker-Allowed: /` so it can claim the whole
+// origin even though the script itself lives at a different path.
+app.get('/sw.js', (req, res) => {
+    res.set('Content-Type', 'application/javascript; charset=utf-8');
+    res.set('Service-Worker-Allowed', '/');
+    // Don't let intermediaries cache an old SW — the SW is the thing that
+    // controls cache behaviour for everything else, so it must update fast.
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+
+app.get('/manifest.webmanifest', (req, res) => {
+    res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.sendFile(path.join(__dirname, 'public', 'manifest.webmanifest'));
+});
 
 // Public Prometheus / OpenMetrics scrape — registered BEFORE the global
 // auth gate so a scrape job without a session cookie can still reach it.

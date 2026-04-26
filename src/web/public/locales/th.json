@@ -384,5 +384,9 @@
     "shortcuts.play_pause": "(ใน viewer) เล่น / หยุดวิดีโอ",
     "shortcuts.prev_next": "(ใน viewer) ก่อนหน้า / ถัดไป",
     "shortcuts.fullscreen": "(ใน viewer) สลับเต็มจอ",
-    "shortcuts.tip": "เคล็ดลับ — คีย์ลัดเหล่านี้ไม่ทำงานขณะพิมพ์ในช่องข้อความ"
+    "shortcuts.tip": "เคล็ดลับ — คีย์ลัดเหล่านี้ไม่ทำงานขณะพิมพ์ในช่องข้อความ",
+
+    "pwa.install": "ติดตั้งแอป",
+    "pwa.installed": "ติดตั้งแอปแล้ว",
+    "pwa.update_available": "มีเวอร์ชันใหม่ — รีโหลดเพื่ออัปเดต"
 }
