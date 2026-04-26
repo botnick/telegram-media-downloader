@@ -1,16 +1,18 @@
-# Telegram Media Downloader -- Auto Download Photos, Videos, and Files from Telegram Channels
+# Telegram Media Downloader
 
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Telegram](https://img.shields.io/badge/Telegram-MTProto_API-26A5E4?logo=telegram&logoColor=white)](https://core.telegram.org/)
-[![SQLite](https://img.shields.io/badge/Database-SQLite-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20Docker-lightgrey)](https://github.com/botnick/telegram-media-downloader)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/botnick/telegram-media-downloader/pulls)
+[![CI](https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/botnick/telegram-media-downloader/actions/workflows/codeql.yml/badge.svg)](https://github.com/botnick/telegram-media-downloader/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader)
 
-A self-hosted, open-source tool for automatically downloading and backing up media from Telegram channels, groups, and supergroups. Supports photos, videos, documents, voice messages, GIFs, and stickers. Includes a real-time Web Dashboard with media gallery, per-group configuration, auto-forwarding, and a full-featured CLI.
+**Self-hosted Telegram media downloader. CLI + dashboard. MIT, no quotas.**
 
-Built with [GramJS](https://github.com/nickspaargaren/gramjs) (Telegram MTProto API), Express, WebSocket, and SQLite. Runs on Windows, Linux, macOS, and Docker.
+A complete replacement for the commercial "Ultra"-tier Telegram downloaders, but free and self-hosted. Bulk-download from channels and groups, paste a `t.me/` link to grab a single message, capture self-destructing media before it expires, archive Stories from any user, and forward downloads to another chat — all from a browser, with a CLI for headless servers.
+
+Built with [GramJS](https://github.com/gram-js/gramjs) (Telegram MTProto User API — not a bot), Express + WebSocket, SQLite, and a vanilla-ES-modules SPA (no bundler, no build step).
+
+> **First time here?** [Quick start](#quick-start) → [Architecture](docs/ARCHITECTURE.md) → [API reference](docs/API.md) → [Deploy](docs/DEPLOY.md) → [Troubleshooting](docs/TROUBLESHOOTING.md) → [Audit](docs/AUDIT.md)
 
 ---
 
@@ -43,18 +45,36 @@ Built with [GramJS](https://github.com/nickspaargaren/gramjs) (Telegram MTProto 
 
 ---
 
-## Why Telegram Media Downloader
+## Why this exists
 
-Telegram channels and groups often contain valuable media -- photos, videos, documents, and audio files -- that you may want to archive or back up locally. This tool solves that problem by:
+Telegram channels and groups often contain valuable media that you'd like a permanent local copy of. The commercial alternatives charge per file or per account; this is the same feature set, free, and entirely on your hardware.
 
-- **Monitoring channels in real-time** and downloading new media as it appears.
-- **Intelligent Multi-Account Routing** – Add unlimited accounts. The engine automatically discovers which account can access which group, eliminating permissions headaches.
-- **Batch downloading history** from channels with thousands of past messages.
-- **Organizing files automatically** into folders by group name and media type.
-- **Preventing duplicates** using a SQLite database to track every download.
-- **Providing a Web Dashboard** for browsing, managing, and viewing downloaded media without touching the command line.
+- **Monitor channels in real-time** and download new media as it appears.
+- **Smart multi-account routing** — add as many accounts as you like; the engine discovers which one can read each group automatically.
+- **Bulk-backfill history** with date / count filters.
+- **Auto-forward** downloaded media to another channel or your Saved Messages.
+- **Self-host everything**, including a polished web dashboard. No data leaves your machine.
 
-Unlike Telegram bots, this tool uses the Telegram User API (MTProto) via GramJS, which means it can access any channel or group your account is a member of, including private ones.
+Because we use the **User API**, we can read any chat your account can read — public channels, private groups, supergroups, forum topics, even DMs (opt-in).
+
+## Feature matrix vs. the paid alternatives
+
+| Capability                                          | This project | Xinomo "Ultra" tier | vinodkr494 (open-source) |
+| --- | :---: | :---: | :---: |
+| Bulk download from channels / groups                | ✅           | ✅                 | ✅ |
+| Download by `t.me/` link (single message)           | ✅           | ✅                 | ❌ |
+| Story download (by username + contacts)             | ✅           | ✅                 | ❌ |
+| Private DM download (opt-in)                        | ✅           | ✅                 | ❌ |
+| Self-destructing / TTL message capture              | ✅           | ✅                 | ❌ |
+| Forum-topic filter                                  | ✅           | ❌ (no granular)   | ✅ |
+| SOCKS / MTProxy support                             | ✅           | ❌                 | ✅ |
+| Multi-account                                       | ✅ unlimited | ✅ Ultra: unlimited | ✅ |
+| Web-based account login (phone → OTP → 2FA)         | ✅           | ✅                 | ❌ (Qt desktop) |
+| Light / dark / auto theme                           | ✅           | ✅                 | ✅ |
+| Live engine status, queue, multi-select, search     | ✅           | ✅                 | ✅ (desktop) |
+| Self-hosted, full data ownership                    | ✅           | ❌                 | ✅ |
+| Quota                                               | None         | 300 / 1.8k / ∞ /mo | None |
+| Price                                               | $0           | $$                 | $0 |
 
 ---
 
