@@ -804,36 +804,6 @@
                 </div>
             </header>
 
-            <!-- Stories drawer -->
-            <div id="stories-panel" class="hidden border-b border-tg-border bg-tg-panel px-4 py-3">
-                <div class="max-w-3xl mx-auto">
-                    <label class="text-tg-text text-sm block mb-2">Download stories from a username</label>
-                    <div class="flex gap-2">
-                        <input id="stories-username" type="text" class="tg-input flex-1 text-sm" placeholder="@username (or numeric id)">
-                        <button id="stories-fetch" class="tg-btn-secondary px-4 py-1.5 text-sm">Fetch</button>
-                    </div>
-                    <div id="stories-list" class="mt-3 space-y-2"></div>
-                    <div id="stories-result" class="mt-2 text-xs text-tg-textSecondary"></div>
-                </div>
-            </div>
-
-            <!-- Paste-URL drawer (hidden by default) -->
-            <div id="paste-url-panel" class="hidden border-b border-tg-border bg-tg-panel px-4 py-3">
-                <div class="max-w-3xl mx-auto">
-                    <label class="text-tg-text text-sm block mb-2">Paste one or more Telegram message links (newline-separated)</label>
-                    <textarea id="paste-url-input" rows="3"
-                        class="tg-input w-full text-sm font-mono"
-                        placeholder="https://t.me/channel/12345&#10;https://t.me/c/1234567890/55"></textarea>
-                    <div class="flex justify-end gap-2 mt-2">
-                        <button id="paste-url-cancel" class="tg-btn-secondary px-4 py-1.5 text-sm">Close</button>
-                        <button id="paste-url-submit" class="tg-btn px-4 py-1.5 text-sm">
-                            <i class="ri-download-line mr-1"></i>Download
-                        </button>
-                    </div>
-                    <div id="paste-url-result" class="mt-2 text-xs text-tg-textSecondary"></div>
-                </div>
-            </div>
-
             <!-- Media Tabs -->
             <div id="media-tabs" class="flex border-b border-tg-border bg-tg-bg px-2 overflow-x-auto">
                 <div class="tab-item active" data-type="all">All</div>

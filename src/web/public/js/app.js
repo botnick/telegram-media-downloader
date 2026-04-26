@@ -955,55 +955,65 @@ function setupEventListeners() {
 
 function setupStoriesPanel() {
     const btn = document.getElementById('stories-btn');
-    const panel = document.getElementById('stories-panel');
-    const fetch = document.getElementById('stories-fetch');
-    const userInput = document.getElementById('stories-username');
-    const list = document.getElementById('stories-list');
-    const result = document.getElementById('stories-result');
-    if (!btn || !panel) return;
+    const oldPanel = document.getElementById('stories-panel');
+    if (oldPanel) oldPanel.remove(); // legacy markup; now opened as a sheet
+    if (!btn) return;
 
     btn.addEventListener('click', () => {
-        panel.classList.toggle('hidden');
-        if (!panel.classList.contains('hidden')) userInput?.focus();
-    });
+        const root = document.createElement('div');
+        root.innerHTML = `
+            <p class="text-tg-textSecondary text-xs mb-2">Pull active Stories from any username your account can see.</p>
+            <div class="flex gap-2 mb-3">
+                <input id="ss-username" type="text" class="tg-input flex-1 text-sm" placeholder="@username (or numeric id)">
+                <button id="ss-fetch" class="tg-btn-secondary px-4 py-1.5 text-sm">Fetch</button>
+            </div>
+            <div id="ss-list" class="space-y-1.5"></div>
+            <p id="ss-result" class="mt-2 text-xs text-tg-textSecondary"></p>`;
+        const handle = openSheet({ title: 'Download Stories', content: root, size: 'md' });
+        const userInput = root.querySelector('#ss-username');
+        const fetchBtn = root.querySelector('#ss-fetch');
+        const list = root.querySelector('#ss-list');
+        const result = root.querySelector('#ss-result');
+        setTimeout(() => userInput.focus(), 60);
 
-    fetch?.addEventListener('click', async () => {
-        const username = userInput.value.trim();
-        if (!username) { showToast('Enter a username', 'warning'); return; }
-        list.innerHTML = '<div class="text-tg-textSecondary text-sm">Loading…</div>';
-        result.textContent = '';
-        try {
-            const r = await api.post('/api/stories/user', { username });
-            if (!r.stories.length) {
-                list.innerHTML = `<div class="text-tg-textSecondary text-sm">No active stories visible to your account.</div>`;
-                return;
-            }
-            list.innerHTML = r.stories.map(s => `
-                <label class="flex items-center justify-between bg-tg-bg/40 rounded p-2 cursor-pointer">
-                    <div class="text-sm">
-                        <span class="text-tg-text">#${s.id}</span>
-                        <span class="text-tg-textSecondary">${s.media?.type || 'unknown'}${s.caption ? ` — ${escapeHtml(s.caption.slice(0, 40))}` : ''}</span>
-                    </div>
-                    <input type="checkbox" data-story-id="${s.id}" checked class="w-4 h-4 accent-tg-blue">
-                </label>
-            `).join('') + `
-                <button id="stories-go" class="tg-btn w-full mt-2 text-sm"><i class="ri-download-line mr-1"></i>Download selected</button>
-            `;
-            document.getElementById('stories-go')?.addEventListener('click', async () => {
-                const ids = Array.from(list.querySelectorAll('input[type=checkbox]:checked'))
-                    .map(cb => parseInt(cb.dataset.storyId, 10)).filter(Number.isFinite);
-                if (!ids.length) { showToast('Pick at least one story', 'warning'); return; }
-                try {
-                    const dl = await api.post('/api/stories/download', { username, storyIds: ids });
-                    result.textContent = `Queued ${dl.queued} of ${dl.requested} stories.`;
-                    showToast(`Queued ${dl.queued} stories`, 'success');
-                } catch (e) {
-                    showToast(`Download failed: ${e.message}`, 'error');
+        fetchBtn.addEventListener('click', async () => {
+            const username = userInput.value.trim();
+            if (!username) { showToast('Enter a username', 'warning'); return; }
+            list.innerHTML = '<div class="text-tg-textSecondary text-sm">Loading…</div>';
+            result.textContent = '';
+            try {
+                const r = await api.post('/api/stories/user', { username });
+                if (!r.stories.length) {
+                    list.innerHTML = `<div class="text-tg-textSecondary text-sm">No active stories visible to your account.</div>`;
+                    return;
                 }
-            });
-        } catch (e) {
-            list.innerHTML = `<div class="text-red-400 text-sm">${escapeHtml(e.message)}</div>`;
-        }
+                list.innerHTML = r.stories.map(s => `
+                    <label class="flex items-center justify-between bg-tg-bg/40 rounded p-2 cursor-pointer">
+                        <div class="text-sm min-w-0">
+                            <span class="text-tg-text">#${s.id}</span>
+                            <span class="text-tg-textSecondary">${s.media?.type || 'unknown'}${s.caption ? ` — ${escapeHtml(s.caption.slice(0, 40))}` : ''}</span>
+                        </div>
+                        <input type="checkbox" data-story-id="${s.id}" checked class="w-4 h-4 accent-tg-blue">
+                    </label>
+                `).join('') + `
+                    <button id="ss-go" type="button" class="tg-btn w-full mt-2 text-sm"><i class="ri-download-line mr-1"></i>Download selected</button>`;
+                root.querySelector('#ss-go')?.addEventListener('click', async () => {
+                    const ids = Array.from(list.querySelectorAll('input[type=checkbox]:checked'))
+                        .map(cb => parseInt(cb.dataset.storyId, 10)).filter(Number.isFinite);
+                    if (!ids.length) { showToast('Pick at least one story', 'warning'); return; }
+                    try {
+                        const dl = await api.post('/api/stories/download', { username, storyIds: ids });
+                        result.textContent = `Queued ${dl.queued} of ${dl.requested} stories.`;
+                        showToast(`Queued ${dl.queued} stories`, 'success');
+                        setTimeout(handle.close, 800);
+                    } catch (e) {
+                        showToast(`Download failed: ${e.message}`, 'error');
+                    }
+                });
+            } catch (e) {
+                list.innerHTML = `<div class="text-red-400 text-sm">${escapeHtml(e.message)}</div>`;
+            }
+        });
     });
 }
 
@@ -1053,43 +1063,46 @@ function setupFab() {
 
 function setupPasteUrl() {
     const btn = document.getElementById('paste-url-btn');
-    const panel = document.getElementById('paste-url-panel');
-    const cancel = document.getElementById('paste-url-cancel');
-    const submit = document.getElementById('paste-url-submit');
-    const input = document.getElementById('paste-url-input');
-    const resultEl = document.getElementById('paste-url-result');
-    if (!btn || !panel || !submit) return;
+    const oldPanel = document.getElementById('paste-url-panel');
+    if (oldPanel) oldPanel.remove(); // legacy markup; now opened as a sheet
+    if (!btn) return;
 
     btn.addEventListener('click', () => {
-        const wasHidden = panel.classList.toggle('hidden');
-        if (!wasHidden) input?.focus();
-    });
-    cancel?.addEventListener('click', () => panel.classList.add('hidden'));
+        const root = document.createElement('div');
+        root.innerHTML = `
+            <p class="text-tg-textSecondary text-xs mb-2">One URL per line. Supports <code>t.me/&lt;chan&gt;/&lt;msg&gt;</code>, <code>/c/&lt;id&gt;/&lt;msg&gt;</code>, forum-topic links and <code>tg://</code>.</p>
+            <textarea id="ps-input" rows="4" class="tg-input w-full text-sm font-mono" placeholder="https://t.me/example/12345"></textarea>
+            <button id="ps-submit" class="tg-btn w-full mt-3"><i class="ri-download-line mr-2"></i>Download</button>
+            <p id="ps-result" class="text-xs text-tg-textSecondary mt-2"></p>`;
+        const handle = openSheet({ title: 'Download from Telegram link', content: root, size: 'md' });
+        const input = root.querySelector('#ps-input');
+        const submit = root.querySelector('#ps-submit');
+        const resultEl = root.querySelector('#ps-result');
+        setTimeout(() => input.focus(), 60);
 
-    submit.addEventListener('click', async () => {
-        const text = input.value.trim();
-        if (!text) { showToast('Paste at least one Telegram link', 'warning'); return; }
-        submit.disabled = true;
-        try {
-            const r = await api.post('/api/download/url', { url: text });
-            const ok = r.results.filter(x => x.ok).length;
-            const fail = r.results.length - ok;
-            resultEl.textContent = `${ok} queued, ${fail} failed.`;
-            r.results.forEach(x => {
-                if (!x.ok) console.warn('paste-url failed:', x.url, x.error);
-            });
-            if (ok > 0) {
-                showToast(`Queued ${ok} download${ok > 1 ? 's' : ''}`, 'success');
-                input.value = '';
+        submit.addEventListener('click', async () => {
+            const text = input.value.trim();
+            if (!text) { showToast('Paste at least one Telegram link', 'warning'); return; }
+            submit.disabled = true;
+            try {
+                const r = await api.post('/api/download/url', { url: text });
+                const ok = r.results.filter(x => x.ok).length;
+                const fail = r.results.length - ok;
+                resultEl.textContent = `${ok} queued, ${fail} failed.`;
+                r.results.forEach(x => { if (!x.ok) console.warn('paste-url failed:', x.url, x.error); });
+                if (ok > 0) {
+                    showToast(`Queued ${ok} download${ok > 1 ? 's' : ''}`, 'success');
+                    input.value = '';
+                    setTimeout(handle.close, 600);
+                } else if (fail > 0) {
+                    showToast(`All ${fail} URL(s) failed — check console`, 'error');
+                }
+            } catch (e) {
+                showToast(`Request failed: ${e.message}`, 'error');
+            } finally {
+                submit.disabled = false;
             }
-            if (fail > 0 && ok === 0) {
-                showToast(`All ${fail} URL(s) failed — check console`, 'error');
-            }
-        } catch (e) {
-            showToast(`Request failed: ${e.message}`, 'error');
-        } finally {
-            submit.disabled = false;
-        }
+        });
     });
 }
 
