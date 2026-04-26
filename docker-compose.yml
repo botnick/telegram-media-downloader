@@ -1,14 +1,18 @@
 # Compose file for Telegram Media Downloader.
 #
-# Defaults to the in-process web dashboard (which can also start the realtime
-# monitor from the Engine card in Settings). To run a separate headless
-# monitor, copy this service block and set TGDL_RUN=monitor; both processes
-# can share the same data volume safely (SQLite WAL mode).
+# Defaults to the prebuilt multi-arch image from GitHub Container Registry.
+# `pull_policy: always` ensures `docker compose up -d` grabs the newest
+# release each time — without this, an older locally-cached image wins and
+# manifests as `Cannot find module '/app/src/web/server.js'` after upgrades.
+#
+# To build from source instead (for local dev), comment out `image:` +
+# `pull_policy:` and uncomment `build:`.
 
 services:
   telegram-downloader:
-    build: .
-    image: telegram-media-downloader
+    image: ghcr.io/botnick/telegram-media-downloader:latest
+    pull_policy: always
+    # build: .
     container_name: telegram-downloader
     restart: unless-stopped
     ports:
@@ -19,8 +23,6 @@ services:
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
       - TGDL_DEBUG=${TGDL_DEBUG:-}
-      # Override to run the watchdog process (history / monitor) instead.
-      # - TGDL_RUN=monitor
     healthcheck:
       test: ["CMD", "node", "scripts/healthcheck.js"]
       interval: 30s
@@ -34,5 +36,12 @@ services:
 #   from localhost on first run), then go to Settings → Telegram Accounts
 #   → Add account.
 #
-# Headless / no browser:
+# Upgrade:
+#   docker compose up -d        # `pull_policy: always` re-pulls latest
+#
+# Headless monitor (instead of web dashboard):
+#   docker compose run --rm \
+#     -e TGDL_RUN=monitor telegram-downloader node runner.js
+#
+# Interactive CLI:
 #   docker compose run --rm telegram-downloader node src/index.js

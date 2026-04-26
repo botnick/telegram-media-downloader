@@ -16,8 +16,7 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 FROM node:20.20.2-alpine AS runtime
 ENV NODE_ENV=production \
-    PORT=3000 \
-    TGDL_RUN=monitor
+    PORT=3000
 
 # Add libstdc++ for the prebuilt better-sqlite3 binary.
 RUN apk add --no-cache tini libstdc++
@@ -26,7 +25,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY src ./src
 COPY scripts ./scripts
-COPY runner.js watchdog.ps1 config.example.json package.json LICENSE README.md SECURITY.md ./
+COPY runner.js config.example.json package.json LICENSE README.md SECURITY.md ./
 
 # Persistent state (sessions, config, downloads) — mount this as a volume.
 RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions \
