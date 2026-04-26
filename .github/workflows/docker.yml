@@ -44,8 +44,46 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          load: true
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Prove the image actually runs — `docker build` only verifies the
+      # Dockerfile parses, not that `node src/web/server.js` can read its
+      # own source. We hit a permissions bug (mode 0 on /app/src/*) that
+      # only surfaced at runtime, so we now boot the container and ping
+      # the healthcheck before considering the build successful.
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -e
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          echo "Smoke-testing $IMAGE"
+
+          # File modes + readability (the chmod -R a+rX guard)
+          docker run --rm --entrypoint=sh "$IMAGE" -c '
+            set -e
+            ls -ld /app/src /app/src/web /app/src/web/server.js /app/scripts/healthcheck.js
+            [ -r /app/src/web/server.js ] || { echo "FAIL: server.js not readable by node user"; exit 1; }
+            [ -x /app/src/web ]           || { echo "FAIL: /app/src/web not traversable"; exit 1; }
+            [ -r /app/scripts/healthcheck.js ] || { echo "FAIL: healthcheck.js not readable"; exit 1; }
+            echo "OK: file permissions sane"
+          '
+
+          # Boot + healthcheck within 30s
+          docker run -d --name smoke -p 3000:3000 "$IMAGE"
+          for i in $(seq 1 30); do
+            if docker exec smoke node scripts/healthcheck.js >/dev/null 2>&1; then
+              echo "OK: healthcheck passed after ${i}s"
+              docker stop smoke >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "FAIL: healthcheck never returned 200 within 30s"
+          docker logs smoke
+          docker stop smoke >/dev/null || true
+          exit 1
