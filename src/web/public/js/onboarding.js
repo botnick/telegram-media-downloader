@@ -4,27 +4,48 @@
 // top of the dashboard until the hint becomes null.
 
 import { api } from './api.js';
+import { t as i18nT } from './i18n.js';
 
-const HINTS = {
+const HINTS_DEF = {
     'configure-api': {
         step: 1,
-        title: 'Step 1 of 3 — paste your Telegram API credentials',
-        body: 'Get apiId + apiHash from <a href="https://my.telegram.org" target="_blank" rel="noopener" class="underline">my.telegram.org</a>, then save them under Settings → Telegram API.',
-        action: 'Open Settings',
+        titleKey: 'onboard.configure_api.title',
+        bodyKey: 'onboard.configure_api.body_html',
+        actionKey: 'onboard.configure_api.action',
+        defTitle: 'Step 1 of 3 — paste your Telegram API credentials',
+        defBody: 'Get apiId + apiHash from <a href="https://my.telegram.org" target="_blank" rel="noopener" class="underline">my.telegram.org</a>, then save them under Settings → Telegram API.',
+        defAction: 'Open Settings',
     },
     'add-account': {
         step: 2,
-        title: 'Step 2 of 3 — add a Telegram account',
-        body: 'Sign in with your phone number (and 2FA if you have it). Sessions are stored encrypted under <code>data/sessions/</code>.',
-        action: 'Add account',
+        titleKey: 'onboard.add_account.title',
+        bodyKey: 'onboard.add_account.body_html',
+        actionKey: 'onboard.add_account.action',
+        defTitle: 'Step 2 of 3 — add a Telegram account',
+        defBody: 'Sign in with your phone number (and 2FA if you have it). Sessions are stored encrypted under <code>data/sessions/</code>.',
+        defAction: 'Add account',
     },
     'enable-group': {
         step: 3,
-        title: 'Step 3 of 3 — pick a chat to monitor',
-        body: 'Open the Groups page, click a chat to add it, or paste a <code>t.me/...</code> link from the top bar to download a single message right away.',
-        action: 'Choose a group',
+        titleKey: 'onboard.enable_group.title',
+        bodyKey: 'onboard.enable_group.body_html',
+        actionKey: 'onboard.enable_group.action',
+        defTitle: 'Step 3 of 3 — pick a chat to monitor',
+        defBody: 'Open the Groups page, click a chat to add it, or paste a <code>t.me/...</code> link from the top bar to download a single message right away.',
+        defAction: 'Choose a group',
     },
 };
+
+function resolveHint(key) {
+    const d = HINTS_DEF[key];
+    if (!d) return null;
+    return {
+        step: d.step,
+        title: i18nT(d.titleKey, d.defTitle),
+        body: i18nT(d.bodyKey, d.defBody),
+        action: i18nT(d.actionKey, d.defAction),
+    };
+}
 
 let host = null;
 let pollHandle = null;
@@ -56,11 +77,11 @@ function openSettings(target) {
 
 function render(hint) {
     const el = ensureHost();
-    if (!hint || !HINTS[hint]) {
+    const h = resolveHint(hint);
+    if (!h) {
         el.classList.add('hidden');
         return;
     }
-    const h = HINTS[hint];
     const targetMap = {
         'configure-api': '#setting-api-id',
         'add-account': '#accounts-list',

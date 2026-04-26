@@ -3,6 +3,7 @@
 import { api } from './api.js';
 import { ws } from './ws.js';
 import { formatBytes } from './utils.js';
+import { t as i18nT } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 let pollHandle = null;
@@ -11,11 +12,11 @@ function applyState(state) {
     const dot = $('status-dot');
     const lbl = $('status-state');
     const map = {
-        running: { color: 'bg-tg-green', text: 'Monitor running' },
-        starting: { color: 'bg-tg-blue', text: 'Starting…' },
-        stopping: { color: 'bg-tg-orange', text: 'Stopping…' },
-        stopped: { color: 'bg-gray-500', text: 'Idle' },
-        error: { color: 'bg-tg-red', text: 'Error' },
+        running: { color: 'bg-tg-green', text: i18nT('status.monitor_running', 'Monitor running') },
+        starting: { color: 'bg-tg-blue', text: i18nT('status.starting', 'Starting…') },
+        stopping: { color: 'bg-tg-orange', text: i18nT('status.stopping', 'Stopping…') },
+        stopped: { color: 'bg-gray-500', text: i18nT('status.idle', 'Idle') },
+        error: { color: 'bg-tg-red', text: i18nT('status.error', 'Error') },
     };
     const m = map[state] || map.stopped;
     if (dot) dot.className = `w-2 h-2 rounded-full ${m.color}`;

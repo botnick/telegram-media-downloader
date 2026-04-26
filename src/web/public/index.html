@@ -648,7 +648,7 @@
                     <i class="ri-arrow-left-line text-xl text-tg-textSecondary"></i>
                 </button>
                 <div class="flex-1 relative">
-                    <input type="text" id="search-input" placeholder="Search" class="tg-input pl-10 py-2 text-sm">
+                    <input type="text" id="search-input" data-i18n-placeholder="sidebar.search" placeholder="Search" class="tg-input pl-10 py-2 text-sm">
                     <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
                 </div>
             </div>
@@ -658,17 +658,17 @@
                 <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover active"
                     data-page="viewer" onclick="navigateTo('viewer')">
                     <i class="ri-gallery-line text-xl text-tg-blue"></i>
-                    <span class="text-tg-text">Viewer</span>
+                    <span class="text-tg-text" data-i18n="nav.viewer">Viewer</span>
                 </div>
                 <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="groups"
                     onclick="navigateTo('groups')">
                     <i class="ri-group-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text">Groups</span>
+                    <span class="text-tg-text" data-i18n="nav.groups">Groups</span>
                 </div>
                 <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="settings"
                     onclick="navigateTo('settings')">
                     <i class="ri-settings-3-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text">Settings</span>
+                    <span class="text-tg-text" data-i18n="nav.settings">Settings</span>
                 </div>
             </nav>
 
@@ -680,26 +680,26 @@
                         <i class="ri-gallery-fill"></i>
                     </div>
                     <div class="min-w-0 flex-1">
-                        <h3 class="font-medium text-tg-text text-[15px]">All Media</h3>
-                        <p id="all-media-count" class="text-[13px] text-tg-textSecondary">View all files</p>
+                        <h3 class="font-medium text-tg-text text-[15px]" data-i18n="sidebar.all_media">All Media</h3>
+                        <p id="all-media-count" class="text-[13px] text-tg-textSecondary" data-i18n="sidebar.all_media_sub">View all files</p>
                     </div>
                 </div>
             </div>
 
             <!-- Groups List -->
             <div class="flex-1 overflow-y-auto overscroll-contain">
-                <div class="p-2 text-xs text-tg-textSecondary uppercase tracking-wide">Downloaded Groups</div>
+                <div class="p-2 text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="sidebar.downloaded_groups">Downloaded Groups</div>
                 <div id="groups-list"></div>
             </div>
 
             <!-- Footer Stats -->
             <div class="p-4 border-t border-tg-border bg-tg-bg">
                 <div class="flex items-center justify-between text-sm">
-                    <span class="text-tg-textSecondary">Disk</span>
+                    <span class="text-tg-textSecondary" data-i18n="sidebar.disk">Disk</span>
                     <span id="disk-usage" class="text-tg-text">--</span>
                 </div>
                 <div class="flex items-center justify-between text-sm mt-2">
-                    <span class="text-tg-textSecondary">Files</span>
+                    <span class="text-tg-textSecondary" data-i18n="sidebar.files">Files</span>
                     <span id="total-files" class="text-tg-text">--</span>
                 </div>
             </div>
@@ -711,7 +711,7 @@
                 class="bg-tg-sidebar w-full max-w-md rounded-xl overflow-hidden shadow-2xl transform scale-100 transition-all">
                 <!-- Header -->
                 <div class="bg-tg-panel p-4 flex items-center justify-between border-b border-tg-border">
-                    <h3 class="text-white font-medium text-lg">Group Settings</h3>
+                    <h3 class="text-white font-medium text-lg" data-i18n="group.modal.title">Group Settings</h3>
                     <button onclick="closeGroupSettings()"
                         class="w-8 h-8 rounded-full hover:bg-tg-hover flex items-center justify-center transition-colors">
                         <i class="ri-close-line text-tg-textSecondary text-xl"></i>
@@ -720,16 +720,16 @@
 
                 <!-- Tabs -->
                 <div class="flex border-b border-tg-border">
-                    <div class="tab-item active flex-1 text-center" onclick="switchSettingsTab('media')" id="tab-media">
+                    <div class="tab-item active flex-1 text-center" onclick="switchSettingsTab('media')" id="tab-media" data-i18n="group.modal.tab.media">
                         Media Filters
                     </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('forward')" id="tab-forward">
+                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('forward')" id="tab-forward" data-i18n="group.modal.tab.forward">
                         Auto Forward
                     </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('accounts')" id="tab-accounts">
+                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('accounts')" id="tab-accounts" data-i18n="group.modal.tab.accounts">
                         Accounts
                     </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('topics')" id="tab-topics">
+                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('topics')" id="tab-topics" data-i18n="group.modal.tab.topics">
                         Topics
                     </div>
                 </div>
@@ -742,14 +742,14 @@
                         <div class="mb-4">
                             <label
                                 class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
-                                <span class="text-white font-medium">Enable Monitoring</span>
+                                <span class="text-white font-medium" data-i18n="group.modal.enable_monitoring">Enable Monitoring</span>
                                 <div class="tg-toggle" id="group-enable-toggle" onclick="toggleGroupEnabled(event)">
                                 </div>
                             </label>
                         </div>
 
                         <div class="space-y-1">
-                            <p class="text-tg-textSecondary text-sm px-3 mb-2 uppercase font-medium tracking-wide">
+                            <p class="text-tg-textSecondary text-sm px-3 mb-2 uppercase font-medium tracking-wide" data-i18n="group.modal.allowed_media">
                                 Allowed Media Types</p>
 
                             <div class="grid grid-cols-1 gap-1" id="filter-options">
@@ -763,8 +763,8 @@
                         <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
                             <div class="flex items-center justify-between mb-3">
                                 <div>
-                                    <h4 class="text-white font-medium">Auto Forward</h4>
-                                    <p class="text-xs text-tg-textSecondary">Forward media to another channel</p>
+                                    <h4 class="text-white font-medium" data-i18n="group.fwd.title">Auto Forward</h4>
+                                    <p class="text-xs text-tg-textSecondary" data-i18n="group.fwd.subtitle">Forward media to another channel</p>
                                 </div>
                                 <div class="tg-toggle" id="fwd-enable-toggle" onclick="toggleFwdEnabled(event)"></div>
                             </div>
@@ -772,17 +772,19 @@
 
                         <div class="space-y-3" id="fwd-settings">
                             <div>
-                                <label class="block text-tg-textSecondary text-sm mb-2">Destination</label>
+                                <label class="block text-tg-textSecondary text-sm mb-2" data-i18n="group.fwd.destination">Destination</label>
                                 <div class="relative">
                                     <input type="text" id="fwd-destination" class="tg-input pr-10"
+                                        data-i18n-placeholder="group.fwd.dest_placeholder"
                                         placeholder="Use 'Select' button or type ID">
                                     <button onclick="openDestinationPicker()"
                                         class="absolute right-2 top-1/2 transform -translate-y-1/2 text-tg-textSecondary hover:text-white p-1 rounded hover:bg-white/10 transition-colors"
+                                        data-i18n-title="group.fwd.select_from_list"
                                         title="Select from list">
                                         <i class="ri-list-check-2 text-lg"></i>
                                     </button>
                                 </div>
-                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70">
+                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.fwd.dest_help">
                                     Leave empty to use "Telegram Downloader Storage".
                                 </p>
                             </div>
@@ -790,8 +792,8 @@
                             <div onclick="toggleFwdDelete(event)"
                                 class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
                                 <div>
-                                    <span class="text-white text-sm">Delete after forward</span>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5">Remove local file after successful
+                                    <span class="text-white text-sm" data-i18n="group.fwd.delete_after">Delete after forward</span>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="group.fwd.delete_after_help">Remove local file after successful
                                         upload</p>
                                 </div>
                                 <div class="tg-toggle" id="fwd-delete-toggle"></div>
@@ -802,30 +804,30 @@
                     <!-- Accounts Tab -->
                     <div id="content-accounts" class="hidden space-y-4">
                         <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
-                            <h4 class="text-white font-medium mb-1">Account Assignment</h4>
-                            <p class="text-xs text-tg-textSecondary mb-4">Choose which Telegram account handles each
+                            <h4 class="text-white font-medium mb-1" data-i18n="group.accounts.title">Account Assignment</h4>
+                            <p class="text-xs text-tg-textSecondary mb-4" data-i18n="group.accounts.subtitle">Choose which Telegram account handles each
                                 role for this group</p>
 
                             <div class="space-y-4">
                                 <div>
                                     <label class="block text-tg-textSecondary text-sm mb-2">
-                                        <i class="ri-download-line mr-1"></i> Monitor Account
+                                        <i class="ri-download-line mr-1"></i> <span data-i18n="group.accounts.monitor">Monitor Account</span>
                                     </label>
                                     <select id="monitor-account" class="tg-input w-full">
-                                        <option value="">(Default Account)</option>
+                                        <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
                                     </select>
-                                    <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70">This account will watch
+                                    <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.accounts.monitor_help">This account will watch
                                         and download media from this group</p>
                                 </div>
 
                                 <div>
                                     <label class="block text-tg-textSecondary text-sm mb-2">
-                                        <i class="ri-share-forward-line mr-1"></i> Forward Account
+                                        <i class="ri-share-forward-line mr-1"></i> <span data-i18n="group.accounts.forward">Forward Account</span>
                                     </label>
                                     <select id="forward-account" class="tg-input w-full">
-                                        <option value="">(Default Account)</option>
+                                        <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
                                     </select>
-                                    <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70">This account will
+                                    <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.accounts.forward_help">This account will
                                         re-upload forwarded media (Auto Forward)</p>
                                 </div>
                             </div>
@@ -834,7 +836,7 @@
                         <div class="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                             <p class="text-xs text-yellow-400">
                                 <i class="ri-information-line mr-1"></i>
-                                Manage accounts under Settings → Telegram Accounts.
+                                <span data-i18n="group.accounts.manage_hint">Manage accounts under Settings → Telegram Accounts.</span>
                             </p>
                         </div>
                     </div>
@@ -843,14 +845,14 @@
                     <div id="content-topics" class="hidden space-y-4">
                         <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
                             <label class="flex items-center justify-between mb-3">
-                                <span class="text-white font-medium">Forum-topic filter</span>
+                                <span class="text-white font-medium" data-i18n="group.topics.title">Forum-topic filter</span>
                                 <div class="tg-toggle" id="topics-enable-toggle" onclick="this.classList.toggle('active'); event.preventDefault();"></div>
                             </label>
-                            <p class="text-xs text-tg-textSecondary mb-3">
+                            <p class="text-xs text-tg-textSecondary mb-3" data-i18n="group.topics.help_html">
                                 If this group is a forum (supergroup with topics), restrict downloads to specific topic IDs. Comma-separated. Get a topic ID from a Telegram message link like <code class="text-tg-text">https://t.me/c/&lt;id&gt;/&lt;topicId&gt;/&lt;msg&gt;</code>.
                             </p>
-                            <input id="topics-ids" type="text" class="tg-input w-full text-sm" placeholder="e.g., 12, 34, 56">
-                            <p class="text-[11px] text-tg-textSecondary mt-2">Empty list = monitor every topic. Toggle off to disable filtering entirely.</p>
+                            <input id="topics-ids" type="text" class="tg-input w-full text-sm" data-i18n-placeholder="group.topics.ids_placeholder" placeholder="e.g., 12, 34, 56">
+                            <p class="text-[11px] text-tg-textSecondary mt-2" data-i18n="group.topics.note">Empty list = monitor every topic. Toggle off to disable filtering entirely.</p>
                         </div>
                     </div>
 
@@ -875,9 +877,9 @@
                 <!-- Footer -->
                 <div class="p-4 border-t border-tg-border flex justify-end gap-3 bg-tg-sidebar">
                     <button onclick="closeGroupSettings()"
-                        class="px-4 py-2 rounded-lg text-tg-textButton hover:bg-tg-hover transition-colors">Cancel</button>
+                        class="px-4 py-2 rounded-lg text-tg-textButton hover:bg-tg-hover transition-colors" data-i18n="common.cancel">Cancel</button>
                     <button onclick="saveGroupSettings()"
-                        class="px-6 py-2 rounded-lg bg-tg-blue text-white font-medium hover:bg-opacity-90 transition-all shadow-lg shadow-tg-blue/20">Save
+                        class="px-6 py-2 rounded-lg bg-tg-blue text-white font-medium hover:bg-opacity-90 transition-all shadow-lg shadow-tg-blue/20" data-i18n="group.modal.save_changes">Save
                         Changes</button>
                 </div>
             </div>
@@ -899,8 +901,8 @@
                         <i class="ri-gallery-line"></i>
                     </div>
                     <div class="min-w-0">
-                        <h1 id="page-title" class="font-medium text-tg-text truncate">Viewer</h1>
-                        <p id="page-subtitle" class="text-xs text-tg-textSecondary">View downloaded files</p>
+                        <h1 id="page-title" class="font-medium text-tg-text truncate" data-i18n="nav.viewer">Viewer</h1>
+                        <p id="page-subtitle" class="text-xs text-tg-textSecondary" data-i18n="nav.viewer_sub">View downloaded files</p>
                     </div>
                 </div>
 
@@ -919,7 +921,7 @@
                     </button>
                     <button id="view-mode-btn" type="button"
                         class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
-                        aria-label="Change view mode">
+                        data-i18n-aria-label="header.view_mode" aria-label="Change view mode">
                         <i class="ri-layout-grid-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
                     <button id="refresh-btn" type="button"
@@ -933,11 +935,11 @@
 
             <!-- Media Tabs -->
             <div id="media-tabs" class="flex border-b border-tg-border bg-tg-bg px-2 overflow-x-auto">
-                <div class="tab-item active" data-type="all">All</div>
-                <div class="tab-item" data-type="images">Photos</div>
-                <div class="tab-item" data-type="videos">Videos</div>
-                <div class="tab-item" data-type="documents">Files</div>
-                <div class="tab-item" data-type="audio">Audio</div>
+                <div class="tab-item active" data-type="all" data-i18n="viewer.tab.all">All</div>
+                <div class="tab-item" data-type="images" data-i18n="viewer.tab.images">Photos</div>
+                <div class="tab-item" data-type="videos" data-i18n="viewer.tab.videos">Videos</div>
+                <div class="tab-item" data-type="documents" data-i18n="viewer.tab.documents">Files</div>
+                <div class="tab-item" data-type="audio" data-i18n="viewer.tab.audio">Audio</div>
             </div>
 
             <!-- Content Area -->
@@ -951,12 +953,13 @@
                             <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
                             <input type="text" id="media-search"
                                 class="w-full bg-tg-panel border border-tg-border rounded-lg pl-9 pr-8 py-1.5 text-sm text-tg-text focus:ring-1 focus:ring-tg-blue focus:border-tg-blue outline-none"
+                                data-i18n-placeholder="viewer.search.placeholder"
                                 placeholder="Search files…">
                             <button id="media-search-clear" class="absolute right-2 top-1/2 -translate-y-1/2 text-tg-textSecondary hover:text-tg-text hidden">
                                 <i class="ri-close-line"></i>
                             </button>
                         </div>
-                        <button id="select-mode-btn" class="px-3 py-1.5 rounded-lg bg-tg-panel hover:bg-tg-hover text-sm text-tg-text" title="Toggle selection mode">
+                        <button id="select-mode-btn" class="px-3 py-1.5 rounded-lg bg-tg-panel hover:bg-tg-hover text-sm text-tg-text" data-i18n-title="viewer.select_mode" title="Toggle selection mode">
                             <i class="ri-checkbox-multiple-line"></i>
                         </button>
                     </div>
@@ -964,7 +967,7 @@
                     <div id="empty-state"
                         class="hidden flex flex-col items-center justify-center h-64 text-center px-4">
                         <i class="ri-image-line text-5xl text-tg-textSecondary mb-4"></i>
-                        <p class="text-tg-textSecondary">No media files</p>
+                        <p class="text-tg-textSecondary" data-i18n="viewer.empty">No media files</p>
                     </div>
                     <div id="loading" class="hidden flex justify-center py-8">
                         <div class="w-8 h-8 border-2 border-tg-blue border-t-transparent rounded-full animate-spin">
@@ -978,11 +981,11 @@
                     <!-- Tabs -->
                     <div class="flex border-b border-tg-border mb-4">
                         <button id="groups-tab-all" onclick="switchGroupsTab('all')"
-                            class="px-4 py-2 text-sm font-medium border-b-2 border-tg-blue text-tg-blue">
+                            class="px-4 py-2 text-sm font-medium border-b-2 border-tg-blue text-tg-blue" data-i18n="groups.tab.all">
                             All Dialogs
                         </button>
                         <button id="groups-tab-monitored" onclick="switchGroupsTab('monitored')"
-                            class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-tg-textSecondary hover:text-white transition-colors">
+                            class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-tg-textSecondary hover:text-white transition-colors" data-i18n="groups.tab.monitored">
                             Monitored Only
                         </button>
                     </div>
@@ -993,6 +996,7 @@
                                 class="ri-search-line absolute left-3 top-1/2 transform -translate-y-1/2 text-tg-textSecondary"></i>
                             <input type="text" id="groups-search"
                                 class="w-full bg-tg-panel border border-tg-border rounded-lg pl-10 pr-4 py-2 text-tg-text focus:ring-1 focus:ring-tg-blue focus:border-tg-blue outline-none"
+                                data-i18n-placeholder="groups.search_placeholder"
                                 placeholder="Search groups/channels..." oninput="filterDialogs(this.value)">
                         </div>
                     </div>
@@ -1005,57 +1009,57 @@
                     <!-- Engine / monitor -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-broadcast-line text-tg-green"></i> Engine
-                            <span id="engine-pill" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300">Stopped</span>
+                            <i class="ri-broadcast-line text-tg-green"></i> <span data-i18n="settings.engine">Engine</span>
+                            <span id="engine-pill" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300" data-i18n="settings.engine.stopped">Stopped</span>
                         </h3>
                         <div class="grid grid-cols-2 gap-3 text-sm mb-3">
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs">Queue</div><div id="engine-queue" class="text-tg-text font-medium">0</div></div>
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs">Active</div><div id="engine-active" class="text-tg-text font-medium">0</div></div>
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs">Downloaded</div><div id="engine-downloaded" class="text-tg-text font-medium">0</div></div>
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs">Uptime</div><div id="engine-uptime" class="text-tg-text font-medium">—</div></div>
+                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.queue">Queue</div><div id="engine-queue" class="text-tg-text font-medium">0</div></div>
+                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.active">Active</div><div id="engine-active" class="text-tg-text font-medium">0</div></div>
+                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.downloaded">Downloaded</div><div id="engine-downloaded" class="text-tg-text font-medium">0</div></div>
+                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.uptime">Uptime</div><div id="engine-uptime" class="text-tg-text font-medium">—</div></div>
                         </div>
                         <div class="flex gap-2">
-                            <button id="engine-start" class="tg-btn flex-1"><i class="ri-play-line mr-2"></i>Start monitor</button>
-                            <button id="engine-stop" class="tg-btn-secondary flex-1 hidden"><i class="ri-stop-line mr-2"></i>Stop</button>
+                            <button id="engine-start" class="tg-btn flex-1"><i class="ri-play-line mr-2"></i><span data-i18n="settings.engine.start">Start monitor</span></button>
+                            <button id="engine-stop" class="tg-btn-secondary flex-1 hidden"><i class="ri-stop-line mr-2"></i><span data-i18n="settings.engine.stop">Stop</span></button>
                         </div>
                         <p id="engine-error" class="text-red-400 text-xs mt-2 hidden"></p>
                         <!-- Live downloads list — populated by engine.js when monitor is running. -->
                         <div id="engine-active-list" class="mt-3 space-y-1.5 hidden">
-                            <div class="text-tg-textSecondary text-xs">Live downloads</div>
+                            <div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.live">Live downloads</div>
                         </div>
                     </div>
 
                     <!-- Telegram Accounts -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-user-line text-tg-blue"></i> Telegram Accounts
+                            <i class="ri-user-line text-tg-blue"></i> <span data-i18n="settings.accounts">Telegram Accounts</span>
                             <a href="/add-account.html" class="ml-auto tg-btn-secondary text-xs px-3 py-1 inline-flex items-center gap-1">
-                                <i class="ri-add-line"></i> Add account
+                                <i class="ri-add-line"></i> <span data-i18n="settings.accounts.add">Add account</span>
                             </a>
                         </h3>
                         <div id="accounts-list" class="space-y-2">
-                            <div class="text-tg-textSecondary text-sm">Loading...</div>
+                            <div class="text-tg-textSecondary text-sm" data-i18n="settings.accounts.loading">Loading...</div>
                         </div>
-                        <p class="text-xs text-tg-textSecondary mt-3">Sessions are stored AES-256 encrypted under <code>data/sessions/</code>.</p>
+                        <p class="text-xs text-tg-textSecondary mt-3" data-i18n="settings.accounts.session_help">Sessions are stored AES-256 encrypted under <code>data/sessions/</code>.</p>
                     </div>
 
                     <!-- Telegram API credentials -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-key-2-line text-tg-blue"></i> Telegram API
+                            <i class="ri-key-2-line text-tg-blue"></i> <span data-i18n="settings.tg_api">Telegram API</span>
                         </h3>
                         <div class="space-y-3">
                             <div>
-                                <label class="text-tg-text text-sm block mb-1">API ID</label>
-                                <input type="text" id="setting-api-id" inputmode="numeric" class="tg-input w-full text-sm" placeholder="From my.telegram.org">
+                                <label class="text-tg-text text-sm block mb-1" data-i18n="settings.tg_api.id">API ID</label>
+                                <input type="text" id="setting-api-id" inputmode="numeric" class="tg-input w-full text-sm" data-i18n-placeholder="settings.tg_api.id_placeholder" placeholder="From my.telegram.org">
                             </div>
                             <div>
-                                <label class="text-tg-text text-sm block mb-1">API Hash</label>
-                                <input type="password" id="setting-api-hash" class="tg-input w-full text-sm" placeholder="Stored locally; never sent to the dashboard once saved">
-                                <p class="text-xs text-tg-textSecondary mt-1">Leave blank to keep the existing hash.</p>
+                                <label class="text-tg-text text-sm block mb-1" data-i18n="settings.tg_api.hash">API Hash</label>
+                                <input type="password" id="setting-api-hash" class="tg-input w-full text-sm" data-i18n-placeholder="settings.tg_api.hash_placeholder" placeholder="Stored locally; never sent to the dashboard once saved">
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.tg_api.hash_keep_help">Leave blank to keep the existing hash.</p>
                             </div>
                             <button id="save-api-credentials" class="tg-btn-secondary w-full text-sm">
-                                <i class="ri-save-line mr-2"></i>Save credentials
+                                <i class="ri-save-line mr-2"></i><span data-i18n="settings.tg_api.save">Save credentials</span>
                             </button>
                         </div>
                     </div>
@@ -1063,26 +1067,26 @@
                     <!-- Download Settings -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-download-line text-tg-blue"></i> Download
+                            <i class="ri-download-line text-tg-blue"></i> <span data-i18n="settings.download">Download</span>
                         </h3>
                         <div class="space-y-5">
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm">Concurrent Downloads</label>
+                                    <label class="text-tg-text text-sm" data-i18n="settings.download.concurrent">Concurrent Downloads</label>
                                     <span id="concurrent-value" class="text-tg-blue font-medium">3</span>
                                 </div>
                                 <input type="range" id="setting-concurrent" class="w-full accent-tg-blue" min="1"
                                     max="20" value="3"
                                     oninput="document.getElementById('concurrent-value').textContent = this.value">
                                 <div class="flex justify-between text-xs text-tg-textSecondary mt-1">
-                                    <span>1 (Safe)</span>
+                                    <span data-i18n="settings.download.concurrent_safe">1 (Safe)</span>
                                     <span>10</span>
-                                    <span>20 (Max)</span>
+                                    <span data-i18n="settings.download.concurrent_max">20 (Max)</span>
                                 </div>
                             </div>
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm">Retry Attempts</label>
+                                    <label class="text-tg-text text-sm" data-i18n="settings.download.retries">Retry Attempts</label>
                                     <span id="retries-value" class="text-tg-blue font-medium">5</span>
                                 </div>
                                 <input type="range" id="setting-retries" class="w-full accent-tg-blue" min="1" max="10"
@@ -1090,29 +1094,29 @@
                                     oninput="document.getElementById('retries-value').textContent = this.value">
                             </div>
                             <div>
-                                <label class="text-tg-text text-sm block mb-2">Download Folder</label>
+                                <label class="text-tg-text text-sm block mb-2" data-i18n="settings.download.folder">Download Folder</label>
                                 <div class="flex gap-2">
                                     <input type="text" id="setting-path" class="tg-input flex-1 text-sm" readonly>
-                                    <button class="tg-btn-secondary px-3" onclick="showToast('Use CLI to change path')">
+                                    <button id="setting-path-btn" class="tg-btn-secondary px-3">
                                         <i class="ri-folder-line"></i>
                                     </button>
                                 </div>
-                                <p class="text-xs text-tg-textSecondary mt-1">Change via CLI: Edit config.json</p>
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.folder_help">Change via CLI: Edit config.json</p>
                             </div>
                             <div>
                                 <div class="flex items-center justify-between mb-2">
-                                    <label class="text-tg-text text-sm">Max Download Speed</label>
-                                    <span id="speed-value" class="text-tg-blue font-medium text-sm">Unlimited</span>
+                                    <label class="text-tg-text text-sm" data-i18n="settings.download.max_speed">Max Download Speed</label>
+                                    <span id="speed-value" class="text-tg-blue font-medium text-sm" data-i18n="settings.download.unlimited">Unlimited</span>
                                 </div>
                                 <select id="setting-max-speed" class="tg-input w-full text-sm"
                                     onchange="document.getElementById('speed-value').textContent = this.options[this.selectedIndex].text">
-                                    <option value="0">Unlimited</option>
+                                    <option value="0" data-i18n="settings.download.unlimited">Unlimited</option>
                                     <option value="1048576">1 MB/s</option>
                                     <option value="5242880">5 MB/s</option>
                                     <option value="10485760">10 MB/s</option>
                                     <option value="20971520">20 MB/s</option>
                                 </select>
-                                <p class="text-xs text-tg-textSecondary mt-1">Limit bandwidth usage per worker</p>
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.speed_help">Limit bandwidth usage per worker</p>
                             </div>
                         </div>
                     </div>
@@ -1120,33 +1124,33 @@
                     <!-- Rate Limits -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-speed-line text-tg-orange"></i> Rate Limits
+                            <i class="ri-speed-line text-tg-orange"></i> <span data-i18n="settings.rate.title">Rate Limits</span>
                             <span
-                                class="text-xs bg-tg-orange/20 text-tg-orange px-2 py-0.5 rounded-full ml-auto">Anti-Ban</span>
+                                class="text-xs bg-tg-orange/20 text-tg-orange px-2 py-0.5 rounded-full ml-auto" data-i18n="settings.rate.badge">Anti-Ban</span>
                         </h3>
                         <div class="space-y-5">
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm">Requests/Minute</label>
+                                    <label class="text-tg-text text-sm" data-i18n="settings.rate.rpm">Requests/Minute</label>
                                     <span id="rpm-value" class="text-tg-orange font-medium">15</span>
                                 </div>
                                 <input type="range" id="setting-rpm" class="w-full accent-tg-orange" min="5" max="60"
                                     value="15" oninput="document.getElementById('rpm-value').textContent = this.value">
                                 <div class="flex justify-between text-xs text-tg-textSecondary mt-1">
-                                    <span>5 (Safe)</span>
+                                    <span data-i18n="settings.rate.rpm_safe">5 (Safe)</span>
                                     <span>30</span>
-                                    <span>60 (Fast)</span>
+                                    <span data-i18n="settings.rate.rpm_fast">60 (Fast)</span>
                                 </div>
                             </div>
                             <div>
                                 <div class="flex items-center justify-between mb-1">
-                                    <label class="text-tg-text text-sm">Polling Interval</label>
+                                    <label class="text-tg-text text-sm" data-i18n="settings.rate.polling">Polling Interval</label>
                                     <span id="polling-value" class="text-tg-orange font-medium">10s</span>
                                 </div>
                                 <input type="range" id="setting-polling" class="w-full accent-tg-orange" min="5"
                                     max="60" value="10"
                                     oninput="document.getElementById('polling-value').textContent = this.value + 's'">
-                                <p class="text-xs text-tg-textSecondary mt-1">How often to check for new messages</p>
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.rate.polling_help">How often to check for new messages</p>
                             </div>
                         </div>
                     </div>
@@ -1154,14 +1158,14 @@
                     <!-- Size Limits -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-hard-drive-2-line text-tg-green"></i> Size Limits
+                            <i class="ri-hard-drive-2-line text-tg-green"></i> <span data-i18n="settings.size.title">Size Limits</span>
                         </h3>
                         <div class="space-y-4">
                             <div class="grid grid-cols-3 gap-3">
                                 <div>
-                                    <label class="text-tg-textSecondary text-xs block mb-1">Total Disk</label>
+                                    <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.size.total_disk">Total Disk</label>
                                     <select id="setting-max-disk" class="tg-input w-full text-sm">
-                                        <option value="">No limit</option>
+                                        <option value="" data-i18n="settings.size.no_limit">No limit</option>
                                         <option value="10GB">10 GB</option>
                                         <option value="50GB">50 GB</option>
                                         <option value="100GB">100 GB</option>
@@ -1170,9 +1174,9 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="text-tg-textSecondary text-xs block mb-1">Per Video</label>
+                                    <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.size.per_video">Per Video</label>
                                     <select id="setting-max-video" class="tg-input w-full text-sm">
-                                        <option value="">No limit</option>
+                                        <option value="" data-i18n="settings.size.no_limit">No limit</option>
                                         <option value="100MB">100 MB</option>
                                         <option value="500MB">500 MB</option>
                                         <option value="1GB">1 GB</option>
@@ -1180,16 +1184,16 @@
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="text-tg-textSecondary text-xs block mb-1">Per Image</label>
+                                    <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.size.per_image">Per Image</label>
                                     <select id="setting-max-image" class="tg-input w-full text-sm">
-                                        <option value="">No limit</option>
+                                        <option value="" data-i18n="settings.size.no_limit">No limit</option>
                                         <option value="10MB">10 MB</option>
                                         <option value="50MB">50 MB</option>
                                         <option value="100MB">100 MB</option>
                                     </select>
                                 </div>
                             </div>
-                            <p class="text-xs text-tg-textSecondary">Files exceeding these limits will be skipped</p>
+                            <p class="text-xs text-tg-textSecondary" data-i18n="settings.size.help">Files exceeding these limits will be skipped</p>
                         </div>
                     </div>
 
@@ -1224,41 +1228,41 @@
                     <!-- Proxy -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-shield-flash-line text-tg-blue"></i> Proxy
+                            <i class="ri-shield-flash-line text-tg-blue"></i> <span data-i18n="settings.proxy.title">Proxy</span>
                         </h3>
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
-                                <label class="text-tg-textSecondary text-xs block mb-1">Type</label>
+                                <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.proxy.type">Type</label>
                                 <select id="proxy-type" class="tg-input w-full text-sm">
-                                    <option value="">None</option>
+                                    <option value="" data-i18n="settings.proxy.none">None</option>
                                     <option value="socks5">SOCKS5</option>
                                     <option value="socks4">SOCKS4</option>
                                     <option value="mtproxy">MTProxy</option>
                                 </select>
                             </div>
                             <div class="sm:col-span-2">
-                                <label class="text-tg-textSecondary text-xs block mb-1">Host : Port</label>
+                                <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.proxy.host_port">Host : Port</label>
                                 <div class="flex gap-2">
-                                    <input id="proxy-host" class="tg-input flex-1 text-sm" placeholder="proxy.example.com">
+                                    <input id="proxy-host" class="tg-input flex-1 text-sm" data-i18n-placeholder="settings.proxy.host_placeholder" placeholder="proxy.example.com">
                                     <input id="proxy-port" type="number" min="1" max="65535" class="tg-input w-24 text-sm" placeholder="1080">
                                 </div>
                             </div>
                             <div>
-                                <label class="text-tg-textSecondary text-xs block mb-1">Username (optional)</label>
+                                <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.proxy.username">Username (optional)</label>
                                 <input id="proxy-username" class="tg-input w-full text-sm" autocomplete="off">
                             </div>
                             <div>
-                                <label class="text-tg-textSecondary text-xs block mb-1">Password (optional)</label>
+                                <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.proxy.password">Password (optional)</label>
                                 <input id="proxy-password" type="password" class="tg-input w-full text-sm" autocomplete="off">
                             </div>
                             <div>
-                                <label class="text-tg-textSecondary text-xs block mb-1">MTProxy secret</label>
-                                <input id="proxy-secret" class="tg-input w-full text-sm" autocomplete="off" placeholder="(only for MTProxy)">
+                                <label class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.proxy.secret">MTProxy secret</label>
+                                <input id="proxy-secret" class="tg-input w-full text-sm" autocomplete="off" data-i18n-placeholder="settings.proxy.secret_placeholder" placeholder="(only for MTProxy)">
                             </div>
                         </div>
                         <div class="flex gap-2 mt-3">
-                            <button id="proxy-save" class="tg-btn-secondary text-sm flex-1"><i class="ri-save-line mr-2"></i>Save</button>
-                            <button id="proxy-test" class="tg-btn-secondary text-sm flex-1"><i class="ri-flashlight-line mr-2"></i>Test</button>
+                            <button id="proxy-save" class="tg-btn-secondary text-sm flex-1"><i class="ri-save-line mr-2"></i><span data-i18n="settings.proxy.save">Save</span></button>
+                            <button id="proxy-test" class="tg-btn-secondary text-sm flex-1"><i class="ri-flashlight-line mr-2"></i><span data-i18n="settings.proxy.test">Test</span></button>
                         </div>
                         <p id="proxy-status" class="text-xs mt-2"></p>
                     </div>
@@ -1266,12 +1270,12 @@
                     <!-- Privacy / DM downloads -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-shield-user-line text-tg-blue"></i> Privacy
+                            <i class="ri-shield-user-line text-tg-blue"></i> <span data-i18n="settings.privacy.title">Privacy</span>
                         </h3>
                         <label class="flex items-center justify-between p-3 bg-tg-bg rounded-lg cursor-pointer">
                             <div>
-                                <div class="text-tg-text text-sm">Allow DM downloads</div>
-                                <p class="text-xs text-tg-textSecondary">Lets the Groups picker show 1-on-1 chats. Off by default — once enabled you'll see DMs in the dialog list and can opt them in individually.</p>
+                                <div class="text-tg-text text-sm" data-i18n="settings.privacy.allow_dm">Allow DM downloads</div>
+                                <p class="text-xs text-tg-textSecondary" data-i18n="settings.privacy.allow_dm_help">Lets the Groups picker show 1-on-1 chats. Off by default — once enabled you'll see DMs in the dialog list and can opt them in individually.</p>
                             </div>
                             <div id="setting-allow-dm" class="tg-toggle"></div>
                         </label>
@@ -1279,28 +1283,28 @@
 
                     <!-- Quick Presets -->
                     <div class="bg-tg-panel rounded-xl p-4 mb-4">
-                        <h3 class="text-tg-text font-medium mb-3">Quick Presets</h3>
+                        <h3 class="text-tg-text font-medium mb-3" data-i18n="settings.preset.title">Quick Presets</h3>
                         <div class="grid grid-cols-3 gap-2">
                             <button onclick="applyPreset('safe')"
                                 class="py-2 px-3 rounded-lg bg-tg-green/10 text-tg-green text-sm border border-tg-green/30 hover:bg-tg-green/20 transition-colors">
                                 <i class="ri-shield-check-line block text-lg mb-1"></i>
-                                Safe
+                                <span data-i18n="settings.preset.safe">Safe</span>
                             </button>
                             <button onclick="applyPreset('balanced')"
                                 class="py-2 px-3 rounded-lg bg-tg-blue/10 text-tg-blue text-sm border border-tg-blue/30 hover:bg-tg-blue/20 transition-colors">
                                 <i class="ri-scales-3-line block text-lg mb-1"></i>
-                                Balanced
+                                <span data-i18n="settings.preset.balanced">Balanced</span>
                             </button>
                             <button onclick="applyPreset('fast')"
                                 class="py-2 px-3 rounded-lg bg-tg-orange/10 text-tg-orange text-sm border border-tg-orange/30 hover:bg-tg-orange/20 transition-colors">
                                 <i class="ri-rocket-line block text-lg mb-1"></i>
-                                Fast
+                                <span data-i18n="settings.preset.fast">Fast</span>
                             </button>
                         </div>
                     </div>
 
                     <button id="save-settings" class="tg-btn w-full">
-                        <i class="ri-save-line mr-2"></i>Save Settings
+                        <i class="ri-save-line mr-2"></i><span data-i18n="settings.save">Save Settings</span>
                     </button>
 
                     <!-- Security (web auth) -->
@@ -1329,19 +1333,19 @@
                             </div>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
-                                    <label class="text-tg-text text-sm block mb-1">Current password</label>
+                                    <label class="text-tg-text text-sm block mb-1" data-i18n="settings.security.current">Current password</label>
                                     <input type="password" id="sec-current" autocomplete="current-password" class="tg-input w-full text-sm">
                                 </div>
                                 <div>
-                                    <label class="text-tg-text text-sm block mb-1">New password (min 8)</label>
+                                    <label class="text-tg-text text-sm block mb-1" data-i18n="settings.security.new">New password (min 8)</label>
                                     <input type="password" id="sec-new" autocomplete="new-password" minlength="8" class="tg-input w-full text-sm">
                                 </div>
                             </div>
                             <button id="change-password-btn" class="tg-btn-secondary w-full text-sm">
-                                <i class="ri-key-line mr-2"></i>Change password
+                                <i class="ri-key-line mr-2"></i><span data-i18n="settings.security.change">Change password</span>
                             </button>
                             <button id="logout-btn" class="tg-btn-secondary w-full text-sm">
-                                <i class="ri-logout-box-line mr-2"></i>Sign out
+                                <i class="ri-logout-box-line mr-2"></i><span data-i18n="settings.security.signout">Sign out</span>
                             </button>
                         </div>
                     </div>
@@ -1349,13 +1353,13 @@
                     <!-- Danger Zone -->
                     <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4">
                         <h3 class="text-red-400 font-medium mb-2 flex items-center gap-2">
-                            <i class="ri-error-warning-line"></i> Danger Zone
+                            <i class="ri-error-warning-line"></i> <span data-i18n="settings.danger.title">Danger Zone</span>
                         </h3>
-                        <p class="text-xs text-tg-textSecondary mb-4">These actions are irreversible. All files,
+                        <p class="text-xs text-tg-textSecondary mb-4" data-i18n="settings.danger.help">These actions are irreversible. All files,
                             database records, and group configurations will be permanently deleted.</p>
                         <button onclick="purgeAll()"
                             class="w-full py-2.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 font-medium text-sm transition-colors flex items-center justify-center gap-2">
-                            <i class="ri-delete-bin-line"></i> Purge All Data
+                            <i class="ri-delete-bin-line"></i> <span data-i18n="settings.danger.purge_all">Purge All Data</span>
                         </button>
                     </div>
                 </div>
@@ -1367,9 +1371,9 @@
     <!-- Selection footer (shown when items are selected) -->
     <div id="selection-bar" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 bg-tg-panel border border-tg-border rounded-full px-4 py-2 shadow-xl z-40 flex items-center gap-3 text-sm">
         <span id="selection-count" class="text-tg-text">0 selected</span>
-        <button id="selection-clear" class="text-tg-textSecondary hover:text-tg-text">Clear</button>
+        <button id="selection-clear" class="text-tg-textSecondary hover:text-tg-text" data-i18n="viewer.selection.clear">Clear</button>
         <button id="selection-delete" class="px-3 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30">
-            <i class="ri-delete-bin-line"></i> Delete
+            <i class="ri-delete-bin-line"></i> <span data-i18n="viewer.selection.delete">Delete</span>
         </button>
     </div>
 
@@ -1377,13 +1381,13 @@
     <footer id="status-bar" class="hidden md:flex fixed bottom-0 left-0 right-0 bg-tg-sidebar border-t border-tg-border px-3 py-1.5 text-xs items-center gap-3 overflow-x-auto z-40" role="status" aria-live="polite">
         <span class="flex items-center gap-1.5">
             <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
-            <span id="status-state" class="text-tg-textSecondary">Idle</span>
+            <span id="status-state" class="text-tg-textSecondary" data-i18n="status.idle">Idle</span>
         </span>
         <span class="text-tg-textSecondary">·</span>
-        <span class="text-tg-textSecondary">Queue: <span id="status-queue" class="text-tg-text">0</span></span>
-        <span class="text-tg-textSecondary">Active: <span id="status-active" class="text-tg-text">0</span></span>
-        <span class="text-tg-textSecondary">Files: <span id="status-files" class="text-tg-text">0</span></span>
-        <span class="text-tg-textSecondary">Disk: <span id="status-disk" class="text-tg-text">0 B</span></span>
+        <span class="text-tg-textSecondary"><span data-i18n="status.queue">Queue:</span> <span id="status-queue" class="text-tg-text">0</span></span>
+        <span class="text-tg-textSecondary"><span data-i18n="status.active">Active:</span> <span id="status-active" class="text-tg-text">0</span></span>
+        <span class="text-tg-textSecondary"><span data-i18n="status.files">Files:</span> <span id="status-files" class="text-tg-text">0</span></span>
+        <span class="text-tg-textSecondary"><span data-i18n="status.disk">Disk:</span> <span id="status-disk" class="text-tg-text">0 B</span></span>
         <span class="ml-auto text-tg-textSecondary"><span id="status-ws" class="inline-block w-2 h-2 rounded-full bg-gray-500 mr-1"></span>WS</span>
     </footer>
 
@@ -1493,13 +1497,13 @@
                         <div class="flex items-center gap-2">
                             <button id="video-settings-btn"
                                 class="text-white/80 hover:text-white w-7 h-7 flex items-center justify-center text-sm font-medium"
-                                title="Speed">1x</button>
+                                data-i18n-title="viewer.video.speed" title="Speed">1x</button>
                             <button id="video-pip-btn"
                                 class="text-white/80 hover:text-white w-7 h-7 flex items-center justify-center"
-                                title="PiP"><i class="ri-picture-in-picture-2-line text-lg"></i></button>
+                                data-i18n-title="viewer.video.pip" title="PiP"><i class="ri-picture-in-picture-2-line text-lg"></i></button>
                             <button id="video-fullscreen-btn"
                                 class="text-white/80 hover:text-white w-7 h-7 flex items-center justify-center"
-                                title="Fullscreen"><i class="ri-fullscreen-line text-lg"></i></button>
+                                data-i18n-title="viewer.video.fullscreen" title="Fullscreen"><i class="ri-fullscreen-line text-lg"></i></button>
                         </div>
                     </div>
                 </div>
@@ -1526,12 +1530,12 @@
                     <div class="flex items-center gap-2">
                         <button id="modal-delete" onclick="confirmDeleteFile()"
                             class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm text-white flex items-center font-medium transition"
-                            title="Delete File">
-                            <i class="ri-delete-bin-line mr-2"></i>Delete
+                            data-i18n-title="viewer.video.delete_title" title="Delete File">
+                            <i class="ri-delete-bin-line mr-2"></i><span data-i18n="viewer.video.delete">Delete</span>
                         </button>
                         <a id="modal-download" href="#" download
                             class="px-4 py-2 bg-tg-blue hover:bg-tg-darkBlue rounded-lg text-sm text-white flex items-center font-medium transition">
-                            <i class="ri-download-line mr-2"></i>Download
+                            <i class="ri-download-line mr-2"></i><span data-i18n="viewer.video.download">Download</span>
                         </a>
                     </div>
                 </div>

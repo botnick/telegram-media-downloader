@@ -2,6 +2,7 @@ import { state } from './store.js';
 import { api } from './api.js';
 import { escapeHtml, getFileIcon, formatDate, showToast } from './utils.js';
 import { attachSwipe, attachDragDismiss } from './gestures.js';
+import { tf as i18nTf } from './i18n.js';
 
 // ============ Media Viewer ============
 let zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0, startX: 0, startY: 0 };
@@ -78,7 +79,8 @@ function setupVideoPlayer(fileId) {
         const time = parseFloat(savedTime);
         if (!isNaN(time) && time > 0) {
             video.currentTime = time;
-            showToast(`Resumed at ${formatTime(time)}`);
+            const ts = formatTime(time);
+            showToast(i18nTf('viewer.video.resumed', { time: ts }, `Resumed at ${ts}`));
         }
     }
 

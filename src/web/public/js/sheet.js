@@ -13,6 +13,8 @@
 //   });
 //   handle.close();
 
+import { t as i18nT } from './i18n.js';
+
 const FOCUSABLE_SELECTOR = [
     'a[href]', 'button:not([disabled])', 'input:not([disabled]):not([type="hidden"])',
     'select:not([disabled])', 'textarea:not([disabled])', '[tabindex]:not([tabindex="-1"])',
@@ -106,7 +108,7 @@ export function openSheet(opts) {
                 <div class="sheet-header">
                     <span class="sheet-handle" aria-hidden="true"></span>
                     <h3 class="sheet-title">${escapeHtml(title)}</h3>
-                    <button class="sheet-close" aria-label="Close">&times;</button>
+                    <button class="sheet-close" aria-label="${escapeHtml(i18nT('common.close', 'Close'))}">&times;</button>
                 </div>
             ` : `<span class="sheet-handle" aria-hidden="true"></span>`}
             <div class="sheet-body"></div>

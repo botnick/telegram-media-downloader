@@ -1,6 +1,8 @@
 // Browser notifications. Opt-in: the user explicitly enables in Settings.
 // We throttle so a fast queue doesn't spam the system tray.
 
+import { t as i18nT, tf as i18nTf } from './i18n.js';
+
 const KEY = 'tgdl-notifications-enabled';
 
 let lastBatch = { ts: 0, count: 0 };
@@ -35,8 +37,8 @@ export function notifyDownloadComplete(payload) {
         return;
     }
     lastBatch = { ts: now, count: 1 };
-    const fileName = payload?.filePath ? payload.filePath.split(/[\\/]/).pop() : 'a file';
-    new Notification('Download complete', {
+    const fileName = payload?.filePath ? payload.filePath.split(/[\\/]/).pop() : i18nT('notify.download_complete_file', 'a file');
+    new Notification(i18nT('notify.download_complete', 'Download complete'), {
         body: fileName,
         icon: '/favicon.ico',
         tag: 'tgdl-download',
@@ -45,7 +47,7 @@ export function notifyDownloadComplete(payload) {
 
 export function flushPending() {
     if (lastBatch.count > 1 && isEnabled()) {
-        new Notification(`${lastBatch.count} downloads complete`, { tag: 'tgdl-batch' });
+        new Notification(i18nTf('notify.batch_complete', { n: lastBatch.count }, `${lastBatch.count} downloads complete`), { tag: 'tgdl-batch' });
     }
     lastBatch = { ts: 0, count: 0 };
 }

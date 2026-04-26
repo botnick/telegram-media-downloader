@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import * as Notifications from './notifications.js';
+import { t as i18nT, tf as i18nTf } from './i18n.js';
 
 export async function loadSettings() {
     try {
@@ -35,7 +36,7 @@ export async function loadSettings() {
             speedEl.value = dl.maxSpeed || 0;
             const speedLabel = document.getElementById('speed-value');
             if (speedLabel) {
-                speedLabel.textContent = dl.maxSpeed ? (dl.maxSpeed / 1024 / 1024).toFixed(0) + ' MB/s' : 'Unlimited';
+                speedLabel.textContent = dl.maxSpeed ? (dl.maxSpeed / 1024 / 1024).toFixed(0) + ' MB/s' : i18nT('settings.download.unlimited', 'Unlimited');
             }
         }
 
@@ -59,10 +60,13 @@ export async function loadSettings() {
                 e.preventDefault();
                 if (Notifications.isEnabled()) {
                     Notifications.disable();
-                    showToast('Notifications disabled', 'info');
+                    showToast(i18nT('toast.notify_disabled', 'Notifications disabled'), 'info');
                 } else {
                     const ok = await Notifications.requestEnable();
-                    showToast(ok ? 'Notifications enabled' : 'Permission denied', ok ? 'success' : 'error');
+                    showToast(ok
+                        ? i18nT('toast.notify_enabled', 'Notifications enabled')
+                        : i18nT('toast.notify_denied', 'Permission denied'),
+                        ok ? 'success' : 'error');
                 }
                 refresh();
             };
@@ -78,9 +82,12 @@ export async function loadSettings() {
                 try {
                     await api.post('/api/config', { web: { forceHttps: next } });
                     httpsToggle.classList.toggle('active', next);
-                    showToast(next ? 'Force HTTPS enabled' : 'Force HTTPS disabled', next ? 'success' : 'info');
+                    showToast(next
+                        ? i18nT('toast.https_on', 'Force HTTPS enabled')
+                        : i18nT('toast.https_off', 'Force HTTPS disabled'),
+                        next ? 'success' : 'info');
                 } catch (err) {
-                    showToast(`Save failed: ${err.message}`, 'error');
+                    showToast(i18nTf('toast.save_failed', { msg: err.message }, `Save failed: ${err.message}`), 'error');
                 }
             };
         }
@@ -98,9 +105,12 @@ export async function loadSettings() {
                 rlInput.value = perMinute;
                 try {
                     await api.post('/api/config', { web: { rateLimit: { enabled, perMinute } } });
-                    showToast(enabled ? `Rate limit: ${perMinute}/min` : 'Rate limit disabled', enabled ? 'success' : 'info');
+                    showToast(enabled
+                        ? i18nTf('toast.rate_on', { n: perMinute }, `Rate limit: ${perMinute}/min`)
+                        : i18nT('toast.rate_off', 'Rate limit disabled'),
+                        enabled ? 'success' : 'info');
                 } catch (err) {
-                    showToast(`Save failed: ${err.message}`, 'error');
+                    showToast(i18nTf('toast.save_failed', { msg: err.message }, `Save failed: ${err.message}`), 'error');
                 }
             };
 
@@ -125,11 +135,11 @@ export async function loadSettings() {
         bind('proxy-secret', proxy.secret || '');
         // password is intentionally never echoed back; placeholder hint:
         const pw = document.getElementById('proxy-password');
-        if (pw) pw.placeholder = proxy.password ? '(saved — leave blank to keep)' : '';
+        if (pw) pw.placeholder = proxy.password ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)') : '';
         const apiHashEl = document.getElementById('setting-api-hash');
         if (apiHashEl) apiHashEl.placeholder = tg.apiHashSet
-            ? '(saved — leave blank to keep)'
-            : 'From my.telegram.org';
+            ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)')
+            : i18nT('settings.tg_api.id_placeholder', 'From my.telegram.org');
 
         // Accounts list rendered async (independent from main settings load)
         loadAccounts().catch(() => {});
@@ -163,9 +173,9 @@ export async function saveSettings() {
 
     try {
         await api.post('/api/config', data);
-        showToast('Settings saved!', 'success');
+        showToast(i18nT('toast.settings_saved', 'Settings saved!'), 'success');
     } catch (e) {
-        showToast(`Failed to save settings: ${e.message}`, 'error');
+        showToast(i18nTf('toast.settings_save_failed', { msg: e.message }, `Failed to save settings: ${e.message}`), 'error');
     }
 }
 
@@ -199,19 +209,19 @@ export async function saveProxy() {
     if (!type) {
         // Clearing the proxy → send proxy:null and let the server overwrite.
         await api.post('/api/config', { proxy: null });
-        showToast('Proxy disabled', 'info');
+        showToast(i18nT('toast.proxy_disabled', 'Proxy disabled'), 'info');
         return;
     }
-    if (!host || !port) { showToast('Host and port required', 'error'); return; }
+    if (!host || !port) { showToast(i18nT('toast.proxy_host_port_required', 'Host and port required'), 'error'); return; }
     const proxy = { type, host, port: parseInt(port, 10) };
     const username = get('proxy-username'); if (username) proxy.username = username;
     const password = get('proxy-password'); if (password) proxy.password = password;
     const secret = get('proxy-secret'); if (secret) proxy.secret = secret;
     try {
         await api.post('/api/config', { proxy });
-        showToast('Proxy saved — restart the monitor for it to take effect', 'success');
+        showToast(i18nT('toast.proxy_saved', 'Proxy saved — restart the monitor for it to take effect'), 'success');
     } catch (e) {
-        showToast(`Save failed: ${e.message}`, 'error');
+        showToast(i18nTf('toast.save_failed', { msg: e.message }, `Save failed: ${e.message}`), 'error');
     }
 }
 
@@ -219,22 +229,22 @@ export async function testProxy() {
     const get = (id) => document.getElementById(id)?.value.trim();
     const host = get('proxy-host'); const port = get('proxy-port');
     const status = document.getElementById('proxy-status');
-    if (!host || !port) { showToast('Host and port required', 'error'); return; }
-    if (status) { status.textContent = 'Connecting…'; status.className = 'text-xs text-tg-textSecondary mt-2'; }
+    if (!host || !port) { showToast(i18nT('toast.proxy_host_port_required', 'Host and port required'), 'error'); return; }
+    if (status) { status.textContent = i18nT('settings.proxy.connecting', 'Connecting…'); status.className = 'text-xs text-tg-textSecondary mt-2'; }
     try {
         const r = await api.post('/api/proxy/test', { host, port: parseInt(port, 10) });
         if (status) {
             if (r.ok) {
-                status.textContent = `✓ Reachable (${r.ms}ms TCP) — protocol handshake happens at monitor start.`;
+                status.textContent = i18nTf('toast.proxy_reachable', { ms: r.ms }, `✓ Reachable (${r.ms}ms TCP) — protocol handshake happens at monitor start.`);
                 status.className = 'text-xs text-tg-green mt-2';
             } else {
-                status.textContent = `✗ Failed: ${r.error}`;
+                status.textContent = i18nTf('toast.proxy_failed', { msg: r.error }, `✗ Failed: ${r.error}`);
                 status.className = 'text-xs text-red-400 mt-2';
             }
         }
     } catch (e) {
         if (status) {
-            status.textContent = `✗ ${e.message}`;
+            status.textContent = i18nTf('toast.proxy_failed', { msg: e.message }, `✗ ${e.message}`);
             status.className = 'text-xs text-red-400 mt-2';
         }
     }
@@ -246,18 +256,18 @@ export async function saveApiCredentials() {
     const apiId = document.getElementById('setting-api-id')?.value.trim();
     const apiHash = document.getElementById('setting-api-hash')?.value.trim();
     if (!apiId) {
-        showToast('API ID required', 'error');
+        showToast(i18nT('toast.api_id_required', 'API ID required'), 'error');
         return;
     }
     const body = { telegram: { apiId } };
     if (apiHash) body.telegram.apiHash = apiHash;
     try {
         await api.post('/api/config', body);
-        showToast('Credentials saved', 'success');
+        showToast(i18nT('toast.credentials_saved', 'Credentials saved'), 'success');
         document.getElementById('setting-api-hash').value = '';
         loadSettings();
     } catch (e) {
-        showToast(`Failed: ${e.message}`, 'error');
+        showToast(i18nTf('toast.credentials_failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
     }
 }
 
@@ -269,11 +279,13 @@ export async function loadAccounts() {
     try {
         const accounts = await api.get('/api/accounts');
         if (!accounts.length) {
-            container.innerHTML = `<p class="text-tg-textSecondary text-sm">No Telegram accounts yet. Click <strong>Add account</strong> above to get started.</p>`;
+            container.innerHTML = `<p class="text-tg-textSecondary text-sm">${i18nT('settings.accounts.empty_html', 'No Telegram accounts yet. Click <strong>Add account</strong> above to get started.')}</p>`;
             return;
         }
+        const removeLbl = i18nT('settings.accounts.remove', 'Remove');
+        const defaultLbl = i18nT('settings.accounts.default', 'default');
         container.innerHTML = accounts.map(a => {
-            const star = a.isDefault ? '<span class="text-tg-blue text-xs">★ default</span>' : '';
+            const star = a.isDefault ? `<span class="text-tg-blue text-xs">★ ${escapeHtml(defaultLbl)}</span>` : '';
             const sub = [a.username && `@${a.username}`, a.phone].filter(Boolean).join(' • ');
             return `
             <div class="flex items-center justify-between bg-tg-bg/40 rounded-lg p-3" data-account="${escapeHtml(a.id)}">
@@ -282,7 +294,7 @@ export async function loadAccounts() {
                     <div class="text-tg-textSecondary text-xs truncate">${escapeHtml(sub || a.id)}</div>
                 </div>
                 <button class="tg-btn-secondary text-xs px-3 py-1 text-red-400 hover:bg-red-500/10" data-action="remove-account" data-id="${escapeHtml(a.id)}">
-                    Remove
+                    ${escapeHtml(removeLbl)}
                 </button>
             </div>`;
         }).join('');
@@ -290,18 +302,18 @@ export async function loadAccounts() {
             btn.addEventListener('click', () => removeAccount(btn.dataset.id));
         });
     } catch (e) {
-        container.innerHTML = `<p class="text-red-400 text-sm">Failed to load accounts: ${escapeHtml(e.message)}</p>`;
+        container.innerHTML = `<p class="text-red-400 text-sm">${escapeHtml(i18nTf('settings.accounts.load_failed', { msg: e.message }, `Failed to load accounts: ${e.message}`))}</p>`;
     }
 }
 
 async function removeAccount(id) {
-    if (!confirm(`Remove account "${id}"? The encrypted session file will be deleted.`)) return;
+    if (!confirm(i18nTf('account.remove.confirm', { id }, `Remove account "${id}"? The encrypted session file will be deleted.`))) return;
     try {
         await api.delete(`/api/accounts/${encodeURIComponent(id)}`);
-        showToast('Account removed', 'success');
+        showToast(i18nT('account.remove.success', 'Account removed'), 'success');
         loadAccounts();
     } catch (e) {
-        showToast(`Remove failed: ${e.message}`, 'error');
+        showToast(i18nTf('account.remove.failed', { msg: e.message }, `Remove failed: ${e.message}`), 'error');
     }
 }
 
@@ -310,15 +322,15 @@ async function removeAccount(id) {
 export async function changePassword() {
     const cur = document.getElementById('sec-current')?.value;
     const next = document.getElementById('sec-new')?.value;
-    if (!cur || !next) { showToast('Both fields required', 'error'); return; }
-    if (next.length < 8) { showToast('New password must be at least 8 characters', 'error'); return; }
+    if (!cur || !next) { showToast(i18nT('toast.password_both_required', 'Both fields required'), 'error'); return; }
+    if (next.length < 8) { showToast(i18nT('toast.password_short', 'New password must be at least 8 characters'), 'error'); return; }
     try {
         await api.post('/api/auth/change-password', { currentPassword: cur, newPassword: next });
         document.getElementById('sec-current').value = '';
         document.getElementById('sec-new').value = '';
-        showToast('Password changed', 'success');
+        showToast(i18nT('toast.password_changed', 'Password changed'), 'success');
     } catch (e) {
-        showToast(`Change failed: ${e.message}`, 'error');
+        showToast(i18nTf('toast.password_change_failed', { msg: e.message }, `Change failed: ${e.message}`), 'error');
     }
 }
 

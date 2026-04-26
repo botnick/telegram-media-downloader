@@ -4,20 +4,21 @@
 // fields stay usable.
 
 import { openSheet, closeTopSheet, sheetCount } from './sheet.js';
+import { t as i18nT } from './i18n.js';
 
 const SHORTCUTS = [
-    { keys: '?',          description: 'Open this shortcuts cheatsheet' },
-    { keys: 'Esc',        description: 'Close any modal / sheet / drawer' },
-    { keys: 'g v',        description: 'Go to Library' },
-    { keys: 'g g',        description: 'Go to Chats' },
-    { keys: 'g e',        description: 'Go to Engine' },
-    { keys: 'g s',        description: 'Go to Settings' },
-    { keys: '/',          description: 'Focus the gallery search box' },
-    { keys: 'l',          description: 'Open the "paste t.me link" drawer' },
-    { keys: 's',          description: 'Toggle gallery selection mode' },
-    { keys: 'Enter',      description: '(in viewer) play / pause video' },
-    { keys: '← / →',      description: '(in viewer) previous / next item' },
-    { keys: 'f',          description: '(in viewer) toggle fullscreen' },
+    { keys: '?',          k: 'shortcuts.cheatsheet',     def: 'Open this shortcuts cheatsheet' },
+    { keys: 'Esc',        k: 'shortcuts.close_modal',    def: 'Close any modal / sheet / drawer' },
+    { keys: 'g v',        k: 'shortcuts.go_library',     def: 'Go to Library' },
+    { keys: 'g g',        k: 'shortcuts.go_chats',       def: 'Go to Chats' },
+    { keys: 'g e',        k: 'shortcuts.go_engine',      def: 'Go to Engine' },
+    { keys: 'g s',        k: 'shortcuts.go_settings',    def: 'Go to Settings' },
+    { keys: '/',          k: 'shortcuts.focus_search',   def: 'Focus the gallery search box' },
+    { keys: 'l',          k: 'shortcuts.open_paste',     def: 'Open the "paste t.me link" drawer' },
+    { keys: 's',          k: 'shortcuts.toggle_select',  def: 'Toggle gallery selection mode' },
+    { keys: 'Enter',      k: 'shortcuts.play_pause',     def: '(in viewer) play / pause video' },
+    { keys: '← / →',      k: 'shortcuts.prev_next',      def: '(in viewer) previous / next item' },
+    { keys: 'f',          k: 'shortcuts.fullscreen',     def: '(in viewer) toggle fullscreen' },
 ];
 
 let lastG = 0; // chord buffer
@@ -27,18 +28,18 @@ function buildContent() {
     wrap.className = 'space-y-1.5 text-sm';
     wrap.innerHTML = SHORTCUTS.map(s => `
         <li class="flex items-center justify-between">
-            <span class="text-tg-textSecondary">${s.description}</span>
+            <span class="text-tg-textSecondary">${i18nT(s.k, s.def)}</span>
             <kbd class="px-1.5 py-0.5 text-xs rounded bg-tg-bg/60 border border-tg-border font-mono">${s.keys}</kbd>
         </li>
     `).join('') +
-    `<li class="text-[11px] text-tg-textSecondary pt-2 border-t border-tg-border mt-2">Tip — none of these fire while you're typing in a text field.</li>`;
+    `<li class="text-[11px] text-tg-textSecondary pt-2 border-t border-tg-border mt-2">${i18nT('shortcuts.tip', "Tip — none of these fire while you're typing in a text field.")}</li>`;
     return wrap;
 }
 
 function show() {
     if (sheetCount() > 0 && document.querySelector('.sheet-root[data-shortcuts]')) return;
     const handle = openSheet({
-        title: 'Keyboard shortcuts',
+        title: i18nT('shortcuts.title', 'Keyboard shortcuts'),
         content: buildContent(),
         size: 'sm',
     });

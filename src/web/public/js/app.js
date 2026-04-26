@@ -20,7 +20,7 @@ import { openSheet } from './sheet.js';
 import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkeletons } from './components.js';
 import { formatRelativeTime } from './utils.js';
 import { attachLongPress, attachPullToRefresh } from './gestures.js';
-import { initI18n, setLang, getLang, applyToDOM as applyI18n, t as i18nT } from './i18n.js';
+import { initI18n, setLang, getLang, applyToDOM as applyI18n, t as i18nT, tf as i18nTf } from './i18n.js';
 
 // ============ Initialization ============
 async function init() {
@@ -118,6 +118,9 @@ async function init() {
     document.getElementById('logout-btn')?.addEventListener('click', Settings.signOut);
     document.getElementById('proxy-save')?.addEventListener('click', Settings.saveProxy);
     document.getElementById('proxy-test')?.addEventListener('click', Settings.testProxy);
+    document.getElementById('setting-path-btn')?.addEventListener('click', () => {
+        showToast(i18nT('settings.download.cli_only_toast', 'Use CLI to change path'));
+    });
 
     // Paste-URL drawer
     setupPasteUrl();
@@ -183,8 +186,8 @@ function renderPage(page, params = {}) {
     if (page === 'settings') {
         Settings.loadSettings();
         initEngine();
-        document.getElementById('page-title').textContent = 'Settings';
-        document.getElementById('page-subtitle').textContent = 'System Configuration';
+        document.getElementById('page-title').textContent = i18nT('settings.page.title', 'Settings');
+        document.getElementById('page-subtitle').textContent = i18nT('settings.page.subtitle', 'System Configuration');
         // Optional deep-link: #/settings/<section> scrolls to that section.
         if (params.section) {
             setTimeout(() => {
@@ -195,8 +198,8 @@ function renderPage(page, params = {}) {
         }
     } else if (page === 'groups') {
         renderGroupsConfig();
-        document.getElementById('page-title').textContent = 'Manage Groups';
-        document.getElementById('page-subtitle').textContent = 'Configure monitoring and filters';
+        document.getElementById('page-title').textContent = i18nT('groups.page.title', 'Manage Groups');
+        document.getElementById('page-subtitle').textContent = i18nT('groups.page.subtitle', 'Configure monitoring and filters');
     } else if (page === 'viewer') {
         if (state.currentGroup) {
             document.getElementById('page-title').textContent = state.currentGroup;
@@ -290,9 +293,9 @@ function renderGroupsList() {
     if (sorted.length === 0) {
         list.innerHTML = renderEmptyState({
             icon: 'ri-chat-3-line',
-            title: 'No groups yet',
-            body: 'Add a Telegram chat from the Chats page to start downloading.',
-            actionLabel: 'Browse chats',
+            title: i18nT('groups.empty.title', 'No groups yet'),
+            body: i18nT('groups.empty.body', 'Add a Telegram chat from the Chats page to start downloading.'),
+            actionLabel: i18nT('groups.empty.cta', 'Browse chats'),
             actionHref: '#/groups',
         });
         return;
@@ -311,10 +314,10 @@ function renderGroupsList() {
             || rawName === id
             || /^-?\d{6,}$/.test(rawName);
         if (looksUnresolved) needsResolve = true;
-        const displayName = looksUnresolved ? 'Unknown chat' : rawName;
+        const displayName = looksUnresolved ? i18nT('groups.unknown_chat', 'Unknown chat') : rawName;
         const subtitle = looksUnresolved
-            ? `Resolving… · ${g.totalFiles || 0} files`
-            : `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`;
+            ? i18nTf('groups.resolving', { count: g.totalFiles || 0 }, `Resolving… · ${g.totalFiles || 0} files`)
+            : i18nTf('groups.files_size', { count: g.totalFiles || 0, size: g.sizeFormatted || '0 B' }, `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`);
         const ring = state.activeRings.has(id) ? 'downloading' : null;
         return renderChatRow({
             id,
@@ -364,7 +367,7 @@ function openGroup(groupId, groupName) {
     state.files = [];
     
     document.getElementById('page-title').textContent = state.currentGroup;
-    document.getElementById('page-subtitle').textContent = 'Loading...';
+    document.getElementById('page-subtitle').textContent = i18nT('viewer.subtitle.loading', 'Loading...');
     navigateTo('viewer');
     loadGroupFiles(groupId);
 }
@@ -375,9 +378,9 @@ function showAllMedia() {
     state.page = 1;
     state.hasMore = true;
     state.files = [];
-    
-    document.getElementById('page-title').textContent = 'All Media';
-    document.getElementById('page-subtitle').textContent = 'All downloaded files';
+
+    document.getElementById('page-title').textContent = i18nT('viewer.all_media.title', 'All Media');
+    document.getElementById('page-subtitle').textContent = i18nT('viewer.all_media.subtitle', 'All downloaded files');
     
     const grid = document.getElementById('media-grid');
     if (grid) grid.innerHTML = '';
@@ -402,9 +405,9 @@ async function loadAllFiles() {
         
         state.files = allFiles;
         renderMediaGrid();
-        document.getElementById('page-subtitle').textContent = `${allFiles.length} files`;
+        document.getElementById('page-subtitle').textContent = i18nTf('viewer.subtitle.files', { count: allFiles.length }, `${allFiles.length} files`);
     } catch (e) {
-        showToast('Error loading files', 'error');
+        showToast(i18nT('viewer.error.load', 'Error loading files'), 'error');
     }
 }
 
@@ -433,9 +436,10 @@ async function loadGroupFiles(groupId) {
 
         state.hasMore = newFiles.length === 50;
         renderMediaGrid();
-        document.getElementById('page-subtitle').textContent = `${res.total || state.files.length} files`;
+        const total = res.total || state.files.length;
+        document.getElementById('page-subtitle').textContent = i18nTf('viewer.subtitle.files', { count: total }, `${total} files`);
     } catch (e) {
-        showToast('Error loading files', 'error');
+        showToast(i18nT('viewer.error.load', 'Error loading files'), 'error');
     } finally {
         state.loading = false;
     }
@@ -530,7 +534,7 @@ function toggleSelection(path) {
 function updateSelectionBar() {
     const bar = document.getElementById('selection-bar');
     const count = state.selected ? state.selected.size : 0;
-    document.getElementById('selection-count').textContent = `${count} selected`;
+    document.getElementById('selection-count').textContent = i18nTf('viewer.selection.count', { count }, `${count} selected`);
     if (bar) bar.classList.toggle('hidden', count === 0);
 }
 
@@ -555,10 +559,10 @@ function groupFilesByTime(files) {
     });
 
     const out = [];
-    if (buckets.today.length) out.push(['Today', buckets.today]);
-    if (buckets.yesterday.length) out.push(['Yesterday', buckets.yesterday]);
-    if (buckets.week.length) out.push(['Earlier this week', buckets.week]);
-    if (buckets.older.length) out.push(['Older', buckets.older]);
+    if (buckets.today.length) out.push([i18nT('viewer.section.today', 'Today'), buckets.today]);
+    if (buckets.yesterday.length) out.push([i18nT('viewer.section.yesterday', 'Yesterday'), buckets.yesterday]);
+    if (buckets.week.length) out.push([i18nT('viewer.section.week', 'Earlier this week'), buckets.week]);
+    if (buckets.older.length) out.push([i18nT('viewer.section.older', 'Older'), buckets.older]);
     // If we ended up with a single section, drop the header so a small group
     // doesn't get an awkward "Older" label above one row.
     if (out.length === 1) out[0][0] = '';
@@ -656,7 +660,7 @@ async function setupMediaSearch() {
             state.files = r.files;
             renderMediaGrid();
         } catch (e) {
-            showToast(`Search failed: ${e.message}`, 'error');
+            showToast(i18nTf('viewer.search.failed', { msg: e.message }, `Search failed: ${e.message}`), 'error');
         }
     };
 
@@ -688,10 +692,10 @@ async function setupMediaSearch() {
     selDel?.addEventListener('click', async () => {
         if (!state.selected || !state.selected.size) return;
         const paths = Array.from(state.selected);
-        if (!confirm(`Delete ${paths.length} file(s)? This cannot be undone.`)) return;
+        if (!confirm(i18nTf('viewer.bulk.confirm', { count: paths.length }, `Delete ${paths.length} file(s)? This cannot be undone.`))) return;
         try {
             const r = await api.post('/api/downloads/bulk-delete', { paths });
-            showToast(`Deleted ${r.unlinked} files`, 'success');
+            showToast(i18nTf('viewer.bulk.deleted', { count: r.unlinked }, `Deleted ${r.unlinked} files`), 'success');
             state.selected.clear();
             // Drop deleted entries from the current view
             const set = new Set(paths);
@@ -700,7 +704,7 @@ async function setupMediaSearch() {
             updateSelectionBar();
             renderMediaGrid();
         } catch (e) {
-            showToast(`Delete failed: ${e.message}`, 'error');
+            showToast(i18nTf('viewer.bulk.failed', { msg: e.message }, `Delete failed: ${e.message}`), 'error');
         }
     });
 }
@@ -710,15 +714,15 @@ async function renderGroupsConfig() {
     const list = document.getElementById('groups-config-list');
     if (!list) return;
     
-    list.innerHTML = '<div class="text-center py-8 text-tg-textSecondary">Loading dialogs...</div>';
-    
+    list.innerHTML = `<div class="text-center py-8 text-tg-textSecondary">${escapeHtml(i18nT('groups.loading_dialogs', 'Loading dialogs...'))}</div>`;
+
     try {
         const res = await api.get('/api/dialogs');
         const dialogs = res.dialogs || res || [];
         state.allDialogs = dialogs;
         renderDialogsList(dialogs);
     } catch (e) {
-        list.innerHTML = '<div class="text-center py-8 text-red-400">Failed to load dialogs</div>';
+        list.innerHTML = `<div class="text-center py-8 text-red-400">${escapeHtml(i18nT('groups.load_failed', 'Failed to load dialogs'))}</div>`;
     }
 }
 
@@ -732,24 +736,24 @@ function renderDialogsList(dialogs) {
         : dialogs;
     
     if (filtered.length === 0) {
-        list.innerHTML = '<div class="text-center py-8 text-tg-textSecondary">No groups found</div>';
+        list.innerHTML = `<div class="text-center py-8 text-tg-textSecondary">${escapeHtml(i18nT('groups.none_found', 'No groups found'))}</div>`;
         return;
     }
-    
+
     list.innerHTML = filtered.map(d => {
-        const typeLabel = d.type === 'channel' ? 'Channel'
-            : d.type === 'group' ? 'Group'
-            : d.type === 'bot' ? 'Bot'
-            : d.type === 'user' ? 'Direct message' : 'Dialog';
+        const typeLabel = d.type === 'channel' ? i18nT('groups.type.channel', 'Channel')
+            : d.type === 'group' ? i18nT('groups.type.group', 'Group')
+            : d.type === 'bot' ? i18nT('groups.type.bot', 'Bot')
+            : d.type === 'user' ? i18nT('groups.type.user', 'Direct message') : i18nT('groups.type.dialog', 'Dialog');
         const subParts = [typeLabel];
-        if (d.members) subParts.push(`${d.members} members`);
-        if (d.archived) subParts.push('archived');
+        if (d.members) subParts.push(i18nTf('groups.members', { count: d.members }, `${d.members} members`));
+        if (d.archived) subParts.push(i18nT('groups.archived', 'archived'));
 
         const statusPill = (d.inConfig && d.enabled)
-            ? { label: 'Active', kind: 'active' }
+            ? { label: i18nT('groups.status.active', 'Active'), kind: 'active' }
             : (d.inConfig && !d.enabled)
-                ? { label: 'Paused', kind: 'paused' }
-                : { label: 'Add', kind: 'add' };
+                ? { label: i18nT('groups.status.paused', 'Paused'), kind: 'paused' }
+                : { label: i18nT('groups.status.add', 'Add'), kind: 'add' };
 
         return renderChatRow({
             id: d.id,
@@ -845,12 +849,13 @@ async function openGroupSettings(groupId, groupName) {
             return label;
         };
         
+        const defaultLabel = i18nT('group.accounts.default_option_star', '(Default Account ⭐)');
         if (monitorSelect) {
-            monitorSelect.innerHTML = '<option value="">(Default Account ⭐)</option>' + 
+            monitorSelect.innerHTML = `<option value="">${escapeHtml(defaultLabel)}</option>` +
                 accounts.map(a => `<option value="${a.id}" ${group?.monitorAccount === a.id ? 'selected' : ''}>${makeLabel(a)}</option>`).join('');
         }
         if (forwardSelect) {
-            forwardSelect.innerHTML = '<option value="">(Default Account ⭐)</option>' + 
+            forwardSelect.innerHTML = `<option value="">${escapeHtml(defaultLabel)}</option>` +
                 accounts.map(a => `<option value="${a.id}" ${group?.forwardAccount === a.id ? 'selected' : ''}>${makeLabel(a)}</option>`).join('');
         }
     } catch (e) { /* accounts API not available */ }
@@ -859,14 +864,14 @@ async function openGroupSettings(groupId, groupName) {
     const filterOptions = document.getElementById('filter-options');
     if (filterOptions) {
         const types = [
-            { key: 'photos', label: 'Photos', icon: 'ri-image-line' },
-            { key: 'videos', label: 'Videos', icon: 'ri-video-line' },
-            { key: 'files', label: 'Files / Documents', icon: 'ri-file-line' },
-            { key: 'links', label: 'Links', icon: 'ri-link' },
-            { key: 'voice', label: 'Voice Messages', icon: 'ri-mic-line' },
-            { key: 'gifs', label: 'GIFs', icon: 'ri-file-gif-line' },
-            { key: 'stickers', label: 'Stickers', icon: 'ri-emoji-sticker-line' },
-            { key: 'urls', label: 'URLs in Text', icon: 'ri-links-line' },
+            { key: 'photos', label: i18nT('group.filter.photos', 'Photos'), icon: 'ri-image-line' },
+            { key: 'videos', label: i18nT('group.filter.videos', 'Videos'), icon: 'ri-video-line' },
+            { key: 'files', label: i18nT('group.filter.files', 'Files / Documents'), icon: 'ri-file-line' },
+            { key: 'links', label: i18nT('group.filter.links', 'Links'), icon: 'ri-link' },
+            { key: 'voice', label: i18nT('group.filter.voice', 'Voice Messages'), icon: 'ri-mic-line' },
+            { key: 'gifs', label: i18nT('group.filter.gifs', 'GIFs'), icon: 'ri-file-gif-line' },
+            { key: 'stickers', label: i18nT('group.filter.stickers', 'Stickers'), icon: 'ri-emoji-sticker-line' },
+            { key: 'urls', label: i18nT('group.filter.urls', 'URLs in Text'), icon: 'ri-links-line' },
         ];
         
         filterOptions.innerHTML = types.map(t => {
@@ -898,19 +903,21 @@ async function openGroupSettings(groupId, groupName) {
                     'Backfill ALL history for this chat? This may take hours and download a lot of data.');
                 if (!confirm(msg)) return;
             } else {
-                if (!confirm(`Download the last ${limit} messages of "${groupName}" into the queue?`)) return;
+                if (!confirm(i18nTf('group.backfill.confirm_n', { n: limit, name: groupName }, `Download the last ${limit} messages of "${groupName}" into the queue?`))) return;
             }
             btn.disabled = true;
             try {
                 const r = await api.post('/api/history', { groupId, limit });
                 if (progressEl) {
-                    progressEl.textContent = `Job ${r.jobId} queued — watch the Engine card for progress.`;
+                    progressEl.textContent = i18nTf('group.backfill.queued', { id: r.jobId }, `Job ${r.jobId} queued — watch the Engine card for progress.`);
                     progressEl.classList.remove('hidden');
                 }
-                const label = limit === 0 ? 'all' : `${limit} messages`;
-                showToast(`History job started (${label})`, 'success');
+                const toast = limit === 0
+                    ? i18nT('group.backfill.started_all', 'History job started (all)')
+                    : i18nTf('group.backfill.started_n', { n: limit }, `History job started (${limit} messages)`);
+                showToast(toast, 'success');
             } catch (e) {
-                showToast(`History failed: ${e.message}`, 'error');
+                showToast(i18nTf('group.backfill.failed', { msg: e.message }, `History failed: ${e.message}`), 'error');
             } finally {
                 btn.disabled = false;
             }
@@ -977,12 +984,12 @@ async function saveGroupSettings() {
     
     try {
         await api.put(`/api/groups/${currentEditGroup.id}`, data);
-        showToast('Group settings saved!', 'success');
+        showToast(i18nT('group.modal.saved_toast', 'Group settings saved!'), 'success');
         closeGroupSettings();
         await loadGroups();
         if (state.currentPage === 'groups') renderGroupsConfig();
     } catch (e) {
-        showToast('Failed to save: ' + e.message, 'error');
+        showToast(i18nTf('group.modal.save_failed', { msg: e.message }, 'Failed to save: ' + e.message), 'error');
     }
 }
 
@@ -1025,11 +1032,11 @@ async function openDestinationPicker() {
 
     const root = document.createElement('div');
     root.innerHTML = `
-        <input id="dest-search" type="text" placeholder="Search by name…" class="tg-input w-full text-sm mb-3" autofocus>
+        <input id="dest-search" type="text" placeholder="${escapeHtml(i18nT('picker.search_placeholder', 'Search by name…'))}" class="tg-input w-full text-sm mb-3" autofocus>
         <div id="dest-list" class="text-sm overflow-y-auto" style="max-height: 60vh">
-            <div class="text-tg-textSecondary p-2">Loading dialogs…</div>
+            <div class="text-tg-textSecondary p-2">${escapeHtml(i18nT('picker.loading', 'Loading dialogs…'))}</div>
         </div>`;
-    const handle = openSheet({ title: 'Pick a destination', content: root, size: 'md' });
+    const handle = openSheet({ title: i18nT('picker.title', 'Pick a destination'), content: root, size: 'md' });
     const list = root.querySelector('#dest-list');
     const search = root.querySelector('#dest-search');
 
@@ -1038,7 +1045,7 @@ async function openDestinationPicker() {
         const r = await api.get('/api/dialogs');
         dialogs = r.dialogs || [];
     } catch (e) {
-        list.innerHTML = `<div class="text-red-400 p-2">Failed to load dialogs: ${escapeHtml(e.message)}</div>`;
+        list.innerHTML = `<div class="text-red-400 p-2">${escapeHtml(i18nTf('picker.failed', { msg: e.message }, `Failed to load dialogs: ${e.message}`))}</div>`;
         return;
     }
 
@@ -1047,12 +1054,12 @@ async function openDestinationPicker() {
         const filtered = dialogs.filter(d => !q || (d.name || '').toLowerCase().includes(q) || String(d.id).includes(q));
         const presets = `
             <button data-pick="me" type="button" class="w-full text-left px-3 py-2 rounded hover:bg-tg-hover text-tg-text">
-                <span class="text-tg-blue">📥 Saved Messages</span>
-                <div class="text-[11px] text-tg-textSecondary">value: <code>me</code></div>
+                <span class="text-tg-blue">${escapeHtml(i18nT('picker.saved_messages', '📥 Saved Messages'))}</span>
+                <div class="text-[11px] text-tg-textSecondary">${escapeHtml(i18nT('picker.saved_messages_help', 'value: '))}<code>me</code></div>
             </button>
             <button data-pick="" type="button" class="w-full text-left px-3 py-2 rounded hover:bg-tg-hover text-tg-text">
-                Default storage channel
-                <div class="text-[11px] text-tg-textSecondary">leave the field empty</div>
+                ${escapeHtml(i18nT('picker.default_storage', 'Default storage channel'))}
+                <div class="text-[11px] text-tg-textSecondary">${escapeHtml(i18nT('picker.default_storage_help', 'leave the field empty'))}</div>
             </button>
             <hr class="border-tg-border my-2">`;
         list.innerHTML = presets + filtered.map(d => `
@@ -1078,17 +1085,17 @@ async function openDestinationPicker() {
 async function confirmDeleteFile() {
     const file = state.files[state.currentFileIndex];
     if (!file) return;
-    
-    if (!confirm(`Delete "${file.name}"?`)) return;
-    
+
+    if (!confirm(i18nTf('viewer.delete.confirm', { name: file.name }, `Delete "${file.name}"?`))) return;
+
     try {
         await api.delete(`/api/file?path=${encodeURIComponent(file.fullPath)}`);
         state.files.splice(state.currentFileIndex, 1);
         Viewer.closeMediaViewer();
         renderMediaGrid();
-        showToast('File deleted', 'success');
+        showToast(i18nT('viewer.delete.success', 'File deleted'), 'success');
     } catch (e) {
-        showToast('Failed to delete: ' + e.message, 'error');
+        showToast(i18nTf('viewer.delete.failed', { msg: e.message }, 'Failed to delete: ' + e.message), 'error');
     }
 }
 
@@ -1156,14 +1163,14 @@ function setupStoriesPanel() {
     btn.addEventListener('click', () => {
         const root = document.createElement('div');
         root.innerHTML = `
-            <p class="text-tg-textSecondary text-xs mb-2">Pull active Stories from any username your account can see.</p>
+            <p class="text-tg-textSecondary text-xs mb-2">${escapeHtml(i18nT('stories.help', 'Pull active Stories from any username your account can see.'))}</p>
             <div class="flex gap-2 mb-3">
-                <input id="ss-username" type="text" class="tg-input flex-1 text-sm" placeholder="@username (or numeric id)">
-                <button id="ss-fetch" class="tg-btn-secondary px-4 py-1.5 text-sm">Fetch</button>
+                <input id="ss-username" type="text" class="tg-input flex-1 text-sm" placeholder="${escapeHtml(i18nT('stories.username_placeholder', '@username (or numeric id)'))}">
+                <button id="ss-fetch" class="tg-btn-secondary px-4 py-1.5 text-sm">${escapeHtml(i18nT('stories.fetch', 'Fetch'))}</button>
             </div>
             <div id="ss-list" class="space-y-1.5"></div>
             <p id="ss-result" class="mt-2 text-xs text-tg-textSecondary"></p>`;
-        const handle = openSheet({ title: 'Download Stories', content: root, size: 'md' });
+        const handle = openSheet({ title: i18nT('stories.title', 'Download Stories'), content: root, size: 'md' });
         const userInput = root.querySelector('#ss-username');
         const fetchBtn = root.querySelector('#ss-fetch');
         const list = root.querySelector('#ss-list');
@@ -1172,36 +1179,37 @@ function setupStoriesPanel() {
 
         fetchBtn.addEventListener('click', async () => {
             const username = userInput.value.trim();
-            if (!username) { showToast('Enter a username', 'warning'); return; }
-            list.innerHTML = '<div class="text-tg-textSecondary text-sm">Loading…</div>';
+            if (!username) { showToast(i18nT('stories.warn_username', 'Enter a username'), 'warning'); return; }
+            list.innerHTML = `<div class="text-tg-textSecondary text-sm">${escapeHtml(i18nT('stories.loading', 'Loading…'))}</div>`;
             result.textContent = '';
             try {
                 const r = await api.post('/api/stories/user', { username });
                 if (!r.stories.length) {
-                    list.innerHTML = `<div class="text-tg-textSecondary text-sm">No active stories visible to your account.</div>`;
+                    list.innerHTML = `<div class="text-tg-textSecondary text-sm">${escapeHtml(i18nT('stories.none_visible', 'No active stories visible to your account.'))}</div>`;
                     return;
                 }
+                const unknownLbl = i18nT('stories.unknown_type', 'unknown');
                 list.innerHTML = r.stories.map(s => `
                     <label class="flex items-center justify-between bg-tg-bg/40 rounded p-2 cursor-pointer">
                         <div class="text-sm min-w-0">
                             <span class="text-tg-text">#${s.id}</span>
-                            <span class="text-tg-textSecondary">${s.media?.type || 'unknown'}${s.caption ? ` — ${escapeHtml(s.caption.slice(0, 40))}` : ''}</span>
+                            <span class="text-tg-textSecondary">${escapeHtml(s.media?.type || unknownLbl)}${s.caption ? ` — ${escapeHtml(s.caption.slice(0, 40))}` : ''}</span>
                         </div>
                         <input type="checkbox" data-story-id="${s.id}" checked class="w-4 h-4 accent-tg-blue">
                     </label>
                 `).join('') + `
-                    <button id="ss-go" type="button" class="tg-btn w-full mt-2 text-sm"><i class="ri-download-line mr-1"></i>Download selected</button>`;
+                    <button id="ss-go" type="button" class="tg-btn w-full mt-2 text-sm"><i class="ri-download-line mr-1"></i>${escapeHtml(i18nT('stories.download_selected', 'Download selected'))}</button>`;
                 root.querySelector('#ss-go')?.addEventListener('click', async () => {
                     const ids = Array.from(list.querySelectorAll('input[type=checkbox]:checked'))
                         .map(cb => parseInt(cb.dataset.storyId, 10)).filter(Number.isFinite);
-                    if (!ids.length) { showToast('Pick at least one story', 'warning'); return; }
+                    if (!ids.length) { showToast(i18nT('stories.warn_pick', 'Pick at least one story'), 'warning'); return; }
                     try {
                         const dl = await api.post('/api/stories/download', { username, storyIds: ids });
-                        result.textContent = `Queued ${dl.queued} of ${dl.requested} stories.`;
-                        showToast(`Queued ${dl.queued} stories`, 'success');
+                        result.textContent = i18nTf('stories.queued_result', { ok: dl.queued, total: dl.requested }, `Queued ${dl.queued} of ${dl.requested} stories.`);
+                        showToast(i18nTf('stories.queued_toast', { n: dl.queued }, `Queued ${dl.queued} stories`), 'success');
                         setTimeout(handle.close, 800);
                     } catch (e) {
-                        showToast(`Download failed: ${e.message}`, 'error');
+                        showToast(i18nTf('stories.download_failed', { msg: e.message }, `Download failed: ${e.message}`), 'error');
                     }
                 });
             } catch (e) {
@@ -1228,10 +1236,10 @@ function setupFab() {
         const list = document.createElement('div');
         list.className = 'flex flex-col';
         const items = [
-            { icon: 'ri-link-m', label: 'Paste a Telegram link', sub: 'Download from a t.me/... URL', run: () => document.getElementById('paste-url-btn')?.click() },
-            { icon: 'ri-camera-line', label: 'Stories', sub: 'Save someone\'s active Stories', run: () => document.getElementById('stories-btn')?.click() },
-            { icon: 'ri-user-add-line', label: 'Add Telegram account', sub: 'Phone → OTP → 2FA wizard', run: () => { window.location.href = '/add-account.html'; } },
-            { icon: 'ri-chat-3-line', label: 'Browse chats', sub: 'Pick a chat to monitor or backfill', run: () => navigateTo('groups') },
+            { icon: 'ri-link-m', label: i18nT('fab.paste_link', 'Paste a Telegram link'), sub: i18nT('fab.paste_link_sub', 'Download from a t.me/... URL'), run: () => document.getElementById('paste-url-btn')?.click() },
+            { icon: 'ri-camera-line', label: i18nT('fab.stories', 'Stories'), sub: i18nT('fab.stories_sub', "Save someone's active Stories"), run: () => document.getElementById('stories-btn')?.click() },
+            { icon: 'ri-user-add-line', label: i18nT('fab.add_account', 'Add Telegram account'), sub: i18nT('fab.add_account_sub', 'Phone → OTP → 2FA wizard'), run: () => { window.location.href = '/add-account.html'; } },
+            { icon: 'ri-chat-3-line', label: i18nT('fab.browse_chats', 'Browse chats'), sub: i18nT('fab.browse_chats_sub', 'Pick a chat to monitor or backfill'), run: () => navigateTo('groups') },
         ];
         for (const it of items) {
             const btn = document.createElement('button');
@@ -1251,7 +1259,7 @@ function setupFab() {
             });
             list.appendChild(btn);
         }
-        const handle = openSheet({ title: 'Quick actions', content: list, size: 'sm' });
+        const handle = openSheet({ title: i18nT('fab.actions', 'Quick actions'), content: list, size: 'sm' });
     });
 }
 
@@ -1264,11 +1272,11 @@ function setupPasteUrl() {
     btn.addEventListener('click', () => {
         const root = document.createElement('div');
         root.innerHTML = `
-            <p class="text-tg-textSecondary text-xs mb-2">One URL per line. Supports <code>t.me/&lt;chan&gt;/&lt;msg&gt;</code>, <code>/c/&lt;id&gt;/&lt;msg&gt;</code>, forum-topic links and <code>tg://</code>.</p>
-            <textarea id="ps-input" rows="4" class="tg-input w-full text-sm font-mono" placeholder="https://t.me/example/12345"></textarea>
-            <button id="ps-submit" class="tg-btn w-full mt-3"><i class="ri-download-line mr-2"></i>Download</button>
+            <p class="text-tg-textSecondary text-xs mb-2">${i18nT('link.help_html', 'One URL per line. Supports <code>t.me/&lt;chan&gt;/&lt;msg&gt;</code>, <code>/c/&lt;id&gt;/&lt;msg&gt;</code>, forum-topic links and <code>tg://</code>.')}</p>
+            <textarea id="ps-input" rows="4" class="tg-input w-full text-sm font-mono" placeholder="${escapeHtml(i18nT('link.placeholder', 'https://t.me/example/12345'))}"></textarea>
+            <button id="ps-submit" class="tg-btn w-full mt-3"><i class="ri-download-line mr-2"></i>${escapeHtml(i18nT('link.download', 'Download'))}</button>
             <p id="ps-result" class="text-xs text-tg-textSecondary mt-2"></p>`;
-        const handle = openSheet({ title: 'Download from Telegram link', content: root, size: 'md' });
+        const handle = openSheet({ title: i18nT('link.title', 'Download from Telegram link'), content: root, size: 'md' });
         const input = root.querySelector('#ps-input');
         const submit = root.querySelector('#ps-submit');
         const resultEl = root.querySelector('#ps-result');
@@ -1276,23 +1284,24 @@ function setupPasteUrl() {
 
         submit.addEventListener('click', async () => {
             const text = input.value.trim();
-            if (!text) { showToast('Paste at least one Telegram link', 'warning'); return; }
+            if (!text) { showToast(i18nT('link.warn_empty', 'Paste at least one Telegram link'), 'warning'); return; }
             submit.disabled = true;
             try {
                 const r = await api.post('/api/download/url', { url: text });
                 const ok = r.results.filter(x => x.ok).length;
                 const fail = r.results.length - ok;
-                resultEl.textContent = `${ok} queued, ${fail} failed.`;
+                resultEl.textContent = i18nTf('link.result', { ok, fail }, `${ok} queued, ${fail} failed.`);
                 r.results.forEach(x => { if (!x.ok) console.warn('paste-url failed:', x.url, x.error); });
                 if (ok > 0) {
-                    showToast(`Queued ${ok} download${ok > 1 ? 's' : ''}`, 'success');
+                    const key = ok > 1 ? 'link.queued_many' : 'link.queued_one';
+                    showToast(i18nTf(key, { n: ok }, `Queued ${ok} download${ok > 1 ? 's' : ''}`), 'success');
                     input.value = '';
                     setTimeout(handle.close, 600);
                 } else if (fail > 0) {
-                    showToast(`All ${fail} URL(s) failed — check console`, 'error');
+                    showToast(i18nTf('link.all_failed', { n: fail }, `All ${fail} URL(s) failed — check console`), 'error');
                 }
             } catch (e) {
-                showToast(`Request failed: ${e.message}`, 'error');
+                showToast(i18nTf('link.req_failed', { msg: e.message }, `Request failed: ${e.message}`), 'error');
             } finally {
                 submit.disabled = false;
             }
@@ -1342,14 +1351,14 @@ async function loadStats() {
  * Delete a specific group -- files, DB, config, photo
  */
 async function purgeGroup(groupId, groupName) {
-    if (!confirm(`Delete all data for "${groupName}"?\n\nFiles, database records, and configuration will be permanently removed.`)) return;
+    if (!confirm(i18nTf('purge.group.confirm', { name: groupName }, `Delete all data for "${groupName}"?\n\nFiles, database records, and configuration will be permanently removed.`))) return;
 
     try {
-        showToast('Deleting...', 'info');
+        showToast(i18nT('purge.group.deleting', 'Deleting...'), 'info');
         const result = await api.delete(`/api/groups/${encodeURIComponent(groupId)}/purge`);
         if (result.success) {
             const d = result.deleted;
-            showToast(`Deleted "${d.group}" -- ${d.files} files, ${d.dbRecords} records`, 'success');
+            showToast(i18nTf('purge.group.success', { name: d.group, files: d.files, records: d.dbRecords }, `Deleted "${d.group}" -- ${d.files} files, ${d.dbRecords} records`), 'success');
             await loadGroups();
             renderGroupsList();
             if (state.currentPage === 'groups') renderGroupsConfig();
@@ -1357,7 +1366,7 @@ async function purgeGroup(groupId, groupName) {
             loadStats();
         }
     } catch (e) {
-        showToast('Failed to delete: ' + e.message, 'error');
+        showToast(i18nTf('purge.group.failed', { msg: e.message }, 'Failed to delete: ' + e.message), 'error');
     }
 }
 
@@ -1365,15 +1374,15 @@ async function purgeGroup(groupId, groupName) {
  * Delete ALL data -- factory reset
  */
 async function purgeAll() {
-    if (!confirm('Delete ALL data?\n\nAll files, database records, group configurations, and photos will be permanently removed.')) return;
-    if (!confirm('Are you sure? This cannot be undone.')) return;
+    if (!confirm(i18nT('purge.all.confirm1', 'Delete ALL data?\n\nAll files, database records, group configurations, and photos will be permanently removed.'))) return;
+    if (!confirm(i18nT('purge.all.confirm2', 'Are you sure? This cannot be undone.'))) return;
 
     try {
-        showToast('Deleting all data...', 'info');
+        showToast(i18nT('purge.all.deleting', 'Deleting all data...'), 'info');
         const result = await api.delete('/api/purge/all');
         if (result.success) {
             const d = result.deleted;
-            showToast(`Deleted all -- ${d.files} files, ${d.dbRecords} records`, 'success');
+            showToast(i18nTf('purge.all.success', { files: d.files, records: d.dbRecords }, `Deleted all -- ${d.files} files, ${d.dbRecords} records`), 'success');
             state.groups = [];
             state.downloads = [];
             state.files = [];
@@ -1384,7 +1393,7 @@ async function purgeAll() {
             loadStats();
         }
     } catch (e) {
-        showToast('Failed to delete: ' + e.message, 'error');
+        showToast(i18nTf('purge.group.failed', { msg: e.message }, 'Failed to delete: ' + e.message), 'error');
     }
 }
 

@@ -2,6 +2,7 @@
 
 import { api } from './api.js';
 import { showToast, formatBytes, escapeHtml } from './utils.js';
+import { t as i18nT, tf as i18nTf } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,9 +32,10 @@ function renderActive() {
     pruneActive();
     const host = $('engine-active-list');
     if (!host) return;
+    const liveLbl = i18nT('settings.engine.live', 'Live downloads');
     if (activeJobs.size === 0) {
         host.classList.add('hidden');
-        host.innerHTML = '<div class="text-tg-textSecondary text-xs">Live downloads</div>';
+        host.innerHTML = `<div class="text-tg-textSecondary text-xs">${escapeHtml(liveLbl)}</div>`;
         return;
     }
     host.classList.remove('hidden');
@@ -58,7 +60,7 @@ function renderActive() {
                     <div class="text-[10px] text-tg-textSecondary mt-1">${escapeHtml(sizeLine)}</div>
                 </div>`;
         }).join('');
-    host.innerHTML = '<div class="text-tg-textSecondary text-xs">Live downloads</div>' + rows;
+    host.innerHTML = `<div class="text-tg-textSecondary text-xs">${escapeHtml(liveLbl)}</div>` + rows;
 }
 
 function scheduleRender() {
@@ -73,11 +75,11 @@ function applyStatus(status) {
     const stopBtn = $('engine-stop');
     const errEl = $('engine-error');
     const stateLabels = {
-        running: { text: 'Running', cls: 'bg-tg-green/20 text-tg-green' },
-        starting: { text: 'Starting…', cls: 'bg-tg-blue/20 text-tg-blue' },
-        stopping: { text: 'Stopping…', cls: 'bg-tg-orange/20 text-tg-orange' },
-        stopped: { text: 'Stopped', cls: 'bg-gray-700 text-gray-300' },
-        error: { text: 'Error', cls: 'bg-red-500/20 text-red-300' },
+        running: { text: i18nT('settings.engine.running', 'Running'), cls: 'bg-tg-green/20 text-tg-green' },
+        starting: { text: i18nT('settings.engine.starting', 'Starting…'), cls: 'bg-tg-blue/20 text-tg-blue' },
+        stopping: { text: i18nT('settings.engine.stopping', 'Stopping…'), cls: 'bg-tg-orange/20 text-tg-orange' },
+        stopped: { text: i18nT('settings.engine.stopped', 'Stopped'), cls: 'bg-gray-700 text-gray-300' },
+        error: { text: i18nT('settings.engine.error', 'Error'), cls: 'bg-red-500/20 text-red-300' },
     };
     const lbl = stateLabels[status.state] || stateLabels.stopped;
     if (pill) {
@@ -117,9 +119,9 @@ export function initEngine() {
         try {
             const r = await api.post('/api/monitor/start');
             applyStatus(r.status);
-            showToast('Monitor started', 'success');
+            showToast(i18nT('toast.monitor_started', 'Monitor started'), 'success');
         } catch (e) {
-            showToast(`Start failed: ${e.message}`, 'error');
+            showToast(i18nTf('toast.monitor_start_failed', { msg: e.message }, `Start failed: ${e.message}`), 'error');
         } finally {
             $('engine-start').disabled = false;
         }
@@ -129,9 +131,9 @@ export function initEngine() {
         try {
             const r = await api.post('/api/monitor/stop');
             applyStatus(r.status);
-            showToast('Monitor stopped', 'info');
+            showToast(i18nT('toast.monitor_stopped', 'Monitor stopped'), 'info');
         } catch (e) {
-            showToast(`Stop failed: ${e.message}`, 'error');
+            showToast(i18nTf('toast.monitor_stop_failed', { msg: e.message }, `Stop failed: ${e.message}`), 'error');
         } finally {
             $('engine-stop').disabled = false;
         }
