@@ -1355,7 +1355,15 @@ app.put('/api/groups/:id', async (req, res) => {
         if (req.body.autoForward) {
             group.autoForward = { ...group.autoForward, ...req.body.autoForward };
         }
-        
+        if (req.body.topics !== undefined) {
+            // Allow {enabled, ids:[]} or null to clear.
+            if (req.body.topics === null) delete group.topics;
+            else group.topics = {
+                enabled: !!req.body.topics.enabled,
+                ids: Array.isArray(req.body.topics.ids) ? req.body.topics.ids.map(Number).filter(Number.isFinite) : [],
+            };
+        }
+
         // Multi-Account assignments
         if (req.body.monitorAccount !== undefined) {
             if (!req.body.monitorAccount) delete group.monitorAccount;

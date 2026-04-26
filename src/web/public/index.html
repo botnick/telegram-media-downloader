@@ -418,6 +418,9 @@
                     <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('accounts')" id="tab-accounts">
                         Accounts
                     </div>
+                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('topics')" id="tab-topics">
+                        Topics
+                    </div>
                 </div>
 
                 <!-- Content -->
@@ -522,6 +525,21 @@
                                 <i class="ri-information-line mr-1"></i>
                                 Manage accounts under Settings → Telegram Accounts.
                             </p>
+                        </div>
+                    </div>
+
+                    <!-- Topics Tab -->
+                    <div id="content-topics" class="hidden space-y-4">
+                        <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
+                            <label class="flex items-center justify-between mb-3">
+                                <span class="text-white font-medium">Forum-topic filter</span>
+                                <div class="tg-toggle" id="topics-enable-toggle" onclick="this.classList.toggle('active'); event.preventDefault();"></div>
+                            </label>
+                            <p class="text-xs text-tg-textSecondary mb-3">
+                                If this group is a forum (supergroup with topics), restrict downloads to specific topic IDs. Comma-separated. Get a topic ID from a Telegram message link like <code class="text-tg-text">https://t.me/c/&lt;id&gt;/&lt;topicId&gt;/&lt;msg&gt;</code>.
+                            </p>
+                            <input id="topics-ids" type="text" class="tg-input w-full text-sm" placeholder="e.g., 12, 34, 56">
+                            <p class="text-[11px] text-tg-textSecondary mt-2">Empty list = monitor every topic. Toggle off to disable filtering entirely.</p>
                         </div>
                     </div>
 

@@ -566,6 +566,13 @@ async function openGroupSettings(groupId, groupName) {
     
     const fwdDeleteToggle = document.getElementById('fwd-delete-toggle');
     if (fwdDeleteToggle) fwdDeleteToggle.classList.toggle('active', fwd.deleteAfterForward === true);
+
+    // Topics
+    const topics = group?.topics || {};
+    const topicsToggle = document.getElementById('topics-enable-toggle');
+    if (topicsToggle) topicsToggle.classList.toggle('active', topics.enabled === true);
+    const topicsInput = document.getElementById('topics-ids');
+    if (topicsInput) topicsInput.value = (topics.ids || []).join(', ');
     
     const fwdDest = document.getElementById('fwd-destination');
     if (fwdDest) fwdDest.value = fwd.destination || '';
@@ -678,6 +685,11 @@ async function saveGroupSettings() {
     const monitorAccount = document.getElementById('monitor-account')?.value || '';
     const forwardAccount = document.getElementById('forward-account')?.value || '';
     
+    // Topics
+    const topicsEnabled = document.getElementById('topics-enable-toggle')?.classList.contains('active') ?? false;
+    const topicsRaw = document.getElementById('topics-ids')?.value || '';
+    const topicIds = topicsRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(Number.isFinite);
+
     const data = {
         name: currentEditGroup.name,
         enabled,
@@ -686,6 +698,15 @@ async function saveGroupSettings() {
             enabled: fwdEnabled,
             destination: fwdDest,
             deleteAfterForward: fwdDelete
+        },
+        topics: {
+            enabled: topicsEnabled,
+            // When the user enables the filter and supplies a list, treat it
+            // as a whitelist (only those topics are monitored). Empty list
+            // with the filter on still passes everything through, matching
+            // the Topics-tab help text.
+            mode: topicsEnabled && topicIds.length > 0 ? 'whitelist' : 'all',
+            ids: topicIds,
         },
         monitorAccount: monitorAccount || null,
         forwardAccount: forwardAccount || null
@@ -706,10 +727,12 @@ function switchSettingsTab(tab) {
     document.getElementById('content-media')?.classList.toggle('hidden', tab !== 'media');
     document.getElementById('content-forward')?.classList.toggle('hidden', tab !== 'forward');
     document.getElementById('content-accounts')?.classList.toggle('hidden', tab !== 'accounts');
-    
+    document.getElementById('content-topics')?.classList.toggle('hidden', tab !== 'topics');
+
     document.getElementById('tab-media')?.classList.toggle('active', tab === 'media');
     document.getElementById('tab-forward')?.classList.toggle('active', tab === 'forward');
     document.getElementById('tab-accounts')?.classList.toggle('active', tab === 'accounts');
+    document.getElementById('tab-topics')?.classList.toggle('active', tab === 'topics');
 }
 
 function toggleGroupEnabled(event) {
