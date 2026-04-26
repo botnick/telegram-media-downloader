@@ -106,13 +106,47 @@ if (process.env.TRUST_PROXY) {
     app.set('trust proxy', /^\d+$/.test(v) ? parseInt(v, 10) : v);
 }
 
-// Security headers (CSP relaxed for the existing inline-handler SPA — tightened
-// further in M3 once the SPA stops using inline event attributes).
+// Security headers. CSP is on but allows the SPA's two CDN dependencies
+// (Tailwind + Remixicon) and the inline event-handlers we still use in
+// index.html. Tightening "self"-only is a follow-up once the inline handlers
+// are migrated to addEventListener.
 app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            'default-src': ["'self'"],
+            'script-src': [
+                "'self'", "'unsafe-inline'",
+                'https://cdn.tailwindcss.com',
+                'https://cdn.jsdelivr.net',
+            ],
+            'style-src': [
+                "'self'", "'unsafe-inline'",
+                'https://cdn.jsdelivr.net',
+                'https://fonts.googleapis.com',
+            ],
+            'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
+            'img-src': ["'self'", 'data:', 'blob:'],
+            'media-src': ["'self'", 'blob:'],
+            'connect-src': ["'self'", 'ws:', 'wss:'],
+            'object-src': ["'none'"],
+            'frame-ancestors': ["'self'"],
+        },
+    },
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'same-origin' },
 }));
+
+// Defense-in-depth: a coarse global rate limit on every API path. The login
+// endpoint has its own stricter limiter below.
+const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 600,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: (req) => !req.path.startsWith('/api/'),
+});
+app.use(apiLimiter);
 
 // Body parsing middleware — small, JSON only. Bigger payloads (e.g., bulk
 // imports) should get their own dedicated route with a larger limit.
@@ -635,7 +669,7 @@ app.get('/api/history', (req, res) => {
 // the next monitor start — but a TCP open is enough to catch typos and DNS
 // misconfiguration without needing a full Telegram round-trip.
 
-// ====== Stories (Xinomo parity) ============================================
+// ====== Stories ============================================================
 
 app.post('/api/stories/user', async (req, res) => {
     try {
@@ -705,9 +739,39 @@ app.post('/api/stories/download', async (req, res) => {
     }
 });
 
+// Refuse to probe addresses that are obviously private or local — without
+// this, an authenticated user could use the dashboard as a port scanner for
+// the host's internal network. RFC 1918 + loopback + link-local + IPv6
+// ULA / loopback / link-local + multicast are all blocked.
+const SSRF_BLOCKLIST = [
+    /^127\./,                      // 127.0.0.0/8
+    /^10\./,                       // 10.0.0.0/8
+    /^192\.168\./,                 // 192.168.0.0/16
+    /^172\.(1[6-9]|2\d|3[01])\./,  // 172.16.0.0/12
+    /^169\.254\./,                 // 169.254.0.0/16 link-local
+    /^0\./,                        // 0.0.0.0/8
+    /^22[4-9]\./, /^23\d\./,       // multicast
+    /^::1$/, /^fe80:/i, /^fc00:/i, /^fd[0-9a-f]{2}:/i,
+];
+
+function isPrivateHost(host) {
+    if (!host) return true;
+    const lower = host.toLowerCase();
+    if (lower === 'localhost' || lower.endsWith('.local') || lower.endsWith('.internal')) return true;
+    return SSRF_BLOCKLIST.some(re => re.test(host));
+}
+
 app.post('/api/proxy/test', async (req, res) => {
     const { host, port } = req.body || {};
     if (!host || !port) return res.status(400).json({ error: 'host and port required' });
+    if (typeof host !== 'string' || host.length > 253) {
+        return res.status(400).json({ error: 'invalid host' });
+    }
+    if (isPrivateHost(host)) {
+        return res.status(400).json({
+            error: 'Private / loopback / link-local addresses are not allowed for proxy probes.',
+        });
+    }
     const p = parseInt(port, 10);
     if (!Number.isFinite(p) || p < 1 || p > 65535) {
         return res.status(400).json({ error: 'port must be 1-65535' });
@@ -728,7 +792,7 @@ app.post('/api/proxy/test', async (req, res) => {
     sock.connect(p, host);
 });
 
-// ====== Download-by-Link (Xinomo parity) ===================================
+// ====== Download-by-Link ===================================================
 //
 // Paste any t.me message link (or a tg:// URL) and pull just that media
 // into the queue. Supports private channels (/c/<id>/...), forum topics
