@@ -44,6 +44,23 @@ export async function loadSettings() {
         bind('setting-max-video', dm.maxVideoSize || '');
         bind('setting-max-image', dm.maxImageSize || '');
 
+        // Auto-rotate toggle (deletes oldest unpinned downloads when the cap
+        // is exceeded). Toggle is local-state only; the actual sweep cadence
+        // is enforced server-side by src/core/disk-rotator.js.
+        const rotateToggle = document.getElementById('setting-disk-rotate');
+        if (rotateToggle) {
+            rotateToggle.classList.toggle('active', dm.enabled === true);
+            rotateToggle.onclick = (e) => {
+                e.preventDefault();
+                rotateToggle.classList.toggle('active');
+                const on = rotateToggle.classList.contains('active');
+                showToast(on
+                    ? i18nT('toast.rotate_on', 'Auto-rotate enabled — save to apply')
+                    : i18nT('toast.rotate_off', 'Auto-rotate disabled — save to apply'),
+                    on ? 'success' : 'info');
+            };
+        }
+
         const dmToggle = document.getElementById('setting-allow-dm');
         if (dmToggle) {
             dmToggle.classList.toggle('active', config.allowDmDownloads === true);
@@ -167,6 +184,7 @@ export async function saveSettings() {
             maxTotalSize: get('setting-max-disk') || null,
             maxVideoSize: get('setting-max-video') || null,
             maxImageSize: get('setting-max-image') || null,
+            enabled: document.getElementById('setting-disk-rotate')?.classList.contains('active') === true,
         },
         allowDmDownloads: dmActive,
     };

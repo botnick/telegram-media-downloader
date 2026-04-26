@@ -25,6 +25,7 @@ import { SecureSession } from '../core/security.js';
 import { AccountManager } from '../core/accounts.js';
 import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
+import { getDiskRotator } from '../core/disk-rotator.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import { metrics } from '../core/metrics.js';
@@ -1564,6 +1565,13 @@ app.post('/api/config', async (req, res) => {
         // takes effect immediately instead of waiting for the 30s sweep.
         if (req.body.web?.rateLimit) refreshRateLimitConfig();
 
+        // Restart the disk rotator if the user changed any diskManagement
+        // field — picks up the new cap / enabled / interval on the very next
+        // sweep instead of waiting for whatever was already scheduled.
+        if (req.body.diskManagement) {
+            try { getDiskRotator()?.restart(); } catch (e) { console.warn('[disk-rotator] restart failed:', e.message); }
+        }
+
         broadcast({ type: 'config_updated' });
         res.json({ success: true });
     } catch (error) {
@@ -1911,6 +1919,15 @@ ${tip}
     // credentials yet, this is a silent no-op (see connectTelegram). The
     // AccountManager-driven path covers everything else lazily.
     connectTelegram().catch(() => {});
+
+    // Boot the disk rotator. No-op when diskManagement.enabled is false —
+    // safe to call at every startup. Restarts via POST /api/config (above).
+    try {
+        const rotator = getDiskRotator({ loadConfig, broadcast });
+        rotator.start();
+    } catch (e) {
+        console.warn('[disk-rotator] start failed:', e.message);
+    }
 
     // Resolve group names from Telegram for any DB records still unnamed
     await resolveGroupNamesFromTelegram();

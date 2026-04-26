@@ -108,6 +108,9 @@
     "settings.size.per_image": "ต่อรูปภาพ",
     "settings.size.no_limit": "ไม่จำกัด",
     "settings.size.help": "ไฟล์ที่เกินขนาดจะถูกข้าม",
+    "settings.disk.cap_help": "ใช้หน่วยเช่น \"10 GB\", \"500 MB\" หรือ \"1 TB\" — เว้นว่างเพื่อไม่จำกัด",
+    "settings.disk.rotate": "ลบของเก่าอัตโนมัติเมื่อเต็ม",
+    "settings.disk.rotate_help": "เมื่อใช้พื้นที่เกินขีดจำกัด จะลบไฟล์ที่เก่าที่สุดก่อน รายการที่ปักหมุดจะไม่ถูกลบ",
 
     "settings.proxy.title": "Proxy",
     "settings.proxy.type": "ประเภท",
@@ -335,6 +338,8 @@
     "toast.save_failed": "บันทึกไม่สำเร็จ: {msg}",
     "toast.rate_on": "Rate limit: {n}/นาที",
     "toast.rate_off": "ปิด Rate limit แล้ว",
+    "toast.rotate_on": "เปิดการลบอัตโนมัติแล้ว — บันทึกเพื่อให้มีผล",
+    "toast.rotate_off": "ปิดการลบอัตโนมัติแล้ว — บันทึกเพื่อให้มีผล",
     "toast.proxy_disabled": "ปิด Proxy แล้ว",
     "toast.proxy_host_port_required": "ต้องระบุ Host และ Port",
     "toast.proxy_saved": "บันทึก Proxy แล้ว — รีสตาร์ทมอนิเตอร์เพื่อให้มีผล",

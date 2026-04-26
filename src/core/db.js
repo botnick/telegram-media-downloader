@@ -54,6 +54,8 @@ function initSchema() {
         'ALTER TABLE downloads ADD COLUMN group_name TEXT',
         'ALTER TABLE downloads ADD COLUMN ttl_seconds INTEGER',
         'ALTER TABLE downloads ADD COLUMN file_hash TEXT',
+        // pinned: rows with pinned=1 are protected from auto-rotation sweeps.
+        'ALTER TABLE downloads ADD COLUMN pinned INTEGER DEFAULT 0',
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch { /* column already exists */ }
@@ -201,6 +203,33 @@ export function getStats() {
     const totalFiles = db.prepare('SELECT COUNT(*) as count FROM downloads').get().count;
     const totalSize = db.prepare('SELECT SUM(file_size) as size FROM downloads').get().size || 0;
     return { totalFiles, totalSize };
+}
+
+/**
+ * Sum of file_size across all download rows (NULL sizes are treated as 0).
+ * Used by the disk rotator to decide whether the cap is exceeded.
+ */
+export function getTotalSizeBytes() {
+    const r = getDb().prepare('SELECT COALESCE(SUM(file_size), 0) as size FROM downloads').get();
+    return Number(r?.size || 0);
+}
+
+/**
+ * Returns the N oldest download rows (created_at ASC), skipping pinned ones.
+ * The rotator pulls from this list and deletes file + row until the cap is
+ * back under the limit.
+ */
+export function getOldestDownloads(count = 50) {
+    const limit = Math.max(1, Math.min(10000, parseInt(count, 10) || 50));
+    return getDb()
+        .prepare(`
+            SELECT id, group_id, group_name, file_name, file_size, file_type, file_path, created_at, pinned
+            FROM downloads
+            WHERE COALESCE(pinned, 0) = 0
+            ORDER BY datetime(created_at) ASC, id ASC
+            LIMIT ?
+        `)
+        .all(limit);
 }
 
 /**

@@ -25,7 +25,12 @@ const DEFAULT_CONFIG = {
     },
     diskManagement: {
         maxTotalSize: '50GB',
-        autoCleanup: false
+        autoCleanup: false,
+        // Auto-rotate: when enabled and total on-disk size exceeds maxTotalSize,
+        // the disk-rotator sweeps the oldest unpinned downloads off until the
+        // cap is satisfied. Sweep cadence in minutes.
+        enabled: false,
+        sweepIntervalMin: 10
     }
 };
 

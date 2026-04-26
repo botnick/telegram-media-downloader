@@ -1194,6 +1194,15 @@
                                 </div>
                             </div>
                             <p class="text-xs text-tg-textSecondary" data-i18n="settings.size.help">Files exceeding these limits will be skipped</p>
+                            <p class="text-xs text-tg-textSecondary" data-i18n="settings.disk.cap_help">Use units like "10 GB", "500 MB", or "1 TB". Leave the dropdown empty for no cap.</p>
+
+                            <!-- Auto-rotate toggle: when the total cap is exceeded, delete the
+                                 oldest downloads first. Pinned items are kept. -->
+                            <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mt-2">
+                                <div class="text-tg-text text-sm" data-i18n="settings.disk.rotate">Auto-rotate when full</div>
+                                <div id="setting-disk-rotate" class="tg-toggle"></div>
+                            </label>
+                            <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.disk.rotate_help">When the cap is exceeded, delete the oldest downloads first. Pinned items are kept.</p>
                         </div>
                     </div>
 
