@@ -65,5 +65,9 @@
 
     "onboard.configure_api.title": "Step 1 of 3 — paste your Telegram API credentials",
     "onboard.add_account.title": "Step 2 of 3 — add a Telegram account",
-    "onboard.enable_group.title": "Step 3 of 3 — pick a chat to monitor"
+    "onboard.enable_group.title": "Step 3 of 3 — pick a chat to monitor",
+
+    "group.backfill.all": "All",
+    "group.backfill.all_warn": "Pulling all history may download tens of thousands of files and take hours.",
+    "group.backfill.all_confirm": "Backfill ALL history for this chat? This may take hours and download a lot of data."
 }

@@ -860,11 +860,13 @@
                             <i class="ri-history-line text-tg-blue"></i> Backfill history
                         </h3>
                         <p class="text-xs text-tg-textSecondary mb-3">Pull older messages from this group into the downloader.</p>
-                        <div class="grid grid-cols-3 gap-2 mb-2 text-xs">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-xs">
                             <button class="tg-btn-secondary py-1" data-history-limit="100">Last 100</button>
                             <button class="tg-btn-secondary py-1" data-history-limit="1000">Last 1k</button>
                             <button class="tg-btn-secondary py-1" data-history-limit="10000">Last 10k</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="0" data-i18n="group.backfill.all">All</button>
                         </div>
+                        <p class="text-xs text-tg-warning mt-1" data-i18n="group.backfill.all_warn">Pulling all history may download tens of thousands of files and take hours.</p>
                         <p id="history-progress" class="text-xs text-tg-textSecondary mt-2 hidden"></p>
                     </div>
 

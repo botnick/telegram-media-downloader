@@ -65,5 +65,9 @@
 
     "onboard.configure_api.title": "ขั้นตอนที่ 1 / 3 — วางข้อมูล Telegram API",
     "onboard.add_account.title": "ขั้นตอนที่ 2 / 3 — เพิ่มบัญชี Telegram",
-    "onboard.enable_group.title": "ขั้นตอนที่ 3 / 3 — เลือกแชตที่จะมอนิเตอร์"
+    "onboard.enable_group.title": "ขั้นตอนที่ 3 / 3 — เลือกแชตที่จะมอนิเตอร์",
+
+    "group.backfill.all": "ทั้งหมด",
+    "group.backfill.all_warn": "การดึงประวัติทั้งหมดอาจดาวน์โหลดไฟล์เป็นหมื่น และใช้เวลาหลายชั่วโมง",
+    "group.backfill.all_confirm": "ดาวน์โหลดประวัติทั้งหมดของแชทนี้? อาจใช้เวลาหลายชั่วโมงและกินพื้นที่มาก"
 }

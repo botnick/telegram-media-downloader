@@ -99,15 +99,22 @@ export class HistoryDownloader extends EventEmitter {
         this.cancelFlag = false;
         this.stats = { processed: 0, downloaded: 0, skipped: 0, urls: 0 };
         
-        const limit = options.limit || 100;
+        // null / undefined / 0 → "no limit" — iterate the entire history.
+        // Any positive number caps the iteration to that many messages.
+        const rawLimit = options.limit;
+        const limit = (rawLimit === undefined || rawLimit === null || rawLimit === 0)
+            ? undefined
+            : rawLimit;
         const offsetId = options.offsetId || 0;
-        
+
         // Find group config
         const group = this.config.groups.find(g => String(g.id) === String(groupId));
         if (!group) throw new Error('Group config not found');
 
-        this.emit('start', { group: group.name, limit });
-        
+        // 'All' surfaces in progress UIs as the string "all" instead of a number
+        // so toasts/log lines don't render misleading totals.
+        this.emit('start', { group: group.name, limit: limit === undefined ? 'all' : limit });
+
         // Start workers if not running
         this.downloader.start();
 
@@ -122,8 +129,9 @@ export class HistoryDownloader extends EventEmitter {
             // Iterate messages
             // Using iterMessages is more memory efficient than getMessages for large history
             // SAFETY: Process in small batches with rest intervals
-            
-            for await (const message of workingClient.iterMessages(groupId, { 
+            // GramJS: passing `limit: undefined` to iterMessages iterates ALL messages.
+
+            for await (const message of workingClient.iterMessages(groupId, {
                 limit: limit,
                 offsetId: offsetId,
                 offsetDate: options.offsetDate

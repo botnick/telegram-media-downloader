@@ -20,7 +20,7 @@ import { openSheet } from './sheet.js';
 import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkeletons } from './components.js';
 import { formatRelativeTime } from './utils.js';
 import { attachLongPress, attachPullToRefresh } from './gestures.js';
-import { initI18n, setLang, getLang, applyToDOM as applyI18n } from './i18n.js';
+import { initI18n, setLang, getLang, applyToDOM as applyI18n, t as i18nT } from './i18n.js';
 
 // ============ Initialization ============
 async function init() {
@@ -890,8 +890,16 @@ async function openGroupSettings(groupId, groupName) {
     if (progressEl) progressEl.classList.add('hidden');
     document.querySelectorAll('[data-history-limit]').forEach(btn => {
         btn.onclick = async () => {
-            const limit = parseInt(btn.dataset.historyLimit, 10) || 100;
-            if (!confirm(`Download the last ${limit} messages of "${groupName}" into the queue?`)) return;
+            const raw = btn.dataset.historyLimit;
+            const parsed = parseInt(raw, 10);
+            const limit = Number.isFinite(parsed) ? parsed : 100;
+            if (limit === 0) {
+                const msg = i18nT('group.backfill.all_confirm',
+                    'Backfill ALL history for this chat? This may take hours and download a lot of data.');
+                if (!confirm(msg)) return;
+            } else {
+                if (!confirm(`Download the last ${limit} messages of "${groupName}" into the queue?`)) return;
+            }
             btn.disabled = true;
             try {
                 const r = await api.post('/api/history', { groupId, limit });
@@ -899,7 +907,8 @@ async function openGroupSettings(groupId, groupName) {
                     progressEl.textContent = `Job ${r.jobId} queued — watch the Engine card for progress.`;
                     progressEl.classList.remove('hidden');
                 }
-                showToast(`History job started (${limit} messages)`, 'success');
+                const label = limit === 0 ? 'all' : `${limit} messages`;
+                showToast(`History job started (${label})`, 'success');
             } catch (e) {
                 showToast(`History failed: ${e.message}`, 'error');
             } finally {

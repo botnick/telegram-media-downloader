@@ -697,7 +697,12 @@ app.post('/api/history', async (req, res) => {
     try {
         const { groupId, limit = 100, offsetId = 0 } = req.body || {};
         if (!groupId) return res.status(400).json({ error: 'groupId required' });
-        const lim = Math.max(1, Math.min(50000, parseInt(limit, 10) || 100));
+        // limit === 0 (or "0") means "no limit" → backfill the entire history.
+        // Anything else is clamped into a sane positive range.
+        const limRaw = parseInt(limit, 10);
+        const lim = (limRaw === 0)
+            ? null
+            : Math.max(1, Math.min(50000, Number.isFinite(limRaw) ? limRaw : 100));
 
         const am = await getAccountManager();
         if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
@@ -730,7 +735,7 @@ app.post('/api/history', async (req, res) => {
             broadcast({ type: 'history_progress', jobId, ...s, group: group.name });
         });
 
-        history.downloadHistory(groupId, { limit: lim, offsetId: parseInt(offsetId, 10) || 0 })
+        history.downloadHistory(groupId, { limit: lim ?? undefined, offsetId: parseInt(offsetId, 10) || 0 })
             .then(() => {
                 job.state = 'done';
                 broadcast({ type: 'history_done', jobId, group: group.name, ...job });
