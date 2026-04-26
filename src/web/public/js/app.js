@@ -17,8 +17,9 @@ import { initOnboarding, refreshOnboarding } from './onboarding.js';
 import { initShortcuts } from './shortcuts.js';
 import * as router from './router.js';
 import { openSheet } from './sheet.js';
-import { renderChatRow, renderEmptyState, renderRowSkeletons } from './components.js';
+import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkeletons } from './components.js';
 import { formatRelativeTime } from './utils.js';
+import { attachLongPress, attachPullToRefresh } from './gestures.js';
 
 // ============ Initialization ============
 async function init() {
@@ -121,6 +122,7 @@ async function init() {
     setupPasteUrl();
     setupMediaSearch();
     setupStoriesPanel();
+    setupGalleryGestures();
 
     // Appearance toggle
     initTheme();
@@ -370,17 +372,26 @@ async function loadAllFiles() {
 // ============ Media Loading ============
 async function loadGroupFiles(groupId) {
     state.loading = true;
-    
+
+    // Show 12 skeleton tiles for the very first page so users don't stare
+    // at an empty grid for the duration of the network round-trip. Page 2+
+    // adds rows so we don't replace what's already there.
+    if (state.page === 1) {
+        const grid = document.getElementById('media-grid');
+        if (grid) grid.innerHTML = renderGallerySkeletons(12);
+        document.getElementById('empty-state')?.classList.add('hidden');
+    }
+
     try {
         const res = await api.get(`/api/downloads/${encodeURIComponent(groupId)}?page=${state.page}&limit=50`);
         const newFiles = res.files || [];
-        
+
         if (state.page === 1) {
             state.files = newFiles;
         } else {
             state.files = state.files.concat(newFiles);
         }
-        
+
         state.hasMore = newFiles.length === 50;
         renderMediaGrid();
         document.getElementById('page-subtitle').textContent = `${res.total || state.files.length} files`;
@@ -468,6 +479,35 @@ function updateSelectionBar() {
     const count = state.selected ? state.selected.size : 0;
     document.getElementById('selection-count').textContent = `${count} selected`;
     if (bar) bar.classList.toggle('hidden', count === 0);
+}
+
+function setupGalleryGestures() {
+    const grid = document.getElementById('media-grid');
+    if (!grid) return;
+
+    // Long-press on a tile → enter selection mode + toggle that tile.
+    attachLongPress(grid, {
+        selector: '.media-item[data-path]',
+        onLongPress: (el) => {
+            if (!state.selectMode) {
+                state.selectMode = true;
+                document.getElementById('select-mode-btn')?.classList.add('bg-tg-blue', 'text-white');
+            }
+            toggleSelection(el.dataset.path);
+        },
+    });
+
+    // Pull-to-refresh on the viewer's scroll container.
+    const scroll = document.getElementById('content-area');
+    if (scroll) {
+        scroll.style.overscrollBehavior = 'contain';
+        attachPullToRefresh(scroll, {
+            onRefresh: async () => {
+                if (typeof refreshCurrentPage === 'function') refreshCurrentPage();
+                await new Promise(r => setTimeout(r, 400));
+            },
+        });
+    }
 }
 
 async function setupMediaSearch() {

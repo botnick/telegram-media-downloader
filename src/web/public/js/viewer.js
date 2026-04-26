@@ -1,6 +1,7 @@
 import { state } from './store.js';
 import { api } from './api.js';
 import { escapeHtml, getFileIcon, formatDate, showToast } from './utils.js';
+import { attachSwipe, attachDragDismiss } from './gestures.js';
 
 // ============ Media Viewer ============
 let zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0, startX: 0, startY: 0 };
@@ -143,15 +144,35 @@ export function setupViewerEvents() {
     document.getElementById('modal-close')?.addEventListener('click', closeMediaViewer);
     document.getElementById('modal-prev')?.addEventListener('click', () => navigateMedia(-1));
     document.getElementById('modal-next')?.addEventListener('click', () => navigateMedia(1));
-    
-    // Keyboard support
+
+    // Keyboard support — Esc / Arrow / Space.
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('media-modal').classList.contains('hidden')) return;
-        
         if (e.key === 'Escape') closeMediaViewer();
-        if (e.key === 'ArrowLeft') navigateMedia(-1);
-        if (e.key === 'ArrowRight') navigateMedia(1);
+        else if (e.key === 'ArrowLeft') navigateMedia(-1);
+        else if (e.key === 'ArrowRight') navigateMedia(1);
+        else if (e.key === ' ' || e.code === 'Space') {
+            const v = document.getElementById('modal-video');
+            if (v && !v.paused) v.pause(); else v?.play?.();
+            e.preventDefault();
+        }
     });
+
+    // Touch / pen gestures: swipe left/right = prev/next, drag down on the
+    // empty area below the controls = dismiss (Telegram-style). Mouse
+    // pointer-down inside an image / video / control still works for clicks
+    // because attachSwipe only fires once on pointerup past threshold.
+    const swipeArea = document.getElementById('modal-swipe');
+    if (swipeArea) {
+        attachSwipe(swipeArea, {
+            onSwipe: (dir) => navigateMedia(dir === 'left' ? 1 : -1),
+            threshold: 60,
+        });
+        attachDragDismiss(swipeArea, {
+            onDismiss: closeMediaViewer,
+            threshold: 100,
+        });
+    }
 }
 
 function navigateMedia(dir) {
