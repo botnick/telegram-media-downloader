@@ -113,9 +113,16 @@ function setupVideoPlayer(fileId) {
     const cur = document.getElementById('video-current-time');
     const dur = document.getElementById('video-duration');
     const fill = document.getElementById('video-progress-fill');
+    const dot = document.getElementById('video-progress-dot');
+    const playBtnIcon = document.getElementById('video-play-btn');
     if (cur)  cur.textContent  = '00:00';
     if (dur)  dur.textContent  = '00:00';
     if (fill) fill.style.width = '0%';
+    if (dot)  dot.style.left   = '0%';
+    // Force the play/pause icon back to "play" — a new clip is always
+    // paused at start. Without this, the icon stuck on "pause" from the
+    // previous clip until the user pressed play.
+    if (playBtnIcon) playBtnIcon.innerHTML = '<i class="ri-play-fill text-2xl"></i>';
 
     // Resume-from-saved-time. Race-safe: if metadata is already loaded
     // when this runs (small clip / cached / fast network), the

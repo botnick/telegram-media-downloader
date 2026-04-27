@@ -879,19 +879,22 @@
                         </div>
                     </div>
 
-                    <!-- History backfill -->
+                    <!-- History backfill — quick shortcut. Clicking a preset
+                         deep-links to the dedicated Backfill page (#/backfill/<id>)
+                         with the group preselected and the limit applied. -->
                     <div class="bg-tg-panel rounded-xl p-4 mt-4">
                         <h3 class="text-sm text-tg-text font-medium mb-2 flex items-center gap-2">
-                            <i class="ri-history-line text-tg-blue"></i> Backfill history
+                            <i class="ri-history-line text-tg-blue"></i>
+                            <span data-i18n="backfill.modal.title">Backfill history</span>
                         </h3>
-                        <p class="text-xs text-tg-textSecondary mb-3">Pull older messages from this group into the downloader.</p>
+                        <p class="text-xs text-tg-textSecondary mb-3" data-i18n="backfill.modal.help">Open the Backfill page with this chat preselected.</p>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-xs">
-                            <button class="tg-btn-secondary py-1" data-history-limit="100">Last 100</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="1000">Last 1k</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="10000">Last 10k</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="0" data-i18n="group.backfill.all">All</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="100" data-i18n="backfill.preset.last_100">Last 100</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="1000" data-i18n="backfill.preset.last_1k">Last 1k</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="10000" data-i18n="backfill.preset.last_10k">Last 10k</button>
+                            <button class="tg-btn-secondary py-1" data-history-limit="0" data-i18n="backfill.preset.all">All</button>
                         </div>
-                        <p class="text-xs text-tg-warning mt-1" data-i18n="group.backfill.all_warn">Pulling all history may download tens of thousands of files and take hours.</p>
+                        <p class="text-xs text-tg-warning mt-1" data-i18n="backfill.modal.deeplink_hint">Opens the Backfill page so you can review running and recent jobs in one place.</p>
                         <p id="history-progress" class="text-xs text-tg-textSecondary mt-2 hidden"></p>
                     </div>
 
@@ -1491,6 +1494,81 @@
                     </div>
                 </div>
 
+                <!-- Backfill Page (top-level surface for the History
+                     Backfill feature). Three stacked cards, populated by
+                     js/backfill.js: Active jobs / Start a new backfill /
+                     Recent jobs (last 30 days). -->
+                <div id="page-backfill" class="hidden max-w-2xl mx-auto">
+                    <!-- Card A — Active jobs -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-4">
+                        <h3 class="text-tg-text font-medium mb-3 flex items-center gap-2">
+                            <i class="ri-play-circle-line text-tg-blue"></i>
+                            <span data-i18n="backfill.active.title">Active backfills</span>
+                        </h3>
+                        <div id="backfill-active-list" class="space-y-2"></div>
+                        <div id="backfill-active-empty" class="hidden text-center py-6">
+                            <i class="ri-history-line text-3xl text-tg-textSecondary mb-2"></i>
+                            <p class="text-sm text-tg-textSecondary" data-i18n="backfill.empty.title">No active backfills</p>
+                            <p class="text-xs text-tg-textSecondary opacity-70 mt-1" data-i18n="backfill.empty.body">Start one below to pull older messages from a chat.</p>
+                        </div>
+                    </section>
+
+                    <!-- Card B — Start a new backfill -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-4">
+                        <h3 class="text-tg-text font-medium mb-3 flex items-center gap-2">
+                            <i class="ri-add-circle-line text-tg-green"></i>
+                            <span data-i18n="backfill.start.title">Start a new backfill</span>
+                        </h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs text-tg-textSecondary mb-1.5" data-i18n="backfill.start.group_label">Group</label>
+                                <div class="relative">
+                                    <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
+                                    <input id="backfill-group-search" type="text" autocomplete="off"
+                                        class="tg-input w-full pl-9 text-sm"
+                                        data-i18n-placeholder="backfill.start.group_placeholder"
+                                        placeholder="Type to search your monitored chats…">
+                                </div>
+                                <div id="backfill-group-results" class="mt-1 max-h-56 overflow-y-auto rounded-lg border border-tg-border/40 hidden"></div>
+                                <div id="backfill-group-selected" class="mt-2 hidden flex items-center gap-2 p-2 bg-tg-bg/50 rounded-lg">
+                                    <i class="ri-check-line text-tg-green"></i>
+                                    <span id="backfill-group-selected-name" class="text-sm text-tg-text font-medium flex-1 min-w-0 truncate"></span>
+                                    <button type="button" id="backfill-group-clear" class="text-xs text-tg-textSecondary hover:text-tg-text">
+                                        <i class="ri-close-line"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs text-tg-textSecondary mb-1.5" data-i18n="backfill.start.limit_label">Limit</label>
+                                <div id="backfill-preset-row" class="flex flex-wrap gap-2 mb-2"></div>
+                                <input id="backfill-custom-limit" type="number" min="1" max="50000"
+                                    class="tg-input w-full text-sm"
+                                    data-i18n-placeholder="backfill.start.custom_limit_placeholder"
+                                    placeholder="Custom limit (1–50,000)">
+                            </div>
+                            <button id="backfill-start-btn" type="button"
+                                class="tg-btn w-full disabled:opacity-50 disabled:cursor-not-allowed">
+                                <i class="ri-download-line mr-2"></i>
+                                <span data-i18n="backfill.start.button">Start backfill</span>
+                            </button>
+                            <p id="backfill-start-warn" class="text-xs text-tg-warning hidden">
+                                <i class="ri-error-warning-line mr-1"></i>
+                                <span data-i18n="backfill.start.warn_all">Pulling all history may download tens of thousands of files and take hours.</span>
+                            </p>
+                        </div>
+                    </section>
+
+                    <!-- Card C — Recent jobs (last 30 days) -->
+                    <section class="bg-tg-panel rounded-xl p-4">
+                        <h3 class="text-tg-text font-medium mb-3 flex items-center gap-2">
+                            <i class="ri-time-line text-tg-textSecondary"></i>
+                            <span data-i18n="backfill.recent.title">Recent backfills (30 days)</span>
+                        </h3>
+                        <div id="backfill-recent-list" class="space-y-2"></div>
+                        <p id="backfill-recent-empty" class="hidden text-sm text-tg-textSecondary text-center py-4" data-i18n="backfill.recent.empty">No completed backfills yet.</p>
+                    </section>
+                </div>
+
             </div>
         </main>
     </div>
@@ -1595,7 +1673,7 @@
                             <div id="video-progress-fill" class="absolute left-0 top-0 h-full bg-white rounded-full transition-all"
                                 style="width: 0%"></div>
                             <div id="video-progress-dot"
-                                class="absolute top-1/2 w-3 h-3 -mt-1.5 -ml-1.5 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity z-20 pointer-events-none shadow"
+                                class="absolute top-1/2 w-3 h-3 -mt-1.5 -ml-1.5 bg-white rounded-full z-30 pointer-events-none shadow ring-2 ring-tg-blue/40"
                                 style="left: 0%"></div>
                         </div>
                     </div>

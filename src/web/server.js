@@ -966,7 +966,11 @@ app.post('/api/history', async (req, res) => {
                 job.state = job.cancelled ? 'cancelled' : 'done';
                 job.finishedAt = Date.now();
                 delete job._runner;
-                broadcast({ type: 'history_done', jobId, group: group.name, ...job });
+                // Two distinct terminal events so the dashboard can flash
+                // green for natural completions and amber for user cancels
+                // without sniffing payload fields.
+                const evt = job.cancelled ? 'history_cancelled' : 'history_done';
+                broadcast({ type: evt, jobId, group: group.name, ...job });
                 if (standalone) downloader.stop().catch(() => {});
                 saveHistoryJobsToDisk().catch(() => {});
                 // Drop the in-memory entry after a grace window so the UI has
@@ -1007,9 +1011,13 @@ app.get('/api/history/jobs', async (req, res) => {
         const all = Array.from(byId.values()).sort(
             (a, b) => (b.startedAt || 0) - (a.startedAt || 0)
         );
+        const recent = all.filter(j => j.state !== 'running').slice(0, 30);
         res.json({
             active: all.filter(j => j.state === 'running'),
-            past: all.filter(j => j.state !== 'running'),
+            // `recent` is the canonical key the dashboard reads; `past` is
+            // kept as an alias for any older client still in flight.
+            recent,
+            past: recent,
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -1328,8 +1336,23 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // 2. Dialogs API (Groups)
+// /api/dialogs response cache. Telegram rate-limits getDialogs aggressively
+// and the picker is opened many times in a typical session — caching the
+// fully-built result for 5 min cuts the Telegram round-trip out of every
+// repeat open. `?fresh=1` forces a refetch if the user wants to see a
+// just-added chat.
+let _dialogsResponseCache = { at: 0, body: null };
+
 app.get('/api/dialogs', async (req, res) => {
     try {
+        const wantFresh = req.query.fresh === '1';
+        const now = Date.now();
+        if (!wantFresh
+            && _dialogsResponseCache.body
+            && now - _dialogsResponseCache.at < 5 * 60 * 1000) {
+            return res.json(_dialogsResponseCache.body);
+        }
+
         // Prefer the AccountManager-managed default client; fall back to the
         // legacy single-session client for installs that haven't migrated.
         let client = null;
@@ -1352,6 +1375,20 @@ app.get('/api/dialogs', async (req, res) => {
             client.getDialogs({ limit: 500 }).catch(() => []),
             client.getDialogs({ limit: 200, archived: true }).catch(() => []),
         ]);
+
+        // Side-effect: warm the name cache used by /api/groups + /api/downloads.
+        // Free since we already have the dialog objects in hand.
+        const nameById = new Map(_dialogsNameCache.byId);
+        for (const d of [...active, ...archived]) {
+            const id = String(d.id);
+            const nm = d.title
+                || d.name
+                || ((d.entity?.firstName || '') + (d.entity?.lastName ? ' ' + d.entity.lastName : '')).trim()
+                || d.entity?.username
+                || null;
+            if (nm && !nameLooksUnresolved(nm, id)) nameById.set(id, nm);
+        }
+        _dialogsNameCache = { at: now, byId: nameById };
         const seen = new Set();
         const merged = [];
         for (const d of [...active, ...archived]) {
@@ -1390,7 +1427,9 @@ app.get('/api/dialogs', async (req, res) => {
                 };
             });
 
-        res.json({ success: true, dialogs: results, allowDM });
+        const body = { success: true, dialogs: results, allowDM };
+        _dialogsResponseCache = { at: now, body };
+        res.json(body);
     } catch (error) {
         console.error('GET /api/dialogs:', error);
         res.status(500).json({ error: 'Internal error' });
@@ -1587,17 +1626,27 @@ app.get('/api/downloads/:groupId', async (req, res) => {
 
         const result = getDownloads(groupId, limit, offset, type);
 
-        // DB file_path stores bare filename only.
-        // Actual path on disk: sanitizedGroupName/typeFolder/filename
+        // DB `file_path` stores the path RELATIVE to data/downloads (set
+        // by downloader.js via path.relative(DOWNLOADS_DIR, …)). USE that
+        // as the source of truth — re-deriving from sanitize(group.name)
+        // breaks every file that was downloaded under a different folder
+        // name (e.g. "Unknown" before the group was named, or a renamed
+        // group whose old folder still has the old files).
         const files = result.files.map(row => {
-            // Map DB file_type to folder name
-            const typeFolder = row.file_type === 'photo' ? 'images' 
-                : row.file_type === 'video' ? 'videos' 
-                : row.file_type === 'audio' ? 'audio' 
+            // Map DB file_type to folder name (used only as a hint when
+            // file_path is missing or invalid).
+            const typeFolder = row.file_type === 'photo' ? 'images'
+                : row.file_type === 'video' ? 'videos'
+                : row.file_type === 'audio' ? 'audio'
                 : row.file_type === 'sticker' ? 'stickers'
                 : 'documents';
-            
-            const fullPath = `${groupFolder}/${typeFolder}/${row.file_name}`;
+
+            // Prefer the stored relative path. Normalise Windows-style
+            // backslashes into forward slashes for the URL.
+            const stored = (row.file_path || '').replace(/\\/g, '/');
+            const fullPath = stored && stored.includes('/')
+                ? stored
+                : `${groupFolder}/${typeFolder}/${row.file_name}`;
             
             return {
                 name: row.file_name,
@@ -1668,12 +1717,18 @@ app.get('/api/downloads/search', async (req, res) => {
                 : row.file_type === 'video' ? 'videos'
                 : row.file_type === 'audio' ? 'audio'
                 : row.file_type === 'sticker' ? 'stickers' : 'documents';
+            // Use the stored relative path when present (matches the actual
+            // on-disk location even if the group has since been renamed).
+            const stored = (row.file_path || '').replace(/\\/g, '/');
+            const fullPath = stored && stored.includes('/')
+                ? stored
+                : `${folder}/${typeFolder}/${row.file_name}`;
             return {
                 id: row.id,
                 groupId: row.group_id,
                 groupName: row.group_name,
                 name: row.file_name,
-                fullPath: `${folder}/${typeFolder}/${row.file_name}`,
+                fullPath,
                 size: row.file_size,
                 sizeFormatted: formatBytes(row.file_size),
                 type: typeFolder,
@@ -1929,6 +1984,11 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
             await downloadProfilePhoto(id).catch(() => {});
         }
         if (mutated) await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        // Invalidate the dialogs cache so the next /api/dialogs and the next
+        // /api/groups pick up the freshly-resolved names without waiting for
+        // the 5-min TTL.
+        _dialogsResponseCache = { at: 0, body: null };
+        _dialogsNameCache = { at: 0, byId: new Map() };
         broadcast({ type: 'config_updated' });
         res.json({ success: true, scanned: ids.size, updated });
     } catch (e) {
@@ -2594,6 +2654,26 @@ ${tip}
 
     // Resolve group names from Telegram for any DB records still unnamed
     await resolveGroupNamesFromTelegram();
+
+    // Auto-start the realtime monitor on container boot when at least one
+    // group is enabled and at least one Telegram account is loaded. Lets
+    // `docker compose up -d` boot a ready-to-monitor instance without a
+    // manual click on Settings → Engine → Start. Opt out via
+    // `monitor.autoStart: false` in config.json.
+    try {
+        const cfg = loadConfig();
+        const autoStart = cfg.monitor?.autoStart !== false;
+        const enabled = Array.isArray(cfg.groups) && cfg.groups.some(g => g?.enabled !== false);
+        if (autoStart && enabled) {
+            const am = await getAccountManager().catch(() => null);
+            if (am && am.count > 0) {
+                await runtime.start({ config: cfg, accountManager: am });
+                console.log('[monitor] auto-started on boot');
+            }
+        }
+    } catch (e) {
+        console.warn('[monitor] auto-start skipped:', e.message);
+    }
 });
 
 /**

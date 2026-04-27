@@ -21,6 +21,7 @@ import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkele
 import { formatRelativeTime } from './utils.js';
 import { attachLongPress, attachPullToRefresh } from './gestures.js';
 import { initI18n, setLang, getLang, applyToDOM as applyI18n, t as i18nT, tf as i18nTf } from './i18n.js';
+import { showBackfillPage, deepLinkFromModal as backfillDeepLink } from './backfill.js';
 
 // ============ Render coalescing ============
 //
@@ -283,6 +284,11 @@ function renderPage(page, params = {}) {
         } else {
             showAllMedia();
         }
+    } else if (page === 'backfill') {
+        document.getElementById('page-title').textContent = i18nT('backfill.page.title', 'Backfill');
+        document.getElementById('page-subtitle').textContent = i18nT('backfill.page.subtitle', 'Pull older messages into the queue');
+        // Show the page first; backfill module loads server state then renders.
+        showBackfillPage(params).catch(e => console.error('backfill page', e));
     }
 }
 
@@ -305,6 +311,8 @@ function registerRoutes() {
     router.route('/engine', () => renderPage('settings', { section: 'engine' }));
     router.route('/settings', () => renderPage('settings'));
     router.route('/settings/:section', ({ params }) => renderPage('settings', { section: params.section }));
+    router.route('/backfill', () => renderPage('backfill'));
+    router.route('/backfill/:groupId', ({ params }) => renderPage('backfill', { groupId: params.groupId }));
     router.route('/stories', () => {
         renderPage('viewer');
         document.getElementById('stories-btn')?.click();
@@ -1025,38 +1033,20 @@ async function openGroupSettings(groupId, groupName) {
         }).join('');
     }
     
-    // Wire history backfill buttons (re-attach each time the modal opens
-    // so the closure captures the current group).
+    // Wire history backfill quick-shortcut buttons. Clicking a preset
+    // closes the modal and deep-links to #/backfill/<id> with the chat
+    // preselected and the limit applied — the dedicated Backfill page
+    // takes it from there (confirm + start). This keeps the modal as a
+    // discoverability handle while moving the real surface elsewhere.
     const progressEl = document.getElementById('history-progress');
     if (progressEl) progressEl.classList.add('hidden');
     document.querySelectorAll('[data-history-limit]').forEach(btn => {
-        btn.onclick = async () => {
+        btn.onclick = () => {
             const raw = btn.dataset.historyLimit;
             const parsed = parseInt(raw, 10);
             const limit = Number.isFinite(parsed) ? parsed : 100;
-            if (limit === 0) {
-                const msg = i18nT('group.backfill.all_confirm',
-                    'Backfill ALL history for this chat? This may take hours and download a lot of data.');
-                if (!confirm(msg)) return;
-            } else {
-                if (!confirm(i18nTf('group.backfill.confirm_n', { n: limit, name: groupName }, `Download the last ${limit} messages of "${groupName}" into the queue?`))) return;
-            }
-            btn.disabled = true;
-            try {
-                const r = await api.post('/api/history', { groupId, limit });
-                if (progressEl) {
-                    progressEl.textContent = i18nTf('group.backfill.queued', { id: r.jobId }, `Job ${r.jobId} queued — watch the Engine card for progress.`);
-                    progressEl.classList.remove('hidden');
-                }
-                const toast = limit === 0
-                    ? i18nT('group.backfill.started_all', 'History job started (all)')
-                    : i18nTf('group.backfill.started_n', { n: limit }, `History job started (${limit} messages)`);
-                showToast(toast, 'success');
-            } catch (e) {
-                showToast(i18nTf('group.backfill.failed', { msg: e.message }, `History failed: ${e.message}`), 'error');
-            } finally {
-                btn.disabled = false;
-            }
+            closeGroupSettings();
+            backfillDeepLink(groupId, limit);
         };
     });
 

@@ -167,7 +167,8 @@ export function handleEngineWsMessage(msg) {
         }
         return;
     }
-    if (msg.type === 'history_progress' || msg.type === 'history_done' || msg.type === 'history_error') {
+    if (msg.type === 'history_progress' || msg.type === 'history_done'
+        || msg.type === 'history_error' || msg.type === 'history_cancelled') {
         refresh();
         return;
     }
