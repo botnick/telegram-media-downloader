@@ -685,15 +685,16 @@ app.get('/api/version', (req, res) => {
 // last-known good answer (marked stale) so a flaky GitHub doesn't blank the
 // status-bar chip. Public path so the chip can render pre-login.
 //
-// Default TTL was 6 h, lowered to 1 h after a user reported sitting on
-// v2.3.7 while v2.3.10 had been live for hours with no update pill.
-// 60 req/h × 24 h = 1,440 hits/day per instance — still well under
-// GitHub's 60-req-per-hour-per-IP unauthenticated rate limit since each
-// instance only fires once per hour. Combined with the
+// TTL evolution: 6 h (initial) → 1 h (v2.3.11) → 10 min (v2.3.12) after
+// the user asked for "near-real-time" notifications. 6 upstream calls
+// per hour per instance is comfortably under GitHub's 60-req-per-hour
+// unauthenticated rate limit (cache is shared across all clients of
+// one instance — multiple browser tabs / users behind the same dashboard
+// hit the same in-memory cache). Combined with the
 // `current >= cached_latest` bypass below, an instance running the
 // freshly-shipped version always re-checks immediately rather than
 // trusting a now-stale "no update" answer from the previous window.
-const UPDATE_CHECK_TTL_MS = 60 * 60 * 1000;
+const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
 const UPDATE_CHECK_REPO = 'botnick/telegram-media-downloader';
 let _updateCache = { fetchedAt: 0, data: null };
 

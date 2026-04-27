@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.12] — 2026-04-28
+
+### Added
+- **Settings → Video Player** now covers every realistic playback preference. New options on top of v2.3.9's autoplay/start-muted/loop/auto-advance/resume/default-speed/default-volume:
+  - **Show Picture-in-Picture button** (toggle) — hide if you never use PiP, frees toolbar space.
+  - **Show speed button** (toggle) — same idea; default speed is still configurable below.
+  - **Double-tap to fullscreen** (toggle) — defaults ON to match legacy behaviour.
+  - **Skip step (s)** (number, 1–60, default 5) — controls how far ← / → arrow keys jump. Shift-arrow now jumps `step × 2` for power users.
+  - **Hide controls after (s)** (number, 1–30, default 3) — auto-hide delay for the player toolbar.
+
+### Changed
+- **Sidebar "Viewer" entry removed** — was a third redundant entry-point to the same `#/viewer` page (the "All Media" card right below + the bottom-nav "Library" item already cover it). Cleaner sidebar; no functional change.
+- **Update-check cache TTL: 1 h → 10 min**, in response to "I'm on v2.3.7 with no update pill while v2.3.10 has been live for hours". Cache is shared across all clients of one instance, so 6 upstream calls per hour total is comfortably under GitHub's 60-req-per-hour-per-IP unauthenticated rate limit.
+- **Service-worker cache** bumped `'v11'` → `'v12'` to flush the older cached JS for users upgrading through this release.
+
+### i18n
+- 18 new keys (10 settings labels/help + 8 toast confirmations), en + th lockstep, 635 keys total.
+
 ## [2.3.11] — 2026-04-28
 
 ### Fixed

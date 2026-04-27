@@ -974,12 +974,11 @@
             </div>
 
             <!-- Navigation -->
+            <!-- Sidebar "Viewer" entry removed in v2.3.12 — was a third
+                 redundant entry-point to the same #/viewer page (the
+                 "All Media" card below + the bottom-nav "Library" item
+                 already cover it). -->
             <nav class="border-b border-tg-border">
-                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover active"
-                    data-page="viewer" onclick="navigateTo('viewer')">
-                    <i class="ri-gallery-line text-xl text-tg-blue"></i>
-                    <span class="text-tg-text" data-i18n="nav.viewer">Viewer</span>
-                </div>
                 <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="groups"
                     onclick="navigateTo('groups')">
                     <i class="ri-group-line text-xl text-tg-textSecondary"></i>
@@ -1678,6 +1677,30 @@
                             <div id="setting-viewer-resume" class="tg-toggle shrink-0"></div>
                         </label>
 
+                        <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-2">
+                            <div>
+                                <div class="text-tg-text text-sm" data-i18n="settings.video_player.show_pip">Show Picture-in-Picture button</div>
+                                <div class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="settings.video_player.show_pip_help">Hide if you never use PiP — frees space in the toolbar.</div>
+                            </div>
+                            <div id="setting-viewer-show-pip" class="tg-toggle shrink-0"></div>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-2">
+                            <div>
+                                <div class="text-tg-text text-sm" data-i18n="settings.video_player.show_speed">Show speed button</div>
+                                <div class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="settings.video_player.show_speed_help">Hide to clean up the toolbar; you can still set the default speed below.</div>
+                            </div>
+                            <div id="setting-viewer-show-speed" class="tg-toggle shrink-0"></div>
+                        </label>
+
+                        <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-2">
+                            <div>
+                                <div class="text-tg-text text-sm" data-i18n="settings.video_player.dbl_tap_fs">Double-tap to fullscreen</div>
+                                <div class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="settings.video_player.dbl_tap_fs_help">Mobile-friendly shortcut. Single tap still toggles play/pause.</div>
+                            </div>
+                            <div id="setting-viewer-dbl-tap-fs" class="tg-toggle shrink-0"></div>
+                        </label>
+
                         <div class="grid grid-cols-2 gap-2 mt-2">
                             <div>
                                 <label for="setting-viewer-default-speed" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.video_player.default_speed">Default speed</label>
@@ -1695,6 +1718,14 @@
                                 <label for="setting-viewer-default-volume" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.video_player.default_volume">Default volume</label>
                                 <input id="setting-viewer-default-volume" type="range" min="0" max="100" step="5" class="w-full">
                                 <div class="text-[10px] text-tg-textSecondary text-right tabular-nums"><span id="setting-viewer-default-volume-val">100</span>%</div>
+                            </div>
+                            <div>
+                                <label for="setting-viewer-skip-step" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.video_player.skip_step">Skip step (s)</label>
+                                <input id="setting-viewer-skip-step" type="number" min="1" max="60" step="1" class="tg-input w-full text-sm" placeholder="5">
+                            </div>
+                            <div>
+                                <label for="setting-viewer-hide-delay" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.video_player.hide_delay">Hide controls after (s)</label>
+                                <input id="setting-viewer-hide-delay" type="number" min="1" max="30" step="1" class="tg-input w-full text-sm" placeholder="3">
                             </div>
                         </div>
                     </div>

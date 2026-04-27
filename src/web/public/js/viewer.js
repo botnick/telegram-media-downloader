@@ -174,6 +174,15 @@ class VideoPlayer {
         if (this.pipBtn && !document.pictureInPictureEnabled) {
             this.pipBtn.style.display = 'none';
         }
+        // Honour user's "Show PiP / Show speed button" preferences from
+        // Settings → Video Player. Inverted-sense keys ('1' = hidden) so
+        // the legacy default (both visible) survives without migration.
+        if (this.pipBtn && localStorage.getItem('viewer-hide-pip') === '1') {
+            this.pipBtn.style.display = 'none';
+        }
+        if (this.speedBtn && localStorage.getItem('viewer-hide-speed') === '1') {
+            this.speedBtn.style.display = 'none';
+        }
 
         this._currentUrl = null;
         this._storageKey = null;
@@ -210,6 +219,12 @@ class VideoPlayer {
             e.stopPropagation();
         };
         this.tapLayer.ondblclick = (e) => {
+            // Settings → Video Player → Double-tap to fullscreen. Default
+            // is ON (legacy behaviour); explicit '0' opts out.
+            if (localStorage.getItem('viewer-dbl-tap-fs') === '0') {
+                e.stopPropagation();
+                return;
+            }
             this.toggleFullscreen();
             e.stopPropagation();
         };
@@ -529,10 +544,18 @@ class VideoPlayer {
             case 'k':
             case 'K':
                 this.togglePlay(); return true;
-            case 'ArrowLeft':
-                this.seekRelative(e.shiftKey ? -10 : -5); return true;
-            case 'ArrowRight':
-                this.seekRelative(e.shiftKey ? 10 : 5); return true;
+            case 'ArrowLeft': {
+                // Configurable skip step (Settings → Video Player). Shift
+                // jumps 2× the step for power users.
+                const step = parseInt(localStorage.getItem('viewer-skip-step'), 10) || 5;
+                this.seekRelative(e.shiftKey ? -step * 2 : -step);
+                return true;
+            }
+            case 'ArrowRight': {
+                const step = parseInt(localStorage.getItem('viewer-skip-step'), 10) || 5;
+                this.seekRelative(e.shiftKey ? step * 2 : step);
+                return true;
+            }
             case 'ArrowUp':
                 this._setVolume(Math.min(1, v.volume + 0.05)); return true;
             case 'ArrowDown':
@@ -716,7 +739,18 @@ class VideoPlayer {
         }
     }
 
-    _scheduleHide(delay = HOVER_TIMEOUT_MS) {
+    _scheduleHide(delay) {
+        // Honour the user's "Hide controls after" setting on the
+        // implicit-default code path; explicit callers (e.g. _scheduleHide(800)
+        // for a fast post-seek hide) keep their literal value.
+        if (delay === undefined) {
+            const cfg = parseInt(localStorage.getItem('viewer-hide-delay'), 10);
+            delay = (Number.isFinite(cfg) && cfg > 0) ? cfg * 1000 : HOVER_TIMEOUT_MS;
+        }
+        return this.__scheduleHide(delay);
+    }
+
+    __scheduleHide(delay = HOVER_TIMEOUT_MS) {
         if (!SUPPORTS_HOVER) return;          // touch devices: keep visible
         if (this.video.paused) return;        // paused: keep visible
         if (this._hideTimer) clearTimeout(this._hideTimer);

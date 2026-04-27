@@ -123,6 +123,37 @@ export async function loadSettings() {
         wireBoolPref('setting-viewer-start-muted',  'video-muted',         'toast.viewer_muted_on',        'toast.viewer_muted_off');
         wireBoolPref('setting-viewer-loop',         'viewer-loop',         'toast.viewer_loop_on',         'toast.viewer_loop_off');
         wireBoolPref('setting-viewer-auto-advance', 'viewer-auto-advance', 'toast.viewer_advance_on',      'toast.viewer_advance_off');
+        // PiP / Speed button visibility — defaults to ON (legacy behaviour).
+        // Use inverted-sense keys ('viewer-hide-pip' = '1' → hidden) so
+        // existing users who never touched the toggle keep both visible.
+        const wireHidePref = (toggleId, key, applyFn, onMsg, offMsg) => {
+            const el = document.getElementById(toggleId);
+            if (!el) return;
+            const refresh = () => el.classList.toggle('active', localStorage.getItem(key) !== '1');
+            const apply = () => applyFn(localStorage.getItem(key) !== '1');
+            refresh(); apply();
+            el.onclick = (e) => {
+                e.preventDefault();
+                const visible = localStorage.getItem(key) !== '1';
+                try { localStorage.setItem(key, visible ? '1' : '0'); } catch {}
+                refresh(); apply();
+                showToast(visible ? i18nT(offMsg, offMsg) : i18nT(onMsg, onMsg), 'info');
+            };
+        };
+        wireHidePref('setting-viewer-show-pip',   'viewer-hide-pip',
+            (visible) => { const b = document.getElementById('video-pip-btn'); if (b) b.style.display = visible ? '' : 'none'; },
+            'toast.viewer_pip_on', 'toast.viewer_pip_off');
+        wireHidePref('setting-viewer-show-speed', 'viewer-hide-speed',
+            (visible) => { const b = document.getElementById('video-settings-btn'); if (b) b.style.display = visible ? '' : 'none'; },
+            'toast.viewer_speedbtn_on', 'toast.viewer_speedbtn_off');
+        // Seed default ON for double-tap-fullscreen so the toggle reflects
+        // the legacy behaviour on first visit. Once set, user clicks
+        // toggle as expected.
+        if (localStorage.getItem('viewer-dbl-tap-fs') === null) {
+            try { localStorage.setItem('viewer-dbl-tap-fs', '1'); } catch {}
+        }
+        wireBoolPref('setting-viewer-dbl-tap-fs', 'viewer-dbl-tap-fs',
+            'toast.viewer_dbltap_on', 'toast.viewer_dbltap_off');
         // Resume defaults to ON (legacy behaviour) — store the OPPOSITE
         // sense ('viewer-no-resume' = 1 when disabled) so existing users
         // who never touched the toggle keep their resume behaviour.
@@ -166,6 +197,21 @@ export async function loadSettings() {
                 try { localStorage.setItem('video-volume', String(Math.max(0, Math.min(1, n / 100)))); } catch {}
             };
         }
+        // Skip step (left/right arrow seek seconds) + auto-hide controls
+        // delay. Both clamp & persist on every input event so the player
+        // picks up changes on the very next clip open.
+        const wireNumberPref = (id, key, def, min, max) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const cur = parseInt(localStorage.getItem(key) || '', 10);
+            el.value = String(Number.isFinite(cur) && cur >= min && cur <= max ? cur : def);
+            el.oninput = () => {
+                const n = Math.max(min, Math.min(max, parseInt(el.value, 10) || def));
+                try { localStorage.setItem(key, String(n)); } catch {}
+            };
+        };
+        wireNumberPref('setting-viewer-skip-step',  'viewer-skip-step',  5, 1, 60);
+        wireNumberPref('setting-viewer-hide-delay', 'viewer-hide-delay', 3, 1, 30);
 
         const notifyToggle = document.getElementById('setting-notifications');
         if (notifyToggle) {
