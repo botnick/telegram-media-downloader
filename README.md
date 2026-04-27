@@ -75,12 +75,17 @@ A self-hosted application that watches your Telegram chats and downloads new med
 
 ### Engine
 - Realtime monitor across an unlimited number of channels, groups, supergroups, and forum topics.
-- Bulk **history backfill** with `last 100 / 1000 / 10000` presets or custom message-count filters.
+- **Monitor auto-starts** when at least one account is logged in — no manual "Start" click needed after a restart.
+- Bulk **history backfill** with `last 100 / 1000 / 10000` presets or custom message-count filters, now exposed as a dedicated **Backfill** tab with per-group dump-all + progress.
 - **Multi-account routing** — add unlimited Telegram accounts. The engine probes which account can read each chat and pins it automatically; per-group overrides are supported.
 - **Smart dual-lane queue** — realtime jobs (priority 1) never starve behind history backfill; TTL / self-destructing media (priority 0) is unshifted to the front.
 - **Auto-scaling workers** — 1 to 20 parallel downloads, scales with the queue depth, throttles down on FloodWait.
 - **FloodWait-aware** — pauses the right amount of time Telegram tells us to, never more.
-- **Atomic downloads** — temp-file then rename, no half-written files on crash.
+- **Keep-alive pings** — periodic `PingDelayDisconnect` keeps gramJS senders warm so `network.log` stays quiet.
+- **Atomic downloads** — temp-file then rename, no half-written files on crash, **post-write `fs.stat` verify** to catch corrupt or truncated files immediately.
+- **Self-healing integrity sweep** — boot + hourly scan that re-queues missing files and prunes orphan DB rows (configurable batch size, opt-out).
+- **Auto-rotate disk cap** — when `maxTotalSize` is exceeded, oldest downloads are pruned automatically (toggleable).
+- **Rescue Mode** — keep only files that have been deleted from the source chat (configurable per-chat or globally).
 - **Persistent dedup** — `(group_id, message_id)` unique constraint plus optional `(file_name, file_size)` second-pass dedup.
 - **Disk-spillover queue** — over 2000 pending history jobs spill to disk so RAM stays bounded.
 - **Auto-forward** — forward each download to a configured destination (channel, group, Saved Messages) with optional delete-after-forward.
@@ -89,17 +94,24 @@ A self-hosted application that watches your Telegram chats and downloads new med
 
 ### Web dashboard
 - **Self-hosted on `:3000`** with a Telegram-themed responsive SPA (vanilla ES Modules, no bundler, no build step).
-- **Light / dark / auto theme** with `prefers-color-scheme` detection and persistence.
+- **Installable PWA** — manifest + service worker; install to home-screen / desktop, offline shell.
+- **Light / dark / auto theme** with `prefers-color-scheme` detection, persistence, and a fully-tuned light palette.
+- **Full bilingual UI (en / th)** — `data-i18n` everywhere, lockstep translation files, runtime language switcher.
 - **Live engine card** — start, stop, queue depth, active workers, uptime; updates over WebSocket.
-- **Sticky status bar** — monitor state, queue, active, total files, disk usage, WebSocket health.
-- **Media gallery** — infinite scroll, lazy loading, type filters (Photos / Videos / Files / Audio).
-- **Built-in viewer** — full-screen image zoom, video player with resume position, keyboard nav.
+- **Sticky status bar** — monitor state, queue, active, total files, disk usage, WebSocket health, plus a live **version chip** (auto-bumps per push).
+- **Queue page (IDM-style)** — virtualised live job list with per-row pause / resume / cancel / retry and a global throttle slider (up to 50 MB/s).
+- **Backfill tab** — pick a chat, choose preset (100 / 1k / 10k / dump-all) or custom range, watch progress.
+- **Maintenance panel** — CLI parity from the browser: integrity sweep, rescue sweep, disk rotate, prune orphans, re-export sessions, view raw `config.json` (rendered as a JSON tree), download diagnostics bundle.
+- **YouTube/Netflix/Telegram-grade video player** — buffered indicator, click + drag scrub, hover preview, scroll-wheel volume, persisted volume / speed, race-safe resume, full keyboard shortcuts (Space / K / M / F / 0–9 / &lt; &gt;), double-tap mobile seek.
+- **Themed sheets replace native dialogs** — `confirmSheet` / `promptSheet` everywhere; no more browser `alert()` / `confirm()` / `prompt()`.
+- **Media gallery** — infinite scroll, lazy loading, type filters (Photos / Videos / Files / Audio), grid / list view-mode toggle.
 - **Search across all downloads** — server-side LIKE search over filename + group name.
-- **Multi-select + bulk delete** — selection mode with “X of Y selected” footer.
+- **Multi-select + bulk delete** — selection mode with "X of Y selected" footer.
 - **Paste t.me link** — drop one or many URLs (newline-separated) to download just those messages.
 - **Stories drawer** — fetch a username's active Stories, pick which ones to save.
-- **Group settings modal** — per-chat media filters (photos, videos, files, voice, gifs, stickers, links), auto-forward destination, monitor / forward account assignment, forum-topic whitelist.
-- **History backfill from the modal** — one-tap last 100 / 1k / 10k.
+- **Group settings modal** — per-chat media filters (photos, videos, files, voice, gifs, stickers, links), auto-forward destination, monitor / forward account assignment, forum-topic whitelist, per-row cog.
+- **Settings → Advanced** — 14 previously-hardcoded constants surfaced as live-editable knobs (worker auto-scale, integrity batch size, polling interval, log rotation size, etc.).
+- **Privacy / Force-HTTPS / Rate-limit toggles** — opt-in from the browser, no `.env` editing.
 - **Browser notifications** — opt-in toast for download-complete events, with burst coalescing.
 - **Dialogs picker covers archived chats and DMs** (DMs gated by an explicit privacy switch).
 - **Set / change dashboard password from the browser** — first-run setup wizard, no CLI required.
@@ -129,8 +141,11 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **CodeQL + Dependabot** scheduled scans.
 
 ### Operations
-- **Docker image** on GHCR, multi-stage, runs as non-root `node` user, `tini` as PID 1, built-in `HEALTHCHECK` against `/api/auth_check`.
-- **GitHub Actions CI** — lint + test on Node 20 & 22 across Ubuntu / Windows / macOS.
+- **Docker image** on GHCR, multi-stage, runs as non-root `node` user, `tini` as PID 1, built-in `HEALTHCHECK` against `/api/auth_check`. Multi-arch (amd64 + arm64).
+- **GHCR pull-policy:always** in the bundled compose file — `docker compose up -d` always grabs `:latest`.
+- **`/api/version` + `/metrics`** endpoints — version chip + OpenMetrics text format for Prometheus scraping.
+- **Network log rotation** at 5 MB (writes preserved, never skipped).
+- **GitHub Actions CI** — lint + test on Node 20 & 22 across Ubuntu / Windows / macOS, plus a Docker workflow that builds + smoke-tests the image (file perms, healthcheck, runs-as-non-root) before publishing to GHCR.
 - **48 vitest specs** covering URL parsing, AES round-trip + legacy decrypt, scrypt password verify, session tokens, proxy mapping, DB migrations + dedup, name sanitisation.
 - **ESLint 9 + Prettier**, `husky` + `lint-staged` pre-commit hooks.
 - **Backwards compatibility** — legacy plaintext passwords auto-rehashed on first login; legacy AES `v=1` blobs still decrypt.
