@@ -295,6 +295,34 @@
             background: #2AABEE;
         }
 
+        /* Rescue Mode chip group: active chip gets the brand-blue fill so the
+           selection stays visible against the panel. Used in the per-group
+           settings modal; rendered by data-rescue-value buttons. */
+        .rescue-chip.active {
+            background: #2AABEE;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        /* Inline gallery badges for Rescue Mode tiles. The "rescued" lifebuoy
+           pill marks files whose source got deleted (kept forever); the
+           hourglass pill marks pending files (auto-prune at countdown). */
+        .badge-rescued, .badge-pending {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            border-radius: 6px;
+            line-height: 1.2;
+            color: #fff;
+            backdrop-filter: blur(4px);
+            background: rgba(0,0,0,0.55);
+            pointer-events: none;
+        }
+        .badge-rescued { background: rgba(42,171,238,0.85); }
+        .badge-pending { background: rgba(244,180,0,0.85); color: #1f1300; }
+
         .tg-toggle::after {
             content: '';
             position: absolute;
@@ -910,6 +938,25 @@
                         </div>
                     </div>
 
+                    <!-- Rescue Mode (per-group). Keeps only messages that get
+                         deleted from Telegram source within the retention
+                         window — a focused archive of ephemeral chatter
+                         instead of an endless mirror. -->
+                    <div class="bg-tg-panel rounded-xl p-4 mt-4">
+                        <h3 class="text-sm text-tg-text font-medium mb-2 flex items-center gap-2">
+                            <i class="ri-lifebuoy-line text-tg-blue"></i>
+                            <span data-i18n="group.rescue.title">Rescue mode</span>
+                        </h3>
+                        <div class="flex gap-2 mb-3" id="setting-rescue-mode" role="radiogroup" data-i18n-aria-label="group.rescue.title" aria-label="Rescue mode">
+                            <button type="button" data-rescue-value="auto" class="rescue-chip flex-1 py-1.5 px-2 rounded-lg text-xs bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_auto">Auto (follow default)</button>
+                            <button type="button" data-rescue-value="on" class="rescue-chip flex-1 py-1.5 px-2 rounded-lg text-xs bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_on">On</button>
+                            <button type="button" data-rescue-value="off" class="rescue-chip flex-1 py-1.5 px-2 rounded-lg text-xs bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_off">Off</button>
+                        </div>
+                        <label for="setting-rescue-hours" class="block text-xs text-tg-textSecondary mb-1.5" data-i18n="group.rescue.hours_label">Retention (hours)</label>
+                        <input id="setting-rescue-hours" type="number" min="1" max="720" placeholder="48" class="tg-input w-full text-sm" />
+                        <p class="text-xs text-tg-textSecondary mt-2" data-i18n="group.rescue.help">Only keeps messages that get deleted from this chat within X hours. Anything still on Telegram after that gets pruned locally.</p>
+                    </div>
+
                     <!-- History backfill — quick shortcut. Clicking a preset
                          deep-links to the dedicated Backfill page (#/backfill/<id>)
                          with the group preselected and the limit applied. -->
@@ -1280,6 +1327,32 @@
                             </label>
                             <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.disk.rotate_help">When the cap is exceeded, delete the oldest downloads first. Pinned items are kept.</p>
                         </div>
+                    </div>
+
+                    <!-- Rescue Mode (global default). Per-group rescueMode='auto'
+                         follows this toggle; 'on'/'off' overrides it. The sweep
+                         interval applies to every group with rescue active. -->
+                    <div class="bg-tg-panel rounded-xl p-4 mb-4" data-settings-section="rescue">
+                        <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
+                            <i class="ri-lifebuoy-line text-tg-blue" aria-hidden="true"></i>
+                            <span data-i18n="settings.rescue.title">Rescue mode</span>
+                        </h3>
+                        <p class="text-xs text-tg-textSecondary mb-3" data-i18n="settings.rescue.help">When enabled by default, every monitored group keeps only messages that get deleted from Telegram within the retention window. Per-group override available in Group Settings.</p>
+                        <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-3">
+                            <div class="text-tg-text text-sm" data-i18n="settings.rescue.default">Default to Rescue mode for new groups</div>
+                            <div id="setting-rescue-default" class="tg-toggle"></div>
+                        </label>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label for="setting-rescue-default-hours" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.rescue.default_hours">Retention (hours)</label>
+                                <input id="setting-rescue-default-hours" type="number" min="1" max="720" placeholder="48" class="tg-input w-full text-sm" />
+                            </div>
+                            <div>
+                                <label for="setting-rescue-sweep-min" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.rescue.sweep_min">Sweep interval (min)</label>
+                                <input id="setting-rescue-sweep-min" type="number" min="1" max="1440" placeholder="10" class="tg-input w-full text-sm" />
+                            </div>
+                        </div>
+                        <p id="rescue-stats-line" class="text-xs text-tg-textSecondary mt-3" data-i18n="settings.rescue.stats_loading">Loading rescue stats…</p>
                     </div>
 
                     <!-- Appearance -->

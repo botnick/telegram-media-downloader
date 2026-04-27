@@ -27,6 +27,8 @@ import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
+import { getRescueSweeper } from '../core/rescue.js';
+import { getRescueStats } from '../core/db.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import { metrics } from '../core/metrics.js';
@@ -1694,7 +1696,10 @@ app.get('/api/downloads/:groupId', async (req, res) => {
                 sizeFormatted: formatBytes(row.file_size),
                 type: typeFolder,
                 extension: path.extname(row.file_name),
-                modified: row.created_at
+                modified: row.created_at,
+                // Rescue Mode surface — null when not in rescue mode.
+                pendingUntil: row.pending_until || null,
+                rescuedAt: row.rescued_at || null,
             };
         });
 
@@ -1771,6 +1776,8 @@ app.get('/api/downloads/search', async (req, res) => {
                 sizeFormatted: formatBytes(row.file_size),
                 type: typeFolder,
                 modified: row.created_at,
+                pendingUntil: row.pending_until || null,
+                rescuedAt: row.rescued_at || null,
             };
         });
         res.json({ files, total: r.total, page, totalPages: Math.ceil(r.total / limit), q });
@@ -2280,6 +2287,16 @@ app.get('/api/config', async (req, res) => {
     }
 });
 
+// Rescue Mode stats — counters for the SPA's Rescue panel.
+app.get('/api/rescue/stats', async (req, res) => {
+    try {
+        res.json(getRescueStats());
+    } catch (e) {
+        console.error('GET /api/rescue/stats:', e);
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
 // 7b. Config Update
 app.post('/api/config', async (req, res) => {
     try {
@@ -2300,6 +2317,7 @@ app.post('/api/config', async (req, res) => {
         if (req.body.download) newConfig.download = { ...currentConfig.download, ...req.body.download };
         if (req.body.rateLimits) newConfig.rateLimits = { ...currentConfig.rateLimits, ...req.body.rateLimits };
         if (req.body.diskManagement) newConfig.diskManagement = { ...currentConfig.diskManagement, ...req.body.diskManagement };
+        if (req.body.rescue) newConfig.rescue = { ...(currentConfig.rescue || {}), ...req.body.rescue };
         if (req.body.proxy === null) newConfig.proxy = null; // explicit clear
         else if (req.body.proxy && typeof req.body.proxy === 'object') {
             // Deep-merge so the SPA can omit unchanged fields (e.g., the
@@ -2354,6 +2372,12 @@ app.post('/api/config', async (req, res) => {
         // sweep instead of waiting for whatever was already scheduled.
         if (req.body.diskManagement) {
             try { getDiskRotator()?.restart(); } catch (e) { console.warn('[disk-rotator] restart failed:', e.message); }
+        }
+        // Same story for the rescue sweeper — sweep cadence (and the global
+        // enabled flag, since per-group 'auto' follows it) needs to take
+        // effect immediately, not on the next scheduled tick.
+        if (req.body.rescue) {
+            try { getRescueSweeper()?.restart(); } catch (e) { console.warn('[rescue] restart failed:', e.message); }
         }
 
         broadcast({ type: 'config_updated' });
@@ -2424,6 +2448,22 @@ app.put('/api/groups/:id', async (req, res) => {
         if (req.body.forwardAccount !== undefined) {
             if (!req.body.forwardAccount) delete group.forwardAccount;
             else group.forwardAccount = req.body.forwardAccount;
+        }
+
+        // Rescue Mode (per-group). 'auto' = follow global cfg.rescue.enabled,
+        // 'on' / 'off' override. Empty / null falls back to default ('auto').
+        if (req.body.rescueMode !== undefined) {
+            const v = req.body.rescueMode;
+            if (v === 'on' || v === 'off' || v === 'auto') group.rescueMode = v;
+            else delete group.rescueMode;
+        }
+        if (req.body.rescueRetentionHours !== undefined) {
+            const n = parseInt(req.body.rescueRetentionHours, 10);
+            if (Number.isFinite(n) && n > 0) {
+                group.rescueRetentionHours = Math.max(1, Math.min(720, n));
+            } else {
+                delete group.rescueRetentionHours;
+            }
         }
         
         await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
@@ -2758,6 +2798,16 @@ ${tip}
         integrity.start({ broadcast, intervalMin: 60 });
     } catch (e) {
         console.warn('[integrity] start failed:', e.message);
+    }
+
+    // Boot the rescue sweeper. Always armed — even when cfg.rescue.enabled
+    // is false, individual groups can opt in via rescueMode='on'. Refreshed
+    // on POST /api/config when the body carries a `rescue` block (above).
+    try {
+        const sweeper = getRescueSweeper({ loadConfig, broadcast });
+        sweeper.start();
+    } catch (e) {
+        console.warn('[rescue] start failed:', e.message);
     }
 
     // Resolve group names from Telegram for any DB records still unnamed

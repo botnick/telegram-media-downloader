@@ -158,6 +158,11 @@ class Runtime extends EventEmitter {
         this._monitor.on('urls', fwd('monitor_urls'));
         this._monitor.on('error', fwd('monitor_error'));
         this._monitor.on('started', fwd('monitor_started'));
+        // Rescue Mode: monitor.handleDeleteEvent() emits 'rescued' for each
+        // local row that was kept because Telegram deleted the source. The
+        // 'event' bus relays it through the WS broadcaster as { type:
+        // 'rescued', groupId, messageId } so the SPA can flip the badge.
+        this._monitor.on('rescued', (p) => this.emit('event', { type: 'rescued', payload: p }));
     }
 
     _serializeJob(job) {

@@ -640,6 +640,11 @@ function renderMediaGrid() {
                 ? `<div class="select-badge absolute top-1 left-1 w-6 h-6 rounded-full ${checked ? 'bg-tg-blue text-white' : 'bg-black/40 text-transparent'} flex items-center justify-center text-sm"><i class="ri-check-line"></i></div>`
                 : '';
             const ringClass = checked ? 'ring-2 ring-tg-blue' : '';
+            // Rescue Mode badges. Rescued tiles win over pending (a row
+            // shouldn't carry both, but if it does, "rescued" is the more
+            // useful signal). Pending shows a remaining-hours estimate +
+            // tooltip with the local-time deadline.
+            const rescueBadge = renderRescueBadge(file);
             return `
             <div class="media-item relative aspect-square bg-tg-panel rounded overflow-hidden cursor-pointer ${ringClass}" data-index="${originalIndex}" data-path="${escapeHtml(file.fullPath)}">
                 ${file.type === 'images' ?
@@ -659,6 +664,7 @@ function renderMediaGrid() {
                     </div>`
                 }
                 ${checkBadge}
+                ${rescueBadge}
             </div>`;
         }).join('');
         return headerHtml + tiles;
@@ -682,6 +688,35 @@ function renderMediaGrid() {
         state.imageObserver.disconnect();
         grid.querySelectorAll('img[data-src], video[data-src]').forEach(el => state.imageObserver.observe(el));
     }
+}
+
+/**
+ * Render the small Rescue Mode pill for a gallery tile.
+ *
+ *   rescuedAt  → "🛟 Rescued" (file's source got deleted, kept forever)
+ *   pendingUntil + future → "⏳ Xh" (auto-prune countdown)
+ *
+ * Returns '' when the file isn't in rescue mode at all. Tooltip on the
+ * pending pill shows the localised deadline so users can decide whether
+ * to pin the file before it sweeps.
+ */
+function renderRescueBadge(file) {
+    if (file && file.rescuedAt) {
+        const label = i18nT('viewer.badge.rescued', 'Rescued');
+        return `<div class="badge-rescued" title="${escapeHtml(label)}">🛟 ${escapeHtml(label)}</div>`;
+    }
+    if (file && file.pendingUntil) {
+        const dueMs = Number(file.pendingUntil);
+        if (Number.isFinite(dueMs) && dueMs > Date.now()) {
+            const remHours = Math.max(1, Math.round((dueMs - Date.now()) / 3600000));
+            const label = i18nTf('viewer.badge.pending', { h: remHours }, `${remHours}h`);
+            const due = new Date(dueMs);
+            const tip = i18nTf('viewer.badge.pending_tooltip', { time: due.toLocaleString() },
+                `Will be auto-deleted at ${due.toLocaleString()} unless source is deleted.`);
+            return `<div class="badge-pending" title="${escapeHtml(tip)}">⏳ ${escapeHtml(label)}</div>`;
+        }
+    }
+    return '';
 }
 
 function toggleSelection(path) {
@@ -1076,6 +1111,22 @@ async function openGroupSettings(groupId, groupName) {
         };
     });
 
+    // Rescue Mode: populate chip group + retention input. Mode defaults to
+    // 'auto' (follow global cfg.rescue.enabled). Chip click toggles active
+    // class — the value reads back in saveGroupSettings().
+    const rescueMode = (group?.rescueMode === 'on' || group?.rescueMode === 'off' || group?.rescueMode === 'auto')
+        ? group.rescueMode : 'auto';
+    document.querySelectorAll('#setting-rescue-mode .rescue-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.rescueValue === rescueMode);
+        btn.onclick = (ev) => {
+            ev.preventDefault();
+            document.querySelectorAll('#setting-rescue-mode .rescue-chip').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        };
+    });
+    const rescueHoursEl = document.getElementById('setting-rescue-hours');
+    if (rescueHoursEl) rescueHoursEl.value = group?.rescueRetentionHours || '';
+
     // Show media tab by default
     switchSettingsTab('media');
     modal.classList.remove('hidden');
@@ -1112,6 +1163,16 @@ async function saveGroupSettings() {
     const topicsRaw = document.getElementById('topics-ids')?.value || '';
     const topicIds = topicsRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(Number.isFinite);
 
+    // Rescue Mode read-back. Active chip wins; default to 'auto' if none
+    // (shouldn't happen, but defensive). Hours is optional — empty string
+    // sends null so the server falls back to the global retention setting.
+    const activeRescueChip = document.querySelector('#setting-rescue-mode .rescue-chip.active');
+    const rescueMode = activeRescueChip?.dataset.rescueValue || 'auto';
+    const rescueHoursRaw = document.getElementById('setting-rescue-hours')?.value;
+    const rescueHoursParsed = parseInt(rescueHoursRaw, 10);
+    const rescueRetentionHours = Number.isFinite(rescueHoursParsed) && rescueHoursParsed > 0
+        ? rescueHoursParsed : null;
+
     const data = {
         name: currentEditGroup.name,
         enabled,
@@ -1131,7 +1192,9 @@ async function saveGroupSettings() {
             ids: topicIds,
         },
         monitorAccount: monitorAccount || null,
-        forwardAccount: forwardAccount || null
+        forwardAccount: forwardAccount || null,
+        rescueMode,
+        rescueRetentionHours,
     };
     
     try {

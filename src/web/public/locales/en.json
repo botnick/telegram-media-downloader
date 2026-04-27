@@ -496,5 +496,30 @@
     "maintenance.signout_all.confirm": "Sign out every browser? You will be redirected to the login page.",
     "maintenance.signout_all.done": "All sessions revoked",
     "maintenance.signout_all.password_prompt": "Enter your dashboard password to sign out every browser:",
-    "maintenance.export.password_prompt": "Enter your dashboard password to export the session string:"
+    "maintenance.export.password_prompt": "Enter your dashboard password to export the session string:",
+
+    "group.rescue.title": "Rescue mode",
+    "group.rescue.mode_auto": "Auto (follow default)",
+    "group.rescue.mode_on": "On",
+    "group.rescue.mode_off": "Off",
+    "group.rescue.hours_label": "Retention (hours)",
+    "group.rescue.help": "Only keeps messages that get deleted from this chat within X hours. Anything still on Telegram after that gets pruned locally.",
+
+    "settings.rescue.title": "Rescue mode",
+    "settings.rescue.help": "When enabled by default, every monitored group keeps only messages that get deleted from Telegram within the retention window. Per-group override available in Group Settings.",
+    "settings.rescue.default": "Default to Rescue mode for new groups",
+    "settings.rescue.default_hours": "Retention (hours)",
+    "settings.rescue.sweep_min": "Sweep interval (min)",
+    "settings.rescue.stats": "{pending} pending · {rescued} rescued · {swept} cleared last sweep",
+    "settings.rescue.stats_loading": "Loading rescue stats…",
+    "settings.rescue.stats_unavailable": "Rescue stats unavailable.",
+
+    "viewer.badge.rescued": "Rescued",
+    "viewer.badge.pending": "{h}h",
+    "viewer.badge.pending_tooltip": "Will be auto-deleted at {time} unless source is deleted.",
+
+    "toast.rescue_default_on": "Rescue mode default on — save to apply",
+    "toast.rescue_default_off": "Rescue mode default off — save to apply",
+    "toast.rescue_rescued": "Rescued — source message was deleted",
+    "toast.rescue_swept": "Rescue: {count} file(s) auto-pruned"
 }

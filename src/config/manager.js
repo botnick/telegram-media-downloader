@@ -31,6 +31,18 @@ const DEFAULT_CONFIG = {
         // cap is satisfied. Sweep cadence in minutes.
         enabled: false,
         sweepIntervalMin: 10
+    },
+    // Rescue Mode: per-group "keep only what gets deleted from source" mode.
+    // When enabled (globally or per-group), every monitored download is
+    // recorded with a pending_until timestamp; if Telegram fires a delete
+    // event for the source message inside the window, the file is rescued
+    // (kept forever). Otherwise the rescue sweeper auto-deletes the local
+    // copy after retentionHours — no point keeping a copy when Telegram
+    // still has the original.
+    rescue: {
+        enabled: false,
+        retentionHours: 48,
+        sweepIntervalMin: 10
     }
 };
 
@@ -68,6 +80,7 @@ export function loadConfig() {
             download: { ...DEFAULT_CONFIG.download, ...userConfig.download },
             rateLimits: { ...DEFAULT_CONFIG.rateLimits, ...userConfig.rateLimits },
             diskManagement: { ...DEFAULT_CONFIG.diskManagement, ...userConfig.diskManagement },
+            rescue: { ...DEFAULT_CONFIG.rescue, ...userConfig.rescue },
             // Heal Groups: Ensure every group has latest filter keys
             groups: (userConfig.groups || []).map(group => ({
                 ...group,

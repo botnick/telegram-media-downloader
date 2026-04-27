@@ -496,5 +496,30 @@
     "maintenance.signout_all.confirm": "ออกจากระบบทุกเบราว์เซอร์? จะเปลี่ยนเส้นทางไปหน้า login",
     "maintenance.signout_all.done": "ยกเลิก session ทั้งหมดแล้ว",
     "maintenance.signout_all.password_prompt": "ใส่รหัสผ่านแดชบอร์ดเพื่อออกจากระบบทุกเบราว์เซอร์:",
-    "maintenance.export.password_prompt": "ใส่รหัสผ่านแดชบอร์ดเพื่อ export session string:"
+    "maintenance.export.password_prompt": "ใส่รหัสผ่านแดชบอร์ดเพื่อ export session string:",
+
+    "group.rescue.title": "โหมดกู้ภัย",
+    "group.rescue.mode_auto": "อัตโนมัติ (ตามค่าเริ่มต้น)",
+    "group.rescue.mode_on": "เปิด",
+    "group.rescue.mode_off": "ปิด",
+    "group.rescue.hours_label": "ระยะเก็บ (ชั่วโมง)",
+    "group.rescue.help": "เก็บเฉพาะข้อความที่ถูกลบจากแชทนี้ภายใน X ชั่วโมงเท่านั้น อะไรก็ตามที่ยังอยู่บน Telegram หลังจากนั้นจะถูกลบในเครื่อง",
+
+    "settings.rescue.title": "โหมดกู้ภัย",
+    "settings.rescue.help": "เมื่อเปิดเป็นค่าเริ่มต้น ทุกกลุ่มที่มอนิเตอร์จะเก็บเฉพาะข้อความที่ถูกลบจาก Telegram ภายในช่วงเวลาที่กำหนด ปรับเฉพาะกลุ่มได้ในหน้าตั้งค่ากลุ่ม",
+    "settings.rescue.default": "ตั้งโหมดกู้ภัยเป็นค่าเริ่มต้นสำหรับกลุ่มใหม่",
+    "settings.rescue.default_hours": "ระยะเก็บ (ชั่วโมง)",
+    "settings.rescue.sweep_min": "รอบกวาด (นาที)",
+    "settings.rescue.stats": "รอ {pending} · กู้ภัย {rescued} · กวาดล่าสุด {swept}",
+    "settings.rescue.stats_loading": "กำลังโหลดสถิติกู้ภัย…",
+    "settings.rescue.stats_unavailable": "ดูสถิติกู้ภัยไม่ได้",
+
+    "viewer.badge.rescued": "กู้ภัย",
+    "viewer.badge.pending": "{h}ชม.",
+    "viewer.badge.pending_tooltip": "จะลบอัตโนมัติเวลา {time} ยกเว้นต้นทางถูกลบ",
+
+    "toast.rescue_default_on": "เปิดโหมดกู้ภัยเป็นค่าเริ่มต้น — บันทึกเพื่อใช้งาน",
+    "toast.rescue_default_off": "ปิดโหมดกู้ภัยเป็นค่าเริ่มต้น — บันทึกเพื่อใช้งาน",
+    "toast.rescue_rescued": "กู้ภัยแล้ว — ต้นทางถูกลบ",
+    "toast.rescue_swept": "กู้ภัย: ลบไฟล์ {count} ไฟล์โดยอัตโนมัติ"
 }

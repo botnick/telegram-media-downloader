@@ -517,6 +517,11 @@ export class DownloadManager extends EventEmitter {
                 fileType: type,
                 filePath: path.relative(DOWNLOADS_DIR, filePath),
                 ttlSeconds: job.ttlSeconds || null,
+                // Rescue Mode: when the monitor stamps `pendingUntil` on the
+                // job, the row gets inserted with that expiry so the rescue
+                // sweeper can prune it later (unless a delete event rescues
+                // it first).
+                pendingUntil: job.pendingUntil || null,
             });
         } catch(e) {
             console.error('DB Insert Error', e);

@@ -62,6 +62,29 @@ export async function loadSettings() {
             };
         }
 
+        // Rescue Mode (global default). Per-group rescueMode='auto' inherits
+        // from this toggle; 'on'/'off' override locally. Sweep interval is
+        // global — there's only one timer per process.
+        const rescueCfg = config.rescue || {};
+        const rescueDefaultToggle = document.getElementById('setting-rescue-default');
+        if (rescueDefaultToggle) {
+            rescueDefaultToggle.classList.toggle('active', rescueCfg.enabled === true);
+            rescueDefaultToggle.onclick = (e) => {
+                e.preventDefault();
+                rescueDefaultToggle.classList.toggle('active');
+                const on = rescueDefaultToggle.classList.contains('active');
+                showToast(on
+                    ? i18nT('toast.rescue_default_on', 'Rescue mode default on — save to apply')
+                    : i18nT('toast.rescue_default_off', 'Rescue mode default off — save to apply'),
+                    on ? 'success' : 'info');
+            };
+        }
+        bind('setting-rescue-default-hours', rescueCfg.retentionHours ?? 48);
+        bind('setting-rescue-sweep-min', rescueCfg.sweepIntervalMin ?? 10);
+        // Refresh stats line — fire-and-forget, fail silently if endpoint
+        // isn't up yet (settings panel can re-open).
+        refreshRescueStats().catch(() => {});
+
         const dmToggle = document.getElementById('setting-allow-dm');
         if (dmToggle) {
             dmToggle.classList.toggle('active', config.allowDmDownloads === true);
@@ -171,10 +194,36 @@ export async function loadSettings() {
     }
 }
 
+/**
+ * Refresh the "X pending / Y rescued / cleared Z last sweep" line under the
+ * Rescue panel. Cheap GET — fine to call on every settings open.
+ */
+async function refreshRescueStats() {
+    const line = document.getElementById('rescue-stats-line');
+    if (!line) return;
+    try {
+        const s = await api.get('/api/rescue/stats');
+        line.textContent = i18nTf(
+            'settings.rescue.stats',
+            { pending: s.pending || 0, rescued: s.rescued || 0, swept: s.lastSweepCleared || 0 },
+            `${s.pending || 0} pending · ${s.rescued || 0} rescued · ${s.lastSweepCleared || 0} cleared last sweep`
+        );
+    } catch {
+        line.textContent = i18nT('settings.rescue.stats_unavailable', 'Rescue stats unavailable.');
+    }
+}
+
 export async function saveSettings() {
     const get = (id) => document.getElementById(id)?.value;
 
     const dmActive = document.getElementById('setting-allow-dm')?.classList.contains('active') === true;
+    // Rescue Mode global config. Hours / sweep min get clamped server-side too,
+    // but we sanitise here so the toast doesn't confusingly say "saved" when
+    // the value was rejected.
+    const rescueDefaultOn = document.getElementById('setting-rescue-default')?.classList.contains('active') === true;
+    const rescueHours = Math.max(1, Math.min(720, parseInt(get('setting-rescue-default-hours'), 10) || 48));
+    const rescueSweep = Math.max(1, Math.min(1440, parseInt(get('setting-rescue-sweep-min'), 10) || 10));
+
     const data = {
         download: {
             concurrent: parseInt(get('setting-concurrent')),
@@ -190,6 +239,11 @@ export async function saveSettings() {
             maxVideoSize: get('setting-max-video') || null,
             maxImageSize: get('setting-max-image') || null,
             enabled: document.getElementById('setting-disk-rotate')?.classList.contains('active') === true,
+        },
+        rescue: {
+            enabled: rescueDefaultOn,
+            retentionHours: rescueHours,
+            sweepIntervalMin: rescueSweep,
         },
         allowDmDownloads: dmActive,
     };

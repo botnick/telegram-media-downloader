@@ -3,10 +3,13 @@
  * v1.1 Refined Code
  */
 
-import { NewMessage } from 'telegram/events/index.js';
+import { NewMessage, Raw } from 'telegram/events/index.js';
+import { Api } from 'telegram';
 import { EventEmitter } from 'events';
 import { colorize } from '../cli/colors.js';
 import { sanitizeName } from './downloader.js';
+import { markRescued } from './db.js';
+import { effectiveRescueMs } from './rescue.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -184,17 +187,35 @@ export class RealtimeMonitor extends EventEmitter {
             if (this.running) await this.handleEvent(event);
         };
 
+        // Rescue Mode delete handler — Raw subscription to the two delete
+        // updates Telegram emits (UpdateDeleteChannelMessages for channels
+        // & supergroups, UpdateDeleteMessages for legacy chats / DMs). When
+        // a source message vanishes inside the retention window, mark the
+        // local row rescued so the sweeper skips it.
+        this.deleteHandler = async (update) => {
+            if (!this.running) return;
+            try { await this.handleDeleteEvent(update); } catch (e) { /* keep monitor alive */ }
+        };
+
         // Register handler on ALL available clients (multi-account)
         this.handlerClients = [];
         if (this.accountManager && this.accountManager.count > 1) {
             for (const [id, acctClient] of this.accountManager.clients) {
                 try {
                     acctClient.addEventHandler(this.handler, new NewMessage({}));
+                    acctClient.addEventHandler(this.deleteHandler, new Raw({
+                        types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
+                    }));
                     this.handlerClients.push(acctClient);
                 } catch (e) { /* skip failed clients */ }
             }
         } else {
             this.client.addEventHandler(this.handler, new NewMessage({}));
+            try {
+                this.client.addEventHandler(this.deleteHandler, new Raw({
+                    types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
+                }));
+            } catch (e) { /* old gramjs without Raw filter? — non-fatal */ }
             this.handlerClients.push(this.client);
         }
 
@@ -285,8 +306,16 @@ export class RealtimeMonitor extends EventEmitter {
         if (this.handler && this.handlerClients.length > 0) {
             for (const c of this.handlerClients) {
                 try { c.removeEventHandler(this.handler, new NewMessage({})); } catch (e) { /* ignore */ }
+                if (this.deleteHandler) {
+                    try {
+                        c.removeEventHandler(this.deleteHandler, new Raw({
+                            types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
+                        }));
+                    } catch (e) { /* ignore */ }
+                }
             }
             this.handlerClients = [];
+            this.deleteHandler = null;
         }
         await this.downloader.stop();
         this.emit('stopped', this.stats);
@@ -406,12 +435,21 @@ export class RealtimeMonitor extends EventEmitter {
                     this.emit('download', { group: group.name, type: 'ttl', messageId: message.id, ttl: ttlSeconds });
                 }
 
+                // Rescue Mode: stamp the job with pending_until if this group
+                // (or the global default) has rescue on. The DB row inserted
+                // in registerDownload() carries this through, and the rescue
+                // sweeper auto-deletes it after expiry unless markRescued()
+                // fired in the meantime.
+                const rescueMs = effectiveRescueMs(group, this.config);
+                const pendingUntil = rescueMs ? Date.now() + rescueMs : null;
+
                 const added = await this.downloader.enqueue({
                     message,
                     groupId: group.id,
                     groupName: group.name,
                     mediaType,
                     ttlSeconds,
+                    pendingUntil,
                 }, priority);
 
                 if (added) {
@@ -427,6 +465,56 @@ export class RealtimeMonitor extends EventEmitter {
             }
         } catch (error) {
             this.emit('error', { error: error.message });
+        }
+    }
+
+    /**
+     * Handle a Telegram delete-update.
+     *
+     * UpdateDeleteChannelMessages → channel/supergroup deletes; carries
+     *   `channelId` so we can resolve the group reliably.
+     * UpdateDeleteMessages → legacy chats and DMs; message_ids are globally
+     *   unique per account, so we sweep every monitored group's pending
+     *   rows for a matching message_id.
+     *
+     * For each rescued row we emit a `rescued` WS event and bump the
+     * stats counter so the SPA can refresh badges live.
+     */
+    async handleDeleteEvent(update) {
+        const ids = Array.isArray(update?.messages) ? update.messages : [];
+        if (!ids.length) return;
+        const cls = update?.className || '';
+        const isChannel = cls === 'UpdateDeleteChannelMessages' || update?.channelId != null;
+
+        if (isChannel) {
+            const channelId = update.channelId?.toString?.() || String(update.channelId || '');
+            if (!channelId) return;
+            const normalize = (id) => String(id).replace(/^-100/, '').replace(/^-/, '');
+            const target = normalize(channelId);
+            const group = this.config.groups.find(g => normalize(g.id) === target);
+            if (!group) return;
+            for (const mid of ids) {
+                try {
+                    const changed = markRescued(group.id, Number(mid));
+                    if (changed > 0) {
+                        this.emit('rescued', { groupId: String(group.id), messageId: Number(mid) });
+                    }
+                } catch { /* swallow */ }
+            }
+        } else {
+            // DM / small-group delete — no channelId. Telegram message IDs
+            // are unique per account, so try every monitored group.
+            for (const mid of ids) {
+                for (const group of this.config.groups) {
+                    try {
+                        const changed = markRescued(group.id, Number(mid));
+                        if (changed > 0) {
+                            this.emit('rescued', { groupId: String(group.id), messageId: Number(mid) });
+                            break; // matched a row — no need to check other groups
+                        }
+                    } catch { /* swallow */ }
+                }
+            }
         }
     }
 

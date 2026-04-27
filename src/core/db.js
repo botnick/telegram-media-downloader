@@ -56,11 +56,21 @@ function initSchema() {
         'ALTER TABLE downloads ADD COLUMN file_hash TEXT',
         // pinned: rows with pinned=1 are protected from auto-rotation sweeps.
         'ALTER TABLE downloads ADD COLUMN pinned INTEGER DEFAULT 0',
+        // Rescue Mode: rows with a non-null pending_until are auto-pruned by
+        // the rescue sweeper after that timestamp UNLESS the source message
+        // was deleted on Telegram first (in which case rescued_at gets set
+        // and pending_until is cleared, keeping the file forever).
+        'ALTER TABLE downloads ADD COLUMN pending_until INTEGER',
+        'ALTER TABLE downloads ADD COLUMN rescued_at INTEGER',
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch { /* column already exists */ }
     }
     try { db.exec('CREATE INDEX IF NOT EXISTS idx_filename_size ON downloads(group_id, file_name, file_size)'); } catch {}
+    // Speeds up the rescue sweeper's expired-pending scan and the per-message
+    // markRescued lookup. Both are cheap CREATE-IF-NOT-EXISTS calls.
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_pending_until ON downloads(pending_until) WHERE pending_until IS NOT NULL'); } catch {}
+    try { db.exec('CREATE INDEX IF NOT EXISTS idx_group_message ON downloads(group_id, message_id)'); } catch {}
 
     // Queue/Pending Table
     db.exec(`
@@ -87,15 +97,77 @@ export function insertDownload(data) {
         filePath: data.filePath ?? null,
         ttlSeconds: data.ttlSeconds ?? null,
         fileHash: data.fileHash ?? null,
+        // Rescue Mode: when set, the rescue sweeper auto-deletes this row
+        // after the timestamp unless the source is deleted first.
+        pendingUntil: data.pendingUntil ?? null,
     };
     const stmt = getDb().prepare(`
         INSERT OR IGNORE INTO downloads (
-            group_id, group_name, message_id, file_name, file_size, file_type, file_path, ttl_seconds, file_hash
+            group_id, group_name, message_id, file_name, file_size, file_type, file_path, ttl_seconds, file_hash, pending_until
         ) VALUES (
-            @groupId, @groupName, @messageId, @fileName, @fileSize, @fileType, @filePath, @ttlSeconds, @fileHash
+            @groupId, @groupName, @messageId, @fileName, @fileSize, @fileType, @filePath, @ttlSeconds, @fileHash, @pendingUntil
         )
     `);
     return stmt.run(row);
+}
+
+/**
+ * Mark a row as rescued — the source message was deleted on Telegram, so
+ * the local file gets to live forever. Clears pending_until so the rescue
+ * sweeper skips it. Idempotent: a second call with the same id is a no-op.
+ *
+ * @param {string|number} groupId
+ * @param {number} messageId
+ * @returns {number} rows updated (0 or 1; >1 only if duplicate inserts exist)
+ */
+export function markRescued(groupId, messageId) {
+    const now = Date.now();
+    const r = getDb()
+        .prepare(`
+            UPDATE downloads
+               SET rescued_at = ?, pending_until = NULL
+             WHERE group_id = ? AND message_id = ?
+               AND rescued_at IS NULL
+        `)
+        .run(now, String(groupId), Number(messageId));
+    return r.changes;
+}
+
+/**
+ * Rows whose pending window has elapsed without a source-delete event.
+ * The rescue sweeper unlinks the file + drops the row for each one.
+ */
+export function getExpiredPending(now = Date.now()) {
+    return getDb()
+        .prepare(`
+            SELECT id, group_id, group_name, file_name, file_size, file_type, file_path, pending_until
+              FROM downloads
+             WHERE pending_until IS NOT NULL
+               AND pending_until < ?
+               AND rescued_at IS NULL
+             ORDER BY pending_until ASC
+             LIMIT 5000
+        `)
+        .all(Number(now));
+}
+
+/**
+ * Counters for the Rescue panel in the SPA. `lastSweepCleared` is updated
+ * by the sweeper via setRescueLastSweep().
+ */
+let _rescueLastSwept = 0;
+export function setRescueLastSweep(n) {
+    _rescueLastSwept = Number(n) || 0;
+}
+export function getRescueStats() {
+    const db = getDb();
+    const pending = db
+        .prepare(`SELECT COUNT(*) as c FROM downloads WHERE pending_until IS NOT NULL AND rescued_at IS NULL`)
+        .get().c;
+    const rescued = db
+        .prepare(`SELECT COUNT(*) as c FROM downloads WHERE rescued_at IS NOT NULL`)
+        .get().c;
+    return { pending, rescued, lastSweepCleared: _rescueLastSwept };
 }
 
 /**
