@@ -2527,19 +2527,23 @@ app.use('/files', async (req, res, next) => {
             // when a file was rotated/deleted but the DB row lingered.
             const status = r.reason === 'missing' ? 404 : 403;
             // Auto-prune the DB row for genuinely-missing files so the
-            // gallery stops listing them on next refresh. Done in the
-            // background so the response isn't blocked by the DB write.
+            // gallery stops listing them on next refresh. STRICT match on
+            // file_path only — matching by file_name was unsafe because
+            // two groups can hold files with the same timestamp-based
+            // basename, and a 404 on one would mass-delete the other's
+            // rows. Done in the background so the HTTP response isn't
+            // blocked by the DB write.
             if (r.reason === 'missing') {
                 queueMicrotask(() => {
                     try {
-                        const norm = reqPath.replace(/\\/g, '/');
-                        const fileName = path.basename(norm);
+                        const fwd = reqPath.replace(/\\/g, '/');
+                        const bwd = fwd.replace(/\//g, '\\');
                         const db = getDb();
                         const result = db.prepare(
-                            `DELETE FROM downloads WHERE file_path = ? OR file_path = ? OR file_name = ?`
-                        ).run(norm, norm.replace(/\//g, '\\'), fileName);
+                            `DELETE FROM downloads WHERE file_path = ? OR file_path = ?`
+                        ).run(fwd, bwd);
                         if (result.changes > 0) {
-                            broadcast({ type: 'file_deleted', path: norm, autoPruned: true });
+                            broadcast({ type: 'file_deleted', path: fwd, autoPruned: true });
                         }
                     } catch { /* never let a stray request crash the server */ }
                 });

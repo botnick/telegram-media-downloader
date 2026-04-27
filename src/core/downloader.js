@@ -347,8 +347,17 @@ export class DownloadManager extends EventEmitter {
     }
 
     async reportFailure(job, reason) {
-        // Log failure (could be DB or JSON or just debug log)
         DebugLogger.error(new Error(reason), `Download Failed: ${job.key}`);
+        // ALSO print to stdout so the user can see it in `docker logs`
+        // without SSHing into the container to tail data/logs/errors.log.
+        // Use process.stderr.write directly so the global console.error
+        // wrap (which demotes gramJS reconnect chatter to network.log)
+        // doesn't swallow real download failures.
+        try {
+            const safeName = String(job?.groupName || job?.groupId || '?');
+            const mid = job?.message?.id ?? '?';
+            process.stderr.write(`[downloader] FAILED ${safeName} #${mid}: ${reason}\n`);
+        } catch {}
     }
 
     async download(job, attempt = 1) {
