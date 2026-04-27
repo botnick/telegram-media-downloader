@@ -99,6 +99,73 @@
         html.theme-light .modal-backdrop { background-color: rgba(0, 0, 0, 0.45) !important; }
         html.theme-light .tg-input { background: #FFFFFF !important; color: #1F2937 !important; border-color: #E1E5EA !important; }
 
+        /* ----- Slash-modifier (rgba) variants of the dark tokens -----
+           Tailwind compiles `bg-tg-bg/40` to an rgba derived from the dark
+           hex (#17212B), so the no-slash override above doesn't catch them.
+           Newer panels (Queue, Maintenance, Backfill, Rescue, Engine card)
+           lean on these for sub-cards / progress tracks / chip backgrounds.
+           Map them to a soft neutral so panels stay readable in light mode. */
+        html.theme-light .bg-tg-bg\/30 { background-color: rgba(225, 229, 234, 0.55) !important; }
+        html.theme-light .bg-tg-bg\/40 { background-color: rgba(225, 229, 234, 0.65) !important; }
+        html.theme-light .bg-tg-bg\/50 { background-color: rgba(225, 229, 234, 0.75) !important; }
+        html.theme-light .bg-tg-bg\/60 { background-color: rgba(225, 229, 234, 0.85) !important; }
+        html.theme-light .hover\:bg-tg-bg\/60:hover { background-color: rgba(225, 229, 234, 0.85) !important; }
+        html.theme-light .hover\:bg-tg-hover\/40:hover { background-color: rgba(220, 237, 255, 0.55) !important; }
+
+        /* Selected-chip / hovered-row tints. Tailwind `bg-tg-blue/20` etc
+           render an rgba off the brand blue, which already reads fine on
+           light — but the hover row in the queue table needs softening so
+           the row text stays legible over the wash. */
+        html.theme-light .hover\:bg-tg-blue\/10:hover { background-color: rgba(42, 171, 238, 0.10) !important; }
+
+        /* Border slash variants — used for divider rows in queue / backfill. */
+        html.theme-light .border-tg-border\/40 { border-color: rgba(0, 0, 0, 0.08) !important; }
+        html.theme-light .border-tg-border\/50 { border-color: rgba(0, 0, 0, 0.10) !important; }
+
+        /* Some text utilities are dark-only too. */
+        html.theme-light .hover\:text-tg-text:hover { color: #1F2937 !important; }
+        html.theme-light .text-gray-300 { color: #4B5563 !important; }
+        html.theme-light .text-gray-500 { color: #6B7280 !important; }
+        html.theme-light .bg-gray-700 { background-color: #E5E7EB !important; }
+        html.theme-light .bg-gray-700\/40 { background-color: rgba(229, 231, 235, 0.7) !important; }
+
+        /* The custom .tg-btn-secondary lives in JS-side CSS injected at
+           runtime; if the runtime style isn't present (or is dark-only) we
+           still want a sensible neutral pill in light mode. Scope kept
+           narrow so it doesn't fight the dark variant. */
+        html.theme-light .tg-btn-secondary {
+            background: #E1E5EA !important;
+            color: #1F2937 !important;
+        }
+        html.theme-light .tg-btn-secondary:hover { background: #D1D5DB !important; }
+
+        /* Rescue-mode chips (per-group modal). The active chip already
+           uses brand blue; inactive chips use bg-tg-bg/40 which the slash
+           rule above covers — but the hover state needs a soft tint. */
+        html.theme-light .rescue-chip:not(.active):hover { background-color: #DCEDFF !important; color: #1F2937 !important; }
+
+        /* Sheet primitive — inline `var(--tg-panel)` falls back to the
+           dark default, so override the computed background here too. */
+        html.theme-light .sheet-card { background: #F0F4F7 !important; color: #1F2937 !important; }
+        html.theme-light .sheet-close { color: #65737E !important; }
+
+        /* Selection footer uses .bg-tg-panel (covered) but also a pill
+           border that we want soft in light mode. */
+        html.theme-light #selection-bar { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10); }
+
+        /* Bottom nav + status bar surfaces use CSS variables that fall
+           back to dark hexes — re-paint them for light. */
+        html.theme-light .bottom-nav { background: #F4F4F5 !important; border-top-color: #E1E5EA !important; }
+        html.theme-light .bottom-nav-item { color: #65737E; }
+
+        /* Video player controls — the player chrome still needs a dark
+           gradient over the video (so white controls remain legible
+           against arbitrary footage), but the speed-menu pop-over uses a
+           hard-coded `bg-[#212121]/95` which can stay dark in either
+           theme — that's a deliberate floating-overlay-on-video idiom.
+           No override needed there. */
+        html.theme-light .video-controls { /* keep dark gradient — readability over video */ }
+
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
