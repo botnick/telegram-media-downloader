@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.10] — 2026-04-28
+
+### Fixed
+- **Video player controls layout was jittery + the volume slider clashed with the time text.** The volume slider used a `w-0 → group-hover:w-20` collapse trick that pushed every control to its right (including the `00:00 / 00:00` time block) sideways every time the cursor crossed the mute button. Worse, hover-only meant touch users couldn't reach it at all.
+  - Volume slider is now **always visible at 80 px on `sm:` and up** (hidden on phones — system volume buttons + the mute toggle cover that case better).
+  - Each child of the controls row has a **fixed footprint** (play `40 × 40`, mute `36 × 36`, volume `80 × 4`, speed/PiP/FS `36 × 36` each); the time block is mono-font with `tabular-nums` so digits don't reflow as the clip plays.
+  - Right cluster (speed / PiP / fullscreen) is pinned to the right via a `flex-1` spacer instead of `justify-between` on the parent — separates layout intent from the inner spacing so a future toolbar item can slot in cleanly.
+  - **Polished volume thumb**: 12 × 12 white circle with brand-blue ring, custom track height 4 px on both Webkit and Firefox. Default UA thumb was comically large on Chromium and barely visible on Firefox.
+  - Speed button reads `1×` (multiplication sign) instead of `1x` (lowercase x) — matches the dropdown labels in Settings → Video Player.
+
 ## [2.3.9] — 2026-04-28
 
 ### Added

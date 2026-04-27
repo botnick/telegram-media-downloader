@@ -518,6 +518,43 @@
             box-shadow: 0 0 0 2px rgba(42, 171, 238, 0.25);
         }
 
+        /* Polished thumb for the player's volume slider — default UA thumb
+           is comically large on Chromium and barely visible on Firefox. */
+        #video-volume {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        #video-volume::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            border: 2px solid rgba(42, 171, 238, 0.85);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+        }
+        #video-volume::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            border: 2px solid rgba(42, 171, 238, 0.85);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+        }
+        #video-volume::-webkit-slider-runnable-track {
+            height: 4px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.25);
+        }
+        #video-volume::-moz-range-track {
+            height: 4px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.25);
+        }
+
         .modal-backdrop {
             background: rgba(0, 0, 0, 0.92);
         }
@@ -2278,48 +2315,53 @@
                             class="absolute -top-1 px-2 py-1 bg-black/80 text-white text-xs font-mono tabular-nums rounded pointer-events-none -translate-x-1/2 -translate-y-full hidden">00:00</div>
                     </div>
 
-                    <!-- Controls row -->
-                    <div class="flex items-center justify-between px-3 py-2 gap-2">
-                        <!-- Left: play/pause + volume + time -->
-                        <div class="flex items-center gap-2 min-w-0">
-                            <button id="video-play-btn"
-                                class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center text-white transition shrink-0"
-                                data-i18n-aria-label="viewer.video.play" aria-label="Play">
-                                <i class="ri-play-fill text-2xl"></i>
-                            </button>
-                            <div class="flex items-center gap-1 group/vol">
-                                <button id="video-mute-btn"
-                                    class="text-white/90 hover:text-white w-8 h-8 flex items-center justify-center shrink-0"
-                                    data-i18n-aria-label="viewer.video.mute" aria-label="Mute">
-                                    <i class="ri-volume-up-line text-lg"></i>
-                                </button>
-                                <input type="range" id="video-volume" min="0" max="1" step="0.01" value="1"
-                                    class="w-0 group-hover/vol:w-20 focus:w-20 transition-all duration-200 h-1 bg-white/30 rounded-full appearance-none cursor-pointer accent-white"
-                                    data-i18n-aria-label="viewer.video.volume" aria-label="Volume">
-                            </div>
-                            <span class="text-xs text-white/85 font-mono tabular-nums whitespace-nowrap pl-1">
-                                <span id="video-current-time">00:00</span>
-                                <span class="text-white/50">/</span>
-                                <span id="video-duration">00:00</span>
-                            </span>
-                        </div>
+                    <!-- Controls row — standardised layout. Each child has
+                         a fixed footprint so volume / mute interactions
+                         never jitter the time block. Volume slider is
+                         always-visible at 80 px wide (no hover-expand
+                         which used to shove time text to the right and
+                         was unusable on touch). -->
+                    <div class="flex items-center px-3 py-2 gap-2">
+                        <!-- Left cluster: play + volume -->
+                        <button id="video-play-btn"
+                            class="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center text-white transition shrink-0"
+                            data-i18n-aria-label="viewer.video.play" aria-label="Play">
+                            <i class="ri-play-fill text-2xl"></i>
+                        </button>
+                        <button id="video-mute-btn"
+                            class="text-white/90 hover:text-white w-9 h-9 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
+                            data-i18n-aria-label="viewer.video.mute" aria-label="Mute">
+                            <i class="ri-volume-up-line text-lg"></i>
+                        </button>
+                        <input type="range" id="video-volume" min="0" max="1" step="0.01" value="1"
+                            class="w-20 h-1 bg-white/25 rounded-full appearance-none cursor-pointer accent-white shrink-0 hidden sm:block"
+                            data-i18n-aria-label="viewer.video.volume" aria-label="Volume">
 
-                        <!-- Right: speed / pip / fullscreen -->
-                        <div class="flex items-center gap-1 shrink-0">
-                            <button id="video-settings-btn"
-                                class="text-white/85 hover:text-white px-2 h-8 flex items-center justify-center text-sm font-medium rounded hover:bg-white/10"
-                                data-i18n-title="viewer.video.speed" title="Speed">1x</button>
-                            <button id="video-pip-btn"
-                                class="text-white/85 hover:text-white w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
-                                data-i18n-title="viewer.video.pip" title="PiP">
-                                <i class="ri-picture-in-picture-2-line text-lg"></i>
-                            </button>
-                            <button id="video-fullscreen-btn"
-                                class="text-white/85 hover:text-white w-8 h-8 flex items-center justify-center rounded hover:bg-white/10"
-                                data-i18n-title="viewer.video.fullscreen" title="Fullscreen">
-                                <i class="ri-fullscreen-line text-lg"></i>
-                            </button>
-                        </div>
+                        <!-- Time block — fixed-width, mono-font so the
+                             digits never reflow as the clip plays. -->
+                        <span class="text-xs text-white/85 font-mono tabular-nums whitespace-nowrap pl-2 select-none">
+                            <span id="video-current-time">00:00</span>
+                            <span class="text-white/40 mx-0.5">/</span>
+                            <span id="video-duration" class="text-white/65">00:00</span>
+                        </span>
+
+                        <!-- Spacer pushes the right cluster all the way over. -->
+                        <div class="flex-1"></div>
+
+                        <!-- Right cluster: speed / PiP / fullscreen -->
+                        <button id="video-settings-btn"
+                            class="text-white/85 hover:text-white w-10 h-9 flex items-center justify-center text-sm font-medium rounded hover:bg-white/10 shrink-0"
+                            data-i18n-title="viewer.video.speed" title="Speed">1×</button>
+                        <button id="video-pip-btn"
+                            class="text-white/85 hover:text-white w-9 h-9 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
+                            data-i18n-title="viewer.video.pip" title="PiP">
+                            <i class="ri-picture-in-picture-2-line text-lg"></i>
+                        </button>
+                        <button id="video-fullscreen-btn"
+                            class="text-white/85 hover:text-white w-9 h-9 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
+                            data-i18n-title="viewer.video.fullscreen" title="Fullscreen">
+                            <i class="ri-fullscreen-line text-lg"></i>
+                        </button>
                     </div>
                 </div>
             </div>
