@@ -684,7 +684,16 @@ app.get('/api/version', (req, res) => {
 // network/parse error returns updateAvailable:false and we keep serving the
 // last-known good answer (marked stale) so a flaky GitHub doesn't blank the
 // status-bar chip. Public path so the chip can render pre-login.
-const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
+//
+// Default TTL was 6 h, lowered to 1 h after a user reported sitting on
+// v2.3.7 while v2.3.10 had been live for hours with no update pill.
+// 60 req/h × 24 h = 1,440 hits/day per instance — still well under
+// GitHub's 60-req-per-hour-per-IP unauthenticated rate limit since each
+// instance only fires once per hour. Combined with the
+// `current >= cached_latest` bypass below, an instance running the
+// freshly-shipped version always re-checks immediately rather than
+// trusting a now-stale "no update" answer from the previous window.
+const UPDATE_CHECK_TTL_MS = 60 * 60 * 1000;
 const UPDATE_CHECK_REPO = 'botnick/telegram-media-downloader';
 let _updateCache = { fetchedAt: 0, data: null };
 
@@ -727,8 +736,18 @@ app.get('/api/version/check', async (req, res) => {
     const force = req.query.force === '1';
     if (!force && _updateCache.data && (now - _updateCache.fetchedAt) < UPDATE_CHECK_TTL_MS) {
         const { latest } = _updateCache.data;
-        const updateAvailable = _cmpSemver(latest, current) > 0;
-        return res.json({ current, ..._updateCache.data, updateAvailable, cached: true });
+        // Bypass the cache when the running container is at-or-newer
+        // than the cached "latest". That state means we just rolled
+        // forward (e.g. user pulled v2.3.10 while cache still says
+        // v2.3.7); the cached "no update" answer is informationally
+        // stale and would mask any release shipped in the meantime.
+        // Re-fetch instead of trusting the cache.
+        if (_cmpSemver(current, latest) >= 0) {
+            // fall through to re-fetch
+        } else {
+            const updateAvailable = _cmpSemver(latest, current) > 0;
+            return res.json({ current, ..._updateCache.data, updateAvailable, cached: true });
+        }
     }
     const latest = await _fetchLatestRelease();
     if (!latest) {

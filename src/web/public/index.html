@@ -57,13 +57,26 @@
     </script>
 
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.0.0/fonts/remixicon.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- IBM Plex Sans for UI text + IBM Plex Mono for tabular numbers /
+         code spans / log viewer. Roboto kept as a fallback in the stack
+         so an offline session that already cached it still renders
+         cleanly. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
         * {
-            font-family: 'Roboto', -apple-system, sans-serif;
+            font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+        }
+        /* Mono font hooks — Tailwind's `font-mono` and any inline mono
+           class now resolve to IBM Plex Mono so the time block + log
+           viewer + queue size column read consistently. */
+        .font-mono, code, pre, kbd, samp,
+        [class*="tabular-nums"] {
+            font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         }
 
         body {
@@ -518,40 +531,62 @@
             box-shadow: 0 0 0 2px rgba(42, 171, 238, 0.25);
         }
 
-        /* Polished thumb for the player's volume slider — default UA thumb
-           is comically large on Chromium and barely visible on Firefox. */
-        #video-volume {
+        /* Branded range slider — covers the player volume bar, the
+           Settings → Video Player default-volume slider, and any
+           future range input. UA defaults are inconsistent
+           (Chromium thumb comically large; Firefox thumb invisible). */
+        input[type="range"].tg-range,
+        #video-volume,
+        #setting-viewer-default-volume {
             -webkit-appearance: none;
             appearance: none;
+            background: transparent;
+            outline: none;
+            height: 18px;
         }
-        #video-volume::-webkit-slider-thumb {
+        input[type="range"].tg-range::-webkit-slider-thumb,
+        #video-volume::-webkit-slider-thumb,
+        #setting-viewer-default-volume::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #FFFFFF;
-            border: 2px solid rgba(42, 171, 238, 0.85);
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            border: 2px solid #2AABEE;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
             cursor: pointer;
+            margin-top: -5px;   /* centre over the 4px track */
         }
-        #video-volume::-moz-range-thumb {
-            width: 12px;
-            height: 12px;
+        input[type="range"].tg-range::-moz-range-thumb,
+        #video-volume::-moz-range-thumb,
+        #setting-viewer-default-volume::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #FFFFFF;
-            border: 2px solid rgba(42, 171, 238, 0.85);
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            border: 2px solid #2AABEE;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
             cursor: pointer;
         }
-        #video-volume::-webkit-slider-runnable-track {
+        input[type="range"].tg-range::-webkit-slider-runnable-track,
+        #video-volume::-webkit-slider-runnable-track,
+        #setting-viewer-default-volume::-webkit-slider-runnable-track {
             height: 4px;
             border-radius: 9999px;
-            background: rgba(255, 255, 255, 0.25);
+            background: rgba(120, 130, 145, 0.35);
         }
+        input[type="range"].tg-range::-moz-range-track,
+        #video-volume::-moz-range-track,
+        #setting-viewer-default-volume::-moz-range-track {
+            height: 4px;
+            border-radius: 9999px;
+            background: rgba(120, 130, 145, 0.35);
+        }
+        /* Volume slider in the player sits on a dark gradient — keep
+           the track subtle there. */
+        #video-volume::-webkit-slider-runnable-track,
         #video-volume::-moz-range-track {
-            height: 4px;
-            border-radius: 9999px;
             background: rgba(255, 255, 255, 0.25);
         }
 
