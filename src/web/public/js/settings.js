@@ -2,6 +2,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import * as Notifications from './notifications.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
+import { openSheet } from './sheet.js';
 
 export async function loadSettings() {
     try {
@@ -160,6 +161,10 @@ export async function loadSettings() {
 
         // Accounts list rendered async (independent from main settings load)
         loadAccounts().catch(() => {});
+
+        // Maintenance panel — wire once. Idempotent because loadSettings can
+        // run again on config_updated WS events.
+        wireMaintenance();
 
     } catch (e) {
         console.error('Failed to load settings', e);
@@ -357,4 +362,221 @@ export async function signOut() {
         await api.post('/api/logout');
     } catch { /* ignore — we're leaving anyway */ }
     window.location.href = '/login.html';
+}
+
+// ====== Maintenance =========================================================
+//
+// Each button maps to one /api/maintenance/* endpoint. Destructive actions
+// (restart monitor, vacuum, sign-out-all, session export, factory-reset) gate
+// behind a confirm() dialog AND send {confirm:true} so the server's
+// _requireConfirm guard is satisfied. Read endpoints (resync dialogs, db
+// integrity, log download, raw config) skip the confirm because they don't
+// mutate user data.
+//
+// We attach handlers idempotently — loadSettings() can fire repeatedly on
+// config_updated WS events, but every binding uses a sentinel data-attribute
+// so we don't stack listeners.
+function wireMaintenance() {
+    const once = (el, fn) => {
+        if (!el || el.dataset.maintWired === '1') return;
+        el.dataset.maintWired = '1';
+        el.addEventListener('click', fn);
+    };
+
+    once(document.getElementById('maint-resync-btn'), maintResyncDialogs);
+    once(document.getElementById('maint-restart-btn'), maintRestartMonitor);
+    once(document.getElementById('maint-db-check-btn'), maintDbIntegrity);
+    once(document.getElementById('maint-db-vacuum-btn'), maintDbVacuum);
+    once(document.getElementById('maint-logs-btn'), maintBrowseLogs);
+    once(document.getElementById('maint-config-btn'), maintViewConfig);
+    once(document.getElementById('maint-export-btn'), maintExportSession);
+    once(document.getElementById('maint-signout-all-btn'), maintRevokeAllSessions);
+}
+
+async function maintResyncDialogs() {
+    try {
+        showToast(i18nT('maintenance.resync.running', 'Resyncing dialogs…'), 'info');
+        const r = await api.post('/api/maintenance/resync-dialogs', {});
+        showToast(i18nTf('maintenance.resync.done', { updated: r.updated, scanned: r.scanned },
+            `Resynced ${r.updated} of ${r.scanned} groups`), 'success');
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+async function maintRestartMonitor() {
+    if (!confirm(i18nT('maintenance.restart.confirm',
+        'Stop and restart the realtime monitor? In-flight downloads will be paused briefly.'))) return;
+    try {
+        showToast(i18nT('maintenance.restart.running', 'Restarting monitor…'), 'info');
+        const r = await api.post('/api/maintenance/restart-monitor', { confirm: true });
+        if (r.restarted) {
+            showToast(i18nT('maintenance.restart.done', 'Monitor restarted'), 'success');
+        } else {
+            showToast(r.note || i18nT('maintenance.restart.idle',
+                'Monitor was not running.'), 'info');
+        }
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+async function maintDbIntegrity() {
+    try {
+        const r = await api.post('/api/maintenance/db/integrity', {});
+        if (r.ok) {
+            showToast(i18nT('maintenance.db_check.ok', 'Database integrity: ok'), 'success');
+        } else {
+            const msg = (r.messages || []).slice(0, 3).join(' / ');
+            showToast(i18nTf('maintenance.db_check.bad', { msg },
+                `Database issues: ${msg}`), 'error');
+        }
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+async function maintDbVacuum() {
+    if (!confirm(i18nT('maintenance.db_vacuum.confirm',
+        'Run VACUUM on the SQLite database? It briefly locks the DB and may take a minute on large datasets.'))) return;
+    try {
+        showToast(i18nT('maintenance.db_vacuum.running', 'Running VACUUM…'), 'info');
+        const r = await api.post('/api/maintenance/db/vacuum', { confirm: true });
+        const reclaimed = formatBytesShort(r.reclaimedBytes);
+        showToast(i18nTf('maintenance.db_vacuum.done', { bytes: reclaimed },
+            `VACUUM done — reclaimed ${reclaimed}`), 'success');
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+async function maintBrowseLogs() {
+    try {
+        const r = await api.get('/api/maintenance/logs');
+        const files = r.files || [];
+        if (!files.length) {
+            showToast(i18nT('maintenance.logs.empty', 'No log files yet.'), 'info');
+            return;
+        }
+        const items = files.map(f => `
+            <div class="flex items-center justify-between gap-3 bg-tg-bg/40 rounded-lg p-3">
+                <div class="min-w-0">
+                    <div class="text-tg-text text-sm font-medium truncate">${escapeHtml(f.name)}</div>
+                    <div class="text-tg-textSecondary text-xs">${formatBytesShort(f.size)} · ${escapeHtml(new Date(f.modified).toLocaleString())}</div>
+                </div>
+                <a class="tg-btn-secondary text-xs px-3 py-1 shrink-0" href="/api/maintenance/logs/download?name=${encodeURIComponent(f.name)}&lines=10000" download="${escapeHtml(f.name)}">
+                    ${escapeHtml(i18nT('maintenance.logs.download', 'Download'))}
+                </a>
+            </div>
+        `).join('');
+        openSheet({
+            title: i18nT('maintenance.logs.title', 'Download log file'),
+            content: `<div class="space-y-2">${items}</div>
+                      <p class="text-xs text-tg-textSecondary mt-3" data-i18n="maintenance.logs.tail_help">Last 10,000 lines per file.</p>`,
+        });
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+async function maintViewConfig() {
+    try {
+        const res = await fetch('/api/maintenance/config/raw');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        openSheet({
+            title: i18nT('maintenance.config.title', 'View raw config.json'),
+            size: 'lg',
+            content: `<pre class="text-xs bg-tg-bg/60 rounded-lg p-3 overflow-auto max-h-[60vh] whitespace-pre-wrap">${escapeHtml(text)}</pre>
+                      <p class="text-xs text-tg-textSecondary mt-2" data-i18n="maintenance.config.redacted_help">Sensitive fields (apiHash, password hash, proxy password) are redacted.</p>`,
+        });
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+async function maintExportSession() {
+    let accounts = [];
+    try { accounts = await api.get('/api/accounts'); }
+    catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        return;
+    }
+    if (!accounts.length) {
+        showToast(i18nT('maintenance.export.empty', 'No saved accounts to export.'), 'info');
+        return;
+    }
+    const opts = accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)} · ${escapeHtml(a.id)}</option>`).join('');
+    const html = `
+        <p class="text-xs text-red-400 mb-3">${escapeHtml(i18nT('maintenance.export.warn',
+            'Anyone with this string can act as the account. Treat it like a password.'))}</p>
+        <label class="text-tg-text text-sm block mb-1" data-i18n="maintenance.export.pick">Account</label>
+        <select id="maint-export-pick" class="tg-input w-full text-sm mb-3">${opts}</select>
+        <button id="maint-export-do" class="tg-btn w-full text-sm">${escapeHtml(i18nT('maintenance.export.action', 'Export'))}</button>
+        <div id="maint-export-out" class="mt-3 hidden">
+            <label class="text-tg-text text-sm block mb-1" data-i18n="maintenance.export.string">Session string</label>
+            <textarea id="maint-export-str" class="tg-input w-full text-xs font-mono" rows="6" readonly></textarea>
+            <button id="maint-export-copy" class="tg-btn-secondary w-full text-xs mt-2">${escapeHtml(i18nT('maintenance.export.copy', 'Copy to clipboard'))}</button>
+        </div>`;
+    openSheet({
+        title: i18nT('maintenance.export.title', 'Export Telegram session'),
+        content: html,
+    });
+    // The sheet body is appended synchronously to document.body, so its
+    // children are queryable on the next tick.
+    setTimeout(() => {
+        const doBtn = document.getElementById('maint-export-do');
+        const pick = document.getElementById('maint-export-pick');
+        const out = document.getElementById('maint-export-out');
+        const str = document.getElementById('maint-export-str');
+        const copy = document.getElementById('maint-export-copy');
+        if (doBtn) doBtn.addEventListener('click', async () => {
+            doBtn.disabled = true;
+            try {
+                const r = await api.post('/api/maintenance/session/export', {
+                    confirm: true,
+                    accountId: pick.value,
+                });
+                if (str) str.value = r.session || '';
+                if (out) out.classList.remove('hidden');
+            } catch (e) {
+                showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+            } finally {
+                doBtn.disabled = false;
+            }
+        });
+        if (copy) copy.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(str.value);
+                showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
+            } catch {
+                str.select();
+                showToast(i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'), 'info');
+            }
+        });
+    }, 50);
+}
+
+async function maintRevokeAllSessions() {
+    if (!confirm(i18nT('maintenance.signout_all.confirm',
+        'Sign out every browser? You will be redirected to the login page.'))) return;
+    try {
+        await api.post('/api/maintenance/sessions/revoke-all', { confirm: true });
+        showToast(i18nT('maintenance.signout_all.done', 'All sessions revoked'), 'success');
+        setTimeout(() => { window.location.href = '/login.html'; }, 600);
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
+}
+
+// Tiny formatter so we don't pull in utils.formatBytes (which has slightly
+// different output). KB-based; locale-agnostic.
+function formatBytesShort(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return n + ' B';
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let v = n / 1024;
+    let i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v >= 10 ? 0 : 1) + ' ' + units[i];
 }

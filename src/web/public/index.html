@@ -1384,6 +1384,82 @@
                         </div>
                     </div>
 
+                    <!-- Maintenance -->
+                    <div class="mt-6 bg-tg-panel rounded-xl p-4">
+                        <h3 class="text-tg-text font-medium mb-1 flex items-center gap-2">
+                            <i class="ri-tools-line text-tg-blue"></i> <span data-i18n="maintenance.title">Maintenance</span>
+                        </h3>
+                        <p class="text-xs text-tg-textSecondary mb-4" data-i18n="maintenance.subtitle">Operational tasks that used to need a CLI session. Everything below is safe to run from the browser.</p>
+
+                        <div class="space-y-2">
+                            <div class="flex items-start justify-between gap-3 py-1">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.resync.title">Resync Telegram dialogs</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.resync.help">Re-resolve every group's name + profile photo against Telegram. Use when an "Unknown chat" lingers in the list.</p>
+                                </div>
+                                <button id="maint-resync-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.resync.action">Resync</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.restart.title">Restart monitor</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.restart.help">Stops and re-starts the realtime monitor in-process. Picks up settings / proxy / account changes without bouncing the container.</p>
+                                </div>
+                                <button id="maint-restart-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.restart.action">Restart</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.db_check.title">Database integrity check</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.db_check.help">Runs <code>PRAGMA integrity_check</code> against the SQLite catalogue. Read-only.</p>
+                                </div>
+                                <button id="maint-db-check-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.db_check.action">Run check</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.db_vacuum.title">VACUUM database</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.db_vacuum.help">Reclaims disk space after lots of deletions. Briefly locks the DB — avoid during a heavy backfill.</p>
+                                </div>
+                                <button id="maint-db-vacuum-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.db_vacuum.action">Vacuum</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.logs.title">Download log file</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.logs.help">Grab the tail of any logfile under <code>data/logs/</code> as a plain-text download. Useful when filing bug reports.</p>
+                                </div>
+                                <button id="maint-logs-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.logs.action">Browse</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.config.title">View raw config.json</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.config.help">Open the on-disk config (with secrets redacted) in a viewer sheet. For audit / sanity-check.</p>
+                                </div>
+                                <button id="maint-config-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.config.action">Open</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.export.title">Export Telegram session</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.export.help">Decrypts a saved <code>data/sessions/&lt;id&gt;.enc</code> and shows the gramJS string so you can migrate the account to another instance. <strong>Sensitive — anyone with this string can act as the account.</strong></p>
+                                </div>
+                                <button id="maint-export-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.export.action">Export</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.signout_all.title">Sign out everywhere</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.signout_all.help">Revokes every dashboard session token. You'll be sent back to the login page. Use this after rotating the password or if you suspect a compromise.</p>
+                                </div>
+                                <button id="maint-signout-all-btn"
+                                    class="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 transition-colors shrink-0"
+                                    data-i18n="maintenance.signout_all.action">Sign out all</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Danger Zone -->
                     <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4">
                         <h3 class="text-red-400 font-medium mb-2 flex items-center gap-2">

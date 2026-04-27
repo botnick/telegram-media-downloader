@@ -1170,7 +1170,7 @@ async function openDestinationPicker() {
             <hr class="border-tg-border my-2">`;
         list.innerHTML = presets + filtered.map(d => `
             <button data-pick="${escapeHtml(String(d.id))}" type="button" class="w-full text-left px-3 py-2 rounded hover:bg-tg-hover text-tg-text">
-                <div class="truncate">${escapeHtml(d.name || d.id)}</div>
+                <div class="truncate">${escapeHtml(getGroupName(d.id, { fallback: d.name || d.title }))}</div>
                 <div class="text-[11px] text-tg-textSecondary">${escapeHtml(d.type || 'chat')} · <code>${escapeHtml(String(d.id))}</code></div>
             </button>
         `).join('');

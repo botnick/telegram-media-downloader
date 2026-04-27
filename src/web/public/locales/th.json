@@ -388,5 +388,65 @@
 
     "pwa.install": "ติดตั้งแอป",
     "pwa.installed": "ติดตั้งแอปแล้ว",
-    "pwa.update_available": "มีเวอร์ชันใหม่ — รีโหลดเพื่ออัปเดต"
+    "pwa.update_available": "มีเวอร์ชันใหม่ — รีโหลดเพื่ออัปเดต",
+
+    "maintenance.title": "บำรุงรักษา",
+    "maintenance.subtitle": "งานปฏิบัติการที่เคยต้องใช้ CLI ตอนนี้ทำได้ผ่านเบราว์เซอร์ทั้งหมด",
+    "maintenance.failed": "ล้มเหลว: {msg}",
+
+    "maintenance.resync.title": "ซิงก์ Dialog ของ Telegram ใหม่",
+    "maintenance.resync.help": "ดึงชื่อกลุ่มและรูปโปรไฟล์ใหม่จาก Telegram ใช้เมื่อมี \"แชตไม่ทราบชื่อ\" ค้างอยู่",
+    "maintenance.resync.action": "ซิงก์ใหม่",
+    "maintenance.resync.running": "กำลังซิงก์ Dialog…",
+    "maintenance.resync.done": "ซิงก์ {updated} จาก {scanned} กลุ่มแล้ว",
+
+    "maintenance.restart.title": "รีสตาร์ทมอนิเตอร์",
+    "maintenance.restart.help": "หยุดและเริ่มมอนิเตอร์เรียลไทม์ใหม่ในโปรเซสเดิม รับค่าตั้ง / proxy / บัญชี ที่เปลี่ยนได้โดยไม่ต้องรีสตาร์ทคอนเทนเนอร์",
+    "maintenance.restart.action": "รีสตาร์ท",
+    "maintenance.restart.confirm": "หยุดและเริ่มมอนิเตอร์เรียลไทม์ใหม่? ดาวน์โหลดที่กำลังทำงานอยู่จะหยุดชั่วครู่",
+    "maintenance.restart.running": "กำลังรีสตาร์ทมอนิเตอร์…",
+    "maintenance.restart.done": "รีสตาร์ทมอนิเตอร์แล้ว",
+    "maintenance.restart.idle": "มอนิเตอร์ไม่ได้ทำงานอยู่",
+
+    "maintenance.db_check.title": "ตรวจสอบความถูกต้องของฐานข้อมูล",
+    "maintenance.db_check.help": "รัน PRAGMA integrity_check บน SQLite อ่านอย่างเดียว",
+    "maintenance.db_check.action": "ตรวจสอบ",
+    "maintenance.db_check.ok": "ฐานข้อมูลปกติ: ok",
+    "maintenance.db_check.bad": "พบปัญหาในฐานข้อมูล: {msg}",
+
+    "maintenance.db_vacuum.title": "VACUUM ฐานข้อมูล",
+    "maintenance.db_vacuum.help": "คืนพื้นที่ดิสก์หลังลบข้อมูลจำนวนมาก ฐานข้อมูลจะถูกล็อกชั่วคราว — หลีกเลี่ยงระหว่างการดึงประวัติหนัก",
+    "maintenance.db_vacuum.action": "Vacuum",
+    "maintenance.db_vacuum.confirm": "รัน VACUUM บน SQLite? จะล็อกฐานข้อมูลชั่วคราวและอาจใช้เวลาเป็นนาทีถ้าข้อมูลใหญ่",
+    "maintenance.db_vacuum.running": "กำลังรัน VACUUM…",
+    "maintenance.db_vacuum.done": "VACUUM เสร็จแล้ว — คืนพื้นที่ {bytes}",
+
+    "maintenance.logs.title": "ดาวน์โหลดไฟล์ log",
+    "maintenance.logs.help": "ดึง log ส่วนท้ายในโฟลเดอร์ data/logs/ เป็นไฟล์ข้อความ มีประโยชน์เวลาแจ้งบั๊ก",
+    "maintenance.logs.action": "เปิดดู",
+    "maintenance.logs.empty": "ยังไม่มีไฟล์ log",
+    "maintenance.logs.download": "ดาวน์โหลด",
+    "maintenance.logs.tail_help": "10,000 บรรทัดท้ายของแต่ละไฟล์",
+
+    "maintenance.config.title": "ดู config.json ดิบ",
+    "maintenance.config.help": "เปิด config บนดิสก์ (ปิดบังข้อมูลที่อ่อนไหว) ในแผ่นตรวจสอบ เหมาะสำหรับการตรวจสอบ",
+    "maintenance.config.action": "เปิด",
+    "maintenance.config.redacted_help": "ข้อมูลอ่อนไหว (apiHash, password hash, รหัส proxy) ถูกปิดบัง",
+
+    "maintenance.export.title": "ส่งออก session ของ Telegram",
+    "maintenance.export.help": "ถอดรหัส data/sessions/<id>.enc แล้วโชว์สตริง gramJS เพื่อย้ายบัญชีไปเครื่องอื่นได้ อ่อนไหว — ใครได้สตริงนี้ก็ใช้บัญชีได้",
+    "maintenance.export.action": "ส่งออก",
+    "maintenance.export.warn": "ใครได้สตริงนี้ก็ใช้บัญชีได้ ระวังให้ดีเหมือนรหัสผ่าน",
+    "maintenance.export.empty": "ไม่มีบัญชีที่บันทึกไว้",
+    "maintenance.export.pick": "บัญชี",
+    "maintenance.export.string": "สตริง session",
+    "maintenance.export.copy": "คัดลอก",
+    "maintenance.export.copied": "คัดลอกแล้ว",
+    "maintenance.export.copy_manual": "กด Ctrl/Cmd+C เพื่อคัดลอก",
+
+    "maintenance.signout_all.title": "ออกจากระบบทุกที่",
+    "maintenance.signout_all.help": "ยกเลิก session ทั้งหมดของแดชบอร์ด คุณจะถูกพากลับไปหน้า login ใช้เมื่อรีเซ็ตรหัสหรือสงสัยว่าถูกแฮก",
+    "maintenance.signout_all.action": "ออกจากระบบทั้งหมด",
+    "maintenance.signout_all.confirm": "ออกจากระบบทุกเบราว์เซอร์? จะเปลี่ยนเส้นทางไปหน้า login",
+    "maintenance.signout_all.done": "ยกเลิก session ทั้งหมดแล้ว"
 }

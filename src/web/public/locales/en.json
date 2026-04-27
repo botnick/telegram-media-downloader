@@ -388,5 +388,65 @@
 
     "pwa.install": "Install app",
     "pwa.installed": "App installed",
-    "pwa.update_available": "Update available — reload to apply"
+    "pwa.update_available": "Update available — reload to apply",
+
+    "maintenance.title": "Maintenance",
+    "maintenance.subtitle": "Operational tasks that used to need a CLI session. Everything below is safe to run from the browser.",
+    "maintenance.failed": "Failed: {msg}",
+
+    "maintenance.resync.title": "Resync Telegram dialogs",
+    "maintenance.resync.help": "Re-resolve every group's name + profile photo against Telegram. Use when an \"Unknown chat\" lingers in the list.",
+    "maintenance.resync.action": "Resync",
+    "maintenance.resync.running": "Resyncing dialogs…",
+    "maintenance.resync.done": "Resynced {updated} of {scanned} groups",
+
+    "maintenance.restart.title": "Restart monitor",
+    "maintenance.restart.help": "Stops and re-starts the realtime monitor in-process. Picks up settings / proxy / account changes without bouncing the container.",
+    "maintenance.restart.action": "Restart",
+    "maintenance.restart.confirm": "Stop and restart the realtime monitor? In-flight downloads will be paused briefly.",
+    "maintenance.restart.running": "Restarting monitor…",
+    "maintenance.restart.done": "Monitor restarted",
+    "maintenance.restart.idle": "Monitor was not running.",
+
+    "maintenance.db_check.title": "Database integrity check",
+    "maintenance.db_check.help": "Runs PRAGMA integrity_check against the SQLite catalogue. Read-only.",
+    "maintenance.db_check.action": "Run check",
+    "maintenance.db_check.ok": "Database integrity: ok",
+    "maintenance.db_check.bad": "Database issues: {msg}",
+
+    "maintenance.db_vacuum.title": "VACUUM database",
+    "maintenance.db_vacuum.help": "Reclaims disk space after lots of deletions. Briefly locks the DB — avoid during a heavy backfill.",
+    "maintenance.db_vacuum.action": "Vacuum",
+    "maintenance.db_vacuum.confirm": "Run VACUUM on the SQLite database? It briefly locks the DB and may take a minute on large datasets.",
+    "maintenance.db_vacuum.running": "Running VACUUM…",
+    "maintenance.db_vacuum.done": "VACUUM done — reclaimed {bytes}",
+
+    "maintenance.logs.title": "Download log file",
+    "maintenance.logs.help": "Grab the tail of any logfile under data/logs/ as a plain-text download. Useful when filing bug reports.",
+    "maintenance.logs.action": "Browse",
+    "maintenance.logs.empty": "No log files yet.",
+    "maintenance.logs.download": "Download",
+    "maintenance.logs.tail_help": "Last 10,000 lines per file.",
+
+    "maintenance.config.title": "View raw config.json",
+    "maintenance.config.help": "Open the on-disk config (with secrets redacted) in a viewer sheet. For audit / sanity-check.",
+    "maintenance.config.action": "Open",
+    "maintenance.config.redacted_help": "Sensitive fields (apiHash, password hash, proxy password) are redacted.",
+
+    "maintenance.export.title": "Export Telegram session",
+    "maintenance.export.help": "Decrypts a saved data/sessions/<id>.enc and shows the gramJS string so you can migrate the account to another instance. Sensitive — anyone with this string can act as the account.",
+    "maintenance.export.action": "Export",
+    "maintenance.export.warn": "Anyone with this string can act as the account. Treat it like a password.",
+    "maintenance.export.empty": "No saved accounts to export.",
+    "maintenance.export.pick": "Account",
+    "maintenance.export.string": "Session string",
+    "maintenance.export.copy": "Copy to clipboard",
+    "maintenance.export.copied": "Copied",
+    "maintenance.export.copy_manual": "Press Ctrl/Cmd+C to copy",
+
+    "maintenance.signout_all.title": "Sign out everywhere",
+    "maintenance.signout_all.help": "Revokes every dashboard session token. You'll be sent back to the login page. Use this after rotating the password or if you suspect a compromise.",
+    "maintenance.signout_all.action": "Sign out all",
+    "maintenance.signout_all.confirm": "Sign out every browser? You will be redirected to the login page.",
+    "maintenance.signout_all.done": "All sessions revoked"
 }

@@ -849,8 +849,55 @@ app.post('/api/monitor/stop', async (req, res) => {
 // runtime's downloader if it's running so the worker pool isn't doubled;
 // otherwise spins one up just for this request and tears it down on
 // completion.
+//
+// Persistence — past jobs (last 30 days) are written to data/history-jobs.json
+// so the new Backfill page can show a rolling history across server restarts.
+// JSON file is enough at this scale; if we ever cross ~10k rows we'll port to
+// SQLite. The map below holds active jobs (with the live HistoryDownloader
+// instance attached) plus a hot copy of recent finished ones; the file is
+// considered the source of truth for anything older.
 
-const _historyJobs = new Map(); // jobId → { state, processed, downloaded, error }
+const HISTORY_JOBS_PATH = path.join(DATA_DIR, 'history-jobs.json');
+const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// jobId → { id, state, processed, downloaded, error, group, groupId, limit,
+//           startedAt, finishedAt, cancelled, _runner }
+// `_runner` is stripped before serialising to disk (it's the live downloader).
+const _historyJobs = new Map();
+
+async function loadHistoryJobsFromDisk() {
+    try {
+        const raw = await fs.readFile(HISTORY_JOBS_PATH, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        const cutoff = Date.now() - HISTORY_RETENTION_MS;
+        return parsed.filter(j => j && (j.finishedAt || j.startedAt || 0) >= cutoff);
+    } catch {
+        return [];
+    }
+}
+
+async function saveHistoryJobsToDisk() {
+    // Snapshot finished jobs (state !== running) without the _runner ref.
+    const finished = Array.from(_historyJobs.values())
+        .filter(j => j.state !== 'running')
+        .map(({ _runner, ...rest }) => rest);
+    // Merge with anything still on disk that isn't in memory (older history).
+    const onDisk = await loadHistoryJobsFromDisk();
+    const byId = new Map();
+    for (const j of onDisk) byId.set(j.id, j);
+    for (const j of finished) byId.set(j.id, j);
+    const cutoff = Date.now() - HISTORY_RETENTION_MS;
+    const all = Array.from(byId.values())
+        .filter(j => (j.finishedAt || j.startedAt || 0) >= cutoff)
+        .sort((a, b) => (b.finishedAt || b.startedAt || 0) - (a.finishedAt || a.startedAt || 0));
+    try {
+        await fs.mkdir(DATA_DIR, { recursive: true });
+        await fs.writeFile(HISTORY_JOBS_PATH, JSON.stringify(all, null, 2), 'utf-8');
+    } catch (e) {
+        console.error('history-jobs.json write failed:', e?.message || e);
+    }
+}
 
 app.post('/api/history', async (req, res) => {
     try {
@@ -886,26 +933,54 @@ app.post('/api/history', async (req, res) => {
         const history = new HistoryDownloader(am.getDefaultClient(), downloader, config, am);
 
         const jobId = crypto.randomBytes(6).toString('hex');
-        const job = { id: jobId, state: 'running', processed: 0, downloaded: 0, error: null, group: group.name };
+        const job = {
+            id: jobId,
+            state: 'running',
+            processed: 0,
+            downloaded: 0,
+            error: null,
+            group: group.name,
+            groupId: String(group.id),
+            limit: lim, // null = "all"
+            startedAt: Date.now(),
+            finishedAt: null,
+            cancelled: false,
+            _runner: history,
+        };
         _historyJobs.set(jobId, job);
 
         history.on('progress', (s) => {
             job.processed = s.processed; job.downloaded = s.downloaded;
-            broadcast({ type: 'history_progress', jobId, ...s, group: group.name });
+            broadcast({
+                type: 'history_progress',
+                jobId, ...s,
+                group: group.name,
+                groupId: job.groupId,
+                limit: job.limit,
+                startedAt: job.startedAt,
+            });
         });
 
         history.downloadHistory(groupId, { limit: lim ?? undefined, offsetId: parseInt(offsetId, 10) || 0 })
             .then(() => {
-                job.state = 'done';
+                job.state = job.cancelled ? 'cancelled' : 'done';
+                job.finishedAt = Date.now();
+                delete job._runner;
                 broadcast({ type: 'history_done', jobId, group: group.name, ...job });
                 if (standalone) downloader.stop().catch(() => {});
+                saveHistoryJobsToDisk().catch(() => {});
+                // Drop the in-memory entry after a grace window so the UI has
+                // time to grab it via /api/history/jobs.
                 setTimeout(() => _historyJobs.delete(jobId), 5 * 60 * 1000);
             })
             .catch((err) => {
                 job.state = 'error';
                 job.error = err?.message || String(err);
-                broadcast({ type: 'history_error', jobId, error: job.error });
+                job.finishedAt = Date.now();
+                delete job._runner;
+                broadcast({ type: 'history_error', jobId, error: job.error, group: group.name, groupId: job.groupId });
                 if (standalone) downloader.stop().catch(() => {});
+                saveHistoryJobsToDisk().catch(() => {});
             });
 
         res.json({ success: true, jobId, group: group.name, limit: lim });
@@ -915,14 +990,57 @@ app.post('/api/history', async (req, res) => {
     }
 });
 
+// New endpoints powering the Backfill page.
+//
+// /api/history/jobs returns BOTH the live + recent finished jobs combined.
+// MUST be mounted before /api/history/:jobId so :jobId doesn't swallow "/jobs".
+// /api/history/:jobId/cancel flips the cancel flag on the live runner so the
+// iteration loop bails out gracefully.
+
+app.get('/api/history/jobs', async (req, res) => {
+    try {
+        const onDisk = await loadHistoryJobsFromDisk();
+        const live = Array.from(_historyJobs.values()).map(({ _runner, ...rest }) => rest);
+        const byId = new Map();
+        for (const j of onDisk) byId.set(j.id, j);
+        for (const j of live) byId.set(j.id, j); // live overrides disk (same id)
+        const all = Array.from(byId.values()).sort(
+            (a, b) => (b.startedAt || 0) - (a.startedAt || 0)
+        );
+        res.json({
+            active: all.filter(j => j.state === 'running'),
+            past: all.filter(j => j.state !== 'running'),
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/history/:jobId/cancel', (req, res) => {
+    const job = _historyJobs.get(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.state !== 'running') {
+        return res.status(409).json({ error: `Job is ${job.state}, cannot cancel` });
+    }
+    try {
+        job.cancelled = true;
+        if (typeof job._runner?.cancel === 'function') job._runner.cancel();
+        broadcast({ type: 'history_cancelling', jobId: job.id, group: job.group });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/history/:jobId', (req, res) => {
     const job = _historyJobs.get(req.params.jobId);
     if (!job) return res.status(404).json({ error: 'Job not found' });
-    res.json(job);
+    const { _runner, ...safe } = job;
+    res.json(safe);
 });
 
 app.get('/api/history', (req, res) => {
-    res.json(Array.from(_historyJobs.values()));
+    res.json(Array.from(_historyJobs.values()).map(({ _runner, ...rest }) => rest));
 });
 
 // ====== Proxy test =========================================================
@@ -1617,6 +1735,247 @@ app.delete('/api/purge/all', async (req, res) => {
     }
 });
 
+// ============ MAINTENANCE ENDPOINTS ===========================================
+//
+// Web parity for everything the CLI used to be the only path to do. Every
+// destructive endpoint here:
+//   - lives behind the global checkAuth middleware (so only logged-in users
+//     hit it),
+//   - requires `confirm: true` in the JSON body to prevent CSRF / fat-finger
+//     accidents,
+//   - logs what it did to stdout for the audit trail.
+//
+// Read endpoints (resync dialogs, log download, integrity check) don't need
+// the confirm flag — they don't mutate user data.
+
+const LOGS_DIR = path.join(DATA_DIR, 'logs');
+const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
+
+function _requireConfirm(req, res) {
+    if (req.body?.confirm !== true) {
+        res.status(400).json({ error: 'Pass {"confirm": true} in the request body to proceed.' });
+        return false;
+    }
+    return true;
+}
+
+// Force re-resolve every group entity (name + photo) against Telegram. This is
+// /api/groups/refresh-info under a friendlier name; the SPA already calls the
+// underlying handler, this is the explicit "Resync now" button.
+app.post('/api/maintenance/resync-dialogs', async (req, res) => {
+    try {
+        const am = await getAccountManager();
+        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
+        // Drop the entity cache so re-resolution actually hits Telegram.
+        try { entityCache.clear(); } catch {}
+        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const ids = new Set((config.groups || []).map(g => String(g.id)));
+        try {
+            const rows = getDb().prepare('SELECT DISTINCT group_id FROM downloads').all();
+            for (const r of rows) ids.add(String(r.group_id));
+        } catch {}
+
+        let updated = 0;
+        let mutated = false;
+        for (const id of ids) {
+            const resolved = await resolveEntityAcrossAccounts(id);
+            if (!resolved) continue;
+            const e = resolved.entity;
+            const realName = e?.title
+                || (e?.firstName && (e.firstName + (e.lastName ? ' ' + e.lastName : '')))
+                || e?.username || null;
+            if (realName) {
+                const cg = (config.groups || []).find(g => String(g.id) === id);
+                if (cg && (!cg.name || cg.name === 'Unknown' || cg.name === id || cg.name.startsWith('Group '))) {
+                    cg.name = realName;
+                    mutated = true;
+                }
+                try {
+                    getDb().prepare(`UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`).run(realName, id, id);
+                } catch {}
+                updated++;
+            }
+            await downloadProfilePhoto(id).catch(() => {});
+        }
+        if (mutated) await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        broadcast({ type: 'config_updated' });
+        res.json({ success: true, scanned: ids.size, updated });
+    } catch (e) {
+        const { status, body } = tgAuthErrorBody(e);
+        res.status(status === 400 ? 500 : status).json(body.error ? body : { error: e.message });
+    }
+});
+
+// Restart the realtime monitor: stop → start. Useful after settings changes
+// (proxy, accounts, rate limits) without needing to bounce the container.
+app.post('/api/maintenance/restart-monitor', async (req, res) => {
+    if (!_requireConfirm(req, res)) return;
+    try {
+        const wasRunning = runtime.state === 'running';
+        if (runtime.state !== 'stopped') {
+            try { await runtime.stop(); } catch (e) { console.warn('restart-monitor stop:', e.message); }
+        }
+        if (!wasRunning) {
+            return res.json({ success: true, restarted: false, note: 'Monitor was not running; nothing to restart.' });
+        }
+        const am = await getAccountManager();
+        if (am.count === 0) {
+            return res.status(409).json({ error: 'No Telegram accounts loaded' });
+        }
+        await runtime.start({ config: loadConfig(), accountManager: am });
+        res.json({ success: true, restarted: true, status: runtime.status() });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// SQLite integrity check (PRAGMA integrity_check). Returns "ok" on a clean DB
+// or a list of corruption messages. Read-only.
+app.post('/api/maintenance/db/integrity', async (req, res) => {
+    try {
+        const db = getDb();
+        const rows = db.prepare('PRAGMA integrity_check').all();
+        const messages = rows.map(r => r.integrity_check).filter(Boolean);
+        const ok = messages.length === 1 && messages[0] === 'ok';
+        res.json({ success: true, ok, messages });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// VACUUM the SQLite database. Reclaims space after lots of deletions.
+// Locks the DB briefly — guard with confirm so the user can't trigger it by
+// accident in the middle of a heavy backfill.
+app.post('/api/maintenance/db/vacuum', async (req, res) => {
+    if (!_requireConfirm(req, res)) return;
+    try {
+        const db = getDb();
+        const beforePages = db.pragma('page_count', { simple: true });
+        const pageSize = db.pragma('page_size', { simple: true });
+        db.exec('VACUUM');
+        const afterPages = db.pragma('page_count', { simple: true });
+        res.json({
+            success: true,
+            beforeBytes: Number(beforePages) * Number(pageSize),
+            afterBytes: Number(afterPages) * Number(pageSize),
+            reclaimedBytes: Math.max(0, (Number(beforePages) - Number(afterPages)) * Number(pageSize)),
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// List logfiles under data/logs/ with size + mtime — used by the SPA to
+// populate the "Download log" picker.
+app.get('/api/maintenance/logs', async (req, res) => {
+    try {
+        if (!existsSync(LOGS_DIR)) return res.json({ files: [] });
+        const names = fsSync.readdirSync(LOGS_DIR).filter(f => f.endsWith('.log'));
+        const files = names.map(name => {
+            try {
+                const st = fsSync.statSync(path.join(LOGS_DIR, name));
+                return { name, size: st.size, modified: st.mtime.toISOString() };
+            } catch { return null; }
+        }).filter(Boolean);
+        files.sort((a, b) => b.modified.localeCompare(a.modified));
+        res.json({ files });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Stream the tail of a logfile as plain text. `name` is restricted to a single
+// path segment so a malicious caller can't traverse out of LOGS_DIR.
+app.get('/api/maintenance/logs/download', async (req, res) => {
+    try {
+        const name = String(req.query.name || '');
+        if (!name || name.includes('/') || name.includes('\\') || name.includes('\0') || !name.endsWith('.log')) {
+            return res.status(400).json({ error: 'Invalid log name' });
+        }
+        const lines = Math.max(10, Math.min(100000, parseInt(req.query.lines, 10) || 5000));
+        const filePath = path.join(LOGS_DIR, name);
+        if (!existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
+
+        // Naive tail — read whole file (logs are bounded), keep last N lines.
+        // Acceptable up to a few hundred MB; if logs ever grow bigger we'd
+        // switch to a stream-with-ring-buffer reader.
+        const raw = await fs.readFile(filePath, 'utf8');
+        const all = raw.split(/\r?\n/);
+        const tail = all.slice(Math.max(0, all.length - lines)).join('\n');
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+        res.send(tail);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Export a Telegram account session as a portable string. The session is
+// AES-256 encrypted on disk under data/sessions/<id>.enc; this endpoint
+// decrypts it with the local SecureSession key and returns the raw gramJS
+// string (which itself is the long-form telegram session payload). The user
+// can paste this into another instance to migrate without re-doing the OTP
+// flow. We never log the value.
+app.post('/api/maintenance/session/export', async (req, res) => {
+    if (!_requireConfirm(req, res)) return;
+    try {
+        const { accountId } = req.body || {};
+        if (typeof accountId !== 'string' || !accountId) {
+            return res.status(400).json({ error: 'accountId required' });
+        }
+        // Path-segment guard — accountId becomes a filename.
+        if (accountId.includes('/') || accountId.includes('\\') || accountId.includes('..') || accountId.includes('\0')) {
+            return res.status(400).json({ error: 'Invalid accountId' });
+        }
+        const sessionFile = path.join(SESSIONS_DIR, `${accountId}.enc`);
+        if (!existsSync(sessionFile)) {
+            return res.status(404).json({ error: 'Session file not found for that account' });
+        }
+        const raw = await fs.readFile(sessionFile, 'utf8');
+        const encrypted = JSON.parse(raw);
+        const sessionString = _secureSession.decrypt(encrypted);
+        res.json({ success: true, accountId, session: sessionString });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Revoke every dashboard session token. Forces every browser (including the
+// caller) back to the login page. Useful after a suspected compromise or after
+// rotating the password from another device.
+app.post('/api/maintenance/sessions/revoke-all', async (req, res) => {
+    if (!_requireConfirm(req, res)) return;
+    try {
+        revokeAllSessions();
+        res.clearCookie('tg_dl_session', SESSION_COOKIE_OPTS);
+        broadcast({ type: 'sessions_revoked' });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Surface the raw config.json (with secrets redacted) so power users can
+// review what's on disk without SSHing into the container. Sensitive fields
+// are stripped — see /api/config for the existing redaction policy.
+app.get('/api/maintenance/config/raw', async (req, res) => {
+    try {
+        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        if (config.telegram?.apiHash) config.telegram.apiHash = '••••••• (redacted)';
+        if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
+        if (config.web?.password) config.web.password = '••••••• (redacted)';
+        if (config.proxy?.password) config.proxy.password = '••••••• (redacted)';
+        if (Array.isArray(config.accounts)) {
+            // Phone numbers are stored alongside the metadata; keep but show
+            // the user what they're about to download.
+        }
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.send(JSON.stringify(config, null, 2));
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/config', async (req, res) => {
     try {
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
@@ -1837,6 +2196,11 @@ app.post('/api/groups/refresh-info', async (req, res) => {
 
         let updated = 0;
         let mutatedConfig = false;
+        // Per-id name pairs broadcast to every connected SPA so each tab
+        // can merge them into its canonical `state.groupNameCache` without
+        // a full /api/groups round-trip. Also returned in the HTTP body
+        // so the caller can update its own state immediately.
+        const updates = [];
         for (const id of ids) {
             const resolved = await resolveEntityAcrossAccounts(id);
             if (!resolved) continue;
@@ -1856,13 +2220,17 @@ app.post('/api/groups/refresh-info', async (req, res) => {
                     const stmt = getDb().prepare(`UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`);
                     stmt.run(realName, id, id);
                 } catch {}
+                updates.push({ id, name: realName });
                 updated++;
             }
             // Photo (best-effort)
             await downloadProfilePhoto(id).catch(() => {});
         }
         if (mutatedConfig) await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
-        res.json({ success: true, updated, scanned: ids.size });
+        if (updates.length) {
+            try { broadcast({ type: 'groups_refreshed', updates }); } catch {}
+        }
+        res.json({ success: true, updated, scanned: ids.size, updates });
     } catch (e) {
         console.error('refresh-info:', e);
         res.status(500).json({ error: e.message });

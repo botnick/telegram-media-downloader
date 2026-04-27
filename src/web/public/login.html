@@ -46,7 +46,34 @@
             <div id="error" class="text-red-400 text-sm text-center hidden">
                 Invalid password
             </div>
+            <div class="text-center">
+                <button type="button" id="forgotBtn" class="text-xs text-gray-400 hover:text-blue-400 underline">
+                    Forgot password?
+                </button>
+            </div>
         </form>
+
+        <!-- Reset flow — shown when "Forgot password?" is clicked. The user
+             clicks "Generate token", reads it from `docker compose logs`,
+             pastes it back here, and chooses a new password. -->
+        <div id="resetPanel" class="hidden mt-6 pt-6 border-t border-gray-700 space-y-3">
+            <h2 class="text-base font-semibold text-blue-400">Reset password</h2>
+            <p class="text-xs text-gray-400">Click <strong>Send token</strong>. The server prints a one-time, 10-minute token to its stdout — read it from <code class="bg-black px-1 rounded">docker compose logs telegram-downloader</code> (or wherever your container logs go), paste it below, and choose a new password.</p>
+            <button type="button" id="resetSendBtn"
+                class="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition">
+                Send token
+            </button>
+            <input type="text" id="resetToken" placeholder="Paste token from server logs"
+                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500 transition text-sm font-mono"
+                autocomplete="off">
+            <input type="password" id="resetNew" placeholder="New password (min 8 chars)" minlength="8"
+                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500 transition text-sm">
+            <button type="button" id="resetConfirmBtn"
+                class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded transition">
+                Reset and sign in
+            </button>
+            <div id="resetMsg" class="text-xs text-center hidden"></div>
+        </div>
     </div>
 
     <script>
@@ -82,6 +109,69 @@
                 errorDiv.classList.remove('hidden');
                 btn.disabled = false;
                 btn.textContent = 'Unlock';
+            }
+        });
+
+        // ====== Forgot password / reset flow ======
+        document.getElementById('forgotBtn').addEventListener('click', () => {
+            document.getElementById('resetPanel').classList.toggle('hidden');
+        });
+
+        const resetMsg = document.getElementById('resetMsg');
+        function showResetMsg(text, kind) {
+            resetMsg.textContent = text;
+            resetMsg.className = 'text-xs text-center ' + (kind === 'error' ? 'text-red-400' : 'text-green-400');
+            resetMsg.classList.remove('hidden');
+        }
+
+        document.getElementById('resetSendBtn').addEventListener('click', async (e) => {
+            const btn = e.target;
+            btn.disabled = true; btn.textContent = 'Sending…';
+            try {
+                const res = await fetch('/api/auth/reset/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showResetMsg('Token printed to server logs. Check `docker compose logs` and paste it below.', 'ok');
+                } else {
+                    showResetMsg(data.error || 'Failed to request token', 'error');
+                }
+            } catch {
+                showResetMsg('Network error', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Send token';
+            }
+        });
+
+        document.getElementById('resetConfirmBtn').addEventListener('click', async (e) => {
+            const token = document.getElementById('resetToken').value.trim();
+            const newPassword = document.getElementById('resetNew').value;
+            if (!token || newPassword.length < 8) {
+                showResetMsg('Token + a password of at least 8 characters required', 'error');
+                return;
+            }
+            const btn = e.target;
+            btn.disabled = true; btn.textContent = 'Resetting…';
+            try {
+                const res = await fetch('/api/auth/reset/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, newPassword }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showResetMsg('Password reset. Redirecting…', 'ok');
+                    setTimeout(() => { window.location.href = '/'; }, 500);
+                } else {
+                    showResetMsg(data.error || 'Reset failed', 'error');
+                    btn.disabled = false; btn.textContent = 'Reset and sign in';
+                }
+            } catch {
+                showResetMsg('Network error', 'error');
+                btn.disabled = false; btn.textContent = 'Reset and sign in';
             }
         });
     </script>

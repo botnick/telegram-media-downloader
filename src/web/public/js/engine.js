@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { showToast, formatBytes, escapeHtml } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { subscribe as subscribeMonitorStatus, refreshNow as refreshMonitorStatus } from './monitor-status.js';
+import { getGroupName } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,7 +53,7 @@ function renderActive() {
             return `
                 <div class="bg-tg-bg/40 rounded p-2 text-xs">
                     <div class="flex items-center justify-between gap-2">
-                        <span class="text-tg-text truncate">${escapeHtml(j.groupName || j.groupId || '?')} <span class="text-tg-textSecondary">· ${escapeHtml(j.mediaType || '')} #${j.messageId ?? ''}</span></span>
+                        <span class="text-tg-text truncate">${escapeHtml(getGroupName(j.groupId, { fallback: j.groupName || '?' }))} <span class="text-tg-textSecondary">· ${escapeHtml(j.mediaType || '')} #${j.messageId ?? ''}</span></span>
                         <span class="text-tg-textSecondary tabular-nums">${pct}%${speed ? ' · ' + speed : ''}</span>
                     </div>
                     <div class="mt-1 h-1 bg-tg-bg rounded overflow-hidden">
