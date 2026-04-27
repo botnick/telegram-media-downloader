@@ -299,6 +299,8 @@
     "backfill.row.cancelling": "กำลังยกเลิก…",
     "backfill.row.cancelled": "ยกเลิกแล้ว",
     "backfill.row.run_again": "รันอีกครั้ง",
+    "backfill.row.attempts": "ลอง {n} ครั้ง",
+    "backfill.row.attempts_help": "แสดงครั้งล่าสุด — ครั้งก่อนหน้ารวมเข้าด้วยกัน",
     "backfill.row.failed": "ล้มเหลว",
     "backfill.row.failed_short": "ล้มเหลว",
     "backfill.row.done": "เสร็จ",

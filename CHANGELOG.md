@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.8] — 2026-04-28
+
+### Fixed
+- **Backfill page "Recent backfills" was showing the same chat several times** when the user re-ran a job (e.g., a Failed run + a manual retry produced two visible rows). Recent list is now deduped by `(groupId, limit)` — the **newest attempt** is shown, with a small `× N attempts` badge surfacing how many earlier runs were folded in. Different limits for the same chat (`Last 100` vs `All`) stay as separate rows because they're genuinely different actions. Underlying `data/history-jobs.json` still records every attempt for audit; only the UI list collapses.
+- **i18n**: `backfill.row.attempts`, `backfill.row.attempts_help` (en + th lockstep, 598 keys).
+
 ## [2.3.7] — 2026-04-28
 
 ### Fixed

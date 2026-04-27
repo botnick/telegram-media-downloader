@@ -299,6 +299,8 @@
     "backfill.row.cancelling": "cancelling…",
     "backfill.row.cancelled": "Cancelled",
     "backfill.row.run_again": "Run again",
+    "backfill.row.attempts": "× {n} attempts",
+    "backfill.row.attempts_help": "Newest attempt shown — older attempts collapsed",
     "backfill.row.failed": "Failed",
     "backfill.row.failed_short": "failed",
     "backfill.row.done": "Done",

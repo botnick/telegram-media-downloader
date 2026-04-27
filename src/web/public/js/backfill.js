@@ -543,14 +543,35 @@ function renderRecent() {
     }
     empty?.classList.add('hidden');
 
-    list.innerHTML = recentJobs.map(j => renderRecentRow(j)).join('');
+    // Dedupe by (groupId, limit). Same chat backfilled with the same
+    // target multiple times → keep the NEWEST row only and surface an
+    // "× N attempts" badge so the user can still see they retried.
+    // Different limits (Last 100 vs All) stay separate because they're
+    // genuinely different actions.
+    const grouped = new Map();   // key → { newest, count }
+    for (const j of recentJobs) {
+        const key = `${String(j.groupId)}|${j.limit ?? 0}`;
+        const tsOf = (x) => x.finishedAt || x.startedAt || 0;
+        const cur = grouped.get(key);
+        if (!cur) {
+            grouped.set(key, { newest: j, count: 1 });
+        } else {
+            cur.count += 1;
+            if (tsOf(j) > tsOf(cur.newest)) cur.newest = j;
+        }
+    }
+    const display = [...grouped.values()].sort((a, b) => {
+        const ts = (x) => x.newest.finishedAt || x.newest.startedAt || 0;
+        return ts(b) - ts(a);
+    });
+    list.innerHTML = display.map(({ newest, count }) => renderRecentRow(newest, count)).join('');
 
     list.querySelectorAll('[data-rerun]').forEach(btn => {
         btn.addEventListener('click', () => rerunFromRecent(btn.dataset.rerun));
     });
 }
 
-function renderRecentRow(job) {
+function renderRecentRow(job, attempts = 1) {
     const id = String(job.id);
     const name = getGroupName(job.groupId, { fallback: job.group || job.groupId });
     const target = job.limit === null || job.limit === 0
@@ -568,11 +589,24 @@ function renderRecentRow(job) {
         statePill = `<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400" title="${escapeHtml(job.error || '')}">${escapeHtml(i18nT('backfill.row.failed', 'Failed'))}</span>`;
     }
 
+    // Surface the dedupe count when the same (group, limit) pair was
+    // attempted more than once. Tooltip tells the user this row is the
+    // newest attempt; older attempts are folded in.
+    const attemptsBadge = attempts > 1
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-tg-bg/60 text-tg-textSecondary"
+                 title="${escapeHtml(i18nT('backfill.row.attempts_help', 'Newest attempt shown — older attempts collapsed'))}">
+              ${escapeHtml(i18nTf('backfill.row.attempts', { n: attempts }, `× ${attempts} attempts`))}
+           </span>`
+        : '';
+
     return `
         <div class="rounded-lg border border-tg-border/40 p-3" data-recent-row="${escapeHtml(id)}">
             <div class="flex items-start gap-2">
                 <div class="min-w-0 flex-1">
-                    <div class="text-sm font-medium text-tg-text truncate">${escapeHtml(name)}</div>
+                    <div class="text-sm font-medium text-tg-text truncate flex items-center gap-2">
+                        <span class="truncate">${escapeHtml(name)}</span>
+                        ${attemptsBadge}
+                    </div>
                     <div class="text-xs text-tg-textSecondary mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                         <span><i class="ri-target-line"></i> ${escapeHtml(target)}</span>
                         <span><i class="ri-file-list-line"></i> ${escapeHtml(i18nTf('backfill.row.processed', { n: job.processed || 0 }, `${job.processed || 0} processed`))}</span>
