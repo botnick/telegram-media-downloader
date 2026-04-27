@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.7] — 2026-04-28
+
+### Fixed
+- **History backpressure abort** ("History backpressure timed out (5min) — downloader appears stuck") now only fires when the downloader genuinely makes **zero forward progress** during the wait window. The previous logic counted from when the queue first hit the cap and aborted at +5 min regardless of how many downloads completed in that window — a slow large clip, a heavy FloodWait throttle, or any sustained-but-progressing run could trip it. The new check subscribes to the downloader's `complete` event AND watches `pendingCount` for a decrease; either resets the no-progress timer. The abort message now includes the actual pending count + cap so it's clear whether the cause is a stalled worker (FloodWait, network) or a misconfigured cap. Combined with the v2.3.6 FloodWait infinite-retry fix, the spurious 5-min abort should be gone in practice.
+
 ## [2.3.6] — 2026-04-28
 
 A blocker fix the user spotted (gallery showing 209 of 2454 files), plus the priority items from a third audit pass — silent FloodWait loops, Windows-reserved filenames, downloader/rotator races, queue UX overhaul, and the avatar flicker.

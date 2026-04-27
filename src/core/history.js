@@ -158,20 +158,49 @@ export class HistoryDownloader extends EventEmitter {
                 this.emit('progress', this.stats); // Emit progress immediately after processing count
 
                 // --- Backpressure: cap RAM during 100k+ backfills ---
-                // Both the cap and the abort timeout are tunable via
-                // config.advanced.history.* with the original constants
-                // (500 / 5min) preserved as inline fallbacks for older
-                // configs that pre-date the Advanced settings panel.
+                // Earlier versions tripped the abort if the queue stayed
+                // full for `MAX_WAIT_MS`, which fired any time a real
+                // download was just slow (large video over flaky link,
+                // heavy FloodWait throttle, etc). The "stuck" check is
+                // now FORWARD-PROGRESS based: as long as the downloader's
+                // pendingCount keeps decreasing OR a `complete` event
+                // fires, we keep waiting indefinitely. We only abort
+                // when neither has happened for the whole window.
+                //
+                // Both the cap and the no-progress window are tunable
+                // via config.advanced.history.* with the original
+                // constants (500 / 5min) preserved as inline fallbacks
+                // for older configs that pre-date the Advanced settings
+                // panel.
                 {
                     const cap = Number(this.config?.advanced?.history?.backpressureCap) || 500;
                     const MAX_WAIT_MS = Number(this.config?.advanced?.history?.backpressureMaxWaitMs) || (5 * 60 * 1000);
-                    const start = Date.now();
-                    while (this.downloader.pendingCount > cap) {
-                        await this.sleep(1000);
-                        if (!this.running || this.cancelFlag) break;
-                        if (Date.now() - start > MAX_WAIT_MS) {
-                            const mins = Math.round(MAX_WAIT_MS / 60000);
-                            throw new Error(`History backpressure timed out (${mins}min) — downloader appears stuck`);
+
+                    if (this.downloader.pendingCount > cap) {
+                        // Watch downloader 'complete' events for forward
+                        // progress. Each completion bumps the watermark
+                        // so the no-progress window resets.
+                        let lastProgressAt = Date.now();
+                        let lastPending = this.downloader.pendingCount;
+                        const onComplete = () => { lastProgressAt = Date.now(); };
+                        this.downloader.on('complete', onComplete);
+                        try {
+                            while (this.downloader.pendingCount > cap) {
+                                await this.sleep(1000);
+                                if (!this.running || this.cancelFlag) break;
+                                // Pending count dropped → progress.
+                                if (this.downloader.pendingCount < lastPending) {
+                                    lastPending = this.downloader.pendingCount;
+                                    lastProgressAt = Date.now();
+                                }
+                                if (Date.now() - lastProgressAt > MAX_WAIT_MS) {
+                                    const mins = Math.round(MAX_WAIT_MS / 60000);
+                                    throw new Error(`History backpressure: downloader made no progress for ${mins}min (pending=${this.downloader.pendingCount}, cap=${cap}). Check Engine card for FloodWait or stalled workers.`);
+                                }
+                            }
+                        } finally {
+                            this.downloader.off?.('complete', onComplete)
+                                || this.downloader.removeListener?.('complete', onComplete);
                         }
                     }
                 }
