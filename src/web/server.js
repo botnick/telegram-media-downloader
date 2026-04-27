@@ -324,6 +324,16 @@ async function readConfigSafe() {
 }
 function invalidateConfigCache() { _configCache = { at: 0, value: null }; }
 
+// Atomic config writer — temp-file + rename so a crash mid-write can't
+// leave config.json half-flushed. Several handlers used to call
+// `fs.writeFile(CONFIG_PATH, …)` directly; route them through this.
+async function writeConfigAtomic(config) {
+    const tmp = CONFIG_PATH + '.tmp';
+    await fs.writeFile(tmp, JSON.stringify(config, null, 4));
+    await fs.rename(tmp, CONFIG_PATH);
+    invalidateConfigCache();
+}
+
 // Paths that may be reached without an authenticated session.
 // PWA bits (manifest, service worker, icons) MUST be reachable pre-login
 // — the browser fetches them before the user has a session cookie.
@@ -422,7 +432,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
             try {
                 config.web.passwordHash = hashPassword(password);
                 delete config.web.password;
-                await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+                await writeConfigAtomic(config);
             } catch (e) {
                 console.error('Password rehash failed (non-fatal):', e.message);
             }
@@ -476,7 +486,7 @@ app.post('/api/auth/setup', setupLimiter, async (req, res) => {
         config.web.enabled = true;
         config.web.passwordHash = hashPassword(password);
         delete config.web.password;
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        await writeConfigAtomic(config);
 
         const { token, maxAgeMs } = issueSession();
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
@@ -515,7 +525,7 @@ app.post('/api/auth/change-password', loginLimiter, async (req, res) => {
 
         config.web.passwordHash = hashPassword(newPassword);
         delete config.web.password;
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        await writeConfigAtomic(config);
 
         // Issue a fresh session and let the SPA replace the old cookie. We
         // don't revoke other sessions automatically — the SPA exposes a
@@ -597,7 +607,7 @@ app.post('/api/auth/reset/confirm', loginLimiter, async (req, res) => {
         config.web.passwordHash = hashPassword(newPassword);
         config.web.enabled = true;
         delete config.web.password;
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        await writeConfigAtomic(config);
 
         // Revoke every existing session — if someone reset the password,
         // assume the previous owner is locked out and shouldn't be trusted.
@@ -2124,7 +2134,7 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
 
         // 3. Remove from config
         config.groups = (config.groups || []).filter(g => String(g.id) !== String(groupId));
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        await writeConfigAtomic(config);
 
         // 4. Delete profile photo
         const photoPath = path.join(PHOTOS_DIR, `${groupId}.jpg`);
@@ -2168,7 +2178,7 @@ app.delete('/api/purge/all', async (req, res) => {
         // 3. Clear groups from config
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
         config.groups = [];
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        await writeConfigAtomic(config);
 
         // 4. Delete all profile photos
         if (existsSync(PHOTOS_DIR)) {
@@ -2288,7 +2298,7 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
             }
             await downloadProfilePhoto(id).catch(() => {});
         }
-        if (mutated) await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        if (mutated) await writeConfigAtomic(config);
         // Invalidate the dialogs cache so the next /api/dialogs and the next
         // /api/groups pick up the freshly-resolved names without waiting for
         // the 5-min TTL.
@@ -2703,7 +2713,7 @@ app.put('/api/groups/:id', async (req, res) => {
             }
         }
         
-        await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        await writeConfigAtomic(config);
         broadcast({ type: 'config_updated', config });
         res.json({ success: true, group: config.groups[groupIndex] });
     } catch (error) {
@@ -2770,7 +2780,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
             // Photo (best-effort)
             await downloadProfilePhoto(id).catch(() => {});
         }
-        if (mutatedConfig) await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+        if (mutatedConfig) await writeConfigAtomic(config);
         if (updates.length) {
             try { broadcast({ type: 'groups_refreshed', updates }); } catch {}
         }
@@ -3178,7 +3188,7 @@ async function resolveGroupNamesFromTelegram() {
             }
         }
         if (configChanged) {
-            await fs.writeFile(CONFIG_PATH, JSON.stringify(config, null, 4));
+            await writeConfigAtomic(config);
         }
 
         const total = resolvedNames.size;

@@ -114,10 +114,12 @@ export class RescueSweeper {
         try {
             const now = Date.now();
             const rows = getExpiredPending(now);
-            if (!rows.length) {
-                setRescueLastSweep(0);
-                return { swept: 0, scanned: 0 };
-            }
+            // Don't reset the "cleared last sweep" stat on empty ticks —
+            // most sweeps are no-op, and clobbering the last meaningful
+            // count to 0 every interval makes the Settings panel
+            // perpetually report "0 cleared last sweep" even right after
+            // a real cleanup.
+            if (!rows.length) return { swept: 0, scanned: 0 };
 
             let swept = 0;
             for (const row of rows) {
