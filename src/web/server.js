@@ -1412,13 +1412,59 @@ function nameLooksUnresolved(name, id) {
     return false;
 }
 
-// Best-available name for a group id. Tries the config-set label first,
-// falls back to the DB's most recently-seen `group_name` for that id.
-// Last-resort placeholder is "Unknown chat (#<id>)" — never the bare id.
-function bestGroupName(id, configName, dbName) {
+// Best-available name for a group id. Resolution priority:
+//   1. Live Telegram dialogs name (same source the Browse-chats picker
+//      uses — most authoritative; reflects renames immediately).
+//   2. Config-set label.
+//   3. DB's most-recently-saved `group_name` for that id.
+//   4. Last-resort placeholder — never the bare numeric id.
+function bestGroupName(id, configName, dbName, dialogsName) {
+    if (!nameLooksUnresolved(dialogsName, id)) return dialogsName;
     if (!nameLooksUnresolved(configName, id)) return configName;
     if (!nameLooksUnresolved(dbName, id)) return dbName;
     return `Unknown chat (#${id})`;
+}
+
+// Server-side cache of `id -> name` from every connected account's
+// dialog list. Refreshed on demand with a 5-minute TTL — Telegram
+// rate-limits getDialogs heavily, so we don't want to call it on
+// every /api/groups request.
+let _dialogsNameCache = { at: 0, byId: new Map() };
+async function getDialogsNameCache() {
+    const now = Date.now();
+    if (now - _dialogsNameCache.at < 5 * 60 * 1000 && _dialogsNameCache.byId.size > 0) {
+        return _dialogsNameCache.byId;
+    }
+    const byId = new Map();
+    try {
+        const am = await getAccountManager();
+        const clients = [];
+        for (const [, c] of am.clients) clients.push(c);
+        if (telegramClient?.connected && !clients.includes(telegramClient)) clients.push(telegramClient);
+
+        for (const client of clients) {
+            if (!client?.connected) continue;
+            try {
+                const [active, archived] = await Promise.all([
+                    client.getDialogs({ limit: 500 }).catch(() => []),
+                    client.getDialogs({ limit: 200, archived: true }).catch(() => []),
+                ]);
+                for (const d of [...active, ...archived]) {
+                    const id = String(d.id);
+                    const name = d.title
+                        || d.name
+                        || ((d.entity?.firstName || '') + (d.entity?.lastName ? ' ' + d.entity.lastName : '')).trim()
+                        || d.entity?.username
+                        || null;
+                    if (name && !nameLooksUnresolved(name, id) && !byId.has(id)) {
+                        byId.set(id, name);
+                    }
+                }
+            } catch { /* one bad client doesn't kill the whole sweep */ }
+        }
+    } catch { /* no AM — fresh install */ }
+    _dialogsNameCache = { at: now, byId };
+    return byId;
 }
 
 app.get('/api/groups', async (req, res) => {
@@ -1449,12 +1495,16 @@ app.get('/api/groups', async (req, res) => {
             for (const r of rows) dbNames.set(String(r.group_id), r.best_name || r.any_name);
         } catch {}
 
+        // Live dialogs from every connected account — same source the
+        // Browse-chats picker uses, so the sidebar shows the same name.
+        const dialogsNames = await getDialogsNameCache();
+
         const groupsWithPhotos = await Promise.all((config.groups || []).map(async (group) => {
             const photoPath = path.join(PHOTOS_DIR, `${group.id}.jpg`);
             const hasPhoto = existsSync(photoPath);
             return {
                 ...group,
-                name: bestGroupName(group.id, group.name, dbNames.get(String(group.id))),
+                name: bestGroupName(group.id, group.name, dbNames.get(String(group.id)), dialogsNames.get(String(group.id))),
                 photoUrl: hasPhoto ? `/photos/${group.id}.jpg` : null
             };
         }));
@@ -1491,11 +1541,17 @@ app.get('/api/downloads', async (req, res) => {
              GROUP BY group_id
         `).all();
 
+        const dialogsNames = await getDialogsNameCache();
+
         const results = rows.map(r => {
             const cfg = configGroups.find(g => String(g.id) === r.group_id);
-            // Best-available — prefer config name if real, else the
-            // CASE-filtered DB best, else any DB name, else placeholder.
-            const name = bestGroupName(r.group_id, cfg?.name, r.best_name || r.any_name);
+            // Best-available: live Telegram dialogs name → config → DB → placeholder.
+            const name = bestGroupName(
+                r.group_id,
+                cfg?.name,
+                r.best_name || r.any_name,
+                dialogsNames.get(String(r.group_id)),
+            );
             const hasPhoto = existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
 
             return {

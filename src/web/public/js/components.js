@@ -20,6 +20,9 @@ import { createAvatar, escapeHtml, formatRelativeTime } from './utils.js';
  *       selected,                   // bool — Telegram "selected chat" highlight
  *       lastDownloadAt,             // ISO/ms — used to derive `time` if not given
  *       data,                       // extra dataset attributes ({ key: val, ... })
+ *       cog,                        // bool — render a cog button on the right
+ *                                   // (action="settings" data attr) for one-tap
+ *                                   // access to per-group settings
  *   })
  *
  * Returns an HTML string. The caller is responsible for attaching click
@@ -35,6 +38,7 @@ export function renderChatRow(opts) {
         selected = false,
         time, lastDownloadAt,
         data = {},
+        cog = false,
     } = opts;
 
     const avatar = createAvatar({
@@ -60,6 +64,14 @@ export function renderChatRow(opts) {
         meta.push(`<span class="unread-pill${muted}">${escapeHtml(String(unread))}</span>`);
     }
 
+    const cogBtn = cog
+        ? `<button class="chat-row-cog ml-2 w-8 h-8 inline-flex items-center justify-center rounded-full text-tg-textSecondary hover:bg-tg-hover hover:text-tg-text transition shrink-0"
+                  data-action="settings" aria-label="Group settings" title="Group settings"
+                  type="button">
+              <i class="ri-settings-3-line text-base" aria-hidden="true"></i>
+          </button>`
+        : '';
+
     return `
         <div class="chat-row${selected ? ' is-selected' : ''}" ${datasetAttrs} role="button" tabindex="0">
             ${avatar}
@@ -70,6 +82,7 @@ export function renderChatRow(opts) {
                 ${subtitle ? `<div class="row-subtitle">${escapeHtml(subtitle)}</div>` : ''}
             </div>
             ${meta.length ? `<div class="row-meta">${meta.join('')}</div>` : ''}
+            ${cogBtn}
         </div>`;
 }
 

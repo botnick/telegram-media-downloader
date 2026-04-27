@@ -403,6 +403,7 @@ function renderGroupsList() {
             avatarDot: ring ? 'monitor' : null,
             time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
             selected: state.currentGroupId === id,
+            cog: true,  // cog button → opens Group Settings modal directly
             // Don't ship the (possibly stale) raw name through the dataset —
             // click handlers re-resolve from the canonical store.
         });
@@ -421,13 +422,25 @@ function renderGroupsList() {
         }).catch(() => {}).finally(() => { state._resolvingGroups = false; });
     }
 
-    // Event delegation — click opens the group viewer; right-click / long-press
-    // shows a context menu (handled by gestures.js / future addition). Names
-    // are re-resolved at click time via getGroupName() so a refreshed name
-    // wins over whatever the row was rendered with.
+    // Event delegation — click opens the group viewer; click on the
+    // cog button opens Group Settings instead. Names are re-resolved
+    // at click time via getGroupName() so a refreshed name wins over
+    // whatever the row was rendered with.
     list.querySelectorAll('.chat-row[data-id]').forEach(el => {
-        const fire = () => openGroup(el.dataset.id, getGroupName(el.dataset.id));
-        el.addEventListener('click', fire);
+        const id = el.dataset.id;
+        const fire = () => openGroup(id, getGroupName(id));
+        el.addEventListener('click', (ev) => {
+            // Cog button takes precedence — short-circuit before the
+            // row navigates to the gallery.
+            const cogTarget = ev.target.closest?.('[data-action="settings"]');
+            if (cogTarget) {
+                ev.stopPropagation();
+                ev.preventDefault();
+                openGroupSettings(id, getGroupName(id));
+                return;
+            }
+            fire();
+        });
         el.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();

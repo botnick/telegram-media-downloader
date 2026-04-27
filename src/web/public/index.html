@@ -373,6 +373,13 @@
         }
         .bottom-nav-item.active { color: var(--tg-blue, #2AABEE); }
         .bottom-nav-item i { font-size: 22px; }
+        /* Five-tab bottom nav: at very narrow viewports (≤360px) shrink the
+           icon and label one tier so a fifth tab still gets enough room
+           without the labels wrapping or the tap target collapsing. */
+        @media (max-width: 360px) {
+            .bottom-nav-item i { font-size: 19px; }
+            .bottom-nav-item { font-size: 10px; gap: 2px; }
+        }
         .bottom-nav-item .nav-badge {
             position: absolute;
             top: 8px;
@@ -675,6 +682,11 @@
                     onclick="navigateTo('groups')">
                     <i class="ri-group-line text-xl text-tg-textSecondary"></i>
                     <span class="text-tg-text" data-i18n="nav.groups">Groups</span>
+                </div>
+                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="backfill"
+                    onclick="navigateTo('backfill')">
+                    <i class="ri-history-line text-xl text-tg-textSecondary"></i>
+                    <span class="text-tg-text" data-i18n="nav.backfill">Backfill</span>
                 </div>
                 <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="settings"
                     onclick="navigateTo('settings')">
@@ -1672,15 +1684,18 @@
     </button>
 
     <!-- Bottom navigation (mobile only) — replaces the drawer-only
-         navigation pattern. The Engine, Stories and other entries are
-         reachable via the FAB action sheet so we keep this row to the 4
-         most-frequented destinations. -->
+         navigation pattern. Five tabs: Library / Chats / Backfill / Engine /
+         Settings. At ≤360px the icons shrink one tier so the row stays
+         comfortably tappable without crowding the labels. -->
     <nav class="bottom-nav" aria-label="Primary">
         <a class="bottom-nav-item" href="#/viewer" data-nav="viewer" data-i18n-aria-label="nav.library" aria-label="Library">
             <i class="ri-gallery-line" aria-hidden="true"></i><span data-i18n="nav.library">Library</span>
         </a>
         <a class="bottom-nav-item" href="#/groups" data-nav="groups" data-i18n-aria-label="nav.chats" aria-label="Chats">
             <i class="ri-chat-3-line" aria-hidden="true"></i><span data-i18n="nav.chats">Chats</span>
+        </a>
+        <a class="bottom-nav-item" href="#/backfill" data-nav="backfill" data-i18n-aria-label="nav.backfill" aria-label="Backfill">
+            <i class="ri-history-line" aria-hidden="true"></i><span data-i18n="nav.backfill">Backfill</span>
         </a>
         <a class="bottom-nav-item" href="#/engine" data-nav="engine" data-i18n-aria-label="nav.engine" aria-label="Engine">
             <i class="ri-broadcast-line" aria-hidden="true"></i><span data-i18n="nav.engine">Engine</span>
