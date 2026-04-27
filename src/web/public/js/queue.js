@@ -468,19 +468,25 @@ function renderRow(j) {
         ? `data-row-open="${escapeHtml(j.filePath)}" data-row-open-type="${isVideo ? 'video' : isImage ? 'image' : isAudio ? 'audio' : 'file'}"`
         : '';
 
-    // Thumbnail: for finished items, hit the actual `/files/` URL with
-    // ?inline=1 so the gallery's thumbnailing pipeline takes over (browser
-    // renders the image / video poster / audio glyph). For everything else
-    // fall back to the type icon.
-    const thumb = openable && (isImage || isVideo)
-        ? `<${isVideo ? 'video' : 'img'}
-                src="/files/${encodeURIComponent(j.filePath)}?inline=1"
-                class="w-9 h-9 rounded object-cover bg-tg-bg/40"
-                ${isVideo ? 'preload="metadata" muted' : 'alt=""'}
-                onerror="this.outerHTML='<div class=\\'w-9 h-9 rounded bg-tg-bg/40 flex items-center justify-center text-tg-textSecondary\\'><i class=\\'${icon}\\'></i></div>'">`
-        : `<div class="w-9 h-9 rounded bg-tg-bg/40 flex items-center justify-center text-tg-textSecondary">
-                <i class="${icon}"></i>
-           </div>`;
+    // Thumbnails dropped in v2.3.21. We used to render
+    //   <img src="/files/…?inline=1">  for done image rows
+    //   <video preload="metadata" src="/files/…">  for done video rows
+    // Both caused real-world pain on busy queues:
+    //   • Video preload pulls ~256 KB of MP4 header per visible row,
+    //     re-fired on every scroll → "queue extremely laggy".
+    //   • Image thumbnails 404'd for any row whose file had been
+    //     rotated / deleted / never fully written, spamming the console.
+    // The row is still clickable + opens the actual file in the
+    // viewer when it's done — the icon-only placeholder is enough
+    // visual cue, with zero network and no 404 risk.
+    const tint = isVideo ? 'bg-black/70 text-white'
+        : isImage ? 'bg-tg-blue/15 text-tg-blue'
+        : isAudio ? 'bg-tg-orange/15 text-tg-orange'
+        : 'bg-tg-bg/40 text-tg-textSecondary';
+    const thumb = `
+        <div class="w-9 h-9 rounded ${tint} flex items-center justify-center">
+            <i class="${icon}"></i>
+        </div>`;
 
     // Per-row action set is status-dependent. Active/queued: pause, cancel.
     // Paused: resume, cancel. Failed: retry, dismiss. Done: dismiss.

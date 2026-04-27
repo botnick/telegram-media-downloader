@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.21] — 2026-04-28
+
+### Fixed
+- **Queue page extremely laggy + 404 spam in console.** Two related causes:
+  - Video rows rendered `<video preload="metadata" src="/files/…">` for every visible done item; Chromium pulls ~256 KB of MP4 header per row on every render, re-fired on every scroll → smoking-hot CPU + network and the "queue โครตหน่วง" report.
+  - Image rows rendered `<img src="/files/…">` even for files that had been rotated / deleted / never fully written → 404 console spam.
+  - **Fix**: dropped the per-row thumbnails entirely. Each row now shows a tinted icon placeholder coloured by media type (blue for image, white-on-black for video, orange for audio, grey for everything else). Click-to-view still opens the actual file in the in-app viewer when the row is `done`. Zero network round-trips, zero 404 risk.
+
+### Added
+- **Max Download Speed: free-form input.** The hard-coded 5-option dropdown (Unlimited / 1 / 5 / 10 / 20 MB/s) is now a numeric input + KB/s / MB/s / GB/s unit picker. Empty value = unlimited; any number resolves to bytes on save. The label above the input mirrors the current value live.
+
+### Changed
+- **Default Volume slider** — step `5` → `1` for fine control, label + value live on one balanced row above the bar (was label-above + value-below). Picks up the branded `.tg-range` thumb so it matches the player's volume slider.
+
+### SW
+- VERSION bumped `'v20'` → `'v21'`.
+
 ## [2.3.20] — 2026-04-28
 
 ### Fixed

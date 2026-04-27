@@ -55,13 +55,41 @@ export async function loadSettings() {
         bind('setting-polling', config.pollingInterval);
         document.getElementById('polling-value').textContent = (config.pollingInterval || 10) + 's';
 
-        const speedEl = document.getElementById('setting-max-speed');
-        if (speedEl) {
-            speedEl.value = dl.maxSpeed || 0;
-            const speedLabel = document.getElementById('speed-value');
-            if (speedLabel) {
-                speedLabel.textContent = dl.maxSpeed ? (dl.maxSpeed / 1024 / 1024).toFixed(0) + ' MB/s' : i18nT('settings.download.unlimited', 'Unlimited');
+        // Max Download Speed — dual-input (numeric value + unit picker)
+        // mirroring whatever bytes are stored on disk. 0 / blank = unlimited.
+        // Picks the most natural unit on load (don't show "10240 KB/s" when
+        // the user typed "10 MB/s"). The hidden #setting-max-speed input
+        // gets the raw bytes so the save path's `get('setting-max-speed')`
+        // works unchanged.
+        const speedHidden = document.getElementById('setting-max-speed');
+        const speedValEl  = document.getElementById('setting-max-speed-value');
+        const speedUnitEl = document.getElementById('setting-max-speed-unit');
+        const speedLabel  = document.getElementById('speed-value');
+        if (speedHidden && speedValEl && speedUnitEl) {
+            const bytes = Number(dl.maxSpeed) || 0;
+            let unit = 'MB', value = '';
+            if (bytes > 0) {
+                if (bytes >= 1024 * 1024 * 1024) { unit = 'GB'; value = +(bytes / 1073741824).toFixed(2); }
+                else if (bytes >= 1024 * 1024)   { unit = 'MB'; value = +(bytes / 1048576).toFixed(2); }
+                else                             { unit = 'KB'; value = +(bytes / 1024).toFixed(2); }
             }
+            speedValEl.value = value === 0 ? '' : String(value);
+            speedUnitEl.value = unit;
+            const refresh = () => {
+                const v = parseFloat(speedValEl.value);
+                const u = speedUnitEl.value;
+                if (!Number.isFinite(v) || v <= 0) {
+                    speedHidden.value = '0';
+                    if (speedLabel) speedLabel.textContent = i18nT('settings.download.unlimited', 'Unlimited');
+                    return;
+                }
+                const mult = u === 'GB' ? 1073741824 : u === 'KB' ? 1024 : 1048576;
+                speedHidden.value = String(Math.round(v * mult));
+                if (speedLabel) speedLabel.textContent = `${v} ${u}/s`;
+            };
+            speedValEl.addEventListener('input', refresh);
+            speedUnitEl.addEventListener('change', refresh);
+            refresh();
         }
 
         // Total disk cap is split into a numeric input + unit dropdown so

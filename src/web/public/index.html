@@ -1533,15 +1533,25 @@
                                     <label class="text-tg-text text-sm" data-i18n="settings.download.max_speed">Max Download Speed</label>
                                     <span id="speed-value" class="text-tg-blue font-medium text-sm" data-i18n="settings.download.unlimited">Unlimited</span>
                                 </div>
-                                <select id="setting-max-speed" class="tg-input w-full text-sm"
-                                    onchange="document.getElementById('speed-value').textContent = this.options[this.selectedIndex].text">
-                                    <option value="0" data-i18n="settings.download.unlimited">Unlimited</option>
-                                    <option value="1048576">1 MB/s</option>
-                                    <option value="5242880">5 MB/s</option>
-                                    <option value="10485760">10 MB/s</option>
-                                    <option value="20971520">20 MB/s</option>
-                                </select>
-                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.speed_help">Limit bandwidth usage per worker</p>
+                                <!-- Free-form numeric value + unit picker. Empty
+                                     value = unlimited. Bytes are computed at
+                                     save time; the live label above mirrors
+                                     whatever the user is currently typing. -->
+                                <div class="flex gap-1">
+                                    <input id="setting-max-speed-value" type="number" min="0" step="0.5" placeholder="0 = unlimited"
+                                        class="tg-input flex-1 text-sm">
+                                    <select id="setting-max-speed-unit" class="tg-input text-sm" style="max-width:90px;">
+                                        <option value="KB">KB/s</option>
+                                        <option value="MB" selected>MB/s</option>
+                                        <option value="GB">GB/s</option>
+                                    </select>
+                                </div>
+                                <!-- Hidden input keeps the legacy `setting-max-speed` element
+                                     name so settings.js's get() in the save path still finds
+                                     the bytes value. settings.js wires the dual inputs above
+                                     to update this hidden field on every change. -->
+                                <input id="setting-max-speed" type="hidden" value="0">
+                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.speed_help">Limit bandwidth usage per worker. Free-form: 0 = unlimited; type any number, pick a unit.</p>
                             </div>
                         </div>
                     </div>
@@ -1786,9 +1796,11 @@
                                 </select>
                             </div>
                             <div>
-                                <label for="setting-viewer-default-volume" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.video_player.default_volume">Default volume</label>
-                                <input id="setting-viewer-default-volume" type="range" min="0" max="100" step="5" class="w-full">
-                                <div class="text-[10px] text-tg-textSecondary text-right tabular-nums"><span id="setting-viewer-default-volume-val">100</span>%</div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label for="setting-viewer-default-volume" class="text-tg-textSecondary text-xs" data-i18n="settings.video_player.default_volume">Default volume</label>
+                                    <span class="text-tg-textSecondary text-xs tabular-nums"><span id="setting-viewer-default-volume-val">100</span>%</span>
+                                </div>
+                                <input id="setting-viewer-default-volume" type="range" min="0" max="100" step="1" class="tg-range w-full mt-1">
                             </div>
                             <div>
                                 <label for="setting-viewer-skip-step" class="text-tg-textSecondary text-xs block mb-1" data-i18n="settings.video_player.skip_step">Skip step (s)</label>
