@@ -721,17 +721,87 @@ async function maintBrowseLogs() {
     }
 }
 
+// Pretty-print JSON as a collapsible tree with syntax-highlighted tokens.
+// No third-party dep — recursion + classes that the existing Tailwind
+// palette already covers.
+function _renderJsonTree(value, key = null) {
+    const wrap = (cls, content) => `<span class="${cls}">${content}</span>`;
+    const keyPart = key !== null
+        ? `<span class="text-tg-blue">"${escapeHtml(String(key))}"</span><span class="text-tg-textSecondary">: </span>`
+        : '';
+    if (value === null) return keyPart + wrap('text-tg-textSecondary italic', 'null');
+    if (typeof value === 'boolean') return keyPart + wrap('text-tg-orange', String(value));
+    if (typeof value === 'number') return keyPart + wrap('text-tg-orange tabular-nums', String(value));
+    if (typeof value === 'string') return keyPart + wrap('text-tg-green break-all', `"${escapeHtml(value)}"`);
+    if (Array.isArray(value)) {
+        if (!value.length) return keyPart + '<span class="text-tg-textSecondary">[]</span>';
+        const id = `j${Math.random().toString(36).slice(2, 8)}`;
+        const children = value.map((v, i) =>
+            `<div class="pl-4 border-l border-tg-border/40">${_renderJsonTree(v, i)}<span class="text-tg-textSecondary">${i < value.length - 1 ? ',' : ''}</span></div>`
+        ).join('');
+        return keyPart + `
+            <details class="inline-block align-top" id="${id}" open>
+                <summary class="cursor-pointer text-tg-textSecondary list-none select-none">[<span class="text-tg-textSecondary text-[10px]">${value.length}</span>]</summary>
+                ${children}
+            </details>`;
+    }
+    if (typeof value === 'object') {
+        const entries = Object.entries(value);
+        if (!entries.length) return keyPart + '<span class="text-tg-textSecondary">{}</span>';
+        const id = `j${Math.random().toString(36).slice(2, 8)}`;
+        const children = entries.map(([k, v], i) =>
+            `<div class="pl-4 border-l border-tg-border/40">${_renderJsonTree(v, k)}<span class="text-tg-textSecondary">${i < entries.length - 1 ? ',' : ''}</span></div>`
+        ).join('');
+        return keyPart + `
+            <details class="inline-block align-top" id="${id}" open>
+                <summary class="cursor-pointer text-tg-textSecondary list-none select-none">{<span class="text-tg-textSecondary text-[10px]">${entries.length}</span>}</summary>
+                ${children}
+            </details>`;
+    }
+    return keyPart + escapeHtml(String(value));
+}
+
 async function maintViewConfig() {
     try {
         const res = await fetch('/api/maintenance/config/raw');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
+        let tree;
+        try {
+            tree = _renderJsonTree(JSON.parse(text));
+        } catch {
+            // Server returned non-JSON (rare) — fall back to a plain pre.
+            tree = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(text)}</pre>`;
+        }
         openSheet({
-            title: i18nT('maintenance.config.title', 'View raw config.json'),
+            title: i18nT('maintenance.config.title', 'View config.json'),
             size: 'lg',
-            content: `<pre class="text-xs bg-tg-bg/60 rounded-lg p-3 overflow-auto max-h-[60vh] whitespace-pre-wrap">${escapeHtml(text)}</pre>
-                      <p class="text-xs text-tg-textSecondary mt-2" data-i18n="maintenance.config.redacted_help">Sensitive fields (apiHash, password hash, proxy password) are redacted.</p>`,
+            content: `
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <div class="flex items-center gap-2">
+                        <button data-config-collapse class="tg-btn-secondary text-xs px-3 py-1">${escapeHtml(i18nT('maintenance.config.collapse_all', 'Collapse all'))}</button>
+                        <button data-config-expand class="tg-btn-secondary text-xs px-3 py-1">${escapeHtml(i18nT('maintenance.config.expand_all', 'Expand all'))}</button>
+                    </div>
+                    <button data-config-copy class="tg-btn-secondary text-xs px-3 py-1">${escapeHtml(i18nT('maintenance.logs.copy', 'Copy'))}</button>
+                </div>
+                <div id="maint-config-tree" class="text-xs font-mono bg-tg-bg/60 rounded-lg p-3 overflow-auto max-h-[65vh] leading-relaxed">${tree}</div>
+                <p class="text-xs text-tg-textSecondary mt-2" data-i18n="maintenance.config.redacted_help">Sensitive fields (apiHash, password hash, proxy password) are redacted.</p>`,
         });
+        setTimeout(() => {
+            const root = document.getElementById('maint-config-tree');
+            if (!root) return;
+            const expandAll = (open) => root.querySelectorAll('details').forEach(d => d.open = open);
+            document.querySelector('[data-config-collapse]')?.addEventListener('click', () => expandAll(false));
+            document.querySelector('[data-config-expand]')?.addEventListener('click', () => expandAll(true));
+            document.querySelector('[data-config-copy]')?.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
+                } catch {
+                    showToast(i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'), 'info');
+                }
+            });
+        }, 60);
     } catch (e) {
         showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
     }
@@ -750,15 +820,32 @@ async function maintExportSession() {
     }
     const opts = accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)} · ${escapeHtml(a.id)}</option>`).join('');
     const html = `
-        <p class="text-xs text-red-400 mb-3">${escapeHtml(i18nT('maintenance.export.warn',
-            'Anyone with this string can act as the account. Treat it like a password.'))}</p>
+        <div class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3">
+            <div class="flex items-start gap-2">
+                <i class="ri-error-warning-line text-red-400 text-base mt-0.5"></i>
+                <div>
+                    <div class="text-red-300 text-sm font-medium">${escapeHtml(i18nT('maintenance.export.warn_title', 'Sensitive — full account access'))}</div>
+                    <p class="text-xs text-red-200/90 mt-1 leading-snug">${escapeHtml(i18nT('maintenance.export.warn',
+                        'Anyone with this string can act as the account. Treat it like a password.'))}</p>
+                </div>
+            </div>
+        </div>
         <label class="text-tg-text text-sm block mb-1" data-i18n="maintenance.export.pick">Account</label>
         <select id="maint-export-pick" class="tg-input w-full text-sm mb-3">${opts}</select>
         <button id="maint-export-do" class="tg-btn w-full text-sm">${escapeHtml(i18nT('maintenance.export.action', 'Export'))}</button>
         <div id="maint-export-out" class="mt-3 hidden">
             <label class="text-tg-text text-sm block mb-1" data-i18n="maintenance.export.string">Session string</label>
-            <textarea id="maint-export-str" class="tg-input w-full text-xs font-mono" rows="6" readonly></textarea>
-            <button id="maint-export-copy" class="tg-btn-secondary w-full text-xs mt-2">${escapeHtml(i18nT('maintenance.export.copy', 'Copy to clipboard'))}</button>
+            <div class="relative">
+                <textarea id="maint-export-str" class="tg-input w-full text-xs font-mono blur-sm focus:blur-none transition-all" rows="6" readonly aria-label="Encrypted session string — click reveal to see"></textarea>
+                <button id="maint-export-reveal" class="absolute inset-0 w-full h-full flex items-center justify-center bg-tg-bg/80 backdrop-blur-sm rounded-lg text-tg-text text-sm font-medium hover:bg-tg-bg/60 transition">
+                    <i class="ri-eye-line mr-2"></i>${escapeHtml(i18nT('maintenance.export.reveal', 'Click to reveal'))}
+                </button>
+            </div>
+            <div class="flex items-center gap-2 mt-2">
+                <button id="maint-export-copy" class="tg-btn-secondary flex-1 text-xs">${escapeHtml(i18nT('maintenance.export.copy', 'Copy to clipboard'))}</button>
+                <button id="maint-export-clear" class="tg-btn-secondary text-xs px-3" title="${escapeHtml(i18nT('maintenance.export.clear', 'Clear from screen'))}"><i class="ri-eye-close-line"></i></button>
+            </div>
+            <p class="text-[10px] text-tg-textSecondary mt-2" data-i18n="maintenance.export.auto_clear_help">The string auto-clears from the screen after 60 seconds. Copy it somewhere safe before then.</p>
         </div>`;
     openSheet({
         title: i18nT('maintenance.export.title', 'Export Telegram session'),
@@ -793,11 +880,34 @@ async function maintExportSession() {
                 });
                 if (str) str.value = r.session || '';
                 if (out) out.classList.remove('hidden');
+                // Auto-clear after 60 s — even if the user walks away, the
+                // sensitive string doesn't sit on the screen forever.
+                if (autoClearTimer) clearTimeout(autoClearTimer);
+                autoClearTimer = setTimeout(() => {
+                    if (str) str.value = '';
+                    if (out) out.classList.add('hidden');
+                    showToast(i18nT('maintenance.export.cleared', 'Session string cleared from screen'), 'info');
+                }, 60 * 1000);
             } catch (e) {
                 showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
             } finally {
                 doBtn.disabled = false;
             }
+        });
+        // Reveal — drop the blur + remove the cover button so the textarea
+        // is readable. One-shot per export.
+        const reveal = document.getElementById('maint-export-reveal');
+        if (reveal) reveal.addEventListener('click', () => {
+            str?.classList.remove('blur-sm');
+            reveal.remove();
+        });
+        // Manual clear button — wipe the string immediately.
+        const clearBtn = document.getElementById('maint-export-clear');
+        if (clearBtn) clearBtn.addEventListener('click', () => {
+            if (str) str.value = '';
+            if (out) out.classList.add('hidden');
+            if (autoClearTimer) { clearTimeout(autoClearTimer); autoClearTimer = null; }
+            showToast(i18nT('maintenance.export.cleared', 'Session string cleared from screen'), 'info');
         });
         if (copy) copy.addEventListener('click', async () => {
             try {
@@ -810,6 +920,7 @@ async function maintExportSession() {
         });
     }, 50);
 }
+let autoClearTimer = null;
 
 async function maintRevokeAllSessions() {
     if (!(await confirmSheet({

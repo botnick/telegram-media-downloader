@@ -546,6 +546,13 @@
     "maintenance.signout_all.done": "All sessions revoked",
     "maintenance.signout_all.password_prompt": "Enter your dashboard password to sign out every browser:",
     "maintenance.export.password_prompt": "Enter your dashboard password to export the session string:",
+    "maintenance.export.warn_title": "Sensitive — full account access",
+    "maintenance.export.reveal": "Click to reveal",
+    "maintenance.export.clear": "Clear from screen",
+    "maintenance.export.auto_clear_help": "The string auto-clears from the screen after 60 seconds. Copy it somewhere safe before then.",
+    "maintenance.config.collapse_all": "Collapse all",
+    "maintenance.config.expand_all": "Expand all",
+    "maintenance.export.cleared": "Session string cleared from screen",
 
     "group.rescue.title": "Rescue mode",
     "group.rescue.mode_auto": "Auto (follow default)",

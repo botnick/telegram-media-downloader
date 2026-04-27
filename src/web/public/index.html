@@ -166,6 +166,50 @@
            No override needed there. */
         html.theme-light .video-controls { /* keep dark gradient — readability over video */ }
 
+        /* ----- Additional light-theme polish for newer surfaces ----- */
+        /* Status bar */
+        html.theme-light #status-bar { background: #F4F4F5 !important; border-top-color: #E1E5EA !important; }
+        html.theme-light #status-bar .text-tg-textSecondary { color: #65737E !important; }
+        html.theme-light #status-version { color: rgba(101, 115, 126, 0.85) !important; }
+
+        /* Engine/queue/maintenance pills + status colours */
+        html.theme-light .bg-tg-blue\/10 { background-color: rgba(42, 171, 238, 0.12) !important; }
+        html.theme-light .bg-tg-blue\/20 { background-color: rgba(42, 171, 238, 0.18) !important; color: #0769B5 !important; }
+        html.theme-light .bg-tg-green\/20 { background-color: rgba(0, 168, 132, 0.16) !important; color: #007A5E !important; }
+        html.theme-light .bg-tg-orange\/20 { background-color: rgba(244, 180, 0, 0.20) !important; color: #8A6A00 !important; }
+        html.theme-light .bg-red-500\/10 { background-color: rgba(239, 68, 68, 0.10) !important; }
+        html.theme-light .bg-red-500\/20 { background-color: rgba(239, 68, 68, 0.16) !important; color: #B91C1C !important; }
+        html.theme-light .text-tg-blue { color: #0E78C2 !important; }
+        html.theme-light .text-tg-green { color: #008A6E !important; }
+        html.theme-light .text-tg-orange { color: #B8860B !important; }
+        html.theme-light .text-red-300 { color: #B91C1C !important; }
+        html.theme-light .text-red-400 { color: #B91C1C !important; }
+
+        /* Borders + ring slash variants */
+        html.theme-light .border-red-500\/20 { border-color: rgba(239, 68, 68, 0.30) !important; }
+        html.theme-light .border-red-500\/30 { border-color: rgba(239, 68, 68, 0.45) !important; }
+        html.theme-light .border-red-500\/40 { border-color: rgba(239, 68, 68, 0.55) !important; }
+
+        /* Maintenance + Queue helper text — make sure subdued copy stays
+           readable on the lighter card backgrounds. */
+        html.theme-light .text-tg-textSecondary\/70 { color: rgba(101, 115, 126, 0.85) !important; }
+
+        /* Auto-fill datalist / number inputs read white-on-white in some
+           browsers. Force a stronger visible border so users can find the
+           setting-max-disk + setting-rate-limit-rpm fields by sight. */
+        html.theme-light input.tg-input { border: 1px solid #D1D5DB !important; }
+        html.theme-light input.tg-input:focus { border-color: #2AABEE !important; box-shadow: 0 0 0 3px rgba(42,171,238,0.18) !important; }
+        html.theme-light .tg-input::placeholder { color: #9CA3AF !important; }
+
+        /* Tg-toggle inactive track is too dark in light mode. */
+        html.theme-light .tg-toggle { background: #CBD5DD !important; }
+        html.theme-light .tg-toggle.active { background: #2AABEE !important; }
+
+        /* Rescue badge tweaks for light: keep the pills visible against
+           the lighter media tile backgrounds. */
+        html.theme-light .badge-rescued { background: rgba(14, 120, 194, 0.95) !important; }
+        html.theme-light .badge-pending { background: rgba(184, 134, 11, 0.95) !important; color: #FFFFFF !important; }
+
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -349,13 +393,14 @@
         }
 
         .tg-toggle {
-            width: 36px;
-            height: 20px;
+            width: 44px;
+            height: 24px;
             background: #3A4A5C;
-            border-radius: 10px;
+            border-radius: 12px;
             position: relative;
             cursor: pointer;
             transition: background 0.2s;
+            flex-shrink: 0;
         }
 
         .tg-toggle.active {
@@ -393,17 +438,18 @@
         .tg-toggle::after {
             content: '';
             position: absolute;
-            width: 16px;
-            height: 16px;
+            width: 20px;
+            height: 20px;
             background: white;
             border-radius: 50%;
             top: 2px;
             left: 2px;
             transition: transform 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.25);
         }
 
         .tg-toggle.active::after {
-            transform: translateX(16px);
+            transform: translateX(20px);
         }
 
         .tg-input {

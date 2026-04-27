@@ -328,24 +328,44 @@ export class DownloadManager extends EventEmitter {
     }
 
     /**
-     * Remove a queued job. Active jobs can't be cancelled mid-flight here
-     * (gramJS exposes no abort signal on downloadMedia), but we drop them
-     * from `_jobs` so the snapshot stops listing them and the partial file
-     * is wiped on the next worker cycle.
+     * Remove a queued job — works on queued OR active jobs.
+     *
+     * gramJS doesn't expose an abort signal on `downloadMedia`, but the
+     * progressCallback fires every chunk; throwing from inside it makes
+     * the downloader reject with a "Cancelled" error, which our catch
+     * block handles by deleting the .part file (no zombie). For queued
+     * jobs we just splice them out of the lane.
      */
     cancelJob(key) {
         if (!key) return false;
+
+        // Queued path: drop from lane.
         const before = this._high.length + this.queue.length;
         this._high = this._high.filter(j => j.key !== key);
         this.queue = this.queue.filter(j => j.key !== key);
+        const dequeued = (this._high.length + this.queue.length) < before;
+
+        // Active path: flag the key so the next progressCallback throws.
+        const wasActive = this.active.has(key);
+        if (wasActive) {
+            if (!this._cancelling) this._cancelling = new Set();
+            this._cancelling.add(key);
+        }
+
         this._jobs.delete(key);
         this._paused.delete(key);
-        const removed = (this._high.length + this.queue.length) < before;
-        if (removed) {
+
+        if (dequeued || wasActive) {
             this.emit('queue', this.pendingCount);
             this.emit('queue_changed', { key, op: 'cancel' });
+            return true;
         }
-        return removed;
+        return false;
+    }
+
+    /** True if `cancelJob(key)` flagged this in-flight download. */
+    isCancelling(key) {
+        return !!(this._cancelling && this._cancelling.has(key));
     }
 
     pauseAll() {
@@ -603,6 +623,15 @@ export class DownloadManager extends EventEmitter {
                 await this.client.downloadMedia(job.message, {
                     outputFile: partPath,
                     progressCallback: (downloaded, total) => {
+                        // Mid-flight cancel hook — Queue page → cancelJob()
+                        // adds the key to `_cancelling`, throwing here makes
+                        // gramJS reject the downloadMedia promise with our
+                        // Cancelled error which the outer catch cleans up.
+                        if (this.isCancelling(job.key)) {
+                            const err = new Error('Cancelled');
+                            err.cancelled = true;
+                            throw err;
+                        }
                         const downloadedN = BigInt(downloaded || 0);
                         const totalN = total ? BigInt(total) : 0n;
                         const pct = totalN ? Number((downloadedN * 100n) / totalN) : 0;
@@ -632,6 +661,16 @@ export class DownloadManager extends EventEmitter {
                         });
                     },
                 });
+                // Belt-and-braces: gramJS may finish a tiny clip before any
+                // progress tick fires, so check once more here. If cancel
+                // was requested between dequeue and now, drop the .part.
+                if (this.isCancelling(job.key)) {
+                    this._cancelling.delete(job.key);
+                    try { if (existsSync(partPath)) await fs.unlink(partPath); } catch {}
+                    const err = new Error('Cancelled');
+                    err.cancelled = true;
+                    throw err;
+                }
 
                 // 7. Success — atomic rename + post-condition verify.
                 //
@@ -665,6 +704,16 @@ export class DownloadManager extends EventEmitter {
             }
 
         } catch (error) {
+            // User-initiated cancel — don't retry, don't report as failure.
+            // The .part is already gone (cleanup in inner catch). Emit a
+            // cancelled event so the Queue page can flip the row state.
+            if (error?.cancelled) {
+                if (this._cancelling) this._cancelling.delete(job.key);
+                this.emit('cancelled', { key: job.key, groupId: job.groupId });
+                this.emit('queue_changed', { key: job.key, op: 'cancel' });
+                return; // swallow — runWorker treats absence of throw as "done"
+            }
+
             if (error.errorMessage === 'FLOOD_WAIT' || error.message?.includes('FLOOD_WAIT')) {
                 const seconds = error.seconds || 60;
                 this.throttle(); // Dynamic: reduce concurrency on flood
@@ -862,9 +911,15 @@ export class DownloadManager extends EventEmitter {
     generateFilename(job) {
         const msg = job.message;
         const ext = this.getExtension(msg);
-        const date = new Date(msg.date * 1000);
-        const timestamp = date.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-        return `${timestamp}_${msg.id}${ext}`;
+        // Defensive: msg.date can be missing/NaN on stories or self-destruct
+        // events — `new Date(NaN).toISOString()` throws "Invalid time value"
+        // and used to bubble up as a Download Failed for the whole job.
+        // Fall back to wall-clock so the file lands somewhere sensible.
+        const epochSec = Number.isFinite(msg?.date) ? msg.date : Math.floor(Date.now() / 1000);
+        const d = new Date(epochSec * 1000);
+        const timestamp = (Number.isNaN(d.getTime()) ? new Date() : d)
+            .toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        return `${timestamp}_${msg?.id ?? 'noid'}${ext}`;
     }
 
     getExtension(message) {

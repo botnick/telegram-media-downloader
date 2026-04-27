@@ -546,6 +546,13 @@
     "maintenance.signout_all.done": "ยกเลิก session ทั้งหมดแล้ว",
     "maintenance.signout_all.password_prompt": "ใส่รหัสผ่านแดชบอร์ดเพื่อออกจากระบบทุกเบราว์เซอร์:",
     "maintenance.export.password_prompt": "ใส่รหัสผ่านแดชบอร์ดเพื่อ export session string:",
+    "maintenance.export.warn_title": "ข้อมูลอ่อนไหว — เข้าถึงบัญชีได้เต็มสิทธิ์",
+    "maintenance.export.reveal": "คลิกเพื่อแสดง",
+    "maintenance.export.clear": "ล้างจากหน้าจอ",
+    "maintenance.export.auto_clear_help": "สตริงจะถูกล้างจากหน้าจออัตโนมัติใน 60 วินาที คัดลอกเก็บไว้ก่อนนะ",
+    "maintenance.config.collapse_all": "ย่อทั้งหมด",
+    "maintenance.config.expand_all": "ขยายทั้งหมด",
+    "maintenance.export.cleared": "ล้าง session string จากหน้าจอแล้ว",
 
     "group.rescue.title": "โหมดกู้ภัย",
     "group.rescue.mode_auto": "อัตโนมัติ (ตามค่าเริ่มต้น)",
