@@ -432,9 +432,28 @@ export class DownloadManager extends EventEmitter {
                     },
                 });
 
-                // 7. Success - Verify and Rename
-                const finalStats = await fs.stat(partPath);
+                // 7. Success — atomic rename + post-condition verify.
+                //
+                // The .part file is on the same fs as finalPath (same dir),
+                // so `fs.rename` is atomic on POSIX. Re-stat the FINAL path
+                // after the rename to defend against the rare case where the
+                // rename returns success but the inode is gone (NFS, fuse,
+                // overlay-on-overlay quirks). If the final file is missing
+                // or zero bytes, treat the whole download as failed so the
+                // retry path runs instead of registering a dead DB row.
+                const partStats = await fs.stat(partPath);
+                if (!partStats.size) {
+                    try { await fs.unlink(partPath); } catch {}
+                    throw new Error('Downloaded file is empty (0 bytes)');
+                }
                 await fs.rename(partPath, finalPath);
+                let finalStats;
+                try { finalStats = await fs.stat(finalPath); }
+                catch (e) { throw new Error(`Post-rename verify failed: ${e.message}`); }
+                if (!finalStats.size) {
+                    try { await fs.unlink(finalPath); } catch {}
+                    throw new Error('Final file is 0 bytes after rename');
+                }
                 return this.registerDownload(job, finalPath, finalStats.size);
 
             } catch (error) {

@@ -26,6 +26,7 @@ import { AccountManager } from '../core/accounts.js';
 import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
+import * as integrity from '../core/integrity.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import { metrics } from '../core/metrics.js';
@@ -2094,6 +2095,18 @@ app.post('/api/maintenance/db/integrity', async (req, res) => {
     }
 });
 
+// Walk every download row, drop the ones whose file is missing or
+// 0 bytes. Same logic as the periodic boot-time sweep, surfaced as a
+// button so users can force-clean stale entries on demand.
+app.post('/api/maintenance/files/verify', async (req, res) => {
+    try {
+        const result = await integrity.sweep();
+        res.json({ success: true, ...result });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // VACUUM the SQLite database. Reclaims space after lots of deletions.
 // Locks the DB briefly — guard with confirm so the user can't trigger it by
 // accident in the middle of a heavy backfill.
@@ -2735,6 +2748,16 @@ ${tip}
         rotator.start();
     } catch (e) {
         console.warn('[disk-rotator] start failed:', e.message);
+    }
+
+    // Periodic integrity sweep — walks every DB row, drops the ones whose
+    // file is missing or zero-bytes. Self-heals after a manual delete, an
+    // auto-rotator pass, a crash mid-write, or a partial volume restore.
+    // 30 s after boot for the first pass, then hourly.
+    try {
+        integrity.start({ broadcast, intervalMin: 60 });
+    } catch (e) {
+        console.warn('[integrity] start failed:', e.message);
     }
 
     // Resolve group names from Telegram for any DB records still unnamed
