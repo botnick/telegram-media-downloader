@@ -304,6 +304,13 @@
     "viewer.video.speed": "Speed",
     "viewer.video.pip": "PiP",
     "viewer.video.fullscreen": "Fullscreen",
+    "viewer.video.play": "Play",
+    "viewer.video.pause": "Pause",
+    "viewer.video.mute": "Mute",
+    "viewer.video.volume": "Volume",
+    "viewer.video.retry": "Retry",
+    "viewer.video.pip_failed": "PiP unavailable: {msg}",
+    "viewer.video.fullscreen_failed": "Fullscreen unavailable: {msg}",
 
     "common.cancel": "Cancel",
     "common.save": "Save",

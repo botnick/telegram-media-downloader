@@ -304,6 +304,13 @@
     "viewer.video.speed": "ความเร็ว",
     "viewer.video.pip": "PiP",
     "viewer.video.fullscreen": "เต็มจอ",
+    "viewer.video.play": "เล่น",
+    "viewer.video.pause": "หยุดชั่วคราว",
+    "viewer.video.mute": "ปิดเสียง",
+    "viewer.video.volume": "ระดับเสียง",
+    "viewer.video.retry": "ลองใหม่",
+    "viewer.video.pip_failed": "เปิด PiP ไม่ได้: {msg}",
+    "viewer.video.fullscreen_failed": "เปิดเต็มจอไม่ได้: {msg}",
 
     "common.cancel": "ยกเลิก",
     "common.save": "บันทึก",
