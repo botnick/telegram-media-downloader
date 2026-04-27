@@ -507,6 +507,12 @@
     "maintenance.db_vacuum.running": "Running VACUUM…",
     "maintenance.db_vacuum.done": "VACUUM done — reclaimed {bytes}",
 
+    "maintenance.verify.title": "Verify files on disk",
+    "maintenance.verify.help": "Walk every catalogued download, drop the rows whose file went missing on disk. The same sweep runs hourly in the background — this button forces it now.",
+    "maintenance.verify.action": "Verify",
+    "maintenance.verify.running": "Verifying files…",
+    "maintenance.verify.done": "Verified {scanned} files — pruned {pruned} missing rows",
+
     "maintenance.logs.title": "Log files",
     "maintenance.logs.help": "View or download the tail of any logfile under data/logs/ — handy for filing bug reports without SSHing into the container.",
     "maintenance.logs.action": "Browse",

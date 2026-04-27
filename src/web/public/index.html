@@ -1006,7 +1006,7 @@
                         <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
                             <label class="flex items-center justify-between mb-3">
                                 <span class="text-white font-medium" data-i18n="group.topics.title">Forum-topic filter</span>
-                                <div class="tg-toggle" id="topics-enable-toggle" onclick="this.classList.toggle('active'); event.preventDefault();"></div>
+                                <div class="tg-toggle" id="topics-enable-toggle" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
                             </label>
                             <p class="text-xs text-tg-textSecondary mb-3" data-i18n="group.topics.help_html">
                                 If this group is a forum (supergroup with topics), restrict downloads to specific topic IDs. Comma-separated. Get a topic ID from a Telegram message link like <code class="text-tg-text">https://t.me/c/&lt;id&gt;/&lt;topicId&gt;/&lt;msg&gt;</code>.
@@ -1624,6 +1624,14 @@
                                     <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.db_vacuum.help">Reclaims disk space after lots of deletions. Briefly locks the DB — avoid during a heavy backfill.</p>
                                 </div>
                                 <button id="maint-db-vacuum-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.db_vacuum.action">Vacuum</button>
+                            </div>
+
+                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.verify.title">Verify files on disk</div>
+                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.verify.help">Walk every catalogued download, drop the rows whose file went missing on disk. The same sweep runs hourly in the background — this button forces it now.</p>
+                                </div>
+                                <button id="maint-verify-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.verify.action">Verify</button>
                             </div>
 
                             <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">

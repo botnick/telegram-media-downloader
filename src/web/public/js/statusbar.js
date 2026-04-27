@@ -29,6 +29,22 @@ function applyMonitor(mon) {
     applyState(mon.state);
     const q = $('status-queue'); if (q) q.textContent = mon.queue ?? 0;
     const a = $('status-active'); if (a) a.textContent = mon.active ?? 0;
+    // Bottom-nav engine badge — surface "there's something happening on
+    // the Engine page" without forcing the user to navigate there. The
+    // queue tab already has its own badge sourced from queue.js (which
+    // counts queued + active jobs by polling the queue snapshot); this
+    // one mirrors the same idea but reads from /api/monitor/status so
+    // it works even when queue.js's WS-driven store hasn't booted.
+    const navBadge = $('engine-nav-badge');
+    if (navBadge) {
+        const total = (Number(mon.queue) || 0) + (Number(mon.active) || 0);
+        if (total > 0) {
+            navBadge.textContent = total > 99 ? '99+' : String(total);
+            navBadge.classList.remove('hidden');
+        } else {
+            navBadge.classList.add('hidden');
+        }
+    }
 }
 
 async function refreshStats() {

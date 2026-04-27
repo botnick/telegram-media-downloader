@@ -66,7 +66,7 @@ export function getGroupType(id) {
 
 export function getAvatarClass(id) {
     const colors = [
-        'bg-gradient-to-br from-red-500 to-orange-500', 
+        'bg-gradient-to-br from-red-500 to-orange-500',
         'bg-gradient-to-br from-orange-400 to-yellow-500',
         'bg-gradient-to-br from-purple-500 to-pink-500',
         'bg-gradient-to-br from-blue-500 to-cyan-500',
@@ -75,8 +75,18 @@ export function getAvatarClass(id) {
         'bg-gradient-to-br from-pink-500 to-rose-500',
         'bg-gradient-to-br from-cyan-500 to-blue-600'
     ];
-    const numId = Math.abs(parseInt(String(id).slice(-5)) || 0);
-    return colors[numId % colors.length];
+    // IDs are usually numeric (Telegram chat ids) but story / username /
+    // sentinel rows can be alpha. Slice-then-parseInt would yield NaN and
+    // collapse every alpha id onto the same colour. Sum char codes as the
+    // fallback so non-numeric ids still spread across the palette.
+    const s = String(id ?? '');
+    const tail = s.slice(-5);
+    let numId = parseInt(tail, 10);
+    if (!Number.isFinite(numId)) {
+        numId = 0;
+        for (let i = 0; i < s.length; i++) numId = (numId + s.charCodeAt(i)) | 0;
+    }
+    return colors[Math.abs(numId) % colors.length];
 }
 
 /**

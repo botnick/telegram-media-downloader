@@ -555,10 +555,27 @@ function wireMaintenance() {
     once(document.getElementById('maint-restart-btn'), maintRestartMonitor);
     once(document.getElementById('maint-db-check-btn'), maintDbIntegrity);
     once(document.getElementById('maint-db-vacuum-btn'), maintDbVacuum);
+    once(document.getElementById('maint-verify-btn'), maintVerifyFiles);
     once(document.getElementById('maint-logs-btn'), maintBrowseLogs);
     once(document.getElementById('maint-config-btn'), maintViewConfig);
     once(document.getElementById('maint-export-btn'), maintExportSession);
     once(document.getElementById('maint-signout-all-btn'), maintRevokeAllSessions);
+}
+
+// Force-run the file-existence sweep (same one that runs hourly via
+// integrity.start). Drops DB rows whose file vanished on disk so the
+// gallery doesn't show ghost thumbs after a manual rm.
+async function maintVerifyFiles() {
+    try {
+        showToast(i18nT('maintenance.verify.running', 'Verifying files…'), 'info');
+        const r = await api.post('/api/maintenance/files/verify', {});
+        showToast(i18nTf('maintenance.verify.done',
+            { scanned: r.scanned ?? 0, pruned: r.pruned ?? 0 },
+            `Verified ${r.scanned ?? 0} files — pruned ${r.pruned ?? 0} missing rows`),
+            (r.pruned > 0) ? 'warning' : 'success');
+    } catch (e) {
+        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    }
 }
 
 async function maintResyncDialogs() {

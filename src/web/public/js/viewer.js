@@ -676,19 +676,28 @@ export function setupViewerEvents() {
     document.getElementById('modal-prev')?.addEventListener('click', () => navigateMedia(-1));
     document.getElementById('modal-next')?.addEventListener('click', () => navigateMedia(1));
 
-    // Modal-level fullscreen button (top-right) toggles fullscreen on the
-    // video container if a video is active, otherwise on the whole modal.
+    // Modal-level fullscreen button (top-right). Picks the smallest
+    // active container so we don't drag the full modal chrome (counter
+    // pill, prev/next buttons) into the fullscreen surface unless we
+    // have to:
+    //   - video showing  → #video-container (custom controls go FS too)
+    //   - image showing  → #image-container (zoom/pan stays scoped)
+    //   - neither        → #media-modal (defensive fallback)
     document.getElementById('modal-fullscreen-btn')?.addEventListener('click', async () => {
         try {
             if (document.fullscreenElement) {
                 await document.exitFullscreen();
-            } else {
-                const target = document.getElementById('video-container').classList.contains('hidden')
-                    ? document.getElementById('media-modal')
-                    : document.getElementById('video-container');
-                await target.requestFullscreen?.();
+                return;
             }
-        } catch {}
+            const video = document.getElementById('video-container');
+            const image = document.getElementById('image-container');
+            const target = (video && !video.classList.contains('hidden')) ? video
+                : (image && !image.classList.contains('hidden')) ? image
+                : document.getElementById('media-modal');
+            await target?.requestFullscreen?.();
+        } catch (e) {
+            showToast(i18nTf('viewer.video.fullscreen_failed', { msg: e.message }, `Fullscreen unavailable: ${e.message}`), 'error');
+        }
     });
 
     // Click outside the speed menu closes it. Wired ONCE here so it doesn't

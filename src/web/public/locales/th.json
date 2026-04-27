@@ -507,6 +507,12 @@
     "maintenance.db_vacuum.running": "กำลังรัน VACUUM…",
     "maintenance.db_vacuum.done": "VACUUM เสร็จแล้ว — คืนพื้นที่ {bytes}",
 
+    "maintenance.verify.title": "ตรวจสอบไฟล์บนดิสก์",
+    "maintenance.verify.help": "ตรวจทุกแถวในแคตตาล็อก ถ้าไฟล์หายไปจากดิสก์ก็ลบแถวนั้นออก ระบบจะรันงานเดียวกันนี้ทุกชั่วโมงอยู่แล้ว ปุ่มนี้บังคับรันทันที",
+    "maintenance.verify.action": "ตรวจสอบ",
+    "maintenance.verify.running": "กำลังตรวจสอบไฟล์…",
+    "maintenance.verify.done": "ตรวจ {scanned} ไฟล์แล้ว — ลบ {pruned} แถวที่ไฟล์หาย",
+
     "maintenance.logs.title": "ไฟล์ Log",
     "maintenance.logs.help": "เปิดดูหรือดาวน์โหลด log ในโฟลเดอร์ data/logs/ บนเว็บได้เลย ไม่ต้อง SSH เข้า container",
     "maintenance.logs.action": "เปิดดู",

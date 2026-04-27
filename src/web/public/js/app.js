@@ -595,21 +595,25 @@ function showAllMedia() {
 async function loadAllFiles() {
     try {
         const downloads = await api.get('/api/downloads');
-        let allFiles = [];
-        
-        for (const group of downloads.slice(0, 20)) {
-            try {
-                const res = await api.get(`/api/downloads/${encodeURIComponent(group.id)}?page=1&limit=20`);
-                if (res.files) {
+        // Fan-out: 20 sequential awaits used to pay full RTT × 20 (the
+        // wait dominated on a slow link). Promise.all collapses that to
+        // one round-trip and still respects per-group failures via the
+        // .catch — a single 500 from one group can't sink the page.
+        const slice = downloads.slice(0, 20);
+        const results = await Promise.all(slice.map(group =>
+            api.get(`/api/downloads/${encodeURIComponent(group.id)}?page=1&limit=20`)
+                .then(res => {
+                    if (!res?.files) return [];
                     // Stamp the canonical name (not the possibly-stale
                     // `group.name` from /api/downloads) so any per-file
                     // breadcrumb the viewer renders stays consistent.
                     const canonical = getGroupName(group.id, { fallback: group.name });
-                    allFiles = allFiles.concat(res.files.map(f => ({ ...f, groupName: canonical, groupId: group.id })));
-                }
-            } catch (e) {}
-        }
-        
+                    return res.files.map(f => ({ ...f, groupName: canonical, groupId: group.id }));
+                })
+                .catch(() => [])
+        ));
+        const allFiles = results.flat();
+
         state.files = allFiles;
         renderMediaGrid();
         document.getElementById('page-subtitle').textContent = i18nTf('viewer.subtitle.files', { count: allFiles.length }, `${allFiles.length} files`);
@@ -1144,8 +1148,8 @@ async function openGroupSettings(groupId, groupName) {
                         <i class="${t.icon} text-tg-textSecondary"></i>
                         <span class="text-white text-sm">${t.label}</span>
                     </div>
-                    <div class="tg-toggle ${checked ? 'active' : ''}" data-filter="${t.key}" 
-                        onclick="this.classList.toggle('active'); event.preventDefault();"></div>
+                    <div class="tg-toggle ${checked ? 'active' : ''}" data-filter="${t.key}"
+                        onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
                 </label>
             `;
         }).join('');
@@ -1418,12 +1422,21 @@ function setupEventListeners() {
     document.getElementById('sidebar-close')?.addEventListener('click', closeSidebar);
     document.getElementById('sidebar-overlay')?.addEventListener('click', closeSidebar);
     
-    // Search
+    // Sidebar quick-filter — matches the sidebar `.chat-row` markup that
+    // renderGroupsList() actually produces. The legacy `.group-item`
+    // selector predated the Telegram-style row rewrite and silently
+    // matched zero nodes, so the box typed but the list never filtered.
+    // We resolve names through getGroupName() so a stale row rendered
+    // before /api/groups/refresh-info filled in the canonical label
+    // still matches when the user types it.
     document.getElementById('search-input')?.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase();
-        document.querySelectorAll('.group-item').forEach(item => {
-            const name = item.textContent.toLowerCase();
-            item.style.display = name.includes(query) ? '' : 'none';
+        const query = e.target.value.trim().toLowerCase();
+        document.querySelectorAll('#groups-list .chat-row').forEach(item => {
+            const id = item.dataset?.id || '';
+            const canonical = id ? getGroupName(id, { fallback: '' }) : '';
+            const text = (canonical || item.textContent || '').toLowerCase();
+            const idMatch = id && id.toLowerCase().includes(query);
+            item.style.display = (!query || text.includes(query) || idMatch) ? '' : 'none';
         });
     });
     
@@ -1647,7 +1660,12 @@ async function purgeGroup(groupId, groupName) {
             await loadGroups();
             renderGroupsList();
             if (state.currentPage === 'groups') renderGroupsConfig();
-            if (state.currentGroupId === groupId) showAllMedia();
+            // String() coerce: state.currentGroupId can be a number (set by
+            // openGroup with a freshly-parsed id) while `groupId` here is
+            // the raw value from the click handler — usually a string. The
+            // strict-equal check used to slip past, so the gallery would
+            // keep showing files for a group that just got purged.
+            if (String(state.currentGroupId) === String(groupId)) showAllMedia();
             loadStats();
         }
     } catch (e) {
