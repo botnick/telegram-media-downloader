@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.13] — 2026-04-28
+
+### Changed — locale tone + casing pass
+Per user request: "ทำภาษาไทยให้ดูเป็นทางการหน่อยครับ ตัวอักษรอังกฤษพิมพ์เล็กใหญ่ให้เหมาะสมหน่อย".
+
+- **`th.json` rewritten in formal-but-readable Thai** — the tone a Thai-language SaaS product (Notion Thai, Microsoft Thai) would ship. Removed casual particles ("นะ" / "อะ" / "ดิ" / "ไอ้สัส"), used proper polite constructions ("โปรด…", "ใช่หรือไม่"), replaced slangy translations ("เซฟ" → "บันทึก", "หน้าตา" → "รูปลักษณ์", "หลุดจาก server เลย" → "ขาดการเชื่อมต่อกับเซิร์ฟเวอร์"). No trailing periods on Thai sentences (Thai punctuation convention). Tech terms still in English where Thai devs say them that way (`monitor`, `queue`, `session`, `proxy`, `gramJS`, `MTProxy`, `WebSocket`, `dashboard`, `container`, `Stories`, `release notes`, `PiP`, `fullscreen`, `Backfill`, `Rescue`).
+- **`en.json` recapped to proper English casing**:
+  - **Buttons / form labels / nav items / tab names** → Title Case (`Save Credentials`, `Add Account`, `Browse Chats`, `Run Again`, `Restart Monitor`, `Telegram API`).
+  - **Help text / descriptions / toasts / confirmations** → sentence case with terminal periods.
+  - **Acronyms** always ALL CAPS: PiP, HTTPS, JSON, SQLite, OTP, FloodWait, MTProxy, NTP, WAL, etc.
+  - **Tech proper nouns** kept verbatim: Telegram, GitHub, Docker, Express, gramJS, IBM, GHCR.
+- All 635 keys preserved (parity 635 / 635); every `{placeholder}` token, `_html` markup, code span, and URL untouched.
+- **SW VERSION** bumped `'v12'` → `'v13'` so the recapped strings actually reach the browser instead of being served from the previous cache.
+
 ## [2.3.12] — 2026-04-28
 
 ### Added
