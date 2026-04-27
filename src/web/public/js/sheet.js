@@ -141,7 +141,13 @@ export function openSheet(opts) {
     const releaseTrap = trapFocus(root);
     const releaseDrag = dismissible ? attachDragToDismiss(card, handleEl, close) : () => {};
 
-    function onBackdropClick(e) { if (e.target === root || e.target.classList.contains('sheet-backdrop')) close(); }
+    function onBackdropClick(e) {
+        // Only the topmost sheet responds to its own backdrop. Without
+        // this, a stacked Sheet B's backdrop click could fall through and
+        // close the underlying Sheet A instead.
+        if (stack[stack.length - 1]?.root !== root) return;
+        if (e.target === root || e.target.classList.contains('sheet-backdrop')) close();
+    }
     function onEsc(e) {
         if (e.key !== 'Escape') return;
         // Only close the topmost sheet, and let the event continue if we're

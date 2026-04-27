@@ -13,7 +13,10 @@
  *     after a deploy without waiting for every tab to close.
  */
 
-const VERSION = 'v1';
+// Bump on every meaningful release. The activate handler clears any cache
+// whose key doesn't match the current pair, so old shell + asset caches
+// get evicted automatically when this string changes.
+const VERSION = 'v3';
 const SHELL_CACHE = `tgdl-shell-${VERSION}`;
 const ASSET_CACHE = `tgdl-assets-${VERSION}`;
 

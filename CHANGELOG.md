@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.4] — 2026-04-28
+
+Last items from the multi-pass audit. Closes the remaining "deferred" tasks: WS reconnect storm, sheet stacking edge case, log-read hang, stale service-worker cache.
+
+### Fixed
+- **WebSocket reconnect storm.** ws.js now caps automatic reconnects at 12 attempts (~6 minutes of capped backoff) and emits a `__ws_giveup` pseudo-event. The status bar paints the WS dot orange + shows a one-time toast and a click-to-retry handler, instead of leaving the user staring at a silent red dot with no way to recover other than refresh.
+- **Sheet stacking backdrop click.** Backdrop click on a sheet that's no longer the topmost no-ops, so a stacked Sheet B's backdrop can't fall through and close the underlying Sheet A.
+- **Log-read hang in Maintenance.** `fetch /api/maintenance/logs/download` now uses an AbortController with a 30 s ceiling, releases the in-flight server-side stream on abort, and surfaces a clear "log read timed out" message instead of leaving the View button disabled forever.
+- **Service-worker cache stuck on `v1`.** The static `VERSION = 'v1'` meant deploys never invalidated the shell + asset caches automatically. Bumped to `v3`; the `activate` handler will purge the old `tgdl-shell-v1` / `tgdl-assets-v1` caches on first hit. (Going forward, this string bumps with every meaningful release.)
+- **i18n keys.** `ws.giveup`, `ws.giveup_retry`, `maintenance.logs.timeout` in en + th lockstep (594 keys total).
+
 ## [2.3.3] — 2026-04-28
 
 Second-pass audit + four more user-reported defects. Fixes a real entity-cache shape bug and a path-traversal hole in the profile-photo endpoint that the first audit missed.

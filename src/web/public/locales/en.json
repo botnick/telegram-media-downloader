@@ -488,6 +488,10 @@
     "update.click_for_release": "{version} is out — click to view release notes",
     "update.dismiss": "Dismiss",
 
+    "ws.giveup": "Lost connection to server — click WS dot to retry.",
+    "ws.giveup_retry": "Connection lost — click to retry",
+    "maintenance.logs.timeout": "Log read timed out (file too large or server busy)",
+
     "maintenance.title": "Maintenance",
     "maintenance.subtitle": "Operational tasks that used to need a CLI session. Everything below is safe to run from the browser.",
     "maintenance.failed": "Failed: {msg}",

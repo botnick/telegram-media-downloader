@@ -488,6 +488,10 @@
     "update.click_for_release": "{version} ออกแล้ว — กดดู release notes",
     "update.dismiss": "ปิด",
 
+    "ws.giveup": "หลุดจาก server — กดจุด WS เพื่อลองใหม่",
+    "ws.giveup_retry": "หลุดการเชื่อมต่อ — กดเพื่อลองใหม่",
+    "maintenance.logs.timeout": "อ่าน log timeout (ไฟล์ใหญ่ไป หรือ server แน่น)",
+
     "maintenance.title": "Maintenance",
     "maintenance.subtitle": "งานที่เคยต้องเปิด CLI ทำได้บนเบราว์เซอร์ทั้งหมด ปลอดภัยทุกอัน",
     "maintenance.failed": "ล้มเหลว: {msg}",

@@ -724,8 +724,13 @@ async function maintBrowseLogs() {
                 btn.addEventListener('click', async () => {
                     const name = btn.dataset.logView;
                     btn.disabled = true;
+                    // 30 s ceiling on the read — large logs over a slow link
+                    // shouldn't lock the UI forever and an aborted fetch
+                    // releases the in-flight server-side stream.
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), 30000);
                     try {
-                        const res = await fetch(`/api/maintenance/logs/download?name=${encodeURIComponent(name)}&lines=10000`);
+                        const res = await fetch(`/api/maintenance/logs/download?name=${encodeURIComponent(name)}&lines=10000`, { signal: ctrl.signal });
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const text = await res.text();
                         openSheet({
@@ -753,8 +758,12 @@ async function maintBrowseLogs() {
                             });
                         }, 50);
                     } catch (e) {
-                        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+                        const msg = e?.name === 'AbortError'
+                            ? i18nT('maintenance.logs.timeout', 'Log read timed out (file too large or server busy)')
+                            : (e?.message || String(e));
+                        showToast(i18nTf('maintenance.failed', { msg }, `Failed: ${msg}`), 'error');
                     } finally {
+                        clearTimeout(timer);
                         btn.disabled = false;
                     }
                 });

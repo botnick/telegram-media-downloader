@@ -10,6 +10,8 @@ const handlers = new Map(); // type → Set<fn>
 let socket = null;
 let backoff = 1000;
 let alive = false;
+let attemptCount = 0;
+const MAX_ATTEMPTS_BEFORE_PAUSE = 12;   // ~6 min of capped 30 s backoff = enough to notice
 
 function dispatch(msg) {
     const set = handlers.get(msg.type);
@@ -30,6 +32,7 @@ function open() {
     socket.addEventListener('open', () => {
         alive = true;
         backoff = 1000;
+        attemptCount = 0;
         dispatch({ type: '__ws_open' });
     });
     socket.addEventListener('message', (ev) => {
@@ -53,6 +56,15 @@ function scheduleReconnect() {
         document.addEventListener('visibilitychange', oneShot, { once: true });
         return;
     }
+    attemptCount++;
+    // After several failed attempts, pause auto-reconnect and surface a
+    // pseudo-event the SPA can render as a "Connection lost — click to
+    // retry" banner. Without this, a server-down outage logs the user
+    // into an infinite quiet retry loop with no UI feedback.
+    if (attemptCount >= MAX_ATTEMPTS_BEFORE_PAUSE) {
+        dispatch({ type: '__ws_giveup', attempts: attemptCount });
+        return;
+    }
     setTimeout(open, backoff);
     backoff = Math.min(backoff * 2, 30000);
 }
@@ -60,6 +72,12 @@ function oneShot() { open(); }
 
 export const ws = {
     connect() { if (!socket || socket.readyState >= 2) open(); },
+    /** Manual retry after we paused on too-many-attempts. */
+    retry() {
+        attemptCount = 0;
+        backoff = 1000;
+        open();
+    },
     on(type, fn) {
         if (!handlers.has(type)) handlers.set(type, new Set());
         handlers.get(type).add(fn);

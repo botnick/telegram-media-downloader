@@ -171,6 +171,22 @@ export function initStatusBar() {
     ws.on('__ws_close', () => {
         const dot = $('status-ws'); if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-tg-red mr-1';
     });
+    // Surface a one-time toast + offer manual retry when ws.js gives up
+    // after MAX_ATTEMPTS_BEFORE_PAUSE so the user isn't left looking at a
+    // dead red dot with no way to recover other than F5.
+    ws.on('__ws_giveup', () => {
+        const dot = $('status-ws');
+        if (dot) {
+            dot.className = 'inline-block w-2 h-2 rounded-full bg-tg-orange mr-1 cursor-pointer';
+            dot.title = i18nT('ws.giveup_retry', 'Connection lost — click to retry');
+            dot.onclick = () => {
+                dot.className = 'inline-block w-2 h-2 rounded-full bg-gray-500 mr-1';
+                dot.onclick = null;
+                ws.retry();
+            };
+        }
+        showToast(i18nT('ws.giveup', 'Lost connection to server — click WS dot to retry.'), 'warning', 8000);
+    });
     ws.on('monitor_state', (m) => applyState(m.state));
     ws.on('*', (m) => {
         // refresh counters on relevant events; ignore most chatter to avoid stalls
