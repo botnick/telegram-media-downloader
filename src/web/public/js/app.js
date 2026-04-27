@@ -22,6 +22,7 @@ import { formatRelativeTime } from './utils.js';
 import { attachLongPress, attachPullToRefresh } from './gestures.js';
 import { initI18n, setLang, getLang, applyToDOM as applyI18n, t as i18nT, tf as i18nTf } from './i18n.js';
 import { showBackfillPage, deepLinkFromModal as backfillDeepLink, stopBackfillPage } from './backfill.js';
+import * as Fonts from './fonts.js';
 import { showQueuePage, initQueue } from './queue.js';
 
 // ============ Render coalescing ============
@@ -275,15 +276,21 @@ async function init() {
         langSelect.addEventListener('change', () => setLang(langSelect.value));
     }
 
-    // Font picker — populated from the registry in fonts.js. Boot-time
-    // <script> in index.html already applied the saved font BEFORE
-    // first paint to avoid FOUC; here we only wire the <select> so
-    // user changes take effect live.
-    const Fonts = await import('./fonts.js');
-    const fontSelect = document.getElementById('setting-font');
-    if (fontSelect) {
-        Fonts.populateSelect(fontSelect);
-        fontSelect.addEventListener('change', () => Fonts.applyFont(fontSelect.value));
+    // Font picker — populated from the registry in fonts.js (static
+    // import at the top of this file so the SW can cache it like any
+    // other module). Boot-time <script> in index.html already applied
+    // the saved font BEFORE first paint to avoid FOUC; this just
+    // wires the <select> so user changes take effect live. Wrapped in
+    // a try so a font-module load failure can't abort the rest of
+    // init.
+    try {
+        const fontSelect = document.getElementById('setting-font');
+        if (fontSelect && Fonts.populateSelect) {
+            Fonts.populateSelect(fontSelect);
+            fontSelect.addEventListener('change', () => Fonts.applyFont(fontSelect.value));
+        }
+    } catch (e) {
+        console.warn('font picker init failed:', e);
     }
 
     // Appearance toggle

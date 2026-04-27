@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.16] — 2026-04-28
+
+### Fixed
+- **Font picker `<select>` was rendering empty** for some users. Root cause: `app.js`'s init wired the picker through `await import('./fonts.js')` (dynamic import). When the service worker had a stale shell cached, the dynamic import either resolved to the wrong module instance or failed silently — either way `populateSelect()` never ran and the dropdown stayed empty (`<!-- Options populated by js/fonts.js… -->` comment visible only to anyone inspecting the DOM).
+  - Switched to a **static `import * as Fonts from './fonts.js'`** at the top of `app.js` so the SW handles `fonts.js` like any other shell module.
+  - Added a **defensive re-populate inside `loadSettings()`** so opening the Settings page always seeds the dropdown, even if init's first attempt failed. The change-listener gets wired exactly once per session via a module-level `_fontPickerWired` flag.
+- **SW VERSION** bumped `'v15'` → `'v16'` so the static-import path actually reaches the browser instead of being served from the v2.3.15 cache.
+
 ## [2.3.15] — 2026-04-28
 
 ### Added — Latin font choices

@@ -2,12 +2,34 @@ import { api } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import * as Notifications from './notifications.js';
 import * as Fonts from './fonts.js';
+
+// Tracks whether the font <select> has already had its options +
+// change-listener wired this session. Re-populating on every
+// loadSettings() open is harmless (sets innerHTML to identical markup)
+// but the listener flag prevents stacking duplicate change handlers.
+let _fontPickerWired = false;
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { openSheet, confirmSheet, promptSheet } from './sheet.js';
 
 export async function loadSettings() {
     try {
         const config = await api.get('/api/config');
+
+        // Defensive: ensure the font picker is populated every time the
+        // user opens the Settings page. The boot-time wire in app.js
+        // covers the cold-load case but a stale SW cache or a deferred
+        // module load could land us here with an empty <select>; re-
+        // populating is idempotent (same markup) so it's safe.
+        try {
+            const fontSelect = document.getElementById('setting-font');
+            if (fontSelect) {
+                Fonts.populateSelect(fontSelect);
+                if (!_fontPickerWired) {
+                    fontSelect.addEventListener('change', () => Fonts.applyFont(fontSelect.value));
+                    _fontPickerWired = true;
+                }
+            }
+        } catch (e) { console.warn('[settings] font picker re-init:', e); }
 
         const bind = (id, val) => {
             const el = document.getElementById(id);

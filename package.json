@@ -1,6 +1,6 @@
 {
   "name": "telegram-media-downloader",
-  "version": "2.3.15",
+  "version": "2.3.16",
   "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
   "type": "module",
   "main": "src/index.js",
