@@ -2,36 +2,48 @@ import { state } from './store.js';
 import { api } from './api.js';
 import { escapeHtml, getFileIcon, formatDate, showToast } from './utils.js';
 import { attachSwipe, attachDragDismiss } from './gestures.js';
-import { tf as i18nTf } from './i18n.js';
+import { tf as i18nTf, t as i18nT } from './i18n.js';
 
-// ============ Media Viewer ============
+// ============================================================================
+// Media Viewer
+// ----------------------------------------------------------------------------
+//   Public surface (callers in app.js):
+//     openMediaViewer(index)
+//     closeMediaViewer()
+//     setupViewerEvents()       — wire boot-time / document-level listeners
+//   Plus the back-compat zoom helper for images.
+//
+//   The video player is encapsulated in `VideoPlayer` (instantiated lazily on
+//   first video open). All per-video DOM listeners are attached via .onX = …
+//   (assignment) so re-opening a video automatically replaces the previous
+//   handlers — no leaks, no double-fires.
+// ============================================================================
+
 let zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0, startX: 0, startY: 0 };
+/** @type {VideoPlayer|null} */
+let videoPlayer = null;
 
 export function openMediaViewer(index) {
     state.currentFileIndex = index;
     const file = state.files[index];
     if (!file) return;
-    
+
     const modal = document.getElementById('media-modal');
     const imageContainer = document.getElementById('image-container');
     const image = document.getElementById('modal-image');
     const videoContainer = document.getElementById('video-container');
-    const video = document.getElementById('modal-video');
     const url = `/files/${encodeURIComponent(file.fullPath)}?inline=1`;
-    
-    // Reset Views
+
+    // Reset views.
     imageContainer.classList.add('hidden');
     videoContainer.classList.add('hidden');
 
-    // Reset States — fully unload the previous media so it stops
-    // streaming/buffering in the background. Without this, swiping
-    // from a 100 MB video to an image leaves the video network-fetching
-    // and pinned in memory.
+    // Always tear the previous clip down BEFORE swapping in the new src so a
+    // 100 MB video doesn't keep streaming in the background after you flip
+    // to an image.
     resetZoom();
-    if (document.fullscreenElement) document.exitFullscreen();
-    video.pause();
-    video.removeAttribute('src');
-    try { video.load(); } catch {}
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (videoPlayer) videoPlayer.unload();
     image.removeAttribute('src');
 
     if (file.type === 'images') {
@@ -39,14 +51,14 @@ export function openMediaViewer(index) {
         imageContainer.classList.remove('hidden');
         setupImageZoom();
     } else if (file.type === 'videos') {
-        video.src = url;
         videoContainer.classList.remove('hidden');
-        setupVideoPlayer(file.fullPath);
+        if (!videoPlayer) videoPlayer = new VideoPlayer();
+        videoPlayer.load(url, file.fullPath);
     } else {
         window.open(url, '_blank');
         return;
     }
-    
+
     document.getElementById('modal-filename').textContent = file.name;
     document.getElementById('modal-meta').textContent = `${file.sizeFormatted} • ${formatDate(file.modified)}`;
     document.getElementById('modal-counter').textContent = `${index + 1} / ${state.files.length}`;
@@ -55,16 +67,9 @@ export function openMediaViewer(index) {
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
 
-    // Warm the cache for the NEXT image only (not all of them — that
-    // would defeat the lazy-load gains in the gallery). When the user
-    // hits → / swipes left, the file is already in the browser cache
-    // so the modal updates instantly. Skipped for non-image media to
-    // avoid pulling multi-megabyte video files the user may never view.
     prefetchNeighbor(index + 1);
 }
 
-// Track the currently-prefetched URL so we can swap the <link> instead of
-// piling up a new one on every navigation step.
 let _prefetchLink = null;
 function prefetchNeighbor(nextIndex) {
     const next = state.files[nextIndex];
@@ -91,8 +96,6 @@ function resetZoom() {
 
 function setupImageZoom() {
     const img = document.getElementById('modal-image');
-    // ... (Zoom logic from original app.js can be simplified or omitted for brevity if no major changes)
-    // For now, keeping it basic as the user focused on Modules & Video Resume
     img.onwheel = (e) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -101,248 +104,571 @@ function setupImageZoom() {
     };
 }
 
-// ============ Video Resume Feature ============
-function setupVideoPlayer(fileId) {
-    const video = document.getElementById('modal-video');
-    const STORAGE_KEY = `video-progress-${fileId}`;
+// ============================================================================
+// VideoPlayer — class-based controller for #modal-video and friends.
+// ============================================================================
 
-    // Reset the time-display UI immediately. Without this, the previous
-    // clip's time + duration + progress fill stays on screen until the
-    // new src fires its first `timeupdate` event (which can take a few
-    // hundred ms while the network buffer fills).
-    const cur = document.getElementById('video-current-time');
-    const dur = document.getElementById('video-duration');
-    const fill = document.getElementById('video-progress-fill');
-    const dot = document.getElementById('video-progress-dot');
-    const playBtnIcon = document.getElementById('video-play-btn');
-    if (cur)  cur.textContent  = '00:00';
-    if (dur)  dur.textContent  = '00:00';
-    if (fill) fill.style.width = '0%';
-    if (dot)  dot.style.left   = '0%';
-    // Force the play/pause icon back to "play" — a new clip is always
-    // paused at start. Without this, the icon stuck on "pause" from the
-    // previous clip until the user pressed play.
-    if (playBtnIcon) playBtnIcon.innerHTML = '<i class="ri-play-fill text-2xl"></i>';
+const VOL_LS_KEY = 'video-volume';
+const MUTED_LS_KEY = 'video-muted';
+const SPEED_LS_KEY = 'video-speed';
+const HOVER_TIMEOUT_MS = 2000;
 
-    // Resume-from-saved-time. Race-safe: if metadata is already loaded
-    // when this runs (small clip / cached / fast network), the
-    // loadedmetadata event has already fired and our handler would
-    // never run — so we apply the seek inline. Otherwise wait for the
-    // event.
-    const applyResume = () => {
-        const savedTime = localStorage.getItem(STORAGE_KEY);
-        if (!savedTime) return;
-        const time = parseFloat(savedTime);
-        if (!isNaN(time) && time > 0 && time < (video.duration || Infinity)) {
-            try { video.currentTime = time; } catch {}
-            const ts = formatTime(time);
-            showToast(i18nTf('viewer.video.resumed', { time: ts }, `Resumed at ${ts}`));
+const SUPPORTS_HOVER = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(hover: hover)').matches
+    : true;
+
+function formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
+    const total = Math.floor(seconds);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+class VideoPlayer {
+    constructor() {
+        this.video = document.getElementById('modal-video');
+        this.container = document.getElementById('video-container');
+        this.tapLayer = document.getElementById('video-tap-layer');
+        this.controls = document.getElementById('video-controls');
+        this.playBtn = document.getElementById('video-play-btn');
+        this.centerPlay = document.getElementById('video-center-play');
+        this.muteBtn = document.getElementById('video-mute-btn');
+        this.volume = document.getElementById('video-volume');
+        this.curTime = document.getElementById('video-current-time');
+        this.durTime = document.getElementById('video-duration');
+        this.progressBar = document.getElementById('video-progress-container');
+        this.progressFill = document.getElementById('video-progress-fill');
+        this.progressDot = document.getElementById('video-progress-dot');
+        this.bufferedLayer = document.getElementById('video-buffered-layer');
+        this.hoverTime = document.getElementById('video-hover-time');
+        this.spinner = document.getElementById('video-spinner');
+        this.errorOverlay = document.getElementById('video-error');
+        this.errorMsg = document.getElementById('video-error-msg');
+        this.retryBtn = document.getElementById('video-retry-btn');
+        this.speedBtn = document.getElementById('video-settings-btn');
+        this.speedMenu = document.getElementById('video-speed-menu');
+        this.speedOpts = Array.from(document.querySelectorAll('.speed-opt[data-speed]'));
+        this.pipBtn = document.getElementById('video-pip-btn');
+        this.fsBtn = document.getElementById('video-fullscreen-btn');
+
+        // Hide PiP button if browser lacks support.
+        if (this.pipBtn && !document.pictureInPictureEnabled) {
+            this.pipBtn.style.display = 'none';
         }
-    };
-    if (video.readyState >= 1) applyResume();
-    else video.onloadedmetadata = applyResume;
 
-    // Save progress — throttled to once per 2 s so we don't hammer
-    // localStorage 4×/sec. Near the end of the clip, drop the saved
-    // entry so a fresh re-watch doesn't auto-jump back to the credits.
-    let lastSavedAt = 0;
-    video.ontimeupdate = () => {
-        updateVideoUI(video);
-        if (!(video.duration > 0)) return;
-        if (video.currentTime / video.duration > 0.95) {
-            localStorage.removeItem(STORAGE_KEY);
-            return;
-        }
-        const now = Date.now();
-        if (now - lastSavedAt < 2000) return;
-        lastSavedAt = now;
-        localStorage.setItem(STORAGE_KEY, String(video.currentTime));
-    };
-    
-    // Restore persisted volume + mute from prior session.
-    const savedVol = parseFloat(localStorage.getItem('video-volume') ?? '1');
-    if (Number.isFinite(savedVol)) video.volume = Math.max(0, Math.min(1, savedVol));
-    video.muted = localStorage.getItem('video-muted') === '1';
+        this._currentUrl = null;
+        this._storageKey = null;
+        this._lastSavedAt = 0;
+        this._dragging = false;
+        this._wasPlayingBeforeDrag = false;
+        this._resumePlayed = false;
+        this._hideTimer = null;
+        this._lastDoubleTapAt = 0;
+        this._lastTapAt = 0;
+        this._lastTapX = 0;
 
-    // Play / pause.
-    const playBtn = document.getElementById('video-play-btn');
-    if (playBtn) {
-        playBtn.onclick = () => video.paused ? video.play() : video.pause();
-        video.onplay  = () => { playBtn.innerHTML = '<i class="ri-pause-fill text-2xl"></i>'; };
-        video.onpause = () => { playBtn.innerHTML = '<i class="ri-play-fill text-2xl"></i>'; };
+        this._wireOnce();
     }
 
-    // Seek bar — click + drag to scrub. Pointer events cover mouse,
-    // touch, and pen with the same code path; setPointerCapture keeps
-    // the drag tracking even when the cursor leaves the bar.
-    const progressBar = document.getElementById('video-progress-container');
-    if (progressBar) {
-        let dragging = false;
-        const seekTo = (clientX) => {
-            if (!Number.isFinite(video.duration) || video.duration <= 0) return;
-            const rect = progressBar.getBoundingClientRect();
-            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-            video.currentTime = ratio * video.duration;
-        };
-        progressBar.onpointerdown = (e) => {
-            dragging = true;
-            try { progressBar.setPointerCapture?.(e.pointerId); } catch {}
-            seekTo(e.clientX);
-            e.preventDefault();
-        };
-        progressBar.onpointermove = (e) => { if (dragging) seekTo(e.clientX); };
-        const endDrag = (e) => {
-            if (!dragging) return;
-            dragging = false;
-            try { progressBar.releasePointerCapture?.(e.pointerId); } catch {}
-        };
-        progressBar.onpointerup = endDrag;
-        progressBar.onpointercancel = endDrag;
-    }
+    /** Boot-time wiring — runs once per VideoPlayer instance. */
+    _wireOnce() {
+        // Play / pause.
+        this.playBtn.onclick = () => this.togglePlay();
+        this.centerPlay.onclick = () => this.togglePlay();
 
-    // Volume slider — live-update on input; persist value.
-    const volumeSlider = document.getElementById('video-volume');
-    const refreshVolumeUi = () => {
-        if (volumeSlider) volumeSlider.value = video.muted ? 0 : video.volume;
-    };
-    if (volumeSlider) {
-        refreshVolumeUi();
-        volumeSlider.oninput = () => {
-            const v = parseFloat(volumeSlider.value);
-            if (!Number.isFinite(v)) return;
-            video.volume = Math.max(0, Math.min(1, v));
-            if (v > 0 && video.muted) video.muted = false;
-            if (v === 0 && !video.muted) video.muted = true;
-            localStorage.setItem('video-volume', String(video.volume));
-        };
-    }
-
-    // Mute toggle.
-    const muteBtn = document.getElementById('video-mute-btn');
-    const refreshMuteIcon = () => {
-        if (!muteBtn) return;
-        muteBtn.innerHTML = (video.muted || video.volume === 0)
-            ? '<i class="ri-volume-mute-line text-lg"></i>'
-            : '<i class="ri-volume-up-line text-lg"></i>';
-    };
-    refreshMuteIcon();
-    if (muteBtn) {
-        muteBtn.onclick = () => {
-            video.muted = !video.muted;
-            // Bump volume off zero so unmuting actually plays sound.
-            if (!video.muted && video.volume === 0) video.volume = 0.5;
-        };
-    }
-    video.onvolumechange = () => {
-        refreshMuteIcon();
-        refreshVolumeUi();
-        localStorage.setItem('video-muted', video.muted ? '1' : '0');
-    };
-
-    // Playback-speed menu — open/close + per-option select. Trigger
-    // label updates to reflect the current rate; checkmark moves to
-    // the active option.
-    const speedTrigger = document.getElementById('video-settings-btn');
-    const speedMenu    = document.getElementById('video-speed-menu');
-    const speedOpts    = document.querySelectorAll('.speed-opt[data-speed]');
-    const refreshSpeedUi = () => {
-        if (speedTrigger) {
-            const rate = video.playbackRate || 1;
-            speedTrigger.textContent = (rate === 1 ? '1x' : `${rate}x`);
-        }
-        speedOpts.forEach(opt => {
-            const isActive = parseFloat(opt.dataset.speed) === video.playbackRate;
-            opt.classList.toggle('text-tg-blue', isActive);
-            const check = opt.querySelector('i.ri-check-line');
-            if (isActive && !check) {
-                opt.insertAdjacentHTML('beforeend', '<i class="ri-check-line"></i>');
-            } else if (!isActive && check) {
-                check.remove();
+        // Tap layer = anywhere on the video pane that ISN'T a control.
+        this.tapLayer.onclick = (e) => {
+            if (SUPPORTS_HOVER) {
+                this.togglePlay();
+            } else {
+                // Mobile: first tap reveals controls, second tap toggles play.
+                if (this._controlsVisible()) {
+                    this.togglePlay();
+                } else {
+                    this._showControls(true);
+                }
             }
-        });
-    };
-    refreshSpeedUi();
-    if (speedTrigger && speedMenu) {
-        speedTrigger.onclick = (e) => {
             e.stopPropagation();
-            speedMenu.classList.toggle('hidden');
         };
-    }
-    speedOpts.forEach(opt => {
-        opt.onclick = () => {
-            const r = parseFloat(opt.dataset.speed);
-            if (Number.isFinite(r) && r > 0) {
-                video.playbackRate = r;
-                refreshSpeedUi();
-                speedMenu?.classList.add('hidden');
+        this.tapLayer.ondblclick = (e) => {
+            this.toggleFullscreen();
+            e.stopPropagation();
+        };
+
+        // Mobile double-tap left/right halves to seek -/+10 s (YouTube-style).
+        this.tapLayer.onpointerdown = (e) => {
+            if (SUPPORTS_HOVER) return;
+            const now = Date.now();
+            if (now - this._lastTapAt < 320 && Math.abs(e.clientX - this._lastTapX) < 60) {
+                const rect = this.tapLayer.getBoundingClientRect();
+                const isLeft = (e.clientX - rect.left) < rect.width / 2;
+                this.seekRelative(isLeft ? -10 : 10);
+                this._lastTapAt = 0;
+            } else {
+                this._lastTapAt = now;
+                this._lastTapX = e.clientX;
             }
         };
-    });
 
-    // Picture-in-Picture (best-effort — Safari iOS rejects it).
-    const pipBtn = document.getElementById('video-pip-btn');
-    if (pipBtn) {
-        pipBtn.onclick = async () => {
+        // Auto-hide on desktop when the cursor wanders inside the modal.
+        this.container.onpointermove = (e) => {
+            if (e.pointerType === 'touch') return;
+            this._showControls();
+        };
+        this.container.onpointerleave = () => {
+            if (!SUPPORTS_HOVER) return;
+            if (!this.video.paused) this._scheduleHide(800);
+        };
+
+        // Wheel = volume.
+        this.container.onwheel = (e) => {
+            e.preventDefault();
+            const step = e.deltaY > 0 ? -0.05 : 0.05;
+            this._setVolume(Math.max(0, Math.min(1, this.video.volume + step)));
+        };
+
+        // Seek bar — pointer events for unified mouse / touch / pen.
+        this._wireSeekBar();
+
+        // Volume slider.
+        this.volume.oninput = () => {
+            const v = parseFloat(this.volume.value);
+            if (!Number.isFinite(v)) return;
+            this._setVolume(v);
+        };
+
+        // Mute button.
+        this.muteBtn.onclick = () => {
+            this.video.muted = !this.video.muted;
+            // Bump volume off zero so unmuting actually plays sound.
+            if (!this.video.muted && this.video.volume === 0) this._setVolume(0.5);
+        };
+
+        // Speed menu trigger.
+        this.speedBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.speedMenu.classList.toggle('hidden');
+        };
+        this.speedOpts.forEach((opt) => {
+            opt.onclick = () => {
+                const r = parseFloat(opt.dataset.speed);
+                if (!Number.isFinite(r) || r <= 0) return;
+                this._setSpeed(r);
+                this.speedMenu.classList.add('hidden');
+            };
+        });
+
+        // PiP.
+        this.pipBtn.onclick = async () => {
             try {
                 if (document.pictureInPictureElement) {
                     await document.exitPictureInPicture();
                 } else if (document.pictureInPictureEnabled) {
-                    await video.requestPictureInPicture();
+                    await this.video.requestPictureInPicture();
                 }
             } catch (e) {
                 showToast(i18nTf('viewer.video.pip_failed', { msg: e.message }, `PiP unavailable: ${e.message}`), 'error');
             }
         };
-    }
 
-    // Fullscreen — full-screen the whole video container so custom
-    // controls remain visible (going fullscreen on the <video> element
-    // itself shows the browser's native bar instead).
-    const fsBtn = document.getElementById('video-fullscreen-btn');
-    if (fsBtn) {
-        const container = document.getElementById('video-container');
-        fsBtn.onclick = async () => {
-            try {
-                if (document.fullscreenElement) {
-                    await document.exitFullscreen();
-                } else if (container?.requestFullscreen) {
-                    await container.requestFullscreen();
-                }
-            } catch (e) {
-                showToast(i18nTf('viewer.video.fullscreen_failed', { msg: e.message }, `Fullscreen unavailable: ${e.message}`), 'error');
-            }
+        // Fullscreen — fullscreen the container so our custom controls stay.
+        this.fsBtn.onclick = () => this.toggleFullscreen();
+        document.addEventListener('fullscreenchange', () => this._refreshFsIcon());
+
+        // Retry button (error overlay).
+        this.retryBtn.onclick = () => {
+            if (!this._currentUrl) return;
+            this._hideError();
+            this.video.src = this._currentUrl;
+            this.video.load();
+            this.video.play().catch(() => {});
         };
+
+        // Stop pointerdown inside the controls from bubbling to the
+        // attachDragDismiss handler on #modal-swipe — without this the
+        // pull-down-to-dismiss fires while you're scrubbing the seek bar.
+        this.controls.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        // ---- per-element video event hooks (re-assigned on each .load(), but
+        // these handlers are stateless wrt the source so we can wire once). ----
+        this.video.onplay = () => {
+            this._refreshPlayIcons();
+            if (this.video.paused === false) this._scheduleHide();
+        };
+        this.video.onpause = () => {
+            this._refreshPlayIcons();
+            this._showControls(true);
+        };
+        this.video.onended = () => {
+            this._refreshPlayIcons();
+            this._showControls(true);
+            if (this._storageKey) localStorage.removeItem(this._storageKey);
+        };
+        this.video.onvolumechange = () => {
+            this._refreshVolumeUi();
+            try {
+                localStorage.setItem(VOL_LS_KEY, String(this.video.volume));
+                localStorage.setItem(MUTED_LS_KEY, this.video.muted ? '1' : '0');
+            } catch {}
+        };
+        this.video.ontimeupdate = () => this._onTimeUpdate();
+        this.video.onprogress = () => this._renderBuffered();
+        this.video.ondurationchange = () => {
+            this.durTime.textContent = formatTime(this.video.duration || 0);
+            this._renderBuffered();
+        };
+        this.video.onwaiting = () => this._showSpinner(true);
+        this.video.onstalled = () => this._showSpinner(true);
+        this.video.oncanplay = () => this._showSpinner(false);
+        this.video.onplaying = () => this._showSpinner(false);
+        this.video.onloadeddata = () => this._showSpinner(false);
+        this.video.onerror = () => this._showError();
+        this.video.onratechange = () => this._refreshSpeedUi();
+    }
+
+    // ----- public lifecycle --------------------------------------------------
+
+    /** Load a new clip. Resets all UI BEFORE any event fires. */
+    load(url, fileFullPath) {
+        this._currentUrl = url;
+        this._storageKey = `video-progress-${fileFullPath}`;
+        this._resumePlayed = false;
+        this._lastSavedAt = 0;
+
+        // Reset UI synchronously so the previous clip's state never bleeds in.
+        this.curTime.textContent = '00:00';
+        this.durTime.textContent = '00:00';
+        this.progressFill.style.width = '0%';
+        this.progressDot.style.left = '0%';
+        if (this.bufferedLayer) this.bufferedLayer.innerHTML = '';
+        this.playBtn.innerHTML = '<i class="ri-play-fill text-2xl"></i>';
+        this.playBtn.setAttribute('aria-label', i18nT('viewer.video.play', 'Play'));
+        this.centerPlay.classList.remove('hidden');
+        this._hideError();
+        this._showSpinner(true);
+
+        // Restore persisted volume + mute + speed.
+        const savedVol = parseFloat(localStorage.getItem(VOL_LS_KEY) ?? '1');
+        if (Number.isFinite(savedVol)) this.video.volume = Math.max(0, Math.min(1, savedVol));
+        this.video.muted = localStorage.getItem(MUTED_LS_KEY) === '1';
+        const savedSpeed = parseFloat(localStorage.getItem(SPEED_LS_KEY) ?? '1');
+        this.video.playbackRate = Number.isFinite(savedSpeed) && savedSpeed > 0 ? savedSpeed : 1;
+        this._refreshVolumeUi();
+        this._refreshSpeedUi();
+        this._refreshFsIcon();
+
+        // Resume — race-safe (apply inline if metadata's already there).
+        const applyResume = () => {
+            if (this._resumePlayed) return;
+            this._resumePlayed = true;
+            const saved = localStorage.getItem(this._storageKey);
+            if (!saved) return;
+            const time = parseFloat(saved);
+            const dur = this.video.duration;
+            if (!Number.isFinite(time) || time <= 0) return;
+            if (Number.isFinite(dur) && time >= dur) return;
+            try { this.video.currentTime = time; } catch {}
+            const ts = formatTime(time);
+            showToast(i18nTf('viewer.video.resumed', { time: ts }, `Resumed at ${ts}`));
+        };
+        this.video.onloadedmetadata = applyResume;
+
+        // Swap the source.
+        this.video.src = url;
+        try { this.video.load(); } catch {}
+
+        if (this.video.readyState >= 1) applyResume();
+
+        this._showControls(true);
+    }
+
+    /** Stop any in-flight network activity and reset playback. */
+    unload() {
+        try { this.video.pause(); } catch {}
+        try { this.video.removeAttribute('src'); } catch {}
+        try { this.video.load(); } catch {}
+        if (document.pictureInPictureElement) {
+            document.exitPictureInPicture().catch(() => {});
+        }
+        this._currentUrl = null;
+        this._storageKey = null;
+        if (this._hideTimer) { clearTimeout(this._hideTimer); this._hideTimer = null; }
+        this.speedMenu.classList.add('hidden');
+        this._hideError();
+        this._showSpinner(false);
+    }
+
+    togglePlay() {
+        if (this.video.paused) this.video.play().catch(() => {});
+        else this.video.pause();
+    }
+
+    seekRelative(delta) {
+        if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
+        const next = Math.max(0, Math.min(this.video.duration, this.video.currentTime + delta));
+        this.video.currentTime = next;
+    }
+
+    seekToFraction(frac) {
+        if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
+        const f = Math.max(0, Math.min(1, frac));
+        this.video.currentTime = f * this.video.duration;
+    }
+
+    async toggleFullscreen() {
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+            } else if (this.container.requestFullscreen) {
+                await this.container.requestFullscreen();
+            }
+        } catch (e) {
+            showToast(i18nTf('viewer.video.fullscreen_failed', { msg: e.message }, `Fullscreen unavailable: ${e.message}`), 'error');
+        }
+    }
+
+    /** Routes a viewer-scoped keydown event. Returns true if handled. */
+    handleKey(e) {
+        const v = this.video;
+        switch (e.key) {
+            case ' ':
+            case 'k':
+            case 'K':
+                this.togglePlay(); return true;
+            case 'ArrowLeft':
+                this.seekRelative(e.shiftKey ? -10 : -5); return true;
+            case 'ArrowRight':
+                this.seekRelative(e.shiftKey ? 10 : 5); return true;
+            case 'ArrowUp':
+                this._setVolume(Math.min(1, v.volume + 0.05)); return true;
+            case 'ArrowDown':
+                this._setVolume(Math.max(0, v.volume - 0.05)); return true;
+            case 'm':
+            case 'M':
+                v.muted = !v.muted;
+                if (!v.muted && v.volume === 0) this._setVolume(0.5);
+                return true;
+            case 'f':
+            case 'F':
+                this.toggleFullscreen(); return true;
+            case ',':
+            case '<':
+                this._setSpeed(Math.max(0.25, +(v.playbackRate - 0.25).toFixed(2))); return true;
+            case '.':
+            case '>':
+                this._setSpeed(Math.min(2, +(v.playbackRate + 0.25).toFixed(2))); return true;
+            default:
+                if (/^[0-9]$/.test(e.key)) {
+                    this.seekToFraction(parseInt(e.key, 10) / 10);
+                    return true;
+                }
+                return false;
+        }
+    }
+
+    // ----- internals ---------------------------------------------------------
+
+    _wireSeekBar() {
+        const bar = this.progressBar;
+        const seekTo = (clientX) => {
+            if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
+            const rect = bar.getBoundingClientRect();
+            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            this.video.currentTime = ratio * this.video.duration;
+        };
+        bar.onpointerdown = (e) => {
+            this._dragging = true;
+            this._wasPlayingBeforeDrag = !this.video.paused;
+            if (this._wasPlayingBeforeDrag) this.video.pause();
+            try { bar.setPointerCapture?.(e.pointerId); } catch {}
+            seekTo(e.clientX);
+            e.preventDefault();
+        };
+        bar.onpointermove = (e) => {
+            if (this._dragging) {
+                seekTo(e.clientX);
+            }
+            this._renderHoverPreview(e.clientX);
+        };
+        bar.onpointerleave = () => this._hideHoverPreview();
+        const endDrag = (e) => {
+            if (!this._dragging) return;
+            this._dragging = false;
+            try { bar.releasePointerCapture?.(e.pointerId); } catch {}
+            if (this._wasPlayingBeforeDrag) this.video.play().catch(() => {});
+        };
+        bar.onpointerup = endDrag;
+        bar.onpointercancel = endDrag;
+    }
+
+    _renderHoverPreview(clientX) {
+        if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
+        const rect = this.progressBar.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        this.hoverTime.textContent = formatTime(ratio * this.video.duration);
+        this.hoverTime.style.left = `${(clientX - rect.left)}px`;
+        this.hoverTime.classList.remove('hidden');
+    }
+
+    _hideHoverPreview() {
+        this.hoverTime.classList.add('hidden');
+    }
+
+    _onTimeUpdate() {
+        const v = this.video;
+        this.curTime.textContent = formatTime(v.currentTime);
+        if (Number.isFinite(v.duration) && v.duration > 0) {
+            const pct = Math.max(0, Math.min(100, (v.currentTime / v.duration) * 100));
+            this.progressFill.style.width = `${pct}%`;
+            this.progressDot.style.left = `${pct}%`;
+            // Save throttled progress; clear once we're past 95%.
+            if (this._storageKey) {
+                if (v.currentTime / v.duration > 0.95) {
+                    localStorage.removeItem(this._storageKey);
+                } else {
+                    const now = Date.now();
+                    if (now - this._lastSavedAt >= 2000) {
+                        this._lastSavedAt = now;
+                        try { localStorage.setItem(this._storageKey, String(v.currentTime)); } catch {}
+                    }
+                }
+            }
+        }
+    }
+
+    _renderBuffered() {
+        const v = this.video;
+        if (!this.bufferedLayer || !Number.isFinite(v.duration) || v.duration <= 0) return;
+        let html = '';
+        for (let i = 0; i < v.buffered.length; i++) {
+            const start = (v.buffered.start(i) / v.duration) * 100;
+            const end = (v.buffered.end(i) / v.duration) * 100;
+            html += `<div class="absolute top-0 h-full bg-white/50 rounded-full" style="left:${start}%;width:${end - start}%"></div>`;
+        }
+        this.bufferedLayer.innerHTML = html;
+    }
+
+    _refreshPlayIcons() {
+        const playing = !this.video.paused && !this.video.ended;
+        this.playBtn.innerHTML = playing
+            ? '<i class="ri-pause-fill text-2xl"></i>'
+            : '<i class="ri-play-fill text-2xl"></i>';
+        this.playBtn.setAttribute('aria-label',
+            playing ? i18nT('viewer.video.pause', 'Pause') : i18nT('viewer.video.play', 'Play'));
+        if (playing) this.centerPlay.classList.add('hidden');
+        else this.centerPlay.classList.remove('hidden');
+    }
+
+    _refreshVolumeUi() {
+        const v = this.video.muted ? 0 : this.video.volume;
+        // Avoid stomping the slider while the user is dragging it.
+        if (document.activeElement !== this.volume) {
+            this.volume.value = String(v);
+        }
+        let icon;
+        if (this.video.muted || this.video.volume === 0) icon = 'ri-volume-mute-line';
+        else if (this.video.volume < 0.5) icon = 'ri-volume-down-line';
+        else icon = 'ri-volume-up-line';
+        this.muteBtn.innerHTML = `<i class="${icon} text-lg"></i>`;
+    }
+
+    _setVolume(v) {
+        this.video.volume = Math.max(0, Math.min(1, v));
+        if (this.video.volume > 0 && this.video.muted) this.video.muted = false;
+        if (this.video.volume === 0 && !this.video.muted) this.video.muted = true;
+    }
+
+    _setSpeed(rate) {
+        this.video.playbackRate = rate;
+        try { localStorage.setItem(SPEED_LS_KEY, String(rate)); } catch {}
+        // _refreshSpeedUi() runs from the ratechange handler.
+    }
+
+    _refreshSpeedUi() {
+        const rate = this.video.playbackRate || 1;
+        this.speedBtn.textContent = rate === 1 ? '1x' : `${rate}x`;
+        this.speedOpts.forEach((opt) => {
+            const r = parseFloat(opt.dataset.speed);
+            const active = r === rate;
+            opt.classList.toggle('text-tg-blue', active);
+            const check = opt.querySelector('i.ri-check-line');
+            if (active && !check) {
+                opt.insertAdjacentHTML('beforeend', '<i class="ri-check-line"></i>');
+            } else if (!active && check) {
+                check.remove();
+            }
+        });
+    }
+
+    _refreshFsIcon() {
+        if (!this.fsBtn) return;
+        const inFs = !!document.fullscreenElement;
+        this.fsBtn.innerHTML = inFs
+            ? '<i class="ri-fullscreen-exit-line text-lg"></i>'
+            : '<i class="ri-fullscreen-line text-lg"></i>';
+    }
+
+    // ---- visibility / spinner / error --------------------------------------
+
+    _controlsVisible() {
+        return this.controls.style.opacity !== '0' && !this.controls.classList.contains('opacity-0');
+    }
+
+    _showControls(force = false) {
+        this.controls.style.opacity = '1';
+        this.container.style.cursor = '';
+        if (!force && SUPPORTS_HOVER && !this.video.paused) {
+            this._scheduleHide();
+        }
+    }
+
+    _scheduleHide(delay = HOVER_TIMEOUT_MS) {
+        if (!SUPPORTS_HOVER) return;          // touch devices: keep visible
+        if (this.video.paused) return;        // paused: keep visible
+        if (this._hideTimer) clearTimeout(this._hideTimer);
+        this._hideTimer = setTimeout(() => {
+            if (this.video.paused) return;
+            // Don't hide while the speed menu is open.
+            if (!this.speedMenu.classList.contains('hidden')) return;
+            this.controls.style.opacity = '0';
+            this.container.style.cursor = 'none';
+        }, delay);
+    }
+
+    _showSpinner(on) {
+        this.spinner.classList.toggle('hidden', !on);
+    }
+
+    _showError() {
+        const err = this.video.error;
+        const msg = err ? `Error ${err.code}: ${err.message || 'playback failed'}` : 'Playback failed';
+        this.errorMsg.textContent = msg;
+        this.errorOverlay.classList.remove('hidden');
+        this.errorOverlay.classList.add('flex');
+        this._showSpinner(false);
+    }
+
+    _hideError() {
+        this.errorOverlay.classList.add('hidden');
+        this.errorOverlay.classList.remove('flex');
     }
 }
 
-function updateVideoUI(video) {
-    const current = document.getElementById('video-current-time');
-    const duration = document.getElementById('video-duration');
-    const fill = document.getElementById('video-progress-fill');
-    const dot = document.getElementById('video-progress-dot');
-
-    if (current) current.textContent = formatTime(video.currentTime);
-    if (duration && video.duration) duration.textContent = formatTime(video.duration);
-    if (video.duration) {
-        const pct = Math.max(0, Math.min(100, (video.currentTime / video.duration) * 100));
-        if (fill) fill.style.width = `${pct}%`;
-        if (dot) dot.style.left = `${pct}%`;
-    }
-}
-
-function formatTime(seconds) {
-    if (!seconds) return '00:00';
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
+// ============================================================================
+// Close + boot-time wiring
+// ============================================================================
 
 export function closeMediaViewer() {
     const modal = document.getElementById('media-modal');
     modal.classList.add('hidden');
     document.body.style.overflow = '';
-    const video = document.getElementById('modal-video');
-    video.pause();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    if (videoPlayer) videoPlayer.unload();
+    const image = document.getElementById('modal-image');
+    if (image) image.removeAttribute('src');
 }
 
 export function setupViewerEvents() {
@@ -350,9 +676,23 @@ export function setupViewerEvents() {
     document.getElementById('modal-prev')?.addEventListener('click', () => navigateMedia(-1));
     document.getElementById('modal-next')?.addEventListener('click', () => navigateMedia(1));
 
-    // Click outside speed menu closes it. Attached once at boot so we
-    // don't pile up a duplicate listener every time setupVideoPlayer
-    // runs.
+    // Modal-level fullscreen button (top-right) toggles fullscreen on the
+    // video container if a video is active, otherwise on the whole modal.
+    document.getElementById('modal-fullscreen-btn')?.addEventListener('click', async () => {
+        try {
+            if (document.fullscreenElement) {
+                await document.exitFullscreen();
+            } else {
+                const target = document.getElementById('video-container').classList.contains('hidden')
+                    ? document.getElementById('media-modal')
+                    : document.getElementById('video-container');
+                await target.requestFullscreen?.();
+            }
+        } catch {}
+    });
+
+    // Click outside the speed menu closes it. Wired ONCE here so it doesn't
+    // accumulate per video open.
     document.addEventListener('pointerdown', (ev) => {
         const menu = document.getElementById('video-speed-menu');
         const trigger = document.getElementById('video-settings-btn');
@@ -361,31 +701,44 @@ export function setupViewerEvents() {
         menu.classList.add('hidden');
     });
 
-    // Keyboard support — Esc / Arrow / Space. Skip when the user is
-    // typing in an input/textarea so the global hotkeys don't fight
-    // text entry inside the viewer (e.g. file-rename in the future).
+    // Keyboard shortcuts. Only fire when the modal is open AND focus isn't
+    // inside an input / textarea / contenteditable. Esc / arrow nav stay
+    // global; everything video-specific is delegated to the player.
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('media-modal').classList.contains('hidden')) return;
         const tag = (e.target?.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
-        if (e.key === 'Escape') closeMediaViewer();
-        else if (e.key === 'ArrowLeft') navigateMedia(-1);
-        else if (e.key === 'ArrowRight') navigateMedia(1);
-        else if (e.key === ' ' || e.code === 'Space') {
-            const v = document.getElementById('modal-video');
-            if (v && !v.paused) v.pause(); else v?.play?.();
-            e.preventDefault();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+
+        if (e.key === 'Escape') { closeMediaViewer(); return; }
+        // Don't gobble arrow-keys for nav while a video is loaded — those
+        // shortcuts mean "seek" inside the player. Use the modal nav only
+        // for image (and other) media.
+        const videoActive = !document.getElementById('video-container').classList.contains('hidden');
+        if (!videoActive) {
+            if (e.key === 'ArrowLeft') { navigateMedia(-1); return; }
+            if (e.key === 'ArrowRight') { navigateMedia(1); return; }
+        }
+
+        if (videoActive && videoPlayer) {
+            if (videoPlayer.handleKey(e)) {
+                e.preventDefault();
+                return;
+            }
         }
     });
 
     // Touch / pen gestures: swipe left/right = prev/next, drag down on the
-    // empty area below the controls = dismiss (Telegram-style). Mouse
-    // pointer-down inside an image / video / control still works for clicks
-    // because attachSwipe only fires once on pointerup past threshold.
+    // empty area below the controls = dismiss (Telegram-style).
     const swipeArea = document.getElementById('modal-swipe');
     if (swipeArea) {
         attachSwipe(swipeArea, {
-            onSwipe: (dir) => navigateMedia(dir === 'left' ? 1 : -1),
+            onSwipe: (dir) => {
+                // Swiping while dragging the seek bar would jump clips. The
+                // controls' pointerdown already stops bubbling, so this is
+                // belt-and-braces: the pointer-up fires on the controls
+                // and never reaches the swipe handler in the first place.
+                navigateMedia(dir === 'left' ? 1 : -1);
+            },
             threshold: 60,
         });
         attachDragDismiss(swipeArea, {
@@ -397,28 +750,21 @@ export function setupViewerEvents() {
 
 function navigateMedia(dir) {
     // Walk through the active filter, not the unfiltered state.files —
-    // tapping → in the Photos filter shouldn't jump to a video. The
-    // filter list lives on `state.currentFilter` (set by the gallery
-    // tab handler in app.js); fall back to walking everything when no
-    // filter is set.
+    // tapping → in the Photos filter shouldn't jump to a video.
     const currentFilter = state.currentFilter || 'all';
     const visible = currentFilter === 'all'
         ? state.files
         : state.files.filter(f => f.type === currentFilter);
 
-    // Map the unfiltered currentFileIndex to its position in the
-    // filtered list, then step.
     const currentFile = state.files[state.currentFileIndex];
     const visibleIndex = currentFile ? visible.indexOf(currentFile) : -1;
     if (visibleIndex < 0) {
-        // Current file is filtered out (rare — filter changed mid-view).
-        // Just step inside state.files and let the user notice.
         const newIndex = state.currentFileIndex + dir;
         if (newIndex >= 0 && newIndex < state.files.length) openMediaViewer(newIndex);
         return;
     }
     const nextVisible = visible[visibleIndex + dir];
-    if (!nextVisible) return; // hit the edge
+    if (!nextVisible) return;
     const newIndex = state.files.indexOf(nextVisible);
     if (newIndex >= 0 && newIndex < state.files.length) {
         openMediaViewer(newIndex);
