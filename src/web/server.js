@@ -198,9 +198,13 @@ app.use((req, res, next) => {
         // serve a stale copy instantly while it revalidates in the background.
         res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
     } else if (p.startsWith('/files/')) {
-        // Downloads — short TTL because the queue can land more files at any
-        // moment and the gallery refreshes its listing on WS events.
-        res.setHeader('Cache-Control', 'private, max-age=60');
+        // Downloads — content is immutable once written (filenames embed a
+        // timestamp; a re-download lands at a new filename), so a long TTL
+        // is safe and necessary: video playback issues many 64 KB range
+        // requests for a single clip, and a 60 s TTL was forcing the
+        // browser to revalidate every chunk through the auth + path-resolve
+        // middleware → the source of the playback lag the user reported.
+        res.setHeader('Cache-Control', 'private, max-age=2592000, immutable');
     } else if (p === '/sw.js') {
         // Service worker manifest must never be cached or PWA updates stick.
         // (Future PWA agent may also set this; if so, theirs runs first via
@@ -279,10 +283,27 @@ app.use((req, res, next) => {
     next();
 });
 
+// In-process cache for config.json. checkAuth + the force-https +
+// rate-limit middlewares all call readConfigSafe() on every request —
+// during a video playback, the browser issues many 64 KB range GETs to
+// /files/* and each one used to disk-read + JSON.parse the config. The
+// 2-second TTL is short enough that toggle changes feel instant in the
+// settings UI but long enough to fold the per-clip request burst into
+// a single read.
+let _configCache = { at: 0, value: null };
 async function readConfigSafe() {
-    try { return JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8')); }
-    catch { return {}; }
+    const now = Date.now();
+    if (_configCache.value && now - _configCache.at < 2000) return _configCache.value;
+    try {
+        const value = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        _configCache = { at: now, value };
+        return value;
+    } catch {
+        _configCache = { at: now, value: {} };
+        return {};
+    }
 }
+function invalidateConfigCache() { _configCache = { at: 0, value: null }; }
 
 // Paths that may be reached without an authenticated session.
 // PWA bits (manifest, service worker, icons) MUST be reachable pre-login
@@ -2261,6 +2282,7 @@ app.post('/api/config', async (req, res) => {
         const tmpPath = CONFIG_PATH + '.tmp';
         await fs.writeFile(tmpPath, JSON.stringify(newConfig, null, 4));
         await fs.rename(tmpPath, CONFIG_PATH);
+        invalidateConfigCache();
 
         // Reset the lazy AccountManager singleton if Telegram credentials
         // changed — a stale instance would still be wired to the old apiId.
