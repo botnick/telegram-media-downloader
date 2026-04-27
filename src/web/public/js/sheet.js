@@ -198,3 +198,130 @@ export function closeTopSheet() {
 }
 
 export function sheetCount() { return stack.length; }
+
+/**
+ * Themed prompt dialog — async drop-in replacement for `window.prompt()`.
+ * Resolves to the entered string on confirm, `null` on cancel/dismiss.
+ *
+ *   const pw = await promptSheet({
+ *       title: 'Confirm', message: 'Re-enter your password',
+ *       inputType: 'password',
+ *   });
+ *   if (pw == null) return;  // user cancelled
+ */
+export function promptSheet(opts = {}) {
+    const {
+        title = i18nT('common.confirm', 'Confirm'),
+        message = '',
+        inputType = 'text',
+        placeholder = '',
+        confirmLabel = i18nT('common.confirm', 'Confirm'),
+        cancelLabel = i18nT('common.cancel', 'Cancel'),
+        defaultValue = '',
+    } = opts;
+
+    return new Promise((resolve) => {
+        let decided = false;
+        const settle = (value) => { if (decided) return; decided = true; resolve(value); };
+
+        const escMsg = String(message).split('\n').map(l => escapeHtml(l)).join('<br>');
+
+        const sheet = openSheet({
+            title,
+            size: 'sm',
+            content: `
+                ${escMsg ? `<div class="text-tg-text text-sm leading-relaxed mb-3">${escMsg}</div>` : ''}
+                <input data-prompt-input type="${escapeHtml(inputType)}"
+                       autocomplete="${inputType === 'password' ? 'current-password' : 'off'}"
+                       placeholder="${escapeHtml(placeholder)}"
+                       value="${escapeHtml(defaultValue)}"
+                       class="tg-input w-full text-sm" />
+                <div class="flex items-center justify-end gap-2 mt-4">
+                    <button data-prompt-cancel class="px-4 py-2 rounded-lg text-tg-textSecondary hover:bg-tg-hover transition text-sm">${escapeHtml(cancelLabel)}</button>
+                    <button data-prompt-ok class="px-4 py-2 rounded-lg bg-tg-blue text-white hover:bg-opacity-90 font-medium text-sm transition">${escapeHtml(confirmLabel)}</button>
+                </div>`,
+            onClose: () => settle(null),
+        });
+
+        setTimeout(() => {
+            const root = stack[stack.length - 1]?.root;
+            if (!root) { settle(null); return; }
+            const input = root.querySelector('[data-prompt-input]');
+            const ok = root.querySelector('[data-prompt-ok]');
+            const cancel = root.querySelector('[data-prompt-cancel]');
+            cancel?.addEventListener('click', () => sheet.close());
+            const submit = () => { settle(input?.value ?? ''); sheet.close(); };
+            ok?.addEventListener('click', submit);
+            input?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); submit(); }
+            });
+            input?.focus();
+            input?.select?.();
+        }, 60);
+    });
+}
+
+/**
+ * Themed confirm dialog — drop-in async replacement for native `confirm()`.
+ * Resolves to `true` if the user clicks the confirm button, `false` if they
+ * dismiss (Esc, backdrop click, Cancel button, or close-button).
+ *
+ *   if (!(await confirmSheet({ title: 'Delete?', message: '…' }))) return;
+ *
+ * Uses the same sheet primitive as every other modal, so styling, focus
+ * trap, drag-to-dismiss, and a11y all come for free. `danger: true` paints
+ * the confirm button in the destructive red palette.
+ */
+export function confirmSheet(opts = {}) {
+    const {
+        title = i18nT('common.confirm', 'Confirm'),
+        message = '',
+        confirmLabel = i18nT('common.confirm', 'Confirm'),
+        cancelLabel = i18nT('common.cancel', 'Cancel'),
+        danger = false,
+    } = opts;
+
+    return new Promise((resolve) => {
+        let decided = false;
+        const settle = (value) => { if (decided) return; decided = true; resolve(value); };
+
+        const confirmCls = danger
+            ? 'px-4 py-2 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 font-medium text-sm transition'
+            : 'px-4 py-2 rounded-lg bg-tg-blue text-white hover:bg-opacity-90 font-medium text-sm transition';
+
+        const escMsg = String(message).split('\n').map(line => escapeHtml(line)).join('<br>');
+
+        const sheet = openSheet({
+            title,
+            size: 'sm',
+            content: `
+                <div class="text-tg-text text-sm leading-relaxed">${escMsg || ''}</div>
+                <div class="flex items-center justify-end gap-2 mt-5">
+                    <button data-confirm-cancel class="px-4 py-2 rounded-lg text-tg-textSecondary hover:bg-tg-hover transition text-sm">${escapeHtml(cancelLabel)}</button>
+                    <button data-confirm-ok class="${confirmCls}">${escapeHtml(confirmLabel)}</button>
+                </div>`,
+            onClose: () => settle(false),
+        });
+
+        // Wire the per-button handlers after the sheet's DOM is in place.
+        setTimeout(() => {
+            const root = stack[stack.length - 1]?.root;
+            if (!root) { settle(false); return; }
+            root.querySelector('[data-confirm-cancel]')?.addEventListener('click', () => sheet.close());
+            const ok = root.querySelector('[data-confirm-ok]');
+            if (ok) {
+                ok.addEventListener('click', () => { settle(true); sheet.close(); });
+                // Make Enter on the dialog confirm — natural follow-on from
+                // typing in the previous input or hitting the action.
+                root.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.target.matches('textarea')) {
+                        e.preventDefault();
+                        settle(true);
+                        sheet.close();
+                    }
+                });
+                ok.focus();
+            }
+        }, 60);
+    });
+}

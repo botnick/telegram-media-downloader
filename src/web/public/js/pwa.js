@@ -30,6 +30,14 @@ function isStandalone() {
 
 window.addEventListener('beforeinstallprompt', (e) => {
     // Stash for later; Chrome only fires this once per page load.
+    //
+    // Chrome will log a console warning here:
+    //   "Banner not shown: beforeinstallpromptevent.preventDefault() called.
+    //    The page must call beforeinstallpromptevent.prompt() to show the banner."
+    // That warning is INFORMATIONAL, not an error — it's just telling
+    // developers "you suppressed the auto-banner, remember to call
+    // prompt() when ready." We do, from `installPwa()` below, when the
+    // user clicks the install button. Safe to ignore.
     e.preventDefault();
     deferredPrompt = e;
     if (!isStandalone()) setInstallVisible(true);

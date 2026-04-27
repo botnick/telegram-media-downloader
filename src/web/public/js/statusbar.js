@@ -41,7 +41,32 @@ async function refreshStats() {
     } catch { /* keep last values */ }
 }
 
+async function paintVersion() {
+    const el = $('status-version');
+    if (!el) return;
+    try {
+        const r = await api.get('/api/version').catch(() => null);
+        if (!r) return;
+        const short = r.commit && r.commit !== 'dev' ? r.commit : 'dev';
+        // v2.2.0 · a1b2c3d   ← compact, mono, click → repo
+        el.textContent = `v${r.version} · ${short}`;
+        if (r.builtAt) {
+            const d = new Date(r.builtAt);
+            if (!isNaN(d)) el.title = `built ${d.toLocaleString()} · commit ${r.commit}`;
+        }
+        // Pin the link to the actual commit on GitHub when we have a real SHA.
+        if (r.commit && r.commit !== 'dev') {
+            el.href = `https://github.com/botnick/telegram-media-downloader/commit/${r.commit}`;
+        }
+    } catch { /* best-effort cosmetic */ }
+}
+
 export function initStatusBar() {
+    // Build/version chip — fired once at boot, then on every config_updated
+    // (which usually means the SPA was reloaded into a new container).
+    paintVersion();
+    ws.on('config_updated', paintVersion);
+
     // Monitor state/queue/active: piggy-back on the shared monitor-status
     // poller (one /api/monitor/status fetch, three subscribers).
     subscribeMonitorStatus(applyMonitor);

@@ -2,7 +2,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import * as Notifications from './notifications.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
-import { openSheet } from './sheet.js';
+import { openSheet, confirmSheet, promptSheet } from './sheet.js';
 
 export async function loadSettings() {
     try {
@@ -384,7 +384,12 @@ export async function loadAccounts() {
 }
 
 async function removeAccount(id) {
-    if (!confirm(i18nTf('account.remove.confirm', { id }, `Remove account "${id}"? The encrypted session file will be deleted.`))) return;
+    if (!(await confirmSheet({
+        title: i18nT('settings.accounts.remove', 'Remove'),
+        message: i18nTf('account.remove.confirm', { id }, `Remove account "${id}"? The encrypted session file will be deleted.`),
+        confirmLabel: i18nT('settings.accounts.remove', 'Remove'),
+        danger: true,
+    }))) return;
     try {
         await api.delete(`/api/accounts/${encodeURIComponent(id)}`);
         showToast(i18nT('account.remove.success', 'Account removed'), 'success');
@@ -459,8 +464,12 @@ async function maintResyncDialogs() {
 }
 
 async function maintRestartMonitor() {
-    if (!confirm(i18nT('maintenance.restart.confirm',
-        'Stop and restart the realtime monitor? In-flight downloads will be paused briefly.'))) return;
+    if (!(await confirmSheet({
+        title: i18nT('maintenance.restart.title', 'Restart monitor'),
+        message: i18nT('maintenance.restart.confirm',
+            'Stop and restart the realtime monitor? In-flight downloads will be paused briefly.'),
+        confirmLabel: i18nT('maintenance.restart.action', 'Restart'),
+    }))) return;
     try {
         showToast(i18nT('maintenance.restart.running', 'Restarting monitor…'), 'info');
         const r = await api.post('/api/maintenance/restart-monitor', { confirm: true });
@@ -491,8 +500,12 @@ async function maintDbIntegrity() {
 }
 
 async function maintDbVacuum() {
-    if (!confirm(i18nT('maintenance.db_vacuum.confirm',
-        'Run VACUUM on the SQLite database? It briefly locks the DB and may take a minute on large datasets.'))) return;
+    if (!(await confirmSheet({
+        title: i18nT('maintenance.db_vacuum.title', 'VACUUM database'),
+        message: i18nT('maintenance.db_vacuum.confirm',
+            'Run VACUUM on the SQLite database? It briefly locks the DB and may take a minute on large datasets.'),
+        confirmLabel: i18nT('maintenance.db_vacuum.action', 'Vacuum'),
+    }))) return;
     try {
         showToast(i18nT('maintenance.db_vacuum.running', 'Running VACUUM…'), 'info');
         const r = await api.post('/api/maintenance/db/vacuum', { confirm: true });
@@ -637,8 +650,13 @@ async function maintExportSession() {
             // Force the user to retype their dashboard password — exporting
             // a session string lets the holder act as the account, so cookie
             // alone is not enough proof of identity.
-            const password = window.prompt(i18nT('maintenance.export.password_prompt',
-                'Enter your dashboard password to export the session string:'));
+            const password = await promptSheet({
+                title: i18nT('maintenance.export.title', 'Export Telegram session'),
+                message: i18nT('maintenance.export.password_prompt',
+                    'Enter your dashboard password to export the session string:'),
+                inputType: 'password',
+                confirmLabel: i18nT('maintenance.export.action', 'Export'),
+            });
             if (password == null || password === '') return;
             doBtn.disabled = true;
             try {
@@ -668,12 +686,22 @@ async function maintExportSession() {
 }
 
 async function maintRevokeAllSessions() {
-    if (!confirm(i18nT('maintenance.signout_all.confirm',
-        'Sign out every browser? You will be redirected to the login page.'))) return;
+    if (!(await confirmSheet({
+        title: i18nT('maintenance.signout_all.title', 'Sign out everywhere'),
+        message: i18nT('maintenance.signout_all.confirm',
+            'Sign out every browser? You will be redirected to the login page.'),
+        confirmLabel: i18nT('maintenance.signout_all.action', 'Sign out all'),
+        danger: true,
+    }))) return;
     // Require the dashboard password — without it a stolen cookie could
     // mass-evict everyone else off the dashboard.
-    const password = window.prompt(i18nT('maintenance.signout_all.password_prompt',
-        'Enter your dashboard password to sign out every browser:'));
+    const password = await promptSheet({
+        title: i18nT('maintenance.signout_all.title', 'Sign out everywhere'),
+        message: i18nT('maintenance.signout_all.password_prompt',
+            'Enter your dashboard password to sign out every browser:'),
+        inputType: 'password',
+        confirmLabel: i18nT('maintenance.signout_all.action', 'Sign out all'),
+    });
     if (password == null || password === '') return;
     try {
         await api.post('/api/maintenance/sessions/revoke-all', { confirm: true, password });

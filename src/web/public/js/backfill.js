@@ -23,6 +23,7 @@ import { api } from './api.js';
 import { ws } from './ws.js';
 import { escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf, applyToDOM as applyI18n } from './i18n.js';
+import { confirmSheet } from './sheet.js';
 
 const PRESETS = [
     { value: 100, key: 'backfill.preset.last_100', fallback: 'Last 100' },
@@ -301,7 +302,13 @@ function renderActiveRow(job) {
 
 async function cancelJob(jobId) {
     if (!jobId) return;
-    if (!confirm(i18nT('backfill.row.cancel_confirm', 'Cancel this backfill?'))) return;
+    if (!(await confirmSheet({
+        title: i18nT('backfill.row.cancel_title', 'Cancel backfill?'),
+        message: i18nT('backfill.row.cancel_confirm', 'Cancel this backfill?'),
+        confirmLabel: i18nT('backfill.row.cancel', 'Cancel backfill'),
+        cancelLabel: i18nT('common.close', 'Close'),
+        danger: true,
+    }))) return;
     try {
         await api.post(`/api/history/${encodeURIComponent(jobId)}/cancel`, {});
     } catch (e) {
@@ -471,10 +478,19 @@ async function startBackfill() {
     }
     const groupName = getGroupName(selectedGroupId, { fallback: selectedGroupId });
     if (lim === 0) {
-        if (!confirm(i18nT('group.backfill.all_confirm',
-            'Backfill ALL history for this chat? This may take hours and download a lot of data.'))) return;
+        if (!(await confirmSheet({
+            title: i18nT('group.backfill.all', 'All'),
+            message: i18nT('group.backfill.all_confirm',
+                'Backfill ALL history for this chat? This may take hours and download a lot of data.'),
+            confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
+            danger: true,
+        }))) return;
     } else {
-        if (!confirm(i18nTf('group.backfill.confirm_n', { n: lim, name: groupName }, `Download the last ${lim} messages of "${groupName}" into the queue?`))) return;
+        if (!(await confirmSheet({
+            title: i18nT('backfill.start.title', 'Start a new backfill'),
+            message: i18nTf('group.backfill.confirm_n', { n: lim, name: groupName }, `Download the last ${lim} messages of "${groupName}" into the queue?`),
+            confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
+        }))) return;
     }
 
     if (btn) {

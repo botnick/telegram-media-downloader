@@ -334,6 +334,7 @@ const PUBLIC_PATH_PREFIXES = [
 const PUBLIC_API_PATHS = new Set([
     '/api/login',
     '/api/auth_check',
+    '/api/version',  // public so the status-bar chip can render pre-login
     '/api/auth/setup', // first-run only — guarded inside the handler
     '/api/auth/reset/request',  // logs token to stdout — no body returned
     '/api/auth/reset/confirm',  // requires the stdout token + new password
@@ -612,6 +613,21 @@ app.post('/api/auth/reset/confirm', loginLimiter, async (req, res) => {
 
 // Tells the SPA whether auth is configured + whether the current request is
 // authenticated. Always returns 200; the SPA decides what to render.
+// Build identity for the status-bar version chip + bug reports.
+// `commit` falls back to "dev" outside of CI; the Docker build passes it
+// in via a `GIT_SHA` build arg → ENV. `builtAt` likewise.
+app.get('/api/version', (req, res) => {
+    res.json({
+        version: process.env.npm_package_version || (() => {
+            try {
+                return JSON.parse(fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')).version;
+            } catch { return 'unknown'; }
+        })(),
+        commit: (process.env.GIT_SHA || 'dev').slice(0, 7),
+        builtAt: process.env.BUILT_AT || null,
+    });
+});
+
 app.get('/api/auth_check', async (req, res) => {
     const config = await readConfigSafe();
     const configured = isAuthConfigured(config.web);
@@ -1855,8 +1871,13 @@ app.get('/api/downloads', async (req, res) => {
     }
 });
 
-// 5. Downloads Per Group (SQLite Pagination)
-app.get('/api/downloads/:groupId', async (req, res) => {
+// 5. Downloads Per Group (SQLite Pagination).
+// Reject the literal "search" segment up-front — Express matches routes in
+// declaration order, and there's a `GET /api/downloads/search` further down
+// that the SPA calls for free-text search. Without this guard the search
+// route would be shadowed and always return an empty group payload.
+app.get('/api/downloads/:groupId', async (req, res, next) => {
+    if (req.params.groupId === 'search') return next();
     try {
         const { groupId } = req.params;
         const page = parseInt(req.query.page) || 1;
@@ -2208,7 +2229,17 @@ async function _requirePassword(req, res) {
     }
     try {
         const config = await readConfigSafe();
-        if (!isAuthConfigured(config.web) || !loginVerify(supplied, config.web)) {
+        if (!isAuthConfigured(config.web)) {
+            res.status(403).json({ error: 'Auth not configured' });
+            return false;
+        }
+        // SECURITY: loginVerify returns `{ok: boolean, upgrade?: boolean}`,
+        // NOT a bare boolean. Treating the object as truthy (the previous
+        // bug) made any non-empty string a valid "password" — turning
+        // Export-Session into a full account-takeover surface for anyone
+        // who already holds a session cookie.
+        const result = loginVerify(supplied, config.web);
+        if (!result?.ok) {
             res.status(403).json({ error: 'Invalid password' });
             return false;
         }

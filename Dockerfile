@@ -15,8 +15,16 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
 FROM node:20.20.2-alpine AS runtime
+
+# Build identity — passed in by CI (`docker build --build-arg GIT_SHA=…
+# --build-arg BUILT_AT=…`) and surfaced via `/api/version` so the
+# status-bar chip always reflects what's actually deployed.
+ARG GIT_SHA=dev
+ARG BUILT_AT=
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    GIT_SHA=${GIT_SHA} \
+    BUILT_AT=${BUILT_AT}
 
 # tini      — proper PID 1 (signal handling + zombie reaping)
 # libstdc++ — needed by better-sqlite3's prebuilt binary

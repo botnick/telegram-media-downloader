@@ -48,6 +48,12 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Bake the commit SHA + build timestamp into the image so the
+          # in-page status-bar chip reflects exactly what's deployed.
+          # Auto-bumps on every CI push — no manual version bookkeeping.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILT_AT=${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

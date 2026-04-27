@@ -18,6 +18,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml, formatBytes, getFileIcon } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { getGroupName } from './store.js';
+import { confirmSheet } from './sheet.js';
 
 // ============ Constants ============
 const ROW_HEIGHT = 56;          // px — keeps the math trivial
@@ -526,7 +527,12 @@ async function runGlobalAction(action) {
             await api.post('/api/queue/resume-all');
             showToast(i18nT('queue.toast.resumed_all', 'Resumed all downloads'), 'success');
         } else if (action === 'cancel-all') {
-            if (!confirm(i18nT('queue.confirm.cancel_all', 'Cancel every queued download? Active jobs continue.'))) return;
+            if (!(await confirmSheet({
+                title: i18nT('queue.action.cancel_all', 'Cancel queued'),
+                message: i18nT('queue.confirm.cancel_all', 'Cancel every queued download? Active jobs continue.'),
+                confirmLabel: i18nT('queue.action.cancel_all', 'Cancel queued'),
+                danger: true,
+            }))) return;
             await api.post('/api/queue/cancel-all');
             showToast(i18nT('queue.toast.cancelled_all', 'Queued downloads cancelled'), 'info');
         } else if (action === 'clear-finished') {

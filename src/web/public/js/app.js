@@ -16,7 +16,7 @@ import * as Notifications from './notifications.js';
 import { initOnboarding, refreshOnboarding } from './onboarding.js';
 import { initShortcuts } from './shortcuts.js';
 import * as router from './router.js';
-import { openSheet } from './sheet.js';
+import { openSheet, confirmSheet } from './sheet.js';
 import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkeletons } from './components.js';
 import { formatRelativeTime } from './utils.js';
 import { attachLongPress, attachPullToRefresh } from './gestures.js';
@@ -63,10 +63,35 @@ async function init() {
     ws.on('*', handleEngineWsMessage);
     ws.on('group_purged', () => loadGroups());
     ws.on('purge_all', () => { loadGroups(); loadStats(); });
-    ws.on('file_deleted', () => { /* gallery refresh handled by store */ });
+    // Auto-prune / disk-rotator / rescue sweeper all broadcast file_deleted —
+    // drop the matching tile from the open gallery if any, otherwise just
+    // refresh stats so disk-usage / file-count chip stay current. Without
+    // this the gallery shows ghost thumbnails until the next manual reload.
+    const dropFileFromView = (m) => {
+        const droppedPath = m?.path;
+        const droppedId = m?.id;
+        if (Array.isArray(state.files) && (droppedPath || droppedId != null)) {
+            const before = state.files.length;
+            state.files = state.files.filter(f => {
+                if (droppedPath && (f.fullPath === droppedPath || f.path === droppedPath)) return false;
+                if (droppedId != null && (f.id === droppedId)) return false;
+                return true;
+            });
+            if (state.files.length !== before && state.currentPage === 'viewer') {
+                renderMediaGrid();
+            }
+        }
+        loadStats();
+    };
+    ws.on('file_deleted', dropFileFromView);
+    ws.on('bulk_delete', () => { if (state.currentPage === 'viewer') refreshCurrentPage(); loadStats(); });
     ws.on('config_updated', () => { if (state.currentPage === 'settings') Settings.loadSettings(); });
-    ws.on('monitor_event', (m) => {
-        if (m.type === 'download_complete') Notifications.notifyDownloadComplete(m.payload || {});
+    // Browser notifications. The runtime spreads `{type, payload}` into the
+    // outer envelope, so events arrive at the WS as the inner type. Listen
+    // for `download_complete` directly — the previous `monitor_event` guard
+    // never fired (the spread overwrote the outer type).
+    ws.on('download_complete', (m) => {
+        Notifications.notifyDownloadComplete(m?.payload || m || {});
     });
 
     // Server-side broadcast emitted by /api/groups/refresh-info (and any
@@ -277,12 +302,18 @@ function renderPage(page, params = {}) {
     state.currentPage = page;
     state.currentRouteParams = params;
 
+    // Allow callers to override the highlighted nav slot independent of the
+    // page section (e.g. `#/engine` is a sub-route of the Settings page but
+    // the bottom-nav Engine tab should still light up). Falls back to the
+    // page name itself when no override is supplied.
+    const navKey = params.navKey || page;
+
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    document.querySelector(`.nav-item[data-page="${page}"]`)?.classList.add('active');
+    document.querySelector(`.nav-item[data-page="${navKey}"]`)?.classList.add('active');
 
     // Bottom-nav active state
     document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.remove('active'));
-    document.querySelector(`.bottom-nav-item[data-nav="${page}"]`)?.classList.add('active');
+    document.querySelector(`.bottom-nav-item[data-nav="${navKey}"]`)?.classList.add('active');
 
     document.querySelectorAll('#content-area > div[id^="page-"]').forEach(el => el.classList.add('hidden'));
     document.getElementById(`page-${page}`)?.classList.remove('hidden');
@@ -343,7 +374,7 @@ function registerRoutes() {
         renderPage('groups');
         openGroupSettings(params.groupId, getGroupName(params.groupId));
     });
-    router.route('/engine', () => renderPage('settings', { section: 'engine' }));
+    router.route('/engine', () => renderPage('settings', { section: 'engine', navKey: 'engine' }));
     router.route('/settings', () => renderPage('settings'));
     router.route('/settings/:section', ({ params }) => renderPage('settings', { section: params.section }));
     router.route('/backfill', () => renderPage('backfill'));
@@ -424,7 +455,7 @@ function renderGroupsList() {
 
     state.activeRings = state.activeRings || new Set();
     let needsResolve = false;
-    list.innerHTML = sorted.map(g => {
+    const html = sorted.map(g => {
         const id = String(g.downloadId || g.id || g.name);
         // Route every render through the canonical lookup so a name set by
         // the WS `groups_refreshed` handler propagates without a reload.
@@ -453,6 +484,16 @@ function renderGroupsList() {
             // click handlers re-resolve from the canonical store.
         });
     }).join('');
+
+    // Skip the assignment when nothing changed — the user reported the
+    // sidebar was "blinking" because we were rebuilding identical HTML on
+    // every WS event. innerHTML reassignment tears down + recreates every
+    // node, briefly flashing focus + scroll. This guard is the simplest
+    // way to make the list smooth without a real DOM-diff lib.
+    if (renderGroupsList._lastHtml !== html) {
+        renderGroupsList._lastHtml = html;
+        list.innerHTML = html;
+    }
 
     // Fire a one-shot resolve in the background. We dedupe with an in-flight
     // flag so a flurry of WS-driven re-renders doesn't hammer the endpoint.
@@ -901,7 +942,12 @@ async function setupMediaSearch() {
     selDel?.addEventListener('click', async () => {
         if (!state.selected || !state.selected.size) return;
         const paths = Array.from(state.selected);
-        if (!confirm(i18nTf('viewer.bulk.confirm', { count: paths.length }, `Delete ${paths.length} file(s)? This cannot be undone.`))) return;
+        if (!(await confirmSheet({
+            title: i18nT('viewer.bulk.title', 'Delete selected files?'),
+            message: i18nTf('viewer.bulk.confirm', { count: paths.length }, `Delete ${paths.length} file(s)? This cannot be undone.`),
+            confirmLabel: i18nT('common.delete', 'Delete'),
+            danger: true,
+        }))) return;
         try {
             const r = await api.post('/api/downloads/bulk-delete', { paths });
             showToast(i18nTf('viewer.bulk.deleted', { count: r.unlinked }, `Deleted ${r.unlinked} files`), 'success');
@@ -1312,7 +1358,12 @@ async function confirmDeleteFile() {
     const file = state.files[state.currentFileIndex];
     if (!file) return;
 
-    if (!confirm(i18nTf('viewer.delete.confirm', { name: file.name }, `Delete "${file.name}"?`))) return;
+    if (!(await confirmSheet({
+        title: i18nT('viewer.delete.title', 'Delete file?'),
+        message: i18nTf('viewer.delete.confirm', { name: file.name }, `Delete "${file.name}"?`),
+        confirmLabel: i18nT('common.delete', 'Delete'),
+        danger: true,
+    }))) return;
 
     try {
         await api.delete(`/api/file?path=${encodeURIComponent(file.fullPath)}`);
@@ -1580,7 +1631,12 @@ async function purgeGroup(groupId, groupName) {
     // Re-resolve through the canonical store so the confirm/toast messages
     // match what the rest of the UI shows.
     groupName = getGroupName(groupId, { fallback: groupName });
-    if (!confirm(i18nTf('purge.group.confirm', { name: groupName }, `Delete all data for "${groupName}"?\n\nFiles, database records, and configuration will be permanently removed.`))) return;
+    if (!(await confirmSheet({
+        title: i18nT('purge.group.title', 'Purge group data?'),
+        message: i18nTf('purge.group.confirm', { name: groupName }, `Delete all data for "${groupName}"?\n\nFiles, database records, and configuration will be permanently removed.`),
+        confirmLabel: i18nT('settings.danger.purge_all', 'Purge All Data'),
+        danger: true,
+    }))) return;
 
     try {
         showToast(i18nT('purge.group.deleting', 'Deleting...'), 'info');
@@ -1603,8 +1659,18 @@ async function purgeGroup(groupId, groupName) {
  * Delete ALL data -- factory reset
  */
 async function purgeAll() {
-    if (!confirm(i18nT('purge.all.confirm1', 'Delete ALL data?\n\nAll files, database records, group configurations, and photos will be permanently removed.'))) return;
-    if (!confirm(i18nT('purge.all.confirm2', 'Are you sure? This cannot be undone.'))) return;
+    if (!(await confirmSheet({
+        title: i18nT('purge.all.title', 'Purge ALL data?'),
+        message: i18nT('purge.all.confirm1', 'Delete ALL data?\n\nAll files, database records, group configurations, and photos will be permanently removed.'),
+        confirmLabel: i18nT('settings.danger.purge_all', 'Purge All Data'),
+        danger: true,
+    }))) return;
+    if (!(await confirmSheet({
+        title: i18nT('purge.all.title2', 'Are you absolutely sure?'),
+        message: i18nT('purge.all.confirm2', 'Are you sure? This cannot be undone.'),
+        confirmLabel: i18nT('common.confirm', 'Confirm'),
+        danger: true,
+    }))) return;
 
     try {
         showToast(i18nT('purge.all.deleting', 'Deleting all data...'), 'info');
