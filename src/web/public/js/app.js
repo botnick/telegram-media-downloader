@@ -596,6 +596,17 @@ function openGroup(groupId, groupName) {
 function updateHeaderAvatar(groupId, displayName) {
     const el = document.getElementById('header-avatar');
     if (!el) return;
+    // No groupId → All Media / non-group view → render a generic
+    // gallery glyph instead of leaving the previous group's photo
+    // floating in the header. Without this, switching from Group A
+    // to All Media kept Group A's avatar in the header until the
+    // user navigated to another group, which the user (rightly)
+    // called a bug.
+    if (!groupId) {
+        el.className = 'tg-avatar tg-avatar-1 w-10 h-10 text-lg flex-shrink-0 flex items-center justify-center text-white';
+        el.innerHTML = '<i class="ri-gallery-line"></i>';
+        return;
+    }
     const photo = (state.groups || []).find(g => String(g.id) === String(groupId))?.photoUrl
         || `/photos/${encodeURIComponent(String(groupId))}.jpg`;
     // Render a coloured initial as the immediate fallback; if the photo
@@ -616,10 +627,20 @@ function showAllMedia() {
 
     document.getElementById('page-title').textContent = i18nT('viewer.all_media.title', 'All Media');
     document.getElementById('page-subtitle').textContent = i18nT('viewer.all_media.subtitle', 'All downloaded files');
-    
+    // Header avatar back to the generic gallery glyph — switching from
+    // a per-group view used to leave that chat's avatar in the header.
+    updateHeaderAvatar(null, null);
+
     const grid = document.getElementById('media-grid');
     if (grid) grid.innerHTML = '';
-    
+
+    // Make sure the viewer page section is actually visible BEFORE we
+    // start the fetch — otherwise clicking "All Media" while the user
+    // is on Settings / Engine / Queue would silently load files into
+    // a hidden DOM and the user would see nothing change. openGroup()
+    // already calls navigateTo('viewer'); showAllMedia was missing it.
+    navigateTo('viewer');
+
     // Load files from all groups
     loadAllFiles();
 }

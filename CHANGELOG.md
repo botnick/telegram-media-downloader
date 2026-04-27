@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.22] — 2026-04-28
+
+### Fixed
+- **Clicking "All Media" did nothing visible** when the user was on Settings / Engine / Queue / Backfill. `showAllMedia()` reset state and started the fetch but never called `navigateTo('viewer')`, so the response loaded into a hidden DOM and the user saw no change. `openGroup()` already navigates correctly; brought `showAllMedia()` in line.
+- **Header avatar lingered on the previous group's photo** after switching to All Media. `updateHeaderAvatar()` now treats `groupId == null` as "non-group view" and renders a generic gallery glyph instead of leaving the previous chat's avatar floating in the header. `showAllMedia()` calls `updateHeaderAvatar(null, null)` so the swap happens the moment you click.
+
+### Changed
+- **SW VERSION** bumped `'v21'` → `'v22'`.
+
 ## [2.3.21] — 2026-04-28
 
 ### Fixed
