@@ -22,6 +22,8 @@ const DATA_DIR = path.join(__dirname, '../../data');
 const SESSIONS_PATH = path.join(DATA_DIR, 'web-sessions.json');
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };
+// Default 7-day cookie lifetime. Callers (server.js) may override per-issue
+// via issueSession({ ttlMs }) — pulled from config.advanced.web.sessionTtlDays.
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TOKEN_BYTES = 32;
 
@@ -129,13 +131,17 @@ function persist() {
     }
 }
 
-export function issueSession() {
+export function issueSession(opts = {}) {
     ensureLoaded();
     const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
     const now = Date.now();
-    sessions[token] = { createdAt: now, expiresAt: now + SESSION_TTL_MS };
+    // Per-issue override; falls back to the original 7-day default.
+    const ttlMs = Number.isFinite(opts.ttlMs) && opts.ttlMs > 0
+        ? Math.floor(opts.ttlMs)
+        : SESSION_TTL_MS;
+    sessions[token] = { createdAt: now, expiresAt: now + ttlMs };
     persist();
-    return { token, maxAgeMs: SESSION_TTL_MS };
+    return { token, maxAgeMs: ttlMs };
 }
 
 export function validateSession(token) {

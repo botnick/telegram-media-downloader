@@ -157,19 +157,21 @@ export class HistoryDownloader extends EventEmitter {
                 this.stats.processed++;
                 this.emit('progress', this.stats); // Emit progress immediately after processing count
 
-                // --- Backpressure: Limit Queue Size to 500 ---
-                // Prevents RAM explosion for 100k+ items.
-                // Keeps file references fresh. We bound the wait so a stuck
-                // downloader can't hang the whole history command forever
-                // — after MAX_WAIT we abort with a clear error.
+                // --- Backpressure: cap RAM during 100k+ backfills ---
+                // Both the cap and the abort timeout are tunable via
+                // config.advanced.history.* with the original constants
+                // (500 / 5min) preserved as inline fallbacks for older
+                // configs that pre-date the Advanced settings panel.
                 {
-                    const MAX_WAIT_MS = 5 * 60 * 1000;
+                    const cap = Number(this.config?.advanced?.history?.backpressureCap) || 500;
+                    const MAX_WAIT_MS = Number(this.config?.advanced?.history?.backpressureMaxWaitMs) || (5 * 60 * 1000);
                     const start = Date.now();
-                    while (this.downloader.pendingCount > 500) {
+                    while (this.downloader.pendingCount > cap) {
                         await this.sleep(1000);
                         if (!this.running || this.cancelFlag) break;
                         if (Date.now() - start > MAX_WAIT_MS) {
-                            throw new Error('History backpressure timed out (5min) — downloader appears stuck');
+                            const mins = Math.round(MAX_WAIT_MS / 60000);
+                            throw new Error(`History backpressure timed out (${mins}min) — downloader appears stuck`);
                         }
                     }
                 }
@@ -186,18 +188,24 @@ export class HistoryDownloader extends EventEmitter {
                 }
 
                 // 🧠 HUMAN-LIKE DELAYS 🧠
-                
-                // Short break every 100 messages (2-5s) - Like scrolling pause
-                // Short break every 100 messages (2-5s) - Like scrolling pause
-                if (this.stats.processed % 100 === 0) {
+                // Both cadences are tunable via config.advanced.history.*.
+                // Setting either to 0 disables that break entirely (useful
+                // for power users who manage their own rate limits).
+                const shortEvery = Number(this.config?.advanced?.history?.shortBreakEveryN);
+                const longEvery  = Number(this.config?.advanced?.history?.longBreakEveryN);
+                const shortN = Number.isFinite(shortEvery) ? shortEvery : 100;
+                const longN  = Number.isFinite(longEvery)  ? longEvery  : 1000;
+
+                // Short break (2-5s) - Like scrolling pause
+                if (shortN > 0 && this.stats.processed % shortN === 0) {
                     const delay = Math.floor(Math.random() * 3000) + 2000;
                     // Silenced short break log as requested
                     // this.emit('log', `☕ Short break: ${delay/1000}s`);
                     await this.sleep(delay);
                 }
 
-                // Long break every 1000 messages (60-120s) - Like getting coffee
-                if (this.stats.processed % 1000 === 0) {
+                // Long break (60-120s) - Like getting coffee
+                if (longN > 0 && this.stats.processed % longN === 0) {
                     const delay = Math.floor(Math.random() * 60000) + 60000;
                     this.emit('log', `🛌 Long break: ${delay/1000}s (Safety First)`);
                     await new Promise(r => setTimeout(r, delay));

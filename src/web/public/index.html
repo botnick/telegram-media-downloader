@@ -1595,6 +1595,128 @@
                         </div>
                     </div>
 
+                    <!-- Advanced (runtime tunables) -->
+                    <!--
+                        Power-user settings — every value here was a hardcoded
+                        constant pre-2.x and the defaults still match the
+                        original behaviour exactly. Changes are saved by the
+                        main "Save Settings" button above. Server clamps every
+                        value, so a typo can't brick the install.
+                    -->
+                    <div class="mt-6 bg-tg-panel rounded-xl p-4">
+                        <h3 class="text-tg-text font-medium mb-1 flex items-center gap-2">
+                            <i class="ri-tools-fill text-tg-orange"></i> <span data-i18n="settings.advanced.title">Advanced</span>
+                        </h3>
+                        <p class="text-xs text-tg-textSecondary mb-4" data-i18n="settings.advanced.subtitle">Hot-path tunables. Defaults match the original hardcoded values — only change these if you know what you are doing.</p>
+
+                        <div class="space-y-4">
+                            <!-- Downloader -->
+                            <div>
+                                <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="settings.advanced.downloader">Downloader</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="setting-adv-min-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.min_concurrency">Min workers</label>
+                                        <input id="setting-adv-min-concurrency" type="number" min="1" max="100" class="tg-input w-full text-sm" placeholder="3">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.min_concurrency_help">Auto-scaler floor. FloodWait throttles snap back to this.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-max-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.max_concurrency">Max workers</label>
+                                        <input id="setting-adv-max-concurrency" type="number" min="1" max="100" class="tg-input w-full text-sm" placeholder="20">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.max_concurrency_help">Auto-scaler ceiling. Higher risks Telegram FLOOD_WAIT bans.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-scaler-sec" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.scaler_sec">Scaler tick (s)</label>
+                                        <input id="setting-adv-scaler-sec" type="number" min="1" max="600" class="tg-input w-full text-sm" placeholder="5">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.scaler_sec_help">How often to add/remove workers based on queue depth.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-idle-sleep-ms" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.idle_sleep">Idle sleep (ms)</label>
+                                        <input id="setting-adv-idle-sleep-ms" type="number" min="50" max="10000" class="tg-input w-full text-sm" placeholder="200">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.idle_sleep_help">Worker pause when no job is queued. Lower = snappier.</p>
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label for="setting-adv-spillover" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.spillover">History spillover threshold</label>
+                                        <input id="setting-adv-spillover" type="number" min="100" max="100000" class="tg-input w-full text-sm" placeholder="2000">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.spillover_help">When the history queue exceeds this size, new jobs spill to disk to bound RAM. Realtime never spills.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- History -->
+                            <div class="border-t border-tg-border/50 pt-4">
+                                <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="settings.advanced.history">History backfill</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="setting-adv-backpressure" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.backpressure">Backpressure cap</label>
+                                        <input id="setting-adv-backpressure" type="number" min="10" max="100000" class="tg-input w-full text-sm" placeholder="500">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.backpressure_help">Pause iteration when downloader queue exceeds this size.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-backpressure-wait" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.backpressure_wait">Backpressure timeout (ms)</label>
+                                        <input id="setting-adv-backpressure-wait" type="number" min="5000" max="3600000" step="1000" class="tg-input w-full text-sm" placeholder="300000">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.backpressure_wait_help">Abort backfill if queue stays full this long.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-short-break" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.short_break">Short break every N msgs</label>
+                                        <input id="setting-adv-short-break" type="number" min="0" max="100000" class="tg-input w-full text-sm" placeholder="100">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.short_break_help">2-5s scrolling pause. 0 disables.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-long-break" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.long_break">Long break every N msgs</label>
+                                        <input id="setting-adv-long-break" type="number" min="0" max="1000000" class="tg-input w-full text-sm" placeholder="1000">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.long_break_help">60-120s coffee break. 0 disables. Helps avoid bans.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Disk rotator -->
+                            <div class="border-t border-tg-border/50 pt-4">
+                                <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="settings.advanced.rotator">Disk rotator</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="setting-adv-sweep-batch" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.sweep_batch">Sweep batch</label>
+                                        <input id="setting-adv-sweep-batch" type="number" min="1" max="1000" class="tg-input w-full text-sm" placeholder="50">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.sweep_batch_help">Candidate rows fetched per pass.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-max-deletes" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.max_deletes">Max deletes / sweep</label>
+                                        <input id="setting-adv-max-deletes" type="number" min="1" max="100000" class="tg-input w-full text-sm" placeholder="5000">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.max_deletes_help">Hard ceiling against runaway loops.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Integrity -->
+                            <div class="border-t border-tg-border/50 pt-4">
+                                <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="settings.advanced.integrity">Integrity sweep</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="setting-adv-integrity-min" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.integrity_min">Interval (min)</label>
+                                        <input id="setting-adv-integrity-min" type="number" min="1" max="10080" class="tg-input w-full text-sm" placeholder="60">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.integrity_min_help">How often to walk every DB row and prune dead entries.</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-integrity-batch" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.integrity_batch">stat() batch size</label>
+                                        <input id="setting-adv-integrity-batch" type="number" min="1" max="1024" class="tg-input w-full text-sm" placeholder="64">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.integrity_batch_help">Concurrent stat() calls. Bigger = faster, more FD pressure.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Web -->
+                            <div class="border-t border-tg-border/50 pt-4">
+                                <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="settings.advanced.web">Dashboard</h4>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div>
+                                        <label for="setting-adv-session-days" class="text-tg-text text-xs block mb-1" data-i18n="settings.advanced.session_days">Session lifetime (days)</label>
+                                        <input id="setting-adv-session-days" type="number" min="1" max="365" class="tg-input w-full text-sm" placeholder="7">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="settings.advanced.session_days_help">New login cookies expire after this many days. Existing sessions keep their original expiry.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Danger Zone -->
                     <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4">
                         <h3 class="text-red-400 font-medium mb-2 flex items-center gap-2">

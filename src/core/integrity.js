@@ -23,6 +23,9 @@ let _running = false;
 let _timer = null;
 let _broadcast = () => {};
 
+// Cached batch size, refreshed from config on each start() call.
+let _batchSize = 64;
+
 /**
  * Walk every row, stat each file, drop rows where the file is missing
  * or zero-bytes. Returns `{ scanned, pruned }`. Concurrency-guarded —
@@ -39,7 +42,8 @@ export async function sweep() {
         result.scanned = rows.length;
 
         // Limit concurrency so a 100k-row DB doesn't fork 100k stat() calls.
-        const BATCH = 64;
+        // Tunable via config.advanced.integrity.batchSize (read at start()).
+        const BATCH = Math.max(1, _batchSize | 0) || 64;
         const deleteIds = [];
         for (let i = 0; i < rows.length; i += BATCH) {
             const slice = rows.slice(i, i + BATCH);
@@ -78,9 +82,13 @@ export async function sweep() {
  * Schedule the sweep on boot (after a small delay so the server has time
  * to finish its other startup tasks) and then every `intervalMin`
  * minutes thereafter. Idempotent — safe to call multiple times.
+ *
+ * `batchSize` is also accepted to override stat() concurrency per pass
+ * (keeps the consumer-reads-config pattern in server.js consistent).
  */
-export function start({ broadcast, intervalMin = 60 } = {}) {
+export function start({ broadcast, intervalMin = 60, batchSize = 64 } = {}) {
     if (broadcast) _broadcast = broadcast;
+    if (Number.isFinite(batchSize) && batchSize > 0) _batchSize = Math.floor(batchSize);
     if (_timer) clearInterval(_timer);
     setTimeout(() => {
         sweep().then(({ scanned, pruned }) => {

@@ -189,9 +189,114 @@ export async function loadSettings() {
         // run again on config_updated WS events.
         wireMaintenance();
 
+        // Advanced runtime tunables. Every field falls back to the same
+        // hardcoded constant the consumer uses, so a missing `advanced` block
+        // (older config.json) renders defaults that match current behaviour.
+        loadAdvanced(config);
+
     } catch (e) {
         console.error('Failed to load settings', e);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Advanced runtime tunables (Settings → Advanced panel)
+//
+// Reading: read into the matching #setting-adv-<key> input. Writing: gathered
+// inside saveSettings() below. We always send the full advanced block on save
+// so server-side clamping applies uniformly; partial PATCHes would also work
+// but full beats half-state debugging by a mile.
+// ---------------------------------------------------------------------------
+const ADVANCED_DEFAULTS = {
+    downloader: {
+        minConcurrency: 3,
+        maxConcurrency: 20,
+        scalerIntervalSec: 5,
+        idleSleepMs: 200,
+        spilloverThreshold: 2000,
+    },
+    history: {
+        backpressureCap: 500,
+        backpressureMaxWaitMs: 5 * 60 * 1000,
+        shortBreakEveryN: 100,
+        longBreakEveryN: 1000,
+    },
+    diskRotator: {
+        sweepBatch: 50,
+        maxDeletesPerSweep: 5000,
+    },
+    integrity: {
+        intervalMin: 60,
+        batchSize: 64,
+    },
+    web: {
+        sessionTtlDays: 7,
+    },
+};
+
+function loadAdvanced(config) {
+    const adv = config?.advanced || {};
+    const set = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val != null) el.value = val;
+    };
+    const dl = { ...ADVANCED_DEFAULTS.downloader, ...(adv.downloader || {}) };
+    set('setting-adv-min-concurrency',   dl.minConcurrency);
+    set('setting-adv-max-concurrency',   dl.maxConcurrency);
+    set('setting-adv-scaler-sec',        dl.scalerIntervalSec);
+    set('setting-adv-idle-sleep-ms',     dl.idleSleepMs);
+    set('setting-adv-spillover',         dl.spilloverThreshold);
+
+    const h = { ...ADVANCED_DEFAULTS.history, ...(adv.history || {}) };
+    set('setting-adv-backpressure',      h.backpressureCap);
+    set('setting-adv-backpressure-wait', h.backpressureMaxWaitMs);
+    set('setting-adv-short-break',       h.shortBreakEveryN);
+    set('setting-adv-long-break',        h.longBreakEveryN);
+
+    const r = { ...ADVANCED_DEFAULTS.diskRotator, ...(adv.diskRotator || {}) };
+    set('setting-adv-sweep-batch',       r.sweepBatch);
+    set('setting-adv-max-deletes',       r.maxDeletesPerSweep);
+
+    const it = { ...ADVANCED_DEFAULTS.integrity, ...(adv.integrity || {}) };
+    set('setting-adv-integrity-min',     it.intervalMin);
+    set('setting-adv-integrity-batch',   it.batchSize);
+
+    const w = { ...ADVANCED_DEFAULTS.web, ...(adv.web || {}) };
+    set('setting-adv-session-days',      w.sessionTtlDays);
+}
+
+function gatherAdvanced() {
+    const get = (id) => document.getElementById(id)?.value;
+    const num = (id, def) => {
+        const v = parseInt(get(id), 10);
+        return Number.isFinite(v) ? v : def;
+    };
+    return {
+        downloader: {
+            minConcurrency:     num('setting-adv-min-concurrency',   ADVANCED_DEFAULTS.downloader.minConcurrency),
+            maxConcurrency:     num('setting-adv-max-concurrency',   ADVANCED_DEFAULTS.downloader.maxConcurrency),
+            scalerIntervalSec:  num('setting-adv-scaler-sec',        ADVANCED_DEFAULTS.downloader.scalerIntervalSec),
+            idleSleepMs:        num('setting-adv-idle-sleep-ms',     ADVANCED_DEFAULTS.downloader.idleSleepMs),
+            spilloverThreshold: num('setting-adv-spillover',         ADVANCED_DEFAULTS.downloader.spilloverThreshold),
+        },
+        history: {
+            backpressureCap:        num('setting-adv-backpressure',      ADVANCED_DEFAULTS.history.backpressureCap),
+            backpressureMaxWaitMs:  num('setting-adv-backpressure-wait', ADVANCED_DEFAULTS.history.backpressureMaxWaitMs),
+            shortBreakEveryN:       num('setting-adv-short-break',       ADVANCED_DEFAULTS.history.shortBreakEveryN),
+            longBreakEveryN:        num('setting-adv-long-break',        ADVANCED_DEFAULTS.history.longBreakEveryN),
+        },
+        diskRotator: {
+            sweepBatch:         num('setting-adv-sweep-batch', ADVANCED_DEFAULTS.diskRotator.sweepBatch),
+            maxDeletesPerSweep: num('setting-adv-max-deletes', ADVANCED_DEFAULTS.diskRotator.maxDeletesPerSweep),
+        },
+        integrity: {
+            intervalMin: num('setting-adv-integrity-min',   ADVANCED_DEFAULTS.integrity.intervalMin),
+            batchSize:   num('setting-adv-integrity-batch', ADVANCED_DEFAULTS.integrity.batchSize),
+        },
+        web: {
+            sessionTtlDays: num('setting-adv-session-days', ADVANCED_DEFAULTS.web.sessionTtlDays),
+        },
+    };
 }
 
 /**
@@ -245,6 +350,10 @@ export async function saveSettings() {
             retentionHours: rescueHours,
             sweepIntervalMin: rescueSweep,
         },
+        // Server clamps every value, so worst-case typos still produce a
+        // working config. Sending the full block keeps the on-disk shape
+        // self-documenting (see DEFAULT_CONFIG.advanced in src/config/manager.js).
+        advanced: gatherAdvanced(),
         allowDmDownloads: dmActive,
     };
 

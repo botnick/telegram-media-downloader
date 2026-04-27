@@ -162,12 +162,19 @@ export class DiskRotator {
                 return { before, deleted: 0, after: before, capBytes };
             }
 
+            // Per-sweep tunables. Pulled from config.advanced.diskRotator.*
+            // with the original constants preserved as fallbacks so an old
+            // config behaves identically.
+            const adv = cfg?.advanced?.diskRotator || {};
+            const batch = Math.max(1, parseInt(adv.sweepBatch, 10) || SWEEP_BATCH);
+            const maxDeletes = Math.max(1, parseInt(adv.maxDeletesPerSweep, 10) || MAX_DELETES_PER_SWEEP);
+
             let total = before;
             let deleted = 0;
-            let safety = MAX_DELETES_PER_SWEEP;
+            let safety = maxDeletes;
 
             outer: while (total > capBytes && safety > 0) {
-                const candidates = getOldestDownloads(SWEEP_BATCH);
+                const candidates = getOldestDownloads(batch);
                 if (!candidates.length) break;
                 for (const row of candidates) {
                     if (total <= capBytes || safety <= 0) break outer;

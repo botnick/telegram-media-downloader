@@ -87,8 +87,14 @@ export async function migrateFolders(downloadPath) {
     }
 }
 
+// Inline defaults — kept here so every config.advanced?.downloader?.X read
+// throughout this file shares the same fallback in case `advanced` is missing
+// (e.g. an older config.json that pre-dates the Settings → Advanced panel).
 const MIN_CONCURRENCY = 3;
 const MAX_CONCURRENCY = 20;
+const DEFAULT_SCALER_INTERVAL_MS = 5000;
+const DEFAULT_IDLE_SLEEP_MS = 200;
+const DEFAULT_SPILLOVER_THRESHOLD = 2000;
 
 export class DownloadManager extends EventEmitter {
     constructor(client, config, rateLimiter) {
@@ -196,9 +202,13 @@ export class DownloadManager extends EventEmitter {
             this.workers.push(this.runWorker(i));
         }
         this.emit('started', { workers: this.concurrency });
-        
-        // Dynamic scaler — check every 5s
-        this._scalerInterval = setInterval(() => this._autoScale(), 5000);
+
+        // Dynamic scaler — tunable via config.advanced.downloader.scalerIntervalSec.
+        const scalerSec = Number(this.config?.advanced?.downloader?.scalerIntervalSec);
+        const scalerMs = Number.isFinite(scalerSec) && scalerSec > 0
+            ? Math.floor(scalerSec * 1000)
+            : DEFAULT_SCALER_INTERVAL_MS;
+        this._scalerInterval = setInterval(() => this._autoScale(), scalerMs);
     }
 
     get pendingCount() {
@@ -209,10 +219,12 @@ export class DownloadManager extends EventEmitter {
         if (!this.running) return;
         const queueLen = this.pendingCount;
         const activeLen = this.active.size;
+        const minC = Number(this.config?.advanced?.downloader?.minConcurrency) || MIN_CONCURRENCY;
+        const maxC = Number(this.config?.advanced?.downloader?.maxConcurrency) || MAX_CONCURRENCY;
 
         // Scale UP: queue is building up, add more workers
-        if (queueLen > this.workerCount * 2 && this.workerCount < MAX_CONCURRENCY) {
-            const add = Math.min(3, MAX_CONCURRENCY - this.workerCount);
+        if (queueLen > this.workerCount * 2 && this.workerCount < maxC) {
+            const add = Math.min(3, maxC - this.workerCount);
             for (let i = 0; i < add; i++) {
                 const id = this.workerCount + i;
                 this.workers.push(this.runWorker(id));
@@ -221,10 +233,10 @@ export class DownloadManager extends EventEmitter {
             this.concurrency = this.workerCount;
             this.emit('scale', { direction: 'up', workers: this.workerCount, queue: queueLen });
         }
-        
+
         // Scale DOWN: queue is empty and few active, reduce target
-        if (queueLen === 0 && activeLen < MIN_CONCURRENCY && this.workerCount > MIN_CONCURRENCY) {
-            this.workerCount = Math.max(MIN_CONCURRENCY, activeLen + 1);
+        if (queueLen === 0 && activeLen < minC && this.workerCount > minC) {
+            this.workerCount = Math.max(minC, activeLen + 1);
             this.concurrency = this.workerCount;
         }
     }
@@ -233,10 +245,11 @@ export class DownloadManager extends EventEmitter {
      * Called by FloodWait handler to throttle concurrency
      */
     throttle() {
-        this.workerCount = MIN_CONCURRENCY;
-        this.concurrency = MIN_CONCURRENCY;
+        const minC = Number(this.config?.advanced?.downloader?.minConcurrency) || MIN_CONCURRENCY;
+        this.workerCount = minC;
+        this.concurrency = minC;
         this._consecutiveSuccess = 0;
-        this.emit('scale', { direction: 'down', workers: MIN_CONCURRENCY, reason: 'flood' });
+        this.emit('scale', { direction: 'down', workers: minC, reason: 'flood' });
     }
 
     async stop() {
@@ -271,7 +284,9 @@ export class DownloadManager extends EventEmitter {
         // --- DYNAMIC DEFENSE: DISK SPILLOVER ---
         // Only history (priority 2) ever spills; realtime stays in RAM so
         // a long backfill can't push live messages off the front of the queue.
-        if (priority === 2 && this.queue.length > 2000) {
+        const spillover = Number(this.config?.advanced?.downloader?.spilloverThreshold)
+            || DEFAULT_SPILLOVER_THRESHOLD;
+        if (priority === 2 && this.queue.length > spillover) {
             await this.spillToDisk(job);
             return true;
         }
@@ -495,7 +510,9 @@ export class DownloadManager extends EventEmitter {
 
             // 3. Still empty? Sleep.
             if (!job) {
-                await this.sleep(200);
+                const idle = Number(this.config?.advanced?.downloader?.idleSleepMs)
+                    || DEFAULT_IDLE_SLEEP_MS;
+                await this.sleep(idle);
                 continue;
             }
 

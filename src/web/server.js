@@ -408,6 +408,17 @@ const SESSION_COOKIE_OPTS = {
     path: '/',
 };
 
+// Resolve the per-issue session lifetime from config.advanced.web.sessionTtlDays.
+// Falls back to the historical 7-day default when missing or out of range so a
+// fresh install / older config behaves identically.
+function sessionTtlMsFromConfig(config) {
+    const days = Number(config?.advanced?.web?.sessionTtlDays);
+    if (Number.isFinite(days) && days >= 1 && days <= 365) {
+        return Math.floor(days * 24 * 60 * 60 * 1000);
+    }
+    return 7 * 24 * 60 * 60 * 1000;
+}
+
 app.post('/api/login', loginLimiter, async (req, res) => {
     try {
         const { password } = req.body || {};
@@ -438,7 +449,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
             }
         }
 
-        const { token, maxAgeMs } = issueSession();
+        const { token, maxAgeMs } = issueSession({ ttlMs: sessionTtlMsFromConfig(config) });
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
     } catch (e) {
@@ -488,7 +499,7 @@ app.post('/api/auth/setup', setupLimiter, async (req, res) => {
         delete config.web.password;
         await writeConfigAtomic(config);
 
-        const { token, maxAgeMs } = issueSession();
+        const { token, maxAgeMs } = issueSession({ ttlMs: sessionTtlMsFromConfig(config) });
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
     } catch (e) {
@@ -530,7 +541,7 @@ app.post('/api/auth/change-password', loginLimiter, async (req, res) => {
         // Issue a fresh session and let the SPA replace the old cookie. We
         // don't revoke other sessions automatically — the SPA exposes a
         // separate "Sign out everywhere" affordance that hits revokeAllSessions.
-        const { token, maxAgeMs } = issueSession();
+        const { token, maxAgeMs } = issueSession({ ttlMs: sessionTtlMsFromConfig(config) });
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
     } catch (e) {
@@ -612,7 +623,7 @@ app.post('/api/auth/reset/confirm', loginLimiter, async (req, res) => {
         // Revoke every existing session — if someone reset the password,
         // assume the previous owner is locked out and shouldn't be trusted.
         revokeAllSessions();
-        const { token: sessionTok, maxAgeMs } = issueSession();
+        const { token: sessionTok, maxAgeMs } = issueSession({ ttlMs: sessionTtlMsFromConfig(config) });
         res.cookie('tg_dl_session', sessionTok, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
     } catch (e) {
@@ -2584,6 +2595,72 @@ app.post('/api/config', async (req, res) => {
             newConfig.web = safeWeb;
         }
 
+        // Advanced runtime tuning — two-level deep-merge so a PATCH that
+        // touches one sub-namespace (e.g. only advanced.downloader) keeps the
+        // others intact. Per-field clamping below; out-of-range values are
+        // silently dropped to the original constants instead of 400-ing the
+        // whole save (the SPA shouldn't fail to save the rest of the form
+        // because someone typed `0` into a number field).
+        if (req.body.advanced && typeof req.body.advanced === 'object') {
+            const cur = currentConfig.advanced || {};
+            const inc = req.body.advanced || {};
+            const clampInt = (v, lo, hi, def) => {
+                const n = parseInt(v, 10);
+                if (!Number.isFinite(n)) return def;
+                return Math.max(lo, Math.min(hi, n));
+            };
+            const merged = {
+                downloader: {
+                    ...(cur.downloader || {}),
+                    ...(inc.downloader || {}),
+                },
+                history: {
+                    ...(cur.history || {}),
+                    ...(inc.history || {}),
+                },
+                diskRotator: {
+                    ...(cur.diskRotator || {}),
+                    ...(inc.diskRotator || {}),
+                },
+                integrity: {
+                    ...(cur.integrity || {}),
+                    ...(inc.integrity || {}),
+                },
+                web: {
+                    ...(cur.web || {}),
+                    ...(inc.web || {}),
+                },
+            };
+            // Clamp every numeric so a typo can't ban the user from logging
+            // in (sessionTtlDays=0) or hose the downloader (minConcurrency=0).
+            const d = merged.downloader;
+            d.minConcurrency      = clampInt(d.minConcurrency,       1,    100, 3);
+            d.maxConcurrency      = clampInt(d.maxConcurrency,       1,    100, 20);
+            if (d.maxConcurrency < d.minConcurrency) d.maxConcurrency = d.minConcurrency;
+            d.scalerIntervalSec   = clampInt(d.scalerIntervalSec,    1,    600, 5);
+            d.idleSleepMs         = clampInt(d.idleSleepMs,         50,  10000, 200);
+            d.spilloverThreshold  = clampInt(d.spilloverThreshold, 100, 100000, 2000);
+
+            const h = merged.history;
+            h.backpressureCap         = clampInt(h.backpressureCap,         10, 100000, 500);
+            h.backpressureMaxWaitMs   = clampInt(h.backpressureMaxWaitMs, 5000, 3600000, 300000);
+            h.shortBreakEveryN        = clampInt(h.shortBreakEveryN,         0, 100000, 100);
+            h.longBreakEveryN         = clampInt(h.longBreakEveryN,          0, 1000000, 1000);
+
+            const r = merged.diskRotator;
+            r.sweepBatch         = clampInt(r.sweepBatch,         1,   1000, 50);
+            r.maxDeletesPerSweep = clampInt(r.maxDeletesPerSweep, 1, 100000, 5000);
+
+            const it = merged.integrity;
+            it.intervalMin = clampInt(it.intervalMin, 1, 10080, 60);
+            it.batchSize   = clampInt(it.batchSize,   1,  1024, 64);
+
+            const w = merged.web;
+            w.sessionTtlDays = clampInt(w.sessionTtlDays, 1, 365, 7);
+
+            newConfig.advanced = merged;
+        }
+
         // Range / type sanity for the most-abused fields
         const dl = newConfig.download || {};
         if (dl.concurrent != null && (dl.concurrent < 1 || dl.concurrent > 50)) {
@@ -2617,7 +2694,7 @@ app.post('/api/config', async (req, res) => {
         // Restart the disk rotator if the user changed any diskManagement
         // field — picks up the new cap / enabled / interval on the very next
         // sweep instead of waiting for whatever was already scheduled.
-        if (req.body.diskManagement) {
+        if (req.body.diskManagement || req.body.advanced?.diskRotator) {
             try { getDiskRotator()?.restart(); } catch (e) { console.warn('[disk-rotator] restart failed:', e.message); }
         }
         // Same story for the rescue sweeper — sweep cadence (and the global
@@ -2625,6 +2702,19 @@ app.post('/api/config', async (req, res) => {
         // effect immediately, not on the next scheduled tick.
         if (req.body.rescue) {
             try { getRescueSweeper()?.restart(); } catch (e) { console.warn('[rescue] restart failed:', e.message); }
+        }
+        // Re-arm the integrity sweeper when its cadence/batch changes so the
+        // user doesn't have to wait a full hour for the new interval to kick
+        // in. Reads the merged config (newConfig) for the latest values.
+        if (req.body.advanced?.integrity) {
+            try {
+                const ai = newConfig?.advanced?.integrity || {};
+                integrity.start({
+                    broadcast,
+                    intervalMin: Number(ai.intervalMin) > 0 ? Number(ai.intervalMin) : 60,
+                    batchSize:   Number(ai.batchSize)   > 0 ? Number(ai.batchSize)   : 64,
+                });
+            } catch (e) { console.warn('[integrity] restart failed:', e.message); }
         }
 
         broadcast({ type: 'config_updated' });
@@ -3040,9 +3130,17 @@ ${tip}
     // Periodic integrity sweep — walks every DB row, drops the ones whose
     // file is missing or zero-bytes. Self-heals after a manual delete, an
     // auto-rotator pass, a crash mid-write, or a partial volume restore.
-    // 30 s after boot for the first pass, then hourly.
+    // 30 s after boot for the first pass, then every advanced.integrity.intervalMin
+    // minutes (default 60) with stat() concurrency advanced.integrity.batchSize
+    // (default 64).
     try {
-        integrity.start({ broadcast, intervalMin: 60 });
+        const cfg = loadConfig();
+        const ai = cfg?.advanced?.integrity || {};
+        integrity.start({
+            broadcast,
+            intervalMin: Number(ai.intervalMin) > 0 ? Number(ai.intervalMin) : 60,
+            batchSize:   Number(ai.batchSize)   > 0 ? Number(ai.batchSize)   : 64,
+        });
     } catch (e) {
         console.warn('[integrity] start failed:', e.message);
     }
