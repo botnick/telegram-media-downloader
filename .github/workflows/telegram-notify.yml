@@ -60,10 +60,64 @@ jobs:
           if [ "$REL_PRE" = "true" ]; then badge="🧪 Pre-release"; else badge="🎉 New release"; fi
           title="${REL_NAME:-$REL_TAG}"
           title_html=$(printf '%s' "$title" | python3 -c 'import html,sys; print(html.escape(sys.stdin.read()))')
-          # Trim release notes to fit Telegram's 4096-char limit comfortably,
-          # then HTML-escape so markdown/raw-HTML in the body doesn't corrupt
-          # the parser.
-          body_html=$(printf '%s' "$REL_BODY" | head -c 3500 | python3 -c 'import html,sys; print(html.escape(sys.stdin.read()))')
+          # Render Markdown into the tiny HTML subset Telegram parses
+          # (<b>, <i>, <code>, <pre>, <a>, plus bullet replacement for "- ").
+          # Without this the body shipped as literal "**bold**" / "### header"
+          # / "`code`" because parse_mode=HTML doesn't understand Markdown.
+          # NB: REL_BODY is passed via env, NOT a pipe — a heredoc on python3's
+          # stdin would override any piped input from `head`.
+          body_html=$(python3 - <<'PYEOF'
+          import html, re, sys, os
+          md = os.environ.get("REL_BODY", "")[:3500]
+
+          # 1. Extract fenced code blocks first so Markdown inside them is preserved.
+          fenced = []
+          def stash_fenced(m):
+              fenced.append(m.group(1))
+              return f"\x00FENCED{len(fenced)-1}\x00"
+          md = re.sub(r"```(?:[\w+-]+)?\n?(.*?)```", stash_fenced, md, flags=re.DOTALL)
+
+          # 2. Extract inline `code` likewise.
+          inline = []
+          def stash_inline(m):
+              inline.append(m.group(1))
+              return f"\x00INLINE{len(inline)-1}\x00"
+          md = re.sub(r"`([^`\n]+)`", stash_inline, md)
+
+          # 3. HTML-escape the remaining narrative text.
+          md = html.escape(md, quote=False)
+
+          # 4. Markdown links → <a>.
+          md = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', md)
+
+          # 5. Headers (#, ##, ###, …) → <b> on their own line.
+          md = re.sub(r"^#{1,6}\s+(.+)$", r"<b>\1</b>", md, flags=re.MULTILINE)
+
+          # 6. Bold **text**.
+          md = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", md)
+
+          # 7. Italic _text_ (avoid mid-word like snake_case_id).
+          md = re.sub(r"(?<![\w])_([^_\n]+)_(?![\w])", r"<i>\1</i>", md)
+
+          # 8. List bullets — Telegram doesn't render Markdown lists natively.
+          md = re.sub(r"^[\-\*]\s+", "• ", md, flags=re.MULTILINE)
+
+          # 9. Horizontal rule → blank line (Telegram has no <hr>).
+          md = re.sub(r"^---+\s*$", "", md, flags=re.MULTILINE)
+
+          # 10. Restore inline + fenced placeholders as <code>/<pre>.
+          for i, c in enumerate(inline):
+              md = md.replace(f"\x00INLINE{i}\x00", f"<code>{html.escape(c, quote=False)}</code>")
+          for i, c in enumerate(fenced):
+              md = md.replace(f"\x00FENCED{i}\x00", f"<pre>{html.escape(c, quote=False)}</pre>")
+
+          # Collapse 3+ consecutive blank lines so removed --- rules don't
+          # leave a giant gap.
+          md = re.sub(r"\n{3,}", "\n\n", md)
+
+          sys.stdout.write(md)
+          PYEOF
+          )
           text=$(printf '%s: <b>%s</b>\n\n<b>Repo:</b> %s\n<b>Tag:</b> %s\n<b>By:</b> %s\n\n%s\n\n<a href="%s">View release</a>' \
                   "$badge" "$title_html" "$REPO" "$REL_TAG" "$ACTOR" "$body_html" "$REL_URL")
           curl -sS --fail-with-body -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \

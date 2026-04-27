@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.5] — 2026-04-28
+
+### Fixed
+- **Telegram release notifier was sending raw Markdown.** `.github/workflows/telegram-notify.yml` was POSTing the release body to `sendMessage` with `parse_mode=HTML` after only HTML-escaping it — so `**bold**`, `### headers`, and `` `code` `` shipped as literal characters. Replaced the escape step with a tiny inline Python pass that converts the GitHub-Markdown subset we actually use (headers, bold, italic, inline code, fenced code, bullets, links, hrules) into the matching Telegram-HTML subset (`<b>`, `<i>`, `<code>`, `<pre>`, `<a>`, `•`) before sending. Code blocks and inline code stay HTML-safe; the link `[text](url)` form is preserved.
+
 ## [2.3.4] — 2026-04-28
 
 Last items from the multi-pass audit. Closes the remaining "deferred" tasks: WS reconnect storm, sheet stacking edge case, log-read hang, stale service-worker cache.
