@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.25] — 2026-04-28
+
+### Changed — backpressure abort window 5 min → 15 min
+User report: *"History backpressure: downloader made no progress for 5min (pending=513, cap=500). Check Engine card for FloodWait or stalled workers."* — the abort fired with the pending count just barely (513 vs 500) over the cap.
+
+Why it fired: a single bad-luck job that hits FloodWait every retry can stall for `MAX_FLOOD_RETRIES × delay` = 8 × 60 s = **8 min** before the downloader gives up and emits an `error` event. The backfill abort at 5 min therefore guaranteed a kill in this scenario, even though the downloader was healthy and would have recovered.
+
+- **Default `backpressureMaxWaitMs`** bumped 5 min → **15 min** in both `history.js` (inline fallback) + `settings.js` (Advanced default) + `server.js` (config validator default). Existing user configs that have an explicit value keep theirs unchanged.
+- **New `stalled` event** emitted by the history runner at the half-way mark (7.5 min by default). Carries `{ pending, cap, stallSeconds }`. The runtime forwards it for the SPA to render a "stalled, still trying…" hint without dropping the job.
+
+### SW
+- VERSION bumped `'v24'` → `'v25'`.
+
 ## [2.3.24] — 2026-04-28
 
 ### Changed — gallery feels smooth

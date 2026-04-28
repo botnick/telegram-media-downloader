@@ -3052,7 +3052,7 @@ app.post('/api/config', async (req, res) => {
 
             const h = merged.history;
             h.backpressureCap         = clampInt(h.backpressureCap,         10, 100000, 500);
-            h.backpressureMaxWaitMs   = clampInt(h.backpressureMaxWaitMs, 5000, 3600000, 300000);
+            h.backpressureMaxWaitMs   = clampInt(h.backpressureMaxWaitMs, 5000, 3600000, 900000);
             h.shortBreakEveryN        = clampInt(h.shortBreakEveryN,         0, 100000, 100);
             h.longBreakEveryN         = clampInt(h.longBreakEveryN,          0, 1000000, 1000);
 

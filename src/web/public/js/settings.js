@@ -388,7 +388,7 @@ const ADVANCED_DEFAULTS = {
     },
     history: {
         backpressureCap: 500,
-        backpressureMaxWaitMs: 5 * 60 * 1000,
+        backpressureMaxWaitMs: 15 * 60 * 1000,
         shortBreakEveryN: 100,
         longBreakEveryN: 1000,
     },

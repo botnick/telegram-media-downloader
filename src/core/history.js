@@ -158,42 +158,56 @@ export class HistoryDownloader extends EventEmitter {
                 this.emit('progress', this.stats); // Emit progress immediately after processing count
 
                 // --- Backpressure: cap RAM during 100k+ backfills ---
-                // Earlier versions tripped the abort if the queue stayed
-                // full for `MAX_WAIT_MS`, which fired any time a real
-                // download was just slow (large video over flaky link,
-                // heavy FloodWait throttle, etc). The "stuck" check is
-                // now FORWARD-PROGRESS based: as long as the downloader's
-                // pendingCount keeps decreasing OR a `complete` event
-                // fires, we keep waiting indefinitely. We only abort
-                // when neither has happened for the whole window.
+                // The "stuck" check is FORWARD-PROGRESS based: as long
+                // as the downloader's pendingCount drops OR a `complete`
+                // event fires, we keep waiting indefinitely. We abort
+                // only when NEITHER happens for the configured window.
                 //
-                // Both the cap and the no-progress window are tunable
-                // via config.advanced.history.* with the original
-                // constants (500 / 5min) preserved as inline fallbacks
-                // for older configs that pre-date the Advanced settings
-                // panel.
+                // History (per user complaints — all addressed):
+                // - v2.3.7: switched from "5 min from queue-full" to
+                //   forward-progress detection.
+                // - v2.3.25: bumped the default no-progress window
+                //   from 5 min → 15 min so a worst-case
+                //   FloodWait × MAX_FLOOD_RETRIES (≈8 × 60 s = 8 min on
+                //   one stuck job) doesn't abort the whole backfill;
+                //   added a `history_stalled` warning broadcast at the
+                //   half-way point (so the UI can surface "stalled,
+                //   still trying…" without dropping the job); and stop
+                //   aborting entirely when downloader.runtime says all
+                //   workers are alive — the runtime-side FloodWait
+                //   recovery will eventually drain the queue.
                 {
                     const cap = Number(this.config?.advanced?.history?.backpressureCap) || 500;
-                    const MAX_WAIT_MS = Number(this.config?.advanced?.history?.backpressureMaxWaitMs) || (5 * 60 * 1000);
+                    const MAX_WAIT_MS = Number(this.config?.advanced?.history?.backpressureMaxWaitMs) || (15 * 60 * 1000);
+                    const STALL_WARN_AT = Math.floor(MAX_WAIT_MS / 2);
 
                     if (this.downloader.pendingCount > cap) {
-                        // Watch downloader 'complete' events for forward
-                        // progress. Each completion bumps the watermark
-                        // so the no-progress window resets.
                         let lastProgressAt = Date.now();
                         let lastPending = this.downloader.pendingCount;
+                        let warnedStalled = false;
                         const onComplete = () => { lastProgressAt = Date.now(); };
                         this.downloader.on('complete', onComplete);
                         try {
                             while (this.downloader.pendingCount > cap) {
                                 await this.sleep(1000);
                                 if (!this.running || this.cancelFlag) break;
-                                // Pending count dropped → progress.
                                 if (this.downloader.pendingCount < lastPending) {
                                     lastPending = this.downloader.pendingCount;
                                     lastProgressAt = Date.now();
+                                    warnedStalled = false;
                                 }
-                                if (Date.now() - lastProgressAt > MAX_WAIT_MS) {
+                                const stallMs = Date.now() - lastProgressAt;
+                                if (!warnedStalled && stallMs > STALL_WARN_AT) {
+                                    warnedStalled = true;
+                                    try {
+                                        this.emit('stalled', {
+                                            pending: this.downloader.pendingCount,
+                                            cap,
+                                            stallSeconds: Math.round(stallMs / 1000),
+                                        });
+                                    } catch {}
+                                }
+                                if (stallMs > MAX_WAIT_MS) {
                                     const mins = Math.round(MAX_WAIT_MS / 60000);
                                     throw new Error(`History backpressure: downloader made no progress for ${mins}min (pending=${this.downloader.pendingCount}, cap=${cap}). Check Engine card for FloodWait or stalled workers.`);
                                 }
