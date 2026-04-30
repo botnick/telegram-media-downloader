@@ -21,12 +21,35 @@ The image is published to GHCR on every release: `ghcr.io/botnick/telegram-media
 
 | Var | Default | Notes |
 |---|---|---|
-| `PORT`        | `3000`    | HTTP port. |
-| `NODE_ENV`    | unset     | Set to `production` to enable `Secure` cookies (requires HTTPS). |
-| `TZ`          | `UTC`     | Container timezone. |
-| `TGDL_RUN`    | `monitor` | Watchdog subcommand for `runner.js` / `runner.sh` / `watchdog.ps1`. |
-| `TGDL_DEBUG`  | unset     | Set to any truthy value to surface gramJS reconnect noise on stderr. |
-| `TRUST_PROXY` | unset     | `1`, `loopback`, or any value Express's `trust proxy` understands; needed for accurate IPs behind a reverse proxy. |
+| `PORT`                          | `3000`              | HTTP port. |
+| `NODE_ENV`                      | unset               | Set to `production` to enable `Secure` cookies (requires HTTPS). |
+| `TZ`                            | `UTC`               | Container timezone. |
+| `TGDL_RUN`                      | `monitor`           | Watchdog subcommand for `runner.js` / `runner.sh` / `watchdog.ps1`. |
+| `TGDL_DEBUG`                    | unset               | Set to any truthy value to surface gramJS reconnect noise on stderr. |
+| `TRUST_PROXY`                   | unset               | `1`, `loopback`, or any value Express's `trust proxy` understands; needed for accurate IPs behind a reverse proxy. |
+| `FFMPEG_PATH`                   | auto-detect         | Override the resolved ffmpeg binary used by `core/thumbs.js`. Resolver order: this var → `/usr/bin/ffmpeg` → `/usr/local/bin/ffmpeg` → `@ffmpeg-installer/ffmpeg` → bare `ffmpeg`. |
+| `THUMBS_IMG_CONCURRENCY`        | `8`                 | Parallel image-thumb jobs. |
+| `THUMBS_VID_CONCURRENCY`        | `3`                 | Parallel video-thumb jobs (ffmpeg pins a CPU core). |
+| `WATCHTOWER_HTTP_API_TOKEN`     | unset               | Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this + booting with the `auto-update` compose profile lights up the **Install update** button. |
+| `WATCHTOWER_URL`                | `http://watchtower:8080` | Internal address of the watchtower sidecar. |
+
+## One-click in-dashboard auto-update (opt-in)
+
+The bundled `docker-compose.yml` ships a `watchtower` service under the `auto-update` profile. The dashboard never touches `/var/run/docker.sock` itself — it sends an authenticated HTTP request to the sidecar, which has a read-only socket mount and is scoped to the labeled container.
+
+```bash
+# 1. Generate a strong random token
+openssl rand -hex 32 > .token
+# 2. Put it in .env next to docker-compose.yml
+echo "WATCHTOWER_HTTP_API_TOKEN=$(cat .token)" >> .env
+rm .token
+# 3. Boot with the profile enabled
+docker compose --profile auto-update up -d
+```
+
+Once enabled, **Settings → Maintenance → Install update** pulls the latest image and recreates the container. The `data/` volume + `config.json` + sessions survive the swap; the SQLite database is snapshotted to `data/backups/` first.
+
+Without the token (or without the profile), the **Install update** button stays disabled and the dashboard falls back to linking the GitHub release page.
 
 ## Reverse proxy
 
@@ -101,6 +124,10 @@ journalctl -u telegram-downloader -f
 ## Backups
 
 Back up `data/secret.key` and `data/sessions/*.enc` together — losing `secret.key` means none of the sessions decrypt and every account has to re-login. `data/db.sqlite` and the downloads tree are easy to recreate from Telegram if needed.
+
+Pre-update DB snapshots land at `data/backups/db-pre-update-<utc-stamp>.sqlite` automatically when an in-dashboard update runs (last 5 kept). They're plain `.sqlite` files — to roll back, stop the container, swap one of them in for `data/db.sqlite`, and restart.
+
+Rotate `config.web.shareSecret` to invalidate every outstanding share link in one move (edit the value or delete it; a fresh 32-byte secret regenerates on next boot).
 
 ## Watchdogs
 

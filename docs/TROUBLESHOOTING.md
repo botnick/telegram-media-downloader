@@ -66,3 +66,31 @@ The noise classifier already drops the recoverable internals from stderr by defa
 ## Telegram banned my account
 
 Use the official account-recovery flow at <https://telegram.org/support>. We can't help with that — the goal of the rate limits is to stay well under the threshold, but no client guarantees zero risk. If it happened during a long history backfill, lower the concurrency and the per-minute limit before retrying.
+
+## Thumbnails don't render for video files
+
+`/api/thumbs/<id>` needs `ffmpeg` on PATH for video first-frame extraction. The Docker image includes it via `apk add ffmpeg`. For standalone installs the optional `@ffmpeg-installer/ffmpeg` npm package ships static binaries for Win / macOS / glibc-Linux. Alpine without the apk package falls through to "image-only" — Settings → Maintenance shows `ffmpeg unavailable — image-only` in that state. Override with the `FFMPEG_PATH` env var if needed.
+
+## NSFW scan fails with "Failed to load @huggingface/transformers"
+
+The model classifier is an optional feature. Run `npm install @huggingface/transformers` (or rebuild the Docker image; it's already a dependency in the published image). The first scan downloads ~80 MB of model weights to `data/models/` — make sure that path is writable and the host can reach `huggingface.co`.
+
+## "Install update" button is greyed out
+
+Two reasons: either the dashboard isn't running inside Docker (`/.dockerenv` heuristic), or the watchtower sidecar isn't reachable. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` and start with `docker compose --profile auto-update up -d`. The button hover-tip explains which check failed.
+
+## Share link returns "Share link is not valid"
+
+The body's `code` field tells you which gate failed:
+
+- `bad_sig` — the signature didn't verify. Either the URL was tampered with, or `config.web.shareSecret` was rotated since the link was issued.
+- `expired` — `expires_at` passed (skip this check by re-issuing with `ttlSeconds: 0`).
+- `revoked` — admin pressed Revoke. Issue a new link from the Share sheet.
+
+## Backfill returns 409 with `code: 'ALREADY_RUNNING'`
+
+Per-group lock — only one backfill per group at a time. Either wait for the active job to finish, or cancel it from the Backfill page (Recent backfills → ✕). Auto-spawned backfills (first add, post-restart catch-up) appear with `mode: 'auto-first'` / `'catch-up'`.
+
+## Auto-update finished but the version chip didn't bump
+
+Hard-refresh the browser (Ctrl/Cmd+Shift+R) — the SPA cache may be holding the previous bundle. The status-bar reconnect logic auto-reloads the page when it detects a version change, but if reconnect happened during a brief WS disconnect the heuristic can miss the version flip.

@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.37] — 2026-04-30
+
+### Docs
+- README, `docs/API.md`, `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, `docs/TROUBLESHOOTING.md` brought current with the v2.3.x feature set: guest role, share-links, dedup, thumbnails, NSFW review tool, auto-update, smart-resume backfill, gallery gestures, view-mode picker.
+- New WebSocket event matrix in `docs/API.md`.
+- New SPA + backend module index in `docs/ARCHITECTURE.md`.
+- New auto-update + ffmpeg + thumbnail concurrency env vars documented in `docs/DEPLOY.md`.
+
+### SW
+- VERSION bumped `'v36'` → `'v37'`.
+
 ## [2.3.36] — 2026-04-30
 
 ### Added — Gallery picker: desktop-grade gestures
