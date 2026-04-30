@@ -128,6 +128,15 @@
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
         }
+        /* Disable iOS Safari double-tap-to-zoom across the whole app.
+           `touch-action: manipulation` permits scroll + pinch but kills
+           the double-tap-zoom gesture — needed because the HTML
+           viewport's `user-scalable=no` is intentionally ignored on
+           iOS 10+ (Apple removed the kill-switch for accessibility).
+           Override per-element where a custom touch interpretation is
+           needed (e.g. `#image-container` uses `touch-action: none`
+           for its own zoom math, lasso-active does the same). */
+        body { touch-action: manipulation; }
         /* Mono font hooks — Tailwind's `font-mono` and any inline mono
            class now resolve to IBM Plex Mono so the time block + log
            viewer + queue size column read consistently. Mono stays IBM

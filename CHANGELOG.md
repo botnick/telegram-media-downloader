@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.39] — 2026-04-30
+
+### Fixed — iOS double-tap zoom
+- `body { touch-action: manipulation }` disables the double-tap-to-zoom gesture across the whole app. The HTML viewport's `user-scalable=no` is intentionally ignored on iOS 10+, so `touch-action` is the only reliable way to silence it. Pinch-zoom is preserved; per-element overrides (`#image-container`, `.lasso-active`) keep their custom touch handling.
+
+### SW
+- VERSION bumped `'v38'` → `'v39'`.
+
 ## [2.3.38] — 2026-04-30
 
 ### Added — Gallery picker: mobile gestures
