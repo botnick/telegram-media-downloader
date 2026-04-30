@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.38] — 2026-04-30
+
+### Added — Gallery picker: mobile gestures
+- **Touch long-press** → enter select-mode + toggle (with `navigator.vibrate(10)` haptic when supported).
+- **Drag after long-press** → continue selecting (Android Material pattern). Each tile the finger crosses is added once.
+- **Two-finger drag** → lasso (iOS Photos pattern). One-finger drag is reserved for page scroll.
+- Pinch-to-zoom cancels the in-progress long-press cleanly so it never trips a select.
+- Long-press logic consolidated into `gallery-select.js`; the duplicate handler in `setupGalleryGestures` is gone.
+
+### Docs
+- README updated with the new touch gesture matrix.
+
+### SW
+- VERSION bumped `'v37'` → `'v38'`.
+
 ## [2.3.37] — 2026-04-30
 
 ### Docs

@@ -87,14 +87,117 @@ export function setupGallerySelect(hooks = {}) {
 
     // ----- Drag-to-select lasso ----------------------------------------
     //
-    // Mouse-only (touch already has long-press → tap-to-toggle, which is
-    // the platform-native pattern). Pointer events keep the math simple
-    // because they coalesce mouse + pen into one stream.
+    // Three gesture sources, all routed through the same pointer-event
+    // pipeline so the math stays in one place:
+    //
+    //   - Desktop / pen: mousedown anywhere on the grid → drag = lasso.
+    //   - iOS-style: two-finger drag → lasso. Native iOS Photos uses
+    //     this; one-finger drag is reserved for scroll.
+    //   - Android-style: long-press on a tile → enter select mode +
+    //     toggle; **drag the finger after** the long-press → continue
+    //     toggling tiles the finger passes over (material pattern).
+    //     Honored when select-mode is already active.
+    //
+    // Pinch-zoom must NOT trigger selection, so we ignore the first
+    // touch when a SECOND touch lands quickly afterwards (handled by
+    // the touch-id tracker below).
     let drag = null;     // { startX, startY, additive, baseSelection, tileRects }
     const DRAG_THRESHOLD = 5;   // px — distance before we treat as lasso
+    const LONG_PRESS_MS = 500;  // standard mobile long-press duration
+    const _activeTouchIds = new Set();   // tracks concurrent touch fingers
+    let _longPressTimer = 0;
+    let _longPressTile = null;
+    let _longPressStartX = 0;
+    let _longPressStartY = 0;
+
+    function _cancelLongPress() {
+        if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = 0; }
+        _longPressTile = null;
+    }
 
     grid.addEventListener('pointerdown', (ev) => {
-        if (ev.button !== 0 || ev.pointerType === 'touch') return;
+        if (ev.button !== 0) return;
+
+        // --- Touch: enter the activeTouchIds tracker so we know if a
+        // pinch is happening. Touch select model:
+        //
+        //   - One-finger tap on tile (no movement)        → toggle (in select-mode)
+        //                                                   or open viewer (otherwise) — handled by click
+        //   - One-finger long-press (~500ms hold)         → enter select-mode + toggle
+        //   - One-finger drag AFTER a long-press fired    → continue-select (Android material)
+        //   - Two-finger drag                             → lasso (iOS Photos pattern)
+        //   - One-finger drag without long-press          → page scroll (do nothing here)
+        //
+        // Pinch-zoom is filtered: a second finger landing
+        // CANCELS the in-progress long-press (so a pinch-to-zoom never
+        // accidentally triggers select).
+        if (ev.pointerType === 'touch') {
+            _activeTouchIds.add(ev.pointerId);
+            const insideButton = ev.target.closest('button, a, input, [data-tile-open]');
+            if (insideButton) { _cancelLongPress(); return; }
+
+            // Second finger landed — pinch / two-finger lasso. Cancel
+            // the long-press timer the first finger started so we don't
+            // also enter select-mode mid-pinch.
+            const isTwoFinger = _activeTouchIds.size >= 2;
+            if (isTwoFinger) {
+                _cancelLongPress();
+                drag = {
+                    startX: ev.clientX, startY: ev.clientY,
+                    curX: ev.clientX, curY: ev.clientY,
+                    additive: true,
+                    baseSelection: new Set(state.selected),
+                    tileRects: null, moved: false,
+                    pointerId: ev.pointerId, continueMode: false,
+                };
+                return;
+            }
+
+            // First finger on a tile — start long-press timer. Cleared
+            // by pointermove (above DRAG_THRESHOLD) or pointerup.
+            const tile = ev.target.closest('.media-item[data-path]');
+            if (tile) {
+                _longPressTile = tile;
+                _longPressStartX = ev.clientX;
+                _longPressStartY = ev.clientY;
+                _cancelLongPress();
+                _longPressTimer = setTimeout(() => {
+                    _longPressTimer = 0;
+                    if (!_longPressTile) return;
+                    // Promote: enter select-mode, toggle this tile, and
+                    // arm continue-select drag so subsequent finger
+                    // movement keeps adding tiles.
+                    _autoEnableSelectMode();
+                    const path = _longPressTile.dataset.path;
+                    state.selected = state.selected || new Set();
+                    state.selected.add(path);
+                    _longPressTile.classList.add('is-selected');
+                    _lastAnchorPath = path;
+                    hooks.onChange?.();
+                    // Haptic feedback when supported (Chrome on Android).
+                    if (navigator.vibrate) try { navigator.vibrate(10); } catch {}
+                    // Arm continue-select for the remaining finger gesture.
+                    drag = {
+                        startX: _longPressStartX, startY: _longPressStartY,
+                        curX: _longPressStartX, curY: _longPressStartY,
+                        additive: true,
+                        baseSelection: new Set(state.selected),
+                        tileRects: null, moved: true,    // skip threshold (already pressed)
+                        pointerId: ev.pointerId,
+                        continueMode: true,
+                    };
+                    // Cache rects for the continue-select hit-test.
+                    drag.tileRects = [];
+                    grid.querySelectorAll('.media-item[data-path]').forEach(t => {
+                        drag.tileRects.push({ el: t, path: t.dataset.path, rect: t.getBoundingClientRect() });
+                    });
+                    grid.classList.add('lasso-active');
+                }, LONG_PRESS_MS);
+            }
+            return;
+        }
+
+        // --- Mouse / pen path (desktop) ---
         // Only start a lasso when the press lands on grid empty space OR
         // on a tile that the user actually wants to drag-select. The
         // common shared-CSS-grid layout has very little empty space, so
@@ -123,10 +226,18 @@ export function setupGallerySelect(hooks = {}) {
             tileRects: null,
             moved: false,
             pointerId: ev.pointerId,
+            continueMode: false,
         };
     }, { passive: true });
 
     window.addEventListener('pointermove', (ev) => {
+        // Cancel a pending long-press if the finger drifted before the
+        // timer fired — the user is scrolling, not long-pressing.
+        if (_longPressTimer && ev.pointerType === 'touch') {
+            const dx = ev.clientX - _longPressStartX;
+            const dy = ev.clientY - _longPressStartY;
+            if (Math.hypot(dx, dy) > 10) _cancelLongPress();
+        }
         if (!drag) return;
         const dx = ev.clientX - drag.startX;
         const dy = ev.clientY - drag.startY;
@@ -148,6 +259,25 @@ export function setupGallerySelect(hooks = {}) {
         }
         drag.curX = ev.clientX;
         drag.curY = ev.clientY;
+
+        // Continue-select mode (Android material long-press-then-drag):
+        // walk the finger across tiles and toggle each one ONCE the
+        // first time it's crossed. No rectangle — selection is sticky.
+        if (drag.continueMode) {
+            // Find the tile under the current pointer position.
+            for (const { el, path, rect } of drag.tileRects) {
+                if (drag.curX >= rect.left && drag.curX <= rect.right
+                    && drag.curY >= rect.top && drag.curY <= rect.bottom) {
+                    if (!el.classList.contains('is-selected')) {
+                        state.selected.add(path);
+                        el.classList.add('is-selected');
+                        hooks.onChange?.();
+                    }
+                    break;
+                }
+            }
+            return;
+        }
 
         // Position the lasso rectangle (viewport-fixed coords).
         const left   = Math.min(drag.startX, drag.curX);
@@ -178,13 +308,14 @@ export function setupGallerySelect(hooks = {}) {
     const finishDrag = (commit) => {
         if (!drag) return;
         const wasMoved = drag.moved;
+        const wasContinue = drag.continueMode;
         if (lasso) {
             lasso.classList.remove('visible');
             lasso.style.width = '0';
             lasso.style.height = '0';
         }
         grid.classList.remove('lasso-active');
-        if (wasMoved && commit) {
+        if (wasMoved && commit && !wasContinue) {
             _autoEnableSelectMode();
             // additive=false → replace; additive=true → union with base.
             const baseSel = drag.additive ? new Set(drag.baseSelection) : new Set();
@@ -199,10 +330,12 @@ export function setupGallerySelect(hooks = {}) {
                 el.classList.remove('is-marquee');
             }
             hooks.onChange?.();
-        } else if (drag.tileRects) {
+        } else if (drag.tileRects && !wasContinue) {
             // Cancelled / sub-threshold drag — clear marquee highlights.
             for (const { el } of drag.tileRects) el.classList.remove('is-marquee');
         }
+        // Continue-mode already updated each tile in pointermove; nothing
+        // to commit here.
         try { grid.releasePointerCapture?.(drag.pointerId); } catch {}
         const wasReal = wasMoved;
         drag = null;
@@ -213,8 +346,17 @@ export function setupGallerySelect(hooks = {}) {
             window.addEventListener('click', swallow, { capture: true, once: true });
         }
     };
-    window.addEventListener('pointerup', () => finishDrag(true));
-    window.addEventListener('pointercancel', () => finishDrag(false));
+    window.addEventListener('pointerup', (ev) => {
+        // Touch finger lifted — drop from the active-touches tracker.
+        if (ev.pointerType === 'touch') _activeTouchIds.delete(ev.pointerId);
+        _cancelLongPress();
+        finishDrag(true);
+    });
+    window.addEventListener('pointercancel', (ev) => {
+        if (ev.pointerType === 'touch') _activeTouchIds.delete(ev.pointerId);
+        _cancelLongPress();
+        finishDrag(false);
+    });
 
     // ----- Keyboard shortcuts ------------------------------------------
     //

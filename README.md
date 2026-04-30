@@ -119,7 +119,10 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **YouTube/Netflix/Telegram-grade video player** — buffered indicator, click + drag scrub, hover preview, scroll-wheel volume, persisted volume / speed, race-safe resume, full keyboard shortcuts (Space / K / M / F / 0–9 / &lt; &gt;), double-tap mobile seek.
 - **Themed sheets replace native dialogs** — `confirmSheet` / `promptSheet` everywhere; no more browser `alert()` / `confirm()` / `prompt()`.
 - **Media gallery** — append-on-scroll (page-2+ adds tiles in place — no full re-render), lazy loading, server-side WebP thumbnails, type filters (Photos / Videos / Files / Audio), three view modes (Grid / Compact / List with full file metadata columns) selected from a dropdown picker. Mobile uses a smaller page size + poster-only video tiles for smooth scroll on iOS Safari.
-- **Desktop-grade picker / select-mode** — drag-to-select rubber-band lasso, Ctrl/Cmd + click toggle, Shift + click range, Ctrl/Cmd + A select-all-visible, Esc exit, Delete/Backspace bulk-delete. All in-place; no grid re-render per click.
+- **Picker / select-mode covers every platform** —
+    - Desktop: drag-to-select lasso · Ctrl/Cmd + click toggle · Shift + click range · Ctrl/Cmd + A select-all · Esc exit · Delete/Backspace bulk-delete.
+    - Touch: long-press to enter select-mode + toggle (with haptic feedback when supported) · drag-after-long-press to continue selecting (Material pattern) · two-finger drag = lasso (iOS Photos pattern). Pinch-to-zoom cancels the long-press cleanly.
+    - All in-place; no grid re-render per click.
 - **Search across all downloads** — server-side `LIKE` search over filename + group name with debounced input + AbortController for race-free fast typing.
 - **Paste t.me link** — drop one or many URLs (newline-separated) to download just those messages.
 - **Stories drawer** — fetch a username's active Stories, pick which ones to save.

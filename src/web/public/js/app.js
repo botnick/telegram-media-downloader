@@ -19,7 +19,7 @@ import * as router from './router.js';
 import { openSheet, confirmSheet } from './sheet.js';
 import { renderChatRow, renderEmptyState, renderRowSkeletons, renderGallerySkeletons } from './components.js';
 import { formatRelativeTime } from './utils.js';
-import { attachLongPress, attachPullToRefresh } from './gestures.js';
+import { attachPullToRefresh } from './gestures.js';
 import { setupGallerySelect, exitSelectMode, repaintSelection } from './gallery-select.js';
 import { initI18n, setLang, getLang, applyToDOM as applyI18n, t as i18nT, tf as i18nTf } from './i18n.js';
 import { showBackfillPage, deepLinkFromModal as backfillDeepLink, stopBackfillPage } from './backfill.js';
@@ -1183,17 +1183,11 @@ function setupGalleryGestures() {
     const grid = document.getElementById('media-grid');
     if (!grid) return;
 
-    // Long-press on a tile → enter selection mode + toggle that tile.
-    attachLongPress(grid, {
-        selector: '.media-item[data-path]',
-        onLongPress: (el) => {
-            if (!state.selectMode) {
-                state.selectMode = true;
-                document.getElementById('select-mode-btn')?.classList.add('bg-tg-blue', 'text-white');
-            }
-            toggleSelection(el.dataset.path);
-        },
-    });
+    // Long-press → enter select-mode + toggle + arm continue-select drag
+    // is handled inside gallery-select.js (single owner of touch + mouse
+    // gestures). The previous attachLongPress duplicate here was removed
+    // in v2.3.38 to avoid double-fire (both handlers would have toggled
+    // the same tile).
 
     // Pull-to-refresh on the viewer's scroll container.
     const scroll = document.getElementById('content-area');

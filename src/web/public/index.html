@@ -524,9 +524,14 @@
             transform: scale(1.05);
         }
         /* During an active lasso drag, prevent text selection on the grid
-           so the rectangle doesn't accidentally highlight text. */
-        .media-grid.lasso-active { user-select: none; -webkit-user-select: none; }
+           so the rectangle doesn't accidentally highlight text. Also
+           disable touch panning ON THE GRID DURING THE DRAG ONLY — the
+           rest of the time normal vertical scroll works as expected. */
+        .media-grid.lasso-active { user-select: none; -webkit-user-select: none; touch-action: none; }
         .media-grid.lasso-active .media-item { cursor: default; }
+        /* Tiles disable browser long-press context menus on touch — we
+           own the long-press gesture for entering select mode. */
+        .media-item { -webkit-touch-callout: none; }
 
         /* The rubber-band lasso rectangle. Position: fixed so it tracks
            the mouse in viewport coordinates regardless of scroll. */
