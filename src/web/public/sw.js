@@ -16,7 +16,7 @@
 // Bump on every meaningful release. The activate handler clears any cache
 // whose key doesn't match the current pair, so old shell + asset caches
 // get evicted automatically when this string changes.
-const VERSION = 'v26';
+const VERSION = 'v27';
 const SHELL_CACHE = `tgdl-shell-${VERSION}`;
 const ASSET_CACHE = `tgdl-assets-${VERSION}`;
 
@@ -46,6 +46,10 @@ const BYPASS_PREFIXES = [
     '/login',
     '/setup-needed',
     '/add-account',
+    // Share links carry HMAC-signed tokens that must hit the network on
+    // every request — caching them would let revoked links keep serving
+    // bytes from the SW, defeating the revoke flow.
+    '/share/',
 ];
 
 function isBypass(url) {

@@ -19,7 +19,8 @@ import { StringSession } from 'telegram/sessions/index.js';
 import crypto from 'crypto';
 
 import { getOrGenerateSecret } from '../core/secret.js';
-import { getDb, getDownloads, getAllDownloads, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames, searchDownloads, deleteDownloadsBy } from '../core/db.js';
+import { getDb, getDownloads, getAllDownloads, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames, searchDownloads, deleteDownloadsBy,
+    createShareLink, getShareLinkForServe, bumpShareLinkAccess, revokeShareLink, listShareLinks } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager } from '../core/accounts.js';
@@ -28,6 +29,8 @@ import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
 import { findDuplicates as dedupFindDuplicates, deleteByIds as dedupDeleteByIds } from '../core/dedup.js';
+import { ensureShareSecret, verifyShareToken, buildShareUrlPath,
+    clampTtlSeconds, TTL_DEFAULT_SEC } from '../core/share.js';
 import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
@@ -328,6 +331,25 @@ app.use((req, res, next) => {
 // process alive on shutdown.
 startSessionGc();
 
+// Bootstrap the share-link HMAC secret. Lazy-generated on first boot,
+// persisted to config.web.shareSecret. Done inside an async IIFE so a
+// missing config file (very-first boot) doesn't crash module load —
+// re-runs on the next request that touches `readConfigSafe`.
+(async () => {
+    try {
+        const cfg = await readConfigSafe();
+        const { generated } = ensureShareSecret(cfg);
+        if (generated) {
+            await writeConfigAtomic(cfg);
+            console.log('[share] generated new HMAC secret (first boot or rotation).');
+        }
+    } catch (e) {
+        // Non-fatal — verifyShareToken will throw at first /share/* request
+        // and the user will see a 500. Better than crashing the whole web.
+        console.warn('[share] secret bootstrap deferred:', e?.message || e);
+    }
+})();
+
 // ============ AUTHENTICATION ============
 
 // Simple cookie parser middleware
@@ -382,6 +404,10 @@ async function writeConfigAtomic(config) {
 const PUBLIC_PATH_PREFIXES = [
     '/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon', '/metrics',
     '/icons/', '/manifest.webmanifest', '/sw.js',
+    // Share-link public route — auth is the HMAC sig + DB row check inside
+    // the handler, NOT the dashboard cookie. Without this prefix, friends
+    // following a share URL would be redirected to /login.html.
+    '/share/',
 ];
 const PUBLIC_API_PATHS = new Set([
     '/api/login',
@@ -1017,6 +1043,98 @@ app.get('/metrics', (req, res) => {
     }
     runtime.status(); // refresh gauges
     res.type('text/plain; version=0.0.4').send(metrics.render());
+});
+
+// ====== Public share-link route (HMAC-gated, no dashboard cookie) ==========
+//
+// Registered BEFORE the global checkAuth so a friend with a valid /share
+// URL never sees a /login redirect. Three independent gates protect the
+// route:
+//   1. shareLimiter      — 60 req/min per IP, slows brute-forcing the sig
+//   2. verifyShareToken  — HMAC-SHA256, timing-safe constant-time compare
+//   3. getShareLinkForServe — DB row check (revoked? expired?)
+//
+// Only after all three pass do we delegate to safeResolveDownload + the
+// existing file-streaming code (so Range requests and Content-Type
+// behave identically to /files/*). Cache-Control: no-store keeps a
+// shared CDN/proxy from hijacking the bytes for the next visitor.
+const shareLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 60,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many requests — slow down.' },
+});
+
+app.get('/share/:linkId', shareLimiter, async (req, res, next) => {
+    try {
+        const linkId = parseInt(req.params.linkId, 10);
+        const exp = parseInt(req.query.exp, 10);
+        const sig = req.query.sig;
+        if (!Number.isInteger(linkId) || linkId <= 0
+            || !Number.isInteger(exp) || exp <= 0
+            || typeof sig !== 'string' || !sig) {
+            return res.status(400).type('text/plain').send('Invalid share link');
+        }
+
+        // Sig + expiry checks are independent so an attacker can't tell from
+        // the response *which* check failed (timing/shape leak ≈ none).
+        // Both fail with a generic 401.
+        const sigOk = verifyShareToken(linkId, exp, sig);
+        const lookup = getShareLinkForServe(linkId, Math.floor(Date.now() / 1000));
+        if (!sigOk || !lookup || lookup.reason) {
+            // Distinguish reasons in the BODY (UI shows a user-friendly
+            // message) but always return 401 so external scanners can't
+            // enumerate which links exist vs are merely revoked.
+            const code = !sigOk ? 'bad_sig'
+                : lookup?.reason === 'revoked' ? 'revoked'
+                : lookup?.reason === 'expired' ? 'expired'
+                : 'bad_sig';
+            return res.status(401).json({ error: 'Share link is not valid', code });
+        }
+
+        const row = lookup.row;
+        const r = await safeResolveDownload(row.file_path);
+        if (!r.ok) {
+            // File row exists but disk file is gone — surface as 404 so the
+            // friend doesn't think the link is wrong.
+            return res.status(404).type('text/plain').send('File not found');
+        }
+
+        // Bump access counter — cheap, non-blocking on errors.
+        bumpShareLinkAccess(linkId);
+
+        // Anti-CDN cache + don't allow shared caches to cache. Bytes are
+        // gated per-token; if the token is later revoked, no cache layer
+        // should keep handing the file out.
+        res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        // Block clickjacking-style framing of the raw stream from a third
+        // party site (defence-in-depth — bytes themselves rarely matter
+        // here, but a video tag in an iframe could fingerprint the user).
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Referrer-Policy', 'no-referrer');
+
+        // Force download when ?download=1, otherwise let the browser pick
+        // (mirrors /files/* semantics so an image/video plays inline by
+        // default and a generic file goes to the download tray).
+        const forceDl = req.query.download === '1' || req.query.download === 'true';
+        const safeName = (row.file_name || `file-${linkId}`).replace(/[\r\n"]/g, '_');
+        const disp = forceDl ? 'attachment' : 'inline';
+        // RFC 5987 filename* for non-ASCII filenames + ASCII fallback.
+        res.setHeader('Content-Disposition',
+            `${disp}; filename="${safeName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+
+        // Hand off to express's static-style sendFile which supports Range.
+        // sendFile sets Content-Type from the extension, which is what we
+        // want — sniff-protection lives in helmet's nosniff header.
+        return res.sendFile(r.real, (err) => {
+            if (err && !res.headersSent) next(err);
+        });
+    } catch (e) {
+        console.error('share serve:', e);
+        if (!res.headersSent) res.status(500).type('text/plain').send('Internal error');
+    }
 });
 
 // Apply Auth Globally
@@ -2449,6 +2567,7 @@ app.get('/api/downloads/all', async (req, res) => {
                 ? stored
                 : `${fallbackFolder}/${typeFolder}/${row.file_name}`;
             return {
+                id: row.id,
                 name: row.file_name,
                 path: row.file_path,
                 fullPath,
@@ -3056,6 +3175,112 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
         res.json({ success: true, ...r });
     } catch (e) {
         console.error('dedup/delete:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ====== Share-link admin API ===============================================
+//
+// Admin-only by virtue of the chokepoint (the path isn't on either
+// guest allowlist). Each call returns the canonical URL the SPA shows in
+// the Share sheet — built from the request's own host+protocol so it
+// works behind reverse proxies (helmet trust-proxy is set elsewhere).
+function _shareUrlFor(req, linkId, expSec) {
+    const proto = req.protocol;
+    const host = req.get('host');
+    return `${proto}://${host}${buildShareUrlPath(linkId, expSec)}`;
+}
+
+function _shareLinkPayload(req, row) {
+    const expSec = Math.floor((row.expires_at ?? row.expiresAt ?? 0));
+    const linkId = row.id;
+    return {
+        id: linkId,
+        downloadId: row.download_id ?? row.downloadId,
+        createdAt: row.created_at ?? row.createdAt,
+        expiresAt: expSec,
+        revokedAt: row.revoked_at ?? null,
+        label: row.label ?? null,
+        accessCount: row.access_count ?? 0,
+        lastAccessedAt: row.last_accessed_at ?? null,
+        fileName: row.file_name,
+        fileType: row.file_type,
+        fileSize: row.file_size,
+        groupId: row.group_id,
+        groupName: row.group_name,
+        url: _shareUrlFor(req, linkId, expSec),
+    };
+}
+
+// Mint a new share link for a single download row. Body:
+//   { downloadId, ttlSeconds?, label? }
+// ttlSeconds is clamped to [60, 90 days]; default 7 days.
+app.post('/api/share/links', async (req, res) => {
+    try {
+        const { downloadId, ttlSeconds, label } = req.body || {};
+        const did = parseInt(downloadId, 10);
+        if (!Number.isInteger(did) || did <= 0) {
+            return res.status(400).json({ error: 'downloadId required' });
+        }
+        // Confirm the download row exists — otherwise the link would
+        // perpetually 404, and we'd be storing useless rows.
+        const exists = getDb().prepare('SELECT id FROM downloads WHERE id = ?').get(did);
+        if (!exists) return res.status(404).json({ error: 'Download not found' });
+
+        const ttl = clampTtlSeconds(ttlSeconds ?? TTL_DEFAULT_SEC);
+        // ttl === 0 = "never expires" sentinel — store expires_at = 0
+        // (the verifier skips the time gate; revocation still works).
+        const expSec = ttl === 0 ? 0 : Math.floor(Date.now() / 1000) + ttl;
+        // Defensive label hygiene — keep labels short and free of control
+        // chars so they render safely in the admin UI without escaping.
+        const cleanLabel = typeof label === 'string'
+            ? label.replace(/[\r\n\t]/g, ' ').trim().slice(0, 80) || null
+            : null;
+
+        const { id } = createShareLink({ downloadId: did, expiresAt: expSec, label: cleanLabel });
+
+        // Re-load with the joined download metadata so the response is the
+        // same shape as the list endpoint (UI doesn't have to re-fetch).
+        const list = listShareLinks({ downloadId: did, limit: 1000 });
+        const row = list.find(r => r.id === id);
+        res.json({ success: true, link: row ? _shareLinkPayload(req, row) : null });
+    } catch (e) {
+        console.error('share/links create:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// List share-links — `?downloadId=…` filters to one file (Share sheet);
+// no filter returns ALL links across the library (Maintenance sheet).
+app.get('/api/share/links', async (req, res) => {
+    try {
+        const downloadId = req.query.downloadId
+            ? parseInt(req.query.downloadId, 10)
+            : null;
+        const includeRevoked = req.query.includeRevoked !== '0';
+        const rows = listShareLinks({ downloadId, includeRevoked });
+        res.json({
+            success: true,
+            links: rows.map(r => _shareLinkPayload(req, r)),
+        });
+    } catch (e) {
+        console.error('share/links list:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Revoke a single share-link by id. Idempotent — revoking an already-
+// revoked link returns success: true with revoked: false.
+app.delete('/api/share/links/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ error: 'Invalid id' });
+        }
+        const did = revokeShareLink(id);
+        res.json({ success: true, revoked: did });
+    } catch (e) {
+        console.error('share/links revoke:', e);
         res.status(500).json({ error: e.message });
     }
 });

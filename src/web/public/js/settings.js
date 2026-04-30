@@ -864,10 +864,21 @@ function wireMaintenance() {
     once(document.getElementById('maint-db-vacuum-btn'), maintDbVacuum);
     once(document.getElementById('maint-verify-btn'), maintVerifyFiles);
     once(document.getElementById('maint-dedup-btn'), maintFindDuplicates);
+    once(document.getElementById('maint-shares-btn'), maintManageShares);
     once(document.getElementById('maint-logs-btn'), maintBrowseLogs);
     once(document.getElementById('maint-config-btn'), maintViewConfig);
     once(document.getElementById('maint-export-btn'), maintExportSession);
     once(document.getElementById('maint-signout-all-btn'), maintRevokeAllSessions);
+}
+
+async function maintManageShares() {
+    try {
+        const m = await import('./share.js');
+        await m.openAllSharesSheet();
+    } catch (e) {
+        console.error('shares sheet load:', e);
+        showToast(i18nT('share.error.load', 'Could not open share manager — try again'), 'error');
+    }
 }
 
 // Find duplicate files by SHA-256 — opens a sheet showing every set of

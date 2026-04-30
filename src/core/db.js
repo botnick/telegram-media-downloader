@@ -29,6 +29,10 @@ export function getDb() {
     db.pragma('busy_timeout = 5000');
     // Tame WAL growth on sustained writes — checkpoint every ~1000 pages.
     db.pragma('wal_autocheckpoint = 1000');
+    // Per-connection FK enforcement — required for ON DELETE CASCADE on
+    // share_links (and any future FK we add). Set BEFORE initSchema so the
+    // first row insert / migration honors it.
+    db.pragma('foreign_keys = ON');
 
     initSchema();
     return db;
@@ -103,6 +107,123 @@ function initSchema() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     `);
+
+    // Share Links — admin-issued tokens that let a non-user (e.g. friend
+    // with the URL) stream/download a single download without logging in.
+    // The HMAC-signed URL is the cryptographic gate; this table is what
+    // makes per-link revocation + audit possible (the row is the source
+    // of truth for revoked_at, and the access counters surface usage in
+    // the admin "Active share links" sheet).
+    //
+    // ON DELETE CASCADE on download_id means deleting/purging a file
+    // automatically kills every outstanding share link for that file —
+    // critical so a revoked file doesn't keep streaming bytes from disk.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS share_links (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            download_id      INTEGER NOT NULL,
+            created_at       INTEGER NOT NULL,
+            expires_at       INTEGER NOT NULL,
+            revoked_at       INTEGER,
+            label            TEXT,
+            last_accessed_at INTEGER,
+            access_count     INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_share_links_download ON share_links(download_id);
+        CREATE INDEX IF NOT EXISTS idx_share_links_expiry ON share_links(expires_at);
+    `);
+    // FK enforcement is per-connection in SQLite — flip it on once we know
+    // the table exists. Without this, ON DELETE CASCADE silently no-ops.
+    try { db.pragma('foreign_keys = ON'); } catch {}
+}
+
+// ---- Share links ----------------------------------------------------------
+
+/**
+ * Insert a new share-link row and return its id + creation timestamp.
+ * The signed URL itself is built by `share.js` after this returns; this
+ * table is purely the revocation/audit source of truth.
+ */
+export function createShareLink({ downloadId, expiresAt, label = null }) {
+    const now = Date.now();
+    const stmt = getDb().prepare(`
+        INSERT INTO share_links (download_id, created_at, expires_at, label, access_count)
+        VALUES (?, ?, ?, ?, 0)
+    `);
+    const r = stmt.run(Number(downloadId), now, Number(expiresAt), label || null);
+    return { id: r.lastInsertRowid, createdAt: now };
+}
+
+/**
+ * Lookup the row that backs a /share/<id> request. Returns null when the
+ * row doesn't exist OR is revoked OR is expired — the verifier treats
+ * "not found" as 401 across the board so an attacker can't tell the
+ * three apart by timing/response shape.
+ */
+export function getShareLinkForServe(id, now = Date.now()) {
+    const row = getDb().prepare(`
+        SELECT s.*, d.file_path, d.file_name, d.file_type, d.file_size
+          FROM share_links s
+          JOIN downloads d ON d.id = s.download_id
+         WHERE s.id = ?
+    `).get(Number(id));
+    if (!row) return null;
+    if (row.revoked_at != null) return { row, reason: 'revoked' };
+    // expires_at === 0 is the "never expires" sentinel — the admin opted
+    // out of the time-based gate at mint time. Revocation still works.
+    if (row.expires_at !== 0 && row.expires_at <= now) {
+        return { row, reason: 'expired' };
+    }
+    return { row, reason: null };
+}
+
+/**
+ * Bump the access counter + last_accessed_at after a successful serve.
+ * Cheap single-row UPDATE; safe to call inside the request handler.
+ */
+export function bumpShareLinkAccess(id) {
+    try {
+        getDb().prepare(`
+            UPDATE share_links
+               SET access_count = access_count + 1,
+                   last_accessed_at = ?
+             WHERE id = ?
+        `).run(Date.now(), Number(id));
+    } catch { /* non-fatal — bytes already on the wire */ }
+}
+
+export function revokeShareLink(id) {
+    const r = getDb().prepare(`
+        UPDATE share_links
+           SET revoked_at = ?
+         WHERE id = ? AND revoked_at IS NULL
+    `).run(Date.now(), Number(id));
+    return r.changes > 0;
+}
+
+/**
+ * List share-links. Pass `{ downloadId }` to filter to one file (used by
+ * the per-file Share sheet); omit it for the admin's "all shares" sheet.
+ * Joins the underlying download so the UI can render the file name +
+ * group context without a second round-trip.
+ */
+export function listShareLinks({ downloadId = null, includeRevoked = true, limit = 500 } = {}) {
+    const where = [];
+    const args = [];
+    if (downloadId != null) { where.push('s.download_id = ?'); args.push(Number(downloadId)); }
+    if (!includeRevoked) where.push('s.revoked_at IS NULL');
+    const sql = `
+        SELECT s.id, s.download_id, s.created_at, s.expires_at, s.revoked_at,
+               s.label, s.last_accessed_at, s.access_count,
+               d.file_name, d.file_type, d.file_size, d.group_id, d.group_name
+          FROM share_links s
+          JOIN downloads d ON d.id = s.download_id
+         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+         ORDER BY s.created_at DESC
+         LIMIT ?
+    `;
+    return getDb().prepare(sql).all(...args, Math.max(1, Math.min(2000, limit)));
 }
 
 export function insertDownload(data) {

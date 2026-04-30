@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { Api } from 'telegram';
 import { DebugLogger } from './logger.js';
 import { getDb, insertDownload, isDownloaded as dbIsDownloaded } from './db.js';
+import { sha256OfFile } from './checksum.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -746,7 +747,7 @@ export class DownloadManager extends EventEmitter {
                     try { await fs.unlink(writtenPath); } catch {}
                     throw new Error('Final file is 0 bytes after rename');
                 }
-                return this.registerDownload(job, writtenPath, finalStats.size);
+                return await this.registerDownload(job, writtenPath, finalStats.size);
 
             } catch (error) {
                 try {
@@ -815,15 +816,61 @@ export class DownloadManager extends EventEmitter {
         }
     }
 
-    registerDownload(job, filePath, size) {
+    async registerDownload(job, filePath, size) {
         const groupId = job.groupId || 'unknown';
         const msgId = job.message.id;
+
+        // ---- Download-time dedup (SHA-256) -------------------------------
+        //
+        // Hash the just-written file and check whether the same content is
+        // already on disk under a previous DB row. If it is, drop the new
+        // copy and point this row at the existing file. Net effect: no
+        // duplicate bytes on disk, but the (group, message) → file mapping
+        // is still recorded so the gallery shows the file in this group too.
+        //
+        // Failures here are non-fatal: any error (read failure, permission)
+        // falls through and stores the row with the file in place. The
+        // /api/maintenance/dedup catch-up scan will pick it up later.
+        let fileHash = null;
+        let storedPath = filePath;
+        let storedSize = size;
+        let bytesAddedToDisk = size;
+        try {
+            fileHash = await sha256OfFile(filePath);
+            // Match on hash AND size — size match guards against the
+            // (vanishingly improbable) SHA-256 collision and rejects rows
+            // with a NULL/zero size from older downloader versions.
+            const dup = getDb().prepare(`
+                SELECT id, file_path, file_size FROM downloads
+                 WHERE file_hash = ? AND file_size = ?
+                 ORDER BY id ASC
+                 LIMIT 1
+            `).get(fileHash, size);
+            if (dup && dup.file_path) {
+                // Confirm the existing pointer still resolves before we
+                // unlink the freshly downloaded copy — otherwise we'd end
+                // up with TWO DB rows pointing at a missing file.
+                const dupAbs = path.isAbsolute(dup.file_path)
+                    ? dup.file_path
+                    : path.resolve(DOWNLOADS_DIR, dup.file_path);
+                if (existsSync(dupAbs)) {
+                    try { await fs.unlink(filePath); } catch { /* leave stale; integrity sweep handles it */ }
+                    storedPath = dupAbs;        // share the existing on-disk file
+                    bytesAddedToDisk = 0;       // no new bytes written
+                    storedSize = dup.file_size; // exactly equal to `size` here
+                }
+            }
+        } catch (e) {
+            // Hash failed (very rare — file disappeared between rename and
+            // open). Fall through and store the row with the new file path.
+            console.warn('[downloader] dedup hash failed:', e?.message || e);
+        }
 
         // DB Insert
         try {
             // Determine type based on extension or message
             let type = 'document';
-            const ext = path.extname(filePath).toLowerCase();
+            const ext = path.extname(storedPath).toLowerCase();
             if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) type = 'photo';
             else if (['.mp4', '.mov', '.avi', '.mkv'].includes(ext)) type = 'video';
             else if (['.mp3', '.ogg', '.wav', '.m4a'].includes(ext)) type = 'audio';
@@ -832,11 +879,12 @@ export class DownloadManager extends EventEmitter {
                 groupId: String(groupId),
                 groupName: job.groupName || null,
                 messageId: msgId,
-                fileName: path.basename(filePath),
-                fileSize: size,
+                fileName: path.basename(storedPath),
+                fileSize: storedSize,
                 fileType: type,
-                filePath: path.relative(DOWNLOADS_DIR, filePath),
+                filePath: path.relative(DOWNLOADS_DIR, storedPath),
                 ttlSeconds: job.ttlSeconds || null,
+                fileHash,
                 // Rescue Mode: when the monitor stamps `pendingUntil` on the
                 // job, the row gets inserted with that expiry so the rescue
                 // sweeper can prune it later (unless a delete event rescues
@@ -847,19 +895,23 @@ export class DownloadManager extends EventEmitter {
             console.error('DB Insert Error', e);
         }
 
-        this.incrementDiskUsage(size);
-        
+        // Only count the new bytes against the disk budget — a deduped
+        // download added zero bytes, so the rotator quota stays accurate.
+        if (bytesAddedToDisk > 0) this.incrementDiskUsage(bytesAddedToDisk);
+
         this.emit('download_complete', {
-            filePath,
-            fileName: path.basename(filePath),
-            size,
+            filePath: storedPath,
+            fileName: path.basename(storedPath),
+            size: storedSize,
             groupId,
             groupName: job.groupName,
             message: job.message,
-            mediaType: job.mediaType
+            mediaType: job.mediaType,
+            // Surfaces the dedup result for monitor logs / future UI.
+            deduped: bytesAddedToDisk === 0,
         });
 
-        return filePath;
+        return storedPath;
     }
 
     getFileSize(message) {

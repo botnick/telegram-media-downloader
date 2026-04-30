@@ -18,10 +18,10 @@
  * bottleneck, not CPU). Collisions are not a real concern at this scale.
  */
 
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { getDb } from './db.js';
+import { sha256OfFile } from './checksum.js';
 
 // Where the downloader writes by default (relative to the project root).
 // `safeResolveDownload`-style resolution lives in server.js; for the CLI
@@ -46,15 +46,9 @@ function resolveStoredPath(stored) {
     return null;
 }
 
-function hashFile(absPath) {
-    return new Promise((resolve, reject) => {
-        const h = crypto.createHash('sha256');
-        const s = fs.createReadStream(absPath);
-        s.on('error', reject);
-        s.on('data', (chunk) => h.update(chunk));
-        s.on('end', () => resolve(h.digest('hex')));
-    });
-}
+// Wrap the canonical helper so existing call sites in this file keep
+// the same name. Hashing semantics are owned by `core/checksum.js`.
+const hashFile = sha256OfFile;
 
 /**
  * Catch-up hash pass + duplicate enumeration.

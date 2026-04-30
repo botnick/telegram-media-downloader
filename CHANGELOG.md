@@ -2,6 +2,40 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.27] — 2026-04-30
+
+### Added — Token-based shareable media links
+Per user request *"ลิงก์ media ทั้งหมด ขอรูปแบบใช้ token base ในการ auth เลยจะได้ใช้เอาลิงก์ไปใช้ภายนอกได้แบบ ส่งลิงก์ vdo ให้เพื่อนโหลดได้ โดยเพื่อนไม่ต้อง login"*. Admin can now mint signed share-URLs that let a non-user (e.g. a friend) stream or download a single media file without logging into the dashboard.
+
+- **HMAC-SHA256 signed URLs** — `/share/<linkId>?exp=<epoch>&sig=<43-char-base64url>`. The sig binds `linkId|exp` so flipping either invalidates it. Verified with `crypto.timingSafeEqual` (length-checked first to avoid early-return timing leaks).
+- **Per-server secret** in `config.web.shareSecret` — 32 random bytes, lazy-generated on first boot, persisted via the existing atomic config writer. Rotating it invalidates every outstanding link (documented as a feature).
+- **`share_links` table** is the source of truth for revocation + audit (`access_count`, `last_accessed_at`, optional `label`). FK `ON DELETE CASCADE` on `download_id` so deleting/purging a file kills every outstanding link automatically. `PRAGMA foreign_keys = ON` set per-connection for the cascade to fire.
+- **Public `GET /share/:linkId`** — registered BEFORE `checkAuth` and added to `PUBLIC_PATH_PREFIXES`. Three independent gates: rate limiter (60/min/IP), HMAC verify, then DB row check (revoked/expired). All failure modes return 401 with a body code (`bad_sig` / `revoked` / `expired`) so an external scanner can't enumerate which links exist. Hands off to `safeResolveDownload` + `res.sendFile` so **Range requests work** end-to-end (friend can scrub videos). `Cache-Control: no-store` + `X-Frame-Options: DENY` + `Referrer-Policy: no-referrer`.
+- **Admin API `/api/share/links*`** (admin-only via the chokepoint added in v2.3.26):
+  - `POST /api/share/links` — body `{ downloadId, ttlSeconds?, label? }` → returns `{ url, expiresAt, id }`. TTL clamped to `[60s, 90 days]`. **`ttlSeconds: 0`** = "never expires" (per *"ขอแบบไม่มีวันหมดอายุด้วยดิ share"*) — sentinel honored end-to-end (DB stores `expires_at = 0`, verifier skips the time gate, frontend renders "Never expires").
+  - `GET /api/share/links?downloadId=…` — list links for one file (Share sheet) or all (Maintenance sheet).
+  - `DELETE /api/share/links/:id` — revoke. Idempotent.
+- **UI: Share button in viewer modal** (next to Delete/Download, marked `data-admin-only`). Opens a sheet with TTL radio (1h / 24h / 7d / 30d / 90d / Never), optional label, "Create share link" button (auto-copies on success), and a list of existing links with per-row Copy / Revoke + access counter.
+- **UI: Maintenance → Active share links** sheet — search across filename / group / label, "Active only" toggle, per-row Copy / Revoke. Single source of truth for the admin's outstanding link inventory.
+- **Service Worker bypass** for `/share/*` — never cache, so a revoked link can't keep serving from the SW.
+
+### Added — Download-time deduplication (no-duplicate writes)
+Per user request *"make sure ต้องใช้ระบบ check sum เหมือนกันทั้งหมดที่มีการ download อะไม่เก็บที่ซ้ำ"*. The downloader now hashes every file the moment it lands on disk and folds duplicates into the existing copy.
+
+- **`src/core/checksum.js`** — single canonical `sha256OfFile(absPath)` helper. Per *"ทุกอย่างที่ check sum ต้องมาตรฐานเดียวกันทั้งหมด"*: every code path that hashes media (the post-write check in `downloader.js`, the on-demand catch-up scan in `dedup.js`, any future verification flow) imports this one function. Same algorithm (SHA-256), same encoding (lowercase hex, 64 chars), same streaming read strategy. `dedup.js`'s previous local `hashFile` is now a thin alias.
+- **Downloader** computes the SHA-256 right after the atomic `.part → final` rename, then queries the DB for an existing row with the same `file_hash` AND `file_size`. If one exists AND its file is still present on disk:
+  - The new copy is `unlink`ed.
+  - The new DB row is inserted with `file_path` pointing at the existing file (so the gallery shows the file in this group too without storing duplicate bytes).
+  - `incrementDiskUsage(0)` — disk-rotator quota stays accurate.
+  - `download_complete` event carries `deduped: true` for monitor logs.
+- Hash failures (rare — race with sweepers) fall through and store the row normally; the existing on-demand `dedup` scan picks them up later.
+
+### Tests
+21 new tests in `tests/share.test.js`: secret bootstrap (generation / regeneration / fingerprint), sign / verify round-trip with tamper rejection (linkId, exp, sig), base64url shape, secret-rotation invalidates, TTL clamp (defaults / floor / ceiling / NEVER sentinel / null vs 0 distinction), URL builder, sig-masking helper. Full suite: 93 / 93 passing.
+
+### SW
+- VERSION bumped `'v26'` → `'v27'`.
+
 ## [2.3.26] — 2026-04-30
 
 ### Added — Guest role (read-only viewer alongside admin)

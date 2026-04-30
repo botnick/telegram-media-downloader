@@ -801,6 +801,24 @@ export function setupViewerEvents() {
     document.getElementById('modal-prev')?.addEventListener('click', () => navigateMedia(-1));
     document.getElementById('modal-next')?.addEventListener('click', () => navigateMedia(1));
 
+    // Share button — opens the share-link sheet for the current file.
+    // Lazy-import keeps the module out of the cold-load path; it only
+    // gets fetched the first time an admin opens this sheet.
+    document.getElementById('modal-share')?.addEventListener('click', async () => {
+        const file = state.files[state.currentFileIndex];
+        if (!file?.id) {
+            showToast(i18nT('share.error.no_id', 'No file selected'), 'error');
+            return;
+        }
+        try {
+            const m = await import('./share.js');
+            await m.openShareSheet({ downloadId: file.id, fileName: file.name });
+        } catch (e) {
+            console.error('share sheet load:', e);
+            showToast(i18nT('share.error.load', 'Could not open Share — try again'), 'error');
+        }
+    });
+
     // Modal-level fullscreen button (top-right). Picks the smallest
     // active container so we don't drag the full modal chrome (counter
     // pill, prev/next buttons) into the fullscreen surface unless we
