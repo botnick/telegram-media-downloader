@@ -7,6 +7,8 @@
 import { Link, Outlet } from "@tanstack/react-router";
 import { useStats, useVersion } from "@/api/queries";
 import { StatusBar } from "@/components/StatusBar";
+import { Lightbox } from "@/components/Lightbox";
+import { useLightboxStore } from "@/store/lightbox";
 
 const NAV = [
     { to: "/" as const, label: "Home", icon: "🏠" },
@@ -21,6 +23,7 @@ const NAV = [
 export function AppShell() {
     const stats = useStats();
     const version = useVersion();
+    const lightbox = useLightboxStore();
 
     return (
         <div className="flex h-full">
@@ -64,6 +67,14 @@ export function AppShell() {
                 </main>
                 <StatusBar />
             </div>
+
+            {lightbox.open && (
+                <Lightbox
+                    files={lightbox.files}
+                    initialIndex={lightbox.index}
+                    onClose={lightbox.close}
+                />
+            )}
         </div>
     );
 }

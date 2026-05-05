@@ -11,14 +11,22 @@
 
 import type { ViewerFile } from "@tgdl/shared";
 import { useUiStore } from "@/store/ui";
+import { useLightboxStore } from "@/store/lightbox";
 
 interface Props {
     file: ViewerFile;
+    /**
+     * Sibling files used as the lightbox playlist when this tile is
+     * opened. The current tile's index is computed by reference
+     * equality on `file`.
+     */
+    siblings?: ViewerFile[];
     onOpen?(file: ViewerFile): void;
 }
 
-export function MediaTile({ file, onOpen }: Props) {
+export function MediaTile({ file, siblings, onOpen }: Props) {
     const { selectMode, selectedPaths, toggleSelected } = useUiStore();
+    const openLightbox = useLightboxStore((s) => s.openLightbox);
     const selected = selectedPaths.has(file.fullPath);
 
     const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
@@ -28,8 +36,15 @@ export function MediaTile({ file, onOpen }: Props) {
     const handleClick = () => {
         if (selectMode) {
             toggleSelected(file.fullPath);
-        } else if (onOpen) {
+            return;
+        }
+        if (onOpen) {
             onOpen(file);
+            return;
+        }
+        if (siblings && siblings.length > 0) {
+            const idx = siblings.findIndex((f) => f.id === file.id);
+            openLightbox(siblings, Math.max(0, idx));
         }
     };
 

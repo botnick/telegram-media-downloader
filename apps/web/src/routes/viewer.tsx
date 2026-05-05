@@ -75,7 +75,7 @@ function Viewer() {
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                     {files.map((file) => (
-                        <MediaTile key={file.id} file={file} />
+                        <MediaTile key={file.id} file={file} siblings={files} />
                     ))}
                 </div>
                 {!downloads.isLoading && files.length === 0 && (

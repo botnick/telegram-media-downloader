@@ -7,6 +7,21 @@ import { routeTree } from "./routeTree.gen";
 
 import "./styles/main.css";
 
+// Side-effect imports that must run before React renders so the
+// initial paint already has the right theme + locale.
+import "./lib/theme";
+import "./lib/i18n";
+
+// Register the service worker on first load. We ship sw.js in
+// public/ so Vite copies it through unchanged.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {
+            // Best-effort. The dashboard works without offline support.
+        });
+    });
+}
+
 /**
  * Application entry. Wires:
  *   - TanStack Query: cache + retry + dedup for /api/* fetches
