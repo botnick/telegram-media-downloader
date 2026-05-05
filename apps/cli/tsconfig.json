@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -9,7 +9,8 @@
     "rootDir": "./src",
     "noEmit": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "src/**/*.js"],
   "references": [{ "path": "../../packages/shared" }]

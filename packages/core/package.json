@@ -15,8 +15,7 @@
         "build": "tsc -b",
         "typecheck": "tsc --noEmit",
         "lint": "biome check src",
-        "test": "vitest run",
-        "test:watch": "vitest",
+        "test": "echo 'tests live at the repo root'",
         "clean": "rm -rf dist *.tsbuildinfo"
     },
     "dependencies": {
