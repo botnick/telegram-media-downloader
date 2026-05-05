@@ -386,6 +386,10 @@ class VideoPlayer {
         this._storageKey = `video-progress-${fileFullPath}`;
         this._resumePlayed = false;
         this._lastSavedAt = 0;
+        // Reset the auto-retry counter — a fresh clip gets a fresh
+        // chance to recover from the spurious mobile-Safari error 4
+        // that fires on initial src assignment. See `_showError()`.
+        this._errorRetries = 0;
 
         // Pause + rewind the OLD source first so a stale ontimeupdate /
         // onloadedmetadata can't fire after the new clip's UI reset and
@@ -480,11 +484,23 @@ class VideoPlayer {
     /** Stop any in-flight network activity and reset playback. */
     unload() {
         try { this.video.pause(); } catch {}
+        // Suppress the `error` event that some browsers (mobile Safari
+        // especially) fire when the in-flight fetch is aborted by
+        // `removeAttribute('src') + load()`. Without this guard the
+        // spurious teardown error trips `_showError()` and the next
+        // .load() call sees a stale errorOverlay state racing against
+        // the new src assignment — which is exactly how the "Error 4 →
+        // tap Retry → plays fine" report happens.
+        try { this.video.onerror = null; } catch {}
         try { this.video.removeAttribute('src'); } catch {}
         try { this.video.load(); } catch {}
         // Drop the metadata-loaded handler so a stale resume from the
         // previous clip can't seek the next file to the wrong position.
         try { this.video.onloadedmetadata = null; } catch {}
+        // Re-arm the error handler so a future .load() on the same
+        // VideoPlayer instance can still surface real errors. The
+        // handler itself does the auto-retry-once dance.
+        try { this.video.onerror = () => this._showError(); } catch {}
         if (document.pictureInPictureElement) {
             document.exitPictureInPicture().catch(() => {});
         }
@@ -768,6 +784,27 @@ class VideoPlayer {
 
     _showError() {
         const err = this.video.error;
+        // Mobile Safari (and occasionally Chrome on Android) fires a
+        // spurious MEDIA_ERR_SRC_NOT_SUPPORTED right after the first
+        // `src=` assignment, even when the URL serves a perfectly valid
+        // MP4. The user-visible symptom is "Error 4: playback failed →
+        // tap Retry → plays fine," because the retry button does
+        // exactly the same thing the auto-retry below does: re-assign
+        // the same URL and re-call load(). Silently retry once before
+        // surfacing the overlay so the user never sees the flash.
+        //
+        // We bound retries (1 per clip) to avoid masking a genuine
+        // unsupported-codec failure that would otherwise loop forever.
+        const code = err?.code;
+        const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+        if (code === MEDIA_ERR_SRC_NOT_SUPPORTED
+            && this._currentUrl
+            && (this._errorRetries || 0) < 1) {
+            this._errorRetries = (this._errorRetries || 0) + 1;
+            try { this.video.src = this._currentUrl; } catch {}
+            try { this.video.load(); } catch {}
+            return;
+        }
         const msg = err ? `Error ${err.code}: ${err.message || 'playback failed'}` : 'Playback failed';
         this.errorMsg.textContent = msg;
         this.errorOverlay.classList.remove('hidden');
