@@ -88,7 +88,7 @@ first use of the AI status endpoint and uses it for search. The fallback
 in-memory cosine path is fine up to ~50k photos. Install with:
 
 ```bash
-npm install sqlite-vec
+pnpm add sqlite-vec
 ```
 
 This is **completely optional**; default installs work fine without it.
@@ -103,13 +103,13 @@ This is **completely optional**; default installs work fine without it.
   the first scan the cache is local.
 - **`AI_LIB_MISSING` error** — `@huggingface/transformers` is in
   `optionalDependencies`. Reinstall with
-  `npm install @huggingface/transformers` to enable AI features.
+  `pnpm add @huggingface/transformers` to enable AI features.
 - **Out of memory** — drop `indexConcurrency` to 1, drop `batchSize` to 10.
 
 ## Architecture
 
 ```
-src/core/ai/
+packages/core/src/ai/
 ├── index.js          # public entry — re-exports the surface used by server.js
 ├── manager.js        # JobTracker-driven scan loops + downloader hook
 ├── embeddings.js     # CLIP image+text encoder

@@ -2,8 +2,8 @@
 
 Two top-level entry points share state through `data/`:
 
-1. **CLI** (`src/index.js`) — interactive menus, ad-hoc commands.
-2. **Web server** (`src/web/server.js`) — Express + WebSocket on `:3000`, serves the SPA from `src/web/public/`.
+1. **CLI** (`apps/cli/src/index.js`) — interactive menus, ad-hoc commands.
+2. **Web server** (`apps/server/dist/index.js`) — Hono + WebSocket on `:3000`, serves the SPA from `apps/web/`.
 
 Both load the same `data/config.json` and `data/db.sqlite` (WAL mode → safe shared reads, single writer).
 
@@ -11,7 +11,7 @@ Both load the same `data/config.json` and `data/db.sqlite` (WAL mode → safe sh
 
 ```mermaid
 flowchart LR
-    user[Browser SPA<br/>src/web/public/]
+    user[Browser SPA<br/>apps/web/]
     server[web/server.js]
     runtime[core/runtime.js]
     monitor[core/monitor.js]
@@ -61,7 +61,7 @@ data/
 
 ## Multi-account routing
 
-`AccountManager` (`src/core/accounts.js`) holds `Map<accountId, TelegramClient>`. Each `.enc` session file under `data/sessions/` becomes one connected client.
+`AccountManager` (`packages/core/src/accounts.js`) holds `Map<accountId, TelegramClient>`. Each `.enc` session file under `data/sessions/` becomes one connected client.
 
 When `RealtimeMonitor.start()` runs, it walks every enabled group and asks each loaded client whether it can read it (`getMessages(groupId, {limit:1})`); the first one that succeeds is cached in `groupClientCache`. A group can pin an explicit account via `group.monitorAccount` — that wins.
 
@@ -103,12 +103,12 @@ Workers always drain `_high` first, then `queue`, then rehydrate from disk. Real
 
 gramJS surfaces a steady stream of recoverable internals during reconnects (`TIMEOUT`, `Not connected`, `Connection closed`, `Reconnect`, `CHANNEL_INVALID`). The previous codebase silently dropped these via a global `console.error` filter that also swallowed real errors with the same words.
 
-`src/core/logger.js` now classifies: noise still gets logged to `data/logs/network.log` but is only echoed to stderr when `TGDL_DEBUG=1` (or `DEBUG`). Real errors go through unchanged.
+`packages/core/src/logger.js` now classifies: noise still gets logged to `data/logs/network.log` but is only echoed to stderr when `TGDL_DEBUG=1` (or `DEBUG`). Real errors go through unchanged.
 
 ## SPA modules
 
 ```
-src/web/public/js/
+apps/web/js/
 ├── app.js            # router + init, group/dialog rendering, gallery grid
 ├── api.js            # fetch wrapper (401 → /login, 503 → /setup, 403 → toast)
 ├── ws.js             # WebSocket client with auto-reconnect
@@ -137,7 +137,7 @@ The SPA is vanilla ES Modules served over HTTP — no bundler, no build step. As
 ## Backend modules
 
 ```
-src/core/
+packages/core/src/
 ├── accounts.js       # AccountManager — multi-account routing
 ├── monitor.js        # RealtimeMonitor — gramJS event handler + polling fallback
 ├── downloader.js     # DownloadManager — queue + workers + atomic writes

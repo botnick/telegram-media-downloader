@@ -22,9 +22,9 @@ The image is published to GHCR on every release: `ghcr.io/botnick/telegram-media
 After `docker compose up -d` (or any host install), run the diagnostics:
 
 ```bash
-docker compose exec app npm run doctor      # inside the container
+docker compose exec app pnpm doctor      # inside the container
 # or, for host installs:
-npm run doctor
+pnpm doctor
 ```
 
 Reports Node + ABI, config load, SQLite open, `data/` writability, port availability, and `ffmpeg`. Exits non-zero on any blocking failure — wire it into your provisioning script or CI smoke-step.
@@ -173,7 +173,7 @@ User=tgdl
 WorkingDirectory=/opt/telegram-media-downloader
 Environment=NODE_ENV=production
 Environment=PORT=3000
-ExecStart=/usr/bin/node src/web/server.js
+ExecStart=/usr/bin/node apps/server/dist/index.js
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

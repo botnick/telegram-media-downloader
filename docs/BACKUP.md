@@ -121,7 +121,7 @@ will be auto-created.
 Wraps the optional `basic-ftp` package — install with:
 
 ```bash
-npm install basic-ftp
+pnpm add basic-ftp
 ```
 
 Wizard fields:
@@ -156,7 +156,7 @@ stop within a couple of seconds of clicking Pause / Cancel / Remove.
 Wraps the optional `googleapis` package — install with:
 
 ```bash
-npm install googleapis
+pnpm add googleapis
 ```
 
 Auth model: clientId + clientSecret + refreshToken. The dashboard
@@ -205,7 +205,7 @@ Caveats:
 Wraps the optional `dropbox` package — install with:
 
 ```bash
-npm install dropbox
+pnpm add dropbox
 ```
 
 Auth model: appKey + appSecret + refreshToken. Dropbox dropped
@@ -291,7 +291,7 @@ roadmap). For an encrypted snapshot:
 
    ```js
    import fs from 'fs';
-   import { decryptStream, deriveKey } from 'telegram-media-downloader/src/core/backup/encryption.js';
+   import { decryptStream, deriveKey } from 'telegram-media-downloader/packages/core/src/backup/encryption.js';
    const key = deriveKey('your-passphrase', Buffer.from('<salt-hex>', 'hex'));
    fs.createReadStream('snapshot.tar.gz.enc')
      .pipe(decryptStream(key))

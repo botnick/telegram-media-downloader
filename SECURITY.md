@@ -16,7 +16,7 @@ Out of scope: anything that requires a compromised Telegram account, self-XSS, o
 
 ## Hardening tips for operators
 
-- **Set a dashboard password** (`npm run auth` or first-run wizard). Without it the dashboard fails closed.
+- **Set a dashboard password** (`pnpm auth` or first-run wizard). Without it the dashboard fails closed.
 - **Don't expose `:3000` directly.** Put it behind a reverse proxy with TLS.
 - **Back up `data/secret.key`** — losing it makes every saved session unrecoverable.
 - **Run only one writer to `data/db.sqlite`** at a time (CLI monitor or web server, not both).

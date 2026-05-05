@@ -3,19 +3,19 @@
 ```bash
 git clone https://github.com/botnick/telegram-media-downloader.git
 cd telegram-media-downloader
-npm ci
-npm run doctor       # verify Node/ABI/SQLite/port/ffmpeg before you go further
-npm run lint
-npm test
-npm start            # dashboard at http://localhost:3000
+pnpm install --frozen-lockfile
+pnpm doctor       # verify Node/ABI/SQLite/port/ffmpeg before you go further
+pnpm lint
+pnpm test
+pnpm start            # dashboard at http://localhost:3000
 ```
 
-Requires **Node.js 22+** (24 LTS recommended). If `npm run doctor` reports `NODE_MODULE_VERSION` mismatch on `better-sqlite3` after a Node upgrade, run `npm rebuild better-sqlite3`.
+Requires **Node.js 22+** (24 LTS recommended). If `pnpm doctor` reports `NODE_MODULE_VERSION` mismatch on `better-sqlite3` after a Node upgrade, run `pnpm rebuild better-sqlite3`.
 
 ## Submitting a change
 
 1. Branch off `main` (`feat/...`, `fix/...`).
-2. Run `npm run lint && npm test && npm run doctor` before pushing.
+2. Run `pnpm lint && pnpm test && pnpm doctor` before pushing.
 3. Add tests for non-trivial changes (vitest, see `tests/`).
 4. Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat(web): …`, `fix(downloader): …`).
 5. Open a PR against `main`. The template asks for a short description + how you verified the change.
@@ -25,7 +25,7 @@ Requires **Node.js 22+** (24 LTS recommended). If `npm run doctor` reports `NODE
 - ES Modules everywhere (`"type": "module"`).
 - Telegram IDs are strings; large ints overflow `Number.MAX_SAFE_INTEGER`.
 - Reuse existing utilities — `sanitizeName`, `loadConfig`, `safeResolveDownload`, `web-auth`, `SecureSession`. Don't reinvent.
-- Run `npm run format` (Prettier) before committing.
+- Run `pnpm format` (Biome) before committing.
 
 Security issues → [`SECURITY.md`](SECURITY.md), not the public tracker.
 

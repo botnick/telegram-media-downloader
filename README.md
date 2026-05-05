@@ -173,7 +173,7 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **Network log rotation** at 5 MB (writes preserved, never skipped).
 - **GitHub Actions CI** — lint + test on Node 22 & 24 across Ubuntu / Windows / macOS, plus a Docker workflow that builds + smoke-tests the image (file perms, healthcheck, runs-as-non-root) before publishing to GHCR.
 - **99 vitest specs** covering URL parsing, AES round-trip + legacy decrypt, scrypt password verify, session tokens, role-aware login + guest gating, share-link sign/verify + tamper rejection + TTL limits, proxy mapping, DB migrations + dedup, name sanitisation.
-- **ESLint 9 + Prettier**, `husky` + `lint-staged` pre-commit hooks.
+- **Biome 2** (replaces ESLint + Prettier — single binary, ~10× faster), `husky` + `lint-staged` pre-commit hooks.
 - **Backwards compatibility** — legacy plaintext passwords auto-rehashed on first login; legacy AES `v=1` blobs still decrypt; sessions persisted before the role field gained one default to admin (no forced re-login on upgrade).
 
 ---
@@ -212,10 +212,12 @@ Pre-built image: `ghcr.io/botnick/telegram-media-downloader:latest`.
 ```bash
 git clone https://github.com/botnick/telegram-media-downloader.git
 cd telegram-media-downloader
-npm ci
-npm run web        # web dashboard
+pnpm install --frozen-lockfile
+pnpm dev           # Vite + Hono in TUI mode (turbo dev)
 # or
-npm start          # interactive CLI menu
+pnpm start         # production: run the built Hono server
+# or
+pnpm menu          # interactive CLI menu (CLI-only, no dashboard)
 ```
 
 Long-running monitor under a watchdog (Linux / macOS): `TGDL_RUN=monitor ./runner.sh`. Windows: `pwsh ./watchdog.ps1`.
@@ -226,13 +228,13 @@ The dashboard does almost everything. The CLI subcommands stay around for headle
 
 | Command | What it does |
 | --- | --- |
-| `npm start` | **Default.** Opens the dashboard at `http://localhost:3000`. |
-| `npm run prod` | Same dashboard but supervised by the watchdog (`runner.js`). |
-| `npm run monitor` | Headless real-time monitor for servers (no dashboard UI). |
-| `npm run history` | Bulk backfill an existing chat. |
-| `npm run auth` | Reset / change the dashboard password from the terminal. |
-| `npm run doctor` | Diagnostics: Node/ABI, config, SQLite, port, ffmpeg. |
-| `npm run menu` | Full list of subcommands. |
+| `pnpm start` | **Default.** Opens the dashboard at `http://localhost:3000`. |
+| `pnpm prod` | Same dashboard but supervised by the watchdog (`runner.js`). |
+| `pnpm monitor` | Headless real-time monitor for servers (no dashboard UI). |
+| `pnpm history` | Bulk backfill an existing chat. |
+| `pnpm auth` | Reset / change the dashboard password from the terminal. |
+| `pnpm doctor` | Diagnostics: Node/ABI, config, SQLite, port, ffmpeg. |
+| `pnpm menu` | Full list of subcommands. |
 
 ## Configuration
 
@@ -345,9 +347,9 @@ CPU only — no GPU dependency. Roughly 300-500 ms per thumbnail-sized image on 
 ## Contributing
 
 ```bash
-npm ci
-npm run lint
-npm test
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm test
 ```
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for branch / commit conventions.
