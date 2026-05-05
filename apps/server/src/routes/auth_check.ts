@@ -10,23 +10,25 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import type { AuthCheckResponse } from "@tgdl/shared";
 
-import { webAuth } from "../lib/legacy.js";
+import { webAuth, config as cfg } from "../lib/legacy.js";
 
 export const authCheckRoute = new Hono().get("/auth_check", async (c) => {
     let setupRequired = false;
     let role: AuthCheckResponse["role"] = null;
     let authenticated = false;
     try {
-        setupRequired = !(await webAuth.isAuthConfigured());
+        const conf = await cfg.loadConfig();
+        setupRequired = !webAuth.isAuthConfigured(conf?.web ?? {});
     } catch {
         setupRequired = true;
     }
     try {
-        const token = c.req.header("cookie")?.match(/tgdl_session=([^;]+)/)?.[1];
+        const token = getCookie(c, "tgdl_session");
         if (token) {
-            const session = await webAuth.lookupSession(token);
+            const session = webAuth.validateSession(token);
             if (session) {
                 authenticated = true;
                 role = (session.role as AuthCheckResponse["role"]) ?? "admin";

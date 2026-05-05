@@ -1,16 +1,8 @@
 /**
- * Authentication endpoints.
- *
- *   POST /api/login              — submit password, mint session
- *   POST /api/logout             — drop session cookie + row
- *   GET  /api/me                 — current role + setup state
- *   POST /api/auth/change-password
- *   POST /api/auth/guest-password
- *   POST /api/auth/reset/confirm
- *
- * The legacy server stored sessions in data/web-sessions.json; the
- * Hono port keeps the same on-disk format so existing logged-in tabs
- * survive the upgrade.
+ * Authentication endpoints — wires the legacy @tgdl/core/web-auth
+ * helpers (loginVerify, issueSession, validateSession, revokeSession)
+ * into Hono handlers that share the cookie shape with the original
+ * Express server (data/web-sessions.json on-disk format unchanged).
  */
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -20,11 +12,12 @@
 
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { setCookie, deleteCookie } from "hono/cookie";
+import { setCookie, deleteCookie, getCookie } from "hono/cookie";
 import { z } from "zod";
 import { LoginRequestSchema } from "@tgdl/shared";
 
 import { webAuth } from "../lib/legacy.js";
+import { config as cfg } from "../lib/legacy.js";
 
 const ChangePasswordSchema = z.object({
     current: z.string(),
@@ -32,10 +25,6 @@ const ChangePasswordSchema = z.object({
 });
 const GuestPasswordSchema = z.object({
     password: z.string().min(8).nullable(),
-});
-const ResetConfirmSchema = z.object({
-    token: z.string(),
-    password: z.string().min(8),
 });
 
 const COOKIE = "tgdl_session";
@@ -47,22 +36,29 @@ const COOKIE_OPTS = {
     maxAge: 7 * 24 * 60 * 60,
 };
 
+async function loadWebConfig(): Promise<unknown> {
+    const c = (await cfg.loadConfig()) ?? {};
+    return (c as { web?: unknown }).web ?? {};
+}
+
 export const authRoutes = new Hono()
     .post("/login", zValidator("json", LoginRequestSchema), async (c) => {
         const { password } = c.req.valid("json");
         try {
-            const result = await webAuth.login(password);
+            const web = await loadWebConfig();
+            const result = webAuth.loginVerify(password, web);
             if (!result?.ok) return c.json({ error: result?.error ?? "Login failed" }, 401);
-            setCookie(c, COOKIE, String(result.token), COOKIE_OPTS);
-            return c.json({ role: result.role });
+            const session = webAuth.issueSession({ role: result.role ?? "admin" });
+            setCookie(c, COOKIE, String(session.token), COOKIE_OPTS);
+            return c.json({ role: result.role ?? "admin" });
         } catch (err) {
             return c.json({ error: (err as Error).message ?? "Login failed" }, 500);
         }
     })
-    .post("/logout", async (c) => {
+    .post("/logout", (c) => {
         try {
-            const token = c.req.header("cookie")?.match(/tgdl_session=([^;]+)/)?.[1];
-            if (token) await webAuth.dropSession(token);
+            const token = getCookie(c, COOKIE);
+            if (token) webAuth.revokeSession(token);
         } catch {
             // ignore
         }
@@ -71,10 +67,11 @@ export const authRoutes = new Hono()
     })
     .get("/me", async (c) => {
         try {
-            const token = c.req.header("cookie")?.match(/tgdl_session=([^;]+)/)?.[1];
-            const session = token ? await webAuth.lookupSession(token) : null;
+            const token = getCookie(c, COOKIE);
+            const session = token ? webAuth.validateSession(token) : null;
             if (!session) return c.json({ error: "Unauthorized" }, 401);
-            const setupRequired = !(await webAuth.isAuthConfigured());
+            const web = await loadWebConfig();
+            const setupRequired = !webAuth.isAuthConfigured(web);
             return c.json({ role: session.role ?? "admin", setupRequired });
         } catch (err) {
             return c.json({ error: (err as Error).message ?? "Failed" }, 500);
@@ -86,8 +83,15 @@ export const authRoutes = new Hono()
         async (c) => {
             const { current, next } = c.req.valid("json");
             try {
-                const r = await webAuth.changePassword(current, next);
-                if (!r?.ok) return c.json({ error: r?.error ?? "Failed" }, 400);
+                const web = await loadWebConfig();
+                const verify = webAuth.loginVerify(current, web);
+                if (!verify?.ok) return c.json({ error: "Current password is wrong" }, 400);
+                const newHash = webAuth.hashPassword(next);
+                const conf = await cfg.loadConfig();
+                if (!conf.web) conf.web = {};
+                conf.web.passwordHash = newHash;
+                await cfg.saveConfig(conf);
+                webAuth.revokeAllSessions();
                 return c.json({ ok: true });
             } catch (err) {
                 return c.json({ error: (err as Error).message }, 500);
@@ -100,21 +104,15 @@ export const authRoutes = new Hono()
         async (c) => {
             const { password } = c.req.valid("json");
             try {
-                await webAuth.setGuestPassword(password);
-                return c.json({ ok: true });
-            } catch (err) {
-                return c.json({ error: (err as Error).message }, 500);
-            }
-        }
-    )
-    .post(
-        "/auth/reset/confirm",
-        zValidator("json", ResetConfirmSchema),
-        async (c) => {
-            const { token, password } = c.req.valid("json");
-            try {
-                const r = await webAuth.resetConfirm(token, password);
-                if (!r?.ok) return c.json({ error: r?.error ?? "Failed" }, 400);
+                const conf = await cfg.loadConfig();
+                if (!conf.web) conf.web = {};
+                if (password) {
+                    conf.web.guestPasswordHash = webAuth.hashPassword(password);
+                } else {
+                    delete conf.web.guestPasswordHash;
+                }
+                await cfg.saveConfig(conf);
+                webAuth.revokeAllGuestSessions();
                 return c.json({ ok: true });
             } catch (err) {
                 return c.json({ error: (err as Error).message }, 500);
