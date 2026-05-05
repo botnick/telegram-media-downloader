@@ -90,19 +90,35 @@ jobs:
               # would run as root, defeating the whole non-root posture
               # of the image.
               #
+              # Race: the healthcheck above only proves the HTTP listener
+              # is up. tini may still be in the middle of forking node
+              # (or node may have just opened the socket but not yet
+              # appeared in /proc by the time `ps` runs — we saw a real
+              # CI failure where ps returned `tini` + `ps` only, then
+              # ~50 ms later the node banner printed). Retry the user
+              # check up to 10× with a 1 s gap before failing.
+              #
               # Avoid pipes that can fire SIGPIPE (BusyBox `pgrep | head`
               # → 141 → set -e -o pipefail kills the script). Capture the
               # full ps listing then scan it with awk.
-              PS_OUT=$(docker exec smoke ps -o user=,comm=)
-              if ! echo "$PS_OUT" | awk '$1=="node" && $2=="node" {f=1} END{exit !f}'; then
-                echo "FAIL: no node process running as node user"
-                echo "--- ps -o user,comm ---"
+              FOUND_NODE=0
+              for j in $(seq 1 10); do
+                PS_OUT=$(docker exec smoke ps -o user=,comm=)
+                if echo "$PS_OUT" | awk '$1=="node" && $2=="node" {f=1} END{exit !f}'; then
+                  echo "OK: app running as node user (after ${j} probe(s))"
+                  FOUND_NODE=1
+                  break
+                fi
+                sleep 1
+              done
+              if [ "$FOUND_NODE" != "1" ]; then
+                echo "FAIL: no node process running as node user after 10s of probing"
+                echo "--- final ps -o user,comm ---"
                 echo "$PS_OUT"
                 docker logs smoke
                 docker stop smoke >/dev/null
                 exit 1
               fi
-              echo "OK: app running as node user"
 
               docker stop smoke >/dev/null
               exit 0
