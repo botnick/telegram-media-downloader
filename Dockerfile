@@ -81,9 +81,15 @@ COPY --from=prod-deps /app/apps/cli/node_modules ./apps/cli/node_modules
 COPY --from=prod-deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=prod-deps /app/packages/core/node_modules ./packages/core/node_modules
 
-# Built TypeScript output.
+# Built TypeScript output. shared's package.json + src/ also need to
+# land in the runtime image because:
+#   - exports map points at ./dist/index.js (built artefact)
+#   - prod-deps stage doesn't run the build script, so the symlinked
+#     @tgdl/shared from apps/server/node_modules has no dist/ until
+#     we copy one in from the build stage.
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
+COPY --from=build /app/packages/shared/src ./packages/shared/src
 
 # Source for workspaces that don't compile (CLI + core stay .js for now).
 COPY apps/cli ./apps/cli
