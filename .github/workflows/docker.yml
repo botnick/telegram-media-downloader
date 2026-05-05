@@ -69,13 +69,17 @@ jobs:
           IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
           echo "Smoke-testing $IMAGE"
 
-          # File modes + readability (the chmod -R a+rX guard)
+          # File modes + readability (the chmod -R a+rX guard).
+          # Paths follow the monorepo layout — apps/server compiles to
+          # apps/server/dist, the web SPA lives at apps/web (with its
+          # built bundle under apps/web/dist), and shared types are at
+          # packages/shared/dist.
           docker run --rm --entrypoint=sh "$IMAGE" -c '
             set -e
-            ls -ld /app/src /app/src/web /app/src/web/server.js /app/scripts/healthcheck.js
-            [ -r /app/src/web/server.js ] || { echo "FAIL: server.js not readable by node user"; exit 1; }
-            [ -x /app/src/web ]           || { echo "FAIL: /app/src/web not traversable"; exit 1; }
-            [ -r /app/scripts/healthcheck.js ] || { echo "FAIL: healthcheck.js not readable"; exit 1; }
+            ls -ld /app/apps/server/dist /app/apps/server/dist/index.js /app/apps/web /app/scripts/healthcheck.js
+            [ -r /app/apps/server/dist/index.js ] || { echo "FAIL: apps/server/dist/index.js not readable by node user"; exit 1; }
+            [ -x /app/apps/web ]                  || { echo "FAIL: /app/apps/web not traversable"; exit 1; }
+            [ -r /app/scripts/healthcheck.js ]    || { echo "FAIL: scripts/healthcheck.js not readable"; exit 1; }
             echo "OK: file permissions sane"
           '
 
