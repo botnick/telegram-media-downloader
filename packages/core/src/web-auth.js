@@ -17,8 +17,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data');
 const SESSIONS_PATH = path.join(DATA_DIR, 'web-sessions.json');
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };

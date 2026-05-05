@@ -24,8 +24,9 @@ import { AutoForwarder } from './forwarder.js';
 import { migrateFolders } from './downloader.js';
 import { metrics } from './metrics.js';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
+const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
 class Runtime extends EventEmitter {
     constructor() {

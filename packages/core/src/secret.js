@@ -3,8 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data');
 const SECRET_PATH = path.join(DATA_DIR, 'secret.key');
 
 function ensureDataDir() {

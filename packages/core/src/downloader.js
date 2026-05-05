@@ -15,8 +15,8 @@ import { pregenerateThumb } from './thumbs.js';
 import { pregenerateNsfw } from './nsfw.js';
 import { pregenerateAi } from './ai/index.js';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data');
 const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
 

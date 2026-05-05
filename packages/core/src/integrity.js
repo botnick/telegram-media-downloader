@@ -18,8 +18,9 @@ import { fileURLToPath } from 'url';
 import { getDb, insertDownload } from './db.js';
 import { sanitizeName } from './downloader.js';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
+const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 
 let _running = false;
 let _timer = null;

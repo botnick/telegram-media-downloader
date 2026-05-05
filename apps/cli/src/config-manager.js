@@ -2,8 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { DATA_DIR } from '@tgdl/core/data-dir';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
+const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
 const DEFAULT_CONFIG = {
     telegram: {

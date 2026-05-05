@@ -41,9 +41,9 @@ import { existsSync, promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { getDb } from './db.js';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 const DB_PATH = path.resolve(DATA_DIR, 'db.sqlite');
 const BACKUPS_DIR = path.resolve(DATA_DIR, 'backups');
 

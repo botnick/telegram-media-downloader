@@ -3,15 +3,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
+import { DATA_DIR } from './data-dir.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // `TGDL_DATA_DIR` overrides the on-disk data root. Used by the test suite to
 // point at an isolated tmpdir so vitest never touches the user's real
 // db.sqlite. Docker / multi-instance deploys can also override the location
 // without symlinks. Default stays the in-repo `data/` so first-run UX is
 // unchanged.
-const DATA_DIR = process.env.TGDL_DATA_DIR
-    ? path.resolve(process.env.TGDL_DATA_DIR)
-    : path.join(__dirname, '../../data');
 const DB_PATH = path.join(DATA_DIR, 'db.sqlite');
 
 // Singleton connection

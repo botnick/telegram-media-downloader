@@ -15,6 +15,7 @@ import { colorize } from './colors.js';
 import { suppressNoise } from './logger.js';
 import { buildProxy } from './proxy.js';
 
+import { DATA_DIR } from './data-dir.js';
 function deferred() {
     let resolve, reject;
     const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
@@ -22,8 +23,8 @@ function deferred() {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SESSIONS_DIR = path.join(__dirname, '../../data/sessions');
-const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
+const SESSIONS_DIR = path.join(DATA_DIR, 'sessions');
+const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const SESSION_PASSWORD = getOrGenerateSecret();
 
 // Ensure sessions directory exists
@@ -208,7 +209,7 @@ export class AccountManager {
      * Migrate single legacy session (data/session.enc) to multi-account format
      */
     async migrateLegacy() {
-        const legacyPath = path.join(__dirname, '../../data/session.enc');
+        const legacyPath = path.join(DATA_DIR, 'session.enc');
         
         // Only migrate if legacy file exists AND no sessions exist yet
         if (!fs.existsSync(legacyPath)) return;

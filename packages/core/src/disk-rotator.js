@@ -20,6 +20,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from './data-dir.js';
 import {
     getTotalSizeBytes,
     getOldestDownloads,
@@ -27,7 +28,7 @@ import {
 } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
+const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 
 const DEFAULT_SWEEP_MIN = 10;
 const SWEEP_BATCH = 50;          // candidate rows fetched per pass
