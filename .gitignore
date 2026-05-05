@@ -70,3 +70,4 @@ SKILL.md
 apps/*/dist/
 packages/*/dist/
 .turbo/
+tests/.tmp-data/
