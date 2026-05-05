@@ -31,12 +31,22 @@ export default defineConfig({
     server: {
         port: 5173,
         strictPort: true,
+        // Open the dashboard automatically when `pnpm dev` boots up.
+        // Set VITE_NO_OPEN=1 to suppress (CI / Docker / headless dev).
+        open: process.env["VITE_NO_OPEN"] !== "1",
         proxy: {
             "/api": "http://localhost:3000",
             "/ws": { target: "ws://localhost:3000", ws: true },
             "/files": "http://localhost:3000",
             "/photos": "http://localhost:3000",
             "/share": "http://localhost:3000",
+            // Static assets the React app links to but the Hono server
+            // owns (PWA manifest, icons, locales, sw.js). Proxy them
+            // back so dev-mode pages don't 404 on first load.
+            "/icons": "http://localhost:3000",
+            "/locales": "http://localhost:3000",
+            "/manifest.webmanifest": "http://localhost:3000",
+            "/sw.js": "http://localhost:3000",
         },
     },
     build: {

@@ -15,15 +15,39 @@
 
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useGroups, useStats } from "@/api/queries";
 import { api } from "@/api/client";
+import { useGroups, useStats } from "@/api/queries";
 
 const NAV_ITEMS = [
     { page: "groups", to: "/groups" as const, icon: "ri-group-line", label: "Groups", admin: true },
-    { page: "backfill", to: "/backfill" as const, icon: "ri-history-line", label: "Backfill", admin: true },
-    { page: "queue", to: "/queue" as const, icon: "ri-download-cloud-2-line", label: "Queue", admin: true },
-    { page: "settings", to: "/settings" as const, icon: "ri-settings-3-line", label: "Settings", admin: false },
-    { page: "maintenance", to: "/maintenance" as const, icon: "ri-tools-line", label: "Maintenance", admin: true },
+    {
+        page: "backfill",
+        to: "/backfill" as const,
+        icon: "ri-history-line",
+        label: "Backfill",
+        admin: true,
+    },
+    {
+        page: "queue",
+        to: "/queue" as const,
+        icon: "ri-download-cloud-2-line",
+        label: "Queue",
+        admin: true,
+    },
+    {
+        page: "settings",
+        to: "/settings" as const,
+        icon: "ri-settings-3-line",
+        label: "Settings",
+        admin: false,
+    },
+    {
+        page: "maintenance",
+        to: "/maintenance" as const,
+        icon: "ri-tools-line",
+        label: "Maintenance",
+        admin: true,
+    },
 ];
 
 export function Sidebar() {
@@ -83,7 +107,10 @@ export function Sidebar() {
                         to={item.to}
                         className="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover"
                         data-page={item.page}
-                        activeProps={{ className: "nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover active" }}
+                        activeProps={{
+                            className:
+                                "nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover active",
+                        }}
                     >
                         <i className={`${item.icon} text-xl text-tg-textSecondary`} />
                         <span className="text-tg-text">{item.label}</span>
@@ -103,10 +130,7 @@ export function Sidebar() {
                     </div>
                     <div className="min-w-0 flex-1">
                         <h3 className="font-medium text-tg-text text-[15px]">All Media</h3>
-                        <p
-                            id="all-media-count"
-                            className="text-[13px] text-tg-textSecondary"
-                        >
+                        <p id="all-media-count" className="text-[13px] text-tg-textSecondary">
                             {stats.data
                                 ? `${stats.data.totalFiles.toLocaleString()} files`
                                 : "View all files"}
