@@ -10,8 +10,17 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "composite": true
+    "composite": true,
+    // Accept .js source while we migrate file-by-file. checkJs is off
+    // so we don't drown in JSDoc-inferred warnings on day one; turn it
+    // on per-file once the file is converted to .ts.
+    "allowJs": true,
+    "checkJs": false,
+    // The .js files use ESM relative imports without explicit .js
+    // extensions in some places; tsc resolves them naturally. Strict
+    // is still on for the .ts surface, just relaxed for legacy .js.
+    "isolatedModules": true
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.js"],
   "references": [{ "path": "../shared" }]
 }

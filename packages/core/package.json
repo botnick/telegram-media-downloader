@@ -6,7 +6,7 @@
   "exports": {
     "./*": {
       "types": "./src/*.ts",
-      "import": "./src/*.ts"
+      "import": "./src/*.js"
     }
   },
   "scripts": {
