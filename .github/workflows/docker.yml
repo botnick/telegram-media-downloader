@@ -90,32 +90,23 @@ jobs:
               # would run as root, defeating the whole non-root posture
               # of the image.
               #
-              # Entrypoint must drop from root → node. We previously tried
-              # `ps -o user=,comm=` from the host via `docker exec`, but
-              # procps's `ps` consistently failed to surface the tini
-              # child even though `docker logs smoke` showed node was up
-              # and the healthcheck above just succeeded. The likely
-              # culprit is `ps` walking `/proc` from the perspective of
-              # the freshly-spawned exec session whose own PID namespace
-              # view drops siblings under tini.
+              # We've been chasing flakes here. Two earlier attempts:
+              #   1. `ps -o user=,comm=` — went silent on the node child.
+              #   2. /proc walk reading $UID + $comm — also silent (the
+              #      glob `/proc/[0-9]*` evaluated empty in the wrapped
+              #      shell, even though `ps -ef` from the same container
+              #      cleanly showed node at PID 7 owned by user `node`).
               #
-              # Walk /proc directly inside the container instead — far
-              # more deterministic. For each PID with a numeric directory
-              # in /proc, read its UID and comm; pass if any node-comm
-              # process is owned by uid 1000 (the node user in the
-              # node:debian-slim base image).
+              # `ps -ef` it is. The earlier failure dump confirmed it
+              # surfaces the tini child every time — the trick is just
+              # to grep on column 1 (UNAME) for `node` rather than the
+              # short COMMAND column. Wrap in a 10× / 1 s retry loop
+              # purely for boot timing, not for ps reliability.
               FOUND_NODE=0
               for j in $(seq 1 10); do
-                PROBE_OUT=$(docker exec smoke sh -c '
-                  for p in /proc/[0-9]*; do
-                    [ -r "$p/status" ] || continue
-                    comm=$(cat "$p/comm" 2>/dev/null || echo "")
-                    uid=$(awk "/^Uid:/ {print \$2; exit}" "$p/status" 2>/dev/null || echo "")
-                    [ -n "$comm" ] && [ -n "$uid" ] && echo "$uid $comm"
-                  done
-                ')
-                if echo "$PROBE_OUT" | awk '$1=="1000" && $2=="node" {f=1} END{exit !f}'; then
-                  echo "OK: app running as node user (uid 1000) after ${j} probe(s)"
+                PS_OUT=$(docker exec smoke ps -ef)
+                if echo "$PS_OUT" | awk 'NR>1 && $1=="node" && $0 ~ / node / {f=1} END{exit !f}'; then
+                  echo "OK: app running as node user after ${j} probe(s)"
                   FOUND_NODE=1
                   break
                 fi
@@ -123,10 +114,8 @@ jobs:
               done
               if [ "$FOUND_NODE" != "1" ]; then
                 echo "FAIL: no node process running as node user after 10s of probing"
-                echo "--- final /proc walk (uid comm) ---"
-                echo "$PROBE_OUT"
-                echo "--- ps fallback ---"
-                docker exec smoke ps -ef || true
+                echo "--- final ps -ef ---"
+                echo "$PS_OUT"
                 docker logs smoke
                 docker stop smoke >/dev/null
                 exit 1
