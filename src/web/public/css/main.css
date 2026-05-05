@@ -1668,6 +1668,7 @@ body[data-page="settings"] { --page-accent: var(--tg-blue, #2AABEE); }
    skip the tab strip there. */
 body[data-page="maintenance-duplicates"] #maintenance-tabs,
 body[data-page="maintenance-thumbs"]     #maintenance-tabs,
+body[data-page="maintenance-video"]      #maintenance-tabs,
 body[data-page="maintenance-nsfw"]       #maintenance-tabs,
 body[data-page="maintenance-ai"]         #maintenance-tabs,
 body[data-page="maintenance-backup"]     #maintenance-tabs,
