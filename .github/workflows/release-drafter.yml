@@ -19,6 +19,10 @@ jobs:
   draft:
     runs-on: ubuntu-latest
     steps:
-      - uses: release-drafter/release-drafter@v7
+      # Pinned at v6 — v7 currently fails on `pull_request` trigger with
+      # `Validation Failed: target_commitish` because it tries to set
+      # the release target to `refs/pull/<n>/merge`, which the GitHub
+      # Releases REST API rejects. Revisit once upstream cuts a v7 patch.
+      - uses: release-drafter/release-drafter@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
