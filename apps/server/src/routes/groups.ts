@@ -14,10 +14,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import { Hono } from "hono";
 import path from "node:path";
+import { Hono } from "hono";
 
-import { db, config as cfg } from "../lib/legacy.js";
+import { config as cfg, db } from "../lib/legacy.js";
 
 export const groupsRoutes = new Hono()
     .get("/groups", async (c) => {

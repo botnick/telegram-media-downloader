@@ -40,13 +40,7 @@ export type FileType = z.infer<typeof FileTypeSchema>;
  * the file under. Distinct from the DB's `file_type` column (mapped via
  * the typeFolder switch in the legacy server.js).
  */
-export const ViewerFileTypeSchema = z.enum([
-    "images",
-    "videos",
-    "audio",
-    "documents",
-    "stickers",
-]);
+export const ViewerFileTypeSchema = z.enum(["images", "videos", "audio", "documents", "stickers"]);
 export type ViewerFileType = z.infer<typeof ViewerFileTypeSchema>;
 
 // ---------------------------------------------------------------------------

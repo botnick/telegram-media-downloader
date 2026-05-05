@@ -44,11 +44,7 @@ async function request<T>(
             window.location.href = "/login.html";
         }
         const data = await parseJson(res);
-        throw new ApiError(
-            (data as { error?: string }).error ?? "Unauthorized",
-            401,
-            data
-        );
+        throw new ApiError((data as { error?: string }).error ?? "Unauthorized", 401, data);
     }
 
     const data = await parseJson(res);
@@ -59,11 +55,7 @@ async function request<T>(
         !window.location.pathname.startsWith("/setup-needed")
     ) {
         window.location.href = "/setup-needed.html";
-        throw new ApiError(
-            (data as { error?: string }).error ?? "Setup required",
-            503,
-            data
-        );
+        throw new ApiError((data as { error?: string }).error ?? "Setup required", 503, data);
     }
 
     if (!res.ok) {

@@ -1,27 +1,27 @@
 {
-  "name": "@tgdl/cli",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "main": "./src/index.js",
-  "bin": {
-    "telegram-downloader": "./src/index.js"
-  },
-  "scripts": {
-    "build": "echo 'CLI is .js source — Node executes directly'",
-    "dev": "node src/index.js",
-    "start": "node src/index.js",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "clean": "rm -rf dist *.tsbuildinfo"
-  },
-  "dependencies": {
-    "@tgdl/core": "workspace:*",
-    "@tgdl/shared": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/node": "catalog:",
-    "tsx": "^4.21.0",
-    "typescript": "catalog:"
-  }
+    "name": "@tgdl/cli",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "main": "./src/index.js",
+    "bin": {
+        "telegram-downloader": "./src/index.js"
+    },
+    "scripts": {
+        "build": "echo 'CLI is .js source — Node executes directly'",
+        "dev": "node src/index.js",
+        "start": "node src/index.js",
+        "typecheck": "tsc --noEmit",
+        "lint": "biome check src",
+        "clean": "rm -rf dist *.tsbuildinfo"
+    },
+    "dependencies": {
+        "@tgdl/core": "workspace:*",
+        "@tgdl/shared": "workspace:*"
+    },
+    "devDependencies": {
+        "@types/node": "catalog:",
+        "tsx": "^4.21.0",
+        "typescript": "catalog:"
+    }
 }

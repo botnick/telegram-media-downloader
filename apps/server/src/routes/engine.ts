@@ -11,18 +11,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { EngineActionRequestSchema } from "@tgdl/shared";
+import { Hono } from "hono";
 
-import { runtime, monitor } from "../lib/legacy.js";
+import { monitor, runtime } from "../lib/legacy.js";
 
 export const engineRoutes = new Hono()
     .get("/monitor/status", async (c) => {
         try {
-            const status = monitor.getStatus
-                ? await monitor.getStatus()
-                : { state: "idle" };
+            const status = monitor.getStatus ? await monitor.getStatus() : { state: "idle" };
             return c.json(status);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);

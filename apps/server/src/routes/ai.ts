@@ -8,12 +8,14 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import { Hono } from "hono";
-
 // @ts-expect-error — js source
 import * as ai from "@tgdl/core/ai/index.js";
+import { Hono } from "hono";
 
-const okOr500 = async <T>(c: Awaited<ReturnType<typeof Hono.prototype.get>>, fn: () => T | Promise<T>) => {
+const okOr500 = async <T>(
+    c: Awaited<ReturnType<typeof Hono.prototype.get>>,
+    fn: () => T | Promise<T>
+) => {
     try {
         const r = await fn();
         return r;

@@ -14,7 +14,7 @@
 
 import type { Hono } from "hono";
 
-import { register, clientCount } from "../lib/broadcast.js";
+import { clientCount, register } from "../lib/broadcast.js";
 
 interface WsLike {
     readonly readyState: number;
@@ -22,9 +22,7 @@ interface WsLike {
     close(): void;
 }
 
-type UpgradeWebSocketFn = (
-    cb: (c: unknown) => Record<string, unknown>
-) => unknown;
+type UpgradeWebSocketFn = (cb: (c: unknown) => Record<string, unknown>) => unknown;
 
 export function mountWebSocket(app: Hono, upgradeWebSocket: UpgradeWebSocketFn) {
     app.get(

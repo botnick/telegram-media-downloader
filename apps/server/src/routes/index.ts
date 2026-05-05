@@ -18,7 +18,7 @@ import { groupsRoutes } from "./groups.js";
 import { historyRoutes } from "./history.js";
 import { maintenanceRoutes, metricsRoute } from "./maintenance.js";
 import { nsfwRoutes } from "./nsfw.js";
-import { shareRoutes, sharePublicRoutes } from "./share.js";
+import { sharePublicRoutes, shareRoutes } from "./share.js";
 import { statsRoutes } from "./stats.js";
 import { thumbsRoutes } from "./thumbs.js";
 import { versionRoutes } from "./version.js";

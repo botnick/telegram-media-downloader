@@ -6,11 +6,11 @@
  * the rolling migration.
  */
 
-import { Hono } from "hono";
 // @tgdl/core is still .js source; types come once the package converts.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-expect-error — js source, no .d.ts yet
 import { getStats as getDbStats } from "@tgdl/core/db";
+import { Hono } from "hono";
 import { loadConfig } from "../lib/config.js";
 
 interface DbStats {
@@ -29,7 +29,7 @@ function formatBytes(bytes: number): string {
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+    return `${(bytes / k ** i).toFixed(2)} ${sizes[i]}`;
 }
 
 export const statsRoutes = new Hono().get("/stats", async (c) => {

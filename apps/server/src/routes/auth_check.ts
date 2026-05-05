@@ -9,11 +9,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
+import type { AuthCheckResponse } from "@tgdl/shared";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
-import type { AuthCheckResponse } from "@tgdl/shared";
 
-import { webAuth, config as cfg } from "../lib/legacy.js";
+import { config as cfg, webAuth } from "../lib/legacy.js";
 
 export const authCheckRoute = new Hono().get("/auth_check", async (c) => {
     let setupRequired = false;

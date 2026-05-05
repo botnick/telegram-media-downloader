@@ -6,8 +6,8 @@
  * write it without prop drilling.
  */
 
-import { create } from "zustand";
 import type { ViewerFileType } from "@tgdl/shared";
+import { create } from "zustand";
 
 interface UiState {
     viewMode: "grid" | "compact" | "list";

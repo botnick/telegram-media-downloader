@@ -19,10 +19,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
-import { broadcast } from "./broadcast.js";
-
 // @ts-expect-error — js source
 import * as runtimeMod from "@tgdl/core/runtime.js";
+import { broadcast } from "./broadcast.js";
 
 interface RuntimeLike {
     on?(channel: string, fn: (payload: unknown) => void): void;
@@ -30,9 +29,10 @@ interface RuntimeLike {
 
 export function wirePublishers(): void {
     try {
-        const rt = (runtimeMod as { runtime?: RuntimeLike; default?: RuntimeLike }).runtime
-            ?? (runtimeMod as { default?: RuntimeLike }).default
-            ?? null;
+        const rt =
+            (runtimeMod as { runtime?: RuntimeLike; default?: RuntimeLike }).runtime ??
+            (runtimeMod as { default?: RuntimeLike }).default ??
+            null;
         if (!rt || typeof rt.on !== "function") return;
 
         rt.on("state", (s) => {

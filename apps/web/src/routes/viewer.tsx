@@ -5,12 +5,11 @@
  */
 
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-
-import { useDownloadsAll } from "@/api/queries";
-import { useUiStore } from "@/store/ui";
-import { MediaTile } from "@/components/MediaTile";
 import type { ViewerFileType } from "@tgdl/shared";
+import { useState } from "react";
+import { useDownloadsAll } from "@/api/queries";
+import { MediaTile } from "@/components/MediaTile";
+import { useUiStore } from "@/store/ui";
 
 const FILES_PER_PAGE = 50;
 
@@ -39,9 +38,7 @@ function Viewer() {
             <header className="flex items-center justify-between px-4 py-3 border-b border-white/5">
                 <div>
                     <h1 className="text-xl font-semibold">All Media</h1>
-                    <p className="text-sm text-tg-text-secondary">
-                        {total.toLocaleString()} files
-                    </p>
+                    <p className="text-sm text-tg-text-secondary">{total.toLocaleString()} files</p>
                 </div>
             </header>
 

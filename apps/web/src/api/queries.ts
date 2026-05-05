@@ -6,14 +6,14 @@
  * Router's invalidator, so mutations can target their cache by key.
  */
 
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { type UseQueryResult, useQuery } from "@tanstack/react-query";
 import type {
     DownloadsListQuery,
     DownloadsListResponse,
     GroupsListResponse,
     StatsResponse,
-    VersionResponse,
     VersionCheckResponse,
+    VersionResponse,
 } from "@tgdl/shared";
 
 import { api } from "./client.js";
@@ -48,7 +48,9 @@ export function useGroups(): UseQueryResult<GroupsListResponse> {
     });
 }
 
-export function useDownloadsAll(query: Partial<DownloadsListQuery> = {}): UseQueryResult<DownloadsListResponse> {
+export function useDownloadsAll(
+    query: Partial<DownloadsListQuery> = {}
+): UseQueryResult<DownloadsListResponse> {
     const params = new URLSearchParams();
     if (query.page) params.set("page", String(query.page));
     if (query.limit) params.set("limit", String(query.limit));
@@ -71,7 +73,9 @@ export function useDownloadsByGroup(
     return useQuery({
         queryKey: ["downloads", "byGroup", groupId, query],
         queryFn: () =>
-            api.get<DownloadsListResponse>(`/api/downloads/${encodeURIComponent(groupId)}?${params.toString()}`),
+            api.get<DownloadsListResponse>(
+                `/api/downloads/${encodeURIComponent(groupId)}?${params.toString()}`
+            ),
         placeholderData: (prev) => prev,
     });
 }

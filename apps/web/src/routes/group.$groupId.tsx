@@ -14,9 +14,7 @@ function GroupPage() {
         <main className="p-3 h-full flex flex-col">
             <header className="px-1 pb-3">
                 <h1 className="text-xl font-semibold">{groupId}</h1>
-                <p className="text-sm text-tg-text-secondary">
-                    {downloads.data?.total ?? 0} files
-                </p>
+                <p className="text-sm text-tg-text-secondary">{downloads.data?.total ?? 0} files</p>
             </header>
             <div className="flex-1 overflow-y-auto">
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">

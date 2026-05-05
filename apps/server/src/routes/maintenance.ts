@@ -14,7 +14,7 @@
 
 import { Hono } from "hono";
 
-import { thumbs, integrity, dedup, metrics } from "../lib/legacy.js";
+import { dedup, integrity, metrics, thumbs } from "../lib/legacy.js";
 
 export const maintenanceRoutes = new Hono()
     // ---- Thumbnails -------------------------------------------------------

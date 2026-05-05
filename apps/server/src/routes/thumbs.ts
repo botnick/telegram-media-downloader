@@ -11,9 +11,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
-import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { ThumbsQuerySchema } from "@tgdl/shared";
+import { Hono } from "hono";
 
 import { thumbs } from "../lib/legacy.js";
 

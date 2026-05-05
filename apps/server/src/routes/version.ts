@@ -9,8 +9,8 @@
  * status-bar chip behaves identically.
  */
 
-import { Hono } from "hono";
 import type { VersionCheckResponse, VersionResponse } from "@tgdl/shared";
+import { Hono } from "hono";
 
 const BUILT_AT = process.env["BUILT_AT"] ?? null;
 const COMMIT = (process.env["GIT_SHA"] ?? "dev").slice(0, 7);

@@ -122,8 +122,8 @@ export type StatsResponse = z.infer<typeof StatsResponseSchema>;
 // the API module alongside the rest of the contract)
 // ---------------------------------------------------------------------------
 
-export { AuthCheckResponseSchema };
 export type { AuthCheckResponse } from "./domain.js";
+export { AuthCheckResponseSchema };
 
 // ---------------------------------------------------------------------------
 // Engine

@@ -11,13 +11,11 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
-import { setCookie, deleteCookie, getCookie } from "hono/cookie";
-import { z } from "zod";
 import { LoginRequestSchema } from "@tgdl/shared";
-
-import { webAuth } from "../lib/legacy.js";
-import { config as cfg } from "../lib/legacy.js";
+import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { z } from "zod";
+import { config as cfg, webAuth } from "../lib/legacy.js";
 
 const ChangePasswordSchema = z.object({
     current: z.string(),
@@ -77,45 +75,37 @@ export const authRoutes = new Hono()
             return c.json({ error: (err as Error).message ?? "Failed" }, 500);
         }
     })
-    .post(
-        "/auth/change-password",
-        zValidator("json", ChangePasswordSchema),
-        async (c) => {
-            const { current, next } = c.req.valid("json");
-            try {
-                const web = await loadWebConfig();
-                const verify = webAuth.loginVerify(current, web);
-                if (!verify?.ok) return c.json({ error: "Current password is wrong" }, 400);
-                const newHash = webAuth.hashPassword(next);
-                const conf = await cfg.loadConfig();
-                if (!conf.web) conf.web = {};
-                conf.web.passwordHash = newHash;
-                await cfg.saveConfig(conf);
-                webAuth.revokeAllSessions();
-                return c.json({ ok: true });
-            } catch (err) {
-                return c.json({ error: (err as Error).message }, 500);
-            }
+    .post("/auth/change-password", zValidator("json", ChangePasswordSchema), async (c) => {
+        const { current, next } = c.req.valid("json");
+        try {
+            const web = await loadWebConfig();
+            const verify = webAuth.loginVerify(current, web);
+            if (!verify?.ok) return c.json({ error: "Current password is wrong" }, 400);
+            const newHash = webAuth.hashPassword(next);
+            const conf = await cfg.loadConfig();
+            if (!conf.web) conf.web = {};
+            conf.web.passwordHash = newHash;
+            await cfg.saveConfig(conf);
+            webAuth.revokeAllSessions();
+            return c.json({ ok: true });
+        } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
         }
-    )
-    .post(
-        "/auth/guest-password",
-        zValidator("json", GuestPasswordSchema),
-        async (c) => {
-            const { password } = c.req.valid("json");
-            try {
-                const conf = await cfg.loadConfig();
-                if (!conf.web) conf.web = {};
-                if (password) {
-                    conf.web.guestPasswordHash = webAuth.hashPassword(password);
-                } else {
-                    delete conf.web.guestPasswordHash;
-                }
-                await cfg.saveConfig(conf);
-                webAuth.revokeAllGuestSessions();
-                return c.json({ ok: true });
-            } catch (err) {
-                return c.json({ error: (err as Error).message }, 500);
+    })
+    .post("/auth/guest-password", zValidator("json", GuestPasswordSchema), async (c) => {
+        const { password } = c.req.valid("json");
+        try {
+            const conf = await cfg.loadConfig();
+            if (!conf.web) conf.web = {};
+            if (password) {
+                conf.web.guestPasswordHash = webAuth.hashPassword(password);
+            } else {
+                delete conf.web.guestPasswordHash;
             }
+            await cfg.saveConfig(conf);
+            webAuth.revokeAllGuestSessions();
+            return c.json({ ok: true });
+        } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
         }
-    );
+    });

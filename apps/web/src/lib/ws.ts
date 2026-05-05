@@ -17,9 +17,21 @@ const MAX_ATTEMPTS_BEFORE_PAUSE = 12;
 
 function dispatch(msg: WsMessage) {
     const set = handlers.get(msg.type);
-    if (set) for (const fn of set) try { fn(msg); } catch (e) { console.error("ws handler", e); }
+    if (set)
+        for (const fn of set)
+            try {
+                fn(msg);
+            } catch (e) {
+                console.error("ws handler", e);
+            }
     const all = handlers.get("*");
-    if (all) for (const fn of all) try { fn(msg); } catch { /* swallow */ }
+    if (all)
+        for (const fn of all)
+            try {
+                fn(msg);
+            } catch {
+                /* swallow */
+            }
 }
 
 function open() {

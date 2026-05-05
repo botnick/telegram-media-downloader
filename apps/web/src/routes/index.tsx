@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { createFileRoute } from "@tanstack/react-router";
 import type { StatsResponse, VersionResponse } from "@tgdl/shared";
 
 async function fetchVersion(): Promise<VersionResponse> {
@@ -22,15 +22,16 @@ function Home() {
         <main className="p-8 max-w-3xl mx-auto">
             <h1 className="text-3xl font-bold mb-4">Telegram Media Downloader</h1>
             <p className="text-tg-text-secondary mb-6">
-                React + Hono dashboard. UI port from the legacy SPA is in
-                progress; this page is a smoke screen confirming the new
-                stack reaches the backend correctly.
+                React + Hono dashboard. UI port from the legacy SPA is in progress; this page is a
+                smoke screen confirming the new stack reaches the backend correctly.
             </p>
 
             <section className="bg-tg-panel rounded-lg p-4 mb-4">
                 <h2 className="text-lg font-semibold mb-2">Version</h2>
                 {version.isLoading && <p>Loading…</p>}
-                {version.error && <p className="text-red-400">Error: {(version.error as Error).message}</p>}
+                {version.error && (
+                    <p className="text-red-400">Error: {(version.error as Error).message}</p>
+                )}
                 {version.data && (
                     <dl className="grid grid-cols-2 gap-2 text-sm">
                         <dt className="text-tg-text-secondary">Version</dt>
@@ -46,7 +47,9 @@ function Home() {
             <section className="bg-tg-panel rounded-lg p-4">
                 <h2 className="text-lg font-semibold mb-2">Library stats</h2>
                 {stats.isLoading && <p>Loading…</p>}
-                {stats.error && <p className="text-red-400">Error: {(stats.error as Error).message}</p>}
+                {stats.error && (
+                    <p className="text-red-400">Error: {(stats.error as Error).message}</p>
+                )}
                 {stats.data && (
                     <dl className="grid grid-cols-2 gap-2 text-sm">
                         <dt className="text-tg-text-secondary">Total files</dt>

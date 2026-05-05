@@ -1,36 +1,36 @@
 {
-  "name": "@tgdl/shared",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+    "name": "@tgdl/shared",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        },
+        "./domain": {
+            "types": "./dist/domain.d.ts",
+            "import": "./dist/domain.js"
+        },
+        "./api": {
+            "types": "./dist/api.d.ts",
+            "import": "./dist/api.js"
+        },
+        "./ws": {
+            "types": "./dist/ws.d.ts",
+            "import": "./dist/ws.js"
+        }
     },
-    "./domain": {
-      "types": "./dist/domain.d.ts",
-      "import": "./dist/domain.js"
+    "scripts": {
+        "build": "tsc -b",
+        "typecheck": "tsc --noEmit",
+        "lint": "biome check src",
+        "clean": "rm -rf dist *.tsbuildinfo"
     },
-    "./api": {
-      "types": "./dist/api.d.ts",
-      "import": "./dist/api.js"
+    "dependencies": {
+        "zod": "^4.4.3"
     },
-    "./ws": {
-      "types": "./dist/ws.d.ts",
-      "import": "./dist/ws.js"
+    "devDependencies": {
+        "typescript": "catalog:"
     }
-  },
-  "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "clean": "rm -rf dist *.tsbuildinfo"
-  },
-  "dependencies": {
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "typescript": "catalog:"
-  }
 }

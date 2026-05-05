@@ -2,9 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
-import { Hono } from "hono";
 // @ts-expect-error — js source
 import * as backup from "@tgdl/core/backup/index.js";
+import { Hono } from "hono";
 
 export const backupRoutes = new Hono()
     .get("/backup/providers", async (c) => {
@@ -17,7 +17,9 @@ export const backupRoutes = new Hono()
     })
     .get("/backup/destinations", async (c) => {
         try {
-            const r = backup.listDestinations ? await backup.listDestinations() : { destinations: [] };
+            const r = backup.listDestinations
+                ? await backup.listDestinations()
+                : { destinations: [] };
             return c.json(r);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);
@@ -44,7 +46,9 @@ export const backupRoutes = new Hono()
     .get("/backup/destinations/:id/jobs", async (c) => {
         const id = c.req.param("id");
         try {
-            const r = backup.listDestinationJobs ? await backup.listDestinationJobs(id) : { jobs: [] };
+            const r = backup.listDestinationJobs
+                ? await backup.listDestinationJobs(id)
+                : { jobs: [] };
             return c.json(r);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);
@@ -53,7 +57,9 @@ export const backupRoutes = new Hono()
     .get("/backup/destinations/:id/status", async (c) => {
         const id = c.req.param("id");
         try {
-            const r = backup.getDestinationStatus ? await backup.getDestinationStatus(id) : { status: "idle" };
+            const r = backup.getDestinationStatus
+                ? await backup.getDestinationStatus(id)
+                : { status: "idle" };
             return c.json(r);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);

@@ -33,13 +33,12 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
-
-import { mountRoutes } from "./routes/index.js";
-import { trustProxy } from "./middleware/trust-proxy.js";
-import { errorHandler } from "./middleware/errors.js";
-import { mountStatic } from "./lib/static.js";
-import { mountWebSocket } from "./routes/ws.js";
 import { wirePublishers } from "./lib/publishers.js";
+import { mountStatic } from "./lib/static.js";
+import { errorHandler } from "./middleware/errors.js";
+import { trustProxy } from "./middleware/trust-proxy.js";
+import { mountRoutes } from "./routes/index.js";
+import { mountWebSocket } from "./routes/ws.js";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 
@@ -130,9 +129,7 @@ const server = serve(
     },
     (info) => {
         // eslint-disable-next-line no-console
-        console.log(
-            `🌐  Telegram Downloader   v${process.env["npm_package_version"] ?? "?"}`
-        );
+        console.log(`🌐  Telegram Downloader   v${process.env["npm_package_version"] ?? "?"}`);
         // eslint-disable-next-line no-console
         console.log(`    Dashboard: http://localhost:${info.port}`);
     }

@@ -1,0 +1,67 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "includes": [
+            "**",
+            "!**/dist",
+            "!**/dist-server",
+            "!**/.turbo",
+            "!**/node_modules",
+            "!**/data",
+            "!**/*.tsbuildinfo",
+            "!**/coverage",
+            "!**/apps/web/legacy.html",
+            "!**/apps/web/public/js/**",
+            "!**/apps/web/legacy-js/**",
+            "!**/packages/core/src/**/*.js",
+            "!**/apps/cli/src/**/*.js",
+            "!**/apps/server/src/routes/**/*.js",
+            "!**/scripts/**/*.js",
+            "!**/runner.js",
+            "!**/pnpm-lock.yaml",
+            "!**/CHANGELOG.md"
+        ]
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 100,
+        "lineEnding": "lf"
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "style": {
+                "noNonNullAssertion": "off",
+                "useConst": "warn",
+                "useNamingConvention": "off"
+            },
+            "suspicious": {
+                "noExplicitAny": "off",
+                "noConsole": "off"
+            },
+            "correctness": {
+                "useExhaustiveDependencies": "off"
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "double",
+            "trailingCommas": "es5",
+            "semicolons": "always"
+        }
+    },
+    "json": {
+        "formatter": {
+            "trailingCommas": "none"
+        }
+    }
+}

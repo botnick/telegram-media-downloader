@@ -14,13 +14,13 @@ import { Hono } from "hono";
 
 import {
     accounts as am,
-    rescue,
-    integrity,
-    dedup,
     db,
+    dedup,
+    integrity,
+    logger as log,
+    rescue,
     thumbs,
     updater,
-    logger as log,
 } from "../lib/legacy.js";
 
 export const extrasRoutes = new Hono()
@@ -57,7 +57,9 @@ export const extrasRoutes = new Hono()
     })
     .get("/update/status", async (c) => {
         try {
-            const r = updater.getUpdateStatus ? await updater.getUpdateStatus() : { running: false };
+            const r = updater.getUpdateStatus
+                ? await updater.getUpdateStatus()
+                : { running: false };
             return c.json(r);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);
@@ -158,9 +160,7 @@ export const extrasRoutes = new Hono()
     })
     .get("/maintenance/dedup/delete/status", async (c) => {
         try {
-            const r = dedup.getDeleteStatus
-                ? await dedup.getDeleteStatus()
-                : { running: false };
+            const r = dedup.getDeleteStatus ? await dedup.getDeleteStatus() : { running: false };
             return c.json(r);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);
@@ -170,9 +170,7 @@ export const extrasRoutes = new Hono()
     // ---- Thumbs status / hwaccel probe -----------------------------------
     .get("/maintenance/thumbs/build/status", async (c) => {
         try {
-            const r = thumbs.getBuildStatus
-                ? await thumbs.getBuildStatus()
-                : { running: false };
+            const r = thumbs.getBuildStatus ? await thumbs.getBuildStatus() : { running: false };
             return c.json(r);
         } catch (err) {
             return c.json({ error: (err as Error).message }, 500);
