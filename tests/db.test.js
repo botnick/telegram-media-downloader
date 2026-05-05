@@ -15,7 +15,7 @@ let downloadsApi;
 
 beforeAll(async () => {
     process.env.TGDL_DATA_DIR = DATA_DIR;
-    downloadsApi = await import('../src/core/db.js');
+    downloadsApi = await import('@tgdl/core/db');
     db = downloadsApi.getDb();
 });
 

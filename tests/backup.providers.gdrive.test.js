@@ -116,7 +116,7 @@ beforeEach(async () => {
     state.files.clear();
     state.nextId = 1;
     state.log = [];
-    const mod = await import('../src/core/backup/providers/gdrive.js');
+    const mod = await import('@tgdl/core/backup/providers/gdrive');
     GoogleDriveProvider = mod.GoogleDriveProvider;
 });
 

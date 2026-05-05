@@ -16,7 +16,7 @@ import fs from 'fs';
 import os from 'os';
 import sharp from 'sharp';
 
-import { computePhash, hammingDistance, groupNearDuplicates } from '../../src/core/ai/phash.js';
+import { computePhash, hammingDistance, groupNearDuplicates } from '@tgdl/core/ai/phash';
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-phash-'));
 const A   = path.join(TMP, 'a.png');

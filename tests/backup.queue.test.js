@@ -13,9 +13,9 @@ let queue;
 
 beforeAll(async () => {
     process.env.TGDL_DATA_DIR = DATA_DIR;
-    const dbMod = await import('../src/core/db.js');
+    const dbMod = await import('@tgdl/core/db');
     db = dbMod.getDb();
-    queue = await import('../src/core/backup/queue.js');
+    queue = await import('@tgdl/core/backup/queue');
     // Seed a destination row so the FK is satisfied.
     db.prepare(`
         INSERT INTO backup_destinations (

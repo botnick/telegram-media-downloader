@@ -7,7 +7,7 @@ import {
     TTL_MIN_SEC_DEFAULT, TTL_MAX_SEC_DEFAULT, TTL_DEFAULT_SEC_DEFAULT,
     applyShareLimits, getShareLimits,
     getShareSecretFingerprint,
-} from '../src/core/share.js';
+} from '@tgdl/core/share';
 
 function freshSecretConfig() {
     const cfg = { web: {} };

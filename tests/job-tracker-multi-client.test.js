@@ -9,7 +9,7 @@
 // identical order.
 
 import { describe, it, expect } from 'vitest';
-import { createJobTracker } from '../src/core/job-tracker.js';
+import { createJobTracker } from '@tgdl/core/job-tracker';
 
 function flush(ms = 30) {
     return new Promise((res) => setTimeout(res, ms));

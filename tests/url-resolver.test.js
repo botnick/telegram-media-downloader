@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTelegramUrl, parseUrlList, UrlParseError } from '../src/core/url-resolver.js';
+import { parseTelegramUrl, parseUrlList, UrlParseError } from '@tgdl/core/url-resolver';
 
 describe('parseTelegramUrl', () => {
     it('parses public channel /<chan>/<msg>', () => {

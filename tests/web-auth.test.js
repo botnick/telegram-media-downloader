@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { hashPassword, verifyPassword, loginVerify, isAuthConfigured, isGuestEnabled,
          issueSession, validateSession, revokeSession,
-         revokeAllSessions, revokeAllGuestSessions } from '../src/core/web-auth.js';
+         revokeAllSessions, revokeAllGuestSessions } from '@tgdl/core/web-auth';
 
 describe('hashPassword / verifyPassword', () => {
     it('round-trips a password', () => {

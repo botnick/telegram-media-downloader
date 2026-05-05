@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createJobTracker } from '../src/core/job-tracker.js';
+import { createJobTracker } from '@tgdl/core/job-tracker';
 
 function flushAsync(times = 4) {
     let p = Promise.resolve();

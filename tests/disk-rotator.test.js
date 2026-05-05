@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSize } from '../src/core/disk-rotator.js';
+import { parseSize } from '@tgdl/core/disk-rotator';
 
 describe('parseSize (disk-rotator)', () => {
     it('parses plain numbers as bytes', () => {

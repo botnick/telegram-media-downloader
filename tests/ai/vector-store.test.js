@@ -13,14 +13,14 @@ import os from 'os';
 
 import {
     cosine, l2Normalize, vectorToBlob, blobToVector, topK, clearCache,
-} from '../../src/core/ai/vector-store.js';
+} from '@tgdl/core/ai/vector-store';
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-vec-'));
 let downloadsApi;
 
 beforeAll(async () => {
     process.env.TGDL_DATA_DIR = TMP;
-    downloadsApi = await import('../../src/core/db.js');
+    downloadsApi = await import('@tgdl/core/db');
     downloadsApi.getDb();   // boot schema
 });
 

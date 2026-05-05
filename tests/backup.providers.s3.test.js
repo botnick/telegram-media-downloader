@@ -50,7 +50,7 @@ beforeAll(async () => {
         await setupClient.send(new CreateBucketCommand({ Bucket: BUCKET }));
     } catch { /* already exists */ }
 
-    const { S3Provider } = await import('../src/core/backup/providers/s3.js');
+    const { S3Provider } = await import('@tgdl/core/backup/providers/s3');
     provider = new S3Provider();
     await provider.init({
         endpoint: ENDPOINT, region: REGION, bucket: BUCKET,

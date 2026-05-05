@@ -7,8 +7,8 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import os from 'os';
 import crypto from 'crypto';
-import { LocalProvider } from '../src/core/backup/providers/local.js';
-import { deriveKey, generateSalt, decryptBuffer } from '../src/core/backup/encryption.js';
+import { LocalProvider } from '@tgdl/core/backup/providers/local';
+import { deriveKey, generateSalt, decryptBuffer } from '@tgdl/core/backup/encryption';
 
 const SOURCE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-bk-src-'));
 const DEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-bk-dst-'));

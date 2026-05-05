@@ -84,7 +84,7 @@ const ctx = { destinationId: 1, log: () => {}, signal: new AbortController().sig
 
 beforeEach(async () => {
     calls.length = 0;
-    const mod = await import('../src/core/backup/providers/dropbox.js');
+    const mod = await import('@tgdl/core/backup/providers/dropbox');
     DropboxProvider = mod.DropboxProvider;
 });
 

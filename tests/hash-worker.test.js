@@ -21,7 +21,7 @@ const EXPECTED = crypto.createHash('sha256').update(PAYLOAD).digest('hex');
 
 afterAll(async () => {
     try {
-        const mod = await import('../src/core/hash-worker.js');
+        const mod = await import('@tgdl/core/hash-worker');
         await mod.shutdownHashPool();
     } catch {}
     fs.rmSync(TMP_DIR, { recursive: true, force: true });
@@ -29,19 +29,19 @@ afterAll(async () => {
 
 describe('hash-worker pool', () => {
     it('returns the same SHA-256 as crypto.createHash for a known buffer', async () => {
-        const { hashFile } = await import('../src/core/hash-worker.js');
+        const { hashFile } = await import('@tgdl/core/hash-worker');
         const hex = await hashFile(TEST_FILE);
         expect(hex).toBe(EXPECTED);
     });
 
     it('matches the in-process streamer (sha256OfFile) byte-for-byte', async () => {
-        const { sha256OfFile } = await import('../src/core/checksum.js');
+        const { sha256OfFile } = await import('@tgdl/core/checksum');
         const a = await sha256OfFile(TEST_FILE);
         expect(a).toBe(EXPECTED);
     });
 
     it('handles concurrent requests for the same file deterministically', async () => {
-        const { hashFile } = await import('../src/core/hash-worker.js');
+        const { hashFile } = await import('@tgdl/core/hash-worker');
         const results = await Promise.all([
             hashFile(TEST_FILE),
             hashFile(TEST_FILE),
@@ -52,7 +52,7 @@ describe('hash-worker pool', () => {
     });
 
     it('rejects with a sensible error when the file is missing', async () => {
-        const { hashFile } = await import('../src/core/hash-worker.js');
+        const { hashFile } = await import('@tgdl/core/hash-worker');
         await expect(hashFile(path.join(TMP_DIR, 'does-not-exist.bin'))).rejects.toThrow();
     });
 });
@@ -66,7 +66,7 @@ describe('hash-worker disabled fallback', () => {
         const prev = process.env.HASH_WORKER_DISABLE;
         process.env.HASH_WORKER_DISABLE = '1';
         try {
-            const { sha256OfFileViaPool } = await import('../src/core/checksum.js');
+            const { sha256OfFileViaPool } = await import('@tgdl/core/checksum');
             const hex = await sha256OfFileViaPool(TEST_FILE);
             expect(hex).toBe(EXPECTED);
         } finally {

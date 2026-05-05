@@ -5,8 +5,8 @@
 // assert exactly 3 clusters with the expected sizes are returned.
 
 import { describe, it, expect } from 'vitest';
-import { dbscan } from '../../src/core/ai/faces.js';
-import { l2Normalize } from '../../src/core/ai/vector-store.js';
+import { dbscan } from '@tgdl/core/ai/faces';
+import { l2Normalize } from '@tgdl/core/ai/vector-store';
 
 function vec(x, y) {
     const v = new Float32Array([x, y]);

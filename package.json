@@ -1,71 +1,73 @@
 {
-  "name": "telegram-media-downloader",
-  "version": "2.6.8",
-  "private": true,
-  "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
-  "type": "module",
-  "packageManager": "pnpm@11.0.4",
-  "engines": {
-    "node": ">=22.0.0"
-  },
-  "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
-    "lint": "turbo run lint",
-    "test": "turbo run test",
-    "test:watch": "turbo run test:watch --parallel",
-    "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rm -rf node_modules .turbo",
-    "format": "prettier --write \"**/*.{ts,tsx,js,html,css,md,json,yml,yaml}\" --ignore-path .gitignore",
-    "doctor": "node apps/cli/src/index.js doctor",
-    "start": "node apps/server/dist/index.js",
-    "menu": "node apps/cli/src/index.js menu",
-    "monitor": "node apps/cli/src/index.js monitor",
-    "history": "node apps/cli/src/index.js history",
-    "auth": "node apps/cli/src/index.js auth",
-    "prod": "node runner.js",
-    "migrate": "node scripts/migrate_json_to_sqlite.js",
-    "prepare": "husky || true"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/botnick/telegram-media-downloader.git"
-  },
-  "homepage": "https://github.com/botnick/telegram-media-downloader#readme",
-  "bugs": {
-    "url": "https://github.com/botnick/telegram-media-downloader/issues"
-  },
-  "keywords": [
-    "telegram",
-    "downloader",
-    "media-downloader",
-    "telegram-stories",
-    "scraper",
-    "backup",
-    "channel-backup",
-    "gramjs",
-    "self-hosted",
-    "automation",
-    "telegram-api"
-  ],
-  "author": "botnick",
-  "license": "MIT",
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
-    "@types/node": "^25.6.0",
-    "husky": "^9.1.6",
-    "lint-staged": "^15.2.10",
-    "turbo": "^2.6.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
-  },
-  "lint-staged": {
-    "*.{ts,tsx,js,mjs,cjs}": [
-      "prettier --write",
-      "eslint --fix"
+    "name": "telegram-media-downloader",
+    "version": "2.6.8",
+    "private": true,
+    "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
+    "type": "module",
+    "packageManager": "pnpm@11.0.4",
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev --parallel",
+        "lint": "turbo run lint",
+        "test": "turbo run test",
+        "test:watch": "turbo run test:watch --parallel",
+        "typecheck": "turbo run typecheck",
+        "clean": "turbo run clean && rm -rf node_modules .turbo",
+        "format": "prettier --write \"**/*.{ts,tsx,js,html,css,md,json,yml,yaml}\" --ignore-path .gitignore",
+        "doctor": "node apps/cli/src/index.js doctor",
+        "start": "node apps/server/dist/index.js",
+        "menu": "node apps/cli/src/index.js menu",
+        "monitor": "node apps/cli/src/index.js monitor",
+        "history": "node apps/cli/src/index.js history",
+        "auth": "node apps/cli/src/index.js auth",
+        "prod": "node runner.js",
+        "migrate": "node scripts/migrate_json_to_sqlite.js",
+        "prepare": "husky || true"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/botnick/telegram-media-downloader.git"
+    },
+    "homepage": "https://github.com/botnick/telegram-media-downloader#readme",
+    "bugs": {
+        "url": "https://github.com/botnick/telegram-media-downloader/issues"
+    },
+    "keywords": [
+        "telegram",
+        "downloader",
+        "media-downloader",
+        "telegram-stories",
+        "scraper",
+        "backup",
+        "channel-backup",
+        "gramjs",
+        "self-hosted",
+        "automation",
+        "telegram-api"
     ],
-    "*.{html,css,md,json,yml,yaml}": [
-      "prettier --write"
-    ]
-  }
+    "author": "botnick",
+    "license": "MIT",
+    "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.6.0",
+        "husky": "^9.1.6",
+        "lint-staged": "^15.2.10",
+        "turbo": "^2.6.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.5",
+        "@tgdl/core": "workspace:*",
+        "@tgdl/shared": "workspace:*"
+    },
+    "lint-staged": {
+        "*.{ts,tsx,js,mjs,cjs}": [
+            "prettier --write",
+            "eslint --fix"
+        ],
+        "*.{html,css,md,json,yml,yaml}": [
+            "prettier --write"
+        ]
+    }
 }

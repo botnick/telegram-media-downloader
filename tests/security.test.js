@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
-import { SecureSession, RateLimiter } from '../src/core/security.js';
+import { SecureSession, RateLimiter } from '@tgdl/core/security';
 
 describe('SecureSession', () => {
     const password = 'a-secret-with-decent-entropy-aaaaa';
