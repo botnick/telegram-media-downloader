@@ -7,10 +7,10 @@
     "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "composite": true,
+    // The package is currently .js source. We don't run the compiler
+    // on it (Node executes the .js directly), so just type-check via
+    // tsc --noEmit when needed.
+    "noEmit": true,
     // Accept .js source while we migrate file-by-file. checkJs is off
     // so we don't drown in JSDoc-inferred warnings on day one; turn it
     // on per-file once the file is converted to .ts.
