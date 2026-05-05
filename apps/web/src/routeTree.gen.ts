@@ -8,203 +8,245 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from "./routes/__root";
-import { Route as BackfillRouteImport } from "./routes/backfill";
-import { Route as GroupGroupIdRouteImport } from "./routes/group.$groupId";
-import { Route as GroupsRouteImport } from "./routes/groups";
-import { Route as IndexRouteImport } from "./routes/index";
-import { Route as MaintenanceRouteImport } from "./routes/maintenance";
-import { Route as QueueRouteImport } from "./routes/queue";
-import { Route as SettingsRouteImport } from "./routes/settings";
-import { Route as ViewerRouteImport } from "./routes/viewer";
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as ViewerRouteImport } from './routes/viewer'
+import { Route as SetupNeededRouteImport } from './routes/setup-needed'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as QueueRouteImport } from './routes/queue'
+import { Route as MaintenanceRouteImport } from './routes/maintenance'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as GroupsRouteImport } from './routes/groups'
+import { Route as BackfillRouteImport } from './routes/backfill'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as GroupGroupIdRouteImport } from './routes/group.$groupId'
 
 const ViewerRoute = ViewerRouteImport.update({
-    id: "/viewer",
-    path: "/viewer",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/viewer',
+  path: '/viewer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SetupNeededRoute = SetupNeededRouteImport.update({
+  id: '/setup-needed',
+  path: '/setup-needed',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
-    id: "/settings",
-    path: "/settings",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const QueueRoute = QueueRouteImport.update({
-    id: "/queue",
-    path: "/queue",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/queue',
+  path: '/queue',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MaintenanceRoute = MaintenanceRouteImport.update({
-    id: "/maintenance",
-    path: "/maintenance",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/maintenance',
+  path: '/maintenance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupsRoute = GroupsRouteImport.update({
-    id: "/groups",
-    path: "/groups",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/groups',
+  path: '/groups',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BackfillRoute = BackfillRouteImport.update({
-    id: "/backfill",
-    path: "/backfill",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/backfill',
+  path: '/backfill',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
-    id: "/",
-    path: "/",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GroupGroupIdRoute = GroupGroupIdRouteImport.update({
-    id: "/group/$groupId",
-    path: "/group/$groupId",
-    getParentRoute: () => rootRouteImport,
-} as any);
+  id: '/group/$groupId',
+  path: '/group/$groupId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
-    "/": typeof IndexRoute;
-    "/backfill": typeof BackfillRoute;
-    "/groups": typeof GroupsRoute;
-    "/maintenance": typeof MaintenanceRoute;
-    "/queue": typeof QueueRoute;
-    "/settings": typeof SettingsRoute;
-    "/viewer": typeof ViewerRoute;
-    "/group/$groupId": typeof GroupGroupIdRoute;
+  '/': typeof IndexRoute
+  '/backfill': typeof BackfillRoute
+  '/groups': typeof GroupsRoute
+  '/login': typeof LoginRoute
+  '/maintenance': typeof MaintenanceRoute
+  '/queue': typeof QueueRoute
+  '/settings': typeof SettingsRoute
+  '/setup-needed': typeof SetupNeededRoute
+  '/viewer': typeof ViewerRoute
+  '/group/$groupId': typeof GroupGroupIdRoute
 }
 export interface FileRoutesByTo {
-    "/": typeof IndexRoute;
-    "/backfill": typeof BackfillRoute;
-    "/groups": typeof GroupsRoute;
-    "/maintenance": typeof MaintenanceRoute;
-    "/queue": typeof QueueRoute;
-    "/settings": typeof SettingsRoute;
-    "/viewer": typeof ViewerRoute;
-    "/group/$groupId": typeof GroupGroupIdRoute;
+  '/': typeof IndexRoute
+  '/backfill': typeof BackfillRoute
+  '/groups': typeof GroupsRoute
+  '/login': typeof LoginRoute
+  '/maintenance': typeof MaintenanceRoute
+  '/queue': typeof QueueRoute
+  '/settings': typeof SettingsRoute
+  '/setup-needed': typeof SetupNeededRoute
+  '/viewer': typeof ViewerRoute
+  '/group/$groupId': typeof GroupGroupIdRoute
 }
 export interface FileRoutesById {
-    __root__: typeof rootRouteImport;
-    "/": typeof IndexRoute;
-    "/backfill": typeof BackfillRoute;
-    "/groups": typeof GroupsRoute;
-    "/maintenance": typeof MaintenanceRoute;
-    "/queue": typeof QueueRoute;
-    "/settings": typeof SettingsRoute;
-    "/viewer": typeof ViewerRoute;
-    "/group/$groupId": typeof GroupGroupIdRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/backfill': typeof BackfillRoute
+  '/groups': typeof GroupsRoute
+  '/login': typeof LoginRoute
+  '/maintenance': typeof MaintenanceRoute
+  '/queue': typeof QueueRoute
+  '/settings': typeof SettingsRoute
+  '/setup-needed': typeof SetupNeededRoute
+  '/viewer': typeof ViewerRoute
+  '/group/$groupId': typeof GroupGroupIdRoute
 }
 export interface FileRouteTypes {
-    fileRoutesByFullPath: FileRoutesByFullPath;
-    fullPaths:
-        | "/"
-        | "/backfill"
-        | "/groups"
-        | "/maintenance"
-        | "/queue"
-        | "/settings"
-        | "/viewer"
-        | "/group/$groupId";
-    fileRoutesByTo: FileRoutesByTo;
-    to:
-        | "/"
-        | "/backfill"
-        | "/groups"
-        | "/maintenance"
-        | "/queue"
-        | "/settings"
-        | "/viewer"
-        | "/group/$groupId";
-    id:
-        | "__root__"
-        | "/"
-        | "/backfill"
-        | "/groups"
-        | "/maintenance"
-        | "/queue"
-        | "/settings"
-        | "/viewer"
-        | "/group/$groupId";
-    fileRoutesById: FileRoutesById;
+  fileRoutesByFullPath: FileRoutesByFullPath
+  fullPaths:
+    | '/'
+    | '/backfill'
+    | '/groups'
+    | '/login'
+    | '/maintenance'
+    | '/queue'
+    | '/settings'
+    | '/setup-needed'
+    | '/viewer'
+    | '/group/$groupId'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/'
+    | '/backfill'
+    | '/groups'
+    | '/login'
+    | '/maintenance'
+    | '/queue'
+    | '/settings'
+    | '/setup-needed'
+    | '/viewer'
+    | '/group/$groupId'
+  id:
+    | '__root__'
+    | '/'
+    | '/backfill'
+    | '/groups'
+    | '/login'
+    | '/maintenance'
+    | '/queue'
+    | '/settings'
+    | '/setup-needed'
+    | '/viewer'
+    | '/group/$groupId'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-    IndexRoute: typeof IndexRoute;
-    BackfillRoute: typeof BackfillRoute;
-    GroupsRoute: typeof GroupsRoute;
-    MaintenanceRoute: typeof MaintenanceRoute;
-    QueueRoute: typeof QueueRoute;
-    SettingsRoute: typeof SettingsRoute;
-    ViewerRoute: typeof ViewerRoute;
-    GroupGroupIdRoute: typeof GroupGroupIdRoute;
+  IndexRoute: typeof IndexRoute
+  BackfillRoute: typeof BackfillRoute
+  GroupsRoute: typeof GroupsRoute
+  LoginRoute: typeof LoginRoute
+  MaintenanceRoute: typeof MaintenanceRoute
+  QueueRoute: typeof QueueRoute
+  SettingsRoute: typeof SettingsRoute
+  SetupNeededRoute: typeof SetupNeededRoute
+  ViewerRoute: typeof ViewerRoute
+  GroupGroupIdRoute: typeof GroupGroupIdRoute
 }
 
-declare module "@tanstack/react-router" {
-    interface FileRoutesByPath {
-        "/viewer": {
-            id: "/viewer";
-            path: "/viewer";
-            fullPath: "/viewer";
-            preLoaderRoute: typeof ViewerRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/settings": {
-            id: "/settings";
-            path: "/settings";
-            fullPath: "/settings";
-            preLoaderRoute: typeof SettingsRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/queue": {
-            id: "/queue";
-            path: "/queue";
-            fullPath: "/queue";
-            preLoaderRoute: typeof QueueRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/maintenance": {
-            id: "/maintenance";
-            path: "/maintenance";
-            fullPath: "/maintenance";
-            preLoaderRoute: typeof MaintenanceRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/groups": {
-            id: "/groups";
-            path: "/groups";
-            fullPath: "/groups";
-            preLoaderRoute: typeof GroupsRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/backfill": {
-            id: "/backfill";
-            path: "/backfill";
-            fullPath: "/backfill";
-            preLoaderRoute: typeof BackfillRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/": {
-            id: "/";
-            path: "/";
-            fullPath: "/";
-            preLoaderRoute: typeof IndexRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
-        "/group/$groupId": {
-            id: "/group/$groupId";
-            path: "/group/$groupId";
-            fullPath: "/group/$groupId";
-            preLoaderRoute: typeof GroupGroupIdRouteImport;
-            parentRoute: typeof rootRouteImport;
-        };
+declare module '@tanstack/react-router' {
+  interface FileRoutesByPath {
+    '/viewer': {
+      id: '/viewer'
+      path: '/viewer'
+      fullPath: '/viewer'
+      preLoaderRoute: typeof ViewerRouteImport
+      parentRoute: typeof rootRouteImport
     }
+    '/setup-needed': {
+      id: '/setup-needed'
+      path: '/setup-needed'
+      fullPath: '/setup-needed'
+      preLoaderRoute: typeof SetupNeededRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue': {
+      id: '/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof QueueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/maintenance': {
+      id: '/maintenance'
+      path: '/maintenance'
+      fullPath: '/maintenance'
+      preLoaderRoute: typeof MaintenanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/groups': {
+      id: '/groups'
+      path: '/groups'
+      fullPath: '/groups'
+      preLoaderRoute: typeof GroupsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/backfill': {
+      id: '/backfill'
+      path: '/backfill'
+      fullPath: '/backfill'
+      preLoaderRoute: typeof BackfillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/group/$groupId': {
+      id: '/group/$groupId'
+      path: '/group/$groupId'
+      fullPath: '/group/$groupId'
+      preLoaderRoute: typeof GroupGroupIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+  }
 }
 
 const rootRouteChildren: RootRouteChildren = {
-    IndexRoute: IndexRoute,
-    BackfillRoute: BackfillRoute,
-    GroupsRoute: GroupsRoute,
-    MaintenanceRoute: MaintenanceRoute,
-    QueueRoute: QueueRoute,
-    SettingsRoute: SettingsRoute,
-    ViewerRoute: ViewerRoute,
-    GroupGroupIdRoute: GroupGroupIdRoute,
-};
+  IndexRoute: IndexRoute,
+  BackfillRoute: BackfillRoute,
+  GroupsRoute: GroupsRoute,
+  LoginRoute: LoginRoute,
+  MaintenanceRoute: MaintenanceRoute,
+  QueueRoute: QueueRoute,
+  SettingsRoute: SettingsRoute,
+  SetupNeededRoute: SetupNeededRoute,
+  ViewerRoute: ViewerRoute,
+  GroupGroupIdRoute: GroupGroupIdRoute,
+}
 export const routeTree = rootRouteImport
-    ._addFileChildren(rootRouteChildren)
-    ._addFileTypes<FileRouteTypes>();
+  ._addFileChildren(rootRouteChildren)
+  ._addFileTypes<FileRouteTypes>()

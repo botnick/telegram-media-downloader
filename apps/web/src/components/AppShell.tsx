@@ -6,6 +6,7 @@
 
 import { Link, Outlet } from "@tanstack/react-router";
 import { useStats, useVersion } from "@/api/queries";
+import { StatusBar } from "@/components/StatusBar";
 
 const NAV = [
     { to: "/" as const, label: "Home", icon: "🏠" },
@@ -57,9 +58,12 @@ export function AppShell() {
                 </footer>
             </aside>
 
-            <main className="flex-1 overflow-hidden">
-                <Outlet />
-            </main>
+            <div className="flex-1 flex flex-col overflow-hidden">
+                <main className="flex-1 overflow-hidden">
+                    <Outlet />
+                </main>
+                <StatusBar />
+            </div>
         </div>
     );
 }
