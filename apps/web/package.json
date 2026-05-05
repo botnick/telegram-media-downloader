@@ -3,36 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "description": "Static SPA assets — served by @tgdl/server in production. React + Vite migration is staged for a follow-up PR; for now the original vanilla-DOM modules under public/js are still the source of truth.",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "build": "echo 'static assets — no build step yet'",
+    "lint": "echo 'lint placeholder'",
+    "typecheck": "echo 'typecheck placeholder'",
+    "test": "echo 'test placeholder'",
     "clean": "rm -rf dist .vite *.tsbuildinfo"
-  },
-  "dependencies": {
-    "@tanstack/react-query": "^5.100.9",
-    "@tanstack/react-router": "^1.169.1",
-    "@tgdl/shared": "workspace:*",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "zustand": "^5.0.13"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.4",
-    "@tanstack/react-router-devtools": "^1.166.13",
-    "@tanstack/router-plugin": "^1.167.33",
-    "@types/react": "^19.2.3",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.2.4",
-    "typescript": "catalog:",
-    "vite": "^8.0.10",
-    "vitest": "catalog:"
   }
 }

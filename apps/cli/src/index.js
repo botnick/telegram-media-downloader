@@ -13,17 +13,17 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
-import { loadConfig, saveConfig, addGroup } from './config/manager.js';
-import { hashPassword } from './core/web-auth.js';
-import { suppressNoise, wrapConsoleMethod } from './core/logger.js';
-import { RateLimiter, SecureSession } from './core/security.js';
-import { ConnectionManager } from './core/connection.js';
-import { AccountManager } from './core/accounts.js';
-import { colorize, clearScreen, formatBytes } from './cli/colors.js';
-import { resilience } from './core/resilience.js';
-import { getOrGenerateSecret } from './core/secret.js';
-import { getDb, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames } from './core/db.js';
-import { sanitizeName, migrateFolders } from './core/downloader.js';
+import { loadConfig, saveConfig, addGroup } from './config-manager.js';
+import { hashPassword } from '@tgdl/core/web-auth.js';
+import { suppressNoise, wrapConsoleMethod } from '@tgdl/core/logger.js';
+import { RateLimiter, SecureSession } from '@tgdl/core/security.js';
+import { ConnectionManager } from '@tgdl/core/connection.js';
+import { AccountManager } from '@tgdl/core/accounts.js';
+import { colorize, clearScreen, formatBytes } from './colors.js';
+import { resilience } from '@tgdl/core/resilience.js';
+import { getOrGenerateSecret } from '@tgdl/core/secret.js';
+import { getDb, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames } from '@tgdl/core/db.js';
+import { sanitizeName, migrateFolders } from '@tgdl/core/downloader.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, '../data/config.json');

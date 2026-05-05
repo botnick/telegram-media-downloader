@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOG_FILE = path.join(__dirname, 'data/logs/protection_log.txt');
-const APP_SCRIPT = path.join(__dirname, 'src/index.js');
+const APP_SCRIPT = path.join(__dirname, 'apps/cli/src/index.js');
 // Subcommand to run under the watchdog. Default 'monitor' so production
 // supervision actually keeps a long-running process alive. Override via
 // env: `TGDL_RUN=history npm run prod` (space-separated args supported).

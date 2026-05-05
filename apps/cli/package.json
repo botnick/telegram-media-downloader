@@ -3,14 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.js",
   "bin": {
-    "telegram-downloader": "./dist/index.js"
+    "telegram-downloader": "./src/index.js"
   },
   "scripts": {
-    "build": "tsc -b",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "build": "echo 'CLI is .js source — Node executes directly'",
+    "dev": "node src/index.js",
+    "start": "node src/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "clean": "rm -rf dist *.tsbuildinfo"

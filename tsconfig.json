@@ -6,7 +6,6 @@
   "references": [
     { "path": "./packages/shared" },
     { "path": "./apps/server" },
-    { "path": "./apps/cli" },
-    { "path": "./apps/web" }
+    { "path": "./apps/cli" }
   ]
 }
