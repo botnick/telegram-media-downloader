@@ -1144,9 +1144,14 @@ function renderMediaGrid(opts = {}) {
             // Onerror falls back to displaying nothing (the panel
             // background shows through), which is the desired graceful
             // degradation for a missing/dead file.
+            // CSS skeleton starts img at opacity:0 and fades to 1 on `.loaded`.
+            // Native loading="lazy" bypasses the IntersectionObserver path that
+            // adds the class, so flip it from the inline handlers — otherwise
+            // a successfully-loaded thumb stays invisible behind opacity:0.
             const imgFallback = `<img loading="lazy" decoding="async" class="w-full h-full object-cover" alt="" `
                 + (thumbUrl ? `src="${escapeHtml(thumbUrl)}"` : '')
-                + ` onerror="this.style.display='none'">`;
+                + ` onload="this.classList.add('loaded')"`
+                + ` onerror="this.classList.add('loaded');this.style.display='none'">`;
             const docFallback = `<div class="w-full h-full flex flex-col items-center justify-center">
                 <i class="${getFileIcon(file.extension)} text-3xl text-tg-textSecondary"></i>
             </div>`;

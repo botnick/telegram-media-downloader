@@ -125,23 +125,23 @@
          the service worker shell cache. The SW also picks /css/* up via the
          isStaticAsset filter in sw.js. -->
     <link rel="stylesheet" href="/css/main.css">
-    <!-- v2.5.0 — bumped main.css cache-bust + sw VERSION (v240 → v250).
-         Backup destinations (S3/local/SFTP), universal background-job
-         pattern (13 endpoints converted via JobTracker), share-link v2
-         URL format, Telegram-themed share-error page. -->
+    <!-- v2.5.1 — cache-bust bump for thumbnail opacity fix. Tile thumbs
+         used to stay invisible at opacity:0 because the IntersectionObserver
+         that adds `.loaded` doesn't fire for native loading="lazy" imgs;
+         the new app.js flips the class from inline onload/onerror handlers. -->
 
     <!-- Modulepreload — kick off the SPA's hot-path import graph in
          parallel instead of waiting for the discover-then-fetch waterfall
          that <script type="module"> would otherwise do. Cuts time-to-
          interactive on a fresh page-load, especially on slow links.
          Same `?v=` cache-bust as the stylesheet so a release bumps both. -->
-    <link rel="modulepreload" href="/js/app.js?v=2.5.0">
-    <link rel="modulepreload" href="/js/api.js?v=2.5.0">
-    <link rel="modulepreload" href="/js/ws.js?v=2.5.0">
-    <link rel="modulepreload" href="/js/router.js?v=2.5.0">
-    <link rel="modulepreload" href="/js/i18n.js?v=2.5.0">
-    <link rel="modulepreload" href="/js/store.js?v=2.5.0">
-    <link rel="modulepreload" href="/js/utils.js?v=2.5.0">
+    <link rel="modulepreload" href="/js/app.js?v=2.5.1">
+    <link rel="modulepreload" href="/js/api.js?v=2.5.1">
+    <link rel="modulepreload" href="/js/ws.js?v=2.5.1">
+    <link rel="modulepreload" href="/js/router.js?v=2.5.1">
+    <link rel="modulepreload" href="/js/i18n.js?v=2.5.1">
+    <link rel="modulepreload" href="/js/store.js?v=2.5.1">
+    <link rel="modulepreload" href="/js/utils.js?v=2.5.1">
 </head>
 
 <body class="h-screen overflow-hidden" data-role="">
