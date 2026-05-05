@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.11] — 2026-05-06
+
+### Fixed
+- **Mobile gallery video viewer flashing "Error 4: playback failed"** on roughly a quarter of opens, with the Retry button always succeeding. Cause: mobile Safari (and occasionally Chrome on Android) fires a spurious `MEDIA_ERR_SRC_NOT_SUPPORTED` event right after the first `src=` assignment when an in-flight HTTP fetch from a previous unload is still aborting. The user-visible Retry was doing the same thing the new auto-retry does — re-assign the same URL and call `load()` — so the file itself was never broken. Fix: `_showError()` silently retries once when the error code is 4 on a first attempt (bounded via `_errorRetries`, reset every `.load()`), and `unload()` now nulls out `video.onerror` *before* `removeAttribute('src') + load()` so the abort no longer fires a stray event into a stale handler. Genuine unsupported-codec failures still surface the overlay after the single retry. (PR #23)
+
+### Internal
+- SW bumped `v270` → `v271`.
+
 ## [2.6.10] — 2026-05-06
 
 ### Added

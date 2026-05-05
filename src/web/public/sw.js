@@ -16,7 +16,7 @@
 // Bump on every meaningful release. The activate handler clears any cache
 // whose key doesn't match the current pair, so old shell + asset caches
 // get evicted automatically when this string changes.
-const VERSION = 'v270';
+const VERSION = 'v271';
 const SHELL_CACHE = `tgdl-shell-${VERSION}`;
 const ASSET_CACHE = `tgdl-assets-${VERSION}`;
 
