@@ -1,0 +1,32 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+# Approve native build scripts. Each entry maps a package's
+# build-script (postinstall, etc.) execution policy.
+# - true  → run the script (needed for native bindings to compile/copy)
+# - false → skip (the package will be installed without running scripts)
+#
+# All listed packages either ship native bindings (better-sqlite3,
+# sharp, onnxruntime-node, ssh2/cpu-features, ws's bufferutil/utf-8)
+# or copy prebuilt binaries (@ffmpeg-installer). esbuild + protobufjs
+# need their postinstall to set up CLI binaries / lazy bytecode.
+allowBuilds:
+  "@ffmpeg-installer/darwin-arm64": true
+  better-sqlite3: true
+  bufferutil: true
+  cpu-features: true
+  es5-ext: true
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+  ssh2: true
+  utf-8-validate: true
+
+# Centralised version catalog — workspace package.jsons reference these
+# via "catalog:" (default) or "catalog:<name>". Bump in one place when
+# we want every workspace to follow.
+catalog:
+  "@types/node": ^25.6.0
+  typescript: ^6.0.3
+  vitest: ^4.1.5

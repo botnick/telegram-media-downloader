@@ -66,3 +66,7 @@ brain/
 .agent/
 .claude/
 SKILL.md
+# Build outputs of monorepo workspaces
+apps/*/dist/
+packages/*/dist/
+.turbo/

@@ -1,0 +1,44 @@
+{
+  "name": "@tgdl/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": {
+      "types": "./src/*.ts",
+      "import": "./src/*.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1042.0",
+    "@aws-sdk/lib-storage": "^3.1042.0",
+    "@tgdl/shared": "workspace:*",
+    "better-sqlite3": "^12.9.0",
+    "sharp": "^0.34.5",
+    "ssh2-sftp-client": "^11.0.0",
+    "telegram": "^2.19.0",
+    "ws": "^8.20.0"
+  },
+  "optionalDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@huggingface/transformers": "^4.2.0",
+    "basic-ftp": "^5.0.5",
+    "dropbox": "^10.34.0",
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "catalog:",
+    "@types/ws": "^8.5.13",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

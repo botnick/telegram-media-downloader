@@ -1,0 +1,13 @@
+{
+  // Root tsconfig — only references each workspace's project. IDEs use
+  // this to resolve types across the monorepo. Per-workspace builds run
+  // through their own tsconfig + Turbo's pipeline.
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/core" },
+    { "path": "./apps/server" },
+    { "path": "./apps/cli" },
+    { "path": "./apps/web" }
+  ]
+}

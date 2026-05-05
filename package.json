@@ -1,40 +1,30 @@
 {
   "name": "telegram-media-downloader",
   "version": "2.6.8",
+  "private": true,
   "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
   "type": "module",
-  "main": "src/index.js",
-  "bin": {
-    "telegram-downloader": "src/index.js"
+  "packageManager": "pnpm@11.0.4",
+  "engines": {
+    "node": ">=22.0.0"
   },
-  "files": [
-    "src",
-    "scripts",
-    "runner.js",
-    "watchdog.ps1",
-    "Dockerfile",
-    "docker-compose.yml",
-    "config.example.json",
-    ".env.example",
-    "LICENSE",
-    "README.md",
-    "CHANGELOG.md",
-    "SECURITY.md"
-  ],
   "scripts": {
-    "start": "node src/index.js",
-    "menu": "node src/index.js menu",
-    "monitor": "node src/index.js monitor",
-    "history": "node src/index.js history",
-    "auth": "node src/index.js auth",
-    "doctor": "node src/index.js doctor",
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch --parallel",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "format": "prettier --write \"**/*.{ts,tsx,js,html,css,md,json,yml,yaml}\" --ignore-path .gitignore",
+    "doctor": "node apps/cli/dist/index.js doctor",
+    "start": "node apps/server/dist/index.js",
+    "menu": "node apps/cli/dist/index.js menu",
+    "monitor": "node apps/cli/dist/index.js monitor",
+    "history": "node apps/cli/dist/index.js history",
+    "auth": "node apps/cli/dist/index.js auth",
     "prod": "node runner.js",
-    "dev": "node --watch src/web/server.js",
     "migrate": "node scripts/migrate_json_to_sqlite.js",
-    "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.{js,html,css}\" \"*.{md,json}\"",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "prepare": "husky || true"
   },
   "repository": {
@@ -60,43 +50,24 @@
   ],
   "author": "botnick",
   "license": "MIT",
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.1042.0",
-    "@aws-sdk/lib-storage": "^3.1042.0",
-    "better-sqlite3": "^12.9.0",
-    "express": "^4.18.2",
-    "express-rate-limit": "^7.4.1",
-    "helmet": "^8.0.0",
-    "sharp": "^0.34.5",
-    "ssh2-sftp-client": "^11.0.0",
-    "telegram": "^2.19.0",
-    "ws": "^8.20.0"
-  },
-  "optionalDependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@huggingface/transformers": "^4.2.0",
-    "basic-ftp": "^5.0.5",
-    "dropbox": "^10.34.0",
-    "googleapis": "^144.0.0"
-  },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "eslint": "^9.13.0",
     "globals": "^15.11.0",
     "husky": "^9.1.6",
     "lint-staged": "^15.2.10",
     "prettier": "^3.3.3",
-    "vitest": "^2.1.4"
+    "turbo": "^2.6.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
   },
   "lint-staged": {
-    "*.{js,mjs,cjs}": [
+    "*.{ts,tsx,js,mjs,cjs}": [
       "prettier --write",
       "eslint --fix"
     ],
     "*.{html,css,md,json,yml,yaml}": [
       "prettier --write"
     ]
-  },
-  "engines": {
-    "node": ">=22.0.0"
   }
 }
