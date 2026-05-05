@@ -39,6 +39,7 @@ import { trustProxy } from "./middleware/trust-proxy.js";
 import { errorHandler } from "./middleware/errors.js";
 import { mountStatic } from "./lib/static.js";
 import { mountWebSocket } from "./routes/ws.js";
+import { wirePublishers } from "./lib/publishers.js";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 
@@ -138,3 +139,8 @@ const server = serve(
 );
 
 injectWebSocket(server);
+
+// Subscribe @tgdl/core publishers (runtime EventEmitter, queue events,
+// monitor) → push every emit through the WebSocket broadcaster so the
+// SPA's reactive panels stay in sync.
+wirePublishers();
