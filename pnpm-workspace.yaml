@@ -11,10 +11,21 @@ packages:
 # or copy prebuilt binaries (@ffmpeg-installer). esbuild + protobufjs
 # need their postinstall to set up CLI binaries / lazy bytecode.
 allowBuilds:
+  # Per-arch ffmpeg binaries — pnpm picks the one matching the host.
   "@ffmpeg-installer/darwin-arm64": true
+  "@ffmpeg-installer/darwin-x64": true
+  "@ffmpeg-installer/linux-x64": true
+  "@ffmpeg-installer/linux-arm64": true
+  "@ffmpeg-installer/linux-ia32": true
+  "@ffmpeg-installer/win32-x64": true
+  "@ffmpeg-installer/win32-ia32": true
   better-sqlite3: true
   bufferutil: true
-  cpu-features: true
+  # cpu-features only builds when ssh2 + dev tools are present; the
+  # Docker base image is debian-slim with no compiler, so the build
+  # script fails. ssh2 falls back to a pure-JS path when this is
+  # missing — set false so install can finish.
+  cpu-features: false
   es5-ext: true
   esbuild: true
   onnxruntime-node: true

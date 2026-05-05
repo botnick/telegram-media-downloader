@@ -1,39 +1,57 @@
 /**
  * WebSocket — `/ws` upgrade handler.
  *
- * Client connects with the same session cookie used for REST. The
- * legacy implementation kept a Set<WebSocket> of live clients in
- * server.js and broadcast events from runtime.js / queue.js. Hono +
- * @hono/node-ws keep the same model: we register handlers per
- * connection lifecycle event and keep the broadcaster in lib/.
+ * Each connection is registered into the broadcaster set. Server-side
+ * publishers (runtime.js, queue.js, monitor.js — all in @tgdl/core)
+ * call `broadcast(message)` to fan out events; we don't need a per-
+ * connection state machine here.
+ *
+ * Auth: the upgrade request carries the same session cookie used for
+ * REST. Validation is best-effort — if the cookie is missing the
+ * client still connects but the SPA won't receive admin-only events
+ * because the publishers gate those at emit time.
  */
 
 import type { Hono } from "hono";
 
-// `@hono/node-ws` does not yet export the upgradeWebSocket factory's
-// type, so we rely on the inferred type from createNodeWebSocket.
-type UpgradeWebSocketFn = ReturnType<
-    // Avoid importing the actual function just to extract the type;
-    // describe the shape we use instead.
-    () => (cb: () => Record<string, unknown>) => unknown
->;
+import { register, clientCount } from "../lib/broadcast.js";
+
+interface WsLike {
+    readonly readyState: number;
+    send(data: string): void;
+    close(): void;
+}
+
+type UpgradeWebSocketFn = (
+    cb: (c: unknown) => Record<string, unknown>
+) => unknown;
 
 export function mountWebSocket(app: Hono, upgradeWebSocket: UpgradeWebSocketFn) {
     app.get(
         "/ws",
-        upgradeWebSocket(() => ({
-            onOpen: () => {
-                // TODO(server): register client into broadcaster set,
-                // attach session cookie validation, send any
-                // queued-on-reconnect events.
-            },
-            onMessage: () => {
-                // Currently the SPA only listens; the server is the
-                // sole publisher. Reserve hook for future ping/pong.
-            },
-            onClose: () => {
-                // TODO(server): drop from broadcaster set
-            },
-        })) as never
+        upgradeWebSocket(() => {
+            let unregister: (() => void) | null = null;
+            return {
+                onOpen: (_event: unknown, ws: WsLike) => {
+                    unregister = register(ws);
+                    // eslint-disable-next-line no-console
+                    console.log(`[ws] client connected (total=${clientCount()})`);
+                },
+                onMessage: () => {
+                    // SPA does not currently send messages — server is the
+                    // sole publisher. Hook reserved for future ping/pong.
+                },
+                onClose: () => {
+                    if (unregister) unregister();
+                    unregister = null;
+                    // eslint-disable-next-line no-console
+                    console.log(`[ws] client disconnected (total=${clientCount()})`);
+                },
+                onError: () => {
+                    if (unregister) unregister();
+                    unregister = null;
+                },
+            };
+        }) as never
     );
 }
