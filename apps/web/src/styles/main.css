@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/**
+ * Telegram-themed colour palette. Mirrors the legacy
+ * apps/web/public/css/main.css custom-properties so the new React
+ * components render identically against existing screenshots.
+ */
+@theme {
+    --color-tg-bg: #17212B;
+    --color-tg-panel: #212F3D;
+    --color-tg-text: #F5F5F5;
+    --color-tg-text-secondary: #8B9BAA;
+    --color-tg-blue: #2B5278;
+    --color-tg-accent: #5288C1;
+}
+
+html,
+body {
+    background-color: var(--color-tg-bg);
+    color: var(--color-tg-text);
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Oxygen,
+        Ubuntu,
+        sans-serif;
+}
