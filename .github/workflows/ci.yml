@@ -20,13 +20,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.4
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm -F @tgdl/shared build
+      - run: pnpm -F @tgdl/server build
         env:
           # better-sqlite3 sometimes spews a single noise line on Windows;
           # treat the run as failed only on real errors.

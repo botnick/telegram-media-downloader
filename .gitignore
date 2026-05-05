@@ -6,7 +6,7 @@ node_modules/
 
 # Lockfiles from package managers we don't use (we use npm)
 yarn.lock
-pnpm-lock.yaml
+
 
 # Environment & secrets
 .env
