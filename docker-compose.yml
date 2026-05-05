@@ -3,7 +3,8 @@
 # Defaults to the prebuilt multi-arch image from GitHub Container Registry.
 # `pull_policy: always` ensures `docker compose up -d` grabs the newest
 # release each time — without this, an older locally-cached image wins and
-# manifests as `Cannot find module '/app/src/web/server.js'` after upgrades.
+# manifests as `Cannot find module '/app/apps/server/dist/index.js'` after
+# upgrades.
 #
 # To build from source instead (for local dev), comment out `image:` +
 # `pull_policy:` and uncomment `build:`.
@@ -26,13 +27,14 @@ services:
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
       - TGDL_DEBUG=${TGDL_DEBUG:-}
-      # Default to trusting one hop of `X-Forwarded-For` because most
-      # Docker deployments sit behind a reverse proxy (Caddy / Traefik /
-      # nginx). Without this, express-rate-limit floods stderr with
-      # `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` validation warnings on every
-      # request. Override to a different value (loopback, uniquelocal, IP
-      # list) or empty string to disable when running directly on the
-      # host without a proxy.
+      # The Hono backend reads four header families to resolve the real
+      # client IP behind a reverse proxy (Caddy / Traefik / nginx /
+      # Cloudflare Tunnel): CF-Connecting-IP → True-Client-IP →
+      # X-Real-IP → X-Forwarded-For. The deployment is expected to put
+      # the app behind a trusted upstream — port 3000 should not be
+      # exposed directly to the internet. See
+      # apps/server/src/middleware/trust-proxy.ts for the resolution
+      # order and configurable knobs.
       - TRUST_PROXY=${TRUST_PROXY:-1}
       # Auto-update wiring — only consulted when the `auto-update` profile
       # is enabled. With these set, Settings → Maintenance shows an
@@ -109,4 +111,4 @@ services:
 #     -e TGDL_RUN=monitor telegram-downloader node runner.js
 #
 # Interactive CLI:
-#   docker compose run --rm telegram-downloader node src/index.js
+#   docker compose run --rm telegram-downloader node apps/cli/src/index.js
