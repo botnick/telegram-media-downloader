@@ -95,8 +95,8 @@ async function runDoctor() {
     const major = Number(String(process.versions.node || '').split('.')[0]);
     checks.push({
         name: 'Node runtime',
-        level: major >= 20 ? 'ok' : 'fail',
-        detail: `v${process.versions.node} (ABI ${process.versions.modules}, ${process.platform}/${process.arch}) — engines requires >=20`,
+        level: major >= 22 ? 'ok' : 'fail',
+        detail: `v${process.versions.node} (ABI ${process.versions.modules}, ${process.platform}/${process.arch}) — engines requires >=22`,
     });
 
     try {

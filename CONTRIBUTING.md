@@ -10,7 +10,7 @@ npm test
 npm start            # dashboard at http://localhost:3000
 ```
 
-Requires **Node.js 20+**. If `npm run doctor` reports `NODE_MODULE_VERSION` mismatch on `better-sqlite3` after a Node upgrade, run `npm rebuild better-sqlite3`.
+Requires **Node.js 22+** (24 LTS recommended). If `npm run doctor` reports `NODE_MODULE_VERSION` mismatch on `better-sqlite3` after a Node upgrade, run `npm rebuild better-sqlite3`.
 
 ## Submitting a change
 

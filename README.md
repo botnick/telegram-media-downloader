@@ -171,7 +171,7 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **`/api/version` + `/api/version/check` + `/metrics`** endpoints — version chip, GitHub-Releases-backed update notifier (cached, fail-soft), and OpenMetrics text format for Prometheus scraping.
 - **Optional in-dashboard auto-update** — opt-in `auto-update` compose profile spins up a watchtower sidecar; a one-click button in Maintenance pulls the new image and recreates the container in place.
 - **Network log rotation** at 5 MB (writes preserved, never skipped).
-- **GitHub Actions CI** — lint + test on Node 20 & 22 across Ubuntu / Windows / macOS, plus a Docker workflow that builds + smoke-tests the image (file perms, healthcheck, runs-as-non-root) before publishing to GHCR.
+- **GitHub Actions CI** — lint + test on Node 22 & 24 across Ubuntu / Windows / macOS, plus a Docker workflow that builds + smoke-tests the image (file perms, healthcheck, runs-as-non-root) before publishing to GHCR.
 - **99 vitest specs** covering URL parsing, AES round-trip + legacy decrypt, scrypt password verify, session tokens, role-aware login + guest gating, share-link sign/verify + tamper rejection + TTL limits, proxy mapping, DB migrations + dedup, name sanitisation.
 - **ESLint 9 + Prettier**, `husky` + `lint-staged` pre-commit hooks.
 - **Backwards compatibility** — legacy plaintext passwords auto-rehashed on first login; legacy AES `v=1` blobs still decrypt; sessions persisted before the role field gained one default to admin (no forced re-login on upgrade).
@@ -184,7 +184,7 @@ Photos (JPEG, PNG, WebP, BMP), videos (MP4, MKV, AVI, MOV, WebM), audio (MP3, M4
 
 ## Requirements
 
-- **Node.js 20+** (or Docker — no host Node needed)
+- **Node.js 22+** (24 LTS recommended; or Docker — no host Node needed)
 - A Telegram **API ID** and **API hash** from <https://my.telegram.org> (free, takes 1 minute)
 - Disk space for the media you'll archive
 
@@ -316,7 +316,7 @@ Yes. If your Telegram account can see it, this tool can download it. The dialogs
 Yes, but it's off by default for privacy. Settings → Privacy → "Allow DM downloads" toggles the picker to include DMs.
 
 **Does this run on Windows / macOS / Linux / Raspberry Pi?**
-All four. The Docker image is multi-arch (amd64 + arm64). For non-Docker installs you only need Node 20+.
+All four. The Docker image is multi-arch (amd64 + arm64). For non-Docker installs you only need Node 22+.
 
 **How do I download just one message from a Telegram link?**
 Paste the URL into the dashboard's top-bar "link" drawer. Supports `t.me/<chan>/<msg>`, `t.me/c/<id>/<msg>`, forum-topic links, and `tg://resolve` / `tg://privatepost`.

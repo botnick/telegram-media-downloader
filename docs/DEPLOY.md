@@ -97,7 +97,7 @@ Two pieces are required:
      - "render"   # `getent group render | cut -d: -f3` on the host if numeric
    ```
 
-2. **Intel media driver inside the image.** The default `node:20.20.2-bookworm-slim` Dockerfile doesn't ship it; either add `RUN apt-get install -y intel-media-va-driver-non-free` to a fork of the Dockerfile, or pass through the host's driver via `/usr/lib/x86_64-linux-gnu/dri:/usr/lib/x86_64-linux-gnu/dri:ro` if your host already has it.
+2. **Intel media driver inside the image.** The default `node:24.15.0-bookworm-slim` Dockerfile doesn't ship it; either add `RUN apt-get install -y intel-media-va-driver-non-free` to a fork of the Dockerfile, or pass through the host's driver via `/usr/lib/x86_64-linux-gnu/dri:/usr/lib/x86_64-linux-gnu/dri:ro` if your host already has it.
 
 There is **no code change** required — `core/thumbs.js` already shells out to `ffmpeg`. To opt the thumb generator into hardware decode, set `FFMPEG_HWACCEL=vaapi` in the container env and the bundled args become `-hwaccel vaapi -hwaccel_output_format vaapi`. Keep it unset (default) on hosts without an iGPU and the CPU path runs unchanged.
 
