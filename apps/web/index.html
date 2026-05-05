@@ -8,8 +8,48 @@
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="manifest" href="/manifest.webmanifest" />
         <title>Telegram Downloader</title>
+
+        <!-- Remix Icon CSS — every `<i class="ri-…">` in the ported
+             markup needs this. Same CDN as the legacy SPA. -->
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/remixicon@4.5.0/fonts/remixicon.css"
+        />
+
+        <!-- Tailwind CDN — the legacy SPA used the runtime CDN build
+             so its inline `class="…"` attributes resolve directly.
+             Keeping it here lets the React components reuse every
+             Tailwind utility class the legacy markup ships with
+             without rewriting them all to PostCSS. -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            // Tailwind theme — mirror the legacy SPA's tailwind.config
+            // inline so brand colours resolve (`bg-tg-sidebar`,
+            // `border-tg-border`, etc.) before the CSS loads.
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            "tg-blue": "var(--tg-blue)",
+                            "tg-darkBlue": "var(--tg-darkBlue)",
+                            "tg-bg": "var(--tg-bg)",
+                            "tg-sidebar": "var(--tg-sidebar)",
+                            "tg-panel": "var(--tg-panel)",
+                            "tg-hover": "var(--tg-hover)",
+                            "tg-border": "var(--tg-border)",
+                            "tg-text": "var(--tg-text)",
+                            "tg-textSecondary": "var(--tg-textSecondary)",
+                            "tg-green": "var(--tg-green)",
+                            "tg-red": "var(--tg-red)",
+                            "tg-orange": "var(--tg-orange)",
+                            "tg-lightBg": "var(--tg-lightBg)",
+                        },
+                    },
+                },
+            };
+        </script>
     </head>
-    <body class="h-screen overflow-hidden">
+    <body class="h-screen overflow-hidden" data-role="">
         <div id="root" class="h-full"></div>
         <script type="module" src="/src/main.tsx"></script>
     </body>

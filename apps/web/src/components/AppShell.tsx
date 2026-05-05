@@ -1,65 +1,28 @@
 /**
- * Top-level layout — sidebar + main content. Mirrors the legacy SPA's
- * structure (left rail with primary navigation, main area renders the
- * active route's outlet).
+ * App shell — three-pane Telegram-style layout.
+ *
+ * <Sidebar>           pinned left, scrolls inside its own column
+ * <main><Outlet /></main>   content area, route-driven
+ * <StatusBar />       full-width footer
+ *
+ * The lightbox renders as a portal-style overlay when the store flips
+ * its `open` flag; AppShell mounts it conditionally so the keyboard +
+ * scroll handlers attach only while it's visible.
  */
 
-import { Link, Outlet } from "@tanstack/react-router";
-import { useStats, useVersion } from "@/api/queries";
-import { StatusBar } from "@/components/StatusBar";
+import { Outlet } from "@tanstack/react-router";
+
 import { Lightbox } from "@/components/Lightbox";
+import { Sidebar } from "@/components/Sidebar";
+import { StatusBar } from "@/components/StatusBar";
 import { useLightboxStore } from "@/store/lightbox";
 
-const NAV = [
-    { to: "/" as const, label: "Home", icon: "🏠" },
-    { to: "/viewer" as const, label: "All Media", icon: "🖼️" },
-    { to: "/groups" as const, label: "Groups", icon: "📁" },
-    { to: "/queue" as const, label: "Queue", icon: "⏳" },
-    { to: "/backfill" as const, label: "Backfill", icon: "📥" },
-    { to: "/settings" as const, label: "Settings", icon: "⚙️" },
-    { to: "/maintenance" as const, label: "Maintenance", icon: "🛠️" },
-];
-
 export function AppShell() {
-    const stats = useStats();
-    const version = useVersion();
     const lightbox = useLightboxStore();
 
     return (
-        <div className="flex h-full">
-            <aside className="w-64 bg-tg-panel border-r border-white/5 flex flex-col">
-                <div className="p-4 border-b border-white/5">
-                    <h1 className="text-lg font-semibold">Telegram Downloader</h1>
-                    <p className="text-xs text-tg-text-secondary">
-                        v{version.data?.version ?? "?"}
-                    </p>
-                </div>
-
-                <nav className="flex-1 p-2 space-y-1">
-                    {NAV.map((item) => (
-                        <Link
-                            key={item.to}
-                            to={item.to}
-                            className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5 text-sm"
-                            activeProps={{ className: "bg-tg-blue/30" }}
-                        >
-                            <span>{item.icon}</span>
-                            <span>{item.label}</span>
-                        </Link>
-                    ))}
-                </nav>
-
-                <footer className="p-3 border-t border-white/5 text-xs text-tg-text-secondary">
-                    <div className="flex justify-between">
-                        <span>Files</span>
-                        <span>{stats.data?.totalFiles ?? "—"}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Disk</span>
-                        <span>{stats.data?.totalBytesFormatted ?? "—"}</span>
-                    </div>
-                </footer>
-            </aside>
+        <div className="flex h-full bg-tg-bg text-tg-text">
+            <Sidebar />
 
             <div className="flex-1 flex flex-col overflow-hidden">
                 <main className="flex-1 overflow-hidden">
@@ -68,13 +31,13 @@ export function AppShell() {
                 <StatusBar />
             </div>
 
-            {lightbox.open && (
+            {lightbox.open ? (
                 <Lightbox
                     files={lightbox.files}
                     initialIndex={lightbox.index}
                     onClose={lightbox.close}
                 />
-            )}
+            ) : null}
         </div>
     );
 }
