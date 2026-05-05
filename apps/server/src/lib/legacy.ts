@@ -42,7 +42,7 @@ export * as metrics from "@tgdl/core/metrics";
 export * as monitor from "@tgdl/core/monitor";
 // @ts-expect-error — js source
 export * as nsfw from "@tgdl/core/nsfw";
-// @ts-expect-error — js source
+// proxy + secret converted to .ts already; types resolve directly.
 export * as proxy from "@tgdl/core/proxy";
 // @ts-expect-error — js source
 export * as rescue from "@tgdl/core/rescue";
@@ -50,7 +50,6 @@ export * as rescue from "@tgdl/core/rescue";
 export * as resilience from "@tgdl/core/resilience";
 // @ts-expect-error — js source
 export * as runtime from "@tgdl/core/runtime";
-// @ts-expect-error — js source
 export * as secret from "@tgdl/core/secret";
 // @ts-expect-error — js source
 export * as security from "@tgdl/core/security";
