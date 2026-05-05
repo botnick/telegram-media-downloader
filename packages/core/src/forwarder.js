@@ -6,7 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { Api } from 'telegram';
-import { colorize } from '../cli/colors.js';
+import { colorize } from './colors.js';
 
 export class AutoForwarder {
     constructor(client, config, accountManager = null) {

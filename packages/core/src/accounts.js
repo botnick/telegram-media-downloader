@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { SecureSession } from './security.js';
 import { getOrGenerateSecret } from './secret.js';
-import { colorize } from '../cli/colors.js';
+import { colorize } from './colors.js';
 import { suppressNoise } from './logger.js';
 import { buildProxy } from './proxy.js';
 

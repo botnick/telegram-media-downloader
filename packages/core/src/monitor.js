@@ -6,7 +6,7 @@
 import { NewMessage, Raw } from 'telegram/events/index.js';
 import { Api } from 'telegram';
 import { EventEmitter } from 'events';
-import { colorize } from '../cli/colors.js';
+import { colorize } from './colors.js';
 import { sanitizeName } from './downloader.js';
 import { markRescued } from './db.js';
 import { effectiveRescueMs } from './rescue.js';

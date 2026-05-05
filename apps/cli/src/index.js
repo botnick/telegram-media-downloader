@@ -19,7 +19,7 @@ import { suppressNoise, wrapConsoleMethod } from '@tgdl/core/logger.js';
 import { RateLimiter, SecureSession } from '@tgdl/core/security.js';
 import { ConnectionManager } from '@tgdl/core/connection.js';
 import { AccountManager } from '@tgdl/core/accounts.js';
-import { colorize, clearScreen, formatBytes } from './colors.js';
+import { colorize, clearScreen, formatBytes } from '@tgdl/core/colors.js';
 import { resilience } from '@tgdl/core/resilience.js';
 import { getOrGenerateSecret } from '@tgdl/core/secret.js';
 import { getDb, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames } from '@tgdl/core/db.js';
