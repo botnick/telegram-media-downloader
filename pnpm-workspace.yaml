@@ -14,11 +14,11 @@ allowBuilds:
   # Per-arch ffmpeg binaries — pnpm picks the one matching the host.
   "@ffmpeg-installer/darwin-arm64": true
   "@ffmpeg-installer/darwin-x64": true
-  "@ffmpeg-installer/linux-x64": true
   "@ffmpeg-installer/linux-arm64": true
   "@ffmpeg-installer/linux-ia32": true
-  "@ffmpeg-installer/win32-x64": true
+  "@ffmpeg-installer/linux-x64": true
   "@ffmpeg-installer/win32-ia32": true
+  "@ffmpeg-installer/win32-x64": true
   better-sqlite3: true
   bufferutil: true
   # cpu-features only builds when ssh2 + dev tools are present; the
@@ -28,6 +28,7 @@ allowBuilds:
   cpu-features: false
   es5-ext: true
   esbuild: true
+  lefthook: true
   onnxruntime-node: true
   protobufjs: true
   sharp: true

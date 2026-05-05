@@ -1,0 +1,64 @@
+#
+# Lefthook — Git hooks orchestrator (https://lefthook.dev).
+#
+# Replaces husky + lint-staged. Single declarative file, native Go
+# binary, runs hooks in parallel by default.
+#
+# Quick reference:
+#   pnpm install              → 'prepare' script auto-runs `lefthook install`
+#   git commit                → fires the pre-commit chain below
+#   git commit --no-verify    → bypass everything (emergencies only)
+#   LEFTHOOK=0 git commit     → same; lefthook honours its own env
+#
+
+# ---------------------------------------------------------------------------
+# pre-commit — run before every commit on staged files only
+# ---------------------------------------------------------------------------
+pre-commit:
+    parallel: true
+    commands:
+        # Lint + auto-format every staged source file. Biome handles
+        # JS / TS / JSX / TSX / JSON / CSS / HTML in one pass.
+        # `stage_fixed: true` re-stages anything Biome auto-fixes so the
+        # commit picks up the cleanup without a second run.
+        biome:
+            glob: "*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc,html,css}"
+            run: pnpm exec biome check --write --no-errors-on-unmatched {staged_files}
+            stage_fixed: true
+
+        # Type-check the workspaces that have a typecheck script.
+        # Cheaper than running tsc on every file individually because
+        # Turbo caches the result keyed by the project's tsconfig +
+        # source hash. If nothing relevant changed the second invocation
+        # returns from cache in ~50 ms.
+        typecheck:
+            glob: "*.{ts,tsx}"
+            run: pnpm typecheck
+
+# ---------------------------------------------------------------------------
+# commit-msg — enforce Conventional Commits.
+# ---------------------------------------------------------------------------
+commit-msg:
+    commands:
+        conventional:
+            run: |
+                head -n 1 "{1}" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?: .+' || {
+                    echo "❌ Commit message must follow Conventional Commits."
+                    echo "   feat(scope): subject"
+                    echo "   fix:         subject"
+                    echo "   See https://www.conventionalcommits.org/"
+                    exit 1
+                }
+
+# ---------------------------------------------------------------------------
+# pre-push — heavier checks before code leaves the machine.
+#
+# Just typecheck for now. Whole-project lint is on the to-do list
+# but the legacy .js sources in @tgdl/core / @tgdl/cli still throw
+# Biome warnings that need a manual cleanup pass before they can
+# block a push.
+# ---------------------------------------------------------------------------
+pre-push:
+    commands:
+        typecheck:
+            run: pnpm typecheck

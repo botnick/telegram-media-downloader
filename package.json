@@ -26,7 +26,7 @@
         "auth": "node apps/cli/src/index.js auth",
         "prod": "node runner.js",
         "migrate": "node scripts/migrate_json_to_sqlite.js",
-        "prepare": "husky || true"
+        "prepare": "lefthook install || true"
     },
     "repository": {
         "type": "git",
@@ -53,18 +53,12 @@
     "license": "MIT",
     "devDependencies": {
         "@biomejs/biome": "^2.4.14",
+        "@tgdl/core": "workspace:*",
+        "@tgdl/shared": "workspace:*",
         "@types/node": "^25.6.0",
-        "husky": "^9.1.6",
-        "lint-staged": "^15.2.10",
+        "lefthook": "^2.1.6",
         "turbo": "^2.6.0",
         "typescript": "^6.0.3",
-        "vitest": "^4.1.5",
-        "@tgdl/core": "workspace:*",
-        "@tgdl/shared": "workspace:*"
-    },
-    "lint-staged": {
-        "*.{ts,tsx,js,mjs,cjs,jsx,json,jsonc,html,css}": [
-            "biome check --write --no-errors-on-unmatched"
-        ]
+        "vitest": "^4.1.5"
     }
 }
