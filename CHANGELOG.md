@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.12] — 2026-05-06
+
+### Fixed
+- **Maintenance tab strip was hidden on the Video page** added in v2.6.10. The CSS `display: flex` rule that toggles the `#maintenance-tabs` strip on per-feature pages enumerates each page slug explicitly (`body[data-page="maintenance-thumbs"] #maintenance-tabs, …`); `maintenance-video` was missing from that list, so navigating into `/#/maintenance/video` hid the strip + back link entirely. Adds the missing selector. (PR #25)
+
+### Internal
+- SW bumped `v271` → `v272`.
+
 ## [2.6.11] — 2026-05-06
 
 ### Fixed
