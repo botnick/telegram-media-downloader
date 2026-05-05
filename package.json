@@ -63,12 +63,8 @@
         "@tgdl/shared": "workspace:*"
     },
     "lint-staged": {
-        "*.{ts,tsx,js,mjs,cjs}": [
-            "prettier --write",
-            "eslint --fix"
-        ],
-        "*.{html,css,md,json,yml,yaml}": [
-            "prettier --write"
+        "*.{ts,tsx,js,mjs,cjs,jsx,json,jsonc,html,css}": [
+            "biome check --write --no-errors-on-unmatched"
         ]
     }
 }
