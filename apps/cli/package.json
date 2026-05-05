@@ -9,7 +9,7 @@
     },
     "scripts": {
         "build": "echo 'CLI is .js source — Node executes directly'",
-        "dev": "node src/index.js",
+        "dev": "echo 'CLI is interactive — run via: node apps/cli/src/index.js'",
         "start": "node src/index.js",
         "typecheck": "tsc --noEmit",
         "lint": "biome check src",
@@ -17,7 +17,8 @@
     },
     "dependencies": {
         "@tgdl/core": "workspace:*",
-        "@tgdl/shared": "workspace:*"
+        "@tgdl/shared": "workspace:*",
+        "telegram": "^2.19.0"
     },
     "devDependencies": {
         "@types/node": "catalog:",

@@ -56,6 +56,9 @@ importers:
       '@tgdl/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      telegram:
+        specifier: ^2.19.0
+        version: 2.26.22
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
