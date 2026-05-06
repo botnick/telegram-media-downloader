@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.15] — 2026-05-06
+
+### Fixed
+- **Auto-download silently routed every job through the default Telegram client**, even when the chat was only reachable via a 2nd/3rd account. Monitor's poll/handler paths and history's backfill now pin the working client into each job, and `DownloadManager` prefers `job.client` over its constructor-injected default for both `downloadMedia` and the `FILE_REFERENCE_EXPIRED` refresh path. Symptoms: groups visible only to a non-default account would surface in the Monitor stats but their files never landed on disk (or pulled from the wrong session).
+- **`/api/download/url` mutated `downloader.client` per request** as a hack to switch sessions for a paste-link job — a latent race where any concurrent download suddenly tried to fetch bytes through the URL-resolver's session. Replaced with a per-job `client` field. Stories download + retry-from-Queue retain the same client too, so a job that originally ran on account #2 doesn't fall back to the default on retry.
+
+### Added
+- **Queue page now shows which Telegram account pulled each job**, as a small chip next to the filename. New `AccountManager.getIdForClient()` reverse-lookup powers the attribution; snapshot + WS payloads (`download_start`, `download_progress`, `download_complete`, `download_error`) carry `accountId` + `accountName`. Legacy rows without account info skip the chip cleanly. Tooltip i18n keys: `queue.account.tooltip` (en + th).
+
+### Internal
+- SW bumped `v274` → `v275`.
+
 ## [2.6.14] — 2026-05-06
 
 ### Internal
