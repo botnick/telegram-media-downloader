@@ -38,7 +38,7 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `TZ`                            | `UTC`               | Container timezone. |
 | `TGDL_RUN`                      | `monitor`           | Watchdog subcommand for `runner.js` / `runner.sh` / `watchdog.ps1`. |
 | `TGDL_DEBUG`                    | unset               | Set to any truthy value to surface gramJS reconnect noise on stderr. |
-| `TGDL_DATA_DIR`                 | `<repo>/data`       | Override the on-disk data root (`config.json`, `db.sqlite`, `downloads/`, sessions). Used by the test suite to point at an isolated tmpdir; also useful for Docker / multi-instance deploys that want the data on a different mount without symlinks. |
+| `TGDL_DATA_DIR`                 | `<repo>/data`       | Override the on-disk data root (`db.sqlite`, `downloads/`, sessions). Used by the test suite to point at an isolated tmpdir; also useful for Docker / multi-instance deploys that want the data on a different mount without symlinks. |
 | `TRUST_PROXY`                   | unset               | `1`, `loopback`, or any value Express's `trust proxy` understands; needed for accurate IPs behind a reverse proxy. |
 | `FFMPEG_PATH`                   | auto-detect         | Override the resolved ffmpeg binary used by `core/thumbs.js`. Resolver order: this var → `/usr/bin/ffmpeg` → `/usr/local/bin/ffmpeg` → `@ffmpeg-installer/ffmpeg` → bare `ffmpeg`. |
 | `THUMBS_IMG_CONCURRENCY`        | `8`                 | Parallel image-thumb jobs. |
@@ -68,7 +68,7 @@ rm .token
 docker compose --profile auto-update up -d
 ```
 
-Once enabled, **Settings → Maintenance → Install update** pulls the latest image and recreates the container. The `data/` volume + `config.json` + sessions survive the swap; the SQLite database is snapshotted to `data/backups/` first.
+Once enabled, **Settings → Maintenance → Install update** pulls the latest image and recreates the container. The `data/` volume (SQLite db + sessions) survives the swap; the SQLite database is snapshotted to `data/backups/` first.
 
 Without the token (or without the profile), the **Install update** button stays disabled and the dashboard falls back to linking the GitHub release page.
 
@@ -154,7 +154,7 @@ Pre-flight check before flipping the toggle:
 2. **`TRUST_PROXY=1`** is set in the dashboard container env so `req.secure` honours `X-Forwarded-Proto`. Without this, the dashboard sees every request as plain HTTP and 308-loops.
 3. **Localhost recovery path** — keep SSH / docker exec access; you can flip the toggle back from the host even if the cert breaks (the localhost exemption keeps `127.0.0.1:3000` reachable from inside the container).
 
-The setting persists in `data/config.json → web.forceHttps`. To roll back without the dashboard, edit the file and restart the container.
+The setting persists in the `kv['config']` row of `data/db.sqlite` under `web.forceHttps`. To roll back without the dashboard, edit the row via `sqlite3` and restart the container.
 
 For HSTS preload (chrome global list), submit your domain at <https://hstspreload.org> after the header has been live for at least a few weeks. The dashboard does **not** add `preload` to the HSTS header automatically — preload is a one-way commitment that needs operator opt-in.
 

@@ -124,7 +124,7 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `POST` | `/api/maintenance/nsfw/whitelist`| `{ids:[…]}` — mark as confirmed-18+; future scans skip. |
 | `GET`  | `/api/maintenance/logs`          | List `data/logs/*.log` with size + mtime. |
 | `GET`  | `/api/maintenance/logs/download` | `?name=&lines=` — tail of one logfile (50 MB cap). |
-| `GET`  | `/api/maintenance/config/raw`    | Redacted `config.json`. |
+| `GET`  | `/api/maintenance/config/raw`    | Redacted runtime config (kv-backed). |
 | `POST` | `/api/maintenance/session/export`| Password-gated session-string export. |
 | `POST` | `/api/maintenance/sessions/revoke-all` | Sign out every dashboard session. |
 

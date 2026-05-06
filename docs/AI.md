@@ -25,7 +25,7 @@ on Windows, macOS, glibc Linux, musl Linux (Alpine), Docker, and ARM hosts.
 
 ## Configuration
 
-Add to `data/config.json`:
+Add to the runtime config (Settings tab in the dashboard, or directly in the `kv['config']` row of `data/db.sqlite`):
 
 ```json
 {
@@ -95,9 +95,9 @@ This is **completely optional**; default installs work fine without it.
 
 ## Troubleshooting
 
-- **"AI subsystem disabled"** — set `advanced.ai.enabled: true` in
-  `data/config.json` and reload the page. Each capability also needs its
-  own `enabled: true`.
+- **"AI subsystem disabled"** — set `advanced.ai.enabled: true` via the
+  dashboard (or the `kv['config']` row) and reload the page. Each capability
+  also needs its own `enabled: true`.
 - **First scan is slow** — the model is being downloaded. Watch the realtime
   log on Maintenance → Logs (source: `ai`) to see download progress. After
   the first scan the cache is local.

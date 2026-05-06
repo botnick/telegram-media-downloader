@@ -21,8 +21,9 @@ Each destination runs in one of three modes:
   upload as soon as the downloader emits `download_complete`. The queue
   is persistent — restarting the server does not lose pending uploads.
 - **Scheduled snapshot.** A cron expression (`0 3 * * *` for nightly
-  3am, etc.) triggers a full archive of `db.sqlite` + `config.json` +
-  `sessions/` packed into a single `.tar.gz`, uploaded to a
+  3am, etc.) triggers a full archive of `db.sqlite` (which now also
+  carries runtime config + web sessions) + `sessions/` packed into a
+  single `.tar.gz`, uploaded to a
   `snapshots/` prefix on the destination. Older archives are pruned to
   keep at most `retain_count` copies (default 7).
 - **Manual.** No automatic uploads. The destination only fires on
@@ -304,8 +305,8 @@ roadmap). For an encrypted snapshot:
    you've kept the salt out of band — write it down at create-time.
 
 3. Untar: `tar -xzf snapshot.tar.gz`.
-4. Stop the dashboard, swap `data/db.sqlite` + `data/config.json` +
-   `data/sessions/`, restart.
+4. Stop the dashboard, swap `data/db.sqlite` + `data/sessions/`,
+   restart.
 
 For a plaintext (un-encrypted) snapshot, skip step 2.
 

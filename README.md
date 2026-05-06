@@ -117,7 +117,7 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **Queue page (IDM-style)** — append-on-scroll table with per-row pause / resume / cancel / retry, in-place WS progress patches (no full re-render), filter chips, free-text search, and a global throttle slider.
 - **Backfill tab** — pick a chat, choose preset (100 / 1k / 10k / dump-all) or custom range, per-row delete + Clear-all on the Recent backfills list.
 - **Server-side WebP thumbnails** — `sharp` for images, `ffmpeg` for video first-frame, audio cover-art when present. Cached at `data/thumbs/`, served via `/api/thumbs/:id?w=…`. Pre-generated automatically on every download and on a Maintenance "build for older files" sweep.
-- **Maintenance panel** — CLI parity from the browser: integrity sweep, rescue sweep, disk rotate, prune orphans, **find duplicate files** (review sheet with thumbnails + per-set Keep-oldest/newest), **build / rebuild thumbnails**, **scan images for NSFW (18+)** (review sheet for not-18+ candidates with delete + Mark-as-18+ whitelist), **active share links** (search + revoke), **install update**, view raw `config.json`, download log file, sign out everywhere.
+- **Maintenance panel** — CLI parity from the browser: integrity sweep, rescue sweep, disk rotate, prune orphans, **find duplicate files** (review sheet with thumbnails + per-set Keep-oldest/newest), **build / rebuild thumbnails**, **scan images for NSFW (18+)** (review sheet for not-18+ candidates with delete + Mark-as-18+ whitelist), **active share links** (search + revoke), **install update**, view raw runtime config, download log file, sign out everywhere.
 - **Shareable media links** — admin mints HMAC-SHA256 signed URLs (`/share/<id>?exp=&sig=`) that friends can stream or download without logging in; per-link revocation, access counters, optional label, TTL options including "never expires".
 - **Auto-update via watchtower sidecar** (opt-in) — dashboard never touches `/var/run/docker.sock`. The DB is snapshotted to `data/backups/` before the swap; the SPA reconnects to the new container automatically once its healthcheck passes.
 - **YouTube/Netflix/Telegram-grade video player** — buffered indicator, click + drag scrub, hover preview, scroll-wheel volume, persisted volume / speed, race-safe resume, full keyboard shortcuts (Space / K / M / F / 0–9 / &lt; &gt;), double-tap mobile seek.
@@ -236,7 +236,7 @@ The dashboard does almost everything. The CLI subcommands stay around for headle
 
 ## Configuration
 
-`data/config.json` — self-heals to defaults on load, edited via the dashboard or directly.
+Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heals to defaults on load, edited via the dashboard. Legacy `data/config.json` is auto-imported on first boot and renamed to `*.migrated`.
 
 ```jsonc
 {
@@ -278,10 +278,8 @@ Every `advanced` field is clamped on save and applied immediately on `config_upd
 
 ```
 data/
-├── config.json
-├── db.sqlite                 (WAL mode; columns include nsfw_score, file_hash)
+├── db.sqlite                 (WAL mode; runtime config + sessions + nsfw_score, file_hash)
 ├── secret.key                (back this up)
-├── web-sessions.json         (sessions carry role: admin | guest)
 ├── sessions/<id>.enc         (AES-256-GCM per account)
 ├── photos/<id>.jpg
 ├── downloads/<sanitised-group-name>/{images,videos,documents,audio,stickers}/
