@@ -1094,8 +1094,31 @@ html.theme-light .media-grid.view-list .media-item:hover {
     overflow: hidden;
     cursor: pointer;
     background: var(--tg-panel, #242f3d);
+    /* `content-visibility: auto` lets the browser skip layout + paint for
+       off-screen tiles, but the placeholder size below has to be close
+       to the real rendered size or the scrollbar drifts every time a
+       tile crosses the threshold. The previous `auto 200px` was 25-50%
+       off — actual tile heights run 120-180 px depending on viewport
+       breakpoint (`auto-fill, minmax(120-180px, 1fr)` columns combined
+       with `aspect-ratio: 1/1`). The mid-range value below is closer to
+       the real rendered height across all breakpoints, which keeps the
+       scrollbar steady on a 5000-tile gallery. */
     content-visibility: auto;
-    contain-intrinsic-size: auto 200px;
+    contain-intrinsic-size: auto 160px;
+}
+@media (min-width: 1024px) {
+    /* Desktop grid columns are 180 px → tile is ~180 px tall. */
+    .media-item {
+        contain-intrinsic-size: auto 180px;
+    }
+}
+.media-grid.view-compact .media-item {
+    /* Compact mode is 80-100 px square. */
+    contain-intrinsic-size: auto 100px;
+}
+.media-grid.view-list .media-item {
+    /* List rows are uniform 56 px regardless of viewport. */
+    contain-intrinsic-size: auto 56px;
 }
 
 /* ===== Selection mode (v2.3.36) =================================

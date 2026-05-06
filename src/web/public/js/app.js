@@ -1309,6 +1309,53 @@ async function loadGroupFiles(groupId) {
 // whole thing. Reset on every full re-render (filter/group change).
 let _renderedFileCount = 0;
 
+// Off-screen tile content unloader. `content-visibility: auto` skips
+// layout/paint for off-screen tiles, but the `<img>` element + decoded
+// bitmap stay in memory regardless — a 5000-tile gallery would hold
+// ~5000 cached thumbnails (10-30 KB each ≈ 150 MB resident). This
+// IntersectionObserver detaches the children of `.tile-thumb` for
+// tiles that are far from the viewport (stashed in a WeakMap so they
+// survive DOM moves) and reattaches them when the tile comes back
+// near. The empty `<div class="tile-thumb">` outer node stays so
+// layout + `aspect-ratio` are unaffected; only the heavy thumbnail
+// bitmap is freed.
+let _tileWindowObserver = null;
+const _tileStash = new WeakMap();
+function _ensureTileWindowObserver() {
+    if (_tileWindowObserver) return _tileWindowObserver;
+    _tileWindowObserver = new IntersectionObserver(
+        (entries) => {
+            for (const entry of entries) {
+                const tile = entry.target;
+                if (entry.isIntersecting) _restoreTile(tile);
+                else _evictTile(tile);
+            }
+        },
+        // Generous buffer so a fast-flick scroll doesn't flash empty
+        // tiles. 1500 px ≈ 8-12 rows in grid mode at typical viewports.
+        { rootMargin: '1500px 0px 1500px 0px', threshold: 0 },
+    );
+    return _tileWindowObserver;
+}
+
+function _evictTile(tile) {
+    if (!tile || _tileStash.has(tile)) return;
+    const thumb = tile.querySelector('.tile-thumb');
+    if (!thumb) return;
+    const fragment = document.createDocumentFragment();
+    while (thumb.firstChild) fragment.appendChild(thumb.firstChild);
+    _tileStash.set(tile, fragment);
+}
+
+function _restoreTile(tile) {
+    if (!tile) return;
+    const fragment = _tileStash.get(tile);
+    if (!fragment) return;
+    const thumb = tile.querySelector('.tile-thumb');
+    if (thumb && !thumb.firstChild) thumb.appendChild(fragment);
+    _tileStash.delete(tile);
+}
+
 function renderMediaGrid(opts = {}) {
     const grid = document.getElementById('media-grid');
     const empty = document.getElementById('empty-state');
@@ -1386,14 +1433,19 @@ function renderMediaGrid(opts = {}) {
                     // background shows through), which is the desired graceful
                     // degradation for a missing/dead file.
                     // CSS skeleton starts img at opacity:0 and fades to 1 on `.loaded`.
-                    // Native loading="lazy" bypasses the IntersectionObserver path that
-                    // adds the class, so flip it from the inline handlers — otherwise
-                    // a successfully-loaded thumb stays invisible behind opacity:0.
+                    // Native loading="lazy" + delegated `load`/`error`
+                    // listeners on `#media-grid` (see `_wireMediaGridDelegation`)
+                    // pop the skeleton open. We used to inline `onload` /
+                    // `onerror` per-tile, but every inline handler closure
+                    // adds DOM-parse overhead and ~100 bytes of GC pressure
+                    // per row — at 5000 tiles that compounds into measurable
+                    // scroll lag. The delegated listeners run in capture
+                    // phase so the visual outcome stays identical (fade-in
+                    // on success, hide on failure).
                     const imgFallback =
-                        `<img loading="lazy" decoding="async" class="w-full h-full object-cover" alt="" ` +
-                        (thumbUrl ? `src="${escapeHtml(thumbUrl)}"` : '') +
-                        ` onload="this.classList.add('loaded')"` +
-                        ` onerror="this.classList.add('loaded');this.style.display='none'">`;
+                        `<img loading="lazy" decoding="async" class="w-full h-full object-cover" alt=""` +
+                        (thumbUrl ? ` src="${escapeHtml(thumbUrl)}"` : '') +
+                        '>';
                     const docFallback = `<div class="w-full h-full flex flex-col items-center justify-center">
                 <i class="${getFileIcon(file.extension)} text-3xl text-tg-textSecondary"></i>
             </div>`;
@@ -1485,16 +1537,60 @@ function renderMediaGrid(opts = {}) {
     // switches snappy on a thousand-tile grid.
     _wireMediaGridDelegation(grid);
     _attachLazyObservers(grid);
+    _attachTileWindowObserver(grid, append, fromIndex);
     // Re-apply select-mode class + repaint .is-selected on tiles after
     // any full or append render so the visual state survives mutations
     // (e.g. infinite scroll, filter switch, file_deleted).
     repaintSelection();
 }
 
+// Wire every tile (or just the freshly-appended tail) into the
+// `_tileWindowObserver` so off-screen tiles drop their thumbnail
+// content under memory pressure. Idempotent: `observer.observe(el)`
+// on an already-observed node is a no-op.
+function _attachTileWindowObserver(grid, append, fromIndex) {
+    const obs = _ensureTileWindowObserver();
+    const tiles = grid.querySelectorAll('.media-item');
+    if (append) {
+        // The tail-append path adds tiles after `fromIndex`; only those
+        // need fresh observers. The earlier ones are already wired.
+        for (let i = fromIndex; i < tiles.length; i++) obs.observe(tiles[i]);
+    } else {
+        // Full re-render: previous tiles were torn out of the DOM, so
+        // the observer's references are GC-eligible. Wire everything.
+        tiles.forEach((tile) => obs.observe(tile));
+    }
+}
+
 let _gridDelegated = false;
 function _wireMediaGridDelegation(grid) {
     if (_gridDelegated) return;
     _gridDelegated = true;
+    // Delegated `load` / `error` listeners replace the per-`<img>` inline
+    // handlers we used to render. Native events bubble, so capture-phase
+    // delegation here catches every tile's image fade-in without baking
+    // a closure into each element's HTML.
+    grid.addEventListener(
+        'load',
+        (ev) => {
+            const img = ev.target;
+            if (img && img.tagName === 'IMG' && img.closest('.media-item')) {
+                img.classList.add('loaded');
+            }
+        },
+        true,
+    );
+    grid.addEventListener(
+        'error',
+        (ev) => {
+            const img = ev.target;
+            if (img && img.tagName === 'IMG' && img.closest('.media-item')) {
+                img.classList.add('loaded');
+                img.style.display = 'none';
+            }
+        },
+        true,
+    );
     grid.addEventListener('click', async (ev) => {
         // Pin chip — toggles pinned state via the API and flips the
         // visual class in place. Stops propagation so clicking the
