@@ -78,6 +78,20 @@ function isNoise(msg) {
 
 const debugMode = !!(process.env.TGDL_DEBUG || process.env.DEBUG);
 
+// Canonical detector for "an optional native dep failed to load." Lives
+// here so the CLI entrypoint, the web server's process traps, and the
+// doctor-mode classifier all agree on the same pattern — drift between
+// copies has previously caused an alpine-on-glibc reinstall to hide one
+// branch's warning while another still threw.
+//
+// Hits in practice come from `onnxruntime-node` (transitively pulled by
+// `@huggingface/transformers`, the optional NSFW classifier) when its
+// glibc-only prebuilds run on musl Alpine, and from `better-sqlite3` when
+// the on-disk prebuild was compiled against a different Node ABI than
+// the running interpreter.
+export const NATIVE_LOAD_FAIL =
+    /(ld-linux|ld-musl|libonnxruntime|GLIBC_|NODE_MODULE_VERSION|cannot open shared object|Error loading shared library)/i;
+
 /**
  * Returns true if the caller should suppress the message from stderr.
  * Always logs to data/logs/network.log so the message is preserved.
