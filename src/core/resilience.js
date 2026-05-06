@@ -18,7 +18,9 @@ export class Resilience {
     init() {
         // Global Trap
         process.on('uncaughtException', (err) => this.handleFatal('Uncaught Exception', err));
-        process.on('unhandledRejection', (reason) => this.handleFatal('Unhandled Rejection', reason));
+        process.on('unhandledRejection', (reason) =>
+            this.handleFatal('Unhandled Rejection', reason),
+        );
         console.log(colorize('🛡️  Resilience System Active', 'cyan', 'dim'));
     }
 
@@ -36,19 +38,19 @@ export class Resilience {
     handleFatal(type, error) {
         console.error(colorize(`\n💀 FATAL: ${type}`, 'red', 'bold'));
         console.error(colorize(error.stack || error, 'red'));
-        
-        // Decide: Can we stay alive? 
+
+        // Decide: Can we stay alive?
         // For production long-running, we might log and restart specific modules.
         // For CLI, we generally have to exit if state is corrupted.
         // But we want to avoid "silent" deaths.
-        
+
         this.logError(error, 'FATAL');
-        
+
         // Specific recovery for common fatal-looking but recoverable errors
         if (error.code === 'ECONNRESET' || error.message.includes('Connection')) {
             console.log(colorize('🔄 Attempting Emergency Reconnect...', 'yellow'));
             // Trigger external reconnect logic if possible
-            return; 
+            return;
         }
 
         process.exit(1);
@@ -85,7 +87,7 @@ export class Resilience {
             timestamp: new Date().toISOString(),
             context,
             message: error.message,
-            stack: error.stack
+            stack: error.stack,
         });
         // Real production would append to errors.log here
     }

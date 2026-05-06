@@ -22,22 +22,51 @@ const $ = (id) => document.getElementById(id);
 let _wsWired = false;
 let _pageWired = false;
 let _destinations = [];
-let _statuses = new Map();      // id → status payload
-let _providersCache = null;     // [{ name, displayName, configSchema }]
+let _statuses = new Map(); // id → status payload
+let _providersCache = null; // [{ name, displayName, configSchema }]
 
 // ---- Helpers --------------------------------------------------------------
 
-function _fmtBytes(n) { return formatBytes(Number(n) || 0); }
+function _fmtBytes(n) {
+    return formatBytes(Number(n) || 0);
+}
 
 function _statePill(status) {
     if (!status) return { label: '—', cls: 'bg-tg-bg/50 text-tg-textSecondary' };
-    if (!status.enabled) return { label: i18nT('maintenance.backup.state.disabled', 'Disabled'), cls: 'bg-tg-bg/50 text-tg-textSecondary' };
-    if (status.paused) return { label: i18nT('maintenance.backup.state.paused', 'Paused'), cls: 'bg-yellow-500/15 text-yellow-300' };
-    if (status.encryption && !status.encryptionUnlocked) return { label: i18nT('maintenance.backup.state.locked', 'Locked'), cls: 'bg-tg-orange/15 text-tg-orange' };
-    if (status.processing > 0) return { label: i18nT('maintenance.backup.state.running', 'Running'), cls: 'bg-tg-blue/15 text-tg-blue' };
-    if (status.lastError) return { label: i18nT('maintenance.backup.state.error', 'Error'), cls: 'bg-red-500/15 text-red-300' };
-    if (status.queued > 0) return { label: i18nT('maintenance.backup.state.queued', 'Queued'), cls: 'bg-tg-blue/10 text-tg-blue' };
-    return { label: i18nT('maintenance.backup.state.idle', 'Idle'), cls: 'bg-green-500/15 text-green-300' };
+    if (!status.enabled)
+        return {
+            label: i18nT('maintenance.backup.state.disabled', 'Disabled'),
+            cls: 'bg-tg-bg/50 text-tg-textSecondary',
+        };
+    if (status.paused)
+        return {
+            label: i18nT('maintenance.backup.state.paused', 'Paused'),
+            cls: 'bg-yellow-500/15 text-yellow-300',
+        };
+    if (status.encryption && !status.encryptionUnlocked)
+        return {
+            label: i18nT('maintenance.backup.state.locked', 'Locked'),
+            cls: 'bg-tg-orange/15 text-tg-orange',
+        };
+    if (status.processing > 0)
+        return {
+            label: i18nT('maintenance.backup.state.running', 'Running'),
+            cls: 'bg-tg-blue/15 text-tg-blue',
+        };
+    if (status.lastError)
+        return {
+            label: i18nT('maintenance.backup.state.error', 'Error'),
+            cls: 'bg-red-500/15 text-red-300',
+        };
+    if (status.queued > 0)
+        return {
+            label: i18nT('maintenance.backup.state.queued', 'Queued'),
+            cls: 'bg-tg-blue/10 text-tg-blue',
+        };
+    return {
+        label: i18nT('maintenance.backup.state.idle', 'Idle'),
+        cls: 'bg-green-500/15 text-green-300',
+    };
 }
 
 function _providerBadge(provider) {
@@ -61,15 +90,21 @@ function _renderCard(dest) {
     const last = dest.lastSuccessAt ? formatRelativeTime(dest.lastSuccessAt) : '—';
     const queued = status?.queued ?? 0;
     const processing = status?.processing ?? 0;
-    const lockHint = (dest.encryption && status && !status.encryptionUnlocked)
-        ? `<button data-act="unlock" class="ml-2 text-[10px] px-2 py-0.5 rounded bg-tg-orange/15 text-tg-orange hover:bg-tg-orange/25">${escapeHtml(i18nT('maintenance.backup.unlock', 'Unlock'))}</button>` : '';
-    const errBlock = (status?.lastError && !(status.encryption && !status.encryptionUnlocked))
-        ? `<div class="mt-2 text-[11px] text-red-300 break-words">${escapeHtml(String(status.lastError).slice(0, 200))}</div>` : '';
+    const lockHint =
+        dest.encryption && status && !status.encryptionUnlocked
+            ? `<button data-act="unlock" class="ml-2 text-[10px] px-2 py-0.5 rounded bg-tg-orange/15 text-tg-orange hover:bg-tg-orange/25">${escapeHtml(i18nT('maintenance.backup.unlock', 'Unlock'))}</button>`
+            : '';
+    const errBlock =
+        status?.lastError && !(status.encryption && !status.encryptionUnlocked)
+            ? `<div class="mt-2 text-[11px] text-red-300 break-words">${escapeHtml(String(status.lastError).slice(0, 200))}</div>`
+            : '';
     const pauseBtn = status?.paused
         ? `<button data-act="resume" class="tg-btn-secondary text-xs px-2 py-1"><i class="ri-play-line mr-0.5"></i><span data-i18n="maintenance.backup.resume">Resume</span></button>`
         : `<button data-act="pause" class="tg-btn-secondary text-xs px-2 py-1"><i class="ri-pause-line mr-0.5"></i><span data-i18n="maintenance.backup.pause">Pause</span></button>`;
-    const progressBar = (processing > 0)
-        ? `<div class="mt-2 h-1 bg-tg-bg/60 rounded overflow-hidden"><div class="bg-tg-blue h-full transition-all animate-pulse" style="width:35%"></div></div>` : '';
+    const progressBar =
+        processing > 0
+            ? `<div class="mt-2 h-1 bg-tg-bg/60 rounded overflow-hidden"><div class="bg-tg-blue h-full transition-all animate-pulse" style="width:35%"></div></div>`
+            : '';
 
     return `
         <div class="bg-tg-panel rounded-xl p-4 flex flex-col gap-2 border border-tg-border/30" data-dest-id="${dest.id}">
@@ -124,32 +159,40 @@ function _renderRecentRow(j) {
     let icon, cls, label;
     switch (j.status) {
         case 'done':
-            icon = 'ri-check-line'; cls = 'text-green-400';
+            icon = 'ri-check-line';
+            cls = 'text-green-400';
             label = i18nT('maintenance.backup.job.done', 'done');
             break;
         case 'failed':
-            icon = 'ri-close-line'; cls = 'text-red-400';
+            icon = 'ri-close-line';
+            cls = 'text-red-400';
             label = i18nT('maintenance.backup.job.failed', 'failed');
             break;
         case 'uploading':
-            icon = 'ri-loader-4-line'; cls = 'text-tg-blue animate-spin';
+            icon = 'ri-loader-4-line';
+            cls = 'text-tg-blue animate-spin';
             label = i18nT('maintenance.backup.job.uploading', 'uploading');
             break;
         default:
-            icon = 'ri-time-line'; cls = 'text-tg-textSecondary';
+            icon = 'ri-time-line';
+            cls = 'text-tg-textSecondary';
             label = j.status;
     }
     const target = j.remote_path || j.snapshot_path || `download #${j.download_id}`;
-    const retryBtn = j.status === 'failed'
-        ? `<button data-job-id="${j.id}" data-act="retry-job" class="text-[11px] px-2 py-0.5 rounded bg-tg-blue/15 text-tg-blue hover:bg-tg-blue/25"><i class="ri-refresh-line mr-0.5"></i>${escapeHtml(i18nT('maintenance.backup.retry', 'Retry'))}</button>` : '';
-    const errSpan = j.status === 'failed' && j.error
-        ? `<span class="text-[11px] text-red-300 truncate" title="${escapeHtml(j.error)}">${escapeHtml(String(j.error).slice(0, 80))}</span>` : '';
+    const retryBtn =
+        j.status === 'failed'
+            ? `<button data-job-id="${j.id}" data-act="retry-job" class="text-[11px] px-2 py-0.5 rounded bg-tg-blue/15 text-tg-blue hover:bg-tg-blue/25"><i class="ri-refresh-line mr-0.5"></i>${escapeHtml(i18nT('maintenance.backup.retry', 'Retry'))}</button>`
+            : '';
+    const errSpan =
+        j.status === 'failed' && j.error
+            ? `<span class="text-[11px] text-red-300 truncate" title="${escapeHtml(j.error)}">${escapeHtml(String(j.error).slice(0, 80))}</span>`
+            : '';
     return `
         <div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-tg-bg/30 text-[12px]">
             <i class="${icon} ${cls}"></i>
             <span class="text-tg-textSecondary tabular-nums w-12 shrink-0">${escapeHtml(ts)}</span>
             <span class="text-tg-text font-medium w-20 shrink-0">${escapeHtml(label)}</span>
-            <span class="text-tg-textSecondary truncate flex-1" title="${escapeHtml(target)}">${escapeHtml(j.destination_name || ('#' + j.destination_id))} · ${escapeHtml(target)}</span>
+            <span class="text-tg-textSecondary truncate flex-1" title="${escapeHtml(target)}">${escapeHtml(j.destination_name || '#' + j.destination_id)} · ${escapeHtml(target)}</span>
             ${errSpan}
             ${retryBtn}
         </div>`;
@@ -169,12 +212,16 @@ function _renderAll() {
 }
 
 async function _refreshStatuses() {
-    await Promise.all(_destinations.map(async (d) => {
-        try {
-            const r = await api.get(`/api/backup/destinations/${d.id}/status`);
-            _statuses.set(d.id, r);
-        } catch { /* leave stale */ }
-    }));
+    await Promise.all(
+        _destinations.map(async (d) => {
+            try {
+                const r = await api.get(`/api/backup/destinations/${d.id}/status`);
+                _statuses.set(d.id, r);
+            } catch {
+                /* leave stale */
+            }
+        }),
+    );
     _renderAll();
 }
 
@@ -202,7 +249,9 @@ async function _refreshRecent() {
         }
         empty?.classList.add('hidden');
         root.innerHTML = jobs.map(_renderRecentRow).join('');
-    } catch { /* non-fatal */ }
+    } catch {
+        /* non-fatal */
+    }
 }
 
 // ---- Card actions ---------------------------------------------------------
@@ -226,9 +275,11 @@ async function _onCardAction(destId, act) {
         } else if (act === 'remove') {
             const ok = await confirmSheet({
                 title: i18nT('maintenance.backup.remove_title', 'Remove backup destination?'),
-                message: i18nTf('maintenance.backup.remove_body',
+                message: i18nTf(
+                    'maintenance.backup.remove_body',
                     { name: dest.name },
-                    `Stop syncing to "${dest.name}"? Existing remote files stay put — this only deletes the local pointer.`),
+                    `Stop syncing to "${dest.name}"? Existing remote files stay put — this only deletes the local pointer.`,
+                ),
                 confirmLabel: i18nT('common.remove', 'Remove'),
                 danger: true,
             });
@@ -246,9 +297,15 @@ async function _onCardAction(destId, act) {
 
 async function _promptUnlock(dest) {
     let resolveFn;
-    const done = new Promise((r) => { resolveFn = r; });
+    const done = new Promise((r) => {
+        resolveFn = r;
+    });
     const sheet = openSheet({
-        title: i18nTf('maintenance.backup.unlock_title', { name: dest.name }, `Unlock ${dest.name}`),
+        title: i18nTf(
+            'maintenance.backup.unlock_title',
+            { name: dest.name },
+            `Unlock ${dest.name}`,
+        ),
         size: 'sm',
         content: `
             <p class="text-xs text-tg-textSecondary mb-3" data-i18n="maintenance.backup.unlock_help">Re-enter the encryption passphrase you set for this destination. The key is held in memory only — server restart prompts again.</p>
@@ -265,18 +322,27 @@ async function _promptUnlock(dest) {
         const cancel = document.getElementById('bk-unlock-cancel');
         const submit = async () => {
             const pass = input?.value || '';
-            if (!pass) { showToast(i18nT('maintenance.backup.passphrase_required', 'Passphrase required'), 'error'); return; }
+            if (!pass) {
+                showToast(
+                    i18nT('maintenance.backup.passphrase_required', 'Passphrase required'),
+                    'error',
+                );
+                return;
+            }
             try {
                 await api.post(`/api/backup/destinations/${dest.id}/unlock`, { passphrase: pass });
                 showToast(i18nT('maintenance.backup.unlocked', 'Unlocked'), 'success');
-                resolveFn(true); sheet.close();
+                resolveFn(true);
+                sheet.close();
             } catch (e) {
                 showToast(e?.data?.error || e.message || 'Failed', 'error');
             }
         };
         ok?.addEventListener('click', submit);
         cancel?.addEventListener('click', () => sheet.close());
-        input?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+        input?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submit();
+        });
         input?.focus();
     }, 80);
     return done;
@@ -297,11 +363,20 @@ async function _loadProviders() {
 // token. Mirrors the docs/BACKUP.md walkthroughs verbatim.
 function _renderProviderHelp(providerName) {
     if (providerName === 'gdrive') {
-        const title = escapeHtml(i18nT('maintenance.backup.help.gdrive.title', 'How do I get clientId / clientSecret / refreshToken?'));
+        const title = escapeHtml(
+            i18nT(
+                'maintenance.backup.help.gdrive.title',
+                'How do I get clientId / clientSecret / refreshToken?',
+            ),
+        );
         const consoleUrl = 'https://console.cloud.google.com/';
         const playgroundUrl = 'https://developers.google.com/oauthplayground/';
-        const consoleLabel = escapeHtml(i18nT('maintenance.backup.help.gdrive.console', 'Open Google Cloud Console'));
-        const playgroundLabel = escapeHtml(i18nT('maintenance.backup.help.gdrive.playground', 'Open OAuth Playground'));
+        const consoleLabel = escapeHtml(
+            i18nT('maintenance.backup.help.gdrive.console', 'Open Google Cloud Console'),
+        );
+        const playgroundLabel = escapeHtml(
+            i18nT('maintenance.backup.help.gdrive.playground', 'Open OAuth Playground'),
+        );
         return `
             <details class="mt-3 rounded-md border border-tg-border/40 bg-tg-bg/30 overflow-hidden">
                 <summary class="px-3 py-2 cursor-pointer text-[12px] text-tg-textSecondary hover:text-tg-text">
@@ -322,9 +397,16 @@ function _renderProviderHelp(providerName) {
             </details>`;
     }
     if (providerName === 'dropbox') {
-        const title = escapeHtml(i18nT('maintenance.backup.help.dropbox.title', 'How do I get appKey / appSecret / refreshToken?'));
+        const title = escapeHtml(
+            i18nT(
+                'maintenance.backup.help.dropbox.title',
+                'How do I get appKey / appSecret / refreshToken?',
+            ),
+        );
         const consoleUrl = 'https://www.dropbox.com/developers/apps';
-        const consoleLabel = escapeHtml(i18nT('maintenance.backup.help.dropbox.console', 'Open Dropbox developer console'));
+        const consoleLabel = escapeHtml(
+            i18nT('maintenance.backup.help.dropbox.console', 'Open Dropbox developer console'),
+        );
         return `
             <details class="mt-3 rounded-md border border-tg-border/40 bg-tg-bg/30 overflow-hidden">
                 <summary class="px-3 py-2 cursor-pointer text-[12px] text-tg-textSecondary hover:text-tg-text">
@@ -349,16 +431,23 @@ function _renderField(field, currentValue) {
     const val = currentValue == null ? '' : String(currentValue);
     const id = `bk-field-${field.name}`;
     const label = `<label for="${id}" class="block text-xs text-tg-textSecondary mb-1">${escapeHtml(field.label)}${field.required ? ' *' : ''}</label>`;
-    const help = field.help ? `<div class="text-[11px] text-tg-textSecondary mt-1">${escapeHtml(field.help)}</div>` : '';
+    const help = field.help
+        ? `<div class="text-[11px] text-tg-textSecondary mt-1">${escapeHtml(field.help)}</div>`
+        : '';
     if (field.type === 'textarea') {
         return `<div class="mb-3">${label}<textarea id="${id}" data-field="${escapeHtml(field.name)}" class="tg-input w-full text-sm font-mono" rows="4" placeholder="${escapeHtml(field.placeholder || '')}">${escapeHtml(val)}</textarea>${help}</div>`;
     }
     if (field.type === 'select') {
-        const opts = (field.options || []).map((o) =>
-            `<option value="${escapeHtml(o.value)}"${o.value === val ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('');
+        const opts = (field.options || [])
+            .map(
+                (o) =>
+                    `<option value="${escapeHtml(o.value)}"${o.value === val ? ' selected' : ''}>${escapeHtml(o.label)}</option>`,
+            )
+            .join('');
         return `<div class="mb-3">${label}<select id="${id}" data-field="${escapeHtml(field.name)}" class="tg-input w-full text-sm">${opts}</select>${help}</div>`;
     }
-    const inputType = field.type === 'password' ? 'password' : (field.type === 'number' ? 'number' : 'text');
+    const inputType =
+        field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text';
     return `<div class="mb-3">${label}<input type="${inputType}" id="${id}" data-field="${escapeHtml(field.name)}" class="tg-input w-full text-sm" placeholder="${escapeHtml(field.placeholder || '')}" value="${escapeHtml(val)}" autocomplete="off" />${help}</div>`;
 }
 
@@ -379,7 +468,7 @@ async function _openWizard(existing) {
     const renderBody = () => {
         const provider = providers.find((p) => p.name === chosenProvider) || providers[0];
         const schema = provider?.configSchema || [];
-        const config = {};   // edit mode never echoes secrets back — operator re-enters
+        const config = {}; // edit mode never echoes secrets back — operator re-enters
         const fieldsHtml = schema.map((f) => _renderField(f, config[f.name])).join('');
         const helpHtml = _renderProviderHelp(provider?.name);
         return `
@@ -392,8 +481,12 @@ async function _openWizard(existing) {
                 <div>
                     <label class="block text-xs text-tg-textSecondary mb-1" data-i18n="maintenance.backup.field.provider">Provider</label>
                     <select id="bk-provider" class="tg-input w-full text-sm" ${isEdit ? 'disabled' : ''}>
-                        ${providers.map((p) =>
-                            `<option value="${escapeHtml(p.name)}"${p.name === chosenProvider ? ' selected' : ''}>${escapeHtml(p.displayName)}</option>`).join('')}
+                        ${providers
+                            .map(
+                                (p) =>
+                                    `<option value="${escapeHtml(p.name)}"${p.name === chosenProvider ? ' selected' : ''}>${escapeHtml(p.displayName)}</option>`,
+                            )
+                            .join('')}
                     </select>
                     ${isEdit ? `<div class="text-[11px] text-tg-textSecondary mt-1" data-i18n="maintenance.backup.provider_locked">Provider can't be changed after creation — remove + re-add to switch.</div>` : ''}
                 </div>
@@ -451,7 +544,9 @@ async function _openWizard(existing) {
     };
 
     const sheet = openSheet({
-        title: isEdit ? i18nT('maintenance.backup.edit_title', 'Edit destination') : i18nT('maintenance.backup.add_title', 'Add backup destination'),
+        title: isEdit
+            ? i18nT('maintenance.backup.edit_title', 'Edit destination')
+            : i18nT('maintenance.backup.add_title', 'Add backup destination'),
         size: 'lg',
         content: renderBody(),
     });
@@ -488,7 +583,9 @@ function _wireWizard(root, sheet, providers, existing) {
         root.querySelector('#bk-cron-row').style.display = mode === 'snapshot' ? '' : 'none';
         root.querySelector('#bk-retain-row').style.display = mode === 'snapshot' ? '' : 'none';
     }
-    root.querySelectorAll('input[name="bk-mode"]').forEach((el) => el.addEventListener('change', syncModeUi));
+    root.querySelectorAll('input[name="bk-mode"]').forEach((el) =>
+        el.addEventListener('change', syncModeUi),
+    );
     syncModeUi();
 
     function syncEncUi() {
@@ -501,7 +598,10 @@ function _wireWizard(root, sheet, providers, existing) {
 
     async function collectAndValidate() {
         const name = root.querySelector('#bk-name')?.value.trim();
-        if (!name) { showToast(i18nT('maintenance.backup.name_required', 'Name required'), 'error'); return null; }
+        if (!name) {
+            showToast(i18nT('maintenance.backup.name_required', 'Name required'), 'error');
+            return null;
+        }
         const provider = root.querySelector('#bk-provider')?.value;
         const mode = root.querySelector('input[name="bk-mode"]:checked')?.value || 'mirror';
         const cron = root.querySelector('#bk-cron')?.value.trim();
@@ -514,16 +614,28 @@ function _wireWizard(root, sheet, providers, existing) {
             // On edit, allow leaving blank as long as the destination
             // already had encryption enabled (server keeps the cached key).
             if (!isEdit && !passphrase) {
-                showToast(i18nT('maintenance.backup.passphrase_required', 'Passphrase required'), 'error');
+                showToast(
+                    i18nT('maintenance.backup.passphrase_required', 'Passphrase required'),
+                    'error',
+                );
                 return null;
             }
             if (passphrase && passphrase !== passphrase2) {
-                showToast(i18nT('maintenance.backup.passphrase_mismatch', 'Passphrases do not match'), 'error');
+                showToast(
+                    i18nT('maintenance.backup.passphrase_mismatch', 'Passphrases do not match'),
+                    'error',
+                );
                 return null;
             }
         }
         if (mode === 'snapshot' && !cron) {
-            showToast(i18nT('maintenance.backup.cron_required', 'Cron expression required for snapshot mode'), 'error');
+            showToast(
+                i18nT(
+                    'maintenance.backup.cron_required',
+                    'Cron expression required for snapshot mode',
+                ),
+                'error',
+            );
             return null;
         }
         const fields = _collectFields(root);
@@ -536,7 +648,16 @@ function _wireWizard(root, sheet, providers, existing) {
                 if (f.secret && fields[f.name] === '') delete fields[f.name];
             }
         }
-        return { name, provider, config: fields, mode, cron: cron || null, retainCount, encryption, passphrase: passphrase || undefined };
+        return {
+            name,
+            provider,
+            config: fields,
+            mode,
+            cron: cron || null,
+            retainCount,
+            encryption,
+            passphrase: passphrase || undefined,
+        };
     }
 
     root.querySelector('#bk-cancel')?.addEventListener('click', () => sheet.close());
@@ -554,12 +675,18 @@ function _wireWizard(root, sheet, providers, existing) {
                 // Save the current edits first (so the test reflects what
                 // the user just typed), then probe.
                 await api.put(`/api/backup/destinations/${existing.id}`, {
-                    config: data.config, mode: data.mode, cron: data.cron, retainCount: data.retainCount,
+                    config: data.config,
+                    mode: data.mode,
+                    cron: data.cron,
+                    retainCount: data.retainCount,
                 });
                 const r = await api.post(`/api/backup/destinations/${existing.id}/test`, {});
                 showToast(r.detail || (r.ok ? 'OK' : 'Failed'), r.ok ? 'success' : 'error');
             } else {
-                const created = await api.post('/api/backup/destinations', { ...data, enabled: false });
+                const created = await api.post('/api/backup/destinations', {
+                    ...data,
+                    enabled: false,
+                });
                 try {
                     const r = await api.post(`/api/backup/destinations/${created.id}/test`, {});
                     showToast(r.detail || (r.ok ? 'OK' : 'Failed'), r.ok ? 'success' : 'error');
@@ -580,12 +707,16 @@ function _wireWizard(root, sheet, providers, existing) {
         try {
             if (isEdit) {
                 await api.put(`/api/backup/destinations/${existing.id}`, {
-                    name: data.name, mode: data.mode, cron: data.cron, retainCount: data.retainCount,
+                    name: data.name,
+                    mode: data.mode,
+                    cron: data.cron,
+                    retainCount: data.retainCount,
                     config: Object.keys(data.config).length ? data.config : undefined,
                 });
                 if (data.encryption !== existing.encryption || data.passphrase) {
                     await api.post(`/api/backup/destinations/${existing.id}/encryption`, {
-                        enabled: data.encryption, passphrase: data.passphrase,
+                        enabled: data.encryption,
+                        passphrase: data.passphrase,
                     });
                 }
             } else {
@@ -605,9 +736,15 @@ function _wireWizard(root, sheet, providers, existing) {
 function _wireWs() {
     if (_wsWired) return;
     _wsWired = true;
-    ws.on('backup_destination_added', () => { _refreshDestinations().catch(() => {}); });
-    ws.on('backup_destination_updated', () => { _refreshDestinations().catch(() => {}); });
-    ws.on('backup_destination_removed', () => { _refreshDestinations().catch(() => {}); });
+    ws.on('backup_destination_added', () => {
+        _refreshDestinations().catch(() => {});
+    });
+    ws.on('backup_destination_updated', () => {
+        _refreshDestinations().catch(() => {});
+    });
+    ws.on('backup_destination_removed', () => {
+        _refreshDestinations().catch(() => {});
+    });
     ws.on('backup_progress', (m) => {
         // Bump the per-destination progress feedback. We don't know the
         // total bytes per upload at this layer, so render the progress
@@ -622,9 +759,18 @@ function _wireWs() {
             _renderAll();
         }
     });
-    ws.on('backup_done', () => { _refreshStatuses().catch(() => {}); _refreshRecent().catch(() => {}); });
-    ws.on('backup_error', () => { _refreshStatuses().catch(() => {}); _refreshRecent().catch(() => {}); });
-    ws.on('backup_queue_drained', () => { _refreshStatuses().catch(() => {}); _refreshRecent().catch(() => {}); });
+    ws.on('backup_done', () => {
+        _refreshStatuses().catch(() => {});
+        _refreshRecent().catch(() => {});
+    });
+    ws.on('backup_error', () => {
+        _refreshStatuses().catch(() => {});
+        _refreshRecent().catch(() => {});
+    });
+    ws.on('backup_queue_drained', () => {
+        _refreshStatuses().catch(() => {});
+        _refreshRecent().catch(() => {});
+    });
 }
 
 function _wirePage() {

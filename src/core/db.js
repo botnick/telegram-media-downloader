@@ -103,22 +103,50 @@ function initSchema() {
         'ALTER TABLE downloads ADD COLUMN ai_indexed_at INTEGER',
     ];
     for (const sql of migrations) {
-        try { db.exec(sql); } catch { /* column already exists */ }
+        try {
+            db.exec(sql);
+        } catch {
+            /* column already exists */
+        }
     }
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_filename_size ON downloads(group_id, file_name, file_size)'); } catch {}
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_filename_size ON downloads(group_id, file_name, file_size)',
+        );
+    } catch {}
     // Speeds up the rescue sweeper's expired-pending scan and the per-message
     // markRescued lookup. Both are cheap CREATE-IF-NOT-EXISTS calls.
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_pending_until ON downloads(pending_until) WHERE pending_until IS NOT NULL'); } catch {}
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_group_message ON downloads(group_id, message_id)'); } catch {}
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_pending_until ON downloads(pending_until) WHERE pending_until IS NOT NULL',
+        );
+    } catch {}
+    try {
+        db.exec('CREATE INDEX IF NOT EXISTS idx_group_message ON downloads(group_id, message_id)');
+    } catch {}
     // Indexes that drive the NSFW review sheet's hot queries:
     //   - "what's left to scan" (file_type='photo' AND nsfw_checked_at IS NULL)
     //   - "show flagged sorted by score desc" (whitelist=0 AND score >= threshold)
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_nsfw_unscanned ON downloads(file_type, nsfw_checked_at) WHERE nsfw_checked_at IS NULL'); } catch {}
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_nsfw_review ON downloads(nsfw_score, nsfw_whitelist) WHERE nsfw_score IS NOT NULL'); } catch {}
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_nsfw_unscanned ON downloads(file_type, nsfw_checked_at) WHERE nsfw_checked_at IS NULL',
+        );
+    } catch {}
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_nsfw_review ON downloads(nsfw_score, nsfw_whitelist) WHERE nsfw_score IS NOT NULL',
+        );
+    } catch {}
     // AI subsystem indexes — driven by the perceptual-dedup grouping pass and
     // the "what's left to AI-index?" backfill query.
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_phash ON downloads(phash) WHERE phash IS NOT NULL'); } catch {}
-    try { db.exec('CREATE INDEX IF NOT EXISTS idx_ai_unindexed ON downloads(file_type, ai_indexed_at) WHERE ai_indexed_at IS NULL'); } catch {}
+    try {
+        db.exec('CREATE INDEX IF NOT EXISTS idx_phash ON downloads(phash) WHERE phash IS NOT NULL');
+    } catch {}
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_ai_unindexed ON downloads(file_type, ai_indexed_at) WHERE ai_indexed_at IS NULL',
+        );
+    } catch {}
 
     // AI subsystem auxiliary tables. All four are opt-in; rows only land
     // here once the operator enables the relevant capability in
@@ -171,9 +199,13 @@ function initSchema() {
     // halfway through a download — as a generic "no such column" runtime
     // error. Forcing the SELECT here makes us fail at boot instead.
     try {
-        db.prepare('SELECT pinned, pending_until, rescued_at, ttl_seconds, file_hash, nsfw_score, nsfw_checked_at, nsfw_whitelist, phash, ai_indexed_at FROM downloads LIMIT 0').all();
+        db.prepare(
+            'SELECT pinned, pending_until, rescued_at, ttl_seconds, file_hash, nsfw_score, nsfw_checked_at, nsfw_whitelist, phash, ai_indexed_at FROM downloads LIMIT 0',
+        ).all();
     } catch (e) {
-        throw new Error(`DB schema migration incomplete — column missing after ALTER TABLE: ${e.message}. Inspect data/db.sqlite or restore from backup.`);
+        throw new Error(
+            `DB schema migration incomplete — column missing after ALTER TABLE: ${e.message}. Inspect data/db.sqlite or restore from backup.`,
+        );
     }
 
     // Queue/Pending Table
@@ -264,11 +296,15 @@ function initSchema() {
     // throttle_bps was added after the initial backup release — wrap the
     // ALTER in try/catch so the column is present on upgrades and the
     // CREATE-IF-NOT-EXISTS path on fresh DBs is unaffected.
-    try { db.exec('ALTER TABLE backup_destinations ADD COLUMN throttle_bps INTEGER'); } catch {}
+    try {
+        db.exec('ALTER TABLE backup_destinations ADD COLUMN throttle_bps INTEGER');
+    } catch {}
 
     // FK enforcement is per-connection in SQLite — flip it on once we know
     // the table exists. Without this, ON DELETE CASCADE silently no-ops.
-    try { db.pragma('foreign_keys = ON'); } catch {}
+    try {
+        db.pragma('foreign_keys = ON');
+    } catch {}
 }
 
 // ---- Share links ----------------------------------------------------------
@@ -295,12 +331,14 @@ export function createShareLink({ downloadId, expiresAt, label = null }) {
  * three apart by timing/response shape.
  */
 export function getShareLinkForServe(id, now = Date.now()) {
-    const row = getDb().prepare(`
+    const row = getDb()
+        .prepare(`
         SELECT s.*, d.file_path, d.file_name, d.file_type, d.file_size
           FROM share_links s
           JOIN downloads d ON d.id = s.download_id
          WHERE s.id = ?
-    `).get(Number(id));
+    `)
+        .get(Number(id));
     if (!row) return null;
     if (row.revoked_at != null) return { row, reason: 'revoked' };
     // expires_at === 0 is the "never expires" sentinel — the admin opted
@@ -317,21 +355,27 @@ export function getShareLinkForServe(id, now = Date.now()) {
  */
 export function bumpShareLinkAccess(id) {
     try {
-        getDb().prepare(`
+        getDb()
+            .prepare(`
             UPDATE share_links
                SET access_count = access_count + 1,
                    last_accessed_at = ?
              WHERE id = ?
-        `).run(Date.now(), Number(id));
-    } catch { /* non-fatal — bytes already on the wire */ }
+        `)
+            .run(Date.now(), Number(id));
+    } catch {
+        /* non-fatal — bytes already on the wire */
+    }
 }
 
 export function revokeShareLink(id) {
-    const r = getDb().prepare(`
+    const r = getDb()
+        .prepare(`
         UPDATE share_links
            SET revoked_at = ?
          WHERE id = ? AND revoked_at IS NULL
-    `).run(Date.now(), Number(id));
+    `)
+        .run(Date.now(), Number(id));
     return r.changes > 0;
 }
 
@@ -344,7 +388,10 @@ export function revokeShareLink(id) {
 export function listShareLinks({ downloadId = null, includeRevoked = true, limit = 500 } = {}) {
     const where = [];
     const args = [];
-    if (downloadId != null) { where.push('s.download_id = ?'); args.push(Number(downloadId)); }
+    if (downloadId != null) {
+        where.push('s.download_id = ?');
+        args.push(Number(downloadId));
+    }
     if (!includeRevoked) where.push('s.revoked_at IS NULL');
     const sql = `
         SELECT s.id, s.download_id, s.created_at, s.expires_at, s.revoked_at,
@@ -356,7 +403,9 @@ export function listShareLinks({ downloadId = null, includeRevoked = true, limit
          ORDER BY s.created_at DESC
          LIMIT ?
     `;
-    return getDb().prepare(sql).all(...args, Math.max(1, Math.min(2000, limit)));
+    return getDb()
+        .prepare(sql)
+        .all(...args, Math.max(1, Math.min(2000, limit)));
 }
 
 export function insertDownload(data) {
@@ -435,7 +484,9 @@ export function setRescueLastSweep(n) {
 export function getRescueStats() {
     const db = getDb();
     const pending = db
-        .prepare(`SELECT COUNT(*) as c FROM downloads WHERE pending_until IS NOT NULL AND rescued_at IS NULL`)
+        .prepare(
+            `SELECT COUNT(*) as c FROM downloads WHERE pending_until IS NOT NULL AND rescued_at IS NULL`,
+        )
         .get().c;
     const rescued = db
         .prepare(`SELECT COUNT(*) as c FROM downloads WHERE rescued_at IS NOT NULL`)
@@ -450,8 +501,9 @@ export function getRescueStats() {
  */
 export function fileAlreadyStored(groupId, fileName, fileSize) {
     if (!fileName || !fileSize) return false;
-    const r = _prep('SELECT 1 FROM downloads WHERE group_id = ? AND file_name = ? AND file_size = ? LIMIT 1')
-        .get(String(groupId), String(fileName), Number(fileSize));
+    const r = _prep(
+        'SELECT 1 FROM downloads WHERE group_id = ? AND file_name = ? AND file_size = ? LIMIT 1',
+    ).get(String(groupId), String(fileName), Number(fileSize));
     return !!r;
 }
 
@@ -470,8 +522,10 @@ function _prep(sql) {
 }
 
 export function isDownloaded(groupId, messageId) {
-    return !!_prep('SELECT 1 FROM downloads WHERE group_id = ? AND message_id = ? LIMIT 1')
-        .get(String(groupId), Number(messageId));
+    return !!_prep('SELECT 1 FROM downloads WHERE group_id = ? AND message_id = ? LIMIT 1').get(
+        String(groupId),
+        Number(messageId),
+    );
 }
 
 /**
@@ -488,11 +542,13 @@ export function isDownloaded(groupId, messageId) {
  * range filter, iterate from newest).
  */
 export function getMessageIdRange(groupId) {
-    const r = getDb().prepare(`
+    const r = getDb()
+        .prepare(`
         SELECT MIN(message_id) AS min_id, MAX(message_id) AS max_id, COUNT(*) AS n
           FROM downloads
          WHERE group_id = ?
-    `).get(String(groupId));
+    `)
+        .get(String(groupId));
     return {
         minMessageId: r?.min_id ?? null,
         maxMessageId: r?.max_id ?? null,
@@ -543,15 +599,15 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
 
     if (type !== 'all') {
         const typeMap = {
-            'images': 'photo',
-            'videos': 'video',
-            'documents': 'document',
-            'audio': 'audio'
+            images: 'photo',
+            videos: 'video',
+            documents: 'document',
+            audio: 'audio',
         };
         // Use LIKE for flexibility or map precisely
         if (typeMap[type]) {
-             query += ' AND file_type = ?';
-             params.push(typeMap[type]);
+            query += ' AND file_type = ?';
+            params.push(typeMap[type]);
         }
     }
 
@@ -564,19 +620,22 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
 
     const stmt = getDb().prepare(query);
     const rows = stmt.all(...params);
-    
+
     // Count total for pagination
     let countQuery = 'SELECT COUNT(*) as total FROM downloads WHERE group_id = ?';
     const countParams = [groupId];
-    
+
     // We reuse the type filter logic for count but it's cleaner to separate or build dynamically
     // For simplicity here:
-    if (params.length > 3) { // If type filter was added
-         countQuery += ' AND file_type = ?';
-         countParams.push(params[1]); // existing type param
+    if (params.length > 3) {
+        // If type filter was added
+        countQuery += ' AND file_type = ?';
+        countParams.push(params[1]); // existing type param
     }
-    
-    const total = getDb().prepare(countQuery).get(...countParams).total;
+
+    const total = getDb()
+        .prepare(countQuery)
+        .get(...countParams).total;
 
     return { files: rows, total };
 }
@@ -597,7 +656,10 @@ export function searchDownloads(query, opts = {}) {
     const q = `%${String(query || '').trim()}%`;
     const params = [q, q];
     let where = '(file_name LIKE ? OR group_name LIKE ?)';
-    if (opts.groupId) { where += ' AND group_id = ?'; params.push(String(opts.groupId)); }
+    if (opts.groupId) {
+        where += ' AND group_id = ?';
+        params.push(String(opts.groupId));
+    }
     const rows = getDb()
         .prepare(`SELECT * FROM downloads WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
         .all(...params, limit, offset);
@@ -620,7 +682,8 @@ export function searchDownloads(query, opts = {}) {
 export function setDownloadPinned(id, pinned) {
     const numId = Number(id);
     if (!Number.isFinite(numId) || numId <= 0) return false;
-    const r = getDb().prepare('UPDATE downloads SET pinned = ? WHERE id = ?')
+    const r = getDb()
+        .prepare('UPDATE downloads SET pinned = ? WHERE id = ?')
         .run(pinned ? 1 : 0, numId);
     return r.changes > 0;
 }
@@ -645,7 +708,9 @@ export function deleteDownloadsBy(opts) {
     }
     if (Array.isArray(opts?.filePaths) && opts.filePaths.length) {
         const stmt = db.prepare('DELETE FROM downloads WHERE file_path = ?');
-        const tx = db.transaction(() => opts.filePaths.reduce((n, p) => n + stmt.run(p).changes, 0));
+        const tx = db.transaction(() =>
+            opts.filePaths.reduce((n, p) => n + stmt.run(p).changes, 0),
+        );
         return tx();
     }
     return 0;
@@ -717,7 +782,9 @@ export function deleteAllDownloads() {
 export function backfillGroupNames(groups) {
     if (!groups || groups.length === 0) return 0;
     const db = getDb();
-    const stmt = db.prepare('UPDATE downloads SET group_name = ? WHERE group_id = ? AND group_name IS NULL');
+    const stmt = db.prepare(
+        'UPDATE downloads SET group_name = ? WHERE group_id = ? AND group_name IS NULL',
+    );
     let updated = 0;
     const tx = db.transaction(() => {
         for (const g of groups) {
@@ -758,36 +825,44 @@ export function backfillGroupNames(groups) {
  *             keep:number, whitelisted:number, lastCheckedAt:number|null }}
  */
 export function getNsfwStats(fileTypes, threshold) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const db = getDb();
-    const total = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`
-    ).get(...types).n;
-    const scanned = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_checked_at IS NOT NULL`
-    ).get(...types).n;
+    const total = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`)
+        .get(...types).n;
+    const scanned = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_checked_at IS NOT NULL`,
+        )
+        .get(...types).n;
     // candidates = LOW-score rows (likely not 18+) — what the admin reviews.
-    const candidates = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads
+    const candidates = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads
          WHERE file_type IN (${placeholders})
            AND nsfw_score IS NOT NULL
            AND nsfw_score < ?
-           AND nsfw_whitelist = 0`
-    ).get(...types, Number(threshold)).n;
+           AND nsfw_whitelist = 0`,
+        )
+        .get(...types, Number(threshold)).n;
     // keep = HIGH-score rows (likely 18+) — the curated content stays put.
-    const keep = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads
+    const keep = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads
          WHERE file_type IN (${placeholders})
            AND nsfw_score IS NOT NULL
-           AND nsfw_score >= ?`
-    ).get(...types, Number(threshold)).n;
-    const whitelisted = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE nsfw_whitelist = 1`
-    ).get().n;
-    const lastCheckedAt = db.prepare(
-        `SELECT MAX(nsfw_checked_at) AS t FROM downloads WHERE file_type IN (${placeholders})`
-    ).get(...types).t;
+           AND nsfw_score >= ?`,
+        )
+        .get(...types, Number(threshold)).n;
+    const whitelisted = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE nsfw_whitelist = 1`)
+        .get().n;
+    const lastCheckedAt = db
+        .prepare(
+            `SELECT MAX(nsfw_checked_at) AS t FROM downloads WHERE file_type IN (${placeholders})`,
+        )
+        .get(...types).t;
     return { totalEligible: total, scanned, candidates, keep, whitelisted, lastCheckedAt };
 }
 
@@ -798,9 +873,10 @@ export function getNsfwStats(fileTypes, threshold) {
  * downloads.
  */
 export function getUnscannedNsfwBatch(fileTypes, limit = 50) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_type, file_size, created_at
           FROM downloads
          WHERE file_type IN (${placeholders})
@@ -808,7 +884,8 @@ export function getUnscannedNsfwBatch(fileTypes, limit = 50) {
            AND nsfw_whitelist = 0
          ORDER BY created_at ASC
          LIMIT ?
-    `).all(...types, Math.max(1, Math.min(500, Number(limit) || 50)));
+    `)
+        .all(...types, Math.max(1, Math.min(500, Number(limit) || 50)));
 }
 
 /**
@@ -819,11 +896,13 @@ export function getUnscannedNsfwBatch(fileTypes, limit = 50) {
  */
 export function setNsfwResult(id, score, now = Date.now()) {
     const s = score == null ? null : Math.max(0, Math.min(1, Number(score)));
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         UPDATE downloads
            SET nsfw_score = ?, nsfw_checked_at = ?
          WHERE id = ?
-    `).run(s, Math.floor(now), Number(id)).changes;
+    `)
+        .run(s, Math.floor(now), Number(id)).changes;
 }
 
 /**
@@ -838,21 +917,24 @@ export function setNsfwResult(id, score, now = Date.now()) {
  * @returns {{ rows: object[], total: number, page: number, totalPages: number }}
  */
 export function getNsfwDeleteCandidates({ fileTypes, threshold, page = 1, limit = 50 }) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const t = Number(threshold);
     const p = Math.max(1, Number(page) || 1);
     const lim = Math.max(1, Math.min(200, Number(limit) || 50));
     const offset = (p - 1) * lim;
     const db = getDb();
-    const totalRow = db.prepare(`
+    const totalRow = db
+        .prepare(`
         SELECT COUNT(*) AS n FROM downloads
          WHERE file_type IN (${placeholders})
            AND nsfw_score IS NOT NULL
            AND nsfw_score < ?
            AND nsfw_whitelist = 0
-    `).get(...types, t);
-    const rows = db.prepare(`
+    `)
+        .get(...types, t);
+    const rows = db
+        .prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_type, file_size,
                created_at, nsfw_score, nsfw_checked_at
           FROM downloads
@@ -862,7 +944,8 @@ export function getNsfwDeleteCandidates({ fileTypes, threshold, page = 1, limit 
            AND nsfw_whitelist = 0
          ORDER BY nsfw_score ASC, id ASC
          LIMIT ? OFFSET ?
-    `).all(...types, t, lim, offset);
+    `)
+        .all(...types, t, lim, offset);
     const total = totalRow.n;
     return { rows, total, page: p, totalPages: Math.max(1, Math.ceil(total / lim)) };
 }
@@ -875,12 +958,12 @@ export function getNsfwDeleteCandidates({ fileTypes, threshold, page = 1, limit 
  */
 export function whitelistNsfw(ids) {
     if (!Array.isArray(ids) || !ids.length) return 0;
-    const cleanIds = ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+    const cleanIds = ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
     if (!cleanIds.length) return 0;
     const ph = cleanIds.map(() => '?').join(',');
-    return getDb().prepare(
-        `UPDATE downloads SET nsfw_whitelist = 1 WHERE id IN (${ph})`
-    ).run(...cleanIds).changes;
+    return getDb()
+        .prepare(`UPDATE downloads SET nsfw_whitelist = 1 WHERE id IN (${ph})`)
+        .run(...cleanIds).changes;
 }
 
 // Tier definitions — higher score = more likely 18+ (the convention the
@@ -900,11 +983,11 @@ export function whitelistNsfw(ids) {
 //   maybe    — Probably 18+            [0.7, 0.9)
 //   def      — Definitely 18+          [0.9, 1.0]
 export const NSFW_TIERS = [
-    { id: 'def_not',   min: 0.0, max: 0.3, label: 'Definitely not 18+' },
+    { id: 'def_not', min: 0.0, max: 0.3, label: 'Definitely not 18+' },
     { id: 'maybe_not', min: 0.3, max: 0.5, label: 'Probably not 18+' },
     { id: 'uncertain', min: 0.5, max: 0.7, label: 'Borderline / review' },
-    { id: 'maybe',     min: 0.7, max: 0.9, label: 'Probably 18+' },
-    { id: 'def',       min: 0.9, max: 1.01, label: 'Definitely 18+' },
+    { id: 'maybe', min: 0.7, max: 0.9, label: 'Probably 18+' },
+    { id: 'def', min: 0.9, max: 1.01, label: 'Definitely 18+' },
 ];
 
 function _tierBounds(tierId) {
@@ -919,31 +1002,35 @@ function _tierBounds(tierId) {
  * the score might disagree). The UI uses this to render the stats cards.
  */
 export function getNsfwTierCounts(fileTypes) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const db = getDb();
     const out = { tiers: {}, scanned: 0, unscanned: 0, whitelisted: 0, totalEligible: 0 };
     for (const tier of NSFW_TIERS) {
-        const n = db.prepare(`
+        const n = db
+            .prepare(`
             SELECT COUNT(*) AS n FROM downloads
              WHERE file_type IN (${placeholders})
                AND nsfw_score IS NOT NULL
                AND nsfw_score >= ?
                AND nsfw_score < ?
                AND nsfw_whitelist = 0
-        `).get(...types, tier.min, tier.max).n;
+        `)
+            .get(...types, tier.min, tier.max).n;
         out.tiers[tier.id] = n;
     }
-    out.scanned = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_checked_at IS NOT NULL`
-    ).get(...types).n;
-    out.totalEligible = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`
-    ).get(...types).n;
+    out.scanned = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_checked_at IS NOT NULL`,
+        )
+        .get(...types).n;
+    out.totalEligible = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`)
+        .get(...types).n;
     out.unscanned = Math.max(0, out.totalEligible - out.scanned);
-    out.whitelisted = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE nsfw_whitelist = 1`
-    ).get().n;
+    out.whitelisted = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE nsfw_whitelist = 1`)
+        .get().n;
     return out;
 }
 
@@ -954,13 +1041,15 @@ export function getNsfwTierCounts(fileTypes) {
  * uncertain; consider a different model).
  */
 export function getNsfwHistogram(fileTypes, bins = 20) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const n = Math.max(4, Math.min(50, Number(bins) || 20));
     const out = new Array(n).fill(0);
-    const rows = getDb().prepare(
-        `SELECT nsfw_score FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_score IS NOT NULL`
-    ).all(...types);
+    const rows = getDb()
+        .prepare(
+            `SELECT nsfw_score FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_score IS NOT NULL`,
+        )
+        .all(...types);
     for (const r of rows) {
         let idx = Math.floor(Number(r.nsfw_score) * n);
         if (idx >= n) idx = n - 1;
@@ -976,8 +1065,15 @@ export function getNsfwHistogram(fileTypes, bins = 20) {
  * delete-candidates query so the operator can step through ANY tier,
  * not only the ones below the deletion threshold.
  */
-export function getNsfwListByTier({ tier = null, fileTypes, groupId = null, includeWhitelisted = false, page = 1, limit = 50 }) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+export function getNsfwListByTier({
+    tier = null,
+    fileTypes,
+    groupId = null,
+    includeWhitelisted = false,
+    page = 1,
+    limit = 50,
+}) {
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const where = [`file_type IN (${placeholders})`, 'nsfw_score IS NOT NULL'];
     const params = [...types];
@@ -999,16 +1095,25 @@ export function getNsfwListByTier({ tier = null, fileTypes, groupId = null, incl
     const offset = (p - 1) * lim;
     const whereSql = where.join(' AND ');
     const db = getDb();
-    const totalRow = db.prepare(`SELECT COUNT(*) AS n FROM downloads WHERE ${whereSql}`).get(...params);
-    const rows = db.prepare(`
+    const totalRow = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE ${whereSql}`)
+        .get(...params);
+    const rows = db
+        .prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_type, file_size,
                created_at, nsfw_score, nsfw_checked_at, nsfw_whitelist
           FROM downloads
          WHERE ${whereSql}
          ORDER BY nsfw_score ASC, id ASC
          LIMIT ? OFFSET ?
-    `).all(...params, lim, offset);
-    return { rows, total: totalRow.n, page: p, totalPages: Math.max(1, Math.ceil(totalRow.n / lim)) };
+    `)
+        .all(...params, lim, offset);
+    return {
+        rows,
+        total: totalRow.n,
+        page: p,
+        totalPages: Math.max(1, Math.ceil(totalRow.n / lim)),
+    };
 }
 
 /**
@@ -1021,9 +1126,11 @@ export function reclassifyNsfw(ids) {
     const cleanIds = ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
     if (!cleanIds.length) return 0;
     const ph = cleanIds.map(() => '?').join(',');
-    return getDb().prepare(
-        `UPDATE downloads SET nsfw_checked_at = NULL, nsfw_score = NULL WHERE id IN (${ph})`
-    ).run(...cleanIds).changes;
+    return getDb()
+        .prepare(
+            `UPDATE downloads SET nsfw_checked_at = NULL, nsfw_score = NULL WHERE id IN (${ph})`,
+        )
+        .run(...cleanIds).changes;
 }
 
 /**
@@ -1035,9 +1142,9 @@ export function unwhitelistNsfw(ids) {
     const cleanIds = ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
     if (!cleanIds.length) return 0;
     const ph = cleanIds.map(() => '?').join(',');
-    return getDb().prepare(
-        `UPDATE downloads SET nsfw_whitelist = 0 WHERE id IN (${ph})`
-    ).run(...cleanIds).changes;
+    return getDb()
+        .prepare(`UPDATE downloads SET nsfw_whitelist = 0 WHERE id IN (${ph})`)
+        .run(...cleanIds).changes;
 }
 
 // ---- AI subsystem (v2.6.0) ------------------------------------------------
@@ -1052,40 +1159,46 @@ export function unwhitelistNsfw(ids) {
  * resumed scan picks up backlog before newly-arrived rows.
  */
 export function getUnindexedAiBatch({ fileTypes = ['photo'], limit = 50 } = {}) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_type, file_size, created_at
           FROM downloads
          WHERE file_type IN (${placeholders})
            AND ai_indexed_at IS NULL
          ORDER BY created_at ASC, id ASC
          LIMIT ?
-    `).all(...types, Math.max(1, Math.min(500, Number(limit) || 50)));
+    `)
+        .all(...types, Math.max(1, Math.min(500, Number(limit) || 50)));
 }
 
 export function setAiIndexedAt(downloadId, now = Date.now()) {
-    return getDb().prepare(
-        'UPDATE downloads SET ai_indexed_at = ? WHERE id = ?'
-    ).run(Math.floor(now), Number(downloadId)).changes;
+    return getDb()
+        .prepare('UPDATE downloads SET ai_indexed_at = ? WHERE id = ?')
+        .run(Math.floor(now), Number(downloadId)).changes;
 }
 
 export function getAiCounts({ fileTypes = ['photo'] } = {}) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const db = getDb();
-    const total = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`
-    ).get(...types).n;
-    const indexed = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NOT NULL`
-    ).get(...types).n;
+    const total = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`)
+        .get(...types).n;
+    const indexed = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NOT NULL`,
+        )
+        .get(...types).n;
     const withEmbedding = db.prepare(`SELECT COUNT(*) AS n FROM image_embeddings`).get().n;
     const withFaces = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces`).get().n;
     const withTags = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM image_tags`).get().n;
-    const withPhash = db.prepare(
-        `SELECT COUNT(*) AS n FROM downloads WHERE phash IS NOT NULL AND file_type IN (${placeholders})`
-    ).get(...types).n;
+    const withPhash = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads WHERE phash IS NOT NULL AND file_type IN (${placeholders})`,
+        )
+        .get(...types).n;
     return {
         totalEligible: total,
         indexed,
@@ -1100,14 +1213,16 @@ export function getAiCounts({ fileTypes = ['photo'] } = {}) {
 // ---- Image embeddings -----------------------------------------------------
 
 export function setImageEmbedding(downloadId, embeddingBlob, model, now = Date.now()) {
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         INSERT INTO image_embeddings (download_id, embedding, model, indexed_at)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(download_id) DO UPDATE SET
             embedding  = excluded.embedding,
             model      = excluded.model,
             indexed_at = excluded.indexed_at
-    `).run(Number(downloadId), embeddingBlob, String(model), Math.floor(now)).changes;
+    `)
+        .run(Number(downloadId), embeddingBlob, String(model), Math.floor(now)).changes;
 }
 
 /**
@@ -1122,35 +1237,51 @@ export function listAllImageEmbeddings({ fileTypes = null } = {}) {
         where = ` WHERE d.file_type IN (${fileTypes.map(() => '?').join(',')})`;
         params.push(...fileTypes);
     }
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         SELECT e.download_id, e.embedding, e.model, e.indexed_at,
                d.id, d.group_id, d.group_name, d.file_name, d.file_path,
                d.file_type, d.file_size, d.created_at
           FROM image_embeddings e
           JOIN downloads d ON d.id = e.download_id
           ${where}
-    `).all(...params);
+    `)
+        .all(...params);
 }
 
 // ---- Faces & people -------------------------------------------------------
 
 export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null }) {
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         INSERT INTO faces (download_id, x, y, w, h, embedding, person_id)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(Number(downloadId), Number(x), Number(y), Number(w), Number(h), embeddingBlob, personId == null ? null : Number(personId));
+    `)
+        .run(
+            Number(downloadId),
+            Number(x),
+            Number(y),
+            Number(w),
+            Number(h),
+            embeddingBlob,
+            personId == null ? null : Number(personId),
+        );
 }
 
 export function deleteFacesForDownload(downloadId) {
-    return getDb().prepare('DELETE FROM faces WHERE download_id = ?').run(Number(downloadId)).changes;
+    return getDb().prepare('DELETE FROM faces WHERE download_id = ?').run(Number(downloadId))
+        .changes;
 }
 
 export function listAllFaces() {
-    return getDb().prepare(`SELECT id, download_id, x, y, w, h, embedding, person_id FROM faces`).all();
+    return getDb()
+        .prepare(`SELECT id, download_id, x, y, w, h, embedding, person_id FROM faces`)
+        .all();
 }
 
 export function setFacePerson(faceId, personId) {
-    return getDb().prepare('UPDATE faces SET person_id = ? WHERE id = ?')
+    return getDb()
+        .prepare('UPDATE faces SET person_id = ? WHERE id = ?')
         .run(personId == null ? null : Number(personId), Number(faceId)).changes;
 }
 
@@ -1165,31 +1296,37 @@ export function clearAllPeople() {
 
 export function insertPerson({ label = null, centroidBlob, faceCount = 0 }) {
     const now = Date.now();
-    const r = getDb().prepare(`
+    const r = getDb()
+        .prepare(`
         INSERT INTO people (label, embedding_centroid, face_count, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?)
-    `).run(label, centroidBlob, Math.max(0, Number(faceCount) || 0), now, now);
+    `)
+        .run(label, centroidBlob, Math.max(0, Number(faceCount) || 0), now, now);
     return r.lastInsertRowid;
 }
 
 export function listPeople({ limit = 500, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(1000, Number(limit) || 500));
     const off = Math.max(0, Number(offset) || 0);
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT p.id, p.label, p.face_count, p.created_at, p.updated_at,
                (SELECT f.download_id FROM faces f WHERE f.person_id = p.id LIMIT 1) AS cover_download_id
           FROM people p
          ORDER BY p.face_count DESC, p.id ASC
          LIMIT ? OFFSET ?
-    `).all(lim, off);
+    `)
+        .all(lim, off);
     const total = getDb().prepare('SELECT COUNT(*) AS n FROM people').get().n;
     return { people: rows, total };
 }
 
 export function renamePerson(id, label) {
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         UPDATE people SET label = ?, updated_at = ? WHERE id = ?
-    `).run(label == null ? null : String(label), Date.now(), Number(id)).changes;
+    `)
+        .run(label == null ? null : String(label), Date.now(), Number(id)).changes;
 }
 
 export function deletePerson(id) {
@@ -1201,17 +1338,21 @@ export function deletePerson(id) {
 export function listPhotosForPerson(personId, { limit = 50, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(500, Number(limit) || 50));
     const off = Math.max(0, Number(offset) || 0);
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT DISTINCT d.*
           FROM faces f
           JOIN downloads d ON d.id = f.download_id
          WHERE f.person_id = ?
          ORDER BY d.created_at DESC, d.id DESC
          LIMIT ? OFFSET ?
-    `).all(Number(personId), lim, off);
-    const total = getDb().prepare(`
+    `)
+        .all(Number(personId), lim, off);
+    const total = getDb()
+        .prepare(`
         SELECT COUNT(DISTINCT download_id) AS n FROM faces WHERE person_id = ?
-    `).get(Number(personId)).n;
+    `)
+        .get(Number(personId)).n;
     return { files: rows, total };
 }
 
@@ -1237,32 +1378,39 @@ export function setImageTags(downloadId, tags) {
 }
 
 export function clearImageTagsForDownload(downloadId) {
-    return getDb().prepare('DELETE FROM image_tags WHERE download_id = ?').run(Number(downloadId)).changes;
+    return getDb().prepare('DELETE FROM image_tags WHERE download_id = ?').run(Number(downloadId))
+        .changes;
 }
 
 export function listAllTags({ minCount = 1 } = {}) {
-    return getDb().prepare(`
+    return getDb()
+        .prepare(`
         SELECT tag, COUNT(*) AS count, AVG(score) AS avg_score
           FROM image_tags
          GROUP BY tag
         HAVING count >= ?
          ORDER BY count DESC, tag ASC
          LIMIT 1000
-    `).all(Math.max(1, Number(minCount) || 1));
+    `)
+        .all(Math.max(1, Number(minCount) || 1));
 }
 
 export function listPhotosForTag(tag, { limit = 50, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(500, Number(limit) || 50));
     const off = Math.max(0, Number(offset) || 0);
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT d.*, t.score AS tag_score
           FROM image_tags t
           JOIN downloads d ON d.id = t.download_id
          WHERE t.tag = ?
          ORDER BY t.score DESC, d.created_at DESC
          LIMIT ? OFFSET ?
-    `).all(String(tag), lim, off);
-    const total = getDb().prepare('SELECT COUNT(*) AS n FROM image_tags WHERE tag = ?').get(String(tag)).n;
+    `)
+        .all(String(tag), lim, off);
+    const total = getDb()
+        .prepare('SELECT COUNT(*) AS n FROM image_tags WHERE tag = ?')
+        .get(String(tag)).n;
     return { files: rows, total };
 }
 
@@ -1279,19 +1427,20 @@ export function setPhash(downloadId, phashU64) {
     // distance helper masks back to 64 bits before XOR'ing, so a signed
     // round-trip doesn't perturb the bit-level comparison.
     if (phashU64 == null) return 0;
-    let big = (typeof phashU64 === 'bigint') ? phashU64 : BigInt(phashU64);
+    let big = typeof phashU64 === 'bigint' ? phashU64 : BigInt(phashU64);
     const TWO_63 = 1n << 63n;
     const TWO_64 = 1n << 64n;
     // Normalise to [0, 2^64).
     big = ((big % TWO_64) + TWO_64) % TWO_64;
     // Bit-cast to signed.
     const asSigned = big >= TWO_63 ? big - TWO_64 : big;
-    return getDb().prepare('UPDATE downloads SET phash = ? WHERE id = ?')
+    return getDb()
+        .prepare('UPDATE downloads SET phash = ? WHERE id = ?')
         .run(asSigned, Number(downloadId)).changes;
 }
 
 export function listAllPhashes({ fileTypes = ['photo'] } = {}) {
-    const types = (Array.isArray(fileTypes) && fileTypes.length) ? fileTypes : ['photo'];
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     // `safeIntegers(true)` makes better-sqlite3 hand BigInt back for every
     // INTEGER column in the row instead of throwing "value cannot be
@@ -1299,13 +1448,15 @@ export function listAllPhashes({ fileTypes = ['photo'] } = {}) {
     // the small-int fields back to Number for downstream callers; phash
     // stays BigInt (hammingDistance handles BigInt natively + masks to
     // 64 bits, which undoes the signed-bit-cast we did on write).
-    const stmt = getDb().prepare(`
+    const stmt = getDb()
+        .prepare(`
         SELECT id, file_name, file_path, file_type, file_size, group_id, group_name,
                created_at, phash
           FROM downloads
          WHERE phash IS NOT NULL
            AND file_type IN (${placeholders})
-    `).safeIntegers(true);
+    `)
+        .safeIntegers(true);
     const rows = stmt.all(...types);
     return rows.map((r) => ({
         ...r,
@@ -1313,10 +1464,12 @@ export function listAllPhashes({ fileTypes = ['photo'] } = {}) {
         file_size: typeof r.file_size === 'bigint' ? Number(r.file_size) : r.file_size,
         // group_id may overflow 2^53 for some Telegram channels; keep as
         // string when it does, Number otherwise.
-        group_id: typeof r.group_id === 'bigint'
-            ? (r.group_id <= 9007199254740991n && r.group_id >= -9007199254740991n
-                ? Number(r.group_id) : r.group_id.toString())
-            : r.group_id,
+        group_id:
+            typeof r.group_id === 'bigint'
+                ? r.group_id <= 9007199254740991n && r.group_id >= -9007199254740991n
+                    ? Number(r.group_id)
+                    : r.group_id.toString()
+                : r.group_id,
         created_at: typeof r.created_at === 'bigint' ? Number(r.created_at) : r.created_at,
         // phash stays BigInt — hammingDistance + bucketByPrefix expect it.
     }));

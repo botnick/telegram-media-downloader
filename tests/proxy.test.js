@@ -8,8 +8,16 @@ describe('buildProxy', () => {
     });
 
     it('maps SOCKS5 with credentials', () => {
-        const p = buildProxy({ proxy: { type: 'socks5', host: '1.2.3.4', port: 1080, username: 'u', password: 'p' } });
-        expect(p).toEqual({ ip: '1.2.3.4', port: 1080, socksType: 5, username: 'u', password: 'p' });
+        const p = buildProxy({
+            proxy: { type: 'socks5', host: '1.2.3.4', port: 1080, username: 'u', password: 'p' },
+        });
+        expect(p).toEqual({
+            ip: '1.2.3.4',
+            port: 1080,
+            socksType: 5,
+            username: 'u',
+            password: 'p',
+        });
     });
 
     it('maps SOCKS4', () => {
@@ -27,7 +35,9 @@ describe('buildProxy', () => {
     });
 
     it('rejects unsupported HTTP proxy explicitly', () => {
-        expect(() => buildProxy({ proxy: { type: 'http', host: 'h', port: 8080 } })).toThrow(/HTTP proxy/);
+        expect(() => buildProxy({ proxy: { type: 'http', host: 'h', port: 8080 } })).toThrow(
+            /HTTP proxy/,
+        );
     });
 
     it('rejects out-of-range ports', () => {

@@ -13,9 +13,17 @@ import { t as i18nT } from './i18n.js';
 let _cache = null;
 
 function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
-    }[c]));
+    return String(s).replace(
+        /[&<>"']/g,
+        (c) =>
+            ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;',
+            })[c],
+    );
 }
 
 /**
@@ -40,20 +48,44 @@ function mdToHtml(md) {
             });
     }
 
-    function flushList() { if (inList) { out.push('</ul>'); inList = false; } }
+    function flushList() {
+        if (inList) {
+            out.push('</ul>');
+            inList = false;
+        }
+    }
 
     for (const raw of lines) {
         const line = raw.trimEnd();
         let m;
-        if ((m = line.match(/^### (.+)$/))) { flushList(); out.push(`<h4>${inline(m[1])}</h4>`); continue; }
-        if ((m = line.match(/^## (.+)$/))) { flushList(); out.push(`<h3 class="cl-version">${inline(m[1])}</h3>`); continue; }
-        if ((m = line.match(/^# (.+)$/))) { flushList(); out.push(`<h2>${inline(m[1])}</h2>`); continue; }
+        if ((m = line.match(/^### (.+)$/))) {
+            flushList();
+            out.push(`<h4>${inline(m[1])}</h4>`);
+            continue;
+        }
+        if ((m = line.match(/^## (.+)$/))) {
+            flushList();
+            out.push(`<h3 class="cl-version">${inline(m[1])}</h3>`);
+            continue;
+        }
+        if ((m = line.match(/^# (.+)$/))) {
+            flushList();
+            out.push(`<h2>${inline(m[1])}</h2>`);
+            continue;
+        }
         if ((m = line.match(/^[-*] (.+)$/))) {
-            if (!inList) { out.push('<ul>'); inList = true; }
+            if (!inList) {
+                out.push('<ul>');
+                inList = true;
+            }
             out.push(`<li>${inline(m[1])}</li>`);
             continue;
         }
-        if (line.trim() === '') { flushList(); out.push(''); continue; }
+        if (line.trim() === '') {
+            flushList();
+            out.push('');
+            continue;
+        }
         flushList();
         out.push(`<p>${inline(line)}</p>`);
     }

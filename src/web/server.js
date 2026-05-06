@@ -1,4 +1,3 @@
-
 /**
  * Web GUI Server - Configuration + Profile Photos + SQLite Data
  * Features: Groups, Settings, Viewer, Real Telegram Profile Photos
@@ -20,12 +19,37 @@ import { StringSession } from 'telegram/sessions/index.js';
 import crypto from 'crypto';
 
 import { getOrGenerateSecret } from '../core/secret.js';
-import { getDb, getDownloads, getAllDownloads, getStats as getDbStats, deleteGroupDownloads, deleteAllDownloads, backfillGroupNames, searchDownloads, deleteDownloadsBy,
-    createShareLink, getShareLinkForServe, bumpShareLinkAccess, revokeShareLink, listShareLinks,
-    getNsfwTierCounts, getNsfwHistogram, getNsfwListByTier, reclassifyNsfw, unwhitelistNsfw, NSFW_TIERS,
-    setDownloadPinned, getDownloadById,
-    getAiCounts, listPeople, listPhotosForPerson, renamePerson, deletePerson,
-    listAllTags, listPhotosForTag } from '../core/db.js';
+import {
+    getDb,
+    getDownloads,
+    getAllDownloads,
+    getStats as getDbStats,
+    deleteGroupDownloads,
+    deleteAllDownloads,
+    backfillGroupNames,
+    searchDownloads,
+    deleteDownloadsBy,
+    createShareLink,
+    getShareLinkForServe,
+    bumpShareLinkAccess,
+    revokeShareLink,
+    listShareLinks,
+    getNsfwTierCounts,
+    getNsfwHistogram,
+    getNsfwListByTier,
+    reclassifyNsfw,
+    unwhitelistNsfw,
+    NSFW_TIERS,
+    setDownloadPinned,
+    getDownloadById,
+    getAiCounts,
+    listPeople,
+    listPhotosForPerson,
+    renamePerson,
+    deletePerson,
+    listAllTags,
+    listPhotosForTag,
+} from '../core/db.js';
 import * as ai from '../core/ai/index.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
@@ -34,18 +58,39 @@ import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
-import { findDuplicates as dedupFindDuplicates, deleteByIds as dedupDeleteByIds } from '../core/dedup.js';
-import { ensureShareSecret, verifyShareToken, buildShareUrlPath,
-    clampTtlSeconds, applyShareLimits } from '../core/share.js';
-import { getOrCreateThumb, purgeThumbsForDownload, purgeAllThumbs,
-    getThumbsCacheStats, buildAllThumbnails, hasFfmpeg,
-    ALLOWED_WIDTHS as THUMB_WIDTHS } from '../core/thumbs.js';
-import { startScan as nsfwStartScan, cancelScan as nsfwCancelScan,
-    isScanRunning as nsfwIsScanRunning, getScanState as nsfwGetScanState,
-    preloadClassifier as nsfwPreloadClassifier, clearClassifierCache as nsfwClearCache,
+import {
+    findDuplicates as dedupFindDuplicates,
+    deleteByIds as dedupDeleteByIds,
+} from '../core/dedup.js';
+import {
+    ensureShareSecret,
+    verifyShareToken,
+    buildShareUrlPath,
+    clampTtlSeconds,
+    applyShareLimits,
+} from '../core/share.js';
+import {
+    getOrCreateThumb,
+    purgeThumbsForDownload,
+    purgeAllThumbs,
+    getThumbsCacheStats,
+    buildAllThumbnails,
+    hasFfmpeg,
+    ALLOWED_WIDTHS as THUMB_WIDTHS,
+} from '../core/thumbs.js';
+import {
+    startScan as nsfwStartScan,
+    cancelScan as nsfwCancelScan,
+    isScanRunning as nsfwIsScanRunning,
+    getScanState as nsfwGetScanState,
+    preloadClassifier as nsfwPreloadClassifier,
+    clearClassifierCache as nsfwClearCache,
     classifierReady as nsfwClassifierReady,
-    NSFW_DEFAULTS, getNsfwStats, getNsfwDeleteCandidates,
-    whitelistNsfw } from '../core/nsfw.js';
+    NSFW_DEFAULTS,
+    getNsfwStats,
+    getNsfwDeleteCandidates,
+    whitelistNsfw,
+} from '../core/nsfw.js';
 import { runAutoUpdate, autoUpdateStatus } from '../core/updater.js';
 import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
@@ -54,9 +99,17 @@ import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resol
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import { metrics } from '../core/metrics.js';
 import {
-    hashPassword, verifyPassword, loginVerify, isAuthConfigured, isGuestEnabled,
-    issueSession, validateSession, revokeSession,
-    revokeAllSessions, revokeAllGuestSessions, startSessionGc,
+    hashPassword,
+    verifyPassword,
+    loginVerify,
+    isAuthConfigured,
+    isGuestEnabled,
+    issueSession,
+    validateSession,
+    revokeSession,
+    revokeAllSessions,
+    revokeAllGuestSessions,
+    startSessionGc,
 } from '../core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod } from '../core/logger.js';
 import { createJobTracker } from '../core/job-tracker.js';
@@ -79,7 +132,8 @@ console.error = wrapConsoleMethod(console.error, 'gramjs');
 // package.json so a default install doesn't pull it at all, but a
 // historical install or a re-deploy without `npm prune` may leave the
 // broken module on disk. Catch the rejection here, log once, move on.
-const NATIVE_LOAD_FAIL = /(ld-linux|ld-musl|libonnxruntime|GLIBC_|NODE_MODULE_VERSION|cannot open shared object|Error loading shared library)/i;
+const NATIVE_LOAD_FAIL =
+    /(ld-linux|ld-musl|libonnxruntime|GLIBC_|NODE_MODULE_VERSION|cannot open shared object|Error loading shared library)/i;
 let _nativeLoadFailWarned = false;
 process.on('unhandledRejection', (reason) => {
     const msg = reason?.message || String(reason);
@@ -88,10 +142,12 @@ process.on('unhandledRejection', (reason) => {
         if (!_nativeLoadFailWarned) {
             _nativeLoadFailWarned = true;
             console.warn(
-                '[startup] An optional native module failed to load (' + msg.slice(0, 200) + '). ' +
-                'The dashboard will keep running; only the feature that triggered this load will be unavailable. ' +
-                'Most often this is `onnxruntime-node` from the optional NSFW classifier on a musl-based image — ' +
-                'reinstall with `npm install @huggingface/transformers` on a glibc image (Debian, Ubuntu, our default Dockerfile uses bookworm-slim) or remove it with `npm uninstall @huggingface/transformers`.'
+                '[startup] An optional native module failed to load (' +
+                    msg.slice(0, 200) +
+                    '). ' +
+                    'The dashboard will keep running; only the feature that triggered this load will be unavailable. ' +
+                    'Most often this is `onnxruntime-node` from the optional NSFW classifier on a musl-based image — ' +
+                    'reinstall with `npm install @huggingface/transformers` on a glibc image (Debian, Ubuntu, our default Dockerfile uses bookworm-slim) or remove it with `npm uninstall @huggingface/transformers`.',
             );
         }
         return;
@@ -153,7 +209,9 @@ async function scanDirectorySize(dir) {
             try {
                 const st = await fs.stat(fullPath);
                 if (st.isFile()) total += st.size;
-            } catch { /* file disappeared mid-scan */ }
+            } catch {
+                /* file disappeared mid-scan */
+            }
         }
     }
     await walk(dir);
@@ -162,11 +220,16 @@ async function scanDirectorySize(dir) {
 
 async function writeDiskUsageCache(size) {
     try {
-        await fs.writeFile(path.join(DATA_DIR, 'disk_usage.json'), JSON.stringify({
-            size,
-            lastScan: Date.now(),
-        }));
-    } catch { /* best-effort cache */ }
+        await fs.writeFile(
+            path.join(DATA_DIR, 'disk_usage.json'),
+            JSON.stringify({
+                size,
+                lastScan: Date.now(),
+            }),
+        );
+    } catch {
+        /* best-effort cache */
+    }
 }
 
 function parseCookieHeader(header) {
@@ -212,7 +275,9 @@ server.on('upgrade', async (req, socket, head) => {
             wss.emit('connection', ws, req);
         });
     } catch {
-        try { socket.destroy(); } catch {}
+        try {
+            socket.destroy();
+        } catch {}
     }
 });
 
@@ -245,7 +310,10 @@ const _trustProxyRaw = process.env.TRUST_PROXY;
 if (_trustProxyRaw === undefined) {
     app.set('trust proxy', 'loopback');
 } else if (_trustProxyRaw !== '') {
-    app.set('trust proxy', /^\d+$/.test(_trustProxyRaw) ? parseInt(_trustProxyRaw, 10) : _trustProxyRaw);
+    app.set(
+        'trust proxy',
+        /^\d+$/.test(_trustProxyRaw) ? parseInt(_trustProxyRaw, 10) : _trustProxyRaw,
+    );
 }
 
 // Force HTTPS — opt-in via config.web.forceHttps (default off, plain HTTP).
@@ -287,18 +355,20 @@ try {
     const compression = _localRequire('compression');
     const lvlEnv = parseInt(process.env.COMPRESSION_LEVEL, 10);
     const level = Number.isFinite(lvlEnv) && lvlEnv >= 0 && lvlEnv <= 9 ? lvlEnv : 6;
-    app.use(compression({
-        level,
-        // Skip already-compressed payloads — gzipping a JPEG or MP4 burns
-        // CPU for a fraction of a percent of size win and breaks
-        // range-request semantics that the video player depends on.
-        filter: (req, res) => {
-            if (req.headers['x-no-compression']) return false;
-            const ct = String(res.getHeader('Content-Type') || '');
-            if (/^(image|video|audio)\//i.test(ct)) return false;
-            return compression.filter(req, res);
-        },
-    }));
+    app.use(
+        compression({
+            level,
+            // Skip already-compressed payloads — gzipping a JPEG or MP4 burns
+            // CPU for a fraction of a percent of size win and breaks
+            // range-request semantics that the video player depends on.
+            filter: (req, res) => {
+                if (req.headers['x-no-compression']) return false;
+                const ct = String(res.getHeader('Content-Type') || '');
+                if (/^(image|video|audio)\//i.test(ct)) return false;
+                return compression.filter(req, res);
+            },
+        }),
+    );
     if (process.env.TGDL_DEBUG === '1') {
         console.log(`[startup] compression middleware enabled (level=${level})`);
     }
@@ -311,39 +381,48 @@ try {
 // (Tailwind + Remixicon) and the inline event-handlers we still use in
 // index.html. Tightening "self"-only is a follow-up once the inline handlers
 // are migrated to addEventListener.
-app.use(helmet({
-    contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-            'default-src': ["'self'"],
-            'script-src': [
-                "'self'", "'unsafe-inline'",
-                'https://cdn.tailwindcss.com',
-                'https://cdn.jsdelivr.net',
-            ],
-            // The SPA uses inline onclick / oninput handlers in index.html
-            // (toggle UI, range-slider value updaters, modal close-buttons).
-            // Helmet's defaults set script-src-attr to 'none' which would
-            // block them; allow inline here until the markup is migrated to
-            // addEventListener.
-            'script-src-attr': ["'unsafe-inline'"],
-            'style-src': [
-                "'self'", "'unsafe-inline'",
-                'https://cdn.jsdelivr.net',
-                'https://fonts.googleapis.com',
-            ],
-            'style-src-attr': ["'unsafe-inline'"],
-            'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
-            'img-src': ["'self'", 'data:', 'blob:'],
-            'media-src': ["'self'", 'blob:'],
-            'connect-src': ["'self'", 'ws:', 'wss:'],
-            'object-src': ["'none'"],
-            'frame-ancestors': ["'self'"],
+app.use(
+    helmet({
+        contentSecurityPolicy: {
+            useDefaults: true,
+            directives: {
+                'default-src': ["'self'"],
+                'script-src': [
+                    "'self'",
+                    "'unsafe-inline'",
+                    'https://cdn.tailwindcss.com',
+                    'https://cdn.jsdelivr.net',
+                ],
+                // The SPA uses inline onclick / oninput handlers in index.html
+                // (toggle UI, range-slider value updaters, modal close-buttons).
+                // Helmet's defaults set script-src-attr to 'none' which would
+                // block them; allow inline here until the markup is migrated to
+                // addEventListener.
+                'script-src-attr': ["'unsafe-inline'"],
+                'style-src': [
+                    "'self'",
+                    "'unsafe-inline'",
+                    'https://cdn.jsdelivr.net',
+                    'https://fonts.googleapis.com',
+                ],
+                'style-src-attr': ["'unsafe-inline'"],
+                'font-src': [
+                    "'self'",
+                    'data:',
+                    'https://fonts.gstatic.com',
+                    'https://cdn.jsdelivr.net',
+                ],
+                'img-src': ["'self'", 'data:', 'blob:'],
+                'media-src': ["'self'", 'blob:'],
+                'connect-src': ["'self'", 'ws:', 'wss:'],
+                'object-src': ["'none'"],
+                'frame-ancestors': ["'self'"],
+            },
         },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: 'same-origin' },
-}));
+        crossOriginEmbedderPolicy: false,
+        crossOriginResourcePolicy: { policy: 'same-origin' },
+    }),
+);
 
 // HTTP caching policy. Browsers (and intermediaries like Cloudflare) will
 // happily serve a 200 from disk for several seconds even on responses with
@@ -437,9 +516,12 @@ async function refreshRateLimitConfig() {
         const rpm = parseInt(cfg.perMinute, 10);
         _rateLimitConfig = {
             enabled: cfg.enabled === true,
-            perMinute: Number.isFinite(rpm) && rpm >= 10 ? Math.min(1000000, rpm) : RATE_LIMIT_DEFAULT_RPM,
+            perMinute:
+                Number.isFinite(rpm) && rpm >= 10 ? Math.min(1000000, rpm) : RATE_LIMIT_DEFAULT_RPM,
         };
-    } catch { /* keep last-known-good */ }
+    } catch {
+        /* keep last-known-good */
+    }
 }
 refreshRateLimitConfig();
 setInterval(refreshRateLimitConfig, 30 * 1000).unref();
@@ -474,9 +556,13 @@ const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 app.use((req, res, next) => {
     if (!STATE_CHANGING_METHODS.has(req.method)) return next();
     const headerOrigin = req.headers.origin || req.headers.referer;
-    if (!headerOrigin) return next();   // CLI / native client — sameSite still gates them
+    if (!headerOrigin) return next(); // CLI / native client — sameSite still gates them
     let originHost;
-    try { originHost = new URL(headerOrigin).host; } catch { originHost = null; }
+    try {
+        originHost = new URL(headerOrigin).host;
+    } catch {
+        originHost = null;
+    }
     if (!originHost) {
         return res.status(403).json({ error: 'Invalid Origin/Referer' });
     }
@@ -484,9 +570,10 @@ app.use((req, res, next) => {
     if (originHost === expected) return next();
     // Allow localhost and 127.0.0.1 to alias each other on dev setups
     // where the SPA loads from one and posts to the other.
-    const localPair = (a, b) => /^(localhost|127\.0\.0\.1|\[?::1\]?)(:\d+)?$/i.test(a)
-                              && /^(localhost|127\.0\.0\.1|\[?::1\]?)(:\d+)?$/i.test(b)
-                              && a.split(':')[1] === b.split(':')[1];
+    const localPair = (a, b) =>
+        /^(localhost|127\.0\.0\.1|\[?::1\]?)(:\d+)?$/i.test(a) &&
+        /^(localhost|127\.0\.0\.1|\[?::1\]?)(:\d+)?$/i.test(b) &&
+        a.split(':')[1] === b.split(':')[1];
     if (localPair(originHost, expected)) return next();
     return res.status(403).json({ error: 'Cross-origin request blocked' });
 });
@@ -565,7 +652,9 @@ async function readConfigSafe() {
         return {};
     }
 }
-function invalidateConfigCache() { _configCache = { at: 0, value: null }; }
+function invalidateConfigCache() {
+    _configCache = { at: 0, value: null };
+}
 
 // Atomic config writer — temp-file + rename so a crash mid-write can't
 // leave config.json half-flushed. Several handlers used to call
@@ -581,8 +670,16 @@ async function writeConfigAtomic(config) {
 // PWA bits (manifest, service worker, icons) MUST be reachable pre-login
 // — the browser fetches them before the user has a session cookie.
 const PUBLIC_PATH_PREFIXES = [
-    '/login', '/setup-needed', '/css/', '/js/', '/locales/', '/favicon', '/metrics',
-    '/icons/', '/manifest.webmanifest', '/sw.js',
+    '/login',
+    '/setup-needed',
+    '/css/',
+    '/js/',
+    '/locales/',
+    '/favicon',
+    '/metrics',
+    '/icons/',
+    '/manifest.webmanifest',
+    '/sw.js',
     // Share-link public route — auth is the HMAC sig + DB row check inside
     // the handler, NOT the dashboard cookie. Without this prefix, friends
     // following a share URL would be redirected to /login.html.
@@ -591,11 +688,11 @@ const PUBLIC_PATH_PREFIXES = [
 const PUBLIC_API_PATHS = new Set([
     '/api/login',
     '/api/auth_check',
-    '/api/version',  // public so the status-bar chip can render pre-login
-    '/api/version/check',  // public update-check (GitHub releases poll, cached)
+    '/api/version', // public so the status-bar chip can render pre-login
+    '/api/version/check', // public update-check (GitHub releases poll, cached)
     '/api/auth/setup', // first-run only — guarded inside the handler
-    '/api/auth/reset/request',  // logs token to stdout — no body returned
-    '/api/auth/reset/confirm',  // requires the stdout token + new password
+    '/api/auth/reset/request', // logs token to stdout — no body returned
+    '/api/auth/reset/confirm', // requires the stdout token + new password
 ]);
 
 // Treat connections from the local machine as "trusted enough" to bootstrap
@@ -608,7 +705,7 @@ function isLocalRequest(req) {
 
 function isPublicPath(p) {
     if (PUBLIC_API_PATHS.has(p)) return true;
-    return PUBLIC_PATH_PREFIXES.some(pre => p === pre || p.startsWith(pre));
+    return PUBLIC_PATH_PREFIXES.some((pre) => p === pre || p.startsWith(pre));
 }
 
 async function checkAuth(req, res, next) {
@@ -659,11 +756,14 @@ async function checkAuth(req, res, next) {
 // Frontend modules that touch these endpoints either skip the call when
 // `body[data-role="guest"]` is set, or fail-soft on the 403.
 const GUEST_GET_ALLOW = [
-    '/api/auth_check', '/api/me', '/api/version', '/api/version/check',
-    '/api/downloads',          // Library — list + per-group + paginated /all
-    '/api/groups',              // sidebar list of downloaded folders (no config secrets in the response)
-    '/api/stats',               // footer disk + file counters
-    '/api/thumbs',              // GET /api/thumbs/:id — image thumb stream
+    '/api/auth_check',
+    '/api/me',
+    '/api/version',
+    '/api/version/check',
+    '/api/downloads', // Library — list + per-group + paginated /all
+    '/api/groups', // sidebar list of downloaded folders (no config secrets in the response)
+    '/api/stats', // footer disk + file counters
+    '/api/thumbs', // GET /api/thumbs/:id — image thumb stream
 ];
 const GUEST_OTHER_ALLOW = new Set(['POST /api/logout']);
 
@@ -675,7 +775,7 @@ function isGuestAllowed(req) {
     // the two halves agree. (Pre-fix every guest GET landed here as 403.)
     const fullPath = (req.baseUrl || '') + req.path;
     if (req.method === 'GET') {
-        return GUEST_GET_ALLOW.some(pre => fullPath === pre || fullPath.startsWith(pre + '/'));
+        return GUEST_GET_ALLOW.some((pre) => fullPath === pre || fullPath.startsWith(pre + '/'));
     }
     return GUEST_OTHER_ALLOW.has(`${req.method} ${fullPath}`);
 }
@@ -752,7 +852,8 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         }
 
         const { token, maxAgeMs } = issueSession({
-            ttlMs: sessionTtlMsFromConfig(config), role: result.role,
+            ttlMs: sessionTtlMsFromConfig(config),
+            role: result.role,
         });
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true, role: result.role });
@@ -775,8 +876,10 @@ app.post('/api/logout', (req, res) => {
 // current-password). This lets a fresh install be completed entirely from the
 // browser instead of having to drop into the CLI.
 const setupLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, limit: 20,
-    standardHeaders: 'draft-7', legacyHeaders: false,
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
 });
 
 app.post('/api/auth/setup', setupLimiter, async (req, res) => {
@@ -804,7 +907,8 @@ app.post('/api/auth/setup', setupLimiter, async (req, res) => {
         await writeConfigAtomic(config);
 
         const { token, maxAgeMs } = issueSession({
-            ttlMs: sessionTtlMsFromConfig(config), role: 'admin',
+            ttlMs: sessionTtlMsFromConfig(config),
+            role: 'admin',
         });
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
@@ -842,21 +946,24 @@ app.post('/api/auth/change-password', loginLimiter, async (req, res) => {
         }
         const config = await readConfigSafe();
         if (!isAuthConfigured(config.web)) {
-            return res.status(409).json({ error: 'No password configured yet — use /api/auth/setup' });
+            return res
+                .status(409)
+                .json({ error: 'No password configured yet — use /api/auth/setup' });
         }
         // Match against the admin hash specifically (loginVerify also accepts
         // a guest password, which would let a stolen guest cookie pivot to
         // admin if we used the broad verifier here).
         const adminMatches = config.web.passwordHash
             ? verifyPassword(currentPassword, config.web.passwordHash)
-            : (typeof config.web.password === 'string'
-                && currentPassword === config.web.password);
+            : typeof config.web.password === 'string' && currentPassword === config.web.password;
         if (!adminMatches) return res.status(401).json({ error: 'Current password is incorrect' });
 
         // Reject collisions with the guest password — otherwise admin and
         // guest become indistinguishable at the login form.
-        if (config.web.guestPasswordHash
-            && verifyPassword(newPassword, config.web.guestPasswordHash)) {
+        if (
+            config.web.guestPasswordHash &&
+            verifyPassword(newPassword, config.web.guestPasswordHash)
+        ) {
             return res.status(400).json({
                 error: 'New password must differ from the guest password',
                 code: 'SAME_AS_GUEST',
@@ -871,7 +978,8 @@ app.post('/api/auth/change-password', loginLimiter, async (req, res) => {
         // don't revoke other sessions automatically — the SPA exposes a
         // separate "Sign out everywhere" affordance that hits revokeAllSessions.
         const { token, maxAgeMs } = issueSession({
-            ttlMs: sessionTtlMsFromConfig(config), role: 'admin',
+            ttlMs: sessionTtlMsFromConfig(config),
+            role: 'admin',
         });
         res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
@@ -918,15 +1026,16 @@ app.post('/api/auth/guest-password', async (req, res) => {
 
         if (typeof password === 'string' && password.length > 0) {
             if (password.length < 8) {
-                return res.status(400).json({ error: 'Guest password must be at least 8 characters' });
+                return res
+                    .status(400)
+                    .json({ error: 'Guest password must be at least 8 characters' });
             }
             // Reject equality with the admin password — otherwise the guest
             // role can never actually be reached from the login form.
             const adminHash = config.web.passwordHash;
             const adminMatches = adminHash
                 ? verifyPassword(password, adminHash)
-                : (typeof config.web.password === 'string'
-                    && password === config.web.password);
+                : typeof config.web.password === 'string' && password === config.web.password;
             if (adminMatches) {
                 return res.status(400).json({
                     error: 'Guest password must differ from the admin password',
@@ -945,7 +1054,9 @@ app.post('/api/auth/guest-password', async (req, res) => {
 
         if (typeof enabled === 'boolean') {
             if (!config.web.guestPasswordHash && enabled) {
-                return res.status(400).json({ error: 'Set a guest password before enabling guest access' });
+                return res
+                    .status(400)
+                    .json({ error: 'Set a guest password before enabling guest access' });
             }
             config.web.guestEnabled = enabled;
             await writeConfigAtomic(config);
@@ -992,7 +1103,9 @@ app.post('/api/auth/reset/request', loginLimiter, async (req, res) => {
         _gcResetTokens();
         const config = await readConfigSafe();
         if (!isAuthConfigured(config.web)) {
-            return res.status(409).json({ error: 'No password configured yet — use /api/auth/setup' });
+            return res
+                .status(409)
+                .json({ error: 'No password configured yet — use /api/auth/setup' });
         }
         const token = crypto.randomBytes(16).toString('hex');
         _resetTokens.set(token, Date.now() + RESET_TOKEN_TTL_MS);
@@ -1039,7 +1152,8 @@ app.post('/api/auth/reset/confirm', loginLimiter, async (req, res) => {
         // assume the previous owner is locked out and shouldn't be trusted.
         revokeAllSessions();
         const { token: sessionTok, maxAgeMs } = issueSession({
-            ttlMs: sessionTtlMsFromConfig(config), role: 'admin',
+            ttlMs: sessionTtlMsFromConfig(config),
+            role: 'admin',
         });
         res.cookie('tg_dl_session', sessionTok, { ...SESSION_COOKIE_OPTS, maxAge: maxAgeMs });
         res.json({ success: true });
@@ -1057,8 +1171,11 @@ app.post('/api/auth/reset/confirm', loginLimiter, async (req, res) => {
 function _readCurrentVersion() {
     if (process.env.npm_package_version) return process.env.npm_package_version;
     try {
-        return JSON.parse(fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')).version;
-    } catch { return 'unknown'; }
+        return JSON.parse(fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'))
+            .version;
+    } catch {
+        return 'unknown';
+    }
 }
 
 app.get('/api/version', (req, res) => {
@@ -1089,11 +1206,18 @@ const UPDATE_CHECK_REPO = 'botnick/telegram-media-downloader';
 let _updateCache = { fetchedAt: 0, data: null };
 
 function _cmpSemver(a, b) {
-    const norm = (s) => String(s || '').replace(/^v/i, '').split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
-    const A = norm(a), B = norm(b);
+    const norm = (s) =>
+        String(s || '')
+            .replace(/^v/i, '')
+            .split('-')[0]
+            .split('.')
+            .map((n) => parseInt(n, 10) || 0);
+    const A = norm(a),
+        B = norm(b);
     const len = Math.max(A.length, B.length);
     for (let i = 0; i < len; i++) {
-        const x = A[i] || 0, y = B[i] || 0;
+        const x = A[i] || 0,
+            y = B[i] || 0;
         if (x > y) return 1;
         if (x < y) return -1;
     }
@@ -1106,7 +1230,7 @@ async function _fetchLatestRelease() {
     const t = setTimeout(() => ctrl.abort(), 5000);
     try {
         const r = await fetch(`https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases/latest`, {
-            headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'tgdl-update-check' },
+            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'tgdl-update-check' },
             signal: ctrl.signal,
         });
         if (!r.ok) return null;
@@ -1117,15 +1241,18 @@ async function _fetchLatestRelease() {
             url: j.html_url,
             publishedAt: j.published_at,
         };
-    } catch { return null; }
-    finally { clearTimeout(t); }
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(t);
+    }
 }
 
 app.get('/api/version/check', async (req, res) => {
     const current = _readCurrentVersion();
     const now = Date.now();
     const force = req.query.force === '1';
-    if (!force && _updateCache.data && (now - _updateCache.fetchedAt) < UPDATE_CHECK_TTL_MS) {
+    if (!force && _updateCache.data && now - _updateCache.fetchedAt < UPDATE_CHECK_TTL_MS) {
         const { latest } = _updateCache.data;
         // Bypass the cache when the running container is at-or-newer
         // than the cached "latest". That state means we just rolled
@@ -1144,7 +1271,13 @@ app.get('/api/version/check', async (req, res) => {
     if (!latest) {
         if (_updateCache.data) {
             const updateAvailable = _cmpSemver(_updateCache.data.latest, current) > 0;
-            return res.json({ current, ..._updateCache.data, updateAvailable, cached: true, stale: true });
+            return res.json({
+                current,
+                ..._updateCache.data,
+                updateAvailable,
+                cached: true,
+                stale: true,
+            });
         }
         return res.json({ current, latest: null, updateAvailable: false, error: 'unreachable' });
     }
@@ -1155,7 +1288,12 @@ app.get('/api/version/check', async (req, res) => {
         publishedAt: latest.publishedAt,
     };
     _updateCache = { fetchedAt: now, data };
-    res.json({ current, ...data, updateAvailable: _cmpSemver(latest.tag, current) > 0, cached: false });
+    res.json({
+        current,
+        ...data,
+        updateAvailable: _cmpSemver(latest.tag, current) > 0,
+        cached: false,
+    });
 });
 
 // ====== Auto-update (Docker via watchtower sidecar) ========================
@@ -1182,11 +1320,15 @@ app.post('/api/update', async (req, res) => {
         // existing reconnect logic handles the gap; the new container's
         // healthcheck has to pass before it's reachable. Kept alongside
         // the standard `update_done` event the JobTracker emits.
-        try { broadcast({ type: 'update_started', backup: result.backup }); } catch {}
+        try {
+            broadcast({ type: 'update_started', backup: result.backup });
+        } catch {}
         return { backup: result.backup };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'An update is already in progress', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'An update is already in progress', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -1199,9 +1341,7 @@ app.get('/api/auth_check', async (req, res) => {
     const config = await readConfigSafe();
     const configured = isAuthConfigured(config.web);
     const enabled = config.web?.enabled !== false;
-    const session = configured && enabled
-        ? validateSession(req.cookies['tg_dl_session'])
-        : false;
+    const session = configured && enabled ? validateSession(req.cookies['tg_dl_session']) : false;
     res.json({
         configured,
         enabled,
@@ -1305,12 +1445,17 @@ const shareLimiter = rateLimit({
 let _shareConfigCache = null;
 function _currentShareConfig() {
     if (!_shareConfigCache) {
-        try { _shareConfigCache = (loadConfig().advanced?.share) || {}; }
-        catch { _shareConfigCache = {}; }
+        try {
+            _shareConfigCache = loadConfig().advanced?.share || {};
+        } catch {
+            _shareConfigCache = {};
+        }
     }
     return _shareConfigCache;
 }
-function _invalidateShareConfigCache() { _shareConfigCache = null; }
+function _invalidateShareConfigCache() {
+    _shareConfigCache = null;
+}
 
 // v2 URL shape: `/share/<linkId>?s=<sig>` (or `/share/<linkId>/<filename>?s=<sig>`
 // when `buildShareUrlPath()` was called with a friendly slug). The signature
@@ -1333,9 +1478,12 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
         // reason so we can fail fast.
         const lookup = getShareLinkForServe(linkId, Math.floor(Date.now() / 1000));
         if (!lookup || lookup.reason) {
-            const code = lookup?.reason === 'revoked' ? 'revoked'
-                : lookup?.reason === 'expired' ? 'expired'
-                : 'not_found';
+            const code =
+                lookup?.reason === 'revoked'
+                    ? 'revoked'
+                    : lookup?.reason === 'expired'
+                      ? 'expired'
+                      : 'not_found';
             return res.status(401).json({ error: 'Share link is not valid', code });
         }
 
@@ -1382,8 +1530,10 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
         const safeName = (row.file_name || `file-${linkId}`).replace(/[\r\n"]/g, '_');
         const disp = forceDl ? 'attachment' : 'inline';
         // RFC 5987 filename* for non-ASCII filenames + ASCII fallback.
-        res.setHeader('Content-Disposition',
-            `${disp}; filename="${safeName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+        res.setHeader(
+            'Content-Disposition',
+            `${disp}; filename="${safeName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(safeName)}`,
+        );
 
         // Hand off to express's static-style sendFile which supports Range.
         // sendFile sets Content-Type from the extension, which is what we
@@ -1432,7 +1582,7 @@ function _rewriteHtmlSrc(html) {
     // even though the SPA shipped new selectors.
     return html.replace(
         /\b(src|href)="(\/(?:js|locales|css)\/[^"?]+\.(?:js|json|css))"/g,
-        (m, attr, url) => `${attr}="${url}?v=${appVersion}"`
+        (m, attr, url) => `${attr}="${url}?v=${appVersion}"`,
     );
 }
 
@@ -1441,7 +1591,7 @@ function _rewriteJsImports(js) {
     // Skip any specifier that already carries a query string.
     return js.replace(
         /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.{1,2}\/[^'"?]+\.js)\2/g,
-        (m, lead, q, spec) => `${lead}${q}${spec}?v=${appVersion}${q}`
+        (m, lead, q, spec) => `${lead}${q}${spec}?v=${appVersion}${q}`,
     );
 }
 
@@ -1455,7 +1605,9 @@ function _serveCacheBusted(reqPath, mime, rewrite, res) {
             if (!real.startsWith(root + path.sep) && real !== root) return false;
             body = rewrite(fsSync.readFileSync(real, 'utf8'));
             _cacheBust.set(reqPath, body);
-        } catch { return false; }
+        } catch {
+            return false;
+        }
     }
     res.setHeader('Content-Type', mime);
     res.send(body);
@@ -1466,9 +1618,13 @@ app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     // HTML entry points — rewrite the two `<script>` tags + any
     // future inline asset link the index gains.
-    if (req.path === '/' || req.path === '/index.html'
-        || req.path === '/login.html' || req.path === '/setup-needed.html'
-        || req.path === '/add-account.html') {
+    if (
+        req.path === '/' ||
+        req.path === '/index.html' ||
+        req.path === '/login.html' ||
+        req.path === '/setup-needed.html' ||
+        req.path === '/add-account.html'
+    ) {
         const file = req.path === '/' ? '/index.html' : req.path;
         if (_serveCacheBusted(file, 'text/html; charset=utf-8', _rewriteHtmlSrc, res)) return;
         return next();
@@ -1479,7 +1635,15 @@ app.use((req, res, next) => {
     // is fresh. The Cache-Control middleware further up keys off the
     // `?v=` query string to upgrade these to immutable.
     if (req.path.startsWith('/js/') && req.path.endsWith('.js')) {
-        if (_serveCacheBusted(req.path, 'application/javascript; charset=utf-8', _rewriteJsImports, res)) return;
+        if (
+            _serveCacheBusted(
+                req.path,
+                'application/javascript; charset=utf-8',
+                _rewriteJsImports,
+                res,
+            )
+        )
+            return;
         return next();
     }
     next();
@@ -1497,8 +1661,10 @@ app.get('/CHANGELOG.md', async (req, res) => {
     try {
         const p = path.resolve(__dirname, '../../CHANGELOG.md');
         const st = await fs.stat(p).catch(() => null);
-        if (!st || !st.isFile()) return res.status(404).type('text/plain').send('CHANGELOG not found');
-        if (st.size > 2 * 1024 * 1024) return res.status(413).type('text/plain').send('CHANGELOG too large');
+        if (!st || !st.isFile())
+            return res.status(404).type('text/plain').send('CHANGELOG not found');
+        if (st.size > 2 * 1024 * 1024)
+            return res.status(413).type('text/plain').send('CHANGELOG too large');
         const body = await fs.readFile(p, 'utf8');
         res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
         res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
@@ -1517,8 +1683,9 @@ app.get('/api/accounts', async (req, res) => {
         if (!existsSync(sessionsDir)) {
             return res.json([]);
         }
-        const files = fsSync.readdirSync(sessionsDir)
-            .filter(f => f.endsWith('.enc'))
+        const files = fsSync
+            .readdirSync(sessionsDir)
+            .filter((f) => f.endsWith('.enc'))
             .sort((a, b) => {
                 const statA = fsSync.statSync(path.join(sessionsDir, a));
                 const statB = fsSync.statSync(path.join(sessionsDir, b));
@@ -1531,13 +1698,13 @@ app.get('/api/accounts', async (req, res) => {
 
         const accounts = files.map((f, index) => {
             const id = path.basename(f, '.enc');
-            const meta = configAccounts.find(a => a.id === id) || {};
+            const meta = configAccounts.find((a) => a.id === id) || {};
             return {
                 id,
                 name: meta.name || id,
                 username: meta.username || '',
                 phone: meta.phone || '',
-                isDefault: index === 0
+                isDefault: index === 0,
             };
         });
         res.json(accounts);
@@ -1556,7 +1723,10 @@ function tgAuthErrorBody(e) {
     if (e?.code === 'NO_API_CREDS') {
         return {
             status: 503,
-            body: { error: 'Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first.', code: 'NO_API_CREDS' },
+            body: {
+                error: 'Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first.',
+                code: 'NO_API_CREDS',
+            },
         };
     }
     return { status: 400, body: { error: e?.message || 'Bad request' } };
@@ -1663,10 +1833,18 @@ runtime.on('catch_up_needed', ({ groupId, gap }) => {
     const ceiling = Number(histCfg.autoFirstLimit ?? 100);
     const limit = ceiling > 0 ? Math.min(ceiling * 10, 50000) : null;
     _spawnInternalBackfill({
-        groupId, limit, mode: 'catch-up', reason: 'auto-catch-up',
-    }).then(jobId => {
-        if (jobId) console.log(`[catch-up] gap=${gap} → spawned backfill ${jobId} (limit=${limit ?? 'all'})`);
-    }).catch((e) => console.warn('[catch-up] spawn failed:', e?.message || e));
+        groupId,
+        limit,
+        mode: 'catch-up',
+        reason: 'auto-catch-up',
+    })
+        .then((jobId) => {
+            if (jobId)
+                console.log(
+                    `[catch-up] gap=${gap} → spawned backfill ${jobId} (limit=${limit ?? 'all'})`,
+                );
+        })
+        .catch((e) => console.warn('[catch-up] spawn failed:', e?.message || e));
 });
 
 // Build the monitor-status snapshot. Used by both the GET endpoint
@@ -1683,17 +1861,22 @@ async function _buildMonitorStatusSnapshot() {
             try {
                 const dir = path.join(DATA_DIR, 'sessions');
                 if (existsSync(dir)) {
-                    status.accounts = fsSync.readdirSync(dir).filter(f => f.endsWith('.enc')).length;
+                    status.accounts = fsSync
+                        .readdirSync(dir)
+                        .filter((f) => f.endsWith('.enc')).length;
                 }
-            } catch { /* ignore */ }
+            } catch {
+                /* ignore */
+            }
         }
     }
     const config = await readConfigSafe();
-    status.hint = !config.telegram?.apiId || !config.telegram?.apiHash
-        ? 'configure-api'
-        : status.accounts === 0
-            ? 'add-account'
-            : (config.groups || []).filter(g => g.enabled).length === 0
+    status.hint =
+        !config.telegram?.apiId || !config.telegram?.apiHash
+            ? 'configure-api'
+            : status.accounts === 0
+              ? 'add-account'
+              : (config.groups || []).filter((g) => g.enabled).length === 0
                 ? 'enable-group'
                 : null;
     return status;
@@ -1715,8 +1898,11 @@ async function _pushMonitorStatus() {
     try {
         const snap = await _buildMonitorStatusSnapshot();
         broadcast({ type: 'monitor_status_push', payload: snap });
-    } catch { /* best-effort */ }
-    finally { _statusPushBusy = false; }
+    } catch {
+        /* best-effort */
+    } finally {
+        _statusPushBusy = false;
+    }
 }
 const _monitorStatusTimer = setInterval(_pushMonitorStatus, 3000);
 _monitorStatusTimer.unref?.();
@@ -1742,8 +1928,11 @@ async function _pushStats() {
                 diskUsageFormatted: formatBytes(total),
             },
         });
-    } catch { /* best-effort */ }
-    finally { _statsPushBusy = false; }
+    } catch {
+        /* best-effort */
+    } finally {
+        _statsPushBusy = false;
+    }
 }
 const _statsPushTimer = setInterval(_pushStats, 30000);
 _statsPushTimer.unref?.();
@@ -1812,7 +2001,7 @@ async function loadHistoryJobsFromDisk() {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
         const cutoff = Date.now() - historyRetentionMs();
-        return parsed.filter(j => j && (j.finishedAt || j.startedAt || 0) >= cutoff);
+        return parsed.filter((j) => j && (j.finishedAt || j.startedAt || 0) >= cutoff);
     } catch {
         return [];
     }
@@ -1821,7 +2010,7 @@ async function loadHistoryJobsFromDisk() {
 async function saveHistoryJobsToDisk() {
     // Snapshot finished jobs (state !== running) without the _runner ref.
     const finished = Array.from(_historyJobs.values())
-        .filter(j => j.state !== 'running')
+        .filter((j) => j.state !== 'running')
         .map(({ _runner, ...rest }) => rest);
     // Merge with anything still on disk that isn't in memory (older history).
     const onDisk = await loadHistoryJobsFromDisk();
@@ -1830,7 +2019,7 @@ async function saveHistoryJobsToDisk() {
     for (const j of finished) byId.set(j.id, j);
     const cutoff = Date.now() - historyRetentionMs();
     const all = Array.from(byId.values())
-        .filter(j => (j.finishedAt || j.startedAt || 0) >= cutoff)
+        .filter((j) => (j.finishedAt || j.startedAt || 0) >= cutoff)
         .sort((a, b) => (b.finishedAt || b.startedAt || 0) - (a.finishedAt || a.startedAt || 0));
     try {
         await fs.mkdir(DATA_DIR, { recursive: true });
@@ -1863,15 +2052,16 @@ app.post('/api/history', async (req, res) => {
         // limit === 0 (or "0") means "no limit" → backfill the entire history.
         // Anything else is clamped into a sane positive range.
         const limRaw = parseInt(limit, 10);
-        const lim = (limRaw === 0)
-            ? null
-            : Math.max(1, Math.min(50000, Number.isFinite(limRaw) ? limRaw : 100));
+        const lim =
+            limRaw === 0
+                ? null
+                : Math.max(1, Math.min(50000, Number.isFinite(limRaw) ? limRaw : 100));
 
         const am = await getAccountManager();
         if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
 
         const config = loadConfig();
-        const group = (config.groups || []).find(g => String(g.id) === String(groupId));
+        const group = (config.groups || []).find((g) => String(g.id) === String(groupId));
         if (!group) return res.status(404).json({ error: 'Group not configured' });
 
         const { HistoryDownloader } = await import('../core/history.js');
@@ -1879,9 +2069,9 @@ app.post('/api/history', async (req, res) => {
         const { RateLimiter } = await import('../core/security.js');
 
         const standalone = !runtime._downloader;
-        const downloader = runtime._downloader || new DownloadManager(
-            am.getDefaultClient(), config, new RateLimiter(config.rateLimits),
-        );
+        const downloader =
+            runtime._downloader ||
+            new DownloadManager(am.getDefaultClient(), config, new RateLimiter(config.rateLimits));
         if (standalone) {
             await downloader.init();
             downloader.start();
@@ -1908,10 +2098,12 @@ app.post('/api/history', async (req, res) => {
         _activeBackfillsByGroup.set(groupKey, jobId);
 
         history.on('progress', (s) => {
-            job.processed = s.processed; job.downloaded = s.downloaded;
+            job.processed = s.processed;
+            job.downloaded = s.downloaded;
             broadcast({
                 type: 'history_progress',
-                jobId, ...s,
+                jobId,
+                ...s,
                 group: group.name,
                 groupId: job.groupId,
                 limit: job.limit,
@@ -1921,13 +2113,16 @@ app.post('/api/history', async (req, res) => {
         });
         // Mirror the chosen mode onto the job so the UI shows it ("pull
         // older" / "catch up" / "rescan") even after the worker exits.
-        history.on('start', (s) => { if (s?.mode) job.mode = s.mode; });
+        history.on('start', (s) => {
+            if (s?.mode) job.mode = s.mode;
+        });
 
-        history.downloadHistory(groupId, {
-            limit: lim ?? undefined,
-            offsetId: parseInt(offsetId, 10) || 0,
-            mode: mode === 'catch-up' || mode === 'rescan' ? mode : 'pull-older',
-        })
+        history
+            .downloadHistory(groupId, {
+                limit: lim ?? undefined,
+                offsetId: parseInt(offsetId, 10) || 0,
+                mode: mode === 'catch-up' || mode === 'rescan' ? mode : 'pull-older',
+            })
             .then(() => {
                 job.state = job.cancelled ? 'cancelled' : 'done';
                 job.finishedAt = Date.now();
@@ -1952,7 +2147,13 @@ app.post('/api/history', async (req, res) => {
                 job.error = err?.message || String(err);
                 job.finishedAt = Date.now();
                 delete job._runner;
-                broadcast({ type: 'history_error', jobId, error: job.error, group: group.name, groupId: job.groupId });
+                broadcast({
+                    type: 'history_error',
+                    jobId,
+                    error: job.error,
+                    group: group.name,
+                    groupId: job.groupId,
+                });
                 // Surface the failure on the realtime log channel so the
                 // operator sees WHY a backfill flashed red instead of just
                 // "it failed". Hint when the message points at account
@@ -1964,7 +2165,11 @@ app.post('/api/history', async (req, res) => {
                 const hint = /no available account/i.test(job.error)
                     ? ' (no logged-in account can read this group — check Settings → Telegram Accounts and make sure at least one is a member)'
                     : '';
-                log({ source: 'backfill', level: 'error', msg: `backfill failed for "${group.name}" (${group.id}): ${job.error}${hint}` });
+                log({
+                    source: 'backfill',
+                    level: 'error',
+                    msg: `backfill failed for "${group.name}" (${group.id}): ${job.error}${hint}`,
+                });
                 if (standalone) downloader.stop().catch(() => {});
                 saveHistoryJobsToDisk().catch(() => {});
                 if (_activeBackfillsByGroup.get(groupKey) === jobId) {
@@ -1972,8 +2177,18 @@ app.post('/api/history', async (req, res) => {
                 }
             });
 
-        log({ source: 'backfill', level: 'info', msg: `backfill started for "${group.name}" (${group.id}) — limit=${lim} mode=${job.mode || 'pull-older'}` });
-        res.json({ success: true, jobId, group: group.name, limit: lim, mode: job.mode || 'pull-older' });
+        log({
+            source: 'backfill',
+            level: 'info',
+            msg: `backfill started for "${group.name}" (${group.id}) — limit=${lim} mode=${job.mode || 'pull-older'}`,
+        });
+        res.json({
+            success: true,
+            jobId,
+            group: group.name,
+            limit: lim,
+            mode: job.mode || 'pull-older',
+        });
     } catch (e) {
         console.error('POST /api/history:', e);
         res.status(500).json({ error: e.message });
@@ -1995,11 +2210,11 @@ app.get('/api/history/jobs', async (req, res) => {
         for (const j of onDisk) byId.set(j.id, j);
         for (const j of live) byId.set(j.id, j); // live overrides disk (same id)
         const all = Array.from(byId.values()).sort(
-            (a, b) => (b.startedAt || 0) - (a.startedAt || 0)
+            (a, b) => (b.startedAt || 0) - (a.startedAt || 0),
         );
-        const recent = all.filter(j => j.state !== 'running').slice(0, 30);
+        const recent = all.filter((j) => j.state !== 'running').slice(0, 30);
         res.json({
-            active: all.filter(j => j.state === 'running'),
+            active: all.filter((j) => j.state === 'running'),
             // `recent` is the canonical key the dashboard reads; `past` is
             // kept as an alias for any older client still in flight.
             recent,
@@ -2048,7 +2263,7 @@ app.delete('/api/history/:jobId', async (req, res) => {
         // existing saveHistoryJobsToDisk pattern handles concurrency by
         // reading + filtering + writing in one tick).
         const onDisk = await loadHistoryJobsFromDisk();
-        const filtered = onDisk.filter(j => j.id !== id);
+        const filtered = onDisk.filter((j) => j.id !== id);
         try {
             await fs.mkdir(DATA_DIR, { recursive: true });
             await fs.writeFile(HISTORY_JOBS_PATH, JSON.stringify(filtered, null, 2), 'utf-8');
@@ -2069,7 +2284,10 @@ app.delete('/api/history', async (req, res) => {
     try {
         let removed = 0;
         for (const [id, job] of Array.from(_historyJobs.entries())) {
-            if (job.state !== 'running') { _historyJobs.delete(id); removed++; }
+            if (job.state !== 'running') {
+                _historyJobs.delete(id);
+                removed++;
+            }
         }
         // Wipe the on-disk store of finished jobs.
         try {
@@ -2116,7 +2334,9 @@ const _failedJobMeta = new Map();
         const raw = await fs.readFile(QUEUE_HISTORY_PATH, 'utf-8');
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) _queueHistory = parsed.slice(0, QUEUE_HISTORY_CAP);
-    } catch { /* first-run, no file yet */ }
+    } catch {
+        /* first-run, no file yet */
+    }
 })();
 
 function flushQueueHistorySoon() {
@@ -2128,7 +2348,11 @@ function flushQueueHistorySoon() {
         _queueHistoryDirty = false;
         try {
             await fs.mkdir(DATA_DIR, { recursive: true });
-            await fs.writeFile(QUEUE_HISTORY_PATH, JSON.stringify(_queueHistory.slice(0, QUEUE_HISTORY_CAP)), 'utf-8');
+            await fs.writeFile(
+                QUEUE_HISTORY_PATH,
+                JSON.stringify(_queueHistory.slice(0, QUEUE_HISTORY_CAP)),
+                'utf-8',
+            );
         } catch (e) {
             console.error('queue-history.json write failed:', e?.message || e);
         }
@@ -2139,7 +2363,10 @@ function pushQueueHistory(entry) {
     if (!entry || !entry.key) return;
     // Dedup by key — last write wins so a retry → success replaces the
     // old failed row instead of stacking duplicates.
-    _queueHistory = [entry, ..._queueHistory.filter(e => e.key !== entry.key)].slice(0, QUEUE_HISTORY_CAP);
+    _queueHistory = [entry, ..._queueHistory.filter((e) => e.key !== entry.key)].slice(
+        0,
+        QUEUE_HISTORY_CAP,
+    );
     flushQueueHistorySoon();
 }
 
@@ -2241,12 +2468,21 @@ function requireDownloader(res) {
 app.get('/api/queue/snapshot', (req, res) => {
     try {
         const dl = runtime._downloader;
-        const snap = dl ? dl.snapshot() : { active: [], queued: [], globalPaused: false, pausedCount: 0, workers: 0, pending: 0 };
+        const snap = dl
+            ? dl.snapshot()
+            : {
+                  active: [],
+                  queued: [],
+                  globalPaused: false,
+                  pausedCount: 0,
+                  workers: 0,
+                  pending: 0,
+              };
         res.json({
             ...snap,
             recent: _queueHistory.slice(0, QUEUE_HISTORY_CAP),
             engineRunning: runtime.state === 'running',
-            maxSpeed: (runtime._downloader?.config?.download?.maxSpeed) || null,
+            maxSpeed: runtime._downloader?.config?.download?.maxSpeed || null,
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -2254,21 +2490,24 @@ app.get('/api/queue/snapshot', (req, res) => {
 });
 
 app.post('/api/queue/pause-all', (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     dl.pauseAll();
     broadcast({ type: 'queue_changed', payload: { op: 'pause-all' } });
     res.json({ success: true });
 });
 
 app.post('/api/queue/resume-all', (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     dl.resumeAll();
     broadcast({ type: 'queue_changed', payload: { op: 'resume-all' } });
     res.json({ success: true });
 });
 
 app.post('/api/queue/cancel-all', (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     const removed = dl.cancelAllQueued();
     broadcast({ type: 'queue_changed', payload: { op: 'cancel-all', removed } });
     res.json({ success: true, removed });
@@ -2284,7 +2523,8 @@ app.post('/api/queue/clear-finished', (req, res) => {
 
 // Per-row routes. Keys look like "<chatId>_<messageId>"; URL-encode them.
 app.post('/api/queue/:key/pause', (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     const key = decodeURIComponent(req.params.key);
     const ok = dl.pauseJob(key);
     broadcast({ type: 'queue_changed', payload: { op: 'pause', key } });
@@ -2292,7 +2532,8 @@ app.post('/api/queue/:key/pause', (req, res) => {
 });
 
 app.post('/api/queue/:key/resume', (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     const key = decodeURIComponent(req.params.key);
     const ok = dl.resumeJob(key);
     broadcast({ type: 'queue_changed', payload: { op: 'resume', key } });
@@ -2300,7 +2541,8 @@ app.post('/api/queue/:key/resume', (req, res) => {
 });
 
 app.post('/api/queue/:key/cancel', async (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     const key = decodeURIComponent(req.params.key);
     // Best-effort delete of any partial file the worker may have left
     // behind. We don't know the exact path until the download path is
@@ -2313,14 +2555,17 @@ app.post('/api/queue/:key/cancel', async (req, res) => {
 });
 
 app.post('/api/queue/:key/retry', async (req, res) => {
-    const dl = requireDownloader(res); if (!dl) return;
+    const dl = requireDownloader(res);
+    if (!dl) return;
     const key = decodeURIComponent(req.params.key);
     const meta = _failedJobMeta.get(key);
     if (!meta) {
         // No cached job means we never saw the original message — surface
         // a friendly error instead of silently doing nothing. The caller
         // can fall back to re-pasting the link from the viewer.
-        return res.status(404).json({ error: 'Cannot retry: original job no longer in memory. Re-trigger from the source (link / backfill / monitor).' });
+        return res.status(404).json({
+            error: 'Cannot retry: original job no longer in memory. Re-trigger from the source (link / backfill / monitor).',
+        });
     }
     dl.retryJob(meta);
     broadcast({ type: 'queue_changed', payload: { op: 'retry', key } });
@@ -2372,30 +2617,41 @@ app.post('/api/stories/download', async (req, res) => {
         if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
         const client = am.getDefaultClient();
         const entity = await client.getEntity(username);
-        const r = await client.invoke(new (await import('telegram')).Api.stories.GetPeerStories({ peer: entity }));
+        const r = await client.invoke(
+            new (await import('telegram')).Api.stories.GetPeerStories({ peer: entity }),
+        );
         const stories = r?.stories?.stories || [];
         const wanted = new Set(storyIds.map(Number));
-        const matched = stories.filter(s => wanted.has(Number(s.id)));
+        const matched = stories.filter((s) => wanted.has(Number(s.id)));
 
         const { DownloadManager } = await import('../core/downloader.js');
         const { RateLimiter } = await import('../core/security.js');
         const config = loadConfig();
         const standalone = !runtime._downloader;
-        const downloader = runtime._downloader || new DownloadManager(client, config, new RateLimiter(config.rateLimits));
-        if (standalone) { await downloader.init(); downloader.start(); }
+        const downloader =
+            runtime._downloader ||
+            new DownloadManager(client, config, new RateLimiter(config.rateLimits));
+        if (standalone) {
+            await downloader.init();
+            downloader.start();
+        }
 
         let queued = 0;
         for (const story of matched) {
-            const job = storyToJob({ peer: entity, story, peerLabel: entity.username || entity.firstName || username });
+            const job = storyToJob({
+                peer: entity,
+                story,
+                peerLabel: entity.username || entity.firstName || username,
+            });
             if (await downloader.enqueue(job, 1)) queued++;
         }
         if (standalone) {
             (async () => {
                 while (downloader.pendingCount > 0 || downloader.active.size > 0) {
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise((r) => setTimeout(r, 1000));
                 }
                 downloader.stop().catch(() => {});
-            })().catch(e => console.warn('[stories] standalone drain failed:', e?.message || e));
+            })().catch((e) => console.warn('[stories] standalone drain failed:', e?.message || e));
         }
         res.json({ success: true, queued, requested: storyIds.length });
     } catch (e) {
@@ -2409,21 +2665,26 @@ app.post('/api/stories/download', async (req, res) => {
 // the host's internal network. RFC 1918 + loopback + link-local + IPv6
 // ULA / loopback / link-local + multicast are all blocked.
 const SSRF_BLOCKLIST = [
-    /^127\./,                      // 127.0.0.0/8
-    /^10\./,                       // 10.0.0.0/8
-    /^192\.168\./,                 // 192.168.0.0/16
-    /^172\.(1[6-9]|2\d|3[01])\./,  // 172.16.0.0/12
-    /^169\.254\./,                 // 169.254.0.0/16 link-local
-    /^0\./,                        // 0.0.0.0/8
-    /^22[4-9]\./, /^23\d\./,       // multicast
-    /^::1$/, /^fe80:/i, /^fc00:/i, /^fd[0-9a-f]{2}:/i,
+    /^127\./, // 127.0.0.0/8
+    /^10\./, // 10.0.0.0/8
+    /^192\.168\./, // 192.168.0.0/16
+    /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12
+    /^169\.254\./, // 169.254.0.0/16 link-local
+    /^0\./, // 0.0.0.0/8
+    /^22[4-9]\./,
+    /^23\d\./, // multicast
+    /^::1$/,
+    /^fe80:/i,
+    /^fc00:/i,
+    /^fd[0-9a-f]{2}:/i,
 ];
 
 function isPrivateHost(host) {
     if (!host) return true;
     const lower = host.toLowerCase();
-    if (lower === 'localhost' || lower.endsWith('.local') || lower.endsWith('.internal')) return true;
-    return SSRF_BLOCKLIST.some(re => re.test(host));
+    if (lower === 'localhost' || lower.endsWith('.local') || lower.endsWith('.internal'))
+        return true;
+    return SSRF_BLOCKLIST.some((re) => re.test(host));
 }
 
 app.post('/api/proxy/test', async (req, res) => {
@@ -2445,8 +2706,11 @@ app.post('/api/proxy/test', async (req, res) => {
     const sock = new net.Socket();
     let done = false;
     const finish = (ok, error) => {
-        if (done) return; done = true;
-        try { sock.destroy(); } catch {}
+        if (done) return;
+        done = true;
+        try {
+            sock.destroy();
+        } catch {}
         if (ok) return res.json({ ok: true, ms: Date.now() - start });
         return res.json({ ok: false, error });
     };
@@ -2472,8 +2736,13 @@ function detectMediaType(message) {
         const mime = doc.mimeType || '';
         if (mime.startsWith('video/')) return 'videos';
         if (mime.startsWith('audio/')) return mime.includes('ogg') ? 'voice' : 'audio';
-        if (mime.includes('gif') || (doc.attributes || []).some(a => a.className === 'DocumentAttributeAnimated')) return 'gifs';
-        if (mime.includes('image/webp') || mime.includes('application/x-tgsticker')) return 'stickers';
+        if (
+            mime.includes('gif') ||
+            (doc.attributes || []).some((a) => a.className === 'DocumentAttributeAnimated')
+        )
+            return 'gifs';
+        if (mime.includes('image/webp') || mime.includes('application/x-tgsticker'))
+            return 'stickers';
         return 'documents';
     }
     return null;
@@ -2482,7 +2751,7 @@ function detectMediaType(message) {
 app.post('/api/download/url', async (req, res) => {
     try {
         const { url, urls } = req.body || {};
-        const list = Array.isArray(urls) ? urls : (url ? parseUrlList(url) : []);
+        const list = Array.isArray(urls) ? urls : url ? parseUrlList(url) : [];
         if (!list.length) return res.status(400).json({ error: 'Provide url or urls' });
 
         const am = await getAccountManager();
@@ -2493,9 +2762,9 @@ app.post('/api/download/url', async (req, res) => {
 
         const config = loadConfig();
         const standalone = !runtime._downloader;
-        const downloader = runtime._downloader || new DownloadManager(
-            am.getDefaultClient(), config, new RateLimiter(config.rateLimits),
-        );
+        const downloader =
+            runtime._downloader ||
+            new DownloadManager(am.getDefaultClient(), config, new RateLimiter(config.rateLimits));
         if (standalone) {
             await downloader.init();
             downloader.start();
@@ -2517,28 +2786,61 @@ app.post('/api/download/url', async (req, res) => {
                             workingClient = c;
                             break;
                         }
-                    } catch { /* try next */ }
+                    } catch {
+                        /* try next */
+                    }
                 }
-                if (!resolved) { results.push({ url: raw, ok: false, error: 'No account could read the message' }); continue; }
+                if (!resolved) {
+                    results.push({
+                        url: raw,
+                        ok: false,
+                        error: 'No account could read the message',
+                    });
+                    continue;
+                }
 
                 const mediaType = detectMediaType(resolved.message);
-                if (!mediaType) { results.push({ url: raw, ok: false, error: 'Message has no downloadable media' }); continue; }
+                if (!mediaType) {
+                    results.push({
+                        url: raw,
+                        ok: false,
+                        error: 'Message has no downloadable media',
+                    });
+                    continue;
+                }
 
                 const groupId = String(resolved.entity.id);
-                const groupName = resolved.entity.title || resolved.entity.username || resolved.entity.firstName || groupId;
+                const groupName =
+                    resolved.entity.title ||
+                    resolved.entity.username ||
+                    resolved.entity.firstName ||
+                    groupId;
                 // Switch the downloader's reference client for this enqueue if
                 // the runtime's client differs from the resolver's. The
                 // downloader's .client is used to actually fetch bytes.
                 downloader.client = workingClient;
-                const ok = await downloader.enqueue({
-                    message: resolved.message,
-                    groupId,
-                    groupName,
+                const ok = await downloader.enqueue(
+                    {
+                        message: resolved.message,
+                        groupId,
+                        groupName,
+                        mediaType,
+                    },
+                    1,
+                ); // realtime priority
+                results.push({
+                    url: raw,
+                    ok,
+                    group: groupName,
+                    messageId: parsed.messageId,
                     mediaType,
-                }, 1); // realtime priority
-                results.push({ url: raw, ok, group: groupName, messageId: parsed.messageId, mediaType });
+                });
             } catch (e) {
-                results.push({ url: raw, ok: false, error: e instanceof UrlParseError ? e.message : (e?.message || 'Failed') });
+                results.push({
+                    url: raw,
+                    ok: false,
+                    error: e instanceof UrlParseError ? e.message : e?.message || 'Failed',
+                });
             }
         }
 
@@ -2546,10 +2848,12 @@ app.post('/api/download/url', async (req, res) => {
             // Tear down once jobs drain — fire-and-forget.
             (async () => {
                 while (downloader.pendingCount > 0 || downloader.active.size > 0) {
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise((r) => setTimeout(r, 1000));
                 }
                 downloader.stop().catch(() => {});
-            })().catch(e => console.warn('[download/url] standalone drain failed:', e?.message || e));
+            })().catch((e) =>
+                console.warn('[download/url] standalone drain failed:', e?.message || e),
+            );
         }
 
         res.json({ success: true, results });
@@ -2559,13 +2863,12 @@ app.post('/api/download/url', async (req, res) => {
     }
 });
 
-
 // 1. Stats API (SQLite)
 app.get('/api/stats', async (req, res) => {
     try {
         const dbStats = getDbStats(); // From DB
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        
+
         // Disk usage: prefer the live `SUM(file_size)` from the DB because
         // it's always in sync with the row count we just read. If the DB
         // sum is zero (catalogue empty after a Purge / before first run),
@@ -2589,9 +2892,11 @@ app.get('/api/stats', async (req, res) => {
             try {
                 const dir = path.join(DATA_DIR, 'sessions');
                 if (existsSync(dir)) {
-                    accountCount = fsSync.readdirSync(dir).filter(f => f.endsWith('.enc')).length;
+                    accountCount = fsSync.readdirSync(dir).filter((f) => f.endsWith('.enc')).length;
                 }
-            } catch { /* ignore */ }
+            } catch {
+                /* ignore */
+            }
         }
 
         res.json({
@@ -2606,10 +2911,10 @@ app.get('/api/stats', async (req, res) => {
 
             // Config Stats
             totalGroups: config.groups?.length || 0,
-            enabledGroups: config.groups?.filter(g => g.enabled).length || 0,
+            enabledGroups: config.groups?.filter((g) => g.enabled).length || 0,
             accounts: accountCount,
             apiConfigured: !!(config.telegram?.apiId && config.telegram?.apiHash),
-            telegramConnected: isConnected || (runtime.state === 'running'),
+            telegramConnected: isConnected || runtime.state === 'running',
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -2630,9 +2935,11 @@ app.get('/api/dialogs', async (req, res) => {
     try {
         const wantFresh = req.query.fresh === '1';
         const now = Date.now();
-        if (!wantFresh
-            && _dialogsResponseCache.body
-            && Math.max(0, now - _dialogsResponseCache.at) < 5 * 60 * 1000) {
+        if (
+            !wantFresh &&
+            _dialogsResponseCache.body &&
+            Math.max(0, now - _dialogsResponseCache.at) < 5 * 60 * 1000
+        ) {
             return res.json(_dialogsResponseCache.body);
         }
 
@@ -2642,7 +2949,7 @@ app.get('/api/dialogs', async (req, res) => {
         // silently disappear from the picker. We also keep `[accountId, meta]`
         // pairs so the response can attribute each dialog back to the account
         // it came from.
-        const clientPairs = [];   // [{ id, meta, client }]
+        const clientPairs = []; // [{ id, meta, client }]
         try {
             const am = await getAccountManager();
             for (const [accountId, c] of am.clients) {
@@ -2650,8 +2957,10 @@ app.get('/api/dialogs', async (req, res) => {
                 const meta = am.metadata.get(accountId) || { id: accountId };
                 clientPairs.push({ id: accountId, meta, client: c });
             }
-        } catch { /* no creds yet */ }
-        if (telegramClient?.connected && !clientPairs.some(p => p.client === telegramClient)) {
+        } catch {
+            /* no creds yet */
+        }
+        if (telegramClient?.connected && !clientPairs.some((p) => p.client === telegramClient)) {
             clientPairs.push({
                 id: 'legacy',
                 meta: { id: 'legacy', name: 'Default', phone: '', username: '' },
@@ -2665,12 +2974,17 @@ app.get('/api/dialogs', async (req, res) => {
             // an Add Account CTA for the former, vs. a red error for the
             // latter.
             const sessionsDir = path.join(DATA_DIR, 'sessions');
-            const hasSession = existsSync(sessionsDir)
-                && fsSync.readdirSync(sessionsDir).some(f => f.endsWith('.enc'));
+            const hasSession =
+                existsSync(sessionsDir) &&
+                fsSync.readdirSync(sessionsDir).some((f) => f.endsWith('.enc'));
             if (!hasSession) {
-                return res.status(503).json({ error: 'no_account', message: 'No Telegram account configured' });
+                return res
+                    .status(503)
+                    .json({ error: 'no_account', message: 'No Telegram account configured' });
             }
-            return res.status(503).json({ error: 'not_connected', message: 'Telegram client not connected' });
+            return res
+                .status(503)
+                .json({ error: 'not_connected', message: 'Telegram client not connected' });
         }
 
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
@@ -2681,13 +2995,15 @@ app.get('/api/dialogs', async (req, res) => {
         // parallel. One bad client (e.g. mid-reconnect) doesn't kill the
         // sweep; we just lose its chats from this response and pick them
         // up on the next refresh.
-        const perClient = await Promise.all(clientPairs.map(async (p) => {
-            const [a, ar] = await Promise.all([
-                p.client.getDialogs({ limit: 500 }).catch(() => []),
-                p.client.getDialogs({ limit: 200, archived: true }).catch(() => []),
-            ]);
-            return { accountId: p.id, accountMeta: p.meta, active: a, archived: ar };
-        }));
+        const perClient = await Promise.all(
+            clientPairs.map(async (p) => {
+                const [a, ar] = await Promise.all([
+                    p.client.getDialogs({ limit: 500 }).catch(() => []),
+                    p.client.getDialogs({ limit: 200, archived: true }).catch(() => []),
+                ]);
+                return { accountId: p.id, accountMeta: p.meta, active: a, archived: ar };
+            }),
+        );
 
         // Build maps keyed by dialog id:
         //   firstDialog[id] -> { d, archived } picked on first sighting (active wins over archived)
@@ -2710,11 +3026,15 @@ app.get('/api/dialogs', async (req, res) => {
                     // Side-effect: warm the name cache used by /api/groups +
                     // /api/downloads. Free since we already have the dialog
                     // objects in hand.
-                    const nm = d.title
-                        || d.name
-                        || ((d.entity?.firstName || '') + (d.entity?.lastName ? ' ' + d.entity.lastName : '')).trim()
-                        || d.entity?.username
-                        || null;
+                    const nm =
+                        d.title ||
+                        d.name ||
+                        (
+                            (d.entity?.firstName || '') +
+                            (d.entity?.lastName ? ' ' + d.entity.lastName : '')
+                        ).trim() ||
+                        d.entity?.username ||
+                        null;
                     if (nm && !nameLooksUnresolved(nm, id)) nameById.set(id, nm);
                 }
             }
@@ -2723,7 +3043,7 @@ app.get('/api/dialogs', async (req, res) => {
 
         // Account directory for the response — lets the SPA render account
         // chips by id without a second round-trip to /api/accounts.
-        const accounts = clientPairs.map(p => ({
+        const accounts = clientPairs.map((p) => ({
             id: p.id,
             name: p.meta?.name || p.meta?.username || p.id,
             phone: p.meta?.phone || '',
@@ -2744,7 +3064,7 @@ app.get('/api/dialogs', async (req, res) => {
             })
             .map(({ d, archived }) => {
                 const id = d.id.toString();
-                const configGroup = configGroups.find(g => String(g.id) === id);
+                const configGroup = configGroups.find((g) => String(g.id) === id);
                 let type = 'group';
                 if (d.isChannel) type = 'channel';
                 else if (d.isUser && d.entity?.bot) type = 'bot';
@@ -2753,15 +3073,32 @@ app.get('/api/dialogs', async (req, res) => {
                 const accIds = Array.from(accountIds.get(id) || []).sort();
                 return {
                     id,
-                    name: d.title || d.name || (d.entity?.firstName || '') + (d.entity?.lastName ? ' ' + d.entity.lastName : '') || 'Unknown',
+                    name:
+                        d.title ||
+                        d.name ||
+                        (d.entity?.firstName || '') +
+                            (d.entity?.lastName ? ' ' + d.entity.lastName : '') ||
+                        'Unknown',
                     type,
                     username: d.username,
                     archived,
                     members: d.entity?.participantsCount || null,
                     enabled: configGroup?.enabled || false,
                     inConfig: !!configGroup,
-                    filters: configGroup?.filters || { photos: true, videos: true, files: true, links: true, voice: false, gifs: false, stickers: false },
-                    autoForward: configGroup?.autoForward || { enabled: false, destination: null, deleteAfterForward: false },
+                    filters: configGroup?.filters || {
+                        photos: true,
+                        videos: true,
+                        files: true,
+                        links: true,
+                        voice: false,
+                        gifs: false,
+                        stickers: false,
+                    },
+                    autoForward: configGroup?.autoForward || {
+                        enabled: false,
+                        destination: null,
+                        deleteAfterForward: false,
+                    },
                     photoUrl: `/api/groups/${id}/photo`,
                     accountIds: accIds,
                 };
@@ -2816,7 +3153,10 @@ let _dialogsNameCache = { at: 0, byId: new Map() };
 let _dialogsTypeCache = new Map();
 async function getDialogsNameCache() {
     const now = Date.now();
-    if (Math.max(0, now - _dialogsNameCache.at) < 5 * 60 * 1000 && _dialogsNameCache.byId.size > 0) {
+    if (
+        Math.max(0, now - _dialogsNameCache.at) < 5 * 60 * 1000 &&
+        _dialogsNameCache.byId.size > 0
+    ) {
         return _dialogsNameCache.byId;
     }
     const byId = new Map();
@@ -2825,7 +3165,8 @@ async function getDialogsNameCache() {
         const am = await getAccountManager();
         const clients = [];
         for (const [, c] of am.clients) clients.push(c);
-        if (telegramClient?.connected && !clients.includes(telegramClient)) clients.push(telegramClient);
+        if (telegramClient?.connected && !clients.includes(telegramClient))
+            clients.push(telegramClient);
 
         for (const client of clients) {
             if (!client?.connected) continue;
@@ -2836,11 +3177,15 @@ async function getDialogsNameCache() {
                 ]);
                 for (const d of [...active, ...archived]) {
                     const id = String(d.id);
-                    const name = d.title
-                        || d.name
-                        || ((d.entity?.firstName || '') + (d.entity?.lastName ? ' ' + d.entity.lastName : '')).trim()
-                        || d.entity?.username
-                        || null;
+                    const name =
+                        d.title ||
+                        d.name ||
+                        (
+                            (d.entity?.firstName || '') +
+                            (d.entity?.lastName ? ' ' + d.entity.lastName : '')
+                        ).trim() ||
+                        d.entity?.username ||
+                        null;
                     if (name && !nameLooksUnresolved(name, id) && !byId.has(id)) {
                         byId.set(id, name);
                     }
@@ -2852,9 +3197,13 @@ async function getDialogsNameCache() {
                         typeById.set(id, t);
                     }
                 }
-            } catch { /* one bad client doesn't kill the whole sweep */ }
+            } catch {
+                /* one bad client doesn't kill the whole sweep */
+            }
         }
-    } catch { /* no AM — fresh install */ }
+    } catch {
+        /* no AM — fresh install */
+    }
     _dialogsNameCache = { at: now, byId };
     _dialogsTypeCache = typeById;
     return byId;
@@ -2881,7 +3230,8 @@ app.get('/api/groups', async (req, res) => {
         // fall back to MAX(any) only if every row was a placeholder.
         let dbNames = new Map();
         try {
-            const rows = getDb().prepare(`
+            const rows = getDb()
+                .prepare(`
                 SELECT group_id,
                        MAX(CASE
                              WHEN group_name IS NOT NULL
@@ -2893,7 +3243,8 @@ app.get('/api/groups', async (req, res) => {
                            THEN group_name END) AS best_name,
                        MAX(group_name) AS any_name
                   FROM downloads
-                 GROUP BY group_id`).all();
+                 GROUP BY group_id`)
+                .all();
             for (const r of rows) dbNames.set(String(r.group_id), r.best_name || r.any_name);
         } catch {}
 
@@ -2901,21 +3252,28 @@ app.get('/api/groups', async (req, res) => {
         // Browse-chats picker uses, so the sidebar shows the same name.
         const dialogsNames = await getDialogsNameCache();
 
-        const groupsWithPhotos = await Promise.all((config.groups || []).map(async (group) => {
-            const photoPath = path.join(PHOTOS_DIR, `${group.id}.jpg`);
-            const hasPhoto = existsSync(photoPath);
-            return {
-                ...group,
-                name: bestGroupName(group.id, group.name, dbNames.get(String(group.id)), dialogsNames.get(String(group.id))),
-                // Sidebar uses `type` to render the right corner icon
-                // (megaphone vs group vs user/bot). Without this the
-                // Downloaded Groups list defaulted to the id-prefix
-                // heuristic in createAvatar() which painted every
-                // supergroup as a channel.
-                type: group.type || dialogsTypeFor(group.id),
-                photoUrl: hasPhoto ? `/photos/${group.id}.jpg` : null
-            };
-        }));
+        const groupsWithPhotos = await Promise.all(
+            (config.groups || []).map(async (group) => {
+                const photoPath = path.join(PHOTOS_DIR, `${group.id}.jpg`);
+                const hasPhoto = existsSync(photoPath);
+                return {
+                    ...group,
+                    name: bestGroupName(
+                        group.id,
+                        group.name,
+                        dbNames.get(String(group.id)),
+                        dialogsNames.get(String(group.id)),
+                    ),
+                    // Sidebar uses `type` to render the right corner icon
+                    // (megaphone vs group vs user/bot). Without this the
+                    // Downloaded Groups list defaulted to the id-prefix
+                    // heuristic in createAvatar() which painted every
+                    // supergroup as a channel.
+                    type: group.type || dialogsTypeFor(group.id),
+                    photoUrl: hasPhoto ? `/photos/${group.id}.jpg` : null,
+                };
+            }),
+        );
         res.json(groupsWithPhotos);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -2932,7 +3290,8 @@ app.get('/api/downloads', async (req, res) => {
         // CASE-filter "Unknown" / numeric-id placeholders BEFORE MAX so
         // a group with mixed rows ["Cool Channel", "Unknown"] returns
         // "Cool Channel" instead of the lexically-larger "Unknown".
-        const rows = db.prepare(`
+        const rows = db
+            .prepare(`
             SELECT group_id,
                    MAX(CASE
                          WHEN group_name IS NOT NULL
@@ -2947,34 +3306,37 @@ app.get('/api/downloads', async (req, res) => {
                    SUM(file_size) as size
               FROM downloads
              GROUP BY group_id
-        `).all();
+        `)
+            .all();
 
         const dialogsNames = await getDialogsNameCache();
 
-        const results = rows.map(r => {
-            const cfg = configGroups.find(g => String(g.id) === r.group_id);
-            // Best-available: live Telegram dialogs name → config → DB → placeholder.
-            const name = bestGroupName(
-                r.group_id,
-                cfg?.name,
-                r.best_name || r.any_name,
-                dialogsNames.get(String(r.group_id)),
-            );
-            const hasPhoto = existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
+        const results = rows
+            .map((r) => {
+                const cfg = configGroups.find((g) => String(g.id) === r.group_id);
+                // Best-available: live Telegram dialogs name → config → DB → placeholder.
+                const name = bestGroupName(
+                    r.group_id,
+                    cfg?.name,
+                    r.best_name || r.any_name,
+                    dialogsNames.get(String(r.group_id)),
+                );
+                const hasPhoto = existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
 
-            return {
-                id: r.group_id,
-                name: name,
-                // Type drives the sidebar avatar's corner badge
-                // (channel = megaphone / group = group icon / user / bot).
-                // Prefer config (sticky), fall back to live-dialogs cache.
-                type: cfg?.type || dialogsTypeFor(r.group_id),
-                totalFiles: r.count,
-                sizeFormatted: formatBytes(r.size || 0),
-                photoUrl: hasPhoto ? `/photos/${r.group_id}.jpg` : null,
-                enabled: cfg ? cfg.enabled : false
-            };
-        }).filter(Boolean);
+                return {
+                    id: r.group_id,
+                    name: name,
+                    // Type drives the sidebar avatar's corner badge
+                    // (channel = megaphone / group = group icon / user / bot).
+                    // Prefer config (sticky), fall back to live-dialogs cache.
+                    type: cfg?.type || dialogsTypeFor(r.group_id),
+                    totalFiles: r.count,
+                    sizeFormatted: formatBytes(r.size || 0),
+                    photoUrl: hasPhoto ? `/photos/${r.group_id}.jpg` : null,
+                    enabled: cfg ? cfg.enabled : false,
+                };
+            })
+            .filter(Boolean);
 
         res.json(results);
     } catch (error) {
@@ -2990,14 +3352,14 @@ app.get('/api/downloads', async (req, res) => {
 // accurate counts.
 app.get('/api/downloads/all', async (req, res) => {
     try {
-        const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
         const limit = Math.max(1, Math.min(500, parseInt(req.query.limit, 10) || 50));
-        const type  = req.query.type || 'all';
+        const type = req.query.type || 'all';
         const offset = (page - 1) * limit;
         // Pinned filter chip (`?pinned=1`) and "surface pinned at top"
         // setting (`?pinnedFirst=1`) — both opt-in, both default off so
         // existing callers behave identically.
-        const pinnedOnly  = req.query.pinned === '1' || req.query.pinned === 'true';
+        const pinnedOnly = req.query.pinned === '1' || req.query.pinned === 'true';
         const pinnedFirst = req.query.pinnedFirst === '1' || req.query.pinnedFirst === 'true';
         const result = getAllDownloads(limit, offset, type, { pinnedOnly, pinnedFirst });
 
@@ -3005,23 +3367,33 @@ app.get('/api/downloads/all', async (req, res) => {
         // renderer is unchanged. Per-row group_name + group_id are
         // preserved on every tile.
         let config = {};
-        try { config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8')); } catch { /* ok — fall back to row.group_name */ }
-        const configGroups = new Map((config.groups || []).map(g => [String(g.id), g]));
-        const files = result.files.map(row => {
-            const typeFolder = row.file_type === 'photo' ? 'images'
-                : row.file_type === 'video' ? 'videos'
-                : row.file_type === 'audio' ? 'audio'
-                : row.file_type === 'sticker' ? 'stickers'
-                : 'documents';
+        try {
+            config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        } catch {
+            /* ok — fall back to row.group_name */
+        }
+        const configGroups = new Map((config.groups || []).map((g) => [String(g.id), g]));
+        const files = result.files.map((row) => {
+            const typeFolder =
+                row.file_type === 'photo'
+                    ? 'images'
+                    : row.file_type === 'video'
+                      ? 'videos'
+                      : row.file_type === 'audio'
+                        ? 'audio'
+                        : row.file_type === 'sticker'
+                          ? 'stickers'
+                          : 'documents';
             const stored = (row.file_path || '').replace(/\\/g, '/');
             const fallbackFolder = sanitizeName(
-                configGroups.get(String(row.group_id))?.name
-                || row.group_name
-                || String(row.group_id)
+                configGroups.get(String(row.group_id))?.name ||
+                    row.group_name ||
+                    String(row.group_id),
             );
-            const fullPath = stored && stored.includes('/')
-                ? stored
-                : `${fallbackFolder}/${typeFolder}/${row.file_name}`;
+            const fullPath =
+                stored && stored.includes('/')
+                    ? stored
+                    : `${fallbackFolder}/${typeFolder}/${row.file_name}`;
             return {
                 id: row.id,
                 name: row.file_name,
@@ -3063,11 +3435,15 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
 
         // Find group name from config or DB to build correct folder path
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        const configGroup = (config.groups || []).find(g => String(g.id) === String(groupId));
-        const dbRow = getDb().prepare('SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL LIMIT 1').get(String(groupId));
+        const configGroup = (config.groups || []).find((g) => String(g.id) === String(groupId));
+        const dbRow = getDb()
+            .prepare(
+                'SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL LIMIT 1',
+            )
+            .get(String(groupId));
         const groupFolder = sanitizeName(configGroup?.name || dbRow?.group_name || 'unknown');
 
-        const pinnedOnly  = req.query.pinned === '1' || req.query.pinned === 'true';
+        const pinnedOnly = req.query.pinned === '1' || req.query.pinned === 'true';
         const pinnedFirst = req.query.pinnedFirst === '1' || req.query.pinnedFirst === 'true';
         const result = getDownloads(groupId, limit, offset, type, { pinnedOnly, pinnedFirst });
 
@@ -3077,22 +3453,28 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
         // breaks every file that was downloaded under a different folder
         // name (e.g. "Unknown" before the group was named, or a renamed
         // group whose old folder still has the old files).
-        const files = result.files.map(row => {
+        const files = result.files.map((row) => {
             // Map DB file_type to folder name (used only as a hint when
             // file_path is missing or invalid).
-            const typeFolder = row.file_type === 'photo' ? 'images'
-                : row.file_type === 'video' ? 'videos'
-                : row.file_type === 'audio' ? 'audio'
-                : row.file_type === 'sticker' ? 'stickers'
-                : 'documents';
+            const typeFolder =
+                row.file_type === 'photo'
+                    ? 'images'
+                    : row.file_type === 'video'
+                      ? 'videos'
+                      : row.file_type === 'audio'
+                        ? 'audio'
+                        : row.file_type === 'sticker'
+                          ? 'stickers'
+                          : 'documents';
 
             // Prefer the stored relative path. Normalise Windows-style
             // backslashes into forward slashes for the URL.
             const stored = (row.file_path || '').replace(/\\/g, '/');
-            const fullPath = stored && stored.includes('/')
-                ? stored
-                : `${groupFolder}/${typeFolder}/${row.file_name}`;
-            
+            const fullPath =
+                stored && stored.includes('/')
+                    ? stored
+                    : `${groupFolder}/${typeFolder}/${row.file_name}`;
+
             return {
                 id: row.id,
                 name: row.file_name,
@@ -3114,7 +3496,7 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
             files,
             total: result.total,
             page,
-            totalPages: Math.ceil(result.total / limit)
+            totalPages: Math.ceil(result.total / limit),
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -3126,7 +3508,8 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
 // used to escape the root. Returns null if the request is unsafe or the file
 // doesn't exist.
 async function safeResolveDownload(userPath) {
-    if (typeof userPath !== 'string' || userPath.length === 0) return { ok: false, reason: 'forbidden' };
+    if (typeof userPath !== 'string' || userPath.length === 0)
+        return { ok: false, reason: 'forbidden' };
     if (userPath.includes('\0')) return { ok: false, reason: 'forbidden' };
     let normalized = path.normalize(userPath);
     // Tolerate the legacy `data/downloads/` prefix that was sneaking
@@ -3151,8 +3534,9 @@ async function safeResolveDownload(userPath) {
     const candidate = path.join(DOWNLOADS_DIR, normalized);
     const rootReal = await fs.realpath(DOWNLOADS_DIR).catch(() => path.resolve(DOWNLOADS_DIR));
     let real;
-    try { real = await fs.realpath(candidate); }
-    catch (e) {
+    try {
+        real = await fs.realpath(candidate);
+    } catch (e) {
         // ENOENT → genuinely missing (deleted / never written / DB drift).
         // Tell the caller so the route can return 404 instead of a
         // misleading 403 that makes users think it's a permission bug.
@@ -3176,20 +3560,30 @@ app.get('/api/downloads/search', async (req, res) => {
 
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
         const groupFolderById = new Map();
-        for (const g of (config.groups || [])) groupFolderById.set(String(g.id), sanitizeName(g.name));
+        for (const g of config.groups || [])
+            groupFolderById.set(String(g.id), sanitizeName(g.name));
 
-        const files = r.files.map(row => {
-            const folder = groupFolderById.get(String(row.group_id)) || sanitizeName(row.group_name || 'unknown');
-            const typeFolder = row.file_type === 'photo' ? 'images'
-                : row.file_type === 'video' ? 'videos'
-                : row.file_type === 'audio' ? 'audio'
-                : row.file_type === 'sticker' ? 'stickers' : 'documents';
+        const files = r.files.map((row) => {
+            const folder =
+                groupFolderById.get(String(row.group_id)) ||
+                sanitizeName(row.group_name || 'unknown');
+            const typeFolder =
+                row.file_type === 'photo'
+                    ? 'images'
+                    : row.file_type === 'video'
+                      ? 'videos'
+                      : row.file_type === 'audio'
+                        ? 'audio'
+                        : row.file_type === 'sticker'
+                          ? 'stickers'
+                          : 'documents';
             // Use the stored relative path when present (matches the actual
             // on-disk location even if the group has since been renamed).
             const stored = (row.file_path || '').replace(/\\/g, '/');
-            const fullPath = stored && stored.includes('/')
-                ? stored
-                : `${folder}/${typeFolder}/${row.file_name}`;
+            const fullPath =
+                stored && stored.includes('/')
+                    ? stored
+                    : `${folder}/${typeFolder}/${row.file_name}`;
             return {
                 id: row.id,
                 groupId: row.group_id,
@@ -3233,7 +3627,12 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         for (const p of pathList) {
             const sr = await safeResolveDownload(p);
             if (sr.ok) {
-                try { await fs.unlink(sr.real); unlinked++; } catch (e) { if (e.code !== 'ENOENT') throw e; }
+                try {
+                    await fs.unlink(sr.real);
+                    unlinked++;
+                } catch (e) {
+                    if (e.code !== 'ENOENT') throw e;
+                }
             }
             processed += 1;
             if (processed % 50 === 0 || processed === total) {
@@ -3242,20 +3641,37 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         }
         if (idList.length) {
             const db = getDb();
-            const rows = db.prepare(`SELECT id, group_id, group_name, file_name, file_type FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`).all(...idList);
+            const rows = db
+                .prepare(
+                    `SELECT id, group_id, group_name, file_name, file_type FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`,
+                )
+                .all(...idList);
             const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
             const folderById = new Map();
-            for (const g of (config.groups || [])) folderById.set(String(g.id), sanitizeName(g.name));
+            for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
             for (const row of rows) {
-                const folder = folderById.get(String(row.group_id)) || sanitizeName(row.group_name || 'unknown');
-                const typeFolder = row.file_type === 'photo' ? 'images'
-                    : row.file_type === 'video' ? 'videos'
-                    : row.file_type === 'audio' ? 'audio'
-                    : row.file_type === 'sticker' ? 'stickers' : 'documents';
+                const folder =
+                    folderById.get(String(row.group_id)) ||
+                    sanitizeName(row.group_name || 'unknown');
+                const typeFolder =
+                    row.file_type === 'photo'
+                        ? 'images'
+                        : row.file_type === 'video'
+                          ? 'videos'
+                          : row.file_type === 'audio'
+                            ? 'audio'
+                            : row.file_type === 'sticker'
+                              ? 'stickers'
+                              : 'documents';
                 const candidate = `${folder}/${typeFolder}/${row.file_name}`;
                 const sr = await safeResolveDownload(candidate);
                 if (sr.ok) {
-                    try { await fs.unlink(sr.real); unlinked++; } catch (e) { if (e.code !== 'ENOENT') throw e; }
+                    try {
+                        await fs.unlink(sr.real);
+                        unlinked++;
+                    } catch (e) {
+                        if (e.code !== 'ENOENT') throw e;
+                    }
                 }
                 processed += 1;
                 if (processed % 50 === 0 || processed === total) {
@@ -3266,13 +3682,17 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         const dbDeleted = deleteDownloadsBy({ ids: idList, filePaths: pathList });
         onProgress({ processed: total, total, stage: 'purging_thumbs' });
         for (const id of idList) {
-            try { await purgeThumbsForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
         }
         broadcast({ type: 'bulk_delete', unlinked, dbDeleted });
         return { unlinked, dbDeleted, requested: total };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A bulk delete is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A bulk delete is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true, queued: idList.length + pathList.length });
 });
@@ -3311,17 +3731,23 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
 
         // Lazy-load to keep the cold start cheap when the bulk-zip endpoint
         // is never called.
-        const { ZipStream, ZIP_MAX_BYTES, ZIP_MAX_ENTRIES, safeArchiveName }
-            = await import('../core/zip-stream.js');
+        const { ZipStream, ZIP_MAX_BYTES, ZIP_MAX_ENTRIES, safeArchiveName } = await import(
+            '../core/zip-stream.js'
+        );
 
         if (idList.length > ZIP_MAX_ENTRIES) {
-            return res.status(413).json({ error: `Too many files in one ZIP (cap ${ZIP_MAX_ENTRIES}). Split into smaller batches.` });
+            return res.status(413).json({
+                error: `Too many files in one ZIP (cap ${ZIP_MAX_ENTRIES}). Split into smaller batches.`,
+            });
         }
 
         // Resolve everything up-front so we can size-check + stream sensibly.
         const db = getDb();
         const placeholders = idList.map(() => '?').join(',');
-        const rows = db.prepare(`SELECT id, group_id, group_name, file_name, file_size, file_type, file_path FROM downloads WHERE id IN (${placeholders})`)
+        const rows = db
+            .prepare(
+                `SELECT id, group_id, group_name, file_name, file_size, file_type, file_path FROM downloads WHERE id IN (${placeholders})`,
+            )
             .all(...idList);
 
         if (rows.length === 0) return res.status(404).json({ error: 'No matching files' });
@@ -3329,8 +3755,10 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
         let configGroups = new Map();
         try {
             const cfg = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-            for (const g of (cfg.groups || [])) configGroups.set(String(g.id), g);
-        } catch { /* fall back to row.group_name */ }
+            for (const g of cfg.groups || []) configGroups.set(String(g.id), g);
+        } catch {
+            /* fall back to row.group_name */
+        }
 
         // Build resolved entries. Each entry knows its abs path, the
         // archive-relative name we want to store it under, and the size.
@@ -3338,17 +3766,26 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
         let totalBytes = 0;
         const seenNames = new Set();
         for (const row of rows) {
-            const folder = sanitizeName(configGroups.get(String(row.group_id))?.name
-                || row.group_name
-                || String(row.group_id || 'group'));
-            const typeFolder = row.file_type === 'photo' ? 'images'
-                : row.file_type === 'video' ? 'videos'
-                : row.file_type === 'audio' ? 'audio'
-                : row.file_type === 'sticker' ? 'stickers' : 'documents';
+            const folder = sanitizeName(
+                configGroups.get(String(row.group_id))?.name ||
+                    row.group_name ||
+                    String(row.group_id || 'group'),
+            );
+            const typeFolder =
+                row.file_type === 'photo'
+                    ? 'images'
+                    : row.file_type === 'video'
+                      ? 'videos'
+                      : row.file_type === 'audio'
+                        ? 'audio'
+                        : row.file_type === 'sticker'
+                          ? 'stickers'
+                          : 'documents';
             const stored = (row.file_path || '').replace(/\\/g, '/');
-            const candidate = stored && stored.includes('/')
-                ? stored
-                : `${folder}/${typeFolder}/${row.file_name}`;
+            const candidate =
+                stored && stored.includes('/')
+                    ? stored
+                    : `${folder}/${typeFolder}/${row.file_name}`;
             const sr = await safeResolveDownload(candidate);
             if (!sr.ok) continue;
 
@@ -3381,7 +3818,7 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
         // folder when every file is from the same group, otherwise fall
         // back to "library".
         const firstGroup = entries[0].archiveName.split('/')[0];
-        const allSameGroup = entries.every(e => e.archiveName.startsWith(firstGroup + '/'));
+        const allSameGroup = entries.every((e) => e.archiveName.startsWith(firstGroup + '/'));
         const labelGroup = allSameGroup ? firstGroup : 'library';
         const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
         const archiveBase = `tgdl-${safeArchiveName(labelGroup)}-${entries.length}files-${ts}.zip`;
@@ -3422,7 +3859,9 @@ app.delete('/api/file', async (req, res) => {
         const r = await safeResolveDownload(filePath);
         if (!r.ok) {
             const status = r.reason === 'missing' ? 404 : 403;
-            return res.status(status).json({ error: r.reason === 'missing' ? 'File not found' : 'Access denied' });
+            return res
+                .status(status)
+                .json({ error: r.reason === 'missing' ? 'File not found' : 'Access denied' });
         }
 
         await fs.unlink(r.real);
@@ -3434,11 +3873,15 @@ app.delete('/api/file', async (req, res) => {
         // bytes from cache until the next "Rebuild thumbnails".
         const db = getDb();
         const fileName = path.basename(r.real);
-        const matchingIds = db.prepare('SELECT id FROM downloads WHERE file_name = ?')
-            .all(fileName).map(row => row.id);
+        const matchingIds = db
+            .prepare('SELECT id FROM downloads WHERE file_name = ?')
+            .all(fileName)
+            .map((row) => row.id);
         db.prepare('DELETE FROM downloads WHERE file_name = ?').run(fileName);
         for (const id of matchingIds) {
-            try { await purgeThumbsForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
         }
 
         broadcast({ type: 'file_deleted', path: filePath });
@@ -3462,8 +3905,12 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
     const tracker = _groupPurgeTracker(groupId);
     const r = tracker.tryStart(async ({ onProgress }) => {
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        const configGroup = (config.groups || []).find(g => String(g.id) === String(groupId));
-        const dbRow = getDb().prepare('SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL LIMIT 1').get(String(groupId));
+        const configGroup = (config.groups || []).find((g) => String(g.id) === String(groupId));
+        const dbRow = getDb()
+            .prepare(
+                'SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL LIMIT 1',
+            )
+            .get(String(groupId));
         const groupName = configGroup?.name || dbRow?.group_name || 'unknown';
         const folderName = sanitizeName(groupName);
         onProgress({ stage: 'counting', groupId });
@@ -3485,7 +3932,12 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
             filesDeleted = countFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
             await fs.rm(folderPath, { recursive: true, force: true });
-            onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: filesDeleted });
+            onProgress({
+                stage: 'deleting_files',
+                groupId,
+                total: filesDeleted,
+                processed: filesDeleted,
+            });
         }
 
         // 2. Delete DB records
@@ -3493,14 +3945,16 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
         const dbResult = deleteGroupDownloads(groupId);
 
         // 3. Remove from config
-        config.groups = (config.groups || []).filter(g => String(g.id) !== String(groupId));
+        config.groups = (config.groups || []).filter((g) => String(g.id) !== String(groupId));
         await writeConfigAtomic(config);
 
         // 4. Delete profile photo
         const photoPath = path.join(PHOTOS_DIR, `${groupId}.jpg`);
         if (existsSync(photoPath)) await fs.unlink(photoPath);
 
-        console.log(`PURGED: ${groupName} — ${filesDeleted} files, ${dbResult.deletedDownloads} DB records`);
+        console.log(
+            `PURGED: ${groupName} — ${filesDeleted} files, ${dbResult.deletedDownloads} DB records`,
+        );
         broadcast({ type: 'group_purged', groupId });
         return {
             groupId,
@@ -3513,7 +3967,11 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
         };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A purge for this group is already running', code: 'ALREADY_RUNNING', snapshot: r.snapshot });
+        return res.status(409).json({
+            error: 'A purge for this group is already running',
+            code: 'ALREADY_RUNNING',
+            snapshot: r.snapshot,
+        });
     }
     res.json({ success: true, started: true, groupId });
 });
@@ -3536,7 +3994,7 @@ app.delete('/api/purge/all', async (req, res) => {
         const dirs = existsSync(DOWNLOADS_DIR)
             ? fsSync.readdirSync(DOWNLOADS_DIR, { withFileTypes: true })
             : [];
-        const groupDirs = dirs.filter(d => d.isDirectory());
+        const groupDirs = dirs.filter((d) => d.isDirectory());
         const totalGroups = groupDirs.length;
         let processed = 0;
         onProgress({ processed: 0, total: totalGroups, stage: 'deleting_files' });
@@ -3575,7 +4033,9 @@ app.delete('/api/purge/all', async (req, res) => {
         };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A factory reset is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A factory reset is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -3655,14 +4115,18 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         am = await getAccountManager();
     } catch (e) {
         const { status, body } = tgAuthErrorBody(e);
-        return res.status(status === 400 ? 500 : status).json(body.error ? body : { error: e.message });
+        return res
+            .status(status === 400 ? 500 : status)
+            .json(body.error ? body : { error: e.message });
     }
     if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
     const tracker = _jobTrackers.resyncDialogs;
     const r = tracker.tryStart(async ({ onProgress }) => {
-        try { entityCache.clear(); } catch {}
+        try {
+            entityCache.clear();
+        } catch {}
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        const ids = new Set((config.groups || []).map(g => String(g.id)));
+        const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
             const rows = getDb().prepare('SELECT DISTINCT group_id FROM downloads').all();
             for (const rr of rows) ids.add(String(rr.group_id));
@@ -3678,12 +4142,20 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
             const resolved = await resolveEntityAcrossAccounts(id);
             if (resolved) {
                 const e = resolved.entity;
-                const realName = e?.title
-                    || (e?.firstName && (e.firstName + (e.lastName ? ' ' + e.lastName : '')))
-                    || e?.username || null;
+                const realName =
+                    e?.title ||
+                    (e?.firstName && e.firstName + (e.lastName ? ' ' + e.lastName : '')) ||
+                    e?.username ||
+                    null;
                 if (realName) {
-                    const cg = (config.groups || []).find(g => String(g.id) === id);
-                    if (cg && (!cg.name || cg.name === 'Unknown' || cg.name === id || cg.name.startsWith('Group '))) {
+                    const cg = (config.groups || []).find((g) => String(g.id) === id);
+                    if (
+                        cg &&
+                        (!cg.name ||
+                            cg.name === 'Unknown' ||
+                            cg.name === id ||
+                            cg.name.startsWith('Group '))
+                    ) {
                         cg.name = realName;
                         mutated = true;
                     }
@@ -3698,7 +4170,9 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         if (pendingDbUpdates.length > 0) {
             try {
                 const db = getDb();
-                const stmt = db.prepare(`UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`);
+                const stmt = db.prepare(
+                    `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`,
+                );
                 const tx = db.transaction((rows) => {
                     for (const [name, gid] of rows) stmt.run(name, gid, gid);
                 });
@@ -3714,7 +4188,9 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         return { scanned: total, updated };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'Resync already in progress', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'Resync already in progress', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -3733,7 +4209,11 @@ app.post('/api/maintenance/restart-monitor', async (req, res) => {
     const r = t.tryStart(async () => {
         const wasRunning = runtime.state === 'running';
         if (runtime.state !== 'stopped') {
-            try { await runtime.stop(); } catch (e) { console.warn('restart-monitor stop:', e.message); }
+            try {
+                await runtime.stop();
+            } catch (e) {
+                console.warn('restart-monitor stop:', e.message);
+            }
         }
         if (!wasRunning) {
             return { restarted: false, note: 'Monitor was not running; nothing to restart.' };
@@ -3748,7 +4228,9 @@ app.post('/api/maintenance/restart-monitor', async (req, res) => {
         return { restarted: true, status: runtime.status() };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'Restart already in progress', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'Restart already in progress', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -3767,12 +4249,14 @@ app.post('/api/maintenance/db/integrity', async (req, res) => {
     const r = t.tryStart(async () => {
         const db = getDb();
         const rows = db.prepare('PRAGMA integrity_check').all();
-        const messages = rows.map(rr => rr.integrity_check).filter(Boolean);
+        const messages = rows.map((rr) => rr.integrity_check).filter(Boolean);
         const ok = messages.length === 1 && messages[0] === 'ok';
         return { ok, messages };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'An integrity check is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'An integrity check is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -3796,7 +4280,9 @@ app.post('/api/maintenance/files/verify', async (req, res) => {
         return await integrity.sweep(onProgress);
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A verify is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A verify is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -3826,11 +4312,17 @@ app.post('/api/maintenance/reindex', async (req, res) => {
             const cfg = await readConfigSafe();
             const groups = Array.isArray(cfg?.groups) ? cfg.groups : [];
             const result = await integrity.reindexFromDisk(groups, (p) => {
-                try { broadcast({ type: 'reindex_progress', ...p }); } catch {}
+                try {
+                    broadcast({ type: 'reindex_progress', ...p });
+                } catch {}
             });
-            try { broadcast({ type: 'reindex_done', ...result }); } catch {}
+            try {
+                broadcast({ type: 'reindex_done', ...result });
+            } catch {}
         } catch (e) {
-            try { broadcast({ type: 'reindex_done', error: e?.message || String(e) }); } catch {}
+            try {
+                broadcast({ type: 'reindex_done', error: e?.message || String(e) });
+            } catch {}
         } finally {
             _reindexBgRunning = false;
         }
@@ -3861,11 +4353,16 @@ app.post('/api/maintenance/db/vacuum', async (req, res) => {
         return {
             beforeBytes: Number(beforePages) * Number(pageSize),
             afterBytes: Number(afterPages) * Number(pageSize),
-            reclaimedBytes: Math.max(0, (Number(beforePages) - Number(afterPages)) * Number(pageSize)),
+            reclaimedBytes: Math.max(
+                0,
+                (Number(beforePages) - Number(afterPages)) * Number(pageSize),
+            ),
         };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A vacuum is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A vacuum is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -3897,50 +4394,78 @@ app.get('/api/maintenance/db/vacuum/status', async (req, res) => {
 // recover the in-flight state via GET `/dedup/status` after a tab close.
 let _dedupRunning = false;
 let _dedupState = {
-    running: false, stage: 'idle',
-    processed: 0, total: 0, hashed: 0, groups: 0,
-    startedAt: 0, finishedAt: 0,
-    result: null, error: null,
+    running: false,
+    stage: 'idle',
+    processed: 0,
+    total: 0,
+    hashed: 0,
+    groups: 0,
+    startedAt: 0,
+    finishedAt: 0,
+    result: null,
+    error: null,
 };
 app.post('/api/maintenance/dedup/scan', async (req, res) => {
     if (_dedupRunning) {
-        return res.status(409).json({ error: 'A dedup scan is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A dedup scan is already running', code: 'ALREADY_RUNNING' });
     }
     _dedupRunning = true;
     _dedupState = {
-        running: true, stage: 'starting',
-        processed: 0, total: 0, hashed: 0, groups: 0,
-        startedAt: Date.now(), finishedAt: 0,
-        result: null, error: null,
+        running: true,
+        stage: 'starting',
+        processed: 0,
+        total: 0,
+        hashed: 0,
+        groups: 0,
+        startedAt: Date.now(),
+        finishedAt: 0,
+        result: null,
+        error: null,
     };
     res.json({ success: true, started: true });
-    try { broadcast({ type: 'dedup_progress', ..._dedupState }); } catch {}
+    try {
+        broadcast({ type: 'dedup_progress', ..._dedupState });
+    } catch {}
     log({ source: 'dedup', level: 'info', msg: 'dedup scan starting' });
     (async () => {
         try {
             const result = await dedupFindDuplicates({
                 onProgress: (p) => {
                     Object.assign(_dedupState, p, { running: true });
-                    try { broadcast({ type: 'dedup_progress', ...p, running: true }); } catch {}
+                    try {
+                        broadcast({ type: 'dedup_progress', ...p, running: true });
+                    } catch {}
                 },
             });
             _dedupState = {
-                ..._dedupState, ...result,
-                running: false, stage: 'done',
+                ..._dedupState,
+                ...result,
+                running: false,
+                stage: 'done',
                 finishedAt: Date.now(),
                 result,
             };
-            try { broadcast({ type: 'dedup_done', ...result }); } catch {}
-            log({ source: 'dedup', level: 'info',
-                msg: `dedup scan done — groups=${result?.groups?.length ?? 0} duplicates=${result?.totalDuplicates ?? 0}` });
+            try {
+                broadcast({ type: 'dedup_done', ...result });
+            } catch {}
+            log({
+                source: 'dedup',
+                level: 'info',
+                msg: `dedup scan done — groups=${result?.groups?.length ?? 0} duplicates=${result?.totalDuplicates ?? 0}`,
+            });
         } catch (e) {
             _dedupState = {
                 ..._dedupState,
-                running: false, stage: 'error',
+                running: false,
+                stage: 'error',
                 error: e?.message || String(e),
                 finishedAt: Date.now(),
             };
-            try { broadcast({ type: 'dedup_done', error: e?.message || String(e) }); } catch {}
+            try {
+                broadcast({ type: 'dedup_done', error: e?.message || String(e) });
+            } catch {}
             log({ source: 'dedup', level: 'error', msg: `dedup scan failed: ${e?.message || e}` });
         } finally {
             _dedupRunning = false;
@@ -3968,7 +4493,7 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
     if (!Array.isArray(ids) || !ids.length) {
         return res.status(400).json({ error: 'ids array required' });
     }
-    const cleanIds = ids.map(n => Number(n)).filter(n => Number.isInteger(n) && n > 0);
+    const cleanIds = ids.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0);
     if (!cleanIds.length) {
         return res.status(400).json({ error: 'No valid ids supplied' });
     }
@@ -3981,17 +4506,23 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
         // per id). Stream progress so the gallery-select UI can show a bar.
         let processed = 0;
         for (const id of cleanIds) {
-            try { await purgeThumbsForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
             processed += 1;
             if (processed % 50 === 0 || processed === total) {
                 onProgress({ processed, total, stage: 'purging_thumbs' });
             }
         }
-        try { broadcast({ type: 'bulk_delete', ids: cleanIds }); } catch {}
+        try {
+            broadcast({ type: 'bulk_delete', ids: cleanIds });
+        } catch {}
         return { ...result, requested: cleanIds.length, ids: cleanIds };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A bulk delete is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A bulk delete is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true, queued: cleanIds.length });
 });
@@ -4045,12 +4576,20 @@ app.get('/api/thumbs/:id', async (req, res) => {
                 try {
                     const cfg = loadConfig();
                     warnMisses = cfg?.advanced?.thumbs?.warnMisses !== false;
-                } catch { /* no config yet → default on */ }
-                if (warnMisses
-                    && _thumbMissBatch.count >= THUMB_MISS_FLOOR
-                    && (now - _thumbMissBatch.lastWarnedAt) >= THUMB_MISS_COOLDOWN_MS) {
+                } catch {
+                    /* no config yet → default on */
+                }
+                if (
+                    warnMisses &&
+                    _thumbMissBatch.count >= THUMB_MISS_FLOOR &&
+                    now - _thumbMissBatch.lastWarnedAt >= THUMB_MISS_COOLDOWN_MS
+                ) {
                     const mins = Math.round(THUMB_MISS_WINDOW_MS / 60_000);
-                    log({ source: 'thumbs', level: 'warn', msg: `${_thumbMissBatch.count} thumb misses in the last ${mins} min (DB row missing, file off disk, or source not thumbnailable). Try Maintenance → Verify files / Re-index.` });
+                    log({
+                        source: 'thumbs',
+                        level: 'warn',
+                        msg: `${_thumbMissBatch.count} thumb misses in the last ${mins} min (DB row missing, file off disk, or source not thumbnailable). Try Maintenance → Verify files / Re-index.`,
+                    });
                     _thumbMissBatch.lastWarnedAt = now;
                 }
                 _thumbMissBatch.count = 1;
@@ -4096,7 +4635,9 @@ app.post('/api/maintenance/thumbs/rebuild', async (req, res) => {
         return { removed };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A thumbnail wipe is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A thumbnail wipe is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -4123,9 +4664,15 @@ let _thumbBuildRunning = false;
 let _thumbBuildState = {
     running: false,
     stage: 'idle',
-    processed: 0, total: 0,
-    built: 0, skipped: 0, errored: 0, scanned: 0,
-    startedAt: 0, finishedAt: 0, error: null,
+    processed: 0,
+    total: 0,
+    built: 0,
+    skipped: 0,
+    errored: 0,
+    scanned: 0,
+    startedAt: 0,
+    finishedAt: 0,
+    error: null,
 };
 app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
     if (_thumbBuildRunning) {
@@ -4133,10 +4680,17 @@ app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
     }
     _thumbBuildRunning = true;
     _thumbBuildState = {
-        running: true, stage: 'starting',
-        processed: 0, total: 0,
-        built: 0, skipped: 0, errored: 0, scanned: 0,
-        startedAt: Date.now(), finishedAt: 0, error: null,
+        running: true,
+        stage: 'starting',
+        processed: 0,
+        total: 0,
+        built: 0,
+        skipped: 0,
+        errored: 0,
+        scanned: 0,
+        startedAt: Date.now(),
+        finishedAt: 0,
+        error: null,
     };
     res.json({ success: true, started: true });
     log({ source: 'thumbs', level: 'info', msg: 'thumbs build-all starting' });
@@ -4148,26 +4702,42 @@ app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
                     // /build/status endpoint; broadcast forwards the same
                     // shape to WS subscribers.
                     Object.assign(_thumbBuildState, p, { running: true });
-                    try { broadcast({ type: 'thumbs_progress', ...p }); } catch {}
+                    try {
+                        broadcast({ type: 'thumbs_progress', ...p });
+                    } catch {}
                 },
             });
             _thumbBuildState = {
-                ..._thumbBuildState, ...r,
-                running: false, stage: 'done',
+                ..._thumbBuildState,
+                ...r,
+                running: false,
+                stage: 'done',
                 finishedAt: Date.now(),
             };
-            try { broadcast({ type: 'thumbs_done', ...r }); } catch {}
-            log({ source: 'thumbs', level: 'info',
-                msg: `thumbs build-all done — scanned=${r?.scanned ?? 0} built=${r?.built ?? 0} skipped=${r?.skipped ?? 0} errored=${r?.errored ?? 0}` });
+            try {
+                broadcast({ type: 'thumbs_done', ...r });
+            } catch {}
+            log({
+                source: 'thumbs',
+                level: 'info',
+                msg: `thumbs build-all done — scanned=${r?.scanned ?? 0} built=${r?.built ?? 0} skipped=${r?.skipped ?? 0} errored=${r?.errored ?? 0}`,
+            });
         } catch (e) {
             _thumbBuildState = {
                 ..._thumbBuildState,
-                running: false, stage: 'error',
+                running: false,
+                stage: 'error',
                 error: e?.message || String(e),
                 finishedAt: Date.now(),
             };
-            try { broadcast({ type: 'thumbs_done', error: e?.message || String(e) }); } catch {}
-            log({ source: 'thumbs', level: 'error', msg: `thumbs build-all failed: ${e?.message || e}` });
+            try {
+                broadcast({ type: 'thumbs_done', error: e?.message || String(e) });
+            } catch {}
+            log({
+                source: 'thumbs',
+                level: 'error',
+                msg: `thumbs build-all failed: ${e?.message || e}`,
+            });
         } finally {
             _thumbBuildRunning = false;
         }
@@ -4198,8 +4768,19 @@ app.get('/api/maintenance/thumbs/hwaccel-probe', async (req, res) => {
         }).catch(() => '');
         // Output shape (ffmpeg ≥4.x):
         //   Hardware acceleration methods:\nvaapi\nqsv\ncuda\nvideotoolbox\n
-        const KNOWN = new Set(['vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va', 'dxva2', 'opencl', 'vulkan', 'drm']);
-        const available = out.split(/\r?\n/)
+        const KNOWN = new Set([
+            'vaapi',
+            'qsv',
+            'cuda',
+            'videotoolbox',
+            'd3d11va',
+            'dxva2',
+            'opencl',
+            'vulkan',
+            'drm',
+        ]);
+        const available = out
+            .split(/\r?\n/)
             .map((s) => s.trim().toLowerCase())
             .filter((s) => KNOWN.has(s));
         res.json({
@@ -4207,7 +4788,10 @@ app.get('/api/maintenance/thumbs/hwaccel-probe', async (req, res) => {
             ffmpegPath: bin,
             // The dropdown only exposes options we have UI rows for; the
             // others come back so docs / debugging surface them.
-            recommended: available.find((b) => ['vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va'].includes(b)) || null,
+            recommended:
+                available.find((b) =>
+                    ['vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va'].includes(b),
+                ) || null,
         });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e), available: [] });
@@ -4252,20 +4836,37 @@ let _faststartRunning = false;
 let _faststartState = {
     running: false,
     stage: 'idle',
-    processed: 0, total: 0,
-    optimized: 0, already: 0, skipped: 0, errored: 0, scanned: 0,
-    startedAt: 0, finishedAt: 0, error: null,
+    processed: 0,
+    total: 0,
+    optimized: 0,
+    already: 0,
+    skipped: 0,
+    errored: 0,
+    scanned: 0,
+    startedAt: 0,
+    finishedAt: 0,
+    error: null,
 };
 app.post('/api/maintenance/faststart/scan', async (req, res) => {
     if (_faststartRunning) {
-        return res.status(409).json({ error: 'A faststart sweep is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A faststart sweep is already running', code: 'ALREADY_RUNNING' });
     }
     _faststartRunning = true;
     _faststartState = {
-        running: true, stage: 'starting',
-        processed: 0, total: 0,
-        optimized: 0, already: 0, skipped: 0, errored: 0, scanned: 0,
-        startedAt: Date.now(), finishedAt: 0, error: null,
+        running: true,
+        stage: 'starting',
+        processed: 0,
+        total: 0,
+        optimized: 0,
+        already: 0,
+        skipped: 0,
+        errored: 0,
+        scanned: 0,
+        startedAt: Date.now(),
+        finishedAt: 0,
+        error: null,
     };
     res.json({ success: true, started: true });
     log({ source: 'faststart', level: 'info', msg: 'faststart sweep starting' });
@@ -4275,26 +4876,42 @@ app.post('/api/maintenance/faststart/scan', async (req, res) => {
             const r = await optimizeAll({
                 onProgress: (p) => {
                     Object.assign(_faststartState, p, { running: true });
-                    try { broadcast({ type: 'faststart_progress', ...p }); } catch {}
+                    try {
+                        broadcast({ type: 'faststart_progress', ...p });
+                    } catch {}
                 },
             });
             _faststartState = {
-                ..._faststartState, ...r,
-                running: false, stage: 'done',
+                ..._faststartState,
+                ...r,
+                running: false,
+                stage: 'done',
                 finishedAt: Date.now(),
             };
-            try { broadcast({ type: 'faststart_done', ...r }); } catch {}
-            log({ source: 'faststart', level: 'info',
-                msg: `faststart sweep done — scanned=${r?.scanned ?? 0} optimized=${r?.optimized ?? 0} already=${r?.already ?? 0} skipped=${r?.skipped ?? 0} errored=${r?.errored ?? 0}` });
+            try {
+                broadcast({ type: 'faststart_done', ...r });
+            } catch {}
+            log({
+                source: 'faststart',
+                level: 'info',
+                msg: `faststart sweep done — scanned=${r?.scanned ?? 0} optimized=${r?.optimized ?? 0} already=${r?.already ?? 0} skipped=${r?.skipped ?? 0} errored=${r?.errored ?? 0}`,
+            });
         } catch (e) {
             _faststartState = {
                 ..._faststartState,
-                running: false, stage: 'error',
+                running: false,
+                stage: 'error',
                 error: e?.message || String(e),
                 finishedAt: Date.now(),
             };
-            try { broadcast({ type: 'faststart_done', error: e?.message || String(e) }); } catch {}
-            log({ source: 'faststart', level: 'error', msg: `faststart sweep failed: ${e?.message || e}` });
+            try {
+                broadcast({ type: 'faststart_done', error: e?.message || String(e) });
+            } catch {}
+            log({
+                source: 'faststart',
+                level: 'error',
+                msg: `faststart sweep failed: ${e?.message || e}`,
+            });
         } finally {
             _faststartRunning = false;
         }
@@ -4333,10 +4950,14 @@ function _nsfwCfg() {
             enabled: cfg.enabled === true,
             model: cfg.model || NSFW_DEFAULTS.model,
             threshold: Number.isFinite(cfg.threshold) ? cfg.threshold : NSFW_DEFAULTS.threshold,
-            concurrency: Number.isFinite(cfg.concurrency) ? cfg.concurrency : NSFW_DEFAULTS.concurrency,
+            concurrency: Number.isFinite(cfg.concurrency)
+                ? cfg.concurrency
+                : NSFW_DEFAULTS.concurrency,
             batchSize: Number.isFinite(cfg.batchSize) ? cfg.batchSize : NSFW_DEFAULTS.batchSize,
-            fileTypes: (Array.isArray(cfg.fileTypes) && cfg.fileTypes.length)
-                ? cfg.fileTypes : NSFW_DEFAULTS.fileTypes,
+            fileTypes:
+                Array.isArray(cfg.fileTypes) && cfg.fileTypes.length
+                    ? cfg.fileTypes
+                    : NSFW_DEFAULTS.fileTypes,
             cacheDir: cfg.cacheDir || NSFW_DEFAULTS.cacheDir,
         };
     } catch {
@@ -4380,31 +5001,60 @@ app.post('/api/maintenance/nsfw/scan', async (req, res) => {
             });
         }
         if (nsfwIsScanRunning()) {
-            return res.status(409).json({ error: 'A scan is already running', code: 'ALREADY_RUNNING' });
+            return res
+                .status(409)
+                .json({ error: 'A scan is already running', code: 'ALREADY_RUNNING' });
         }
-        log({ source: 'nsfw', level: 'info', msg: `scan starting — model=${cfg.model} threshold=${cfg.threshold} fileTypes=[${(cfg.fileTypes || []).join(',')}] concurrency=${cfg.concurrency}` });
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `scan starting — model=${cfg.model} threshold=${cfg.threshold} fileTypes=[${(cfg.fileTypes || []).join(',')}] concurrency=${cfg.concurrency}`,
+        });
         let _lastLoggedScanned = 0;
-        const r = await nsfwStartScan(cfg,
+        const r = await nsfwStartScan(
+            cfg,
             (p) => {
-                try { broadcast({ type: 'nsfw_progress', ...p }); } catch {}
+                try {
+                    broadcast({ type: 'nsfw_progress', ...p });
+                } catch {}
                 // Throttle log spam — emit at most every 25 rows so a 10 000
                 // row library doesn't pump 10 000 lines into the web log.
-                if (typeof p?.scanned === 'number' && (p.scanned - _lastLoggedScanned) >= 25) {
+                if (typeof p?.scanned === 'number' && p.scanned - _lastLoggedScanned >= 25) {
                     _lastLoggedScanned = p.scanned;
-                    log({ source: 'nsfw', level: 'info', msg: `scan progress — ${p.scanned}/${p.total} (candidates=${p.candidates ?? 0}, keep=${p.keep ?? 0})` });
+                    log({
+                        source: 'nsfw',
+                        level: 'info',
+                        msg: `scan progress — ${p.scanned}/${p.total} (candidates=${p.candidates ?? 0}, keep=${p.keep ?? 0})`,
+                    });
                 }
             },
             (p) => {
-                try { broadcast({ type: 'nsfw_done', ...p }); } catch {}
+                try {
+                    broadcast({ type: 'nsfw_done', ...p });
+                } catch {}
                 if (p?.error) {
-                    log({ source: 'nsfw', level: 'error', msg: `scan finished with error: ${p.error}` });
+                    log({
+                        source: 'nsfw',
+                        level: 'error',
+                        msg: `scan finished with error: ${p.error}`,
+                    });
                 } else {
-                    log({ source: 'nsfw', level: 'info', msg: `scan done — scanned=${p?.scanned ?? 0} candidates=${p?.candidates ?? 0} keep=${p?.keep ?? 0} elapsed=${p?.finishedAt && p?.startedAt ? Math.round((p.finishedAt - p.startedAt) / 1000) + 's' : 'n/a'}` });
+                    log({
+                        source: 'nsfw',
+                        level: 'info',
+                        msg: `scan done — scanned=${p?.scanned ?? 0} candidates=${p?.candidates ?? 0} keep=${p?.keep ?? 0} elapsed=${p?.finishedAt && p?.startedAt ? Math.round((p.finishedAt - p.startedAt) / 1000) + 's' : 'n/a'}`,
+                    });
                 }
             },
             (p) => {
-                try { broadcast({ type: 'nsfw_model_downloading', ...p }); } catch {}
-                log({ source: 'nsfw', level: 'info', msg: `model load — ${p?.status || 'progress'} ${p?.file || ''} ${p?.progress != null ? Math.round(p.progress) + '%' : ''}` });
+                try {
+                    broadcast({ type: 'nsfw_model_downloading', ...p });
+                } catch {}
+                log({
+                    source: 'nsfw',
+                    level: 'info',
+                    msg: `model load — ${p?.status || 'progress'} ${p?.file || ''} ${p?.progress != null ? Math.round(p.progress) + '%' : ''}`,
+                });
             },
             // onLog — internal nsfw.js events flow into the same realtime
             // log stream the v2 page subscribes to.
@@ -4415,7 +5065,11 @@ app.post('/api/maintenance/nsfw/scan', async (req, res) => {
         }
         res.json({ success: true, ...r });
     } catch (e) {
-        log({ source: 'nsfw', level: 'error', msg: `scan failed to start: ${e?.message || e} (code=${e?.code || 'UNKNOWN'})` });
+        log({
+            source: 'nsfw',
+            level: 'error',
+            msg: `scan failed to start: ${e?.message || e} (code=${e?.code || 'UNKNOWN'})`,
+        });
         console.error('nsfw/scan:', e);
         const status = e.code === 'NSFW_LIB_MISSING' ? 503 : 500;
         res.status(status).json({ error: e.message, code: e.code || 'UNKNOWN' });
@@ -4434,8 +5088,13 @@ app.post('/api/maintenance/nsfw/scan/cancel', async (req, res) => {
 app.post('/api/maintenance/nsfw/preload', async (req, res) => {
     try {
         const cfg = _nsfwCfg();
-        const r = await nsfwPreloadClassifier(cfg,
-            (p) => { try { broadcast({ type: 'nsfw_model_downloading', ...p }); } catch {} },
+        const r = await nsfwPreloadClassifier(
+            cfg,
+            (p) => {
+                try {
+                    broadcast({ type: 'nsfw_model_downloading', ...p });
+                } catch {}
+            },
             (entry) => log(entry),
         );
         res.json({ success: true, ...r });
@@ -4460,7 +5119,11 @@ app.delete('/api/maintenance/nsfw/cache', async (req, res) => {
     try {
         const cfg = _nsfwCfg();
         const r = await nsfwClearCache(cfg);
-        log({ source: 'nsfw', level: 'info', msg: `cleared model cache — removed ${r.files} file(s) / ${r.bytes} bytes` });
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `cleared model cache — removed ${r.files} file(s) / ${r.bytes} bytes`,
+        });
         res.json({ success: true, ...r });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -4497,16 +5160,22 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
         if (!Array.isArray(ids) || !ids.length) {
             return res.status(400).json({ error: 'ids array required' });
         }
-        const cleanIds = ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+        const cleanIds = ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
         if (!cleanIds.length) {
             return res.status(400).json({ error: 'No valid ids supplied' });
         }
         const r = dedupDeleteByIds(cleanIds);
         for (const id of cleanIds) {
-            try { await purgeThumbsForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
         }
-        try { broadcast({ type: 'bulk_delete', ids: cleanIds }); } catch {}
-        try { broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() }); } catch {}
+        try {
+            broadcast({ type: 'bulk_delete', ids: cleanIds });
+        } catch {}
+        try {
+            broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
+        } catch {}
         res.json({ success: true, ...r });
     } catch (e) {
         console.error('nsfw/delete:', e);
@@ -4523,12 +5192,14 @@ app.post('/api/maintenance/nsfw/whitelist', async (req, res) => {
         if (!Array.isArray(ids) || !ids.length) {
             return res.status(400).json({ error: 'ids array required' });
         }
-        const cleanIds = ids.map(Number).filter(n => Number.isInteger(n) && n > 0);
+        const cleanIds = ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
         if (!cleanIds.length) {
             return res.status(400).json({ error: 'No valid ids supplied' });
         }
         const updated = whitelistNsfw(cleanIds);
-        try { broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() }); } catch {}
+        try {
+            broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
+        } catch {}
         res.json({ success: true, updated });
     } catch (e) {
         console.error('nsfw/whitelist:', e);
@@ -4541,7 +5212,9 @@ function _nsfwStateLight() {
         const cfg = _nsfwCfg();
         const s = getNsfwStats(cfg.fileTypes, cfg.threshold);
         return { ...s, running: nsfwIsScanRunning() };
-    } catch { return {}; }
+    } catch {
+        return {};
+    }
 }
 
 // ---- NSFW v2 (tier-aware review page) -------------------------------------
@@ -4561,7 +5234,11 @@ app.get('/api/maintenance/nsfw/v2/tiers', async (req, res) => {
     try {
         const cfg = _nsfwCfg();
         const counts = getNsfwTierCounts(cfg.fileTypes);
-        log({ source: 'nsfw', level: 'info', msg: `tier counts polled — scanned=${counts.scanned}/${counts.totalEligible}` });
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `tier counts polled — scanned=${counts.scanned}/${counts.totalEligible}`,
+        });
         res.json({ ...counts, threshold: cfg.threshold, tiers_meta: NSFW_TIERS });
     } catch (e) {
         log({ source: 'nsfw', level: 'error', msg: `nsfw/v2/tiers failed: ${e?.message || e}` });
@@ -4606,9 +5283,8 @@ async function _resolveBulkIds(body) {
         return body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
     }
     const cfg = _nsfwCfg();
-    const fileTypes = Array.isArray(body?.fileTypes) && body.fileTypes.length
-        ? body.fileTypes
-        : cfg.fileTypes;
+    const fileTypes =
+        Array.isArray(body?.fileTypes) && body.fileTypes.length ? body.fileTypes : cfg.fileTypes;
     // Walk the entire matching set page-by-page so very large tiers (15 000
     // rows in `def_not`) don't exceed any single-query limit.
     const all = [];
@@ -4659,19 +5335,31 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
         const result = dedupDeleteByIds(ids);
         let processed = 0;
         for (const id of ids) {
-            try { await purgeThumbsForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
             processed += 1;
             if (processed % 50 === 0 || processed === total) {
                 onProgress({ stage: 'purging_thumbs', op: 'delete', processed, total });
             }
         }
-        try { broadcast({ type: 'bulk_delete', ids }); } catch {}
-        try { broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() }); } catch {}
-        log({ source: 'nsfw', level: 'info', msg: `bulk-delete done: removed=${result?.deleted ?? result?.removed ?? ids.length}` });
+        try {
+            broadcast({ type: 'bulk_delete', ids });
+        } catch {}
+        try {
+            broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
+        } catch {}
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `bulk-delete done: removed=${result?.deleted ?? result?.removed ?? ids.length}`,
+        });
         return { op: 'delete', deleted: ids.length, ids, ...result };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -4685,12 +5373,20 @@ app.post('/api/maintenance/nsfw/v2/bulk-whitelist', async (req, res) => {
         if (!ids.length) return { op: 'whitelist', updated: 0, ids: [] };
         onProgress({ stage: 'updating', op: 'whitelist', total: ids.length });
         const updated = whitelistNsfw(ids);
-        try { broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() }); } catch {}
-        log({ source: 'nsfw', level: 'info', msg: `bulk-whitelist: marked ${updated} rows as 18+` });
+        try {
+            broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
+        } catch {}
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `bulk-whitelist: marked ${updated} rows as 18+`,
+        });
         return { op: 'whitelist', updated, ids };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -4702,12 +5398,20 @@ app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
     const r = tracker.tryStart(async ({ onProgress }) => {
         onProgress({ stage: 'updating', op: 'unwhitelist', total: ids.length });
         const updated = unwhitelistNsfw(ids);
-        try { broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() }); } catch {}
-        log({ source: 'nsfw', level: 'info', msg: `unwhitelist: ${updated} rows back into review` });
+        try {
+            broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
+        } catch {}
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `unwhitelist: ${updated} rows back into review`,
+        });
         return { op: 'unwhitelist', updated, ids };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -4721,11 +5425,17 @@ app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
         if (!ids.length) return { op: 'reclassify', cleared: 0, ids: [] };
         onProgress({ stage: 'clearing', op: 'reclassify', total: ids.length });
         const cleared = reclassifyNsfw(ids);
-        log({ source: 'nsfw', level: 'info', msg: `reclassify: cleared ${cleared} rows for re-scan` });
+        log({
+            source: 'nsfw',
+            level: 'info',
+            msg: `reclassify: cleared ${cleared} rows for re-scan`,
+        });
         return { op: 'reclassify', cleared, ids };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'A bulk NSFW operation is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -4799,8 +5509,11 @@ app.post('/api/backup/destinations/:id/test', async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
     try {
         const r = await backup.testConnection(id);
-        log({ source: 'backup', level: r.ok ? 'info' : 'warn',
-            msg: `test connection on #${id}: ${r.detail || (r.ok ? 'ok' : 'failed')}` });
+        log({
+            source: 'backup',
+            level: r.ok ? 'info' : 'warn',
+            msg: `test connection on #${id}: ${r.detail || (r.ok ? 'ok' : 'failed')}`,
+        });
         res.json({ success: true, ...r });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -4944,8 +5657,12 @@ function _aiCfg() {
             faces: {
                 enabled: cfg.faces?.enabled === true,
                 model: cfg.faces?.model || ai.AI_DEFAULTS.faces.model,
-                epsilon: Number.isFinite(cfg.faces?.epsilon) ? cfg.faces.epsilon : ai.AI_DEFAULTS.faces.epsilon,
-                minPoints: Number.isFinite(cfg.faces?.minPoints) ? cfg.faces.minPoints : ai.AI_DEFAULTS.faces.minPoints,
+                epsilon: Number.isFinite(cfg.faces?.epsilon)
+                    ? cfg.faces.epsilon
+                    : ai.AI_DEFAULTS.faces.epsilon,
+                minPoints: Number.isFinite(cfg.faces?.minPoints)
+                    ? cfg.faces.minPoints
+                    : ai.AI_DEFAULTS.faces.minPoints,
             },
             tags: {
                 enabled: cfg.tags?.enabled === true,
@@ -4953,9 +5670,14 @@ function _aiCfg() {
                 topK: Number.isFinite(cfg.tags?.topK) ? cfg.tags.topK : ai.AI_DEFAULTS.tags.topK,
             },
             phash: { enabled: cfg.phash?.enabled === true },
-            indexConcurrency: Number.isFinite(cfg.indexConcurrency) ? cfg.indexConcurrency : ai.AI_DEFAULTS.indexConcurrency,
+            indexConcurrency: Number.isFinite(cfg.indexConcurrency)
+                ? cfg.indexConcurrency
+                : ai.AI_DEFAULTS.indexConcurrency,
             batchSize: Number.isFinite(cfg.batchSize) ? cfg.batchSize : ai.AI_DEFAULTS.batchSize,
-            fileTypes: (Array.isArray(cfg.fileTypes) && cfg.fileTypes.length) ? cfg.fileTypes : ai.AI_DEFAULTS.fileTypes,
+            fileTypes:
+                Array.isArray(cfg.fileTypes) && cfg.fileTypes.length
+                    ? cfg.fileTypes
+                    : ai.AI_DEFAULTS.fileTypes,
         };
     } catch {
         return { ...ai.AI_DEFAULTS };
@@ -4968,7 +5690,9 @@ let _aiVecProbed = false;
 async function _maybeProbeVec() {
     if (_aiVecProbed) return;
     _aiVecProbed = true;
-    try { await ai.loadVecExtension(getDb, log); } catch {}
+    try {
+        await ai.loadVecExtension(getDb, log);
+    } catch {}
 }
 
 // Wire Transformers.js progress callbacks into the WS bus so the model
@@ -4980,13 +5704,18 @@ try {
         try {
             broadcast({
                 type: 'ai_model_progress',
-                kind, modelId,
+                kind,
+                modelId,
                 progress: progress || null,
                 ts: Date.now(),
             });
-        } catch { /* swallow — never crash the loader */ }
+        } catch {
+            /* swallow — never crash the loader */
+        }
     });
-} catch { /* setModelProgressHook is optional */ }
+} catch {
+    /* setModelProgressHook is optional */
+}
 
 // Per-capability descriptors used by the model-status endpoint. Mirrors
 // the names the dashboard already uses. The kind is the Transformers.js
@@ -4994,8 +5723,8 @@ try {
 // two kinds (CLIP image vs text).
 const _MODEL_CAPS = [
     { cap: 'embeddings', cfgKey: 'embeddings', defaultKind: 'image-feature-extraction' },
-    { cap: 'faces',      cfgKey: 'faces',      defaultKind: 'object-detection' },
-    { cap: 'tags',       cfgKey: 'tags',       defaultKind: 'image-classification' },
+    { cap: 'faces', cfgKey: 'faces', defaultKind: 'object-detection' },
+    { cap: 'tags', cfgKey: 'tags', defaultKind: 'image-classification' },
 ];
 
 // Probe a HuggingFace token. POST `{ token? }` — when `token` is present
@@ -5009,15 +5738,21 @@ const _MODEL_CAPS = [
 // admin spamming the button can't choke the box.
 app.post('/api/ai/hf/test', async (req, res) => {
     try {
-        let token = (req.body && typeof req.body.token === 'string') ? req.body.token.trim() : '';
+        let token = req.body && typeof req.body.token === 'string' ? req.body.token.trim() : '';
         if (!token) {
             try {
                 const cfg = loadConfig();
                 token = String(cfg?.advanced?.ai?.hfToken || '').trim();
-            } catch { /* config not ready */ }
+            } catch {
+                /* config not ready */
+            }
         }
         if (!token) {
-            return res.status(400).json({ ok: false, status: 0, message: 'No token to test. Paste one above first.' });
+            return res.status(400).json({
+                ok: false,
+                status: 0,
+                message: 'No token to test. Paste one above first.',
+            });
         }
         // 5-second timeout — HF whoami is fast and the operator is
         // staring at a button waiting.
@@ -5026,22 +5761,41 @@ app.post('/api/ai/hf/test', async (req, res) => {
         let r;
         try {
             r = await fetch('https://huggingface.co/api/whoami-v2', {
-                headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+                headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
                 signal: ac.signal,
             });
         } catch (e) {
-            return res.json({ ok: false, status: 0, message: e?.name === 'AbortError' ? 'Timed out talking to huggingface.co.' : `Network error: ${e?.message || e}` });
+            return res.json({
+                ok: false,
+                status: 0,
+                message:
+                    e?.name === 'AbortError'
+                        ? 'Timed out talking to huggingface.co.'
+                        : `Network error: ${e?.message || e}`,
+            });
         } finally {
             clearTimeout(timer);
         }
         if (r.status === 401 || r.status === 403) {
-            return res.json({ ok: false, status: r.status, message: 'Token rejected by HuggingFace (401). Re-create the token with Read role.' });
+            return res.json({
+                ok: false,
+                status: r.status,
+                message: 'Token rejected by HuggingFace (401). Re-create the token with Read role.',
+            });
         }
         if (!r.ok) {
-            return res.json({ ok: false, status: r.status, message: `HuggingFace returned HTTP ${r.status}.` });
+            return res.json({
+                ok: false,
+                status: r.status,
+                message: `HuggingFace returned HTTP ${r.status}.`,
+            });
         }
         let body = null;
-        try { body = await r.json(); } catch { /* ignore */ }
+        try {
+            body = await r.json();
+        } catch {
+            /* ignore */
+        }
         const name = body?.name || body?.fullname || '(unknown)';
         const type = body?.type || 'user';
         return res.json({ ok: true, status: r.status, name, type });
@@ -5059,16 +5813,16 @@ app.get('/api/ai/status', async (_req, res) => {
             success: true,
             enabled: cfg.enabled,
             capabilities: {
-                master:     cfg.enabled,
+                master: cfg.enabled,
                 embeddings: cfg.embeddings.enabled,
-                faces:      cfg.faces.enabled,
-                tags:       cfg.tags.enabled,
-                phash:      cfg.phash.enabled,
+                faces: cfg.faces.enabled,
+                tags: cfg.tags.enabled,
+                phash: cfg.phash.enabled,
             },
             models: {
                 embeddings: cfg.embeddings.model,
-                faces:      cfg.faces.model,
-                tags:       cfg.tags.model,
+                faces: cfg.faces.model,
+                tags: cfg.tags.model,
             },
             counts,
             loadedPipelines: ai.loadedPipelines(),
@@ -5081,13 +5835,19 @@ app.get('/api/ai/status', async (_req, res) => {
 app.post('/api/ai/index/scan', async (_req, res) => {
     const cfg = _aiCfg();
     if (!cfg.enabled) {
-        return res.status(503).json({ error: 'AI subsystem disabled. Toggle "Enable AI subsystem" in Maintenance → AI search.', code: 'AI_DISABLED' });
+        return res.status(503).json({
+            error: 'AI subsystem disabled. Toggle "Enable AI subsystem" in Maintenance → AI search.',
+            code: 'AI_DISABLED',
+        });
     }
     const tracker = _jobTrackers.aiIndex;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         return ai.runIndexScan(cfg, { onProgress, signal, onLog: log });
     });
-    if (!r.started) return res.status(409).json({ error: 'AI index scan already running', code: 'ALREADY_RUNNING' });
+    if (!r.started)
+        return res
+            .status(409)
+            .json({ error: 'AI index scan already running', code: 'ALREADY_RUNNING' });
     res.json({ success: true, started: true });
 });
 
@@ -5108,7 +5868,9 @@ app.post('/api/ai/search', async (req, res) => {
         }
         const cfg = _aiCfg();
         if (!cfg.enabled || !cfg.embeddings.enabled) {
-            return res.status(503).json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
+            return res
+                .status(503)
+                .json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
         }
         const r = await ai.searchByText(query.trim(), cfg, {
             limit: Number(limit) || 20,
@@ -5125,13 +5887,18 @@ app.post('/api/ai/search', async (req, res) => {
 app.post('/api/ai/people/scan', async (_req, res) => {
     const cfg = _aiCfg();
     if (!cfg.enabled || !cfg.faces.enabled) {
-        return res.status(503).json({ error: 'Face clustering is disabled', code: 'FACES_DISABLED' });
+        return res
+            .status(503)
+            .json({ error: 'Face clustering is disabled', code: 'FACES_DISABLED' });
     }
     const tracker = _jobTrackers.aiPeople;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         return ai.runFaceClustering(cfg, { onProgress, signal, onLog: log });
     });
-    if (!r.started) return res.status(409).json({ error: 'Face clustering already running', code: 'ALREADY_RUNNING' });
+    if (!r.started)
+        return res
+            .status(409)
+            .json({ error: 'Face clustering already running', code: 'ALREADY_RUNNING' });
     res.json({ success: true, started: true });
 });
 
@@ -5189,13 +5956,18 @@ app.get('/api/ai/people/:id/photos', async (req, res) => {
 app.post('/api/ai/perceptual-dedup/scan', async (_req, res) => {
     const cfg = _aiCfg();
     if (!cfg.enabled || !cfg.phash.enabled) {
-        return res.status(503).json({ error: 'Perceptual dedup is disabled', code: 'PHASH_DISABLED' });
+        return res
+            .status(503)
+            .json({ error: 'Perceptual dedup is disabled', code: 'PHASH_DISABLED' });
     }
     const tracker = _jobTrackers.aiPhash;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         return ai.runPhashScan({ onProgress, signal, onLog: log, fileTypes: cfg.fileTypes });
     });
-    if (!r.started) return res.status(409).json({ error: 'phash scan already running', code: 'ALREADY_RUNNING' });
+    if (!r.started)
+        return res
+            .status(409)
+            .json({ error: 'phash scan already running', code: 'ALREADY_RUNNING' });
     res.json({ success: true, started: true });
 });
 
@@ -5226,13 +5998,16 @@ app.post('/api/ai/tags/scan', async (_req, res) => {
     const onlyTags = {
         ...cfg,
         embeddings: { ...cfg.embeddings, enabled: false },
-        faces:      { ...cfg.faces, enabled: false },
-        phash:      { enabled: false },
+        faces: { ...cfg.faces, enabled: false },
+        phash: { enabled: false },
     };
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         return ai.runIndexScan(onlyTags, { onProgress, signal, onLog: log });
     });
-    if (!r.started) return res.status(409).json({ error: 'tags scan already running', code: 'ALREADY_RUNNING' });
+    if (!r.started)
+        return res
+            .status(409)
+            .json({ error: 'tags scan already running', code: 'ALREADY_RUNNING' });
     res.json({ success: true, started: true });
 });
 
@@ -5318,9 +6093,17 @@ app.delete('/api/ai/models/cache', async (req, res) => {
         const cfg = _aiCfg();
         // Drop the in-process pipeline first so the on-disk wipe doesn't
         // leave a stale handle wired to deleted weights.
-        try { await ai.clearPipelineForModel(modelId); } catch { /* ignore */ }
+        try {
+            await ai.clearPipelineForModel(modelId);
+        } catch {
+            /* ignore */
+        }
         const r = await ai.deleteModelCache(modelId, cfg.cacheDir);
-        log({ source: 'ai', level: 'info', msg: `model cache wiped: ${modelId} (${r.bytes} bytes)` });
+        log({
+            source: 'ai',
+            level: 'info',
+            msg: `model cache wiped: ${modelId} (${r.bytes} bytes)`,
+        });
         res.json({ success: true, ...r });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -5339,7 +6122,9 @@ app.post('/api/ai/search/similar', async (req, res) => {
         }
         const cfg = _aiCfg();
         if (!cfg.enabled || !cfg.embeddings.enabled) {
-            return res.status(503).json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
+            return res
+                .status(503)
+                .json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
         }
         const limit = Math.max(1, Math.min(200, Number(req.body?.limit) || 24));
         // Pull every embedding (cache-friendly via vector-store.topK
@@ -5367,7 +6152,7 @@ app.post('/api/ai/search/similar', async (req, res) => {
                 file_path: r.row.file_path,
                 file_type: r.row.file_type,
                 file_size: r.row.file_size,
-                group_id:  r.row.group_id,
+                group_id: r.row.group_id,
                 group_name: r.row.group_name,
                 created_at: r.row.created_at,
             }));
@@ -5401,7 +6186,7 @@ function _shareUrlFor(req, linkId, expSec) {
 }
 
 function _shareLinkPayload(req, row) {
-    const expSec = Math.floor((row.expires_at ?? row.expiresAt ?? 0));
+    const expSec = Math.floor(row.expires_at ?? row.expiresAt ?? 0);
     const linkId = row.id;
     return {
         id: linkId,
@@ -5447,16 +6232,20 @@ app.post('/api/share/links', async (req, res) => {
         const expSec = ttl === 0 ? 0 : Math.floor(Date.now() / 1000) + ttl;
         // Defensive label hygiene — keep labels short and free of control
         // chars so they render safely in the admin UI without escaping.
-        const cleanLabel = typeof label === 'string'
-            ? label.replace(/[\r\n\t]/g, ' ').trim().slice(0, 80) || null
-            : null;
+        const cleanLabel =
+            typeof label === 'string'
+                ? label
+                      .replace(/[\r\n\t]/g, ' ')
+                      .trim()
+                      .slice(0, 80) || null
+                : null;
 
         const { id } = createShareLink({ downloadId: did, expiresAt: expSec, label: cleanLabel });
 
         // Re-load with the joined download metadata so the response is the
         // same shape as the list endpoint (UI doesn't have to re-fetch).
         const list = listShareLinks({ downloadId: did, limit: 1000 });
-        const row = list.find(r => r.id === id);
+        const row = list.find((r) => r.id === id);
         res.json({ success: true, link: row ? _shareLinkPayload(req, row) : null });
     } catch (e) {
         console.error('share/links create:', e);
@@ -5468,14 +6257,12 @@ app.post('/api/share/links', async (req, res) => {
 // no filter returns ALL links across the library (Maintenance sheet).
 app.get('/api/share/links', async (req, res) => {
     try {
-        const downloadId = req.query.downloadId
-            ? parseInt(req.query.downloadId, 10)
-            : null;
+        const downloadId = req.query.downloadId ? parseInt(req.query.downloadId, 10) : null;
         const includeRevoked = req.query.includeRevoked !== '0';
         const rows = listShareLinks({ downloadId, includeRevoked });
         res.json({
             success: true,
-            links: rows.map(r => _shareLinkPayload(req, r)),
+            links: rows.map((r) => _shareLinkPayload(req, r)),
         });
     } catch (e) {
         console.error('share/links list:', e);
@@ -5504,13 +6291,17 @@ app.delete('/api/share/links/:id', async (req, res) => {
 app.get('/api/maintenance/logs', async (req, res) => {
     try {
         if (!existsSync(LOGS_DIR)) return res.json({ files: [] });
-        const names = fsSync.readdirSync(LOGS_DIR).filter(f => f.endsWith('.log'));
-        const files = names.map(name => {
-            try {
-                const st = fsSync.statSync(path.join(LOGS_DIR, name));
-                return { name, size: st.size, modified: st.mtime.toISOString() };
-            } catch { return null; }
-        }).filter(Boolean);
+        const names = fsSync.readdirSync(LOGS_DIR).filter((f) => f.endsWith('.log'));
+        const files = names
+            .map((name) => {
+                try {
+                    const st = fsSync.statSync(path.join(LOGS_DIR, name));
+                    return { name, size: st.size, modified: st.mtime.toISOString() };
+                } catch {
+                    return null;
+                }
+            })
+            .filter(Boolean);
         files.sort((a, b) => b.modified.localeCompare(a.modified));
         res.json({ files });
     } catch (e) {
@@ -5523,7 +6314,13 @@ app.get('/api/maintenance/logs', async (req, res) => {
 app.get('/api/maintenance/logs/download', async (req, res) => {
     try {
         const name = String(req.query.name || '');
-        if (!name || name.includes('/') || name.includes('\\') || name.includes('\0') || !name.endsWith('.log')) {
+        if (
+            !name ||
+            name.includes('/') ||
+            name.includes('\\') ||
+            name.includes('\0') ||
+            !name.endsWith('.log')
+        ) {
             return res.status(400).json({ error: 'Invalid log name' });
         }
         const lines = Math.max(10, Math.min(100000, parseInt(req.query.lines, 10) || 5000));
@@ -5573,7 +6370,12 @@ app.post('/api/maintenance/session/export', async (req, res) => {
             return res.status(400).json({ error: 'accountId required' });
         }
         // Path-segment guard — accountId becomes a filename.
-        if (accountId.includes('/') || accountId.includes('\\') || accountId.includes('..') || accountId.includes('\0')) {
+        if (
+            accountId.includes('/') ||
+            accountId.includes('\\') ||
+            accountId.includes('..') ||
+            accountId.includes('\0')
+        ) {
             return res.status(400).json({ error: 'Invalid accountId' });
         }
         const sessionFile = path.join(SESSIONS_DIR, `${accountId}.enc`);
@@ -5643,17 +6445,25 @@ app.get('/api/config', async (req, res) => {
             delete safe.web.passwordHash;
         }
         if (Array.isArray(safe.accounts)) {
-            safe.accounts = safe.accounts.map(a => ({
-                id: a.id, name: a.name, username: a.username,
+            safe.accounts = safe.accounts.map((a) => ({
+                id: a.id,
+                name: a.name,
+                username: a.username,
             }));
         }
         // Per-group account assignments are an internal mapping; surface only
         // a boolean so the SPA can show "(custom account)".
         if (Array.isArray(safe.groups)) {
-            safe.groups = safe.groups.map(g => {
+            safe.groups = safe.groups.map((g) => {
                 const out = { ...g };
-                if (out.monitorAccount) { out.hasMonitorAccount = true; delete out.monitorAccount; }
-                if (out.forwardAccount) { out.hasForwardAccount = true; delete out.forwardAccount; }
+                if (out.monitorAccount) {
+                    out.hasMonitorAccount = true;
+                    delete out.monitorAccount;
+                }
+                if (out.forwardAccount) {
+                    out.hasForwardAccount = true;
+                    delete out.forwardAccount;
+                }
                 return out;
             });
         }
@@ -5706,12 +6516,21 @@ app.post('/api/config', async (req, res) => {
 
         // Deep-merge sub-sections so a partial PATCH (e.g., only telegram.apiId)
         // doesn't blow away the rest of that section (e.g., telegram.apiHash).
-        if (req.body.telegram) newConfig.telegram = { ...currentConfig.telegram, ...req.body.telegram };
-        if (req.body.download) newConfig.download = { ...currentConfig.download, ...req.body.download };
-        if (req.body.rateLimits) newConfig.rateLimits = { ...currentConfig.rateLimits, ...req.body.rateLimits };
-        if (req.body.diskManagement) newConfig.diskManagement = { ...currentConfig.diskManagement, ...req.body.diskManagement };
-        if (req.body.rescue) newConfig.rescue = { ...(currentConfig.rescue || {}), ...req.body.rescue };
-        if (req.body.proxy === null) newConfig.proxy = null; // explicit clear
+        if (req.body.telegram)
+            newConfig.telegram = { ...currentConfig.telegram, ...req.body.telegram };
+        if (req.body.download)
+            newConfig.download = { ...currentConfig.download, ...req.body.download };
+        if (req.body.rateLimits)
+            newConfig.rateLimits = { ...currentConfig.rateLimits, ...req.body.rateLimits };
+        if (req.body.diskManagement)
+            newConfig.diskManagement = {
+                ...currentConfig.diskManagement,
+                ...req.body.diskManagement,
+            };
+        if (req.body.rescue)
+            newConfig.rescue = { ...(currentConfig.rescue || {}), ...req.body.rescue };
+        if (req.body.proxy === null)
+            newConfig.proxy = null; // explicit clear
         else if (req.body.proxy && typeof req.body.proxy === 'object') {
             // Deep-merge so the SPA can omit unchanged fields (e.g., the
             // password) without wiping them. Pass an explicit `null` for a
@@ -5789,9 +6608,9 @@ app.post('/api/config', async (req, res) => {
                         ...c,
                         ...i,
                         embeddings: { ...(c.embeddings || {}), ...(i.embeddings || {}) },
-                        faces:      { ...(c.faces || {}),      ...(i.faces || {}) },
-                        tags:       { ...(c.tags || {}),       ...(i.tags || {}) },
-                        phash:      { ...(c.phash || {}),      ...(i.phash || {}) },
+                        faces: { ...(c.faces || {}), ...(i.faces || {}) },
+                        tags: { ...(c.tags || {}), ...(i.tags || {}) },
+                        phash: { ...(c.phash || {}), ...(i.phash || {}) },
                     };
                     // HuggingFace access token — string only; trim + cap at
                     // 256 chars (real tokens are ~37 chars, anything longer
@@ -5809,8 +6628,18 @@ app.post('/api/config', async (req, res) => {
             // text into the ffmpeg `-hwaccel <…>` arg. Allow-list keeps
             // the universe of accepted values explicit; anything off-list
             // falls back to '' (CPU). Documented in docs/DEPLOY.md.
-            const HWACCEL_ALLOW = new Set(['', 'vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va', 'dxva2']);
-            const hwIn = String(merged.thumbs?.hwaccel || '').toLowerCase().trim();
+            const HWACCEL_ALLOW = new Set([
+                '',
+                'vaapi',
+                'qsv',
+                'cuda',
+                'videotoolbox',
+                'd3d11va',
+                'dxva2',
+            ]);
+            const hwIn = String(merged.thumbs?.hwaccel || '')
+                .toLowerCase()
+                .trim();
             merged.thumbs.hwaccel = HWACCEL_ALLOW.has(hwIn) ? hwIn : '';
             // warnMisses — boolean, default true. Coerce non-false to true
             // so a hand-edited string ("yes", 1) doesn't quietly disable
@@ -5819,76 +6648,82 @@ app.post('/api/config', async (req, res) => {
             // Clamp every numeric so a typo can't ban the user from logging
             // in (sessionTtlDays=0) or hose the downloader (minConcurrency=0).
             const d = merged.downloader;
-            d.minConcurrency      = clampInt(d.minConcurrency,       1,    100, 3);
-            d.maxConcurrency      = clampInt(d.maxConcurrency,       1,    100, 20);
+            d.minConcurrency = clampInt(d.minConcurrency, 1, 100, 3);
+            d.maxConcurrency = clampInt(d.maxConcurrency, 1, 100, 20);
             if (d.maxConcurrency < d.minConcurrency) d.maxConcurrency = d.minConcurrency;
-            d.scalerIntervalSec   = clampInt(d.scalerIntervalSec,    1,    600, 5);
-            d.idleSleepMs         = clampInt(d.idleSleepMs,         50,  10000, 200);
-            d.spilloverThreshold  = clampInt(d.spilloverThreshold, 100, 100000, 2000);
+            d.scalerIntervalSec = clampInt(d.scalerIntervalSec, 1, 600, 5);
+            d.idleSleepMs = clampInt(d.idleSleepMs, 50, 10000, 200);
+            d.spilloverThreshold = clampInt(d.spilloverThreshold, 100, 100000, 2000);
 
             const h = merged.history;
-            h.backpressureCap         = clampInt(h.backpressureCap,         10, 100000, 500);
-            h.backpressureMaxWaitMs   = clampInt(h.backpressureMaxWaitMs, 5000, 3600000, 900000);
-            h.shortBreakEveryN        = clampInt(h.shortBreakEveryN,         0, 100000, 100);
-            h.longBreakEveryN         = clampInt(h.longBreakEveryN,          0, 1000000, 1000);
+            h.backpressureCap = clampInt(h.backpressureCap, 10, 100000, 500);
+            h.backpressureMaxWaitMs = clampInt(h.backpressureMaxWaitMs, 5000, 3600000, 900000);
+            h.shortBreakEveryN = clampInt(h.shortBreakEveryN, 0, 100000, 100);
+            h.longBreakEveryN = clampInt(h.longBreakEveryN, 0, 1000000, 1000);
             // Recent-backfills retention. Anything older than this gets
             // pruned at next read of `data/history-jobs.json`. 1-3650 days.
-            h.retentionDays           = clampInt(h.retentionDays,            1, 3650, 30);
+            h.retentionDays = clampInt(h.retentionDays, 1, 3650, 30);
             // v2.3.34 — auto-backfill knobs
-            h.autoFirstBackfill       = h.autoFirstBackfill !== false;       // default ON
-            h.autoFirstLimit          = clampInt(h.autoFirstLimit,           0, 10000, 100);
-            h.autoCatchUp             = h.autoCatchUp !== false;             // default ON
-            h.autoCatchUpThreshold    = clampInt(h.autoCatchUpThreshold,     1, 100000, 5);
-            h.batchInsertSize         = clampInt(h.batchInsertSize,          1, 500, 50);
-            h.batchInsertMaxAgeMs     = clampInt(h.batchInsertMaxAgeMs,    100, 60000, 1000);
+            h.autoFirstBackfill = h.autoFirstBackfill !== false; // default ON
+            h.autoFirstLimit = clampInt(h.autoFirstLimit, 0, 10000, 100);
+            h.autoCatchUp = h.autoCatchUp !== false; // default ON
+            h.autoCatchUpThreshold = clampInt(h.autoCatchUpThreshold, 1, 100000, 5);
+            h.batchInsertSize = clampInt(h.batchInsertSize, 1, 500, 50);
+            h.batchInsertMaxAgeMs = clampInt(h.batchInsertMaxAgeMs, 100, 60000, 1000);
 
             const sh = merged.share;
             // 1 second floor / 10 years ceiling. Defaults match the spec
             // values share.js uses pre-config (60 / 90d / 7d).
-            sh.ttlMinSec       = clampInt(sh.ttlMinSec,        1, 315360000, 60);
-            sh.ttlMaxSec       = clampInt(sh.ttlMaxSec, sh.ttlMinSec, 315360000, 7776000);
+            sh.ttlMinSec = clampInt(sh.ttlMinSec, 1, 315360000, 60);
+            sh.ttlMaxSec = clampInt(sh.ttlMaxSec, sh.ttlMinSec, 315360000, 7776000);
             // ttlDefault must lie inside [min, max] — clamped here so the
             // SPA can't ship an out-of-range default that fails the picker.
-            sh.ttlDefaultSec   = clampInt(sh.ttlDefaultSec, sh.ttlMinSec, sh.ttlMaxSec, 604800);
+            sh.ttlDefaultSec = clampInt(sh.ttlDefaultSec, sh.ttlMinSec, sh.ttlMaxSec, 604800);
             sh.rateLimitWindowMs = clampInt(sh.rateLimitWindowMs, 1000, 3600000, 60000);
-            sh.rateLimitMax      = clampInt(sh.rateLimitMax,         1, 100000,    60);
+            sh.rateLimitMax = clampInt(sh.rateLimitMax, 1, 100000, 60);
 
             // NSFW review tool. All values are config-driven — no hardcoded
             // model id, threshold, or concurrency in code.
             const ns = merged.nsfw;
-            ns.enabled    = ns.enabled === true;          // explicit opt-in only
+            ns.enabled = ns.enabled === true; // explicit opt-in only
             // Threshold is on a 0-1 score axis; clamped via integer math by
             // multiplying through so the same clampInt helper works.
             const tInt = Math.round((Number(ns.threshold) || NSFW_DEFAULTS.threshold) * 1000);
-            ns.threshold  = clampInt(tInt, 100, 990, 600) / 1000;
+            ns.threshold = clampInt(tInt, 100, 990, 600) / 1000;
             ns.concurrency = clampInt(ns.concurrency, 1, 4, NSFW_DEFAULTS.concurrency);
-            ns.batchSize   = clampInt(ns.batchSize,  10, 500, NSFW_DEFAULTS.batchSize);
+            ns.batchSize = clampInt(ns.batchSize, 10, 500, NSFW_DEFAULTS.batchSize);
             // Model id + cache dir + fileTypes are strings/arrays — light
             // validation only (string coerce, allowlist-strip).
-            ns.model = (typeof ns.model === 'string' && ns.model.trim())
-                ? ns.model.trim() : NSFW_DEFAULTS.model;
+            ns.model =
+                typeof ns.model === 'string' && ns.model.trim()
+                    ? ns.model.trim()
+                    : NSFW_DEFAULTS.model;
             // dtype controls which ONNX variant is fetched from HuggingFace.
             // Allow-list keeps a typo from sending arbitrary text to the
             // transformers.js loader and helps the UI fall back to the
             // documented default when the operator clears the field.
             const NSFW_DTYPES = new Set(['q8', 'fp16', 'fp32', 'q4']);
-            const dIn = String(ns.dtype || '').toLowerCase().trim();
+            const dIn = String(ns.dtype || '')
+                .toLowerCase()
+                .trim();
             ns.dtype = NSFW_DTYPES.has(dIn) ? dIn : NSFW_DEFAULTS.dtype;
-            ns.cacheDir = (typeof ns.cacheDir === 'string' && ns.cacheDir.trim())
-                ? ns.cacheDir.trim() : NSFW_DEFAULTS.cacheDir;
+            ns.cacheDir =
+                typeof ns.cacheDir === 'string' && ns.cacheDir.trim()
+                    ? ns.cacheDir.trim()
+                    : NSFW_DEFAULTS.cacheDir;
             const ALLOWED_TYPES = ['photo', 'video', 'sticker', 'document'];
             ns.fileTypes = (Array.isArray(ns.fileTypes) ? ns.fileTypes : NSFW_DEFAULTS.fileTypes)
-                .map(s => String(s).toLowerCase())
-                .filter(s => ALLOWED_TYPES.includes(s));
+                .map((s) => String(s).toLowerCase())
+                .filter((s) => ALLOWED_TYPES.includes(s));
             if (!ns.fileTypes.length) ns.fileTypes = NSFW_DEFAULTS.fileTypes.slice();
 
             const r = merged.diskRotator;
-            r.sweepBatch         = clampInt(r.sweepBatch,         1,   1000, 50);
+            r.sweepBatch = clampInt(r.sweepBatch, 1, 1000, 50);
             r.maxDeletesPerSweep = clampInt(r.maxDeletesPerSweep, 1, 100000, 5000);
 
             const it = merged.integrity;
             it.intervalMin = clampInt(it.intervalMin, 1, 10080, 60);
-            it.batchSize   = clampInt(it.batchSize,   1,  1024, 64);
+            it.batchSize = clampInt(it.batchSize, 1, 1024, 64);
 
             const w = merged.web;
             w.sessionTtlDays = clampInt(w.sessionTtlDays, 1, 365, 7);
@@ -5924,7 +6759,9 @@ app.post('/api/config', async (req, res) => {
         // Reset the lazy AccountManager singleton if Telegram credentials
         // changed — a stale instance would still be wired to the old apiId.
         if (req.body.telegram && _accountManager) {
-            try { await _accountManager.disconnectAll(); } catch {}
+            try {
+                await _accountManager.disconnectAll();
+            } catch {}
             _accountManager = null;
         }
 
@@ -5948,20 +6785,30 @@ app.post('/api/config', async (req, res) => {
                     const n = newAi[cap]?.model || '';
                     if (o && o !== n) _drop(o).catch(() => {});
                 }
-            } catch (e) { console.warn('[ai] pipeline reset failed:', e.message); }
+            } catch (e) {
+                console.warn('[ai] pipeline reset failed:', e.message);
+            }
         }
 
         // Restart the disk rotator if the user changed any diskManagement
         // field — picks up the new cap / enabled / interval on the very next
         // sweep instead of waiting for whatever was already scheduled.
         if (req.body.diskManagement || req.body.advanced?.diskRotator) {
-            try { getDiskRotator()?.restart(); } catch (e) { console.warn('[disk-rotator] restart failed:', e.message); }
+            try {
+                getDiskRotator()?.restart();
+            } catch (e) {
+                console.warn('[disk-rotator] restart failed:', e.message);
+            }
         }
         // Same story for the rescue sweeper — sweep cadence (and the global
         // enabled flag, since per-group 'auto' follows it) needs to take
         // effect immediately, not on the next scheduled tick.
         if (req.body.rescue) {
-            try { getRescueSweeper()?.restart(); } catch (e) { console.warn('[rescue] restart failed:', e.message); }
+            try {
+                getRescueSweeper()?.restart();
+            } catch (e) {
+                console.warn('[rescue] restart failed:', e.message);
+            }
         }
         // Re-arm the integrity sweeper when its cadence/batch changes so the
         // user doesn't have to wait a full hour for the new interval to kick
@@ -5972,9 +6819,11 @@ app.post('/api/config', async (req, res) => {
                 integrity.start({
                     broadcast,
                     intervalMin: Number(ai.intervalMin) > 0 ? Number(ai.intervalMin) : 60,
-                    batchSize:   Number(ai.batchSize)   > 0 ? Number(ai.batchSize)   : 64,
+                    batchSize: Number(ai.batchSize) > 0 ? Number(ai.batchSize) : 64,
                 });
-            } catch (e) { console.warn('[integrity] restart failed:', e.message); }
+            } catch (e) {
+                console.warn('[integrity] restart failed:', e.message);
+            }
         }
 
         broadcast({ type: 'config_updated' });
@@ -5990,34 +6839,48 @@ app.put('/api/groups/:id', async (req, res) => {
     try {
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
         const groupId = req.params.id;
-        let groupIndex = config.groups.findIndex(g => String(g.id) === groupId);
-        
+        let groupIndex = config.groups.findIndex((g) => String(g.id) === groupId);
+
         if (groupIndex === -1) {
             // Create new — resolve a real name from any loaded account.
             let groupName = req.body.name;
-            if (!groupName || groupName === 'Unknown' || groupName === groupId || groupName.startsWith('Group ')) {
+            if (
+                !groupName ||
+                groupName === 'Unknown' ||
+                groupName === groupId ||
+                groupName.startsWith('Group ')
+            ) {
                 const r = await resolveEntityAcrossAccounts(groupId);
                 if (r?.entity) {
                     const e = r.entity;
-                    groupName = e.title
-                        || (e.firstName && (e.firstName + (e.lastName ? ' ' + e.lastName : '')))
-                        || e.username
-                        || groupName;
+                    groupName =
+                        e.title ||
+                        (e.firstName && e.firstName + (e.lastName ? ' ' + e.lastName : '')) ||
+                        e.username ||
+                        groupName;
                 }
             }
             const newGroup = {
                 id: groupId.startsWith('-') ? parseInt(groupId) : groupId,
                 name: groupName || `Unknown`,
                 enabled: req.body.enabled ?? false,
-                filters: { photos: true, videos: true, files: true, links: true, voice: false, gifs: false, stickers: false },
+                filters: {
+                    photos: true,
+                    videos: true,
+                    files: true,
+                    links: true,
+                    voice: false,
+                    gifs: false,
+                    stickers: false,
+                },
                 autoForward: { enabled: false, destination: null, deleteAfterForward: false },
                 trackUsers: { enabled: false, users: [] },
-                topics: { enabled: false, ids: [] }
+                topics: { enabled: false, ids: [] },
             };
             config.groups.push(newGroup);
             groupIndex = config.groups.length - 1;
         }
-        
+
         // Update fields
         const group = config.groups[groupIndex];
         if (req.body.enabled !== undefined) group.enabled = req.body.enabled;
@@ -6031,10 +6894,13 @@ app.put('/api/groups/:id', async (req, res) => {
         if (req.body.topics !== undefined) {
             // Allow {enabled, ids:[]} or null to clear.
             if (req.body.topics === null) delete group.topics;
-            else group.topics = {
-                enabled: !!req.body.topics.enabled,
-                ids: Array.isArray(req.body.topics.ids) ? req.body.topics.ids.map(Number).filter(Number.isFinite) : [],
-            };
+            else
+                group.topics = {
+                    enabled: !!req.body.topics.enabled,
+                    ids: Array.isArray(req.body.topics.ids)
+                        ? req.body.topics.ids.map(Number).filter(Number.isFinite)
+                        : [],
+                };
         }
 
         // Multi-Account assignments
@@ -6062,7 +6928,7 @@ app.put('/api/groups/:id', async (req, res) => {
                 delete group.rescueRetentionHours;
             }
         }
-        
+
         await writeConfigAtomic(config);
         broadcast({ type: 'config_updated', config });
 
@@ -6075,10 +6941,12 @@ app.put('/api/groups/:id', async (req, res) => {
         try {
             if (req.body.enabled === true && !_activeBackfillsByGroup.has(String(group.id))) {
                 const histCfg = config.advanced?.history || {};
-                const autoOn = histCfg.autoFirstBackfill !== false;     // default ON
-                const autoLim = Number(histCfg.autoFirstLimit ?? 100);  // default 100
+                const autoOn = histCfg.autoFirstBackfill !== false; // default ON
+                const autoLim = Number(histCfg.autoFirstLimit ?? 100); // default 100
                 if (autoOn && autoLim > 0) {
-                    const { count } = (await import('../core/db.js')).getMessageIdRange(String(group.id));
+                    const { count } = (await import('../core/db.js')).getMessageIdRange(
+                        String(group.id),
+                    );
                     if (count === 0) {
                         // Fire-and-forget — POST /api/history would be the
                         // ideal way but we'd need to invoke it as an
@@ -6091,7 +6959,9 @@ app.put('/api/groups/:id', async (req, res) => {
                             limit: Math.max(1, Math.min(10000, autoLim)),
                             mode: 'pull-older',
                             reason: 'auto-first',
-                        }).catch((e) => console.warn('[auto-backfill] first-add failed:', e?.message || e));
+                        }).catch((e) =>
+                            console.warn('[auto-backfill] first-add failed:', e?.message || e),
+                        );
                     }
                 }
             }
@@ -6115,43 +6985,73 @@ app.put('/api/groups/:id', async (req, res) => {
  * Resolves once the job is *registered* (not when the actual download
  * finishes) so callers don't block. Returns the new jobId.
  */
-async function _spawnInternalBackfill({ groupId, limit, mode = 'pull-older', reason = 'internal' }) {
+async function _spawnInternalBackfill({
+    groupId,
+    limit,
+    mode = 'pull-older',
+    reason = 'internal',
+}) {
     const groupKey = String(groupId);
     if (_activeBackfillsByGroup.has(groupKey)) return null;
     const am = await getAccountManager();
     if (am.count === 0) throw new Error('No Telegram accounts loaded');
     const config = loadConfig();
-    const group = (config.groups || []).find(g => String(g.id) === groupKey);
+    const group = (config.groups || []).find((g) => String(g.id) === groupKey);
     if (!group) throw new Error('Group not configured');
 
     const { HistoryDownloader } = await import('../core/history.js');
     const { DownloadManager } = await import('../core/downloader.js');
     const { RateLimiter } = await import('../core/security.js');
     const standalone = !runtime._downloader;
-    const downloader = runtime._downloader || new DownloadManager(
-        am.getDefaultClient(), config, new RateLimiter(config.rateLimits),
-    );
-    if (standalone) { await downloader.init(); downloader.start(); }
+    const downloader =
+        runtime._downloader ||
+        new DownloadManager(am.getDefaultClient(), config, new RateLimiter(config.rateLimits));
+    if (standalone) {
+        await downloader.init();
+        downloader.start();
+    }
     const history = new HistoryDownloader(am.getDefaultClient(), downloader, config, am);
 
     const jobId = crypto.randomBytes(6).toString('hex');
-    const lim = (limit === null || limit === 0) ? null : Math.max(1, Math.min(50000, Number(limit) || 100));
+    const lim =
+        limit === null || limit === 0 ? null : Math.max(1, Math.min(50000, Number(limit) || 100));
     const job = {
-        id: jobId, state: 'running', processed: 0, downloaded: 0, error: null,
-        group: group.name, groupId: groupKey, limit: lim,
-        startedAt: Date.now(), finishedAt: null, cancelled: false,
-        mode, reason, _runner: history,
+        id: jobId,
+        state: 'running',
+        processed: 0,
+        downloaded: 0,
+        error: null,
+        group: group.name,
+        groupId: groupKey,
+        limit: lim,
+        startedAt: Date.now(),
+        finishedAt: null,
+        cancelled: false,
+        mode,
+        reason,
+        _runner: history,
     };
     _historyJobs.set(jobId, job);
     _activeBackfillsByGroup.set(groupKey, jobId);
     history.on('progress', (s) => {
-        job.processed = s.processed; job.downloaded = s.downloaded;
-        broadcast({ type: 'history_progress', jobId, ...s,
-            group: group.name, groupId: groupKey, limit: job.limit,
-            startedAt: job.startedAt, mode: job.mode });
+        job.processed = s.processed;
+        job.downloaded = s.downloaded;
+        broadcast({
+            type: 'history_progress',
+            jobId,
+            ...s,
+            group: group.name,
+            groupId: groupKey,
+            limit: job.limit,
+            startedAt: job.startedAt,
+            mode: job.mode,
+        });
     });
-    history.on('start', (s) => { if (s?.mode) job.mode = s.mode; });
-    history.downloadHistory(groupKey, { limit: lim ?? undefined, mode })
+    history.on('start', (s) => {
+        if (s?.mode) job.mode = s.mode;
+    });
+    history
+        .downloadHistory(groupKey, { limit: lim ?? undefined, mode })
         .then(() => {
             job.state = job.cancelled ? 'cancelled' : 'done';
             job.finishedAt = Date.now();
@@ -6160,7 +7060,8 @@ async function _spawnInternalBackfill({ groupId, limit, mode = 'pull-older', rea
             broadcast({ type: evt, jobId, group: group.name, ...job });
             if (standalone) downloader.stop().catch(() => {});
             saveHistoryJobsToDisk().catch(() => {});
-            if (_activeBackfillsByGroup.get(groupKey) === jobId) _activeBackfillsByGroup.delete(groupKey);
+            if (_activeBackfillsByGroup.get(groupKey) === jobId)
+                _activeBackfillsByGroup.delete(groupKey);
             setTimeout(() => _historyJobs.delete(jobId), 5 * 60 * 1000);
         })
         .catch((err) => {
@@ -6168,17 +7069,28 @@ async function _spawnInternalBackfill({ groupId, limit, mode = 'pull-older', rea
             job.error = err?.message || String(err);
             job.finishedAt = Date.now();
             delete job._runner;
-            broadcast({ type: 'history_error', jobId, error: job.error, group: group.name, groupId: groupKey });
+            broadcast({
+                type: 'history_error',
+                jobId,
+                error: job.error,
+                group: group.name,
+                groupId: groupKey,
+            });
             // Same hint flow as the user-triggered branch above so auto-
             // backfills (first-add bootstrap, post-restart catch-up) get
             // a readable diagnostic when they fail.
             const hint = /no available account/i.test(job.error)
                 ? ' (no logged-in account can read this group — check Settings → Telegram Accounts)'
                 : '';
-            log({ source: 'backfill', level: 'error', msg: `auto-backfill failed for "${group.name}" (${groupKey}): ${job.error}${hint}` });
+            log({
+                source: 'backfill',
+                level: 'error',
+                msg: `auto-backfill failed for "${group.name}" (${groupKey}): ${job.error}${hint}`,
+            });
             if (standalone) downloader.stop().catch(() => {});
             saveHistoryJobsToDisk().catch(() => {});
-            if (_activeBackfillsByGroup.get(groupKey) === jobId) _activeBackfillsByGroup.delete(groupKey);
+            if (_activeBackfillsByGroup.get(groupKey) === jobId)
+                _activeBackfillsByGroup.delete(groupKey);
         });
     return jobId;
 }
@@ -6209,7 +7121,9 @@ app.get('/api/groups/:id/photo', async (req, res) => {
             // round trip thanks to no-store).
             res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
             return res.sendFile(real);
-        } catch { return res.status(404).send('Not found'); }
+        } catch {
+            return res.status(404).send('Not found');
+        }
     };
 
     if (existsSync(photoPath)) return send();
@@ -6234,9 +7148,11 @@ app.post('/api/groups/refresh-info', async (req, res) => {
     const tracker = _jobTrackers.groupsRefreshInfo;
     const r = tracker.tryStart(async ({ onProgress }) => {
         const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-        const ids = new Set((config.groups || []).map(g => String(g.id)));
+        const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
-            const rows = getDb().prepare('SELECT DISTINCT group_id, group_name FROM downloads').all();
+            const rows = getDb()
+                .prepare('SELECT DISTINCT group_id, group_name FROM downloads')
+                .all();
             for (const rr of rows) ids.add(String(rr.group_id));
         } catch {}
 
@@ -6250,17 +7166,28 @@ app.post('/api/groups/refresh-info', async (req, res) => {
             const resolved = await resolveEntityAcrossAccounts(id);
             if (resolved) {
                 const { entity } = resolved;
-                const realName = entity?.title
-                    || (entity?.firstName && (entity.firstName + (entity.lastName ? ' ' + entity.lastName : '')))
-                    || entity?.username || null;
+                const realName =
+                    entity?.title ||
+                    (entity?.firstName &&
+                        entity.firstName + (entity.lastName ? ' ' + entity.lastName : '')) ||
+                    entity?.username ||
+                    null;
                 if (realName) {
-                    const cg = (config.groups || []).find(g => String(g.id) === id);
-                    if (cg && (!cg.name || cg.name === 'Unknown' || cg.name === id || cg.name.startsWith('Group '))) {
+                    const cg = (config.groups || []).find((g) => String(g.id) === id);
+                    if (
+                        cg &&
+                        (!cg.name ||
+                            cg.name === 'Unknown' ||
+                            cg.name === id ||
+                            cg.name.startsWith('Group '))
+                    ) {
                         cg.name = realName;
                         mutatedConfig = true;
                     }
                     try {
-                        const stmt = getDb().prepare(`UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`);
+                        const stmt = getDb().prepare(
+                            `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`,
+                        );
                         stmt.run(realName, id, id);
                     } catch {}
                     updates.push({ id, name: realName });
@@ -6273,14 +7200,20 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         }
         if (mutatedConfig) await writeConfigAtomic(config);
         if (updates.length) {
-            try { broadcast({ type: 'groups_refreshed', updates }); } catch {}
+            try {
+                broadcast({ type: 'groups_refreshed', updates });
+            } catch {}
         }
         return { updated, scanned: total, updates };
     });
     if (!r.started) {
         // Hydrate the snapshot so the front-end keeps the button disabled
         // and doesn't show a misleading "failed" toast.
-        return res.status(409).json({ error: 'Group refresh already in progress', code: 'ALREADY_RUNNING', snapshot: r.snapshot });
+        return res.status(409).json({
+            error: 'Group refresh already in progress',
+            code: 'ALREADY_RUNNING',
+            snapshot: r.snapshot,
+        });
     }
     res.json({ success: true, started: true });
 });
@@ -6307,7 +7240,9 @@ app.post('/api/groups/refresh-photos', async (req, res) => {
         return { results };
     });
     if (!r.started) {
-        return res.status(409).json({ error: 'Photo refresh already in progress', code: 'ALREADY_RUNNING' });
+        return res
+            .status(409)
+            .json({ error: 'Photo refresh already in progress', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true });
 });
@@ -6324,8 +7259,11 @@ app.get('/api/groups/refresh-photos/status', async (req, res) => {
 app.use('/files', async (req, res, next) => {
     try {
         let reqPath;
-        try { reqPath = decodeURIComponent(req.path).replace(/^\//, ''); }
-        catch { return res.status(400).send('Bad request'); }
+        try {
+            reqPath = decodeURIComponent(req.path).replace(/^\//, '');
+        } catch {
+            return res.status(400).send('Bad request');
+        }
         if (!reqPath) return next();
         if (reqPath.includes('\0')) return res.status(400).send('Bad request');
 
@@ -6348,13 +7286,15 @@ app.use('/files', async (req, res, next) => {
                         const fwd = reqPath.replace(/\\/g, '/');
                         const bwd = fwd.replace(/\//g, '\\');
                         const db = getDb();
-                        const result = db.prepare(
-                            `DELETE FROM downloads WHERE file_path = ? OR file_path = ?`
-                        ).run(fwd, bwd);
+                        const result = db
+                            .prepare(`DELETE FROM downloads WHERE file_path = ? OR file_path = ?`)
+                            .run(fwd, bwd);
                         if (result.changes > 0) {
                             broadcast({ type: 'file_deleted', path: fwd, autoPruned: true });
                         }
-                    } catch { /* never let a stray request crash the server */ }
+                    } catch {
+                        /* never let a stray request crash the server */
+                    }
                 });
             }
             return res.status(status).send(r.reason === 'missing' ? 'File not found' : 'Forbidden');
@@ -6366,7 +7306,7 @@ app.use('/files', async (req, res, next) => {
         const dispKind = inline ? 'inline' : 'attachment';
         res.setHeader(
             'Content-Disposition',
-            `${dispKind}; filename*=UTF-8''${encodeURIComponent(baseName)}`
+            `${dispKind}; filename*=UTF-8''${encodeURIComponent(baseName)}`,
         );
 
         // HEIC / HEIF inline view — browsers don't render the format
@@ -6414,7 +7354,6 @@ async function _heicInlineCache(srcAbs) {
     return dst;
 }
 
-
 // ============ TELEGRAM CONNECTION ============
 
 const _secureSession = new SecureSession(SESSION_PASSWORD);
@@ -6435,8 +7374,9 @@ async function connectTelegram() {
     if (telegramClient && isConnected) return telegramClient;
     // Quiet, configuration-aware: no creds → no work, no scary warning.
     let config;
-    try { config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8')); }
-    catch (e) {
+    try {
+        config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+    } catch (e) {
         if (e.code !== 'ENOENT') console.log('⚠️ Could not read config.json:', e.message);
         return null;
     }
@@ -6446,12 +7386,19 @@ async function connectTelegram() {
         const sessionString = await loadSession();
         if (!sessionString) return null;
         const stringSession = new StringSession(sessionString);
-        telegramClient = new TelegramClient(stringSession, parseInt(config.telegram.apiId), config.telegram.apiHash, { connectionRetries: 3, useWSS: false });
+        telegramClient = new TelegramClient(
+            stringSession,
+            parseInt(config.telegram.apiId),
+            config.telegram.apiHash,
+            { connectionRetries: 3, useWSS: false },
+        );
         telegramClient.setLogLevel('none');
         await telegramClient.connect();
         if (await telegramClient.isUserAuthorized()) {
             isConnected = true;
-            console.log('✅ Telegram connected (legacy single-session client; AccountManager is the canonical source)');
+            console.log(
+                '✅ Telegram connected (legacy single-session client; AccountManager is the canonical source)',
+            );
             return telegramClient;
         }
     } catch (error) {
@@ -6472,12 +7419,16 @@ const ENTITY_CACHE_MAX = 5000;
 /** Walk every loaded account looking for one that can resolve `idStr`. */
 async function resolveEntityAcrossAccounts(idStr) {
     const cached = entityCache.get(idStr);
-    if (cached && (Date.now() - cached.at) < ENTITY_CACHE_TTL_MS) {
+    if (cached && Date.now() - cached.at < ENTITY_CACHE_TTL_MS) {
         return { entity: cached.entity, client: cached.client };
     }
 
     let am;
-    try { am = await getAccountManager(); } catch { am = null; }
+    try {
+        am = await getAccountManager();
+    } catch {
+        am = null;
+    }
     const candidates = [];
     if (am) for (const [, c] of am.clients) candidates.push(c);
     // Legacy single-session client as last resort.
@@ -6541,7 +7492,7 @@ function formatBytes(bytes) {
 
 function broadcast(data) {
     const message = JSON.stringify(data);
-    clients.forEach(client => {
+    clients.forEach((client) => {
         if (client.readyState === 1) client.send(message);
     });
 }
@@ -6564,7 +7515,9 @@ function log({ source = 'app', level = 'info', msg = '' }) {
     const entry = { ts: Date.now(), source, level, msg: String(msg).slice(0, 4000) };
     _logBuffer.push(entry);
     if (_logBuffer.length > LOG_BUFFER_SIZE) _logBuffer.shift();
-    try { broadcast({ type: 'log', ...entry }); } catch {}
+    try {
+        broadcast({ type: 'log', ...entry });
+    } catch {}
     // Mirror to stdout/stderr so the docker logs / journald path keeps
     // working — the web view is additive, not a replacement.
     const line = `[${new Date(entry.ts).toISOString()}] [${source}] [${level}] ${entry.msg}`;
@@ -6583,23 +7536,63 @@ function log({ source = 'app', level = 'info', msg = '' }) {
 // across distinct groups (purging chat A and chat B in parallel doesn't
 // conflict). Single-flight is enforced per group id.
 const _jobTrackers = {
-    filesVerify:        createJobTracker({ kind: 'filesVerify',        broadcast, log, eventPrefix: 'files_verify' }),
-    dbVacuum:           createJobTracker({ kind: 'dbVacuum',           broadcast, log, eventPrefix: 'db_vacuum' }),
-    dbIntegrity:        createJobTracker({ kind: 'dbIntegrity',        broadcast, log, eventPrefix: 'db_integrity' }),
-    restartMonitor:     createJobTracker({ kind: 'restartMonitor',     broadcast, log, eventPrefix: 'restart_monitor' }),
-    resyncDialogs:      createJobTracker({ kind: 'resyncDialogs',      broadcast, log, eventPrefix: 'resync_dialogs' }),
-    dedupDelete:        createJobTracker({ kind: 'dedupDelete',        broadcast, log, eventPrefix: 'dedup_delete' }),
-    nsfwBulk:           createJobTracker({ kind: 'nsfwBulk',           broadcast, log, eventPrefix: 'nsfw_bulk' }),
-    thumbsRebuild:      createJobTracker({ kind: 'thumbsRebuild',      broadcast, log, eventPrefix: 'thumbs_rebuild' }),
-    autoUpdate:         createJobTracker({ kind: 'autoUpdate',         broadcast, log, eventPrefix: 'update' }),
-    groupsRefreshInfo:  createJobTracker({ kind: 'groupsRefreshInfo',  broadcast, log, eventPrefix: 'groups_refresh_info' }),
-    groupsRefreshPhotos:createJobTracker({ kind: 'groupsRefreshPhotos',broadcast, log, eventPrefix: 'groups_refresh_photos' }),
-    purgeAll:           createJobTracker({ kind: 'purgeAll',           broadcast, log, eventPrefix: 'purge_all' }),
+    filesVerify: createJobTracker({
+        kind: 'filesVerify',
+        broadcast,
+        log,
+        eventPrefix: 'files_verify',
+    }),
+    dbVacuum: createJobTracker({ kind: 'dbVacuum', broadcast, log, eventPrefix: 'db_vacuum' }),
+    dbIntegrity: createJobTracker({
+        kind: 'dbIntegrity',
+        broadcast,
+        log,
+        eventPrefix: 'db_integrity',
+    }),
+    restartMonitor: createJobTracker({
+        kind: 'restartMonitor',
+        broadcast,
+        log,
+        eventPrefix: 'restart_monitor',
+    }),
+    resyncDialogs: createJobTracker({
+        kind: 'resyncDialogs',
+        broadcast,
+        log,
+        eventPrefix: 'resync_dialogs',
+    }),
+    dedupDelete: createJobTracker({
+        kind: 'dedupDelete',
+        broadcast,
+        log,
+        eventPrefix: 'dedup_delete',
+    }),
+    nsfwBulk: createJobTracker({ kind: 'nsfwBulk', broadcast, log, eventPrefix: 'nsfw_bulk' }),
+    thumbsRebuild: createJobTracker({
+        kind: 'thumbsRebuild',
+        broadcast,
+        log,
+        eventPrefix: 'thumbs_rebuild',
+    }),
+    autoUpdate: createJobTracker({ kind: 'autoUpdate', broadcast, log, eventPrefix: 'update' }),
+    groupsRefreshInfo: createJobTracker({
+        kind: 'groupsRefreshInfo',
+        broadcast,
+        log,
+        eventPrefix: 'groups_refresh_info',
+    }),
+    groupsRefreshPhotos: createJobTracker({
+        kind: 'groupsRefreshPhotos',
+        broadcast,
+        log,
+        eventPrefix: 'groups_refresh_photos',
+    }),
+    purgeAll: createJobTracker({ kind: 'purgeAll', broadcast, log, eventPrefix: 'purge_all' }),
     // AI subsystem (v2.6.0) — one tracker per long-running scan kind.
-    aiIndex:            createJobTracker({ kind: 'aiIndex',            broadcast, log, eventPrefix: 'ai_index' }),
-    aiPeople:           createJobTracker({ kind: 'aiPeople',           broadcast, log, eventPrefix: 'ai_people' }),
-    aiPhash:            createJobTracker({ kind: 'aiPhash',            broadcast, log, eventPrefix: 'ai_phash' }),
-    aiTags:             createJobTracker({ kind: 'aiTags',             broadcast, log, eventPrefix: 'ai_tags' }),
+    aiIndex: createJobTracker({ kind: 'aiIndex', broadcast, log, eventPrefix: 'ai_index' }),
+    aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
+    aiPhash: createJobTracker({ kind: 'aiPhash', broadcast, log, eventPrefix: 'ai_phash' }),
+    aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
 };
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's
@@ -6611,12 +7604,21 @@ function _groupPurgeTracker(groupId) {
         if (_groupPurgeTrackers.size >= 32) {
             // Evict the oldest non-running tracker.
             for (const [oldKey, t] of _groupPurgeTrackers) {
-                if (!t.isRunning()) { _groupPurgeTrackers.delete(oldKey); break; }
+                if (!t.isRunning()) {
+                    _groupPurgeTrackers.delete(oldKey);
+                    break;
+                }
             }
         }
-        _groupPurgeTrackers.set(k, createJobTracker({
-            kind: k, broadcast, log, eventPrefix: 'group_purge',
-        }));
+        _groupPurgeTrackers.set(
+            k,
+            createJobTracker({
+                kind: k,
+                broadcast,
+                log,
+                eventPrefix: 'group_purge',
+            }),
+        );
     }
     return _groupPurgeTrackers.get(k);
 }
@@ -6624,7 +7626,7 @@ function _groupPurgeTracker(groupId) {
 // Snapshot for GET /api/maintenance/logs/recent — newest first, capped.
 app.get('/api/maintenance/logs/recent', async (req, res) => {
     const limit = Math.max(1, Math.min(LOG_BUFFER_SIZE, Number(req.query.limit) || 200));
-    const sources = (req.query.source ? String(req.query.source).split(',') : null);
+    const sources = req.query.source ? String(req.query.source).split(',') : null;
     const minLevel = req.query.level || null; // 'info'|'warn'|'error'
     const levelOrder = { info: 0, warn: 1, error: 2 };
     const minLvl = minLevel ? (levelOrder[minLevel] ?? 0) : 0;
@@ -6647,7 +7649,9 @@ const PORT = process.env.PORT || 3000;
 // surfaces the failure instead of looping a hidden restart.
 server.on('error', (e) => {
     if (e.code === 'EADDRINUSE') {
-        console.error(`\n[fatal] Port ${PORT} is already in use. Stop the other process or set PORT=<free> in the environment.\n`);
+        console.error(
+            `\n[fatal] Port ${PORT} is already in use. Stop the other process or set PORT=<free> in the environment.\n`,
+        );
     } else {
         console.error('[fatal] HTTP server error:', e?.message || e);
     }
@@ -6659,7 +7663,9 @@ server.listen(PORT, async () => {
         const config = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
         const updated = backfillGroupNames(config.groups || []);
         if (updated > 0) console.log(`📝 Backfilled group names for ${updated} records`);
-    } catch (e) { /* config not ready yet */ }
+    } catch (e) {
+        /* config not ready yet */
+    }
 
     // Friendly boot banner. Tells the user where to go and what state we're
     // in (configured vs first-run) instead of dumping a generic header.
@@ -6668,20 +7674,27 @@ server.listen(PORT, async () => {
         const cfg = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
         if (isAuthConfigured(cfg.web)) cfgState = 'ready';
         else if (cfg.telegram?.apiId) cfgState = 'needs-password';
-    } catch { /* no config → first-run */ }
+    } catch {
+        /* no config → first-run */
+    }
 
     let appVersion = process.env.npm_package_version;
     if (!appVersion) {
         try {
-            appVersion = JSON.parse(fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')).version;
-        } catch { appVersion = '?'; }
+            appVersion = JSON.parse(
+                fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'),
+            ).version;
+        } catch {
+            appVersion = '?';
+        }
     }
     const url = `http://localhost:${PORT}`;
-    const tip = cfgState === 'first-run'
-        ? `   First run? Open ${url} from this machine to set up the dashboard password.`
-        : cfgState === 'needs-password'
-            ? `   Open ${url} and run \`npm run auth\` to set the dashboard password.`
-            : `   Sign in at ${url}`;
+    const tip =
+        cfgState === 'first-run'
+            ? `   First run? Open ${url} from this machine to set up the dashboard password.`
+            : cfgState === 'needs-password'
+              ? `   Open ${url} and run \`npm run auth\` to set the dashboard password.`
+              : `   Sign in at ${url}`;
     console.log(`
 🌐  Telegram Downloader   v${appVersion}
     Dashboard: ${url}
@@ -6722,7 +7735,7 @@ ${tip}
         integrity.start({
             broadcast,
             intervalMin: Number(ai.intervalMin) > 0 ? Number(ai.intervalMin) : 60,
-            batchSize:   Number(ai.batchSize)   > 0 ? Number(ai.batchSize)   : 64,
+            batchSize: Number(ai.batchSize) > 0 ? Number(ai.batchSize) : 64,
         });
     } catch (e) {
         console.warn('[integrity] start failed:', e.message);
@@ -6752,7 +7765,9 @@ ${tip}
                 try {
                     const cfg = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
                     return cfg?.web?.shareSecret || null;
-                } catch { return null; }
+                } catch {
+                    return null;
+                }
             },
             runtime,
         });
@@ -6766,10 +7781,17 @@ ${tip}
     try {
         const cfg = _nsfwCfg();
         if (cfg.enabled && cfg.preload === true) {
-            nsfwPreloadClassifier(cfg,
-                (p) => { try { broadcast({ type: 'nsfw_model_downloading', ...p }); } catch {} },
+            nsfwPreloadClassifier(
+                cfg,
+                (p) => {
+                    try {
+                        broadcast({ type: 'nsfw_model_downloading', ...p });
+                    } catch {}
+                },
                 (entry) => log(entry),
-            ).catch(() => { /* errors land in the realtime log via onLog */ });
+            ).catch(() => {
+                /* errors land in the realtime log via onLog */
+            });
         }
     } catch (e) {
         console.warn('[nsfw] preload-on-boot skipped:', e.message);
@@ -6786,7 +7808,7 @@ ${tip}
     try {
         const cfg = loadConfig();
         const autoStart = cfg.monitor?.autoStart !== false;
-        const enabled = Array.isArray(cfg.groups) && cfg.groups.some(g => g?.enabled !== false);
+        const enabled = Array.isArray(cfg.groups) && cfg.groups.some((g) => g?.enabled !== false);
         if (autoStart && enabled) {
             const am = await getAccountManager().catch(() => null);
             if (am && am.count > 0) {
@@ -6813,24 +7835,50 @@ async function gracefulShutdown(signal) {
 
     // Stop background sweepers first so their setInterval callbacks
     // don't try to write to a closing DB / broadcast to dead clients.
-    try { integrity.stop?.(); } catch (e) { console.warn('[shutdown] integrity.stop:', e.message); }
-    try { getRescueSweeper()?.stop(); } catch (e) { console.warn('[shutdown] rescue.stop:', e.message); }
-    try { getDiskRotator()?.stop(); } catch (e) { console.warn('[shutdown] rotator.stop:', e.message); }
+    try {
+        integrity.stop?.();
+    } catch (e) {
+        console.warn('[shutdown] integrity.stop:', e.message);
+    }
+    try {
+        getRescueSweeper()?.stop();
+    } catch (e) {
+        console.warn('[shutdown] rescue.stop:', e.message);
+    }
+    try {
+        getDiskRotator()?.stop();
+    } catch (e) {
+        console.warn('[shutdown] rotator.stop:', e.message);
+    }
 
     // Stop the monitor + its keep-alive ping.
-    try { if (runtime?.state === 'running') await runtime.stop(); } catch (e) { console.warn('[shutdown] runtime.stop:', e.message); }
-    try { _accountManager?.stopKeepAlive?.(); } catch (e) { console.warn('[shutdown] keep-alive.stop:', e.message); }
+    try {
+        if (runtime?.state === 'running') await runtime.stop();
+    } catch (e) {
+        console.warn('[shutdown] runtime.stop:', e.message);
+    }
+    try {
+        _accountManager?.stopKeepAlive?.();
+    } catch (e) {
+        console.warn('[shutdown] keep-alive.stop:', e.message);
+    }
 
     // Close every WebSocket so browsers see a clean close-frame instead
     // of a TCP RST and don't spam reconnect attempts during the bounce.
     try {
         for (const c of clients) {
-            try { c.close(1001, 'server shutting down'); } catch {}
+            try {
+                c.close(1001, 'server shutting down');
+            } catch {}
         }
     } catch {}
 
     // Stop accepting new HTTP connections; let the in-flight ones drain.
-    try { server.close(() => process.exit(0)); } catch { process.exit(0); }
+    try {
+        server.close(() => process.exit(0));
+    } catch {
+        process.exit(0);
+    }
 
     // Hard exit if anything refuses to release within 5 s. Anything we
     // hadn't accounted for would otherwise hang the container teardown.
@@ -6858,18 +7906,24 @@ async function resolveGroupNamesFromTelegram() {
         } catch {
             config = { groups: [] };
         }
-        const configUnknowns = (config.groups || []).filter(g => !g.name || g.name.startsWith('Group '));
+        const configUnknowns = (config.groups || []).filter(
+            (g) => !g.name || g.name.startsWith('Group '),
+        );
 
         // Also check DB
         const db = getDb();
-        const dbUnknowns = db.prepare(`SELECT DISTINCT group_id FROM downloads WHERE group_name IS NULL OR group_name LIKE 'Group %'`).all();
+        const dbUnknowns = db
+            .prepare(
+                `SELECT DISTINCT group_id FROM downloads WHERE group_name IS NULL OR group_name LIKE 'Group %'`,
+            )
+            .all();
 
         if (dbUnknowns.length === 0 && configUnknowns.length === 0) return;
 
         // Collect all unique IDs that need resolution
         const needIds = new Set();
-        configUnknowns.forEach(g => needIds.add(String(g.id)));
-        dbUnknowns.forEach(r => needIds.add(r.group_id));
+        configUnknowns.forEach((g) => needIds.add(String(g.id)));
+        dbUnknowns.forEach((r) => needIds.add(r.group_id));
 
         console.log(`🔍 Resolving names for ${needIds.size} groups: ${[...needIds].join(', ')}`);
 
@@ -6878,7 +7932,7 @@ async function resolveGroupNamesFromTelegram() {
         try {
             const dialogs = await telegramClient.getDialogs({ limit: 500 });
             const normalize = (id) => String(id).replace(/^-100/, '').replace(/^-/, '');
-            
+
             for (const rawId of needIds) {
                 const nid = normalize(rawId);
                 for (const d of dialogs) {
@@ -6900,12 +7954,9 @@ async function resolveGroupNamesFromTelegram() {
         // Strategy 2: For unresolved, try getEntity directly
         for (const rawId of needIds) {
             if (resolvedNames.has(rawId)) continue;
-            
+
             // Try multiple ID formats
-            const candidates = [
-                Number(rawId),
-                BigInt(rawId),
-            ];
+            const candidates = [Number(rawId), BigInt(rawId)];
             // If it starts with -, also try -100 prefix variant
             if (rawId.startsWith('-') && !rawId.startsWith('-100')) {
                 candidates.push(Number('-100' + rawId.slice(1)));
@@ -6923,13 +7974,17 @@ async function resolveGroupNamesFromTelegram() {
                             break;
                         }
                     }
-                } catch { /* try next format */ }
+                } catch {
+                    /* try next format */
+                }
             }
         }
 
         // Apply fixes to DB
         let dbResolved = 0;
-        const stmt = db.prepare(`UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name LIKE 'Group %')`);
+        const stmt = db.prepare(
+            `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name LIKE 'Group %')`,
+        );
         for (const row of dbUnknowns) {
             const name = resolvedNames.get(row.group_id);
             if (name) {
@@ -6955,8 +8010,12 @@ async function resolveGroupNamesFromTelegram() {
 
         const total = resolvedNames.size;
         const failed = needIds.size - total;
-        if (total > 0) console.log(`✅ Resolved ${total} group names (${dbResolved} DB, ${configResolved} config)`);
-        if (failed > 0) console.log(`⚠️  ${failed} groups could not be resolved (may have left the group)`);
+        if (total > 0)
+            console.log(
+                `✅ Resolved ${total} group names (${dbResolved} DB, ${configResolved} config)`,
+            );
+        if (failed > 0)
+            console.log(`⚠️  ${failed} groups could not be resolved (may have left the group)`);
     } catch (e) {
         console.log('⚠️ Could not resolve group names:', e.message);
     }

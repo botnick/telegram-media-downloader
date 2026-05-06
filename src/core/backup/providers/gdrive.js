@@ -34,22 +34,51 @@ const APP_PROPERTY_VALUE = '1';
 const DEFAULT_PAGE_SIZE = 200;
 
 export class GoogleDriveProvider extends BackupProvider {
-    static get name() { return 'gdrive'; }
-    static get displayName() { return 'Google Drive'; }
+    static get name() {
+        return 'gdrive';
+    }
+    static get displayName() {
+        return 'Google Drive';
+    }
     static get configSchema() {
         return [
-            { name: 'clientId',     label: 'OAuth client ID',          type: 'text',     required: true,
+            {
+                name: 'clientId',
+                label: 'OAuth client ID',
+                type: 'text',
+                required: true,
                 placeholder: '...apps.googleusercontent.com',
-                help: 'From Google Cloud Console → Credentials → OAuth client ID (Desktop app).' },
-            { name: 'clientSecret', label: 'OAuth client secret',      type: 'password', secret: true, required: true },
-            { name: 'refreshToken', label: 'OAuth refresh token',      type: 'password', secret: true, required: true,
-                help: 'Generate via the Google OAuth Playground — see the walkthrough below.' },
-            { name: 'folderName',   label: 'Backup folder name',       type: 'text',
+                help: 'From Google Cloud Console → Credentials → OAuth client ID (Desktop app).',
+            },
+            {
+                name: 'clientSecret',
+                label: 'OAuth client secret',
+                type: 'password',
+                secret: true,
+                required: true,
+            },
+            {
+                name: 'refreshToken',
+                label: 'OAuth refresh token',
+                type: 'password',
+                secret: true,
+                required: true,
+                help: 'Generate via the Google OAuth Playground — see the walkthrough below.',
+            },
+            {
+                name: 'folderName',
+                label: 'Backup folder name',
+                type: 'text',
                 placeholder: 'tgdl-backup',
-                help: 'A folder with this name is auto-created at My Drive root if folderId is empty.' },
-            { name: 'folderId',     label: 'Folder ID (optional)',     type: 'text',
+                help: 'A folder with this name is auto-created at My Drive root if folderId is empty.',
+            },
+            {
+                name: 'folderId',
+                label: 'Folder ID (optional)',
+                type: 'text',
                 placeholder: 'leave blank to create one',
-                help: 'Paste the destination folder ID from its Drive URL if you\'ve already made one.' },
+                help: "Paste the destination folder ID from its Drive URL if you've already made one.",
+            },
         ];
     }
 
@@ -60,7 +89,7 @@ export class GoogleDriveProvider extends BackupProvider {
         this._drive = null;
         this._rootFolderId = null;
         this._rootFolderName = 'tgdl-backup';
-        this._folderCache = new Map();        // POSIX path under root → folderId
+        this._folderCache = new Map(); // POSIX path under root → folderId
     }
 
     async init(cfg, _ctx) {
@@ -76,7 +105,7 @@ export class GoogleDriveProvider extends BackupProvider {
         if (!clientId || !clientSecret || !refreshToken) {
             throw new Error(
                 'Google Drive needs clientId + clientSecret + refreshToken. ' +
-                'See docs/BACKUP.md → "Google Drive setup" for the OAuth walkthrough.',
+                    'See docs/BACKUP.md → "Google Drive setup" for the OAuth walkthrough.',
             );
         }
         this._oauth2 = new this._google.auth.OAuth2(clientId, clientSecret);
@@ -96,7 +125,7 @@ export class GoogleDriveProvider extends BackupProvider {
             if (/invalid_grant/i.test(msg)) {
                 throw new Error(
                     'Google Drive auth failed: refresh token rejected (invalid_grant). ' +
-                    'It may be expired or revoked — re-generate via the OAuth Playground.',
+                        'It may be expired or revoked — re-generate via the OAuth Playground.',
                 );
             }
             throw new Error(`Google Drive auth failed: ${msg}`);
@@ -126,8 +155,9 @@ export class GoogleDriveProvider extends BackupProvider {
         const escaped = String(name).replace(/'/g, "\\'");
         // Search for an existing non-trashed folder with the exact name.
         const r = await this._drive.files.list({
-            q: `name='${escaped}' and '${parentId}' in parents and ` +
-               `mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            q:
+                `name='${escaped}' and '${parentId}' in parents and ` +
+                `mimeType='application/vnd.google-apps.folder' and trashed=false`,
             fields: 'files(id, name)',
             pageSize: 10,
             spaces: 'drive',
@@ -150,7 +180,9 @@ export class GoogleDriveProvider extends BackupProvider {
      *  segment as needed. Returns the leaf folder id and updates the
      *  cache for every intermediate path. */
     async _ensurePathFolders(dirPath) {
-        const norm = String(dirPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        const norm = String(dirPath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+|\/+$/g, '');
         if (!norm) return this._rootFolderId;
         if (this._folderCache.has(norm)) return this._folderCache.get(norm);
 
@@ -173,7 +205,9 @@ export class GoogleDriveProvider extends BackupProvider {
     /** Find a file by POSIX path under the root. Returns the Drive file
      *  metadata (`id`, `size`, `modifiedTime`, `md5Checksum`) or null. */
     async _findFile(remotePath) {
-        const norm = String(remotePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = String(remotePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
         if (!norm) return null;
         const dir = path.posix.dirname(norm);
         const name = path.posix.basename(norm);
@@ -188,8 +222,9 @@ export class GoogleDriveProvider extends BackupProvider {
         if (!parentId) return null;
         const escapedName = name.replace(/'/g, "\\'");
         const r = await this._drive.files.list({
-            q: `name='${escapedName}' and '${parentId}' in parents and trashed=false ` +
-               `and mimeType!='application/vnd.google-apps.folder'`,
+            q:
+                `name='${escapedName}' and '${parentId}' in parents and trashed=false ` +
+                `and mimeType!='application/vnd.google-apps.folder'`,
             fields: 'files(id, name, size, modifiedTime, md5Checksum, appProperties)',
             pageSize: 1,
             spaces: 'drive',
@@ -200,7 +235,9 @@ export class GoogleDriveProvider extends BackupProvider {
     /** Read-only path → folderId resolver. Returns null when any
      *  intermediate segment is missing — never creates folders. */
     async _lookupFolder(dirPath) {
-        const norm = String(dirPath || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        const norm = String(dirPath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+|\/+$/g, '');
         if (!norm) return this._rootFolderId;
         if (this._folderCache.has(norm)) return this._folderCache.get(norm);
         let parentId = this._rootFolderId;
@@ -213,8 +250,9 @@ export class GoogleDriveProvider extends BackupProvider {
             }
             const escaped = seg.replace(/'/g, "\\'");
             const r = await this._drive.files.list({
-                q: `name='${escaped}' and '${parentId}' in parents and ` +
-                   `mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                q:
+                    `name='${escaped}' and '${parentId}' in parents and ` +
+                    `mimeType='application/vnd.google-apps.folder' and trashed=false`,
                 fields: 'files(id, name)',
                 pageSize: 1,
                 spaces: 'drive',
@@ -228,7 +266,9 @@ export class GoogleDriveProvider extends BackupProvider {
     }
 
     async upload(localPath, remotePath, opts, ctx) {
-        const norm = String(remotePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = String(remotePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
         const dir = path.posix.dirname(norm);
         const name = path.posix.basename(norm);
         const parentId = await this._ensurePathFolders(dir === '.' ? '' : dir);
@@ -238,16 +278,24 @@ export class GoogleDriveProvider extends BackupProvider {
             body = body.pipe(encryptStream(opts.encryptKey));
         }
         if (typeof opts?.onProgress === 'function' || opts?.throttleBps) {
-            body = body.pipe(_makeProgressTransform({
-                onProgress: opts?.onProgress,
-                throttleBps: opts?.throttleBps,
-                signal: ctx?.signal,
-            }));
+            body = body.pipe(
+                _makeProgressTransform({
+                    onProgress: opts?.onProgress,
+                    throttleBps: opts?.throttleBps,
+                    signal: ctx?.signal,
+                }),
+            );
         }
         if (ctx?.signal) {
-            ctx.signal.addEventListener('abort', () => {
-                try { body.destroy(new Error('aborted')); } catch {}
-            }, { once: true });
+            ctx.signal.addEventListener(
+                'abort',
+                () => {
+                    try {
+                        body.destroy(new Error('aborted'));
+                    } catch {}
+                },
+                { once: true },
+            );
         }
 
         // Idempotency: if a file with the same name already exists in
@@ -312,7 +360,9 @@ export class GoogleDriveProvider extends BackupProvider {
         // Walk the folder tree under the resolved prefix, yielding files
         // (relative paths) along the way. We resolve the start folder
         // once, then BFS the children.
-        const norm = String(prefix || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+        const norm = String(prefix || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+|\/+$/g, '');
         const startFolderId = norm ? await this._lookupFolder(norm) : this._rootFolderId;
         if (!startFolderId) return;
         const stack = [{ folderId: startFolderId, relPath: norm }];
@@ -329,7 +379,7 @@ export class GoogleDriveProvider extends BackupProvider {
                     pageToken,
                     spaces: 'drive',
                 });
-                for (const f of (r.data?.files || [])) {
+                for (const f of r.data?.files || []) {
                     if (ctx?.signal?.aborted) throw new Error('aborted');
                     const childRel = relPath ? `${relPath}/${f.name}` : f.name;
                     if (f.mimeType === 'application/vnd.google-apps.folder') {
@@ -349,7 +399,9 @@ export class GoogleDriveProvider extends BackupProvider {
 
     async testConnection(_ctx) {
         try {
-            const r = await this._drive.about.get({ fields: 'user(emailAddress, displayName), storageQuota' });
+            const r = await this._drive.about.get({
+                fields: 'user(emailAddress, displayName), storageQuota',
+            });
             const email = r.data?.user?.emailAddress || 'unknown';
             const folderHint = this._rootFolderId
                 ? ` — backup folder id ${this._rootFolderId}`
@@ -390,7 +442,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                 if (signal?.aborted) return cb(new Error('aborted'));
                 bytes += chunk.length;
                 if (typeof onProgress === 'function') {
-                    try { onProgress({ bytesUploaded: bytes }); } catch {}
+                    try {
+                        onProgress({ bytesUploaded: bytes });
+                    } catch {}
                 }
                 if (throttleBps && throttleBps > 0) {
                     const elapsedMs = Date.now() - start;
@@ -401,7 +455,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                     }
                 }
                 cb(null, chunk);
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }

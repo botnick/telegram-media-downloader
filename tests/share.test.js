@@ -1,11 +1,21 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-    ensureShareSecret, _resetShareSecretCache,
-    signShareToken, verifyShareToken, buildShareUrlPath,
-    clampTtlSeconds, maskSigInLog,
-    TTL_MIN_SEC, TTL_MAX_SEC, TTL_DEFAULT_SEC, TTL_NEVER,
-    TTL_MIN_SEC_DEFAULT, TTL_MAX_SEC_DEFAULT, TTL_DEFAULT_SEC_DEFAULT,
-    applyShareLimits, getShareLimits,
+    ensureShareSecret,
+    _resetShareSecretCache,
+    signShareToken,
+    verifyShareToken,
+    buildShareUrlPath,
+    clampTtlSeconds,
+    maskSigInLog,
+    TTL_MIN_SEC,
+    TTL_MAX_SEC,
+    TTL_DEFAULT_SEC,
+    TTL_NEVER,
+    TTL_MIN_SEC_DEFAULT,
+    TTL_MAX_SEC_DEFAULT,
+    TTL_DEFAULT_SEC_DEFAULT,
+    applyShareLimits,
+    getShareLimits,
     getShareSecretFingerprint,
 } from '../src/core/share.js';
 
@@ -49,7 +59,10 @@ describe('ensureShareSecret', () => {
 });
 
 describe('signShareToken / verifyShareToken', () => {
-    beforeEach(() => { _resetShareSecretCache(); freshSecretConfig(); });
+    beforeEach(() => {
+        _resetShareSecretCache();
+        freshSecretConfig();
+    });
 
     it('round-trips a freshly signed token', () => {
         const sig = signShareToken(42, 1750000000);
@@ -98,7 +111,10 @@ describe('signShareToken / verifyShareToken', () => {
 });
 
 describe('buildShareUrlPath', () => {
-    beforeEach(() => { _resetShareSecretCache(); freshSecretConfig(); });
+    beforeEach(() => {
+        _resetShareSecretCache();
+        freshSecretConfig();
+    });
 
     it('formats /share/<id>?s=<…> (v2.5 short URL)', () => {
         // The URL no longer carries `?exp=` — the DB row's expires_at is

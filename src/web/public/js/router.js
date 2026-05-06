@@ -28,7 +28,12 @@ let listening = false;
 // surfaces operational state (Groups picker, Backfill jobs, Queue,
 // Engine controls) is admin-only on both the front and the back.
 const ADMIN_ROUTE_PREFIXES = [
-    '/groups', '/backfill', '/queue', '/engine', '/stories', '/account/add',
+    '/groups',
+    '/backfill',
+    '/queue',
+    '/engine',
+    '/stories',
+    '/account/add',
     '/maintenance',
 ];
 // Settings sub-routes guests CAN reach. Everything else under /settings
@@ -36,7 +41,7 @@ const ADMIN_ROUTE_PREFIXES = [
 const GUEST_SETTINGS_SECTIONS = new Set(['video-player', 'appearance']);
 
 function isAdminRoute(path) {
-    if (ADMIN_ROUTE_PREFIXES.some(p => path === p || path.startsWith(p + '/'))) return true;
+    if (ADMIN_ROUTE_PREFIXES.some((p) => path === p || path.startsWith(p + '/'))) return true;
     if (path.startsWith('/settings/')) {
         const section = path.slice('/settings/'.length).split('/')[0];
         return !GUEST_SETTINGS_SECTIONS.has(section);
@@ -51,7 +56,9 @@ function getCurrentRole() {
     // (which would create a cycle).
     try {
         return (typeof window !== 'undefined' && window.__tgdlRole) || null;
-    } catch { return null; }
+    } catch {
+        return null;
+    }
 }
 
 function compile(pattern) {
@@ -70,7 +77,9 @@ export function route(pattern, handler) {
     routes.push({ pattern, regex, paramNames, handler });
 }
 
-export function setBeforeNavigate(fn) { beforeNav = fn; }
+export function setBeforeNavigate(fn) {
+    beforeNav = fn;
+}
 
 function parseHash(raw) {
     let h = raw || window.location.hash || '';
@@ -95,12 +104,17 @@ function dispatch() {
         const m = r.regex.exec(path);
         if (!m) continue;
         const params = {};
-        r.paramNames.forEach((n, i) => { params[n] = decodeURIComponent(m[i + 1]); });
+        r.paramNames.forEach((n, i) => {
+            params[n] = decodeURIComponent(m[i + 1]);
+        });
         const next = { pattern: r.pattern, path, params, query };
         if (beforeNav && beforeNav(activeRoute, next) === false) return;
         activeRoute = next;
-        try { r.handler(next); }
-        catch (e) { console.error('router handler', e); }
+        try {
+            r.handler(next);
+        } catch (e) {
+            console.error('router handler', e);
+        }
         return;
     }
     // No match → fall back to /viewer
@@ -129,4 +143,6 @@ export function start() {
     queueMicrotask(dispatch);
 }
 
-export function getActiveRoute() { return activeRoute; }
+export function getActiveRoute() {
+    return activeRoute;
+}

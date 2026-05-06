@@ -173,7 +173,7 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **Network log rotation** at 5 MB (writes preserved, never skipped).
 - **GitHub Actions CI** — lint + test on Node 22 & 24 across Ubuntu / Windows / macOS, plus a Docker workflow that builds + smoke-tests the image (file perms, healthcheck, runs-as-non-root) before publishing to GHCR.
 - **99 vitest specs** covering URL parsing, AES round-trip + legacy decrypt, scrypt password verify, session tokens, role-aware login + guest gating, share-link sign/verify + tamper rejection + TTL limits, proxy mapping, DB migrations + dedup, name sanitisation.
-- **ESLint 9 + Prettier**, `husky` + `lint-staged` pre-commit hooks.
+- **Biome 2 + Lefthook** — single binary that does lint + format + autofix on every commit; replaces eslint, prettier, husky, and lint-staged.
 - **Backwards compatibility** — legacy plaintext passwords auto-rehashed on first login; legacy AES `v=1` blobs still decrypt; sessions persisted before the role field gained one default to admin (no forced re-login on upgrade).
 
 ---
@@ -213,9 +213,9 @@ Pre-built image: `ghcr.io/botnick/telegram-media-downloader:latest`.
 git clone https://github.com/botnick/telegram-media-downloader.git
 cd telegram-media-downloader
 npm ci
-npm run web        # web dashboard
+npm start          # opens the dashboard at http://localhost:3000
 # or
-npm start          # interactive CLI menu
+npm run menu       # interactive CLI menu
 ```
 
 Long-running monitor under a watchdog (Linux / macOS): `TGDL_RUN=monitor ./runner.sh`. Windows: `pwsh ./watchdog.ps1`.

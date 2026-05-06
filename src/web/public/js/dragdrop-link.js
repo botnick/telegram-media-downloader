@@ -18,11 +18,17 @@ const TG_URL_RE = /\bhttps?:\/\/t\.me\/[^\s<>"]+/i;
 let _wired = false;
 let _depth = 0;
 
-function _overlay() { return document.getElementById('dragdrop-overlay'); }
+function _overlay() {
+    return document.getElementById('dragdrop-overlay');
+}
 
 function _hasUrl(dt) {
     if (!dt) return false;
-    if (dt.types && Array.from(dt.types).some(t => /text\/uri-list|text\/plain|text\/x-moz-url/i.test(t))) return true;
+    if (
+        dt.types &&
+        Array.from(dt.types).some((t) => /text\/uri-list|text\/plain|text\/x-moz-url/i.test(t))
+    )
+        return true;
     return false;
 }
 

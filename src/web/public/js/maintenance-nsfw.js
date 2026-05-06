@@ -33,21 +33,35 @@ const TIER_COLOR = {
 
 // Local view state — persists for the lifetime of the SPA.
 const view = {
-    tier: null,           // null = all tiers
+    tier: null, // null = all tiers
     page: 1,
     limit: 50,
     totalPages: 1,
-    tiersMeta: null,      // [{ id, min, max, label }]
-    tierCounts: null,     // { tiers: {def_not: n, ...}, scanned, totalEligible, whitelisted, threshold }
+    tiersMeta: null, // [{ id, min, max, label }]
+    tierCounts: null, // { tiers: {def_not: n, ...}, scanned, totalEligible, whitelisted, threshold }
 };
 
 function _formatRelTime(epochMs) {
     if (!epochMs) return '—';
     const diffSec = Math.max(0, Math.floor((Date.now() - epochMs) / 1000));
     if (diffSec < 60) return i18nT('share.just_now', 'just now');
-    if (diffSec < 3600) return i18nTf('share.mins_ago', { n: Math.floor(diffSec / 60) }, `${Math.floor(diffSec / 60)}m ago`);
-    if (diffSec < 86400) return i18nTf('share.hours_ago', { n: Math.floor(diffSec / 3600) }, `${Math.floor(diffSec / 3600)}h ago`);
-    return i18nTf('share.days_ago', { n: Math.floor(diffSec / 86400) }, `${Math.floor(diffSec / 86400)}d ago`);
+    if (diffSec < 3600)
+        return i18nTf(
+            'share.mins_ago',
+            { n: Math.floor(diffSec / 60) },
+            `${Math.floor(diffSec / 60)}m ago`,
+        );
+    if (diffSec < 86400)
+        return i18nTf(
+            'share.hours_ago',
+            { n: Math.floor(diffSec / 3600) },
+            `${Math.floor(diffSec / 3600)}h ago`,
+        );
+    return i18nTf(
+        'share.days_ago',
+        { n: Math.floor(diffSec / 86400) },
+        `${Math.floor(diffSec / 86400)}d ago`,
+    );
 }
 
 async function _loadTiersMeta() {
@@ -72,11 +86,12 @@ function _renderTiersPanel(tierCounts) {
     const panel = $('nsfw-tiers');
     if (!panel) return;
     const counts = tierCounts.tiers || {};
-    panel.innerHTML = (view.tiersMeta || []).map((t) => {
-        const n = counts[t.id] || 0;
-        const active = view.tier === t.id ? 'ring-2 ring-tg-blue/60' : '';
-        const color = TIER_COLOR[t.id] || '#9E9E9E';
-        return `
+    panel.innerHTML = (view.tiersMeta || [])
+        .map((t) => {
+            const n = counts[t.id] || 0;
+            const active = view.tier === t.id ? 'ring-2 ring-tg-blue/60' : '';
+            const color = TIER_COLOR[t.id] || '#9E9E9E';
+            return `
             <button type="button" class="nsfw-tier-card text-left bg-tg-bg/40 hover:bg-tg-hover rounded-lg p-3 ${active}" data-tier="${t.id}">
                 <div class="flex items-center gap-2 mb-1">
                     <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:${color}"></span>
@@ -85,11 +100,12 @@ function _renderTiersPanel(tierCounts) {
                 <div class="text-2xl font-semibold text-tg-text tabular-nums">${n}</div>
                 <div class="text-[11px] text-tg-textSecondary mt-0.5">${(t.min * 100).toFixed(0)}% – ${(t.max * 100).toFixed(0)}%</div>
             </button>`;
-    }).join('');
+        })
+        .join('');
     panel.querySelectorAll('[data-tier]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const next = btn.dataset.tier;
-            view.tier = (view.tier === next) ? null : next;
+            view.tier = view.tier === next ? null : next;
             view.page = 1;
             _renderTiersPanel(view.tierCounts || tierCounts);
             _renderBulkBar();
@@ -109,19 +125,37 @@ function _renderBulkBar() {
     const tierLabel = _tierLabel(view.tier);
     const labelEl = $('nsfw-bulk-label');
     if (labelEl) {
-        labelEl.textContent = i18nTf('maintenance.nsfw.bulk.title',
+        labelEl.textContent = i18nTf(
+            'maintenance.nsfw.bulk.title',
             { tier: tierLabel },
-            `Bulk actions for "${tierLabel}":`);
+            `Bulk actions for "${tierLabel}":`,
+        );
     }
     const setLabel = (id, key, fallback) => {
         const el = $(id);
         if (el) {
-            el.textContent = i18nTf(key, { tier: tierLabel }, fallback.replace('{tier}', tierLabel));
+            el.textContent = i18nTf(
+                key,
+                { tier: tierLabel },
+                fallback.replace('{tier}', tierLabel),
+            );
         }
     };
-    setLabel('nsfw-bulk-delete-btn', 'maintenance.nsfw.bulk.delete_in_tier', 'Delete all in {tier}');
-    setLabel('nsfw-bulk-whitelist-btn', 'maintenance.nsfw.bulk.whitelist_in_tier', 'Whitelist all in {tier}');
-    setLabel('nsfw-bulk-reclassify-btn', 'maintenance.nsfw.bulk.reclassify_in_tier', 'Re-classify all in {tier}');
+    setLabel(
+        'nsfw-bulk-delete-btn',
+        'maintenance.nsfw.bulk.delete_in_tier',
+        'Delete all in {tier}',
+    );
+    setLabel(
+        'nsfw-bulk-whitelist-btn',
+        'maintenance.nsfw.bulk.whitelist_in_tier',
+        'Whitelist all in {tier}',
+    );
+    setLabel(
+        'nsfw-bulk-reclassify-btn',
+        'maintenance.nsfw.bulk.reclassify_in_tier',
+        'Re-classify all in {tier}',
+    );
 }
 
 function _renderHistogram(hist) {
@@ -144,15 +178,17 @@ function _renderHistogram(hist) {
         }
         return null;
     };
-    const bars = counts.map((n, i) => {
-        const mid = (i + 0.5) / bins;
-        const tid = tierFor(mid);
-        const color = TIER_COLOR[tid] || '#9E9E9E';
-        const h = (n / maxN) * (H - 4);
-        const x = (i * barW) + 0.5;
-        const y = (H - h);
-        return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" opacity="0.85"><title>${(mid * 100).toFixed(0)}%: ${n}</title></rect>`;
-    }).join('');
+    const bars = counts
+        .map((n, i) => {
+            const mid = (i + 0.5) / bins;
+            const tid = tierFor(mid);
+            const color = TIER_COLOR[tid] || '#9E9E9E';
+            const h = (n / maxN) * (H - 4);
+            const x = i * barW + 0.5;
+            const y = H - h;
+            return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" opacity="0.85"><title>${(mid * 100).toFixed(0)}%: ${n}</title></rect>`;
+        })
+        .join('');
     svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.innerHTML = `${bars}
@@ -199,23 +235,47 @@ function _wireRowActions() {
                     // "Keep" without whitelisting just re-classifies so it
                     // drops out of low-score tiers next scan.
                     await api.post('/api/maintenance/nsfw/v2/reclassify', { ids: [id] });
-                    showToast(i18nT('maintenance.nsfw.row.keep_done', 'Kept — will re-classify on next scan'), 'success');
+                    showToast(
+                        i18nT(
+                            'maintenance.nsfw.row.keep_done',
+                            'Kept — will re-classify on next scan',
+                        ),
+                        'success',
+                    );
                 } else if (act === 'whitelist') {
                     await api.post('/api/maintenance/nsfw/v2/bulk-whitelist', { ids: [id] });
-                    showToast(i18nT('maintenance.nsfw.marked_kept', 'Marked as 18+ (kept)'), 'success');
+                    showToast(
+                        i18nT('maintenance.nsfw.marked_kept', 'Marked as 18+ (kept)'),
+                        'success',
+                    );
                 } else if (act === 'reclassify') {
                     await api.post('/api/maintenance/nsfw/v2/reclassify', { ids: [id] });
-                    showToast(i18nT('maintenance.nsfw.row.reclassify_done', 'Will re-classify on next scan'), 'success');
+                    showToast(
+                        i18nT(
+                            'maintenance.nsfw.row.reclassify_done',
+                            'Will re-classify on next scan',
+                        ),
+                        'success',
+                    );
                 } else if (act === 'delete') {
                     const ok = await confirmSheet({
                         title: i18nT('maintenance.nsfw.confirm_title', 'Delete selected photos?'),
-                        message: i18nTf('maintenance.nsfw.confirm_body',
-                            { n: 1 }, 'Permanently delete 1 photo from disk and database?'),
+                        message: i18nTf(
+                            'maintenance.nsfw.confirm_body',
+                            { n: 1 },
+                            'Permanently delete 1 photo from disk and database?',
+                        ),
                         confirmLabel: i18nT('maintenance.nsfw.confirm_btn', 'Delete'),
                         danger: true,
                     });
-                    if (!ok) { btn.disabled = false; return; }
-                    await api.post('/api/maintenance/nsfw/v2/bulk-delete', { ids: [id], confirm: true });
+                    if (!ok) {
+                        btn.disabled = false;
+                        return;
+                    }
+                    await api.post('/api/maintenance/nsfw/v2/bulk-delete', {
+                        ids: [id],
+                        confirm: true,
+                    });
                     showToast(i18nT('maintenance.nsfw.row.delete_done', 'Deleted'), 'success');
                 }
                 const row = btn.closest('[data-row-id]');
@@ -224,8 +284,13 @@ function _wireRowActions() {
             } catch (e) {
                 btn.disabled = false;
                 if (e?.data?.code === 'ALREADY_RUNNING') {
-                    showToast(i18nT('jobs.already_running',
-                        'Already running on another tab — waiting for it to finish.'), 'info');
+                    showToast(
+                        i18nT(
+                            'jobs.already_running',
+                            'Already running on another tab — waiting for it to finish.',
+                        ),
+                        'info',
+                    );
                     return;
                 }
                 showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -251,7 +316,9 @@ async function _loadList() {
         const r = await api.get(`/api/maintenance/nsfw/v2/list?${qs.toString()}`);
         view.totalPages = r.totalPages || 1;
         if (banner) {
-            const empty1 = (view.tierCounts?.scanned ?? 0) === 0 && (view.tierCounts?.totalEligible ?? 0) === 0;
+            const empty1 =
+                (view.tierCounts?.scanned ?? 0) === 0 &&
+                (view.tierCounts?.totalEligible ?? 0) === 0;
             banner.classList.toggle('hidden', !empty1);
         }
         if (!r.rows?.length) {
@@ -263,9 +330,11 @@ async function _loadList() {
             _wireRowActions();
         }
         if (pageInfo) {
-            pageInfo.textContent = i18nTf('maintenance.nsfw.page_info',
+            pageInfo.textContent = i18nTf(
+                'maintenance.nsfw.page_info',
                 { page: view.page, totalPages: view.totalPages, total: r.total || 0 },
-                `Page ${view.page} / ${view.totalPages} · ${r.total || 0} rows`);
+                `Page ${view.page} / ${view.totalPages} · ${r.total || 0} rows`,
+            );
         }
         if (prevBtn) prevBtn.disabled = view.page <= 1;
         if (nextBtn) nextBtn.disabled = view.page >= view.totalPages;
@@ -292,7 +361,8 @@ async function _refreshStats() {
         const whitelistedEl = $('nsfw-stat-whitelisted');
         const lastEl = $('nsfw-stat-last');
         const thresholdEl = $('nsfw-threshold-value');
-        if (scannedEl) scannedEl.textContent = `${counts.scanned ?? 0} / ${counts.totalEligible ?? 0}`;
+        if (scannedEl)
+            scannedEl.textContent = `${counts.scanned ?? 0} / ${counts.totalEligible ?? 0}`;
         if (whitelistedEl) whitelistedEl.textContent = String(counts.whitelisted ?? 0);
         if (thresholdEl) thresholdEl.textContent = (Number(counts.threshold) || 0).toFixed(2);
 
@@ -344,17 +414,26 @@ async function _toggleScan() {
     const btn = $('nsfw-scan-btn');
     if (!btn) return;
     if (btn.dataset.mode === 'cancel') {
-        try { await api.post('/api/maintenance/nsfw/scan/cancel', {}); }
-        catch (e) { showToast(e.message || 'Cancel failed', 'error'); }
+        try {
+            await api.post('/api/maintenance/nsfw/scan/cancel', {});
+        } catch (e) {
+            showToast(e.message || 'Cancel failed', 'error');
+        }
         return;
     }
     btn.disabled = true;
     try {
         const r = await api.post('/api/maintenance/nsfw/scan', {});
         if (r.alreadyRunning) {
-            showToast(i18nT('maintenance.nsfw.already_running', 'A scan is already running'), 'info');
+            showToast(
+                i18nT('maintenance.nsfw.already_running', 'A scan is already running'),
+                'info',
+            );
         } else {
-            showToast(i18nT('maintenance.nsfw.started', 'Scan started — will notify when done'), 'info');
+            showToast(
+                i18nT('maintenance.nsfw.started', 'Scan started — will notify when done'),
+                'info',
+            );
         }
         _refreshStats();
     } catch (e) {
@@ -365,8 +444,11 @@ async function _toggleScan() {
 }
 
 function _setBulkUi(running) {
-    for (const id of ['nsfw-bulk-delete-btn', 'nsfw-bulk-whitelist-btn',
-        'nsfw-bulk-reclassify-btn']) {
+    for (const id of [
+        'nsfw-bulk-delete-btn',
+        'nsfw-bulk-whitelist-btn',
+        'nsfw-bulk-reclassify-btn',
+    ]) {
         const b = $(id);
         if (b) b.disabled = !!running;
     }
@@ -380,10 +462,15 @@ async function _bulkAction(kind) {
     let url, confirmOpts;
     if (kind === 'delete') {
         confirmOpts = {
-            title: i18nTf('maintenance.nsfw.bulk.confirm_delete_title',
-                { tier: tierLabel }, `Delete every photo in "${tierLabel}"?`),
-            message: i18nT('maintenance.nsfw.bulk.confirm_delete_body',
-                'Permanently deletes every file in this tier from disk and database. This cannot be undone.'),
+            title: i18nTf(
+                'maintenance.nsfw.bulk.confirm_delete_title',
+                { tier: tierLabel },
+                `Delete every photo in "${tierLabel}"?`,
+            ),
+            message: i18nT(
+                'maintenance.nsfw.bulk.confirm_delete_body',
+                'Permanently deletes every file in this tier from disk and database. This cannot be undone.',
+            ),
             confirmLabel: i18nT('maintenance.nsfw.confirm_btn', 'Delete'),
             danger: true,
         };
@@ -391,19 +478,29 @@ async function _bulkAction(kind) {
         url = '/api/maintenance/nsfw/v2/bulk-delete';
     } else if (kind === 'whitelist') {
         confirmOpts = {
-            title: i18nTf('maintenance.nsfw.bulk.confirm_whitelist_title',
-                { tier: tierLabel }, `Whitelist every photo in "${tierLabel}"?`),
-            message: i18nT('maintenance.nsfw.bulk.confirm_whitelist_body',
-                'Marks every file in this tier as confirmed 18+. They will be skipped on future scans.'),
+            title: i18nTf(
+                'maintenance.nsfw.bulk.confirm_whitelist_title',
+                { tier: tierLabel },
+                `Whitelist every photo in "${tierLabel}"?`,
+            ),
+            message: i18nT(
+                'maintenance.nsfw.bulk.confirm_whitelist_body',
+                'Marks every file in this tier as confirmed 18+. They will be skipped on future scans.',
+            ),
             confirmLabel: i18nT('maintenance.nsfw.bulk.whitelist_confirm', 'Whitelist'),
         };
         url = '/api/maintenance/nsfw/v2/bulk-whitelist';
     } else if (kind === 'reclassify') {
         confirmOpts = {
-            title: i18nTf('maintenance.nsfw.bulk.confirm_reclassify_title',
-                { tier: tierLabel }, `Re-classify every photo in "${tierLabel}"?`),
-            message: i18nT('maintenance.nsfw.bulk.confirm_reclassify_body',
-                'Clears the cached score so the next scan run picks them up again.'),
+            title: i18nTf(
+                'maintenance.nsfw.bulk.confirm_reclassify_title',
+                { tier: tierLabel },
+                `Re-classify every photo in "${tierLabel}"?`,
+            ),
+            message: i18nT(
+                'maintenance.nsfw.bulk.confirm_reclassify_body',
+                'Clears the cached score so the next scan run picks them up again.',
+            ),
             confirmLabel: i18nT('maintenance.nsfw.bulk.reclassify_confirm', 'Re-classify'),
         };
         url = '/api/maintenance/nsfw/v2/reclassify';
@@ -425,8 +522,13 @@ async function _bulkAction(kind) {
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
         showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -466,20 +568,31 @@ function _wireWs() {
     // "Loading X%" state, then "Ready" / "Error" on completion.
     ws.on('nsfw_model_downloading', (m) => {
         const status = String(m?.status || '').toLowerCase();
-        if (status === 'progress' || status === 'download' || (m?.progress != null)) {
+        if (status === 'progress' || status === 'download' || m?.progress != null) {
             const pct = m?.progress != null ? Math.round(Number(m.progress)) : null;
             _renderModelStatus({
                 state: 'loading',
-                label: pct != null
-                    ? i18nTf('maintenance.nsfw.model_status.loading_pct', { pct }, `Loading ${pct}%`)
-                    : i18nT('maintenance.nsfw.model_status.loading', 'Loading…'),
+                label:
+                    pct != null
+                        ? i18nTf(
+                              'maintenance.nsfw.model_status.loading_pct',
+                              { pct },
+                              `Loading ${pct}%`,
+                          )
+                        : i18nT('maintenance.nsfw.model_status.loading', 'Loading…'),
                 progress: pct,
                 file: m?.file || '',
             });
         } else if (status === 'ready' || status === 'done') {
-            _renderModelStatus({ state: 'ready', label: i18nT('maintenance.nsfw.model_status.ready', 'Ready') });
+            _renderModelStatus({
+                state: 'ready',
+                label: i18nT('maintenance.nsfw.model_status.ready', 'Ready'),
+            });
         } else if (status === 'error') {
-            _renderModelStatus({ state: 'error', label: i18nT('maintenance.nsfw.model_status.error', 'Failed') });
+            _renderModelStatus({
+                state: 'error',
+                label: i18nT('maintenance.nsfw.model_status.error', 'Failed'),
+            });
         }
     });
 
@@ -494,31 +607,61 @@ function _wireWs() {
             return;
         }
         if (m?.op === 'delete') {
-            showToast(i18nTf('maintenance.nsfw.bulk.deleted',
-                { n: m?.deleted || 0 }, `Deleted ${m?.deleted || 0} files`), 'success');
+            showToast(
+                i18nTf(
+                    'maintenance.nsfw.bulk.deleted',
+                    { n: m?.deleted || 0 },
+                    `Deleted ${m?.deleted || 0} files`,
+                ),
+                'success',
+            );
         } else if (m?.op === 'whitelist') {
-            showToast(i18nTf('maintenance.nsfw.bulk.whitelisted',
-                { n: m?.updated || 0 }, `Whitelisted ${m?.updated || 0} files`), 'success');
+            showToast(
+                i18nTf(
+                    'maintenance.nsfw.bulk.whitelisted',
+                    { n: m?.updated || 0 },
+                    `Whitelisted ${m?.updated || 0} files`,
+                ),
+                'success',
+            );
         } else if (m?.op === 'unwhitelist') {
-            showToast(i18nTf('maintenance.nsfw.bulk.unwhitelisted',
-                { n: m?.updated || 0 }, `Restored ${m?.updated || 0} files for review`), 'success');
+            showToast(
+                i18nTf(
+                    'maintenance.nsfw.bulk.unwhitelisted',
+                    { n: m?.updated || 0 },
+                    `Restored ${m?.updated || 0} files for review`,
+                ),
+                'success',
+            );
         } else if (m?.op === 'reclassify') {
-            showToast(i18nTf('maintenance.nsfw.bulk.reclassified',
-                { n: m?.cleared || 0 }, `Cleared ${m?.cleared || 0} files for re-scan`), 'success');
+            showToast(
+                i18nTf(
+                    'maintenance.nsfw.bulk.reclassified',
+                    { n: m?.cleared || 0 },
+                    `Cleared ${m?.cleared || 0} files for re-scan`,
+                ),
+                'success',
+            );
         }
-        try { await _refreshStats(); } catch {}
-        try { await _refreshHistogram(); } catch {}
-        try { await _loadList(); } catch {}
+        try {
+            await _refreshStats();
+        } catch {}
+        try {
+            await _refreshHistogram();
+        } catch {}
+        try {
+            await _loadList();
+        } catch {}
     });
 }
 
 // Render the model-status pill in the Settings card. `state` drives the
 // dot colour (idle/loading/ready/error) and `label` is the human string.
 const MODEL_STATUS_COLOR = {
-    idle:    'bg-tg-textSecondary',
+    idle: 'bg-tg-textSecondary',
     loading: 'bg-tg-orange',
-    ready:   'bg-tg-green',
-    error:   'bg-red-400',
+    ready: 'bg-tg-green',
+    error: 'bg-red-400',
 };
 function _renderModelStatus({ state = 'idle', label = '', progress = null, file = '' } = {}) {
     const pill = $('nsfw-model-status');
@@ -532,13 +675,21 @@ function _renderModelStatus({ state = 'idle', label = '', progress = null, file 
     }
     if (progLine) {
         if (state === 'loading' && file) {
-            progLine.textContent = i18nTf('maintenance.nsfw.model_status.loading_file',
+            progLine.textContent = i18nTf(
+                'maintenance.nsfw.model_status.loading_file',
                 { file, pct: progress != null ? `${progress}%` : '' },
-                `Downloading ${file} ${progress != null ? `(${progress}%)` : ''}`);
+                `Downloading ${file} ${progress != null ? `(${progress}%)` : ''}`,
+            );
         } else if (state === 'ready') {
-            progLine.textContent = i18nT('maintenance.nsfw.model_status.ready_help', 'Weights cached on disk — scans start instantly.');
+            progLine.textContent = i18nT(
+                'maintenance.nsfw.model_status.ready_help',
+                'Weights cached on disk — scans start instantly.',
+            );
         } else if (state === 'error') {
-            progLine.textContent = i18nT('maintenance.nsfw.model_status.error_help', 'Load failed. Check the realtime log for details, then try a different model id or precision.');
+            progLine.textContent = i18nT(
+                'maintenance.nsfw.model_status.error_help',
+                'Load failed. Check the realtime log for details, then try a different model id or precision.',
+            );
         } else {
             progLine.textContent = '';
         }
@@ -548,15 +699,28 @@ function _renderModelStatus({ state = 'idle', label = '', progress = null, file 
 async function _refreshModelStatus() {
     try {
         const r = await api.get('/api/maintenance/nsfw/model-status');
-        const state = r?.state === 'ready' ? 'ready'
-                    : r?.state === 'loading' ? 'loading'
-                    : r?.state === 'error' ? 'error'
+        const state =
+            r?.state === 'ready'
+                ? 'ready'
+                : r?.state === 'loading'
+                  ? 'loading'
+                  : r?.state === 'error'
+                    ? 'error'
                     : 'idle';
-        const label = state === 'ready'   ? i18nT('maintenance.nsfw.model_status.ready', 'Ready')
-                    : state === 'loading' ? i18nT('maintenance.nsfw.model_status.loading', 'Loading…')
-                    : state === 'error'   ? i18nT('maintenance.nsfw.model_status.error', 'Failed')
+        const label =
+            state === 'ready'
+                ? i18nT('maintenance.nsfw.model_status.ready', 'Ready')
+                : state === 'loading'
+                  ? i18nT('maintenance.nsfw.model_status.loading', 'Loading…')
+                  : state === 'error'
+                    ? i18nT('maintenance.nsfw.model_status.error', 'Failed')
                     : i18nT('maintenance.nsfw.model_status.idle', 'Not loaded');
-        _renderModelStatus({ state, label, progress: r?.progress?.progress != null ? Math.round(r.progress.progress) : null, file: r?.progress?.file || '' });
+        _renderModelStatus({
+            state,
+            label,
+            progress: r?.progress?.progress != null ? Math.round(r.progress.progress) : null,
+            file: r?.progress?.file || '',
+        });
     } catch {
         _renderModelStatus({ state: 'idle' });
     }
@@ -571,13 +735,31 @@ async function _onPreloadClick() {
     try {
         const r = await api.post('/api/maintenance/nsfw/preload', {});
         if (r?.alreadyReady) {
-            showToast(i18nT('maintenance.nsfw.preload.already_ready', 'Model already loaded.'), 'info');
+            showToast(
+                i18nT('maintenance.nsfw.preload.already_ready', 'Model already loaded.'),
+                'info',
+            );
         } else if (r?.alreadyLoading) {
-            showToast(i18nT('maintenance.nsfw.preload.already_loading', 'A preload is already in progress.'), 'info');
+            showToast(
+                i18nT(
+                    'maintenance.nsfw.preload.already_loading',
+                    'A preload is already in progress.',
+                ),
+                'info',
+            );
         } else {
-            showToast(i18nT('maintenance.nsfw.preload.started', 'Preload started — progress in the realtime log.'), 'success');
+            showToast(
+                i18nT(
+                    'maintenance.nsfw.preload.started',
+                    'Preload started — progress in the realtime log.',
+                ),
+                'success',
+            );
         }
-        _renderModelStatus({ state: 'loading', label: i18nT('maintenance.nsfw.model_status.loading', 'Loading…') });
+        _renderModelStatus({
+            state: 'loading',
+            label: i18nT('maintenance.nsfw.model_status.loading', 'Loading…'),
+        });
     } catch (e) {
         showToast(e?.data?.error || e?.message || 'Preload failed', 'error');
     } finally {
@@ -589,7 +771,10 @@ async function _onPreloadClick() {
 async function _onCacheClearClick() {
     const ok = await confirmSheet({
         title: i18nT('maintenance.nsfw.cache_clear.confirm_title', 'Wipe cached weights?'),
-        body: i18nT('maintenance.nsfw.cache_clear.confirm_body', 'The classifier cache directory will be emptied. The next scan or preload will re-download the model.'),
+        body: i18nT(
+            'maintenance.nsfw.cache_clear.confirm_body',
+            'The classifier cache directory will be emptied. The next scan or preload will re-download the model.',
+        ),
         confirmText: i18nT('common.delete', 'Delete'),
         confirmDanger: true,
     });
@@ -599,9 +784,14 @@ async function _onCacheClearClick() {
     try {
         const r = await api.del('/api/maintenance/nsfw/cache');
         const mb = ((r?.bytes || 0) / (1024 * 1024)).toFixed(1);
-        showToast(i18nTf('maintenance.nsfw.cache_clear.done',
-            { files: r?.files || 0, mb },
-            `Removed ${r?.files || 0} file(s), ${mb} MB freed.`), 'success');
+        showToast(
+            i18nTf(
+                'maintenance.nsfw.cache_clear.done',
+                { files: r?.files || 0, mb },
+                `Removed ${r?.files || 0} file(s), ${mb} MB freed.`,
+            ),
+            'success',
+        );
         _renderModelStatus({ state: 'idle' });
     } catch (e) {
         showToast(e?.data?.error || e?.message || 'Wipe failed', 'error');
@@ -616,10 +806,16 @@ export function init() {
         _pageWired = true;
         $('nsfw-scan-btn')?.addEventListener('click', _toggleScan);
         $('nsfw-prev-btn')?.addEventListener('click', () => {
-            if (view.page > 1) { view.page -= 1; _loadList(); }
+            if (view.page > 1) {
+                view.page -= 1;
+                _loadList();
+            }
         });
         $('nsfw-next-btn')?.addEventListener('click', () => {
-            if (view.page < view.totalPages) { view.page += 1; _loadList(); }
+            if (view.page < view.totalPages) {
+                view.page += 1;
+                _loadList();
+            }
         });
         $('nsfw-bulk-delete-btn')?.addEventListener('click', () => _bulkAction('delete'));
         $('nsfw-bulk-whitelist-btn')?.addEventListener('click', () => _bulkAction('whitelist'));
@@ -634,10 +830,14 @@ export function init() {
         try {
             const cfg = await api.get('/api/config');
             loadAdvanced(cfg);
-        } catch { /* best-effort — input still typeable, autosave still works */ }
+        } catch {
+            /* best-effort — input still typeable, autosave still works */
+        }
         // Wire the autosave pipeline so input changes here PATCH /api/config
         // through the same debounced flush the Settings page uses.
-        try { setupAutoSave(); } catch {}
+        try {
+            setupAutoSave();
+        } catch {}
         await _loadTiersMeta();
         await _refreshStats();
         await _refreshHistogram();

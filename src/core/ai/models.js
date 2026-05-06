@@ -65,7 +65,7 @@ const _pipelineErrors = new Map();
 // Keep the hook optional so models.js stays usable in CLI / tests.
 let _progressHook = null;
 export function setModelProgressHook(fn) {
-    _progressHook = (typeof fn === 'function') ? fn : null;
+    _progressHook = typeof fn === 'function' ? fn : null;
 }
 
 /**
@@ -92,8 +92,8 @@ async function _importTransformers() {
         return await import('@huggingface/transformers');
     } catch (e) {
         const err = new Error(
-            `Failed to load @huggingface/transformers: ${e?.message || e}. `
-            + 'Install with `npm install @huggingface/transformers` to enable AI features.'
+            `Failed to load @huggingface/transformers: ${e?.message || e}. ` +
+                'Install with `npm install @huggingface/transformers` to enable AI features.',
         );
         err.code = 'AI_LIB_MISSING';
         throw err;
@@ -105,23 +105,30 @@ async function _importTransformers() {
  * sets fields that are safe to overwrite repeatedly.
  */
 async function _configureEnv(env, cacheDirAbs) {
-    try { env.cacheDir = cacheDirAbs; } catch { /* noop */ }
+    try {
+        env.cacheDir = cacheDirAbs;
+    } catch {
+        /* noop */
+    }
     // Force WASM execution on Node — see nsfw.js for the full rationale
     // (musl/glibc + onnxruntime-node prebuilt mess).
     try {
         if (env?.backends?.onnx?.wasm) {
             env.backends.onnx.wasm.numThreads = 1;
         }
-    } catch { /* noop */ }
+    } catch {
+        /* noop */
+    }
     // Optional HuggingFace token. Two precedence layers: (1) env var,
     // (2) `config.advanced.ai.hfToken` set via the dashboard. Either lets
     // the loader pull gated repos + dodge anonymous rate limits that show
     // up as 401 in the realtime log.
     try {
-        let token = process.env.HF_TOKEN
-            || process.env.HUGGINGFACE_TOKEN
-            || process.env.HUGGINGFACEHUB_API_TOKEN
-            || null;
+        let token =
+            process.env.HF_TOKEN ||
+            process.env.HUGGINGFACE_TOKEN ||
+            process.env.HUGGINGFACEHUB_API_TOKEN ||
+            null;
         // Pull from live config when env didn't set one. Dynamic require
         // keeps models.js usable in CLI / tests where config doesn't
         // exist yet.
@@ -133,19 +140,29 @@ async function _configureEnv(env, cacheDirAbs) {
                 if (typeof cfgToken === 'string' && cfgToken.trim()) {
                     token = cfgToken.trim();
                 }
-            } catch { /* noop — config not ready */ }
+            } catch {
+                /* noop — config not ready */
+            }
         }
         if (token && env) {
             // transformers.js v3 honours `env.useCustomCache`/`env.token`
             // shapes inconsistently across patch versions — set every
             // form we've seen documented so at least one wins.
-            try { env.token = token; } catch { /* noop */ }
+            try {
+                env.token = token;
+            } catch {
+                /* noop */
+            }
             try {
                 if (!env.customHeaders) env.customHeaders = {};
                 env.customHeaders.Authorization = `Bearer ${token}`;
-            } catch { /* noop */ }
+            } catch {
+                /* noop */
+            }
         }
-    } catch { /* noop */ }
+    } catch {
+        /* noop */
+    }
 }
 
 /**
@@ -163,8 +180,11 @@ export async function getPipeline({ kind, modelId, cacheDir, onProgress, onLog }
     if (!kind) throw new Error('getPipeline: kind is required');
     if (!modelId) throw new Error('getPipeline: modelId is required');
     const _log = (level, msg) => {
-        try { if (typeof onLog === 'function') onLog({ source: 'ai', level, msg }); }
-        catch { /* swallow */ }
+        try {
+            if (typeof onLog === 'function') onLog({ source: 'ai', level, msg });
+        } catch {
+            /* swallow */
+        }
     };
 
     const key = `${kind}::${modelId}`;
@@ -179,7 +199,8 @@ export async function getPipeline({ kind, modelId, cacheDir, onProgress, onLog }
         // Mark the entry so the status endpoint can render "Loading…"
         // before the first progress event lands.
         _pipelineMeta.set(key, {
-            kind, modelId,
+            kind,
+            modelId,
             startedAt: Date.now(),
             loadedAt: null,
             lastProgress: null,
@@ -191,15 +212,22 @@ export async function getPipeline({ kind, modelId, cacheDir, onProgress, onLog }
 
         const handle = await pipeline(kind, modelId, {
             progress_callback: (p) => {
-                try { if (typeof onProgress === 'function') onProgress(p); }
-                catch { /* progress callbacks must never crash the loader */ }
+                try {
+                    if (typeof onProgress === 'function') onProgress(p);
+                } catch {
+                    /* progress callbacks must never crash the loader */
+                }
                 try {
                     const meta = _pipelineMeta.get(key);
                     if (meta) meta.lastProgress = { ...p, ts: Date.now() };
-                } catch { /* swallow */ }
+                } catch {
+                    /* swallow */
+                }
                 try {
                     if (_progressHook) _progressHook({ kind, modelId, progress: p });
-                } catch { /* never crash the loader */ }
+                } catch {
+                    /* never crash the loader */
+                }
             },
         });
 
@@ -211,7 +239,9 @@ export async function getPipeline({ kind, modelId, cacheDir, onProgress, onLog }
         _pipelineErrors.delete(key);
         try {
             if (_progressHook) _progressHook({ kind, modelId, progress: { status: 'ready' } });
-        } catch { /* swallow */ }
+        } catch {
+            /* swallow */
+        }
         return handle;
     })().catch((e) => {
         // Reset so the next caller retries the load instead of inheriting
@@ -220,11 +250,15 @@ export async function getPipeline({ kind, modelId, cacheDir, onProgress, onLog }
         _pipelineMeta.delete(key);
         _pipelineErrors.set(key, { message: e?.message || String(e), ts: Date.now() });
         try {
-            if (_progressHook) _progressHook({
-                kind, modelId,
-                progress: { status: 'error', error: e?.message || String(e) },
-            });
-        } catch { /* swallow */ }
+            if (_progressHook)
+                _progressHook({
+                    kind,
+                    modelId,
+                    progress: { status: 'error', error: e?.message || String(e) },
+                });
+        } catch {
+            /* swallow */
+        }
         throw e;
     });
 
@@ -253,7 +287,9 @@ export async function clearPipelineForModel(modelId) {
         try {
             const cls = await p;
             if (cls && typeof cls.dispose === 'function') await cls.dispose();
-        } catch { /* swallow */ }
+        } catch {
+            /* swallow */
+        }
         cleared += 1;
     }
     return cleared;
@@ -301,22 +337,32 @@ export async function inspectModelCache(modelId, cacheDirCfg) {
             while (stack.length) {
                 const cur = stack.pop();
                 let ents;
-                try { ents = await fs.readdir(cur, { withFileTypes: true }); }
-                catch { continue; }
+                try {
+                    ents = await fs.readdir(cur, { withFileTypes: true });
+                } catch {
+                    continue;
+                }
                 for (const e of ents) {
                     const p = path.join(cur, e.name);
-                    if (e.isDirectory()) { stack.push(p); continue; }
+                    if (e.isDirectory()) {
+                        stack.push(p);
+                        continue;
+                    }
                     if (e.isFile()) {
                         try {
                             const s = await fs.stat(p);
                             bytes += s.size;
                             files += 1;
-                        } catch { /* skip racy unlinks */ }
+                        } catch {
+                            /* skip racy unlinks */
+                        }
                     }
                 }
             }
             return { bytes, files, dir };
-        } catch { /* try next candidate */ }
+        } catch {
+            /* try next candidate */
+        }
     }
     return { bytes: 0, files: 0, dir: null };
 }
@@ -357,7 +403,9 @@ export async function disposeAll() {
         try {
             const cls = await p;
             if (cls && typeof cls.dispose === 'function') await cls.dispose();
-        } catch { /* best-effort */ }
+        } catch {
+            /* best-effort */
+        }
     }
 }
 
@@ -373,7 +421,7 @@ export const AI_MODEL_DEFAULTS = Object.freeze({
     embeddings: {
         kind: 'image-feature-extraction',
         modelId: 'Xenova/clip-vit-base-patch32',
-        textKind: 'feature-extraction',  // text encoder uses the text head
+        textKind: 'feature-extraction', // text encoder uses the text head
         dim: 512,
     },
     faces: {
@@ -383,7 +431,7 @@ export const AI_MODEL_DEFAULTS = Object.freeze({
         // YOLOS-tiny — it's a general detector, the "person" class still
         // gives the people-clustering pipeline usable bboxes. Operators
         // who want a dedicated face model can swap to a self-hosted one.
-        modelId: 'Xenova/yolos-tiny',  // ~31 MB
+        modelId: 'Xenova/yolos-tiny', // ~31 MB
     },
     tags: {
         kind: 'image-classification',

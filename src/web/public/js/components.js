@@ -35,20 +35,31 @@ import { createAvatar, escapeHtml, formatRelativeTime } from './utils.js';
  */
 export function renderChatRow(opts) {
     const {
-        id, name, subtitle = '',
-        avatarType, avatarRing = null, avatarDot = null, avatarSize = 'lg',
-        unread = null, unreadMuted = false,
+        id,
+        name,
+        subtitle = '',
+        avatarType,
+        avatarRing = null,
+        avatarDot = null,
+        avatarSize = 'lg',
+        unread = null,
+        unreadMuted = false,
         statusPill = null,
         selected = false,
-        time, lastDownloadAt,
+        time,
+        lastDownloadAt,
         data = {},
         cog = false,
         accountChips = null,
     } = opts;
 
     const avatar = createAvatar({
-        id, name, type: avatarType,
-        ring: avatarRing, dot: avatarDot, size: avatarSize,
+        id,
+        name,
+        type: avatarType,
+        ring: avatarRing,
+        dot: avatarDot,
+        size: avatarSize,
     });
 
     const t = time || (lastDownloadAt ? formatRelativeTime(lastDownloadAt) : '');
@@ -82,8 +93,8 @@ export function renderChatRow(opts) {
     // across rows + reloads — easier to scan visually than fixed slots.
     let chipsHtml = '';
     if (Array.isArray(accountChips) && accountChips.length > 0) {
-        chipsHtml = `<div class="row-account-chips">${
-            accountChips.map((c) => {
+        chipsHtml = `<div class="row-account-chips">${accountChips
+            .map((c) => {
                 const cid = String(c.id || '');
                 let h = 0;
                 for (let i = 0; i < cid.length; i++) h = (h * 31 + cid.charCodeAt(i)) >>> 0;
@@ -92,8 +103,8 @@ export function renderChatRow(opts) {
                 const label = c.label || cid;
                 const title = c.title || label;
                 return `<span class="account-chip" style="${style}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
-            }).join('')
-        }</div>`;
+            })
+            .join('')}</div>`;
     }
 
     return `
@@ -123,11 +134,18 @@ export function renderChatRow(opts) {
  *       actionHref: '#/groups',  // or actionOnClick
  *   })
  */
-export function renderEmptyState({ icon = 'ri-information-line', title, body = '', actionLabel, actionHref, actionId } = {}) {
+export function renderEmptyState({
+    icon = 'ri-information-line',
+    title,
+    body = '',
+    actionLabel,
+    actionHref,
+    actionId,
+} = {}) {
     const action = actionLabel
-        ? (actionHref
+        ? actionHref
             ? `<a href="${escapeHtml(actionHref)}" class="tg-btn inline-flex items-center gap-2 mt-4 px-4 py-2"><i class="ri-arrow-right-line"></i>${escapeHtml(actionLabel)}</a>`
-            : `<button id="${escapeHtml(actionId || 'empty-cta')}" class="tg-btn inline-flex items-center gap-2 mt-4 px-4 py-2" type="button"><i class="ri-arrow-right-line"></i>${escapeHtml(actionLabel)}</button>`)
+            : `<button id="${escapeHtml(actionId || 'empty-cta')}" class="tg-btn inline-flex items-center gap-2 mt-4 px-4 py-2" type="button"><i class="ri-arrow-right-line"></i>${escapeHtml(actionLabel)}</button>`
         : '';
     return `
         <div class="flex flex-col items-center justify-center text-center px-6 py-12 text-tg-textSecondary">
@@ -140,19 +158,28 @@ export function renderEmptyState({ icon = 'ri-information-line', title, body = '
 
 /** Square skeleton tile for the gallery first-paint. */
 export function renderGallerySkeletons(count = 12) {
-    return new Array(count).fill(0).map(() =>
-        `<div class="aspect-square bg-tg-panel rounded skeleton" aria-hidden="true"></div>`
-    ).join('');
+    return new Array(count)
+        .fill(0)
+        .map(
+            () =>
+                `<div class="aspect-square bg-tg-panel rounded skeleton" aria-hidden="true"></div>`,
+        )
+        .join('');
 }
 
 /** Chat-row sized skeleton for the sidebar / dialog list. */
 export function renderRowSkeletons(count = 6) {
-    return new Array(count).fill(0).map(() => `
+    return new Array(count)
+        .fill(0)
+        .map(
+            () => `
         <div class="chat-row" aria-hidden="true">
             <div class="rounded-full skeleton" style="width:48px;height:48px;flex-shrink:0"></div>
             <div class="row-text">
                 <div class="skeleton" style="height:14px;width:60%;border-radius:4px;margin-bottom:6px"></div>
                 <div class="skeleton" style="height:11px;width:40%;border-radius:4px"></div>
             </div>
-        </div>`).join('');
+        </div>`,
+        )
+        .join('');
 }

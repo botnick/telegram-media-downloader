@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -97,11 +96,17 @@ export function suppressNoise(msg, label = 'gramjs') {
         try {
             const st = fs.statSync(file);
             if (st.size > NETWORK_LOG_MAX_BYTES) {
-                try { fs.renameSync(file, file + '.1'); } catch {}
+                try {
+                    fs.renameSync(file, file + '.1');
+                } catch {}
             }
-        } catch { /* file doesn't exist yet — fine */ }
+        } catch {
+            /* file doesn't exist yet — fine */
+        }
         fs.appendFileSync(file, `[${ts}] [${label}] ${text}\n`);
-    } catch { /* never let logging crash the app */ }
+    } catch {
+        /* never let logging crash the app */
+    }
     // In debug mode, still surface the message so a developer can see reconnect activity.
     return !debugMode;
 }
@@ -114,7 +119,7 @@ export function suppressNoise(msg, label = 'gramjs') {
  */
 export function wrapConsoleMethod(originalFn, label = 'gramjs') {
     return function wrapped(...args) {
-        const joined = args.map(a => (a instanceof Error ? a.message : String(a))).join(' ');
+        const joined = args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ');
         if (suppressNoise(joined, label)) return;
         return originalFn.apply(console, args);
     };

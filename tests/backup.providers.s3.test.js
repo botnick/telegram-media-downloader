@@ -43,25 +43,38 @@ beforeAll(async () => {
     if (!RUN) return;
     const { S3Client, CreateBucketCommand } = await import('@aws-sdk/client-s3');
     const setupClient = new S3Client({
-        endpoint: ENDPOINT, region: REGION, forcePathStyle: true,
+        endpoint: ENDPOINT,
+        region: REGION,
+        forcePathStyle: true,
         credentials: { accessKeyId: ACCESS, secretAccessKey: SECRET },
     });
     try {
         await setupClient.send(new CreateBucketCommand({ Bucket: BUCKET }));
-    } catch { /* already exists */ }
+    } catch {
+        /* already exists */
+    }
 
     const { S3Provider } = await import('../src/core/backup/providers/s3.js');
     provider = new S3Provider();
-    await provider.init({
-        endpoint: ENDPOINT, region: REGION, bucket: BUCKET,
-        accessKeyId: ACCESS, secretAccessKey: SECRET,
-        prefix: 'tests/', forcePathStyle: 'true',
-    }, ctx);
+    await provider.init(
+        {
+            endpoint: ENDPOINT,
+            region: REGION,
+            bucket: BUCKET,
+            accessKeyId: ACCESS,
+            secretAccessKey: SECRET,
+            prefix: 'tests/',
+            forcePathStyle: 'true',
+        },
+        ctx,
+    );
 });
 
 afterAll(async () => {
     if (!RUN) return;
-    try { await provider?.close(); } catch {}
+    try {
+        await provider?.close();
+    } catch {}
     if (SOURCE_DIR) fs.rmSync(SOURCE_DIR, { recursive: true, force: true });
 });
 

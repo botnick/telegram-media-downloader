@@ -62,9 +62,15 @@ function _ensureModal() {
     el.addEventListener('click', (e) => {
         // Click on backdrop closes; clicks inside the sheet are handled
         // by their data-action attributes.
-        if (e.target === el) { closeResultViewer(); return; }
+        if (e.target === el) {
+            closeResultViewer();
+            return;
+        }
         const action = e.target.closest('[data-action]')?.dataset.action;
-        if (action === 'close') { closeResultViewer(); return; }
+        if (action === 'close') {
+            closeResultViewer();
+            return;
+        }
         if (action === 'similar' && _ctx?.row) {
             const row = _ctx.row;
             closeResultViewer();
@@ -98,9 +104,14 @@ async function _loadTagsFor(_downloadId) {
 
 function _renderTags(tags) {
     if (!tags?.length) return '';
-    return tags.slice(0, 8).map((t) => `
+    return tags
+        .slice(0, 8)
+        .map(
+            (t) => `
         <button type="button" class="ai-rv-tag" data-tag="${escapeHtml(t.tag || t)}">${escapeHtml(t.tag || t)}</button>
-    `).join('');
+    `,
+        )
+        .join('');
 }
 
 /**
@@ -129,7 +140,10 @@ export function openResultViewer(row, ctx = {}) {
         img.onerror = () => {
             img.style.display = 'none';
             fallback.classList.remove('hidden');
-            fallbackMsg.textContent = i18nT('maintenance.ai.search.preview_unavailable', 'Preview unavailable');
+            fallbackMsg.textContent = i18nT(
+                'maintenance.ai.search.preview_unavailable',
+                'Preview unavailable',
+            );
         };
     } else {
         // Show fallback for videos / documents — clicking "Open original"
@@ -138,15 +152,20 @@ export function openResultViewer(row, ctx = {}) {
         img.onerror = () => {
             img.style.display = 'none';
             fallback.classList.remove('hidden');
-            fallbackMsg.textContent = i18nTf('maintenance.ai.search.no_image_preview',
-                { type: fileType }, `${fileType} — open original to view`);
+            fallbackMsg.textContent = i18nTf(
+                'maintenance.ai.search.no_image_preview',
+                { type: fileType },
+                `${fileType} — open original to view`,
+            );
         };
     }
 
     const openLink = el.querySelector('[data-rv-open]');
     if (row.file_path) {
         // Strip the data/downloads/ prefix the way /files/ expects it.
-        let p = String(row.file_path).replace(/\\/g, '/').replace(/^data\/downloads\//, '');
+        let p = String(row.file_path)
+            .replace(/\\/g, '/')
+            .replace(/^data\/downloads\//, '');
         openLink.href = `/files/${encodeURIComponent(p)}?inline=1`;
     } else {
         openLink.removeAttribute('href');
@@ -155,17 +174,19 @@ export function openResultViewer(row, ctx = {}) {
     // Tags row — wired to onTagClick.
     const tagsEl = el.querySelector('[data-rv-tags]');
     tagsEl.innerHTML = '';
-    _loadTagsFor(row.download_id).then((tags) => {
-        const html = _renderTags(tags);
-        if (html) tagsEl.innerHTML = html;
-        tagsEl.querySelectorAll('.ai-rv-tag').forEach((b) => {
-            b.addEventListener('click', () => {
-                const tag = b.dataset.tag;
-                closeResultViewer();
-                ctx.onTagClick?.(tag);
+    _loadTagsFor(row.download_id)
+        .then((tags) => {
+            const html = _renderTags(tags);
+            if (html) tagsEl.innerHTML = html;
+            tagsEl.querySelectorAll('.ai-rv-tag').forEach((b) => {
+                b.addEventListener('click', () => {
+                    const tag = b.dataset.tag;
+                    closeResultViewer();
+                    ctx.onTagClick?.(tag);
+                });
             });
-        });
-    }).catch(() => {});
+        })
+        .catch(() => {});
 
     el.classList.remove('hidden');
     document.body.style.overflow = 'hidden';

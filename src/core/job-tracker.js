@@ -74,10 +74,18 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
     }
 
     function _safeBroadcast(payload) {
-        try { _broadcast(payload); } catch { /* swallow */ }
+        try {
+            _broadcast(payload);
+        } catch {
+            /* swallow */
+        }
     }
     function _safeLog(entry) {
-        try { _log(entry); } catch { /* swallow */ }
+        try {
+            _log(entry);
+        } catch {
+            /* swallow */
+        }
     }
 
     function getStatus() {
@@ -89,7 +97,9 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
         };
     }
 
-    function isRunning() { return _running; }
+    function isRunning() {
+        return _running;
+    }
 
     /**
      * Attempt to start a new run. If a run is already in flight, returns
@@ -130,7 +140,7 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
             try {
                 const onProgress = (p) => {
                     if (!_running) return; // post-cancel suppress
-                    const merged = (p && typeof p === 'object') ? p : {};
+                    const merged = p && typeof p === 'object' ? p : {};
                     _state = {
                         ..._state,
                         running: true,
@@ -140,13 +150,17 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
                     _safeBroadcast({
                         type: `${_prefix}_progress`,
                         ...getStatus(),
-                        ...merged,   // expose flat fields for legacy WS subs
+                        ...merged, // expose flat fields for legacy WS subs
                     });
                     const now = Date.now();
                     if (now - _lastProgressLogAt > PROGRESS_LOG_INTERVAL_MS) {
                         _lastProgressLogAt = now;
                         const desc = _shortProgress(merged);
-                        _safeLog({ source: kind, level: 'info', msg: `${kind} progress${desc ? ' — ' + desc : ''}` });
+                        _safeLog({
+                            source: kind,
+                            level: 'info',
+                            msg: `${kind} progress${desc ? ' — ' + desc : ''}`,
+                        });
                     }
                 };
                 const result = await runFn({ onProgress, signal: _abort.signal });
@@ -157,7 +171,7 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
                     stage: 'done',
                     finishedAt,
                     durationMs: finishedAt - startedAt,
-                    result: (result && typeof result === 'object') ? result : (result ?? null),
+                    result: result && typeof result === 'object' ? result : (result ?? null),
                     error: null,
                     successes: (_state.successes || 0) + 1,
                 };
@@ -167,7 +181,11 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
                     durationMs: _state.durationMs,
                     kind,
                 });
-                _safeLog({ source: kind, level: 'info', msg: `${kind} done in ${_state.durationMs} ms` });
+                _safeLog({
+                    source: kind,
+                    level: 'info',
+                    msg: `${kind} done in ${_state.durationMs} ms`,
+                });
             } catch (e) {
                 const finishedAt = Date.now();
                 const msg = e?.message || String(e);
@@ -203,7 +221,11 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
      */
     function cancel() {
         if (!_running || !_abort) return false;
-        try { _abort.abort(); } catch { /* swallow */ }
+        try {
+            _abort.abort();
+        } catch {
+            /* swallow */
+        }
         _safeLog({ source: kind, level: 'warn', msg: `${kind} cancel requested` });
         return true;
     }

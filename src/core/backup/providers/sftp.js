@@ -18,22 +18,47 @@ import { BackupProvider } from './base.js';
 import { encryptStream } from '../encryption.js';
 
 export class SftpProvider extends BackupProvider {
-    static get name() { return 'sftp'; }
-    static get displayName() { return 'SFTP (SSH file transfer)'; }
+    static get name() {
+        return 'sftp';
+    }
+    static get displayName() {
+        return 'SFTP (SSH file transfer)';
+    }
     static get configSchema() {
         return [
-            { name: 'host',         label: 'Host',          type: 'text',     required: true,  placeholder: 'nas.lan' },
-            { name: 'port',         label: 'Port',          type: 'number',                    placeholder: '22' },
-            { name: 'username',     label: 'Username',      type: 'text',     required: true },
-            { name: 'password',     label: 'Password',      type: 'password', secret: true,
-                help: 'Provide a password OR a private key, not both. If both, the key wins.' },
-            { name: 'privateKey',   label: 'Private key (PEM)', type: 'textarea', secret: true,
-                placeholder: '-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----' },
-            { name: 'passphrase',   label: 'Key passphrase', type: 'password', secret: true,
-                help: 'Only needed if the private key is encrypted.' },
-            { name: 'remoteRoot',   label: 'Remote root',   type: 'text',     required: true,
+            { name: 'host', label: 'Host', type: 'text', required: true, placeholder: 'nas.lan' },
+            { name: 'port', label: 'Port', type: 'number', placeholder: '22' },
+            { name: 'username', label: 'Username', type: 'text', required: true },
+            {
+                name: 'password',
+                label: 'Password',
+                type: 'password',
+                secret: true,
+                help: 'Provide a password OR a private key, not both. If both, the key wins.',
+            },
+            {
+                name: 'privateKey',
+                label: 'Private key (PEM)',
+                type: 'textarea',
+                secret: true,
+                placeholder:
+                    '-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----',
+            },
+            {
+                name: 'passphrase',
+                label: 'Key passphrase',
+                type: 'password',
+                secret: true,
+                help: 'Only needed if the private key is encrypted.',
+            },
+            {
+                name: 'remoteRoot',
+                label: 'Remote root',
+                type: 'text',
+                required: true,
                 placeholder: '/home/user/tgdl-backup',
-                help: 'Absolute path on the remote where uploads land. Will be auto-created.' },
+                help: 'Absolute path on the remote where uploads land. Will be auto-created.',
+            },
         ];
     }
 
@@ -72,12 +97,18 @@ export class SftpProvider extends BackupProvider {
         this.client = new SftpClient(`tgdl-backup-${Date.now()}`);
         await this.client.connect(this.cfg);
         // Ensure the root exists. mkdir -p semantics.
-        try { await this.client.mkdir(this.root, true); } catch { /* may already exist */ }
+        try {
+            await this.client.mkdir(this.root, true);
+        } catch {
+            /* may already exist */
+        }
     }
 
     /** Resolve a remote (relative) path against the configured root. */
     _resolve(remotePath) {
-        const norm = String(remotePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = String(remotePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
         if (norm.includes('..')) throw new Error(`unsafe remote path: ${remotePath}`);
         return path.posix.join(this.root, norm);
     }
@@ -85,18 +116,24 @@ export class SftpProvider extends BackupProvider {
     async upload(localPath, remotePath, opts, ctx) {
         const dest = this._resolve(remotePath);
         const dir = path.posix.dirname(dest);
-        try { await this.client.mkdir(dir, true); } catch { /* exists */ }
+        try {
+            await this.client.mkdir(dir, true);
+        } catch {
+            /* exists */
+        }
 
         let body = fs.createReadStream(localPath);
         if (opts?.encryptKey) {
             body = body.pipe(encryptStream(opts.encryptKey));
         }
         if (typeof opts?.onProgress === 'function' || opts?.throttleBps) {
-            body = body.pipe(_makeProgressTransform({
-                onProgress: opts?.onProgress,
-                throttleBps: opts?.throttleBps,
-                signal: ctx?.signal,
-            }));
+            body = body.pipe(
+                _makeProgressTransform({
+                    onProgress: opts?.onProgress,
+                    throttleBps: opts?.throttleBps,
+                    signal: ctx?.signal,
+                }),
+            );
         }
 
         // ssh2-sftp-client's `put` accepts a Readable. Wrap so we can
@@ -104,9 +141,15 @@ export class SftpProvider extends BackupProvider {
         // so we destroy the source stream and let the upstream error
         // surface as the abort.
         if (ctx?.signal) {
-            ctx.signal.addEventListener('abort', () => {
-                try { body.destroy(new Error('aborted')); } catch {}
-            }, { once: true });
+            ctx.signal.addEventListener(
+                'abort',
+                () => {
+                    try {
+                        body.destroy(new Error('aborted'));
+                    } catch {}
+                },
+                { once: true },
+            );
         }
         await this.client.put(body, dest);
         const st = await this.client.stat(dest);
@@ -186,7 +229,9 @@ export class SftpProvider extends BackupProvider {
     }
 
     async close() {
-        try { await this.client?.end(); } catch {}
+        try {
+            await this.client?.end();
+        } catch {}
         this.client = null;
     }
 }
@@ -200,7 +245,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                 if (signal?.aborted) return cb(new Error('aborted'));
                 bytes += chunk.length;
                 if (typeof onProgress === 'function') {
-                    try { onProgress({ bytesUploaded: bytes }); } catch {}
+                    try {
+                        onProgress({ bytesUploaded: bytes });
+                    } catch {}
                 }
                 if (throttleBps && throttleBps > 0) {
                     const elapsedMs = Date.now() - start;
@@ -211,7 +258,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                     }
                 }
                 cb(null, chunk);
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }

@@ -15,21 +15,24 @@ import { openSheet, confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 
 const TTL_OPTIONS = [
-    { sec: 3600,             key: 'share.ttl.1h',    label: '1 hour'   },
-    { sec: 24 * 3600,        key: 'share.ttl.24h',   label: '24 hours' },
-    { sec: 7 * 24 * 3600,    key: 'share.ttl.7d',    label: '7 days'   },
-    { sec: 30 * 24 * 3600,   key: 'share.ttl.30d',   label: '30 days'  },
-    { sec: 90 * 24 * 3600,   key: 'share.ttl.90d',   label: '90 days'  },
+    { sec: 3600, key: 'share.ttl.1h', label: '1 hour' },
+    { sec: 24 * 3600, key: 'share.ttl.24h', label: '24 hours' },
+    { sec: 7 * 24 * 3600, key: 'share.ttl.7d', label: '7 days' },
+    { sec: 30 * 24 * 3600, key: 'share.ttl.30d', label: '30 days' },
+    { sec: 90 * 24 * 3600, key: 'share.ttl.90d', label: '90 days' },
     // 0 = sentinel for "never expires". Revocation still works — the
     // admin can kill the link any time from the Active links list.
-    { sec: 0,                key: 'share.ttl.never', label: 'Never'    },
+    { sec: 0, key: 'share.ttl.never', label: 'Never' },
 ];
 const DEFAULT_TTL_SEC = 7 * 24 * 3600;
 
 function escapeHtml(s) {
     return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function _fmtBytes(n) {
@@ -44,24 +47,56 @@ function _relTime(epochMs) {
     if (!epochMs) return i18nT('share.never_opened', 'Never opened');
     const diffSec = Math.max(0, Math.floor((Date.now() - epochMs) / 1000));
     if (diffSec < 60) return i18nT('share.just_now', 'just now');
-    if (diffSec < 3600) return i18nTf('share.mins_ago', { n: Math.floor(diffSec / 60) }, `${Math.floor(diffSec / 60)}m ago`);
-    if (diffSec < 86400) return i18nTf('share.hours_ago', { n: Math.floor(diffSec / 3600) }, `${Math.floor(diffSec / 3600)}h ago`);
-    return i18nTf('share.days_ago', { n: Math.floor(diffSec / 86400) }, `${Math.floor(diffSec / 86400)}d ago`);
+    if (diffSec < 3600)
+        return i18nTf(
+            'share.mins_ago',
+            { n: Math.floor(diffSec / 60) },
+            `${Math.floor(diffSec / 60)}m ago`,
+        );
+    if (diffSec < 86400)
+        return i18nTf(
+            'share.hours_ago',
+            { n: Math.floor(diffSec / 3600) },
+            `${Math.floor(diffSec / 3600)}h ago`,
+        );
+    return i18nTf(
+        'share.days_ago',
+        { n: Math.floor(diffSec / 86400) },
+        `${Math.floor(diffSec / 86400)}d ago`,
+    );
 }
 
 function _expiryHint(expSec, revokedAt) {
-    if (revokedAt) return `<span class="text-red-400">${escapeHtml(i18nT('share.row.revoked', 'Revoked'))}</span>`;
+    if (revokedAt)
+        return `<span class="text-red-400">${escapeHtml(i18nT('share.row.revoked', 'Revoked'))}</span>`;
     // expSec === 0 is the sentinel for "never expires" — the link only
     // dies if the admin revokes it (or the underlying file is deleted).
-    if (expSec === 0) return `<span class="text-tg-blue">${escapeHtml(i18nT('share.row.never_expires', 'Never expires'))}</span>`;
+    if (expSec === 0)
+        return `<span class="text-tg-blue">${escapeHtml(i18nT('share.row.never_expires', 'Never expires'))}</span>`;
     const nowSec = Math.floor(Date.now() / 1000);
-    if (expSec <= nowSec) return `<span class="text-red-400">${escapeHtml(i18nT('share.row.expired', 'Expired'))}</span>`;
+    if (expSec <= nowSec)
+        return `<span class="text-red-400">${escapeHtml(i18nT('share.row.expired', 'Expired'))}</span>`;
     const remainSec = expSec - nowSec;
     const when = new Date(expSec * 1000).toLocaleString();
     let label;
-    if (remainSec < 3600) label = i18nTf('share.expires_in_min', { n: Math.floor(remainSec / 60) }, `Expires in ${Math.floor(remainSec / 60)} min`);
-    else if (remainSec < 86400) label = i18nTf('share.expires_in_hr', { n: Math.floor(remainSec / 3600) }, `Expires in ${Math.floor(remainSec / 3600)} hr`);
-    else label = i18nTf('share.expires_in_d', { n: Math.floor(remainSec / 86400) }, `Expires in ${Math.floor(remainSec / 86400)} days`);
+    if (remainSec < 3600)
+        label = i18nTf(
+            'share.expires_in_min',
+            { n: Math.floor(remainSec / 60) },
+            `Expires in ${Math.floor(remainSec / 60)} min`,
+        );
+    else if (remainSec < 86400)
+        label = i18nTf(
+            'share.expires_in_hr',
+            { n: Math.floor(remainSec / 3600) },
+            `Expires in ${Math.floor(remainSec / 3600)} hr`,
+        );
+    else
+        label = i18nTf(
+            'share.expires_in_d',
+            { n: Math.floor(remainSec / 86400) },
+            `Expires in ${Math.floor(remainSec / 86400)} days`,
+        );
     return `<span title="${escapeHtml(when)}">${escapeHtml(label)}</span>`;
 }
 
@@ -81,7 +116,9 @@ async function _copyToClipboard(text) {
             const ok = document.execCommand('copy');
             ta.remove();
             return ok;
-        } catch { return false; }
+        } catch {
+            return false;
+        }
     }
 }
 
@@ -89,22 +126,31 @@ function _renderRow(link, { showFile = false } = {}) {
     // expiresAt === 0 means "never expires" — only revocation can make
     // such a row inactive. Without this short-circuit the row would render
     // as expired immediately (since 0 < Date.now()).
-    const isExpired = link.expiresAt !== 0 && (link.expiresAt * 1000) <= Date.now();
+    const isExpired = link.expiresAt !== 0 && link.expiresAt * 1000 <= Date.now();
     const inactive = !!link.revokedAt || isExpired;
     // Visual status pill — three discrete states (active / expired /
     // revoked). Each gets its own colour so the eye picks out which links
     // still work without parsing the expiry timestamp.
     const stateInfo = link.revokedAt
-        ? { cls: 'bg-red-500/15 text-red-400 border-red-500/30',
-            iconCls: 'ri-close-circle-line',
-            labelKey: 'share.state.revoked', labelFb: 'Revoked' }
+        ? {
+              cls: 'bg-red-500/15 text-red-400 border-red-500/30',
+              iconCls: 'ri-close-circle-line',
+              labelKey: 'share.state.revoked',
+              labelFb: 'Revoked',
+          }
         : isExpired
-        ? { cls: 'bg-tg-textSecondary/15 text-tg-textSecondary border-tg-border',
-            iconCls: 'ri-time-line',
-            labelKey: 'share.state.expired', labelFb: 'Expired' }
-        : { cls: 'bg-tg-green/15 text-tg-green border-tg-green/30',
-            iconCls: 'ri-shield-check-line',
-            labelKey: 'share.state.active', labelFb: 'Active' };
+          ? {
+                cls: 'bg-tg-textSecondary/15 text-tg-textSecondary border-tg-border',
+                iconCls: 'ri-time-line',
+                labelKey: 'share.state.expired',
+                labelFb: 'Expired',
+            }
+          : {
+                cls: 'bg-tg-green/15 text-tg-green border-tg-green/30',
+                iconCls: 'ri-shield-check-line',
+                labelKey: 'share.state.active',
+                labelFb: 'Active',
+            };
     const statePill = `<span class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${stateInfo.cls}"><i class="${stateInfo.iconCls}"></i>${escapeHtml(i18nT(stateInfo.labelKey, stateInfo.labelFb))}</span>`;
     const labelHtml = link.label
         ? `<span class="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-tg-bg/60 text-tg-textSecondary"><i class="ri-price-tag-3-line"></i>${escapeHtml(link.label)}</span>`
@@ -113,11 +159,16 @@ function _renderRow(link, { showFile = false } = {}) {
         ? `<div class="text-sm text-tg-text font-medium truncate" title="${escapeHtml(link.fileName || '')}">${escapeHtml(link.fileName || '(unnamed)')}</div>
            <div class="text-[11px] text-tg-textSecondary truncate flex items-center gap-1"><i class="ri-folder-3-line"></i>${escapeHtml(link.groupName || link.groupId || '—')}</div>`
         : '';
-    const accesses = link.accessCount > 0
-        ? i18nTf('share.access_count', { n: link.accessCount }, `${link.accessCount} opens`)
-        : i18nT('share.never_opened', 'Never opened');
+    const accesses =
+        link.accessCount > 0
+            ? i18nTf('share.access_count', { n: link.accessCount }, `${link.accessCount} opens`)
+            : i18nT('share.never_opened', 'Never opened');
     const lastOpened = link.lastAccessedAt
-        ? i18nTf('share.last_opened', { when: _relTime(link.lastAccessedAt) }, `last ${_relTime(link.lastAccessedAt)}`)
+        ? i18nTf(
+              'share.last_opened',
+              { when: _relTime(link.lastAccessedAt) },
+              `last ${_relTime(link.lastAccessedAt)}`,
+          )
         : '';
     const expiryStr = inactive ? '' : _expiryHint(link.expiresAt, link.revokedAt);
     const revokeBtn = inactive
@@ -157,24 +208,29 @@ function _renderRow(link, { showFile = false } = {}) {
 }
 
 function _wireRowActions(root, { onRevoked }) {
-    root.querySelectorAll('[data-copy]').forEach(btn => {
+    root.querySelectorAll('[data-copy]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             const id = btn.dataset.copy;
             const inp = root.querySelector(`input[data-url="${id}"]`);
             if (!inp) return;
             const ok = await _copyToClipboard(inp.value);
-            showToast(ok
-                ? i18nT('share.copied', 'Link copied')
-                : i18nT('share.copy_failed', 'Could not copy — select the link manually'),
-                ok ? 'success' : 'error');
+            showToast(
+                ok
+                    ? i18nT('share.copied', 'Link copied')
+                    : i18nT('share.copy_failed', 'Could not copy — select the link manually'),
+                ok ? 'success' : 'error',
+            );
         });
     });
-    root.querySelectorAll('[data-revoke]').forEach(btn => {
+    root.querySelectorAll('[data-revoke]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             const id = btn.dataset.revoke;
             const ok = await confirmSheet({
                 title: i18nT('share.revoke_title', 'Revoke this link?'),
-                body: i18nT('share.revoke_body', 'Anyone holding the link will immediately stop being able to open the file. This cannot be undone — you can issue a new link if you change your mind.'),
+                body: i18nT(
+                    'share.revoke_body',
+                    'Anyone holding the link will immediately stop being able to open the file. This cannot be undone — you can issue a new link if you change your mind.',
+                ),
                 confirmText: i18nT('share.revoke', 'Revoke'),
                 destructive: true,
             });
@@ -208,11 +264,13 @@ export async function openShareSheet({ downloadId, fileName }) {
         return;
     }
 
-    const ttlOptionsHtml = TTL_OPTIONS.map((o) => `
+    const ttlOptionsHtml = TTL_OPTIONS.map(
+        (o) => `
         <label class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-md border border-tg-border cursor-pointer hover:border-tg-blue/60">
             <input type="radio" name="share-ttl" value="${o.sec}" ${o.sec === DEFAULT_TTL_SEC ? 'checked' : ''}>
             <span data-i18n="${o.key}">${escapeHtml(o.label)}</span>
-        </label>`).join('');
+        </label>`,
+    ).join('');
 
     const html = `
         <div class="text-xs text-tg-textSecondary mb-3" data-i18n="share.help">Anyone with the link can open this file without logging in. The link expires automatically and can be revoked at any time.</div>
@@ -229,8 +287,11 @@ export async function openShareSheet({ downloadId, fileName }) {
         </div>
         <div class="text-xs text-tg-textSecondary mb-2" data-i18n="share.existing">Active links</div>
         <div id="share-list" class="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-            ${links.length ? links.map(l => _renderRow(l)).join('')
-                : `<div class="text-xs text-tg-textSecondary text-center py-3" data-i18n="share.no_links">No share links yet.</div>`}
+            ${
+                links.length
+                    ? links.map((l) => _renderRow(l)).join('')
+                    : `<div class="text-xs text-tg-textSecondary text-center py-3" data-i18n="share.no_links">No share links yet.</div>`
+            }
         </div>`;
 
     const sheet = openSheet({
@@ -245,11 +306,13 @@ export async function openShareSheet({ downloadId, fileName }) {
         const list = root.querySelector('#share-list');
         if (!list) return;
         list.innerHTML = newLinks.length
-            ? newLinks.map(l => _renderRow(l)).join('')
+            ? newLinks.map((l) => _renderRow(l)).join('')
             : `<div class="text-xs text-tg-textSecondary text-center py-3">${escapeHtml(i18nT('share.no_links', 'No share links yet.'))}</div>`;
         _wireRowActions(list, {
             onRevoked: (id) => {
-                links = links.map(l => String(l.id) === String(id) ? { ...l, revokedAt: Date.now() } : l);
+                links = links.map((l) =>
+                    String(l.id) === String(id) ? { ...l, revokedAt: Date.now() } : l,
+                );
                 refreshList(links);
             },
         });
@@ -269,10 +332,12 @@ export async function openShareSheet({ downloadId, fileName }) {
                 refreshList(links);
                 // Auto-copy the freshly minted link — most common next action.
                 const ok = await _copyToClipboard(r.link.url);
-                showToast(ok
-                    ? i18nT('share.created_copied', 'Link created and copied')
-                    : i18nT('share.created', 'Link created'),
-                    'success');
+                showToast(
+                    ok
+                        ? i18nT('share.created_copied', 'Link created and copied')
+                        : i18nT('share.created', 'Link created'),
+                    'success',
+                );
                 const labelEl = root.querySelector('#share-label-input');
                 if (labelEl) labelEl.value = '';
             }
@@ -302,7 +367,9 @@ export async function openAllSharesSheet() {
     // filter chip counts stay in lockstep.
     const tally = () => {
         const now = Date.now();
-        let active = 0, expired = 0, revoked = 0;
+        let active = 0,
+            expired = 0,
+            revoked = 0;
         for (const l of links) {
             if (l.revokedAt) revoked += 1;
             else if (l.expiresAt !== 0 && l.expiresAt * 1000 <= now) expired += 1;
@@ -311,9 +378,10 @@ export async function openAllSharesSheet() {
         return { total: links.length, active, expired, revoked };
     };
 
-    const renderList = (filtered) => filtered.length
-        ? filtered.map(l => _renderRow(l, { showFile: true })).join('')
-        : `<div class="py-10 text-center">
+    const renderList = (filtered) =>
+        filtered.length
+            ? filtered.map((l) => _renderRow(l, { showFile: true })).join('')
+            : `<div class="py-10 text-center">
               <i class="ri-link-unlink-m text-4xl text-tg-textSecondary/40"></i>
               <div class="text-sm text-tg-textSecondary mt-2" data-i18n="share.maint.empty_filter">No links match the current filter.</div>
            </div>`;
@@ -341,8 +409,11 @@ export async function openAllSharesSheet() {
     const renderFilterChips = (active, t) => {
         const chip = (id, labelKey, labelFb, n, accentCls) => {
             const isOn = active === id;
-            const baseCls = 'inline-flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-medium transition-colors border cursor-pointer';
-            const onCls = isOn ? accentCls : 'border-tg-border text-tg-textSecondary hover:text-tg-text hover:bg-tg-hover';
+            const baseCls =
+                'inline-flex items-center gap-1.5 px-3 h-7 rounded-full text-xs font-medium transition-colors border cursor-pointer';
+            const onCls = isOn
+                ? accentCls
+                : 'border-tg-border text-tg-textSecondary hover:text-tg-text hover:bg-tg-hover';
             return `<button type="button" data-share-filter="${id}" class="${baseCls} ${onCls}" aria-pressed="${isOn}">
                 <span data-i18n="${labelKey}">${escapeHtml(labelFb)}</span>
                 <span class="text-[10px] tabular-nums opacity-80">${n}</span>
@@ -350,8 +421,8 @@ export async function openAllSharesSheet() {
         };
         return `
             <div class="flex flex-wrap items-center gap-1.5">
-                ${chip('all',     'share.maint.filter.all',     'All',     t.total,   'bg-tg-blue/15 text-tg-blue border-tg-blue/40')}
-                ${chip('active',  'share.maint.filter.active',  'Active',  t.active,  'bg-tg-green/15 text-tg-green border-tg-green/40')}
+                ${chip('all', 'share.maint.filter.all', 'All', t.total, 'bg-tg-blue/15 text-tg-blue border-tg-blue/40')}
+                ${chip('active', 'share.maint.filter.active', 'Active', t.active, 'bg-tg-green/15 text-tg-green border-tg-green/40')}
                 ${chip('expired', 'share.maint.filter.expired', 'Expired', t.expired, 'bg-tg-textSecondary/15 text-tg-text border-tg-border')}
                 ${chip('revoked', 'share.maint.filter.revoked', 'Revoked', t.revoked, 'bg-red-500/15 text-red-400 border-red-500/40')}
             </div>`;
@@ -422,20 +493,23 @@ export async function openAllSharesSheet() {
             cleanupBtn.classList.toggle('cursor-not-allowed', !has);
             cleanupBtn.disabled = !has;
         }
-        const filtered = links.filter(l => {
+        const filtered = links.filter((l) => {
             const isRevoked = !!l.revokedAt;
             const isExpired = !isRevoked && l.expiresAt !== 0 && l.expiresAt * 1000 <= now;
-            if (activeFilter === 'active'  && (isRevoked || isExpired)) return false;
-            if (activeFilter === 'expired' && !isExpired)               return false;
-            if (activeFilter === 'revoked' && !isRevoked)               return false;
+            if (activeFilter === 'active' && (isRevoked || isExpired)) return false;
+            if (activeFilter === 'expired' && !isExpired) return false;
+            if (activeFilter === 'revoked' && !isRevoked) return false;
             if (!q) return true;
-            return [l.fileName, l.groupName, l.label].filter(Boolean)
-                .some(s => String(s).toLowerCase().includes(q));
+            return [l.fileName, l.groupName, l.label]
+                .filter(Boolean)
+                .some((s) => String(s).toLowerCase().includes(q));
         });
         list.innerHTML = renderList(filtered);
         _wireRowActions(list, {
             onRevoked: (id) => {
-                links = links.map(l => String(l.id) === String(id) ? { ...l, revokedAt: Date.now() } : l);
+                links = links.map((l) =>
+                    String(l.id) === String(id) ? { ...l, revokedAt: Date.now() } : l,
+                );
                 apply();
             },
         });
@@ -455,16 +529,22 @@ export async function openAllSharesSheet() {
     // whole batch (network blip / row already revoked from another tab).
     cleanupBtn?.addEventListener('click', async () => {
         const now = Date.now();
-        const expired = links.filter(l => !l.revokedAt && l.expiresAt !== 0 && l.expiresAt * 1000 <= now);
+        const expired = links.filter(
+            (l) => !l.revokedAt && l.expiresAt !== 0 && l.expiresAt * 1000 <= now,
+        );
         if (!expired.length) return;
-        const ok = await import('./sheet.js').then(m => m.confirmSheet({
-            title: i18nT('share.maint.cleanup_confirm_title', 'Revoke all expired links?'),
-            message: i18nTf('share.maint.cleanup_confirm_body',
-                { n: expired.length },
-                `Permanently revoke ${expired.length} expired link(s)? Anyone holding them already can't open the file — this just removes them from the list.`),
-            confirmLabel: i18nT('share.maint.cleanup', 'Cleanup expired'),
-            danger: true,
-        }));
+        const ok = await import('./sheet.js').then((m) =>
+            m.confirmSheet({
+                title: i18nT('share.maint.cleanup_confirm_title', 'Revoke all expired links?'),
+                message: i18nTf(
+                    'share.maint.cleanup_confirm_body',
+                    { n: expired.length },
+                    `Permanently revoke ${expired.length} expired link(s)? Anyone holding them already can't open the file — this just removes them from the list.`,
+                ),
+                confirmLabel: i18nT('share.maint.cleanup', 'Cleanup expired'),
+                danger: true,
+            }),
+        );
         if (!ok) return;
         cleanupBtn.disabled = true;
         const orig = cleanupBtn.innerHTML;
@@ -473,15 +553,23 @@ export async function openAllSharesSheet() {
         for (const l of expired) {
             try {
                 await api.delete(`/api/share/links/${encodeURIComponent(l.id)}`);
-                links = links.map(x => String(x.id) === String(l.id) ? { ...x, revokedAt: Date.now() } : x);
+                links = links.map((x) =>
+                    String(x.id) === String(l.id) ? { ...x, revokedAt: Date.now() } : x,
+                );
                 cleaned += 1;
-            } catch { /* keep going; partial cleanup still useful */ }
+            } catch {
+                /* keep going; partial cleanup still useful */
+            }
         }
         cleanupBtn.innerHTML = orig;
-        showToast(i18nTf('share.maint.cleanup_done',
-            { n: cleaned },
-            `Revoked ${cleaned} expired link(s).`),
-            cleaned > 0 ? 'success' : 'info');
+        showToast(
+            i18nTf(
+                'share.maint.cleanup_done',
+                { n: cleaned },
+                `Revoked ${cleaned} expired link(s).`,
+            ),
+            cleaned > 0 ? 'success' : 'info',
+        );
         apply();
     });
 }

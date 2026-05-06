@@ -12,7 +12,9 @@ import { describe, it, expect } from 'vitest';
 function applyCachePolicy(reqPath, query = {}) {
     // 1:1 copy of the live middleware in server.js — see line ~324.
     let cc = null;
-    const setHeader = (k, v) => { if (k.toLowerCase() === 'cache-control') cc = v; };
+    const setHeader = (k, v) => {
+        if (k.toLowerCase() === 'cache-control') cc = v;
+    };
     const res = { setHeader };
     const req = { path: reqPath, query };
 
@@ -24,7 +26,11 @@ function applyCachePolicy(reqPath, query = {}) {
         res.setHeader('Cache-Control', 'private, max-age=2592000, immutable');
     } else if (req.path === '/sw.js') {
         res.setHeader('Cache-Control', 'no-cache, max-age=0');
-    } else if (req.path.startsWith('/js/') || req.path.startsWith('/css/') || req.path.startsWith('/icons/')) {
+    } else if (
+        req.path.startsWith('/js/') ||
+        req.path.startsWith('/css/') ||
+        req.path.startsWith('/icons/')
+    ) {
         if (req.query && req.query.v) {
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         } else {

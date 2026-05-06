@@ -36,8 +36,12 @@ async function _getDetector(cfg, onProgress, onLog) {
         kind: AI_MODEL_DEFAULTS.faces.kind,
         modelId,
         cacheDir: cfg?.cacheDir,
-        onProgress, onLog,
-    }).catch((e) => { _detectorPromise = null; throw e; });
+        onProgress,
+        onLog,
+    }).catch((e) => {
+        _detectorPromise = null;
+        throw e;
+    });
     return _detectorPromise;
 }
 
@@ -66,8 +70,14 @@ export async function detectFaces(absPath, cfg, onProgress, onLog) {
         // Without dimensions the bbox is left as-is.
         const x = Number(box.xmin ?? box.x ?? 0);
         const y = Number(box.ymin ?? box.y ?? 0);
-        const w = Number((box.xmax ?? box.x + box.width) - (box.xmin ?? box.x ?? 0)) || Number(box.width) || 0;
-        const h = Number((box.ymax ?? box.y + box.height) - (box.ymin ?? box.y ?? 0)) || Number(box.height) || 0;
+        const w =
+            Number((box.xmax ?? box.x + box.width) - (box.xmin ?? box.x ?? 0)) ||
+            Number(box.width) ||
+            0;
+        const h =
+            Number((box.ymax ?? box.y + box.height) - (box.ymin ?? box.y ?? 0)) ||
+            Number(box.height) ||
+            0;
         if (w <= 0 || h <= 0) continue;
         faces.push({ x, y, w, h, score });
     }
@@ -85,13 +95,13 @@ export async function embedFace(absPath, bbox, cfg, onLog) {
         // Sharp can read+resize+crop in one pipeline; we extract to PNG in
         // memory then pass the buffer to the embedding pipeline.
         const meta = await sharp(absPath, { failOn: 'none' }).metadata();
-        const W = Math.max(1, meta.width  || 1);
+        const W = Math.max(1, meta.width || 1);
         const H = Math.max(1, meta.height || 1);
         // Bbox values may be normalised or pixel — clamp to image bounds.
         const left = Math.max(0, Math.floor(bbox.x < 1 ? bbox.x * W : bbox.x));
-        const top  = Math.max(0, Math.floor(bbox.y < 1 ? bbox.y * H : bbox.y));
-        const w    = Math.max(1, Math.floor(bbox.w < 1 ? bbox.w * W : bbox.w));
-        const h    = Math.max(1, Math.floor(bbox.h < 1 ? bbox.h * H : bbox.h));
+        const top = Math.max(0, Math.floor(bbox.y < 1 ? bbox.y * H : bbox.y));
+        const w = Math.max(1, Math.floor(bbox.w < 1 ? bbox.w * W : bbox.w));
+        const h = Math.max(1, Math.floor(bbox.h < 1 ? bbox.h * H : bbox.h));
         if (left + w > W || top + h > H) return null;
         const buf = await sharp(absPath, { failOn: 'none' })
             .extract({ left, top, width: w, height: h })
@@ -135,7 +145,7 @@ export function dbscan(items, { epsilon = 0.4, minPoints = 3 } = {}) {
     const minP = Math.max(2, Math.min(50, Number(minPoints) || 3));
 
     const visited = new Uint8Array(N);
-    const labels = new Int32Array(N).fill(-1);   // -1 = noise/unlabelled
+    const labels = new Int32Array(N).fill(-1); // -1 = noise/unlabelled
     let cluster = 0;
 
     function neighbours(i) {
@@ -153,7 +163,7 @@ export function dbscan(items, { epsilon = 0.4, minPoints = 3 } = {}) {
         if (visited[i]) continue;
         visited[i] = 1;
         const nbrs = neighbours(i);
-        if (nbrs.length + 1 < minP) continue;   // noise
+        if (nbrs.length + 1 < minP) continue; // noise
         cluster += 1;
         labels[i] = cluster;
         const queue = nbrs.slice();
@@ -173,7 +183,10 @@ export function dbscan(items, { epsilon = 0.4, minPoints = 3 } = {}) {
     for (let i = 0; i < N; i++) {
         if (labels[i] === -1) continue;
         let arr = buckets.get(labels[i]);
-        if (!arr) { arr = []; buckets.set(labels[i], arr); }
+        if (!arr) {
+            arr = [];
+            buckets.set(labels[i], arr);
+        }
         arr.push(i);
     }
     const clusters = [];

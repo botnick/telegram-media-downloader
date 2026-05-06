@@ -74,7 +74,8 @@ export function openMediaViewer(index) {
     }
 
     document.getElementById('modal-filename').textContent = file.name;
-    document.getElementById('modal-meta').textContent = `${file.sizeFormatted} • ${formatDate(file.modified)}`;
+    document.getElementById('modal-meta').textContent =
+        `${file.sizeFormatted} • ${formatDate(file.modified)}`;
     document.getElementById('modal-counter').textContent = `${index + 1} / ${state.files.length}`;
     document.getElementById('modal-download').href = url;
 
@@ -88,7 +89,10 @@ let _prefetchLink = null;
 function prefetchNeighbor(nextIndex) {
     const next = state.files[nextIndex];
     if (!next || next.type !== 'images') {
-        if (_prefetchLink) { _prefetchLink.remove(); _prefetchLink = null; }
+        if (_prefetchLink) {
+            _prefetchLink.remove();
+            _prefetchLink = null;
+        }
         return;
     }
     const href = `/files/${encodeURIComponent(next.fullPath)}?inline=1`;
@@ -128,9 +132,8 @@ const SPEED_LS_KEY = 'video-speed';
 const AUTOPLAY_LS_KEY = 'viewer-autoplay';
 const HOVER_TIMEOUT_MS = 2000;
 
-const SUPPORTS_HOVER = typeof window.matchMedia === 'function'
-    ? window.matchMedia('(hover: hover)').matches
-    : true;
+const SUPPORTS_HOVER =
+    typeof window.matchMedia === 'function' ? window.matchMedia('(hover: hover)').matches : true;
 
 function formatTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
@@ -234,7 +237,7 @@ class VideoPlayer {
             const now = Date.now();
             if (now - this._lastTapAt < 320 && Math.abs(e.clientX - this._lastTapX) < 60) {
                 const rect = this.tapLayer.getBoundingClientRect();
-                const isLeft = (e.clientX - rect.left) < rect.width / 2;
+                const isLeft = e.clientX - rect.left < rect.width / 2;
                 this.seekRelative(isLeft ? -10 : 10);
                 this._lastTapAt = 0;
             } else {
@@ -300,7 +303,14 @@ class VideoPlayer {
                     await this.video.requestPictureInPicture();
                 }
             } catch (e) {
-                showToast(i18nTf('viewer.video.pip_failed', { msg: e.message }, `PiP unavailable: ${e.message}`), 'error');
+                showToast(
+                    i18nTf(
+                        'viewer.video.pip_failed',
+                        { msg: e.message },
+                        `PiP unavailable: ${e.message}`,
+                    ),
+                    'error',
+                );
             }
         };
 
@@ -350,7 +360,9 @@ class VideoPlayer {
                         // Defer one tick so this onended handler returns
                         // before we tear down + re-init for the next clip.
                         setTimeout(() => {
-                            try { openMediaViewer(idx + 1); } catch {}
+                            try {
+                                openMediaViewer(idx + 1);
+                            } catch {}
                         }, 60);
                     }
                 } catch {}
@@ -396,9 +408,15 @@ class VideoPlayer {
         // re-paint the seek bar with the previous clip's position. Without
         // this, switching clips from the gallery left the playhead and
         // play-icon mid-track.
-        try { this.video.pause(); } catch {}
-        try { this.video.currentTime = 0; } catch {}
-        try { this.video.onloadedmetadata = null; } catch {}
+        try {
+            this.video.pause();
+        } catch {}
+        try {
+            this.video.currentTime = 0;
+        } catch {}
+        try {
+            this.video.onloadedmetadata = null;
+        } catch {}
 
         // Reset UI synchronously so the previous clip's state never bleeds in.
         this.curTime.textContent = '00:00';
@@ -424,7 +442,9 @@ class VideoPlayer {
 
         // Apply the loop preference — re-read every load() so a setting
         // change between clips takes effect on the next open.
-        try { this.video.loop = localStorage.getItem('viewer-loop') === '1'; } catch {}
+        try {
+            this.video.loop = localStorage.getItem('viewer-loop') === '1';
+        } catch {}
 
         // Resume — race-safe (apply inline if metadata's already there).
         // Honour the "Remember position" toggle: when the user disables
@@ -442,7 +462,9 @@ class VideoPlayer {
             const dur = this.video.duration;
             if (!Number.isFinite(time) || time <= 0) return;
             if (Number.isFinite(dur) && time >= dur) return;
-            try { this.video.currentTime = time; } catch {}
+            try {
+                this.video.currentTime = time;
+            } catch {}
             const ts = formatTime(time);
             showToast(i18nTf('viewer.video.resumed', { time: ts }, `Resumed at ${ts}`));
         };
@@ -450,7 +472,9 @@ class VideoPlayer {
 
         // Swap the source.
         this.video.src = url;
-        try { this.video.load(); } catch {}
+        try {
+            this.video.load();
+        } catch {}
 
         if (this.video.readyState >= 1) applyResume();
 
@@ -483,7 +507,9 @@ class VideoPlayer {
 
     /** Stop any in-flight network activity and reset playback. */
     unload() {
-        try { this.video.pause(); } catch {}
+        try {
+            this.video.pause();
+        } catch {}
         // Suppress the `error` event that some browsers (mobile Safari
         // especially) fire when the in-flight fetch is aborted by
         // `removeAttribute('src') + load()`. Without this guard the
@@ -491,23 +517,36 @@ class VideoPlayer {
         // .load() call sees a stale errorOverlay state racing against
         // the new src assignment — which is exactly how the "Error 4 →
         // tap Retry → plays fine" report happens.
-        try { this.video.onerror = null; } catch {}
-        try { this.video.removeAttribute('src'); } catch {}
-        try { this.video.load(); } catch {}
+        try {
+            this.video.onerror = null;
+        } catch {}
+        try {
+            this.video.removeAttribute('src');
+        } catch {}
+        try {
+            this.video.load();
+        } catch {}
         // Drop the metadata-loaded handler so a stale resume from the
         // previous clip can't seek the next file to the wrong position.
-        try { this.video.onloadedmetadata = null; } catch {}
+        try {
+            this.video.onloadedmetadata = null;
+        } catch {}
         // Re-arm the error handler so a future .load() on the same
         // VideoPlayer instance can still surface real errors. The
         // handler itself does the auto-retry-once dance.
-        try { this.video.onerror = () => this._showError(); } catch {}
+        try {
+            this.video.onerror = () => this._showError();
+        } catch {}
         if (document.pictureInPictureElement) {
             document.exitPictureInPicture().catch(() => {});
         }
         this._currentUrl = null;
         this._storageKey = null;
         this._resumePlayed = false;
-        if (this._hideTimer) { clearTimeout(this._hideTimer); this._hideTimer = null; }
+        if (this._hideTimer) {
+            clearTimeout(this._hideTimer);
+            this._hideTimer = null;
+        }
         this.speedMenu.classList.add('hidden');
         this._hideError();
         this._showSpinner(false);
@@ -547,7 +586,14 @@ class VideoPlayer {
                 await this.container.requestFullscreen();
             }
         } catch (e) {
-            showToast(i18nTf('viewer.video.fullscreen_failed', { msg: e.message }, `Fullscreen unavailable: ${e.message}`), 'error');
+            showToast(
+                i18nTf(
+                    'viewer.video.fullscreen_failed',
+                    { msg: e.message },
+                    `Fullscreen unavailable: ${e.message}`,
+                ),
+                'error',
+            );
         }
     }
 
@@ -558,7 +604,8 @@ class VideoPlayer {
             case ' ':
             case 'k':
             case 'K':
-                this.togglePlay(); return true;
+                this.togglePlay();
+                return true;
             case 'ArrowLeft': {
                 // Configurable skip step (Settings → Video Player). Shift
                 // jumps 2× the step for power users.
@@ -572,9 +619,11 @@ class VideoPlayer {
                 return true;
             }
             case 'ArrowUp':
-                this._setVolume(Math.min(1, v.volume + 0.05)); return true;
+                this._setVolume(Math.min(1, v.volume + 0.05));
+                return true;
             case 'ArrowDown':
-                this._setVolume(Math.max(0, v.volume - 0.05)); return true;
+                this._setVolume(Math.max(0, v.volume - 0.05));
+                return true;
             case 'm':
             case 'M':
                 v.muted = !v.muted;
@@ -582,13 +631,16 @@ class VideoPlayer {
                 return true;
             case 'f':
             case 'F':
-                this.toggleFullscreen(); return true;
+                this.toggleFullscreen();
+                return true;
             case ',':
             case '<':
-                this._setSpeed(Math.max(0.25, +(v.playbackRate - 0.25).toFixed(2))); return true;
+                this._setSpeed(Math.max(0.25, +(v.playbackRate - 0.25).toFixed(2)));
+                return true;
             case '.':
             case '>':
-                this._setSpeed(Math.min(2, +(v.playbackRate + 0.25).toFixed(2))); return true;
+                this._setSpeed(Math.min(2, +(v.playbackRate + 0.25).toFixed(2)));
+                return true;
             default:
                 if (/^[0-9]$/.test(e.key)) {
                     this.seekToFraction(parseInt(e.key, 10) / 10);
@@ -612,7 +664,9 @@ class VideoPlayer {
             this._dragging = true;
             this._wasPlayingBeforeDrag = !this.video.paused;
             if (this._wasPlayingBeforeDrag) this.video.pause();
-            try { bar.setPointerCapture?.(e.pointerId); } catch {}
+            try {
+                bar.setPointerCapture?.(e.pointerId);
+            } catch {}
             seekTo(e.clientX);
             e.preventDefault();
         };
@@ -626,7 +680,9 @@ class VideoPlayer {
         const endDrag = (e) => {
             if (!this._dragging) return;
             this._dragging = false;
-            try { bar.releasePointerCapture?.(e.pointerId); } catch {}
+            try {
+                bar.releasePointerCapture?.(e.pointerId);
+            } catch {}
             if (this._wasPlayingBeforeDrag) this.video.play().catch(() => {});
         };
         bar.onpointerup = endDrag;
@@ -638,7 +694,7 @@ class VideoPlayer {
         const rect = this.progressBar.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         this.hoverTime.textContent = formatTime(ratio * this.video.duration);
-        this.hoverTime.style.left = `${(clientX - rect.left)}px`;
+        this.hoverTime.style.left = `${clientX - rect.left}px`;
         this.hoverTime.classList.remove('hidden');
     }
 
@@ -661,7 +717,9 @@ class VideoPlayer {
                     const now = Date.now();
                     if (now - this._lastSavedAt >= 2000) {
                         this._lastSavedAt = now;
-                        try { localStorage.setItem(this._storageKey, String(v.currentTime)); } catch {}
+                        try {
+                            localStorage.setItem(this._storageKey, String(v.currentTime));
+                        } catch {}
                     }
                 }
             }
@@ -685,8 +743,10 @@ class VideoPlayer {
         this.playBtn.innerHTML = playing
             ? '<i class="ri-pause-fill text-2xl"></i>'
             : '<i class="ri-play-fill text-2xl"></i>';
-        this.playBtn.setAttribute('aria-label',
-            playing ? i18nT('viewer.video.pause', 'Pause') : i18nT('viewer.video.play', 'Play'));
+        this.playBtn.setAttribute(
+            'aria-label',
+            playing ? i18nT('viewer.video.pause', 'Pause') : i18nT('viewer.video.play', 'Play'),
+        );
         if (playing) this.centerPlay.classList.add('hidden');
         else this.centerPlay.classList.remove('hidden');
     }
@@ -712,7 +772,9 @@ class VideoPlayer {
 
     _setSpeed(rate) {
         this.video.playbackRate = rate;
-        try { localStorage.setItem(SPEED_LS_KEY, String(rate)); } catch {}
+        try {
+            localStorage.setItem(SPEED_LS_KEY, String(rate));
+        } catch {}
         // _refreshSpeedUi() runs from the ratechange handler.
     }
 
@@ -743,7 +805,9 @@ class VideoPlayer {
     // ---- visibility / spinner / error --------------------------------------
 
     _controlsVisible() {
-        return this.controls.style.opacity !== '0' && !this.controls.classList.contains('opacity-0');
+        return (
+            this.controls.style.opacity !== '0' && !this.controls.classList.contains('opacity-0')
+        );
     }
 
     _showControls(force = false) {
@@ -760,14 +824,14 @@ class VideoPlayer {
         // for a fast post-seek hide) keep their literal value.
         if (delay === undefined) {
             const cfg = parseInt(localStorage.getItem('viewer-hide-delay'), 10);
-            delay = (Number.isFinite(cfg) && cfg > 0) ? cfg * 1000 : HOVER_TIMEOUT_MS;
+            delay = Number.isFinite(cfg) && cfg > 0 ? cfg * 1000 : HOVER_TIMEOUT_MS;
         }
         return this.__scheduleHide(delay);
     }
 
     __scheduleHide(delay = HOVER_TIMEOUT_MS) {
-        if (!SUPPORTS_HOVER) return;          // touch devices: keep visible
-        if (this.video.paused) return;        // paused: keep visible
+        if (!SUPPORTS_HOVER) return; // touch devices: keep visible
+        if (this.video.paused) return; // paused: keep visible
         if (this._hideTimer) clearTimeout(this._hideTimer);
         this._hideTimer = setTimeout(() => {
             if (this.video.paused) return;
@@ -797,15 +861,23 @@ class VideoPlayer {
         // unsupported-codec failure that would otherwise loop forever.
         const code = err?.code;
         const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
-        if (code === MEDIA_ERR_SRC_NOT_SUPPORTED
-            && this._currentUrl
-            && (this._errorRetries || 0) < 1) {
+        if (
+            code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
+            this._currentUrl &&
+            (this._errorRetries || 0) < 1
+        ) {
             this._errorRetries = (this._errorRetries || 0) + 1;
-            try { this.video.src = this._currentUrl; } catch {}
-            try { this.video.load(); } catch {}
+            try {
+                this.video.src = this._currentUrl;
+            } catch {}
+            try {
+                this.video.load();
+            } catch {}
             return;
         }
-        const msg = err ? `Error ${err.code}: ${err.message || 'playback failed'}` : 'Playback failed';
+        const msg = err
+            ? `Error ${err.code}: ${err.message || 'playback failed'}`
+            : 'Playback failed';
         this.errorMsg.textContent = msg;
         this.errorOverlay.classList.remove('hidden');
         this.errorOverlay.classList.add('flex');
@@ -831,9 +903,14 @@ export function closeMediaViewer() {
     // existing close-stops-everything behaviour stays the default.
     const big = document.getElementById('modal-video');
     const isVideoLive = big && !big.paused && (big.currentSrc || big.src);
-    if (isVideoLive && localStorage.getItem('viewer-shrink-on-close') === '1'
-        && typeof window.tgdlShrinkToMini === 'function') {
-        try { window.tgdlShrinkToMini(); } catch {}
+    if (
+        isVideoLive &&
+        localStorage.getItem('viewer-shrink-on-close') === '1' &&
+        typeof window.tgdlShrinkToMini === 'function'
+    ) {
+        try {
+            window.tgdlShrinkToMini();
+        } catch {}
     }
     modal.classList.add('hidden');
     document.body.style.overflow = '';
@@ -881,12 +958,22 @@ export function setupViewerEvents() {
             }
             const video = document.getElementById('video-container');
             const image = document.getElementById('image-container');
-            const target = (video && !video.classList.contains('hidden')) ? video
-                : (image && !image.classList.contains('hidden')) ? image
-                : document.getElementById('media-modal');
+            const target =
+                video && !video.classList.contains('hidden')
+                    ? video
+                    : image && !image.classList.contains('hidden')
+                      ? image
+                      : document.getElementById('media-modal');
             await target?.requestFullscreen?.();
         } catch (e) {
-            showToast(i18nTf('viewer.video.fullscreen_failed', { msg: e.message }, `Fullscreen unavailable: ${e.message}`), 'error');
+            showToast(
+                i18nTf(
+                    'viewer.video.fullscreen_failed',
+                    { msg: e.message },
+                    `Fullscreen unavailable: ${e.message}`,
+                ),
+                'error',
+            );
         }
     });
 
@@ -906,16 +993,33 @@ export function setupViewerEvents() {
     document.addEventListener('keydown', (e) => {
         if (document.getElementById('media-modal').classList.contains('hidden')) return;
         const tag = (e.target?.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+        if (
+            tag === 'input' ||
+            tag === 'textarea' ||
+            tag === 'select' ||
+            e.target?.isContentEditable
+        )
+            return;
 
-        if (e.key === 'Escape') { closeMediaViewer(); return; }
+        if (e.key === 'Escape') {
+            closeMediaViewer();
+            return;
+        }
         // Don't gobble arrow-keys for nav while a video is loaded — those
         // shortcuts mean "seek" inside the player. Use the modal nav only
         // for image (and other) media.
-        const videoActive = !document.getElementById('video-container').classList.contains('hidden');
+        const videoActive = !document
+            .getElementById('video-container')
+            .classList.contains('hidden');
         if (!videoActive) {
-            if (e.key === 'ArrowLeft') { navigateMedia(-1); return; }
-            if (e.key === 'ArrowRight') { navigateMedia(1); return; }
+            if (e.key === 'ArrowLeft') {
+                navigateMedia(-1);
+                return;
+            }
+            if (e.key === 'ArrowRight') {
+                navigateMedia(1);
+                return;
+            }
         }
 
         if (videoActive && videoPlayer) {
@@ -951,9 +1055,8 @@ function navigateMedia(dir) {
     // Walk through the active filter, not the unfiltered state.files —
     // tapping → in the Photos filter shouldn't jump to a video.
     const currentFilter = state.currentFilter || 'all';
-    const visible = currentFilter === 'all'
-        ? state.files
-        : state.files.filter(f => f.type === currentFilter);
+    const visible =
+        currentFilter === 'all' ? state.files : state.files.filter((f) => f.type === currentFilter);
 
     const currentFile = state.files[state.currentFileIndex];
     const visibleIndex = currentFile ? visible.indexOf(currentFile) : -1;

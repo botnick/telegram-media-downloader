@@ -35,13 +35,17 @@ export function hashPassword(plaintext) {
     }
     const salt = crypto.randomBytes(16);
     const hash = crypto.scryptSync(plaintext, salt, SCRYPT_PARAMS.keylen, {
-        N: SCRYPT_PARAMS.N, r: SCRYPT_PARAMS.r, p: SCRYPT_PARAMS.p,
+        N: SCRYPT_PARAMS.N,
+        r: SCRYPT_PARAMS.r,
+        p: SCRYPT_PARAMS.p,
     });
     return {
         algo: 'scrypt',
         salt: salt.toString('hex'),
         hash: hash.toString('hex'),
-        N: SCRYPT_PARAMS.N, r: SCRYPT_PARAMS.r, p: SCRYPT_PARAMS.p,
+        N: SCRYPT_PARAMS.N,
+        r: SCRYPT_PARAMS.r,
+        p: SCRYPT_PARAMS.p,
         keylen: SCRYPT_PARAMS.keylen,
     };
 }
@@ -151,9 +155,8 @@ export function issueSession(opts = {}) {
     const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
     const now = Date.now();
     // Per-issue override; falls back to the original 7-day default.
-    const ttlMs = Number.isFinite(opts.ttlMs) && opts.ttlMs > 0
-        ? Math.floor(opts.ttlMs)
-        : SESSION_TTL_MS;
+    const ttlMs =
+        Number.isFinite(opts.ttlMs) && opts.ttlMs > 0 ? Math.floor(opts.ttlMs) : SESSION_TTL_MS;
     const role = opts.role === 'guest' ? 'guest' : 'admin';
     sessions[token] = { createdAt: now, expiresAt: now + ttlMs, role };
     persist();
@@ -196,7 +199,10 @@ export function revokeAllGuestSessions() {
     ensureLoaded();
     let dirty = false;
     for (const [tok, meta] of Object.entries(sessions)) {
-        if (meta?.role === 'guest') { delete sessions[tok]; dirty = true; }
+        if (meta?.role === 'guest') {
+            delete sessions[tok];
+            dirty = true;
+        }
     }
     if (dirty) persist();
 }
@@ -208,7 +214,10 @@ export function startSessionGc(intervalMs = 60 * 60 * 1000) {
         const now = Date.now();
         let dirty = false;
         for (const [tok, meta] of Object.entries(sessions)) {
-            if (meta.expiresAt <= now) { delete sessions[tok]; dirty = true; }
+            if (meta.expiresAt <= now) {
+                delete sessions[tok];
+                dirty = true;
+            }
         }
         if (dirty) persist();
     }, intervalMs);

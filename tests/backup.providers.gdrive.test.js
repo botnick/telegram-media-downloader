@@ -18,12 +18,14 @@ fs.writeFileSync(sourceFile, 'hello drive world');
 
 // In-memory drive state. Each test resets it via beforeEach.
 const state = {
-    files: new Map(),       // id → { id, name, parents, mimeType, size, appProperties, modifiedTime, md5Checksum }
+    files: new Map(), // id → { id, name, parents, mimeType, size, appProperties, modifiedTime, md5Checksum }
     nextId: 1,
-    log: [],                 // method-call log for assertions
+    log: [], // method-call log for assertions
 };
 
-function _newId() { return `f-${state.nextId++}`; }
+function _newId() {
+    return `f-${state.nextId++}`;
+}
 
 const driveStub = {
     about: {
@@ -37,8 +39,12 @@ const driveStub = {
             state.log.push(['files.list', args]);
             const matchByName = /name='([^']+)'/.exec(args.q || '');
             const matchByParent = /'([^']+)' in parents/.exec(args.q || '');
-            const wantsFolder = /mimeType='application\/vnd\.google-apps\.folder'/.test(args.q || '');
-            const wantsNotFolder = /mimeType!='application\/vnd\.google-apps\.folder'/.test(args.q || '');
+            const wantsFolder = /mimeType='application\/vnd\.google-apps\.folder'/.test(
+                args.q || '',
+            );
+            const wantsNotFolder = /mimeType!='application\/vnd\.google-apps\.folder'/.test(
+                args.q || '',
+            );
             const trashedFalse = /trashed=false/.test(args.q || '');
             const out = [];
             for (const f of state.files.values()) {
@@ -128,32 +134,45 @@ describe('backup/providers/gdrive (mocked)', () => {
 
     it('init creates the backup folder when folderId is empty', async () => {
         const p = new GoogleDriveProvider();
-        await p.init({
-            clientId: 'cid', clientSecret: 'sec', refreshToken: 'rt',
-            folderName: 'tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                clientId: 'cid',
+                clientSecret: 'sec',
+                refreshToken: 'rt',
+                folderName: 'tgdl-backup',
+            },
+            ctx,
+        );
         // A folder with name 'tgdl-backup' under root should have been
         // created (no pre-existing match).
-        const created = state.log.find((c) =>
-            c[0] === 'files.create' && c[1].mimeType === 'application/vnd.google-apps.folder'
-            && c[1].name === 'tgdl-backup',
+        const created = state.log.find(
+            (c) =>
+                c[0] === 'files.create' &&
+                c[1].mimeType === 'application/vnd.google-apps.folder' &&
+                c[1].name === 'tgdl-backup',
         );
         expect(created).toBeTruthy();
     });
 
     it('upload stamps appProperties + scopes parents to the backup folder', async () => {
         const p = new GoogleDriveProvider();
-        await p.init({
-            clientId: 'cid', clientSecret: 'sec', refreshToken: 'rt',
-            folderName: 'tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                clientId: 'cid',
+                clientSecret: 'sec',
+                refreshToken: 'rt',
+                folderName: 'tgdl-backup',
+            },
+            ctx,
+        );
 
         const r = await p.upload(sourceFile, 'group/photos/sample.txt', {}, ctx);
         expect(r.remotePath).toBe('group/photos/sample.txt');
 
         // The leaf file create call should carry appProperties.tgdl-backup.
-        const fileCreates = state.log.filter((c) =>
-            c[0] === 'files.create' && c[1].mimeType !== 'application/vnd.google-apps.folder',
+        const fileCreates = state.log.filter(
+            (c) =>
+                c[0] === 'files.create' && c[1].mimeType !== 'application/vnd.google-apps.folder',
         );
         expect(fileCreates.length).toBe(1);
         expect(fileCreates[0][1].appProperties['tgdl-backup']).toBe('1');
@@ -163,10 +182,15 @@ describe('backup/providers/gdrive (mocked)', () => {
 
     it('re-uploading the same path uses update() not create()', async () => {
         const p = new GoogleDriveProvider();
-        await p.init({
-            clientId: 'cid', clientSecret: 'sec', refreshToken: 'rt',
-            folderName: 'tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                clientId: 'cid',
+                clientSecret: 'sec',
+                refreshToken: 'rt',
+                folderName: 'tgdl-backup',
+            },
+            ctx,
+        );
         await p.upload(sourceFile, 'sample.txt', {}, ctx);
         const beforeUpdates = state.log.filter((c) => c[0] === 'files.update').length;
         await p.upload(sourceFile, 'sample.txt', {}, ctx);
@@ -176,20 +200,30 @@ describe('backup/providers/gdrive (mocked)', () => {
 
     it('stat returns null for a missing file (not throw)', async () => {
         const p = new GoogleDriveProvider();
-        await p.init({
-            clientId: 'cid', clientSecret: 'sec', refreshToken: 'rt',
-            folderName: 'tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                clientId: 'cid',
+                clientSecret: 'sec',
+                refreshToken: 'rt',
+                folderName: 'tgdl-backup',
+            },
+            ctx,
+        );
         const st = await p.stat('does/not/exist.txt', ctx);
         expect(st).toBeNull();
     });
 
     it('delete is idempotent — missing file is a no-op', async () => {
         const p = new GoogleDriveProvider();
-        await p.init({
-            clientId: 'cid', clientSecret: 'sec', refreshToken: 'rt',
-            folderName: 'tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                clientId: 'cid',
+                clientSecret: 'sec',
+                refreshToken: 'rt',
+                folderName: 'tgdl-backup',
+            },
+            ctx,
+        );
         await expect(p.delete('does/not/exist.txt', ctx)).resolves.toBeUndefined();
     });
 });

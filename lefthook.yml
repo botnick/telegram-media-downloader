@@ -1,0 +1,12 @@
+# Lefthook config — replaces husky + lint-staged. The pre-commit hook
+# runs Biome only against the files git is about to commit (via the
+# {staged_files} template), so the hook stays fast even on a big repo.
+#
+# Bun is the package manager; everything is invoked via `bun x` so the
+# binaries from devDependencies are always picked up.
+pre-commit:
+    parallel: true
+    jobs:
+        - name: biome-check
+          glob: '*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc,css,html}'
+          run: bun x biome check --write {staged_files} && git add {staged_files}

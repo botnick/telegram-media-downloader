@@ -80,17 +80,21 @@ export async function findDuplicates(opts = {}) {
     // First pass: hash every row that doesn't have one. We hash files of
     // size > 0 only — zero-byte files would all collide on the empty hash
     // and aren't meaningful duplicates.
-    const missing = db.prepare(`
+    const missing = db
+        .prepare(`
         SELECT id, file_path, file_size FROM downloads
          WHERE file_hash IS NULL
            AND file_path IS NOT NULL
            AND COALESCE(file_size, 0) > 0
          ORDER BY file_size DESC
-    `).all();
+    `)
+        .all();
 
     const update = db.prepare('UPDATE downloads SET file_hash = ? WHERE id = ?');
     const total = missing.length;
-    let processed = 0, hashed = 0, errored = 0;
+    let processed = 0,
+        hashed = 0,
+        errored = 0;
 
     if (onProgress) onProgress({ stage: 'hashing', processed, total, hashed, errored });
 
@@ -98,7 +102,10 @@ export async function findDuplicates(opts = {}) {
         if (signal?.aborted) break;
         processed++;
         const abs = resolveStoredPath(row.file_path);
-        if (!abs) { errored++; continue; }
+        if (!abs) {
+            errored++;
+            continue;
+        }
         try {
             const digest = await hashFile(abs);
             update.run(digest, row.id);
@@ -115,7 +122,8 @@ export async function findDuplicates(opts = {}) {
     // amount of disk those duplicates are wasting (size × extra copies).
     if (onProgress) onProgress({ stage: 'grouping', processed: total, total, hashed, errored });
 
-    const duplicates = db.prepare(`
+    const duplicates = db
+        .prepare(`
         SELECT file_hash AS hash,
                COUNT(*)  AS cnt,
                MAX(file_size) AS max_size
@@ -126,7 +134,8 @@ export async function findDuplicates(opts = {}) {
          ORDER BY (MAX(file_size) * (COUNT(*) - 1)) DESC,
                   COUNT(*) DESC
          LIMIT 500
-    `).all();
+    `)
+        .all();
 
     const sets = [];
     const filesQ = db.prepare(`
@@ -137,7 +146,7 @@ export async function findDuplicates(opts = {}) {
          ORDER BY created_at ASC, id ASC
     `);
     for (const d of duplicates) {
-        const files = filesQ.all(d.hash).map(r => ({
+        const files = filesQ.all(d.hash).map((r) => ({
             id: r.id,
             groupId: r.group_id,
             groupName: r.group_name,
@@ -179,18 +188,23 @@ export function deleteByIds(ids) {
     }
     const db = getDb();
     const placeholders = ids.map(() => '?').join(',');
-    const rows = db.prepare(
-        `SELECT id, file_path, file_size FROM downloads WHERE id IN (${placeholders})`
-    ).all(...ids);
+    const rows = db
+        .prepare(`SELECT id, file_path, file_size FROM downloads WHERE id IN (${placeholders})`)
+        .all(...ids);
 
     let freed = 0;
     let missing = 0;
     for (const r of rows) {
         const abs = resolveStoredPath(r.file_path);
         if (abs) {
-            try { fs.unlinkSync(abs); freed += Number(r.file_size) || 0; }
-            catch (e) {
-                if (e?.code === 'ENOENT') { missing++; freed += Number(r.file_size) || 0; }
+            try {
+                fs.unlinkSync(abs);
+                freed += Number(r.file_size) || 0;
+            } catch (e) {
+                if (e?.code === 'ENOENT') {
+                    missing++;
+                    freed += Number(r.file_size) || 0;
+                }
                 // Other errors (EPERM etc.) — skip the row, don't drop from DB
                 // so the user can retry / inspect.
                 else continue;

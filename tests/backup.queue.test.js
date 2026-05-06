@@ -26,14 +26,20 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-    try { db.close(); } catch {}
+    try {
+        db.close();
+    } catch {}
     delete process.env.TGDL_DATA_DIR;
     fs.rmSync(DATA_DIR, { recursive: true, force: true });
 });
 
 describe('backup/queue', () => {
     it('enqueue → claim → markDone is a clean cycle', () => {
-        const id = queue.enqueue({ destinationId: 1, snapshotPath: '/tmp/a.tar.gz', remotePath: 'snapshots/a.tar.gz' });
+        const id = queue.enqueue({
+            destinationId: 1,
+            snapshotPath: '/tmp/a.tar.gz',
+            remotePath: 'snapshots/a.tar.gz',
+        });
         expect(typeof id).toBe('number');
         const job = queue.claim(1);
         expect(job).not.toBeNull();
@@ -64,7 +70,11 @@ describe('backup/queue', () => {
     });
 
     it('gives up after max_attempts is hit', () => {
-        const id = queue.enqueue({ destinationId: 1, snapshotPath: '/tmp/c.tar.gz', maxAttempts: 2 });
+        const id = queue.enqueue({
+            destinationId: 1,
+            snapshotPath: '/tmp/c.tar.gz',
+            maxAttempts: 2,
+        });
         // Attempt 1
         let job = queue.claim(1);
         let r = queue.markRetry(job.id, 'fail #1');

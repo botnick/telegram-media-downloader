@@ -20,8 +20,8 @@
 import { existsSync } from 'fs';
 import sharp from 'sharp';
 
-const SIZE = 32;     // pixel grid for the DCT input
-const HASH = 8;      // top-left HASHxHASH coefficients become the bit signature
+const SIZE = 32; // pixel grid for the DCT input
+const HASH = 8; // top-left HASHxHASH coefficients become the bit signature
 
 // Pre-compute the DCT-II cosine table so we don't recompute Math.cos on every
 // call. SIZE × SIZE entries — tiny (8 KB).
@@ -122,8 +122,16 @@ export async function computePhash(absPath) {
  */
 export function hammingDistance(a, b) {
     let bigA, bigB;
-    try { bigA = typeof a === 'bigint' ? a : BigInt(a); } catch { return 64; }
-    try { bigB = typeof b === 'bigint' ? b : BigInt(b); } catch { return 64; }
+    try {
+        bigA = typeof a === 'bigint' ? a : BigInt(a);
+    } catch {
+        return 64;
+    }
+    try {
+        bigB = typeof b === 'bigint' ? b : BigInt(b);
+    } catch {
+        return 64;
+    }
     let xor = bigA ^ bigB;
     // Mask to 64 bits — handles the signed-INTEGER round-trip from SQLite
     // where a negative bigint shows up after the bit cast.

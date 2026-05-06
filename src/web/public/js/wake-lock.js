@@ -22,7 +22,9 @@ async function _acquire() {
     try {
         _acquiring = navigator.wakeLock.request('screen');
         _sentinel = await _acquiring;
-        _sentinel.addEventListener('release', () => { _sentinel = null; });
+        _sentinel.addEventListener('release', () => {
+            _sentinel = null;
+        });
     } catch {
         // Browser refused (e.g. tab not visible). Caller will retry on
         // the next active-jobs change.
@@ -33,7 +35,11 @@ async function _acquire() {
 
 async function _release() {
     if (!_sentinel) return;
-    try { await _sentinel.release(); } catch { /* ignore */ }
+    try {
+        await _sentinel.release();
+    } catch {
+        /* ignore */
+    }
     _sentinel = null;
 }
 

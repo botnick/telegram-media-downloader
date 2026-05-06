@@ -18,8 +18,8 @@
 import { state } from './store.js';
 
 let _wired = false;
-let _lastAnchorPath = null;       // last single-toggle target — pivot for shift+click ranges
-let _hooks = {};                  // captured at setup; reused by selectAllVisible
+let _lastAnchorPath = null; // last single-toggle target — pivot for shift+click ranges
+let _hooks = {}; // captured at setup; reused by selectAllVisible
 
 function _autoEnableSelectMode() {
     if (state.selectMode) return;
@@ -54,47 +54,51 @@ export function setupGallerySelect(hooks = {}) {
     // Bound here in CAPTURE phase so we run before any per-tile
     // delegation in app.js — this lets us correctly intercept Ctrl/Shift
     // clicks (which would otherwise fall through to "open viewer").
-    grid.addEventListener('click', (ev) => {
-        const tile = ev.target.closest('.media-item[data-path]');
-        if (!tile) return;
-        const path = tile.dataset.path;
-        if (!path) return;
+    grid.addEventListener(
+        'click',
+        (ev) => {
+            const tile = ev.target.closest('.media-item[data-path]');
+            if (!tile) return;
+            const path = tile.dataset.path;
+            if (!path) return;
 
-        // Buttons inside the tile (e.g. list-mode "open" eye icon)
-        // bubble up here too — handle them as plain open clicks even in
-        // select mode so the user can still preview without exiting.
-        const onActionBtn = !!ev.target.closest('[data-tile-open]');
+            // Buttons inside the tile (e.g. list-mode "open" eye icon)
+            // bubble up here too — handle them as plain open clicks even in
+            // select mode so the user can still preview without exiting.
+            const onActionBtn = !!ev.target.closest('[data-tile-open]');
 
-        const isToggleMod = (ev.ctrlKey || ev.metaKey);
-        const isRangeMod  = ev.shiftKey;
+            const isToggleMod = ev.ctrlKey || ev.metaKey;
+            const isRangeMod = ev.shiftKey;
 
-        if (isRangeMod && _lastAnchorPath && _lastAnchorPath !== path) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            _autoEnableSelectMode();
-            _selectRange(_lastAnchorPath, path);
-            hooks.onChange?.();
-            return;
-        }
-        if (isToggleMod) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            _autoEnableSelectMode();
-            _toggleOne(path, tile);
-            _lastAnchorPath = path;
-            hooks.onChange?.();
-            return;
-        }
-        if (state.selectMode && !onActionBtn) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            _toggleOne(path, tile);
-            _lastAnchorPath = path;
-            hooks.onChange?.();
-            return;
-        }
-        // Else: fall through to app.js's existing open-viewer click handler.
-    }, true);
+            if (isRangeMod && _lastAnchorPath && _lastAnchorPath !== path) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                _autoEnableSelectMode();
+                _selectRange(_lastAnchorPath, path);
+                hooks.onChange?.();
+                return;
+            }
+            if (isToggleMod) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                _autoEnableSelectMode();
+                _toggleOne(path, tile);
+                _lastAnchorPath = path;
+                hooks.onChange?.();
+                return;
+            }
+            if (state.selectMode && !onActionBtn) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                _toggleOne(path, tile);
+                _lastAnchorPath = path;
+                hooks.onChange?.();
+                return;
+            }
+            // Else: fall through to app.js's existing open-viewer click handler.
+        },
+        true,
+    );
 
     // ----- Drag-to-select lasso ----------------------------------------
     //
@@ -112,134 +116,158 @@ export function setupGallerySelect(hooks = {}) {
     // Pinch-zoom must NOT trigger selection, so we ignore the first
     // touch when a SECOND touch lands quickly afterwards (handled by
     // the touch-id tracker below).
-    let drag = null;     // { startX, startY, additive, baseSelection, tileRects }
-    const DRAG_THRESHOLD = 5;   // px — distance before we treat as lasso
-    const LONG_PRESS_MS = 500;  // standard mobile long-press duration
-    const _activeTouchIds = new Set();   // tracks concurrent touch fingers
+    let drag = null; // { startX, startY, additive, baseSelection, tileRects }
+    const DRAG_THRESHOLD = 5; // px — distance before we treat as lasso
+    const LONG_PRESS_MS = 500; // standard mobile long-press duration
+    const _activeTouchIds = new Set(); // tracks concurrent touch fingers
     let _longPressTimer = 0;
     let _longPressTile = null;
     let _longPressStartX = 0;
     let _longPressStartY = 0;
 
     function _cancelLongPress() {
-        if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = 0; }
+        if (_longPressTimer) {
+            clearTimeout(_longPressTimer);
+            _longPressTimer = 0;
+        }
         _longPressTile = null;
     }
 
-    grid.addEventListener('pointerdown', (ev) => {
-        if (ev.button !== 0) return;
+    grid.addEventListener(
+        'pointerdown',
+        (ev) => {
+            if (ev.button !== 0) return;
 
-        // --- Touch: enter the activeTouchIds tracker so we know if a
-        // pinch is happening. Touch select model:
-        //
-        //   - One-finger tap on tile (no movement)        → toggle (in select-mode)
-        //                                                   or open viewer (otherwise) — handled by click
-        //   - One-finger long-press (~500ms hold)         → enter select-mode + toggle
-        //   - One-finger drag AFTER a long-press fired    → continue-select (Android material)
-        //   - Two-finger drag                             → lasso (iOS Photos pattern)
-        //   - One-finger drag without long-press          → page scroll (do nothing here)
-        //
-        // Pinch-zoom is filtered: a second finger landing
-        // CANCELS the in-progress long-press (so a pinch-to-zoom never
-        // accidentally triggers select).
-        if (ev.pointerType === 'touch') {
-            _activeTouchIds.add(ev.pointerId);
-            const insideButton = ev.target.closest('button, a, input, [data-tile-open]');
-            if (insideButton) { _cancelLongPress(); return; }
+            // --- Touch: enter the activeTouchIds tracker so we know if a
+            // pinch is happening. Touch select model:
+            //
+            //   - One-finger tap on tile (no movement)        → toggle (in select-mode)
+            //                                                   or open viewer (otherwise) — handled by click
+            //   - One-finger long-press (~500ms hold)         → enter select-mode + toggle
+            //   - One-finger drag AFTER a long-press fired    → continue-select (Android material)
+            //   - Two-finger drag                             → lasso (iOS Photos pattern)
+            //   - One-finger drag without long-press          → page scroll (do nothing here)
+            //
+            // Pinch-zoom is filtered: a second finger landing
+            // CANCELS the in-progress long-press (so a pinch-to-zoom never
+            // accidentally triggers select).
+            if (ev.pointerType === 'touch') {
+                _activeTouchIds.add(ev.pointerId);
+                const insideButton = ev.target.closest('button, a, input, [data-tile-open]');
+                if (insideButton) {
+                    _cancelLongPress();
+                    return;
+                }
 
-            // Second finger landed — pinch / two-finger lasso. Cancel
-            // the long-press timer the first finger started so we don't
-            // also enter select-mode mid-pinch.
-            const isTwoFinger = _activeTouchIds.size >= 2;
-            if (isTwoFinger) {
-                _cancelLongPress();
-                drag = {
-                    startX: ev.clientX, startY: ev.clientY,
-                    curX: ev.clientX, curY: ev.clientY,
-                    additive: true,
-                    baseSelection: new Set(state.selected),
-                    tileRects: null, moved: false,
-                    pointerId: ev.pointerId, continueMode: false,
-                };
+                // Second finger landed — pinch / two-finger lasso. Cancel
+                // the long-press timer the first finger started so we don't
+                // also enter select-mode mid-pinch.
+                const isTwoFinger = _activeTouchIds.size >= 2;
+                if (isTwoFinger) {
+                    _cancelLongPress();
+                    drag = {
+                        startX: ev.clientX,
+                        startY: ev.clientY,
+                        curX: ev.clientX,
+                        curY: ev.clientY,
+                        additive: true,
+                        baseSelection: new Set(state.selected),
+                        tileRects: null,
+                        moved: false,
+                        pointerId: ev.pointerId,
+                        continueMode: false,
+                    };
+                    return;
+                }
+
+                // First finger on a tile — start long-press timer. Cleared
+                // by pointermove (above DRAG_THRESHOLD) or pointerup.
+                const tile = ev.target.closest('.media-item[data-path]');
+                if (tile) {
+                    _longPressTile = tile;
+                    _longPressStartX = ev.clientX;
+                    _longPressStartY = ev.clientY;
+                    _cancelLongPress();
+                    _longPressTimer = setTimeout(() => {
+                        _longPressTimer = 0;
+                        if (!_longPressTile) return;
+                        // Promote: enter select-mode, toggle this tile, and
+                        // arm continue-select drag so subsequent finger
+                        // movement keeps adding tiles.
+                        _autoEnableSelectMode();
+                        const path = _longPressTile.dataset.path;
+                        state.selected = state.selected || new Set();
+                        state.selected.add(path);
+                        _longPressTile.classList.add('is-selected');
+                        _lastAnchorPath = path;
+                        hooks.onChange?.();
+                        // Haptic feedback when supported (Chrome on Android).
+                        if (navigator.vibrate)
+                            try {
+                                navigator.vibrate(10);
+                            } catch {}
+                        // Arm continue-select for the remaining finger gesture.
+                        drag = {
+                            startX: _longPressStartX,
+                            startY: _longPressStartY,
+                            curX: _longPressStartX,
+                            curY: _longPressStartY,
+                            additive: true,
+                            baseSelection: new Set(state.selected),
+                            tileRects: null,
+                            moved: true, // skip threshold (already pressed)
+                            pointerId: ev.pointerId,
+                            continueMode: true,
+                        };
+                        // Cache rects for the continue-select hit-test.
+                        drag.tileRects = [];
+                        grid.querySelectorAll('.media-item[data-path]').forEach((t) => {
+                            drag.tileRects.push({
+                                el: t,
+                                path: t.dataset.path,
+                                rect: t.getBoundingClientRect(),
+                            });
+                        });
+                        grid.classList.add('lasso-active');
+                    }, LONG_PRESS_MS);
+                }
                 return;
             }
 
-            // First finger on a tile — start long-press timer. Cleared
-            // by pointermove (above DRAG_THRESHOLD) or pointerup.
-            const tile = ev.target.closest('.media-item[data-path]');
-            if (tile) {
-                _longPressTile = tile;
-                _longPressStartX = ev.clientX;
-                _longPressStartY = ev.clientY;
-                _cancelLongPress();
-                _longPressTimer = setTimeout(() => {
-                    _longPressTimer = 0;
-                    if (!_longPressTile) return;
-                    // Promote: enter select-mode, toggle this tile, and
-                    // arm continue-select drag so subsequent finger
-                    // movement keeps adding tiles.
-                    _autoEnableSelectMode();
-                    const path = _longPressTile.dataset.path;
-                    state.selected = state.selected || new Set();
-                    state.selected.add(path);
-                    _longPressTile.classList.add('is-selected');
-                    _lastAnchorPath = path;
-                    hooks.onChange?.();
-                    // Haptic feedback when supported (Chrome on Android).
-                    if (navigator.vibrate) try { navigator.vibrate(10); } catch {}
-                    // Arm continue-select for the remaining finger gesture.
-                    drag = {
-                        startX: _longPressStartX, startY: _longPressStartY,
-                        curX: _longPressStartX, curY: _longPressStartY,
-                        additive: true,
-                        baseSelection: new Set(state.selected),
-                        tileRects: null, moved: true,    // skip threshold (already pressed)
-                        pointerId: ev.pointerId,
-                        continueMode: true,
-                    };
-                    // Cache rects for the continue-select hit-test.
-                    drag.tileRects = [];
-                    grid.querySelectorAll('.media-item[data-path]').forEach(t => {
-                        drag.tileRects.push({ el: t, path: t.dataset.path, rect: t.getBoundingClientRect() });
-                    });
-                    grid.classList.add('lasso-active');
-                }, LONG_PRESS_MS);
-            }
-            return;
-        }
+            // --- Mouse / pen path (desktop) ---
+            // Only start a lasso when the press lands on grid empty space OR
+            // on a tile that the user actually wants to drag-select. The
+            // common shared-CSS-grid layout has very little empty space, so
+            // we allow tile-pointerdown too BUT we suppress the eventual
+            // click if the pointer moved past the threshold.
+            const target = ev.target;
+            if (target.closest('button, a, input, [data-tile-open]')) return;
 
-        // --- Mouse / pen path (desktop) ---
-        // Only start a lasso when the press lands on grid empty space OR
-        // on a tile that the user actually wants to drag-select. The
-        // common shared-CSS-grid layout has very little empty space, so
-        // we allow tile-pointerdown too BUT we suppress the eventual
-        // click if the pointer moved past the threshold.
-        const target = ev.target;
-        if (target.closest('button, a, input, [data-tile-open]')) return;
-
-        drag = {
-            startX: ev.clientX,
-            startY: ev.clientY,
-            curX: ev.clientX,
-            curY: ev.clientY,
-            // Modifier semantics on drag-start match click semantics:
-            //   plain     → replace selection
-            //   ctrl/meta → add to selection
-            //   shift     → add to selection (no range — range needs an anchor click)
-            additive: ev.ctrlKey || ev.metaKey || ev.shiftKey,
-            // Snapshot original selection so an ADDITIVE drag can XOR
-            // back to it as the rectangle shrinks.
-            baseSelection: new Set(state.selected),
-            // Cache every rendered tile's rect once. Lasso lifetime is
-            // short; if the user scrolls during the drag the cached
-            // positions go stale — acceptable trade-off vs O(N) per
-            // pointermove call to getBoundingClientRect.
-            tileRects: null,
-            moved: false,
-            pointerId: ev.pointerId,
-            continueMode: false,
-        };
-    }, { passive: true });
+            drag = {
+                startX: ev.clientX,
+                startY: ev.clientY,
+                curX: ev.clientX,
+                curY: ev.clientY,
+                // Modifier semantics on drag-start match click semantics:
+                //   plain     → replace selection
+                //   ctrl/meta → add to selection
+                //   shift     → add to selection (no range — range needs an anchor click)
+                additive: ev.ctrlKey || ev.metaKey || ev.shiftKey,
+                // Snapshot original selection so an ADDITIVE drag can XOR
+                // back to it as the rectangle shrinks.
+                baseSelection: new Set(state.selected),
+                // Cache every rendered tile's rect once. Lasso lifetime is
+                // short; if the user scrolls during the drag the cached
+                // positions go stale — acceptable trade-off vs O(N) per
+                // pointermove call to getBoundingClientRect.
+                tileRects: null,
+                moved: false,
+                pointerId: ev.pointerId,
+                continueMode: false,
+            };
+        },
+        { passive: true },
+    );
 
     window.addEventListener('pointermove', (ev) => {
         // Cancel a pending long-press if the finger drifted before the
@@ -258,7 +286,9 @@ export function setupGallerySelect(hooks = {}) {
         if (!drag.moved) {
             // First movement past threshold — capture pointer + cache rects.
             drag.moved = true;
-            try { grid.setPointerCapture?.(drag.pointerId); } catch {}
+            try {
+                grid.setPointerCapture?.(drag.pointerId);
+            } catch {}
             grid.classList.add('lasso-active');
             // Cache rect of every rendered tile (current filter window).
             drag.tileRects = [];
@@ -277,8 +307,12 @@ export function setupGallerySelect(hooks = {}) {
         if (drag.continueMode) {
             // Find the tile under the current pointer position.
             for (const { el, path, rect } of drag.tileRects) {
-                if (drag.curX >= rect.left && drag.curX <= rect.right
-                    && drag.curY >= rect.top && drag.curY <= rect.bottom) {
+                if (
+                    drag.curX >= rect.left &&
+                    drag.curX <= rect.right &&
+                    drag.curY >= rect.top &&
+                    drag.curY <= rect.bottom
+                ) {
                     if (!el.classList.contains('is-selected')) {
                         state.selected.add(path);
                         el.classList.add('is-selected');
@@ -291,9 +325,9 @@ export function setupGallerySelect(hooks = {}) {
         }
 
         // Position the lasso rectangle (viewport-fixed coords).
-        const left   = Math.min(drag.startX, drag.curX);
-        const top    = Math.min(drag.startY, drag.curY);
-        const width  = Math.abs(drag.curX - drag.startX);
+        const left = Math.min(drag.startX, drag.curX);
+        const top = Math.min(drag.startY, drag.curY);
+        const width = Math.abs(drag.curX - drag.startX);
         const height = Math.abs(drag.curY - drag.startY);
         if (lasso) {
             lasso.style.left = left + 'px';
@@ -308,10 +342,12 @@ export function setupGallerySelect(hooks = {}) {
         // commit happens on pointerup so user can still escape with Esc.
         const lassoRect = { left, top, right: left + width, bottom: top + height };
         for (const { el, rect } of drag.tileRects) {
-            const overlap = !(rect.right < lassoRect.left
-                || rect.left > lassoRect.right
-                || rect.bottom < lassoRect.top
-                || rect.top > lassoRect.bottom);
+            const overlap = !(
+                rect.right < lassoRect.left ||
+                rect.left > lassoRect.right ||
+                rect.bottom < lassoRect.top ||
+                rect.top > lassoRect.bottom
+            );
             el.classList.toggle('is-marquee', overlap);
         }
     });
@@ -347,13 +383,18 @@ export function setupGallerySelect(hooks = {}) {
         }
         // Continue-mode already updated each tile in pointermove; nothing
         // to commit here.
-        try { grid.releasePointerCapture?.(drag.pointerId); } catch {}
+        try {
+            grid.releasePointerCapture?.(drag.pointerId);
+        } catch {}
         const wasReal = wasMoved;
         drag = null;
         // Suppress the trailing click after a real drag so it doesn't
         // toggle the tile we released over.
         if (wasReal) {
-            const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
+            const swallow = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
             window.addEventListener('click', swallow, { capture: true, once: true });
         }
     };
@@ -397,8 +438,12 @@ export function setupGallerySelect(hooks = {}) {
         }
 
         // Delete / Backspace — trigger bulk delete on a non-empty selection.
-        if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.selectMode
-            && state.selected && state.selected.size > 0) {
+        if (
+            (ev.key === 'Delete' || ev.key === 'Backspace') &&
+            state.selectMode &&
+            state.selected &&
+            state.selected.size > 0
+        ) {
             ev.preventDefault();
             hooks.deleteSelected?.();
         }
@@ -421,8 +466,8 @@ export function setupGallerySelect(hooks = {}) {
 
     function _selectRange(fromPath, toPath) {
         const tiles = Array.from(grid.querySelectorAll('.media-item[data-path]'));
-        const fromIdx = tiles.findIndex(t => t.dataset.path === fromPath);
-        const toIdx   = tiles.findIndex(t => t.dataset.path === toPath);
+        const fromIdx = tiles.findIndex((t) => t.dataset.path === fromPath);
+        const toIdx = tiles.findIndex((t) => t.dataset.path === toPath);
         if (fromIdx === -1 || toIdx === -1) return;
         const [lo, hi] = fromIdx <= toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
         if (!state.selected) state.selected = new Set();
@@ -442,8 +487,8 @@ export function exitSelectMode() {
     const grid = document.getElementById('media-grid');
     if (grid) {
         grid.classList.remove('in-select-mode');
-        grid.querySelectorAll('.is-selected').forEach(el => el.classList.remove('is-selected'));
-        grid.querySelectorAll('.is-marquee').forEach(el => el.classList.remove('is-marquee'));
+        grid.querySelectorAll('.is-selected').forEach((el) => el.classList.remove('is-selected'));
+        grid.querySelectorAll('.is-marquee').forEach((el) => el.classList.remove('is-marquee'));
     }
     const btn = document.getElementById('select-mode-btn');
     if (btn) btn.classList.remove('bg-tg-blue', 'text-white');
@@ -475,7 +520,7 @@ export function repaintSelection() {
     const grid = document.getElementById('media-grid');
     if (!grid) return;
     const sel = state.selected || new Set();
-    grid.querySelectorAll('.media-item[data-path]').forEach(el => {
+    grid.querySelectorAll('.media-item[data-path]').forEach((el) => {
         el.classList.toggle('is-selected', sel.has(el.dataset.path));
     });
     grid.classList.toggle('in-select-mode', !!state.selectMode);

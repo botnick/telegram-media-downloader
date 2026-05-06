@@ -204,7 +204,7 @@ A 1.5-day **M0 milestone** can land all 6 above; full hardening + feature parity
 | OH8 | `.github/workflows/` | No CI/CD at all. |
 | OH9 | `tests/` | Zero tests; `npm test` would fail. |
 | OH10 | repo-wide | No TypeScript, no JSDoc-types — `src/index.js` is 1679 lines pure JS. |
-| OH11 | `.eslintrc*`, `.prettierrc*` | No lint, no formatter, no pre-commit hooks (no husky/lint-staged). |
+| OH11 | `.eslintrc*`, `.prettierrc*` | No lint, no formatter, no pre-commit hooks (no husky/lint-staged). _(Resolved: Biome 2 + Lefthook landed in v2.6.14.)_ |
 | OH12 | `Dockerfile:1` | Floating `node:18-alpine` tag, drifts. |
 | OH13 | registry | No published Docker image (Docker Hub / GHCR). |
 | OH14 | `package.json:10` | `"main": "src/index.js"` is a CLI, not a library; missing `"bin"`. |
@@ -255,7 +255,7 @@ A 1.5-day **M0 milestone** can land all 6 above; full hardening + feature parity
 | OL5 | No architecture diagram (text only). |
 | OL6 | No multi-stage `Dockerfile.prod`. |
 | OL7 | No `npm run dev` / dev-watch script. |
-| OL8 | No husky pre-commit example in docs. |
+| OL8 | No husky pre-commit example in docs. _(Obsolete: husky was replaced by Lefthook in v2.6.14; `lefthook.yml` in the repo root is the current example.)_ |
 | OL9 | No CI / coverage / security badges. |
 | OL10 | No `FUNDING.yml`. |
 | OL11 | No published `npm` package even though setup supports it. |
@@ -271,7 +271,7 @@ A 1.5-day **M0 milestone** can land all 6 above; full hardening + feature parity
 | **M2** | Web server hardening + new control endpoints | ✅ shipped |
 | **M3** | SPA bug fixes + a11y baseline | ✅ shipped |
 | **M4** | Web feature additions (theme, search, multi-select, proxy, stories, URL paste, TTL, topics) | ✅ shipped |
-| **M5** | OSS launch readiness (CI, tests, Docker, ESLint, docs) | ✅ shipped |
+| **M5** | OSS launch readiness (CI, tests, Docker, lint/format tooling, docs) | ✅ shipped — toolchain migrated to Biome + Lefthook in v2.6.14 |
 
 **All Critical and High findings are resolved.** A handful of Medium/Low entries are still open as warnings (see `npm run lint`); they are tracked as warnings rather than errors so contributors can land changes without chasing pre-existing style debt.
 

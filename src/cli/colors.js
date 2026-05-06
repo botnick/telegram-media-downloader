@@ -7,16 +7,13 @@ export const colors = {
     yellow: '\x1b[33m',
     blue: '\x1b[34m',
     cyan: '\x1b[36m',
-    white: '\x1b[37m'
+    white: '\x1b[37m',
 };
 
-export const colorize = (text, ...styles) => 
-    styles.map(s => colors[s] || '').join('') + text + colors.reset;
+export const colorize = (text, ...styles) =>
+    styles.map((s) => colors[s] || '').join('') + text + colors.reset;
 
-export const clearScreen = () => 
-    process.stdout.write('\x1b[2J\x1b[H');
-
-
+export const clearScreen = () => process.stdout.write('\x1b[2J\x1b[H');
 
 export function formatBytes(bytes) {
     if (bytes === 0) return '0 B';

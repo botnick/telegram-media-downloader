@@ -13,22 +13,32 @@
 import { t as i18nT } from './i18n.js';
 
 const NOTIFY_STORAGE_KEY = 'tgdl-notify-buffer';
-const NOTIFY_UNREAD_KEY  = 'tgdl-notify-unread';
+const NOTIFY_UNREAD_KEY = 'tgdl-notify-unread';
 const NOTIFY_MAX = 50;
 
 function _readBuffer() {
-    try { return JSON.parse(localStorage.getItem(NOTIFY_STORAGE_KEY) || '[]'); }
-    catch { return []; }
+    try {
+        return JSON.parse(localStorage.getItem(NOTIFY_STORAGE_KEY) || '[]');
+    } catch {
+        return [];
+    }
 }
 function _writeBuffer(arr) {
-    try { localStorage.setItem(NOTIFY_STORAGE_KEY, JSON.stringify(arr.slice(-NOTIFY_MAX))); } catch {}
+    try {
+        localStorage.setItem(NOTIFY_STORAGE_KEY, JSON.stringify(arr.slice(-NOTIFY_MAX)));
+    } catch {}
 }
 function _readUnread() {
-    try { return Math.max(0, parseInt(localStorage.getItem(NOTIFY_UNREAD_KEY), 10) || 0); }
-    catch { return 0; }
+    try {
+        return Math.max(0, parseInt(localStorage.getItem(NOTIFY_UNREAD_KEY), 10) || 0);
+    } catch {
+        return 0;
+    }
 }
 function _writeUnread(n) {
-    try { localStorage.setItem(NOTIFY_UNREAD_KEY, String(Math.max(0, n))); } catch {}
+    try {
+        localStorage.setItem(NOTIFY_UNREAD_KEY, String(Math.max(0, n)));
+    } catch {}
 }
 
 function _formatRel(ts) {
@@ -42,7 +52,7 @@ function _formatRel(ts) {
 
 function _icon(level) {
     if (level === 'error') return 'ri-error-warning-line';
-    if (level === 'warn')  return 'ri-alert-line';
+    if (level === 'warn') return 'ri-alert-line';
     return 'ri-information-line';
 }
 
@@ -79,11 +89,11 @@ function setupOverflowMenu() {
     // the business logic single-sourced.
     const ACTIONS = {
         'paste-url': () => document.getElementById('paste-url-btn')?.click(),
-        'stories':   () => document.getElementById('stories-btn')?.click(),
-        'refresh':   () => document.getElementById('refresh-btn')?.click(),
-        'vm-grid':    () => document.querySelector('#view-mode-menu [data-vm="grid"]')?.click(),
+        stories: () => document.getElementById('stories-btn')?.click(),
+        refresh: () => document.getElementById('refresh-btn')?.click(),
+        'vm-grid': () => document.querySelector('#view-mode-menu [data-vm="grid"]')?.click(),
         'vm-compact': () => document.querySelector('#view-mode-menu [data-vm="compact"]')?.click(),
-        'vm-list':    () => document.querySelector('#view-mode-menu [data-vm="list"]')?.click(),
+        'vm-list': () => document.querySelector('#view-mode-menu [data-vm="list"]')?.click(),
     };
     menu.querySelectorAll('[data-overflow]').forEach((row) => {
         row.addEventListener('click', (e) => {
@@ -116,10 +126,13 @@ function _renderNotifyList() {
     }
     if (empty) empty.classList.add('hidden');
     // Newest first — buffer is appended, render reversed.
-    list.innerHTML = buf.slice().reverse().map((e) => {
-        const icon = _icon(e.level);
-        const rel = _formatRel(e.ts);
-        return `<div class="notify-row" data-level="${e.level}">
+    list.innerHTML = buf
+        .slice()
+        .reverse()
+        .map((e) => {
+            const icon = _icon(e.level);
+            const rel = _formatRel(e.ts);
+            return `<div class="notify-row" data-level="${e.level}">
             <div class="notify-icon"><i class="${icon}"></i></div>
             <div class="notify-body">
                 <div class="notify-msg">${escapeHtml(e.msg)}</div>
@@ -130,7 +143,8 @@ function _renderNotifyList() {
                 </div>
             </div>
         </div>`;
-    }).join('');
+        })
+        .join('');
 }
 
 function _setBadge(n) {
@@ -202,7 +216,12 @@ export function pushLogToNotify(entry) {
     const level = entry.level || 'info';
     if (level !== 'warn' && level !== 'error') return;
     const buf = _readBuffer();
-    buf.push({ ts: entry.ts || Date.now(), source: entry.source || 'app', level, msg: String(entry.msg || '').slice(0, 400) });
+    buf.push({
+        ts: entry.ts || Date.now(),
+        source: entry.source || 'app',
+        level,
+        msg: String(entry.msg || '').slice(0, 400),
+    });
     _writeBuffer(buf);
     const open = document.getElementById('notify-bell-menu')?.classList.contains('open');
     if (!open) {

@@ -17,7 +17,11 @@ const subscribers = new Set();
 
 function notify() {
     for (const fn of subscribers) {
-        try { fn(latest); } catch (e) { console.error('monitor-status subscriber', e); }
+        try {
+            fn(latest);
+        } catch (e) {
+            console.error('monitor-status subscriber', e);
+        }
     }
 }
 
@@ -42,7 +46,9 @@ ws.on('monitor_status_push', (msg) => {
 });
 // On WS reconnect, fetch once to fill the gap between disconnect
 // and the first new push.
-ws.on('__ws_open', () => { if (subscribers.size > 0) refresh(); });
+ws.on('__ws_open', () => {
+    if (subscribers.size > 0) refresh();
+});
 
 /**
  * Subscribe to monitor status updates. Returns an unsubscribe function.
@@ -53,17 +59,27 @@ ws.on('__ws_open', () => { if (subscribers.size > 0) refresh(); });
 export function subscribe(fn) {
     subscribers.add(fn);
     if (latest) {
-        try { fn(latest); } catch (e) { console.error('monitor-status subscriber', e); }
+        try {
+            fn(latest);
+        } catch (e) {
+            console.error('monitor-status subscriber', e);
+        }
     } else {
         // First subscriber — fetch once so consumers aren't blank
         // until the next 3-second push arrives.
         refresh();
     }
-    return () => { subscribers.delete(fn); };
+    return () => {
+        subscribers.delete(fn);
+    };
 }
 
 /** Force an immediate refresh — used by handlers that mutate state. */
-export function refreshNow() { refresh(); }
+export function refreshNow() {
+    refresh();
+}
 
 /** Latest cached snapshot, or null if none yet. */
-export function getLatest() { return latest; }
+export function getLatest() {
+    return latest;
+}

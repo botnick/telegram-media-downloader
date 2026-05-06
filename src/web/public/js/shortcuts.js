@@ -19,18 +19,58 @@ const OVERRIDE_KEY = 'tgdl-shortcut-overrides';
 // and returns true on hit. Overrides REPLACE the default keys label
 // AND the predicate so the cheatsheet reflects the new binding.
 const SHORTCUTS = [
-    { id: 'cheatsheet',     keys: '?',          k: 'shortcuts.cheatsheet',     def: 'Open this shortcuts cheatsheet' },
-    { id: 'close_modal',    keys: 'Esc',        k: 'shortcuts.close_modal',    def: 'Close any modal / sheet / drawer' },
-    { id: 'go_library',     keys: 'g v',        k: 'shortcuts.go_library',     def: 'Go to Library' },
-    { id: 'go_chats',       keys: 'g g',        k: 'shortcuts.go_chats',       def: 'Go to Chats' },
-    { id: 'go_engine',      keys: 'g e',        k: 'shortcuts.go_engine',      def: 'Go to Engine' },
-    { id: 'go_settings',    keys: 'g s',        k: 'shortcuts.go_settings',    def: 'Go to Settings' },
-    { id: 'focus_search',   keys: '/',          k: 'shortcuts.focus_search',   def: 'Focus the gallery search box' },
-    { id: 'open_paste',     keys: 'l',          k: 'shortcuts.open_paste',     def: 'Open the "paste t.me link" drawer' },
-    { id: 'toggle_select',  keys: 's',          k: 'shortcuts.toggle_select',  def: 'Toggle gallery selection mode' },
-    { id: 'play_pause',     keys: 'Enter',      k: 'shortcuts.play_pause',     def: '(in viewer) play / pause video' },
-    { id: 'prev_next',      keys: '← / →',      k: 'shortcuts.prev_next',      def: '(in viewer) previous / next item' },
-    { id: 'fullscreen',     keys: 'f',          k: 'shortcuts.fullscreen',     def: '(in viewer) toggle fullscreen' },
+    {
+        id: 'cheatsheet',
+        keys: '?',
+        k: 'shortcuts.cheatsheet',
+        def: 'Open this shortcuts cheatsheet',
+    },
+    {
+        id: 'close_modal',
+        keys: 'Esc',
+        k: 'shortcuts.close_modal',
+        def: 'Close any modal / sheet / drawer',
+    },
+    { id: 'go_library', keys: 'g v', k: 'shortcuts.go_library', def: 'Go to Library' },
+    { id: 'go_chats', keys: 'g g', k: 'shortcuts.go_chats', def: 'Go to Chats' },
+    { id: 'go_engine', keys: 'g e', k: 'shortcuts.go_engine', def: 'Go to Engine' },
+    { id: 'go_settings', keys: 'g s', k: 'shortcuts.go_settings', def: 'Go to Settings' },
+    {
+        id: 'focus_search',
+        keys: '/',
+        k: 'shortcuts.focus_search',
+        def: 'Focus the gallery search box',
+    },
+    {
+        id: 'open_paste',
+        keys: 'l',
+        k: 'shortcuts.open_paste',
+        def: 'Open the "paste t.me link" drawer',
+    },
+    {
+        id: 'toggle_select',
+        keys: 's',
+        k: 'shortcuts.toggle_select',
+        def: 'Toggle gallery selection mode',
+    },
+    {
+        id: 'play_pause',
+        keys: 'Enter',
+        k: 'shortcuts.play_pause',
+        def: '(in viewer) play / pause video',
+    },
+    {
+        id: 'prev_next',
+        keys: '← / →',
+        k: 'shortcuts.prev_next',
+        def: '(in viewer) previous / next item',
+    },
+    {
+        id: 'fullscreen',
+        keys: 'f',
+        k: 'shortcuts.fullscreen',
+        def: '(in viewer) toggle fullscreen',
+    },
 ];
 
 /**
@@ -51,7 +91,9 @@ export function loadShortcutOverrides() {
             if (typeof parsed[k] === 'string' && parsed[k]) out[k] = parsed[k];
         }
         return out;
-    } catch { return {}; }
+    } catch {
+        return {};
+    }
 }
 
 /**
@@ -61,13 +103,19 @@ export function setShortcutOverride(id, keys) {
     const cur = loadShortcutOverrides();
     if (!keys) delete cur[id];
     else cur[id] = String(keys);
-    try { localStorage.setItem(OVERRIDE_KEY, JSON.stringify(cur)); } catch { /* quota / disabled */ }
+    try {
+        localStorage.setItem(OVERRIDE_KEY, JSON.stringify(cur));
+    } catch {
+        /* quota / disabled */
+    }
     return cur;
 }
 
 /** Clear every user override and revert to the built-in defaults. */
 export function resetShortcutOverrides() {
-    try { localStorage.removeItem(OVERRIDE_KEY); } catch {}
+    try {
+        localStorage.removeItem(OVERRIDE_KEY);
+    } catch {}
 }
 
 /**
@@ -79,7 +127,7 @@ export function resetShortcutOverrides() {
  */
 export function effectiveShortcuts() {
     const ov = loadShortcutOverrides();
-    return SHORTCUTS.map(s => ov[s.id] ? { ...s, keys: ov[s.id] } : s);
+    return SHORTCUTS.map((s) => (ov[s.id] ? { ...s, keys: ov[s.id] } : s));
 }
 
 let lastG = 0; // chord buffer
@@ -87,13 +135,18 @@ let lastG = 0; // chord buffer
 function buildContent() {
     const wrap = document.createElement('ul');
     wrap.className = 'space-y-1.5 text-sm';
-    wrap.innerHTML = effectiveShortcuts().map(s => `
+    wrap.innerHTML =
+        effectiveShortcuts()
+            .map(
+                (s) => `
         <li class="flex items-center justify-between">
             <span class="text-tg-textSecondary">${i18nT(s.k, s.def)}</span>
             <kbd class="px-1.5 py-0.5 text-xs rounded bg-tg-bg/60 border border-tg-border font-mono">${s.keys}</kbd>
         </li>
-    `).join('') +
-    `<li class="text-[11px] text-tg-textSecondary pt-2 border-t border-tg-border mt-2">${i18nT('shortcuts.tip', "Tip — none of these fire while you're typing in a text field.")}</li>`;
+    `,
+            )
+            .join('') +
+        `<li class="text-[11px] text-tg-textSecondary pt-2 border-t border-tg-border mt-2">${i18nT('shortcuts.tip', "Tip — none of these fire while you're typing in a text field.")}</li>`;
     return wrap;
 }
 
@@ -142,14 +195,38 @@ function _matchOverride(e) {
 }
 
 function _runAction(id) {
-    if (id === 'cheatsheet')   { show(); return; }
-    if (id === 'open_paste')   { document.getElementById('paste-url-btn')?.click(); return; }
-    if (id === 'toggle_select'){ document.getElementById('select-mode-btn')?.click(); return; }
-    if (id === 'focus_search') { document.getElementById('search-input')?.focus(); return; }
-    if (id === 'go_library')   { dispatchG('v'); return; }
-    if (id === 'go_chats')     { dispatchG('g'); return; }
-    if (id === 'go_engine')    { dispatchG('e'); return; }
-    if (id === 'go_settings')  { dispatchG('s'); return; }
+    if (id === 'cheatsheet') {
+        show();
+        return;
+    }
+    if (id === 'open_paste') {
+        document.getElementById('paste-url-btn')?.click();
+        return;
+    }
+    if (id === 'toggle_select') {
+        document.getElementById('select-mode-btn')?.click();
+        return;
+    }
+    if (id === 'focus_search') {
+        document.getElementById('search-input')?.focus();
+        return;
+    }
+    if (id === 'go_library') {
+        dispatchG('v');
+        return;
+    }
+    if (id === 'go_chats') {
+        dispatchG('g');
+        return;
+    }
+    if (id === 'go_engine') {
+        dispatchG('e');
+        return;
+    }
+    if (id === 'go_settings') {
+        dispatchG('s');
+        return;
+    }
     // play_pause / prev_next / fullscreen are owned by viewer.js; the
     // override system here is the source of truth for the mapping but
     // the viewer wires its own keydown listener for in-modal keys.

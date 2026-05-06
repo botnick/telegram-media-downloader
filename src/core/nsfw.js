@@ -87,7 +87,11 @@ function _resolveCacheDirAbs(cacheDirCfg) {
 }
 
 async function _loadClassifier(cfg, onProgress, onLog) {
-    const _log = (level, msg) => { try { if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg }); } catch {} };
+    const _log = (level, msg) => {
+        try {
+            if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg });
+        } catch {}
+    };
     const modelId = cfg.model || NSFW_DEFAULTS.model;
     const dtypeWanted = VALID_DTYPES.has(String(cfg.dtype || '').toLowerCase())
         ? String(cfg.dtype).toLowerCase()
@@ -105,7 +109,10 @@ async function _loadClassifier(cfg, onProgress, onLog) {
             await fs.mkdir(cacheDirAbs, { recursive: true });
             _log('info', `created model cache dir at ${cacheDirAbs}`);
         }
-        _log('info', `loading classifier — model=${modelId} dtype=${dtypeWanted} cacheDir=${cacheDirAbs}`);
+        _log(
+            'info',
+            `loading classifier — model=${modelId} dtype=${dtypeWanted} cacheDir=${cacheDirAbs}`,
+        );
 
         // Dynamic import keeps a fresh install from paying the WASM-load
         // cost on every boot. Wrapped in try/catch so a missing or
@@ -117,8 +124,8 @@ async function _loadClassifier(cfg, onProgress, onLog) {
         } catch (e) {
             _log('error', `@huggingface/transformers import failed: ${e?.message || e}`);
             const err = new Error(
-                `Failed to load @huggingface/transformers: ${e.message}. `
-                + 'Install with `npm install @huggingface/transformers`.'
+                `Failed to load @huggingface/transformers: ${e.message}. ` +
+                    'Install with `npm install @huggingface/transformers`.',
             );
             err.code = 'NSFW_LIB_MISSING';
             throw err;
@@ -128,7 +135,9 @@ async function _loadClassifier(cfg, onProgress, onLog) {
         // Steer model + asset downloads into our project-local cache so
         // they survive container recreates (data/ is bind-mounted) and
         // operators can pre-seed by copying the directory.
-        try { env.cacheDir = cacheDirAbs; } catch {}
+        try {
+            env.cacheDir = cacheDirAbs;
+        } catch {}
         // Force WASM execution everywhere. Native onnxruntime-node is a
         // glibc-only prebuilt — on Alpine it 500s at load. WASM works
         // 1:1 across every platform with a small perf trade-off that we
@@ -145,10 +154,11 @@ async function _loadClassifier(cfg, onProgress, onLog) {
         // NSFW classifier also benefits from gated-repo access + rate-
         // limit bypass.
         try {
-            let token = process.env.HF_TOKEN
-                || process.env.HUGGINGFACE_TOKEN
-                || process.env.HUGGINGFACEHUB_API_TOKEN
-                || null;
+            let token =
+                process.env.HF_TOKEN ||
+                process.env.HUGGINGFACE_TOKEN ||
+                process.env.HUGGINGFACEHUB_API_TOKEN ||
+                null;
             if (!token) {
                 try {
                     const { loadConfig } = await import('../config/manager.js');
@@ -157,10 +167,14 @@ async function _loadClassifier(cfg, onProgress, onLog) {
                     if (typeof cfgToken === 'string' && cfgToken.trim()) {
                         token = cfgToken.trim();
                     }
-                } catch { /* config not ready */ }
+                } catch {
+                    /* config not ready */
+                }
             }
             if (token) {
-                try { env.token = token; } catch {}
+                try {
+                    env.token = token;
+                } catch {}
                 try {
                     if (!env.customHeaders) env.customHeaders = {};
                     env.customHeaders.Authorization = `Bearer ${token}`;
@@ -172,7 +186,10 @@ async function _loadClassifier(cfg, onProgress, onLog) {
         // variant on the HF CDN (the unquantized model.onnx is the most
         // common offender), fall back through the chain so the operator
         // doesn't have to know which precision a given model bundles.
-        const fallbackOrder = [dtypeWanted, ...['q8', 'fp16', 'fp32', 'q4'].filter(d => d !== dtypeWanted)];
+        const fallbackOrder = [
+            dtypeWanted,
+            ...['q8', 'fp16', 'fp32', 'q4'].filter((d) => d !== dtypeWanted),
+        ];
         let lastErr = null;
         for (const dtype of fallbackOrder) {
             try {
@@ -181,11 +198,16 @@ async function _loadClassifier(cfg, onProgress, onLog) {
                     progress_callback: (p) => {
                         try {
                             if (typeof onProgress === 'function') onProgress(p);
-                        } catch { /* swallow — UI hint, not load-critical */ }
+                        } catch {
+                            /* swallow — UI hint, not load-critical */
+                        }
                     },
                 });
                 if (dtype !== dtypeWanted) {
-                    _log('warn', `${dtypeWanted} variant unavailable for ${modelId} — fell back to ${dtype}`);
+                    _log(
+                        'warn',
+                        `${dtypeWanted} variant unavailable for ${modelId} — fell back to ${dtype}`,
+                    );
                 }
                 return cls;
             } catch (e) {
@@ -253,16 +275,18 @@ let _scanState = {
     running: false,
     scanned: 0,
     total: 0,
-    candidates: 0,    // low-score rows surfaced for deletion
-    keep: 0,          // high-score rows the classifier confirmed as 18+
+    candidates: 0, // low-score rows surfaced for deletion
+    keep: 0, // high-score rows the classifier confirmed as 18+
     startedAt: null,
     finishedAt: null,
     error: null,
 };
 
 export function getScanState(cfg) {
-    const stats = getNsfwStats(cfg.fileTypes || NSFW_DEFAULTS.fileTypes,
-        cfg.threshold ?? NSFW_DEFAULTS.threshold);
+    const stats = getNsfwStats(
+        cfg.fileTypes || NSFW_DEFAULTS.fileTypes,
+        cfg.threshold ?? NSFW_DEFAULTS.threshold,
+    );
     return {
         ..._scanState,
         ...stats,
@@ -286,22 +310,39 @@ export function getScanState(cfg) {
  * @param {(p:object) => void} [onLog]     structured log sink ({source,level,msg}) — server.js wires this to the realtime log channel
  */
 export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
-    const _log = (level, msg) => { try { if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg }); } catch {} };
+    const _log = (level, msg) => {
+        try {
+            if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg });
+        } catch {}
+    };
     if (_scanRunning) {
-        _log('warn', 'startScan called while a previous scan is in flight — returning {alreadyRunning:true}');
+        _log(
+            'warn',
+            'startScan called while a previous scan is in flight — returning {alreadyRunning:true}',
+        );
         return { alreadyRunning: true };
     }
     _scanRunning = true;
     const ctrl = new AbortController();
     _scanAbort = ctrl;
-    const fileTypes = (cfg.fileTypes && cfg.fileTypes.length) ? cfg.fileTypes : NSFW_DEFAULTS.fileTypes;
+    const fileTypes =
+        cfg.fileTypes && cfg.fileTypes.length ? cfg.fileTypes : NSFW_DEFAULTS.fileTypes;
     const threshold = Number.isFinite(cfg.threshold) ? cfg.threshold : NSFW_DEFAULTS.threshold;
-    const concurrency = Math.max(1, Math.min(4, Number(cfg.concurrency) || NSFW_DEFAULTS.concurrency));
+    const concurrency = Math.max(
+        1,
+        Math.min(4, Number(cfg.concurrency) || NSFW_DEFAULTS.concurrency),
+    );
     const batchSize = Math.max(1, Math.min(500, Number(cfg.batchSize) || NSFW_DEFAULTS.batchSize));
 
     _scanState = {
-        running: true, scanned: 0, total: 0, candidates: 0, keep: 0,
-        startedAt: Date.now(), finishedAt: null, error: null,
+        running: true,
+        scanned: 0,
+        total: 0,
+        candidates: 0,
+        keep: 0,
+        startedAt: Date.now(),
+        finishedAt: null,
+        error: null,
     };
 
     // Total = remaining unscanned eligible photos. Done in advance so the
@@ -313,18 +354,30 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
     if (typeof onProgress === 'function') onProgress({ ..._scanState });
 
     if (_scanState.total === 0) {
-        _log('info', `nothing to scan — totalEligible=${baseStats.totalEligible} alreadyScanned=${baseStats.scanned}. Library may be empty (DB rows=0) — try Maintenance → Re-index from disk if files exist.`);
+        _log(
+            'info',
+            `nothing to scan — totalEligible=${baseStats.totalEligible} alreadyScanned=${baseStats.scanned}. Library may be empty (DB rows=0) — try Maintenance → Re-index from disk if files exist.`,
+        );
     } else {
-        _log('info', `starting scan — ${_scanState.total} unscanned ${fileTypes.join('/')} rows, batch=${batchSize}, concurrency=${concurrency}, threshold=${threshold}`);
+        _log(
+            'info',
+            `starting scan — ${_scanState.total} unscanned ${fileTypes.join('/')} rows, batch=${batchSize}, concurrency=${concurrency}, threshold=${threshold}`,
+        );
     }
 
     // Background driver — fire-and-forget, errors funnel into onDone.
     (async () => {
         let classifier;
         try {
-            classifier = await _loadClassifier(cfg, (p) => {
-                try { if (typeof onModel === 'function') onModel(p); } catch {}
-            }, onLog);
+            classifier = await _loadClassifier(
+                cfg,
+                (p) => {
+                    try {
+                        if (typeof onModel === 'function') onModel(p);
+                    } catch {}
+                },
+                onLog,
+            );
         } catch (e) {
             _log('error', `classifier load failed: ${e?.message || e}`);
             _scanState.error = e.message;
@@ -332,7 +385,9 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
             _scanState.finishedAt = Date.now();
             _scanRunning = false;
             _scanAbort = null;
-            try { if (typeof onDone === 'function') onDone({ ..._scanState }); } catch {}
+            try {
+                if (typeof onDone === 'function') onDone({ ..._scanState });
+            } catch {}
             return;
         }
 
@@ -350,9 +405,11 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
         let lastBroadcast = 0;
         const maybeBroadcast = (force = false) => {
             const now = Date.now();
-            if (!force && (now - lastBroadcast) < 500) return;
+            if (!force && now - lastBroadcast < 500) return;
             lastBroadcast = now;
-            try { if (typeof onProgress === 'function') onProgress({ ..._scanState }); } catch {}
+            try {
+                if (typeof onProgress === 'function') onProgress({ ..._scanState });
+            } catch {}
         };
 
         try {
@@ -365,8 +422,11 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                         if (ctrl.signal.aborted) break;
                         const abs = resolveAbs(row.file_path);
                         let res = null;
-                        try { res = await _classifyFile(classifier, abs); }
-                        catch { res = null; }
+                        try {
+                            res = await _classifyFile(classifier, abs);
+                        } catch {
+                            res = null;
+                        }
                         const score = res ? res.score : null;
                         setNsfwResult(row.id, score);
                         _scanState.scanned += 1;
@@ -384,20 +444,25 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                     for (let i = 0; i < batch.length; i += concurrency) {
                         if (ctrl.signal.aborted) break;
                         const chunk = batch.slice(i, i + concurrency);
-                        await Promise.all(chunk.map(async (row) => {
-                            if (ctrl.signal.aborted) return;
-                            const abs = resolveAbs(row.file_path);
-                            let res = null;
-                            try { res = await _classifyFile(classifier, abs); }
-                            catch { res = null; }
-                            const score = res ? res.score : null;
-                            setNsfwResult(row.id, score);
-                            _scanState.scanned += 1;
-                            if (score != null) {
-                            if (score >= threshold) _scanState.keep += 1;
-                            else _scanState.candidates += 1;
-                        }
-                        }));
+                        await Promise.all(
+                            chunk.map(async (row) => {
+                                if (ctrl.signal.aborted) return;
+                                const abs = resolveAbs(row.file_path);
+                                let res = null;
+                                try {
+                                    res = await _classifyFile(classifier, abs);
+                                } catch {
+                                    res = null;
+                                }
+                                const score = res ? res.score : null;
+                                setNsfwResult(row.id, score);
+                                _scanState.scanned += 1;
+                                if (score != null) {
+                                    if (score >= threshold) _scanState.keep += 1;
+                                    else _scanState.candidates += 1;
+                                }
+                            }),
+                        );
                         maybeBroadcast();
                     }
                 }
@@ -417,16 +482,22 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                 _scanState.keep = fresh.keep;
             } catch {}
             maybeBroadcast(true);
-            try { if (typeof onDone === 'function') onDone({ ..._scanState }); } catch {}
+            try {
+                if (typeof onDone === 'function') onDone({ ..._scanState });
+            } catch {}
         }
-    })().catch(() => { /* never throw out of the async IIFE */ });
+    })().catch(() => {
+        /* never throw out of the async IIFE */
+    });
 
     return { started: true };
 }
 
 export function cancelScan() {
     if (!_scanAbort) return false;
-    try { _scanAbort.abort(); } catch {}
+    try {
+        _scanAbort.abort();
+    } catch {}
     return true;
 }
 
@@ -473,12 +544,21 @@ async function _drainBg() {
                 ...(live.advanced?.nsfw || {}),
                 enabled: live.advanced?.nsfw?.enabled === true,
             };
-        } catch { cfg = { ...NSFW_DEFAULTS, enabled: false }; }
-        if (!cfg.enabled) { _bgQueue.length = 0; return; }
+        } catch {
+            cfg = { ...NSFW_DEFAULTS, enabled: false };
+        }
+        if (!cfg.enabled) {
+            _bgQueue.length = 0;
+            return;
+        }
 
         let classifier;
-        try { classifier = await _loadClassifier(cfg); }
-        catch { _bgQueue.length = 0; return; }
+        try {
+            classifier = await _loadClassifier(cfg);
+        } catch {
+            _bgQueue.length = 0;
+            return;
+        }
 
         const db = getDb();
         const lookupRow = db.prepare(`
@@ -486,7 +566,9 @@ async function _drainBg() {
               FROM downloads
              WHERE id = ?
         `);
-        const fileTypeOk = new Set((cfg.fileTypes || NSFW_DEFAULTS.fileTypes).map(s => String(s).toLowerCase()));
+        const fileTypeOk = new Set(
+            (cfg.fileTypes || NSFW_DEFAULTS.fileTypes).map((s) => String(s).toLowerCase()),
+        );
 
         while (_bgQueue.length) {
             const id = _bgQueue.shift();
@@ -516,9 +598,15 @@ async function _drainBg() {
                 try {
                     const r = await _classifyFile(classifier, abs);
                     if (r) score = r.score;
-                } catch { /* per-file failure: leave score NULL but mark scanned */ }
+                } catch {
+                    /* per-file failure: leave score NULL but mark scanned */
+                }
             }
-            try { setNsfwResult(id, score); } catch { /* best-effort */ }
+            try {
+                setNsfwResult(id, score);
+            } catch {
+                /* best-effort */
+            }
         }
     } finally {
         _bgRunning = false;
@@ -532,7 +620,9 @@ export async function disposeClassifier() {
     try {
         const cls = await _pipelinePromise;
         if (cls && typeof cls.dispose === 'function') await cls.dispose();
-    } catch { /* best-effort */ }
+    } catch {
+        /* best-effort */
+    }
     _pipelinePromise = null;
     _activeModelId = null;
 }
@@ -541,10 +631,10 @@ export async function disposeClassifier() {
 // _loadClassifier wrappers — the UI polls this so it can render a
 // progress bar even between WS messages.
 let _loadState = {
-    state: 'idle',          // 'idle' | 'loading' | 'ready' | 'error'
+    state: 'idle', // 'idle' | 'loading' | 'ready' | 'error'
     model: null,
     dtype: null,
-    progress: null,         // { file, loaded, total, progress }
+    progress: null, // { file, loaded, total, progress }
     error: null,
     startedAt: null,
     finishedAt: null,
@@ -567,12 +657,20 @@ export function classifierReady() {
  *   { alreadyLoading: true }     — a previous preload/scan is mid-download
  */
 export async function preloadClassifier(cfg, onProgress, onLog) {
-    const _log = (level, msg) => { try { if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg }); } catch {} };
+    const _log = (level, msg) => {
+        try {
+            if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg });
+        } catch {}
+    };
     const modelId = cfg.model || NSFW_DEFAULTS.model;
     const dtype = VALID_DTYPES.has(String(cfg.dtype || '').toLowerCase())
         ? String(cfg.dtype).toLowerCase()
         : NSFW_DEFAULTS.dtype;
-    if (_loadState.state === 'loading' && _loadState.model === modelId && _loadState.dtype === dtype) {
+    if (
+        _loadState.state === 'loading' &&
+        _loadState.model === modelId &&
+        _loadState.dtype === dtype
+    ) {
         _log('info', `preload skipped — already loading ${modelId} (${dtype})`);
         return { alreadyLoading: true };
     }
@@ -593,12 +691,16 @@ export async function preloadClassifier(cfg, onProgress, onLog) {
     // Fire-and-forget — caller doesn't await the actual download.
     (async () => {
         try {
-            await _loadClassifier({ ...cfg, model: modelId, dtype }, (p) => {
-                try {
-                    _loadState.progress = p;
-                    if (typeof onProgress === 'function') onProgress(p);
-                } catch {}
-            }, onLog);
+            await _loadClassifier(
+                { ...cfg, model: modelId, dtype },
+                (p) => {
+                    try {
+                        _loadState.progress = p;
+                        if (typeof onProgress === 'function') onProgress(p);
+                    } catch {}
+                },
+                onLog,
+            );
             _loadState.state = 'ready';
             _loadState.finishedAt = Date.now();
             _log('info', `preload complete — ${modelId} (${dtype}) ready`);
@@ -619,29 +721,51 @@ export async function preloadClassifier(cfg, onProgress, onLog) {
  */
 export async function clearClassifierCache(cfg) {
     await disposeClassifier();
-    _loadState = { state: 'idle', model: null, dtype: null, progress: null, error: null, startedAt: null, finishedAt: null };
+    _loadState = {
+        state: 'idle',
+        model: null,
+        dtype: null,
+        progress: null,
+        error: null,
+        startedAt: null,
+        finishedAt: null,
+    };
     const cacheDirAbs = _resolveCacheDirAbs(cfg.cacheDir);
     if (!existsSync(cacheDirAbs)) return { bytes: 0, files: 0 };
     let bytes = 0;
     let files = 0;
     const walk = async (dir) => {
         let entries;
-        try { entries = await fs.readdir(dir, { withFileTypes: true }); }
-        catch { return; }
+        try {
+            entries = await fs.readdir(dir, { withFileTypes: true });
+        } catch {
+            return;
+        }
         for (const entry of entries) {
             const p = path.join(dir, entry.name);
-            if (entry.isDirectory()) { await walk(p); continue; }
+            if (entry.isDirectory()) {
+                await walk(p);
+                continue;
+            }
             try {
                 const st = await fs.stat(p);
                 bytes += st.size;
                 files += 1;
                 await fs.unlink(p);
-            } catch { /* best-effort per file */ }
+            } catch {
+                /* best-effort per file */
+            }
         }
-        try { await fs.rmdir(dir); } catch { /* parent walk drains the rest */ }
+        try {
+            await fs.rmdir(dir);
+        } catch {
+            /* parent walk drains the rest */
+        }
     };
     await walk(cacheDirAbs);
-    try { await fs.mkdir(cacheDirAbs, { recursive: true }); } catch {}
+    try {
+        await fs.mkdir(cacheDirAbs, { recursive: true });
+    } catch {}
     return { bytes, files };
 }
 

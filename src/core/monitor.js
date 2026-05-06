@@ -24,16 +24,16 @@ export class RealtimeMonitor extends EventEmitter {
         this.accountManager = accountManager;
         this.running = false;
         this.handler = null;
-        this.handlerClients = [];  // Track all clients with registered handlers
+        this.handlerClients = []; // Track all clients with registered handlers
         this.stats = {
             messages: 0,
             media: 0,
             downloaded: 0,
             skipped: 0,
-            urls: 0
+            urls: 0,
         };
         this.spamGuard = new SpamGuard(); // Active Defense System
-        
+
         // Config file watcher for live sync with Web UI
         if (configPath && fsSync.existsSync(configPath)) {
             this.watchConfig();
@@ -81,7 +81,7 @@ export class RealtimeMonitor extends EventEmitter {
         }
         return null; // No client can access
     }
-    
+
     watchConfig() {
         let debounce = null;
         const watcher = fsSync.watch(this.configPath, (eventType) => {
@@ -91,36 +91,43 @@ export class RealtimeMonitor extends EventEmitter {
         });
         this._configWatcher = watcher;
         this._configWatchDebounceClear = () => {
-            if (debounce) { clearTimeout(debounce); debounce = null; }
+            if (debounce) {
+                clearTimeout(debounce);
+                debounce = null;
+            }
         };
     }
-    
+
     async reloadConfig() {
         try {
             const newConfig = JSON.parse(await fs.readFile(this.configPath, 'utf8'));
-            const oldGroupIds = this.config.groups.map(g => String(g.id));
-            const newGroupIds = newConfig.groups.map(g => String(g.id));
-            
+            const oldGroupIds = this.config.groups.map((g) => String(g.id));
+            const newGroupIds = newConfig.groups.map((g) => String(g.id));
+
             // Detect changes
-            const added = newConfig.groups.filter(g => !oldGroupIds.includes(String(g.id)));
-            const removed = this.config.groups.filter(g => !newGroupIds.includes(String(g.id)));
-            const changed = newConfig.groups.filter(g => {
-                const old = this.config.groups.find(og => String(og.id) === String(g.id));
-                return old && (old.enabled !== g.enabled);
+            const added = newConfig.groups.filter((g) => !oldGroupIds.includes(String(g.id)));
+            const removed = this.config.groups.filter((g) => !newGroupIds.includes(String(g.id)));
+            const changed = newConfig.groups.filter((g) => {
+                const old = this.config.groups.find((og) => String(og.id) === String(g.id));
+                return old && old.enabled !== g.enabled;
             });
-            
+
             this.config = newConfig;
-            
+
             // Log changes
-            if (added.length) console.log(colorize(`📋 Config: ${added.length} group(s) added`, 'green'));
-            if (removed.length) console.log(colorize(`📋 Config: ${removed.length} group(s) removed`, 'yellow'));
+            if (added.length)
+                console.log(colorize(`📋 Config: ${added.length} group(s) added`, 'green'));
+            if (removed.length)
+                console.log(colorize(`📋 Config: ${removed.length} group(s) removed`, 'yellow'));
             if (changed.length) {
-                changed.forEach(g => {
+                changed.forEach((g) => {
                     const status = g.enabled ? '✓ enabled' : '✗ disabled';
-                    console.log(colorize(`📋 Config: ${g.name} ${status}`, g.enabled ? 'green' : 'dim'));
+                    console.log(
+                        colorize(`📋 Config: ${g.name} ${status}`, g.enabled ? 'green' : 'dim'),
+                    );
                 });
             }
-            
+
             this.emit('configReloaded', newConfig);
         } catch (err) {
             // Ignore read errors
@@ -137,7 +144,7 @@ export class RealtimeMonitor extends EventEmitter {
         // Migrate old unsanitized folder names (space → underscore)
         const { migrateFolders } = await import('./downloader.js');
         await migrateFolders(this.config.download?.path);
-        
+
         // Start URL Batch Writer
         this.urlFlushInterval = setInterval(() => this.flushUrls(), 5000);
 
@@ -145,15 +152,15 @@ export class RealtimeMonitor extends EventEmitter {
         this.lastIds = new Map();
         console.log(colorize('🔄 Syncing state for Active Polling...', 'cyan'));
 
-        const enabledGroups = this.config.groups.filter(g => g.enabled);
+        const enabledGroups = this.config.groups.filter((g) => g.enabled);
         if (enabledGroups.length === 0) {
             console.log('⚠️  Warning: No groups enabled in config. Monitor will be idle.');
         }
-        
+
         // Suppress Telegram library's internal RPCError logging for invalid channels
         this._origConsoleError = console.error;
         console.error = (...args) => {
-            const msg = args.map(a => String(a)).join(' ');
+            const msg = args.map((a) => String(a)).join(' ');
             if (msg.includes('CHANNEL_INVALID')) return;
             this._origConsoleError.apply(console, args);
         };
@@ -166,7 +173,9 @@ export class RealtimeMonitor extends EventEmitter {
             try {
                 const workingClient = await this.discoverClientForGroup(group);
                 if (!workingClient) {
-                    console.log(colorize(`⚠️ Skipping "${group.name}" — no account has access`, 'yellow'));
+                    console.log(
+                        colorize(`⚠️ Skipping "${group.name}" — no account has access`, 'yellow'),
+                    );
                     group.enabled = false;
                     continue;
                 }
@@ -193,7 +202,7 @@ export class RealtimeMonitor extends EventEmitter {
         // user-triggered backfill (won't fight the user).
         try {
             const histCfg = this.config?.advanced?.history || {};
-            const enabled = histCfg.autoCatchUp !== false;          // default ON
+            const enabled = histCfg.autoCatchUp !== false; // default ON
             const threshold = Math.max(1, Number(histCfg.autoCatchUpThreshold) || 5);
             if (enabled) {
                 const { getMessageIdRange } = await import('./db.js');
@@ -214,8 +223,11 @@ export class RealtimeMonitor extends EventEmitter {
                         // CLI "monitor" command doesn't need a background
                         // backfill orchestrator (the standalone use case
                         // simply ignores this event).
-                        try { this.emit('catch_up_needed', { groupId: String(group.id), gap }); }
-                        catch (e) { console.warn('[catch-up] emit failed:', e?.message || e); }
+                        try {
+                            this.emit('catch_up_needed', { groupId: String(group.id), gap });
+                        } catch (e) {
+                            console.warn('[catch-up] emit failed:', e?.message || e);
+                        }
                     }
                 }
             }
@@ -254,36 +266,46 @@ export class RealtimeMonitor extends EventEmitter {
             for (const [_id, acctClient] of this.accountManager.clients) {
                 try {
                     acctClient.addEventHandler(this.handler, new NewMessage({}));
-                    acctClient.addEventHandler(this.deleteHandler, new Raw({
-                        types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
-                    }));
+                    acctClient.addEventHandler(
+                        this.deleteHandler,
+                        new Raw({
+                            types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
+                        }),
+                    );
                     this.handlerClients.push(acctClient);
-                } catch (e) { /* skip failed clients */ }
+                } catch (e) {
+                    /* skip failed clients */
+                }
             }
         } else {
             this.client.addEventHandler(this.handler, new NewMessage({}));
             try {
-                this.client.addEventHandler(this.deleteHandler, new Raw({
-                    types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
-                }));
-            } catch (e) { /* old gramjs without Raw filter? — non-fatal */ }
+                this.client.addEventHandler(
+                    this.deleteHandler,
+                    new Raw({
+                        types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
+                    }),
+                );
+            } catch (e) {
+                /* old gramjs without Raw filter? — non-fatal */
+            }
             this.handlerClients.push(this.client);
         }
 
         // Start download workers
         this.downloader.start();
 
-        this.emit('started', { 
+        this.emit('started', {
             groupCount: enabledGroups.length,
-            groups: enabledGroups.map(g => g.name)
+            groups: enabledGroups.map((g) => g.name),
         });
-        
+
         console.log(colorize('✅ Monitor Engine Active', 'green', 'bold'));
     }
 
     async startPollingLoop() {
         if (!this.running) return;
-        
+
         // Configurable interval (Default 10s for safety)
         const interval = (this.config.pollingInterval || 10) * 1000;
 
@@ -295,25 +317,25 @@ export class RealtimeMonitor extends EventEmitter {
 
     async poll() {
         if (!this.running) return;
-        
-        const enabledGroups = this.config.groups.filter(g => g.enabled);
+
+        const enabledGroups = this.config.groups.filter((g) => g.enabled);
 
         for (const group of enabledGroups) {
             // Tiny delay between groups to prevent flood (Rate Limit Protection)
-            await new Promise(r => setTimeout(r, 1000));
-            
+            await new Promise((r) => setTimeout(r, 1000));
+
             try {
                 const lastId = this.lastIds.get(group.id) || 0;
                 const pollClient = this.getClientForGroup(group);
-                
+
                 // Fetch messages NEWER than lastId
-                const messages = await pollClient.getMessages(group.id, { 
-                    minId: lastId, 
-                    limit: 10 
+                const messages = await pollClient.getMessages(group.id, {
+                    minId: lastId,
+                    limit: 10,
                 });
 
                 if (messages && messages.length > 0) {
-                    messages.reverse(); 
+                    messages.reverse();
 
                     for (const msg of messages) {
                         await this.handleEvent({ message: msg });
@@ -346,7 +368,11 @@ export class RealtimeMonitor extends EventEmitter {
         }
         // Release the config-file watcher + any pending debounce timer.
         if (this._configWatcher) {
-            try { this._configWatcher.close(); } catch { /* already closed */ }
+            try {
+                this._configWatcher.close();
+            } catch {
+                /* already closed */
+            }
             this._configWatcher = null;
         }
         if (this._configWatchDebounceClear) {
@@ -356,13 +382,22 @@ export class RealtimeMonitor extends EventEmitter {
         // Remove event handlers from ALL registered clients
         if (this.handler && this.handlerClients.length > 0) {
             for (const c of this.handlerClients) {
-                try { c.removeEventHandler(this.handler, new NewMessage({})); } catch (e) { /* ignore */ }
+                try {
+                    c.removeEventHandler(this.handler, new NewMessage({}));
+                } catch (e) {
+                    /* ignore */
+                }
                 if (this.deleteHandler) {
                     try {
-                        c.removeEventHandler(this.deleteHandler, new Raw({
-                            types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
-                        }));
-                    } catch (e) { /* ignore */ }
+                        c.removeEventHandler(
+                            this.deleteHandler,
+                            new Raw({
+                                types: [Api.UpdateDeleteChannelMessages, Api.UpdateDeleteMessages],
+                            }),
+                        );
+                    } catch (e) {
+                        /* ignore */
+                    }
                 }
             }
             this.handlerClients = [];
@@ -390,21 +425,22 @@ export class RealtimeMonitor extends EventEmitter {
             // Find group config
             // GramJS helper: message.chatId works for both groups and channels
             let chatId = message.chatId?.toString();
-            
+
             // Fallback for raw peer
             if (!chatId) {
-                chatId = message.peerId?.channelId?.toString() || message.peerId?.chatId?.toString();
+                chatId =
+                    message.peerId?.channelId?.toString() || message.peerId?.chatId?.toString();
             }
 
             if (!chatId) return; // Should not happen
 
             // Normalize ID helper (Handles -100 prefix and negative signs)
             const normalizeId = (id) => String(id).replace(/^-100/, '').replace(/^-/, '');
-            
+
             const targetId = normalizeId(chatId);
 
             const group = this.config.groups.find(
-                g => normalizeId(g.id) === targetId && g.enabled
+                (g) => normalizeId(g.id) === targetId && g.enabled,
             );
 
             if (!group) {
@@ -423,8 +459,8 @@ export class RealtimeMonitor extends EventEmitter {
             // console.log(`🎯 DEBUG: Group [${group.name}] MsgID: ${message.id} | Media: ${hasMedia ? this.getMediaType(message) : 'None'}`);
 
             if (!hasMedia && message.media) {
-                 // console.log('❓ DEBUG: Msg has .media property but hasMedia() returned false.');
-                 // console.log('   Media Class:', message.media.className);
+                // console.log('❓ DEBUG: Msg has .media property but hasMedia() returned false.');
+                // console.log('   Media Class:', message.media.className);
             }
 
             // User tracking filter
@@ -449,11 +485,11 @@ export class RealtimeMonitor extends EventEmitter {
             // Handle media
             if (this.hasMedia(message)) {
                 this.stats.media++;
-                
+
                 const mediaType = this.getMediaType(message);
-                
+
                 const filterValue = group.filters?.[mediaType];
-                
+
                 // Default Permission Logic:
                 // - Stickers: Default FALSE (Must explicitly enable)
                 // - Others: Default TRUE (Must explicitly disable)
@@ -474,7 +510,12 @@ export class RealtimeMonitor extends EventEmitter {
                 const ttlSeconds = message?.media?.ttlSeconds;
                 const priority = ttlSeconds && ttlSeconds > 0 ? 0 : 1;
                 if (ttlSeconds) {
-                    this.emit('download', { group: group.name, type: 'ttl', messageId: message.id, ttl: ttlSeconds });
+                    this.emit('download', {
+                        group: group.name,
+                        type: 'ttl',
+                        messageId: message.id,
+                        ttl: ttlSeconds,
+                    });
                 }
 
                 // Rescue Mode: stamp the job with pending_until if this group
@@ -485,21 +526,24 @@ export class RealtimeMonitor extends EventEmitter {
                 const rescueMs = effectiveRescueMs(group, this.config);
                 const pendingUntil = rescueMs ? Date.now() + rescueMs : null;
 
-                const added = await this.downloader.enqueue({
-                    message,
-                    groupId: group.id,
-                    groupName: group.name,
-                    mediaType,
-                    ttlSeconds,
-                    pendingUntil,
-                }, priority);
+                const added = await this.downloader.enqueue(
+                    {
+                        message,
+                        groupId: group.id,
+                        groupName: group.name,
+                        mediaType,
+                        ttlSeconds,
+                        pendingUntil,
+                    },
+                    priority,
+                );
 
                 if (added) {
                     this.stats.downloaded++;
                     this.emit('download', {
                         group: group.name,
                         type: mediaType,
-                        messageId: message.id
+                        messageId: message.id,
                     });
                 } else {
                     this.stats.skipped++;
@@ -533,7 +577,7 @@ export class RealtimeMonitor extends EventEmitter {
             if (!channelId) return;
             const normalize = (id) => String(id).replace(/^-100/, '').replace(/^-/, '');
             const target = normalize(channelId);
-            const group = this.config.groups.find(g => normalize(g.id) === target);
+            const group = this.config.groups.find((g) => normalize(g.id) === target);
             if (!group) return;
             for (const mid of ids) {
                 try {
@@ -541,7 +585,9 @@ export class RealtimeMonitor extends EventEmitter {
                     if (changed > 0) {
                         this.emit('rescued', { groupId: String(group.id), messageId: Number(mid) });
                     }
-                } catch { /* swallow */ }
+                } catch {
+                    /* swallow */
+                }
             }
         } else {
             // DM / small-group delete — no channelId. Telegram message IDs
@@ -551,10 +597,15 @@ export class RealtimeMonitor extends EventEmitter {
                     try {
                         const changed = markRescued(group.id, Number(mid));
                         if (changed > 0) {
-                            this.emit('rescued', { groupId: String(group.id), messageId: Number(mid) });
+                            this.emit('rescued', {
+                                groupId: String(group.id),
+                                messageId: Number(mid),
+                            });
                             break; // matched a row — no need to check other groups
                         }
-                    } catch { /* swallow */ }
+                    } catch {
+                        /* swallow */
+                    }
                 }
             }
         }
@@ -566,12 +617,12 @@ export class RealtimeMonitor extends EventEmitter {
 
         const senderId = String(message.senderId || '');
         const isTracked = (group.trackUsers.users || []).some(
-            u => String(u.id) === senderId || u.username === message.sender?.username
+            (u) => String(u.id) === senderId || u.username === message.sender?.username,
         );
 
         // Also check global tracked users
         const globalTracked = (this.config.globalTrackedUsers || []).some(
-            u => String(u.id) === senderId || u.username === message.sender?.username
+            (u) => String(u.id) === senderId || u.username === message.sender?.username,
         );
 
         const tracked = isTracked || globalTracked;
@@ -583,7 +634,7 @@ export class RealtimeMonitor extends EventEmitter {
 
     passTopicFilter(message, group) {
         if (!group.topics?.enabled) return true;
-        
+
         // Check if message is in a topic
         const replyTo = message.replyTo;
         if (!replyTo?.forumTopic) return true; // Not a topic message
@@ -600,18 +651,20 @@ export class RealtimeMonitor extends EventEmitter {
         if (message.sticker) return true; // Direct check
 
         if (message.media) {
-             // Check inner media types
-             const m = message.media;
-             return !!(
-                 m.photo || 
-                 m.document || 
-                 m.sticker || // Check inside media
-                 (m.className === 'MessageMediaPhoto') ||
-                 (m.className === 'MessageMediaDocument') ||
-                 (m.className === 'MessageMediaWebPage' && m.webPage?.document) // Webpage with media preview
-             );
+            // Check inner media types
+            const m = message.media;
+            return !!(
+                (
+                    m.photo ||
+                    m.document ||
+                    m.sticker || // Check inside media
+                    m.className === 'MessageMediaPhoto' ||
+                    m.className === 'MessageMediaDocument' ||
+                    (m.className === 'MessageMediaWebPage' && m.webPage?.document)
+                ) // Webpage with media preview
+            );
         }
-        
+
         // Fallback checks (shortcuts)
         return !!(
             message.photo ||
@@ -635,29 +688,30 @@ export class RealtimeMonitor extends EventEmitter {
 
         // 1. Check for Sticker
         if (m.sticker || message.sticker) return 'stickers';
-        
+
         // 2. Check document mime type for sticker/webp
         const doc = m.document || (m.className === 'MessageMediaDocument' ? m : null);
         if (doc) {
             const mime = doc.mimeType || '';
-            if (mime.includes('image/webp') || mime.includes('application/x-tgsticker')) return 'stickers';
+            if (mime.includes('image/webp') || mime.includes('application/x-tgsticker'))
+                return 'stickers';
         }
 
         // Direct checks
         if (m.photo || m.className === 'MessageMediaPhoto') return 'photos';
-        
+
         if (m.video || m.videoNote) {
-             if (m.gif) return 'gifs';
-             return 'videos';
+            if (m.gif) return 'gifs';
+            return 'videos';
         }
-        
+
         if (doc) {
             const mime = doc.mimeType || '';
             if (mime.includes('image/gif')) return 'gifs';
             if (mime.includes('video/')) return 'videos'; // Some videos are documents
             if (mime.includes('image/')) return 'photos'; // Uncompressed images
             if (mime.includes('audio/')) return 'audio'; // Audio files
-            if (mime.includes('voice')) return 'voice'; 
+            if (mime.includes('voice')) return 'voice';
         }
 
         if (m.voice) return 'voice';
@@ -668,7 +722,7 @@ export class RealtimeMonitor extends EventEmitter {
 
     async handleUrls(message, group) {
         let text = message.message || message.text || '';
-        
+
         // SECURITY: Truncate to 1000 chars to prevent ReDoS attacks on massive text
         if (text.length > 1000) text = text.slice(0, 1000);
 
@@ -677,14 +731,14 @@ export class RealtimeMonitor extends EventEmitter {
 
         // BATCH WRITER OPTIMIZATION
         const groupId = group.id;
-        
-        if (!this.urlBuffer) this.urlBuffer = new Map(); 
+
+        if (!this.urlBuffer) this.urlBuffer = new Map();
         if (!this.urlBuffer.has(groupId)) this.urlBuffer.set(groupId, []);
 
         const date = new Date().toISOString().split('T')[0];
         const time = new Date().toISOString().split('T')[1].slice(0, 8);
-        
-        urls.forEach(url => {
+
+        urls.forEach((url) => {
             this.urlBuffer.get(groupId).push(`[${date} ${time}] ${url}`);
         });
 
@@ -700,7 +754,7 @@ export class RealtimeMonitor extends EventEmitter {
         for (const [groupId, lines] of this.urlBuffer) {
             if (lines.length === 0) continue;
 
-            const group = this.config.groups.find(g => g.id === groupId);
+            const group = this.config.groups.find((g) => g.id === groupId);
             const groupName = group ? group.name : groupId;
             const safeName = sanitizeName(groupName);
             const groupDir = path.join(basePath, safeName);
@@ -713,16 +767,14 @@ export class RealtimeMonitor extends EventEmitter {
                 // Batch append
                 const content = lines.join('\n') + '\n';
                 await fs.appendFile(path.join(groupDir, 'urls.txt'), content);
-                
+
                 // Clear buffer for this group
-                lines.length = 0; 
+                lines.length = 0;
             } catch (error) {
                 // Retry next time
             }
         }
     }
-
-
 }
 
 /**
@@ -730,8 +782,8 @@ export class RealtimeMonitor extends EventEmitter {
  */
 class SpamGuard {
     constructor() {
-        this.userRateLimits = new Map(); 
-        this.contentHashes = new Map();  
+        this.userRateLimits = new Map();
+        this.contentHashes = new Map();
         setInterval(() => this.cleanup(), 60000);
     }
 
@@ -741,7 +793,7 @@ class SpamGuard {
 
         // 1. User Rate Limit (Max 20 msgs / 5 sec)
         const now = Date.now();
-        
+
         if (!this.userRateLimits.has(userId)) {
             this.userRateLimits.set(userId, { count: 1, reset: now + 5000 });
         } else {
@@ -760,25 +812,25 @@ class SpamGuard {
 
         // 2. Duplicate Content Check
         let signature = null;
-        if (message.message) signature = `txt:${message.message.slice(0, 50)}`; 
+        if (message.message) signature = `txt:${message.message.slice(0, 50)}`;
         else if (message.document) signature = `doc:${message.document.size}`;
         else if (message.photo) signature = `img:${message.photo.id}`;
 
         if (signature) {
-             if (!this.contentHashes.has(signature)) {
-                 this.contentHashes.set(signature, { count: 1, reset: now + 10000 });
-             } else {
-                 const entry = this.contentHashes.get(signature);
-                 if (now > entry.reset) {
-                     entry.count = 1;
-                     entry.reset = now + 10000;
-                 } else {
-                     entry.count++;
-                     if (entry.count > 5) { 
-                         return true; 
-                     }
-                 }
-             }
+            if (!this.contentHashes.has(signature)) {
+                this.contentHashes.set(signature, { count: 1, reset: now + 10000 });
+            } else {
+                const entry = this.contentHashes.get(signature);
+                if (now > entry.reset) {
+                    entry.count = 1;
+                    entry.reset = now + 10000;
+                } else {
+                    entry.count++;
+                    if (entry.count > 5) {
+                        return true;
+                    }
+                }
+            }
         }
 
         return false;

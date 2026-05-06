@@ -44,9 +44,10 @@ const PROVIDER_CLASSES = {
     dropbox: DropboxProvider,
 };
 
-const DEFAULT_WORKERS_PER_DEST = Number(process.env.BACKUP_WORKERS_PER_DEST) > 0
-    ? Math.min(20, Math.floor(Number(process.env.BACKUP_WORKERS_PER_DEST)))
-    : 3;
+const DEFAULT_WORKERS_PER_DEST =
+    Number(process.env.BACKUP_WORKERS_PER_DEST) > 0
+        ? Math.min(20, Math.floor(Number(process.env.BACKUP_WORKERS_PER_DEST)))
+        : 3;
 
 // ---- Public API surface ----------------------------------------------------
 
@@ -56,10 +57,10 @@ let _broadcast = () => {};
 let _log = () => {};
 let _getShareSecret = () => null;
 
-const _workers = new Map();             // destinationId → Worker
-const _passphraseCache = new Map();     // destinationId → Buffer (32-byte key)
-const _snapshotTimers = new Map();      // destinationId → setInterval handle
-const _snapshotInflight = new Set();    // destinationIds with a snapshot job in progress
+const _workers = new Map(); // destinationId → Worker
+const _passphraseCache = new Map(); // destinationId → Buffer (32-byte key)
+const _snapshotTimers = new Map(); // destinationId → setInterval handle
+const _snapshotInflight = new Set(); // destinationIds with a snapshot job in progress
 
 /**
  * Wire the manager into the server. Must be called once at boot,
@@ -79,7 +80,9 @@ export function init(deps = {}) {
     if (typeof deps.getShareSecret === 'function') _getShareSecret = deps.getShareSecret;
     if (deps.runtime?.on) {
         deps.runtime.on('event', (e) => {
-            try { _onDownloadComplete(e); } catch (err) {
+            try {
+                _onDownloadComplete(e);
+            } catch (err) {
                 _log({ source: 'backup', level: 'warn', msg: `mirror hook error: ${err.message}` });
             }
         });
@@ -88,8 +91,14 @@ export function init(deps = {}) {
     // pending) happens inside the worker constructor.
     for (const dest of listDestinations({ scrubbed: false })) {
         if (dest.enabled) {
-            try { _ensureWorker(dest.id); } catch (e) {
-                _log({ source: 'backup', level: 'error', msg: `worker boot failed for #${dest.id}: ${e.message}` });
+            try {
+                _ensureWorker(dest.id);
+            } catch (e) {
+                _log({
+                    source: 'backup',
+                    level: 'error',
+                    msg: `worker boot failed for #${dest.id}: ${e.message}`,
+                });
             }
             _scheduleSnapshot(dest);
         }
@@ -97,7 +106,9 @@ export function init(deps = {}) {
 }
 
 /** Subscribe to internal events. */
-export function on(type, fn) { events.on(type, fn); }
+export function on(type, fn) {
+    events.on(type, fn);
+}
 
 // ---- Provider registry -----------------------------------------------------
 
@@ -123,25 +134,27 @@ export function addDestination(input) {
     if (!shareSecret) throw new Error('share secret not initialised — cannot encrypt credentials');
     const blob = encryptConfig(cfg.config, shareSecret);
     const now = Date.now();
-    const r = getDb().prepare(`
+    const r = getDb()
+        .prepare(`
         INSERT INTO backup_destinations (
             name, provider, config_blob, enabled, encryption, encryption_salt,
             mode, cron, retain_count, created_at,
             total_bytes, total_files
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
-    `).run(
-        cfg.name,
-        cfg.provider,
-        blob,
-        cfg.enabled ? 1 : 0,
-        cfg.encryption ? 1 : 0,
-        cfg.encryption ? generateSalt() : null,
-        cfg.mode,
-        cfg.cron || null,
-        Number(cfg.retainCount) > 0 ? Number(cfg.retainCount) : 7,
-        now,
-    );
+    `)
+        .run(
+            cfg.name,
+            cfg.provider,
+            blob,
+            cfg.enabled ? 1 : 0,
+            cfg.encryption ? 1 : 0,
+            cfg.encryption ? generateSalt() : null,
+            cfg.mode,
+            cfg.cron || null,
+            Number(cfg.retainCount) > 0 ? Number(cfg.retainCount) : 7,
+            now,
+        );
     const id = Number(r.lastInsertRowid);
 
     if (cfg.encryption && cfg.passphrase) {
@@ -151,7 +164,11 @@ export function addDestination(input) {
 
     const dest = _loadDestRowOrThrow(id);
     _broadcast({ type: 'backup_destination_added', destination: _scrubDest(dest) });
-    _log({ source: 'backup', level: 'info', msg: `destination added — ${cfg.provider}/${cfg.name} (#${id})` });
+    _log({
+        source: 'backup',
+        level: 'info',
+        msg: `destination added — ${cfg.provider}/${cfg.name} (#${id})`,
+    });
 
     if (cfg.enabled) {
         _ensureWorker(id);
@@ -176,7 +193,8 @@ export function updateDestination(id, patch = {}) {
         next.mode = patch.mode;
     }
     if (patch.cron !== undefined) next.cron = patch.cron || null;
-    if (patch.retainCount != null) next.retain_count = Math.max(1, Math.min(365, Number(patch.retainCount) || 7));
+    if (patch.retainCount != null)
+        next.retain_count = Math.max(1, Math.min(365, Number(patch.retainCount) || 7));
     if (patch.enabled != null) next.enabled = patch.enabled ? 1 : 0;
 
     const updates = ['name = ?', 'mode = ?', 'cron = ?', 'retain_count = ?', 'enabled = ?'];
@@ -191,7 +209,9 @@ export function updateDestination(id, patch = {}) {
     }
 
     params.push(Number(id));
-    getDb().prepare(`UPDATE backup_destinations SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+    getDb()
+        .prepare(`UPDATE backup_destinations SET ${updates.join(', ')} WHERE id = ?`)
+        .run(...params);
 
     // Worker / snapshot lifecycle.
     _killWorker(id);
@@ -223,9 +243,11 @@ export function removeDestination(id) {
  * ship to the dashboard.
  */
 export function listDestinations({ scrubbed = true } = {}) {
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT * FROM backup_destinations ORDER BY id DESC
-    `).all();
+    `)
+        .all();
     return scrubbed ? rows.map(_scrubDest) : rows;
 }
 
@@ -268,11 +290,13 @@ export async function runBackup(id) {
     // Mirror catch-up: enqueue every DB download whose backup hasn't
     // been done yet.
     let enqueued = 0;
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT id, file_name, file_path, file_size FROM downloads
          WHERE file_path IS NOT NULL
          ORDER BY id ASC
-    `).all();
+    `)
+        .all();
     for (const row of rows) {
         if (queue.hasJobForDownload(id, row.id)) continue;
         queue.enqueue({
@@ -283,7 +307,11 @@ export async function runBackup(id) {
         enqueued += 1;
     }
     _wakeWorker(id);
-    _log({ source: 'backup', level: 'info', msg: `mirror catch-up enqueued ${enqueued} jobs for #${id}` });
+    _log({
+        source: 'backup',
+        level: 'info',
+        msg: `mirror catch-up enqueued ${enqueued} jobs for #${id}`,
+    });
     return { started: true, mode: 'mirror', enqueued };
 }
 
@@ -292,13 +320,22 @@ export async function runBackup(id) {
 export function pause(id) {
     const w = _workers.get(Number(id));
     if (w) w.paused = true;
-    _broadcast({ type: 'backup_destination_updated', destination: _scrubDest(_loadDestRowOrThrow(id)) });
+    _broadcast({
+        type: 'backup_destination_updated',
+        destination: _scrubDest(_loadDestRowOrThrow(id)),
+    });
     return true;
 }
 export function resume(id) {
     const w = _workers.get(Number(id));
-    if (w) { w.paused = false; w.tick(); }
-    _broadcast({ type: 'backup_destination_updated', destination: _scrubDest(_loadDestRowOrThrow(id)) });
+    if (w) {
+        w.paused = false;
+        w.tick();
+    }
+    _broadcast({
+        type: 'backup_destination_updated',
+        destination: _scrubDest(_loadDestRowOrThrow(id)),
+    });
     return true;
 }
 
@@ -332,18 +369,21 @@ export function setEncryption(id, { enabled, passphrase }) {
     const dest = _loadDestRowOrThrow(id);
     if (enabled && !passphrase) throw new Error('passphrase required to enable encryption');
     if (!enabled) {
-        getDb().prepare(`
+        getDb()
+            .prepare(`
             UPDATE backup_destinations SET encryption = 0, encryption_salt = NULL WHERE id = ?
-        `).run(Number(id));
+        `)
+            .run(Number(id));
         _passphraseCache.delete(Number(id));
         _log({ source: 'backup', level: 'info', msg: `encryption disabled for #${id}` });
     } else {
-        const salt = dest.encryption && dest.encryption_salt
-            ? dest.encryption_salt
-            : generateSalt();
-        getDb().prepare(`
+        const salt =
+            dest.encryption && dest.encryption_salt ? dest.encryption_salt : generateSalt();
+        getDb()
+            .prepare(`
             UPDATE backup_destinations SET encryption = 1, encryption_salt = ? WHERE id = ?
-        `).run(salt, Number(id));
+        `)
+            .run(salt, Number(id));
         _passphraseCache.set(Number(id), deriveKey(passphrase, salt));
         _log({ source: 'backup', level: 'info', msg: `encryption enabled for #${id}` });
     }
@@ -380,7 +420,7 @@ function _onDownloadComplete(e) {
     //   { filePath, fileName, size, groupId, message, mediaType, deduped }
     // — we need the `downloads.id` so the queue row can FK into it.
     const payload = e.payload;
-    if (payload.deduped) return;   // nothing new on disk to ship
+    if (payload.deduped) return; // nothing new on disk to ship
     const filePath = String(payload.filePath || '').replace(/\\/g, '/');
     if (!filePath) return;
     // Resolve the downloads row by file_path. The downloader's emitted
@@ -389,9 +429,11 @@ function _onDownloadComplete(e) {
     let rel = filePath;
     while (rel.startsWith('./')) rel = rel.slice(2);
     while (rel.startsWith('data/downloads/')) rel = rel.slice('data/downloads/'.length);
-    const row = getDb().prepare(
-        'SELECT id, file_name, file_path, file_size FROM downloads WHERE file_path = ? OR file_path = ? ORDER BY id DESC LIMIT 1',
-    ).get(rel, filePath);
+    const row = getDb()
+        .prepare(
+            'SELECT id, file_name, file_path, file_size FROM downloads WHERE file_path = ? OR file_path = ? ORDER BY id DESC LIMIT 1',
+        )
+        .get(rel, filePath);
     if (!row) return;
 
     for (const dest of listDestinations({ scrubbed: false })) {
@@ -487,7 +529,11 @@ class Worker {
                 error: e.message,
                 willRetry: false,
             });
-            _log({ source: 'backup', level: 'error', msg: `decrypt failed for #${this.destinationId}: ${e.message}` });
+            _log({
+                source: 'backup',
+                level: 'error',
+                msg: `decrypt failed for #${this.destinationId}: ${e.message}`,
+            });
             _markFailureOnDest(this.destinationId, e.message);
             return;
         }
@@ -502,7 +548,8 @@ class Worker {
         if (dest.encryption) {
             encryptKey = _passphraseCache.get(this.destinationId);
             if (!encryptKey) {
-                const msg = 'encryption passphrase missing — unlock this destination from the dashboard';
+                const msg =
+                    'encryption passphrase missing — unlock this destination from the dashboard';
                 queue.markRetry(job.id, msg);
                 _broadcast({
                     type: 'backup_error',
@@ -522,9 +569,9 @@ class Worker {
             localPath = job.snapshot_path;
             remotePath = remotePath || `snapshots/${path.basename(localPath)}`;
         } else if (job.download_id != null) {
-            downloadRow = getDb().prepare(
-                'SELECT id, file_name, file_path, file_size FROM downloads WHERE id = ?',
-            ).get(Number(job.download_id));
+            downloadRow = getDb()
+                .prepare('SELECT id, file_name, file_path, file_size FROM downloads WHERE id = ?')
+                .get(Number(job.download_id));
             if (!downloadRow || !downloadRow.file_path) {
                 queue.markFailed(job.id, `download #${job.download_id} no longer exists`);
                 return;
@@ -543,36 +590,52 @@ class Worker {
             try {
                 const head = await provider.stat(remotePath, ctx);
                 let localSize = 0;
-                try { localSize = (await fsp.stat(localPath)).size; } catch {}
+                try {
+                    localSize = (await fsp.stat(localPath)).size;
+                } catch {}
                 // For encrypted uploads, the remote is BIGGER than the
                 // local file (header + tag overhead). Skip only when not
                 // encrypted and sizes match.
                 if (head && !dest.encryption && head.size === localSize && localSize > 0) {
                     queue.markDone(job.id, { bytes: head.size, remotePath });
                     _bumpDestStats(this.destinationId, head.size, 1);
-                    _broadcast({ type: 'backup_done', destinationId: this.destinationId, jobId: job.id,
-                        downloadId: job.download_id, etag: head.etag, bytes: head.size, skipped: true });
-                    return;
-                }
-            } catch { /* stat failures are not fatal — try the upload */ }
-
-            let lastBroadcast = 0;
-            const result = await provider.upload(localPath, remotePath, {
-                encryptKey,
-                throttleBps: dest.throttle_bps || 0,
-                onProgress: ({ bytesUploaded }) => {
-                    const now = Date.now();
-                    if (now - lastBroadcast < 500) return;
-                    lastBroadcast = now;
                     _broadcast({
-                        type: 'backup_progress',
+                        type: 'backup_done',
                         destinationId: this.destinationId,
                         jobId: job.id,
                         downloadId: job.download_id,
-                        bytesUploaded,
+                        etag: head.etag,
+                        bytes: head.size,
+                        skipped: true,
                     });
+                    return;
+                }
+            } catch {
+                /* stat failures are not fatal — try the upload */
+            }
+
+            let lastBroadcast = 0;
+            const result = await provider.upload(
+                localPath,
+                remotePath,
+                {
+                    encryptKey,
+                    throttleBps: dest.throttle_bps || 0,
+                    onProgress: ({ bytesUploaded }) => {
+                        const now = Date.now();
+                        if (now - lastBroadcast < 500) return;
+                        lastBroadcast = now;
+                        _broadcast({
+                            type: 'backup_progress',
+                            destinationId: this.destinationId,
+                            jobId: job.id,
+                            downloadId: job.download_id,
+                            bytesUploaded,
+                        });
+                    },
                 },
-            }, ctx);
+                ctx,
+            );
             queue.markDone(job.id, { bytes: result.bytes, remotePath: result.remotePath });
             _bumpDestStats(this.destinationId, result.bytes, 1, true);
             _broadcast({
@@ -583,7 +646,11 @@ class Worker {
                 etag: result.etag,
                 bytes: result.bytes,
             });
-            _log({ source: 'backup', level: 'info', msg: `uploaded ${remotePath} (${result.bytes} B) → #${this.destinationId}` });
+            _log({
+                source: 'backup',
+                level: 'info',
+                msg: `uploaded ${remotePath} (${result.bytes} B) → #${this.destinationId}`,
+            });
         } catch (e) {
             const msg = e?.message || String(e);
             const { willRetry, nextRetryAt } = queue.markRetry(job.id, msg);
@@ -596,8 +663,11 @@ class Worker {
                 nextRetryAt,
             });
             if (!willRetry) _markFailureOnDest(this.destinationId, msg);
-            _log({ source: 'backup', level: willRetry ? 'warn' : 'error',
-                msg: `upload failed for job #${job.id} on dest #${this.destinationId}: ${msg}` });
+            _log({
+                source: 'backup',
+                level: willRetry ? 'warn' : 'error',
+                msg: `upload failed for job #${job.id} on dest #${this.destinationId}: ${msg}`,
+            });
         } finally {
             await provider?.close().catch(() => {});
         }
@@ -605,7 +675,9 @@ class Worker {
 
     cancelAll() {
         for (const a of this.activeAborters) {
-            try { a.abort(); } catch {}
+            try {
+                a.abort();
+            } catch {}
         }
         this.activeAborters.clear();
         this.running = false;
@@ -647,7 +719,11 @@ function _scheduleSnapshot(dest) {
         if (_snapshotInflight.has(dest.id)) return;
         if (_cronMatches(dest.cron, new Date())) {
             _kickSnapshotRun(_loadDestRow(dest.id)).catch((e) => {
-                _log({ source: 'backup', level: 'error', msg: `snapshot run failed for #${dest.id}: ${e.message}` });
+                _log({
+                    source: 'backup',
+                    level: 'error',
+                    msg: `snapshot run failed for #${dest.id}: ${e.message}`,
+                });
             });
         }
     }, 30 * 1000);
@@ -657,12 +733,17 @@ function _scheduleSnapshot(dest) {
 
 function _clearSnapshot(id) {
     const h = _snapshotTimers.get(Number(id));
-    if (h) { clearInterval(h); _snapshotTimers.delete(Number(id)); }
+    if (h) {
+        clearInterval(h);
+        _snapshotTimers.delete(Number(id));
+    }
 }
 
 /** Tiny `m h dom mon dow` matcher. Supports `*` and exact integers. */
 function _cronMatches(expr, date) {
-    const parts = String(expr || '').trim().split(/\s+/);
+    const parts = String(expr || '')
+        .trim()
+        .split(/\s+/);
     if (parts.length !== 5) return false;
     const fields = [
         date.getMinutes(),
@@ -682,7 +763,10 @@ function _cronMatches(expr, date) {
             continue;
         }
         // Comma list of integers
-        const allowed = p.split(',').map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+        const allowed = p
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => !Number.isNaN(n));
         if (!allowed.includes(fields[i])) return false;
     }
     return true;
@@ -709,10 +793,18 @@ async function _kickSnapshotRun(dest) {
         // in the listing.
         setTimeout(() => {
             _applyRetention(dest.id).catch((e) => {
-                _log({ source: 'backup', level: 'warn', msg: `retention prune failed for #${dest.id}: ${e.message}` });
+                _log({
+                    source: 'backup',
+                    level: 'warn',
+                    msg: `retention prune failed for #${dest.id}: ${e.message}`,
+                });
             });
         }, 60 * 1000);
-        _log({ source: 'backup', level: 'info', msg: `snapshot built ${archivePath} → enqueued for #${dest.id}` });
+        _log({
+            source: 'backup',
+            level: 'info',
+            msg: `snapshot built ${archivePath} → enqueued for #${dest.id}`,
+        });
     } finally {
         _snapshotInflight.delete(dest.id);
     }
@@ -742,12 +834,20 @@ async function _buildSnapshotArchive(archivePath) {
         // 2. config.json
         const configSrc = path.join(DATA_DIR, 'config.json');
         const configDst = path.join(tmpRoot, 'config.json');
-        try { await fsp.copyFile(configSrc, configDst); } catch { /* missing config — fine */ }
+        try {
+            await fsp.copyFile(configSrc, configDst);
+        } catch {
+            /* missing config — fine */
+        }
 
         // 3. sessions/ — copy recursively if present.
         const sessSrc = path.join(DATA_DIR, 'sessions');
         const sessDst = path.join(tmpRoot, 'sessions');
-        try { await _copyRecursive(sessSrc, sessDst); } catch { /* missing — fine */ }
+        try {
+            await _copyRecursive(sessSrc, sessDst);
+        } catch {
+            /* missing — fine */
+        }
 
         // 4. Pack to .tar.gz.
         await _writeTarGz(tmpRoot, archivePath);
@@ -801,7 +901,13 @@ async function _writeTarGz(srcDir, archivePath) {
                 yield* walk(abs, rel);
             } else if (e.isFile()) {
                 const st = await fsp.stat(abs);
-                yield { type: 'file', rel, abs, size: st.size, mtime: Math.floor(st.mtimeMs / 1000) };
+                yield {
+                    type: 'file',
+                    rel,
+                    abs,
+                    size: st.size,
+                    mtime: Math.floor(st.mtimeMs / 1000),
+                };
             }
         }
     }
@@ -810,14 +916,14 @@ async function _writeTarGz(srcDir, archivePath) {
         // USTAR format. Buffer.alloc zeroes the rest of the 512-byte block.
         const header = Buffer.alloc(512);
         header.write(rel.slice(0, 100), 0, 'utf8');
-        header.write('0000644', 100, 'utf8');                  // mode
-        header.write('0000000', 108, 'utf8');                  // uid
-        header.write('0000000', 116, 'utf8');                  // gid
+        header.write('0000644', 100, 'utf8'); // mode
+        header.write('0000000', 108, 'utf8'); // uid
+        header.write('0000000', 116, 'utf8'); // gid
         header.write(size.toString(8).padStart(11, '0') + ' ', 124, 'utf8');
         header.write(Math.floor(mtime).toString(8).padStart(11, '0') + ' ', 136, 'utf8');
-        header.write('        ', 148, 'utf8');                 // checksum placeholder
+        header.write('        ', 148, 'utf8'); // checksum placeholder
         header.write(typeflag, 156, 'utf8');
-        header.write('ustar  ', 257, 'utf8');                  // magic + space-version (gnu-ish)
+        header.write('ustar  ', 257, 'utf8'); // magic + space-version (gnu-ish)
         let sum = 0;
         for (let i = 0; i < 512; i++) sum += header[i];
         header.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 'utf8');
@@ -826,10 +932,20 @@ async function _writeTarGz(srcDir, archivePath) {
 
     for await (const entry of walk(srcDir, '')) {
         if (entry.type === 'dir') {
-            const h = tarHeader({ rel: entry.rel + '/', size: 0, mtime: Date.now() / 1000, typeflag: '5' });
+            const h = tarHeader({
+                rel: entry.rel + '/',
+                size: 0,
+                mtime: Date.now() / 1000,
+                typeflag: '5',
+            });
             gz.write(h);
         } else {
-            const h = tarHeader({ rel: entry.rel, size: entry.size, mtime: entry.mtime, typeflag: '0' });
+            const h = tarHeader({
+                rel: entry.rel,
+                size: entry.size,
+                mtime: entry.mtime,
+                typeflag: '0',
+            });
             gz.write(h);
             await new Promise((res, rej) => {
                 const rs = fs.createReadStream(entry.abs);
@@ -856,7 +972,11 @@ async function _applyRetention(destinationId) {
     if (dest.mode !== 'snapshot') return;
     const keep = Math.max(1, Number(dest.retain_count) || 7);
     let cfg;
-    try { cfg = _decryptCfgOrThrow(dest); } catch { return; }
+    try {
+        cfg = _decryptCfgOrThrow(dest);
+    } catch {
+        return;
+    }
     const ProviderClass = PROVIDER_CLASSES[dest.provider];
     if (!ProviderClass) return;
     const provider = new ProviderClass();
@@ -871,7 +991,11 @@ async function _applyRetention(destinationId) {
         const toDelete = items.slice(keep);
         for (const item of toDelete) {
             await provider.delete(item.name, ctx).catch(() => {});
-            _log({ source: 'backup', level: 'info', msg: `retention pruned ${item.name} on #${destinationId}` });
+            _log({
+                source: 'backup',
+                level: 'info',
+                msg: `retention pruned ${item.name} on #${destinationId}`,
+            });
         }
     } finally {
         await provider.close().catch(() => {});
@@ -917,28 +1041,34 @@ function _scrubDest(row) {
 }
 
 function _bumpDestStats(id, bytes, files) {
-    getDb().prepare(`
+    getDb()
+        .prepare(`
         UPDATE backup_destinations
            SET total_bytes = total_bytes + ?,
                total_files = total_files + ?,
                last_success_at = ?,
                last_error = NULL
          WHERE id = ?
-    `).run(Number(bytes) || 0, Number(files) || 1, Date.now(), Number(id));
+    `)
+        .run(Number(bytes) || 0, Number(files) || 1, Date.now(), Number(id));
 }
 
 function _markFailureOnDest(id, error) {
-    getDb().prepare(`
+    getDb()
+        .prepare(`
         UPDATE backup_destinations
            SET last_failure_at = ?,
                last_error = ?
          WHERE id = ?
-    `).run(Date.now(), String(error || '').slice(0, 4000), Number(id));
+    `)
+        .run(Date.now(), String(error || '').slice(0, 4000), Number(id));
 }
 
 function _validateInput(input) {
     if (!input || typeof input !== 'object') throw new Error('input required');
-    const name = String(input.name || '').trim().slice(0, 200);
+    const name = String(input.name || '')
+        .trim()
+        .slice(0, 200);
     if (!name) throw new Error('name required');
     const provider = String(input.provider || '').trim();
     if (!PROVIDER_CLASSES[provider]) throw new Error(`unknown provider "${provider}"`);
@@ -968,4 +1098,6 @@ function _isoCompact(d) {
 //
 // Used by tests + the manual /run path to nudge a worker after enqueueing
 // a job from outside the manager.
-export function _wake(destinationId) { _wakeWorker(destinationId); }
+export function _wake(destinationId) {
+    _wakeWorker(destinationId);
+}

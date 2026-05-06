@@ -74,13 +74,17 @@ function _resolveFfmpegBin() {
     try {
         const inst = _localRequire('@ffmpeg-installer/ffmpeg');
         if (inst?.path && existsSync(inst.path)) return (_ffmpegBinResolved = inst.path);
-    } catch { /* package missing or wrong arch — fall through */ }
+    } catch {
+        /* package missing or wrong arch — fall through */
+    }
     return (_ffmpegBinResolved = 'ffmpeg');
 }
 
 // Public-friendly wrapper for the resolver above — same value, just
 // callable from outside the module (server.js hwaccel-probe endpoint).
-export function resolveFfmpegBin() { return _resolveFfmpegBin(); }
+export function resolveFfmpegBin() {
+    return _resolveFfmpegBin();
+}
 
 // Returns true if a workable ffmpeg is on this host. The video / audio
 // generators consult this so a host without ffmpeg cleanly returns null
@@ -93,7 +97,9 @@ export function hasFfmpeg() {
     try {
         const r = spawnSync(bin, ['-version'], { windowsHide: true });
         return (_ffmpegOk = r.status === 0);
-    } catch { return (_ffmpegOk = false); }
+    } catch {
+        return (_ffmpegOk = false);
+    }
 }
 
 // Detect libwebp at startup (cached). Stripped musl/Alpine ffmpeg builds
@@ -105,11 +111,15 @@ function _ffmpegHasLibwebp() {
     if (_ffmpegLibwebp !== null) return _ffmpegLibwebp;
     if (!hasFfmpeg()) return (_ffmpegLibwebp = false);
     try {
-        const r = spawnSync(_resolveFfmpegBin(), ['-hide_banner', '-encoders'], { windowsHide: true });
+        const r = spawnSync(_resolveFfmpegBin(), ['-hide_banner', '-encoders'], {
+            windowsHide: true,
+        });
         if (r.status !== 0) return (_ffmpegLibwebp = false);
         const out = (r.stdout || Buffer.alloc(0)).toString('utf8');
         return (_ffmpegLibwebp = /\blibwebp\b/.test(out));
-    } catch { return (_ffmpegLibwebp = false); }
+    } catch {
+        return (_ffmpegLibwebp = false);
+    }
 }
 
 // Encoding parameters — quality / effort kept in one place so the
@@ -120,15 +130,15 @@ function _ffmpegHasLibwebp() {
 // encode time, but encode happens ONCE per (id, width) and the file
 // lives forever, so we pay it gladly. Quality 70 looks identical to 80
 // at 240-px width to a human eye but is materially smaller.
-const WEBP_QUALITY = 70;            // 0-100
-const SHARP_EFFORT = 6;             // 0-6 — max compression
-const FFMPEG_WEBP_QUALITY = 70;     // libwebp -quality
-const FFMPEG_WEBP_COMPRESSION = 6;  // libwebp -compression_level 0-6
+const WEBP_QUALITY = 70; // 0-100
+const SHARP_EFFORT = 6; // 0-6 — max compression
+const FFMPEG_WEBP_QUALITY = 70; // libwebp -quality
+const FFMPEG_WEBP_COMPRESSION = 6; // libwebp -compression_level 0-6
 
 // sharp can run multiple jobs concurrently; ffmpeg pins a core. Cap them
 // separately so the more expensive video work doesn't starve image work.
 const IMG_CONCURRENCY = Math.max(1, Math.min(32, Number(process.env.THUMBS_IMG_CONCURRENCY) || 8));
-const VID_CONCURRENCY = Math.max(1, Math.min(8,  Number(process.env.THUMBS_VID_CONCURRENCY) || 3));
+const VID_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.THUMBS_VID_CONCURRENCY) || 3));
 
 function makeSemaphore(max) {
     let active = 0;
@@ -136,14 +146,21 @@ function makeSemaphore(max) {
     return {
         acquire() {
             return new Promise((resolve) => {
-                if (active < max) { active++; resolve(); return; }
+                if (active < max) {
+                    active++;
+                    resolve();
+                    return;
+                }
                 queue.push(resolve);
             });
         },
         release() {
             active--;
             const next = queue.shift();
-            if (next) { active++; next(); }
+            if (next) {
+                active++;
+                next();
+            }
         },
     };
 }
@@ -166,16 +183,16 @@ export function clampWidth(w) {
     let bestDist = Math.abs(n - best);
     for (const cand of ALLOWED_WIDTHS) {
         const d = Math.abs(n - cand);
-        if (d < bestDist) { best = cand; bestDist = d; }
+        if (d < bestDist) {
+            best = cand;
+            bestDist = d;
+        }
     }
     return best;
 }
 
 function _cacheKey(downloadId, width) {
-    return crypto.createHash('sha256')
-        .update(`${downloadId}:${width}`)
-        .digest('hex')
-        .slice(0, 32);
+    return crypto.createHash('sha256').update(`${downloadId}:${width}`).digest('hex').slice(0, 32);
 }
 
 function _cachePath(downloadId, width) {
@@ -199,12 +216,49 @@ function _resolveDownloadAbs(stored) {
     return null;
 }
 
-const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.avif', '.heic', '.heif', '.bmp', '.tif', '.tiff']);
-const VIDEO_EXTS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi', '.flv', '.wmv', '.mpg', '.mpeg', '.3gp', '.ts', '.ogv']);
-const AUDIO_EXTS = new Set(['.mp3', '.m4a', '.flac', '.ogg', '.opus', '.wav', '.aac', '.wma', '.alac']);
+const IMAGE_EXTS = new Set([
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.webp',
+    '.gif',
+    '.avif',
+    '.heic',
+    '.heif',
+    '.bmp',
+    '.tif',
+    '.tiff',
+]);
+const VIDEO_EXTS = new Set([
+    '.mp4',
+    '.mov',
+    '.m4v',
+    '.webm',
+    '.mkv',
+    '.avi',
+    '.flv',
+    '.wmv',
+    '.mpg',
+    '.mpeg',
+    '.3gp',
+    '.ts',
+    '.ogv',
+]);
+const AUDIO_EXTS = new Set([
+    '.mp3',
+    '.m4a',
+    '.flac',
+    '.ogg',
+    '.opus',
+    '.wav',
+    '.aac',
+    '.wma',
+    '.alac',
+]);
 
 function _kindFromPath(absPath, declaredType) {
-    if (declaredType === 'photo' || declaredType === 'image' || declaredType === 'sticker') return 'image';
+    if (declaredType === 'photo' || declaredType === 'image' || declaredType === 'sticker')
+        return 'image';
     if (declaredType === 'video') return 'video';
     if (declaredType === 'audio') return 'audio';
     const ext = path.extname(absPath).toLowerCase();
@@ -278,24 +332,30 @@ const _HWACCEL_CACHE_TTL_MS = 30 * 1000;
 
 async function _hwaccelFromConfig() {
     const now = Date.now();
-    if ((now - _hwaccelConfigCache.at) < _HWACCEL_CACHE_TTL_MS) return _hwaccelConfigCache.value;
+    if (now - _hwaccelConfigCache.at < _HWACCEL_CACHE_TTL_MS) return _hwaccelConfigCache.value;
     let value = '';
     try {
         const cfgPath = path.join(PROJECT_ROOT, 'data', 'config.json');
         if (existsSync(cfgPath)) {
             const raw = await fs.readFile(cfgPath, 'utf8');
             const parsed = JSON.parse(raw);
-            const v = String(parsed?.advanced?.thumbs?.hwaccel || '').toLowerCase().trim();
+            const v = String(parsed?.advanced?.thumbs?.hwaccel || '')
+                .toLowerCase()
+                .trim();
             if (_HWACCEL_ALLOW.has(v)) value = v;
         }
-    } catch { /* missing / corrupt config → CPU fallback, never throw */ }
+    } catch {
+        /* missing / corrupt config → CPU fallback, never throw */
+    }
     _hwaccelConfigCache = { at: now, value };
     return value;
 }
 
 async function _hwaccelPrefix() {
     // Env var takes precedence — power-user / headless override.
-    const env = String(process.env.FFMPEG_HWACCEL || '').toLowerCase().trim();
+    const env = String(process.env.FFMPEG_HWACCEL || '')
+        .toLowerCase()
+        .trim();
     if (env && _HWACCEL_ALLOW.has(env)) return ['-hwaccel', env];
     const cfg = await _hwaccelFromConfig();
     return cfg ? ['-hwaccel', cfg] : [];
@@ -315,52 +375,73 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
     const hwa = await _hwaccelPrefix();
     const tryAt = useSinglePass
         ? async (sec) => {
-            const args = [
-                '-hide_banner', '-loglevel', 'error',
-                ...hwa,
-                '-ss', String(sec),
-                '-i', srcAbs,
-                '-frames:v', '1',
-                '-an',
-                '-vf', `scale='min(${width},iw)':-2:flags=fast_bilinear`,
-                '-c:v', 'libwebp',
-                '-quality', String(FFMPEG_WEBP_QUALITY),
-                '-compression_level', String(FFMPEG_WEBP_COMPRESSION),
-                // Force the WebP muxer explicitly. dstAbs ends in `.webp.tmp`
-                // for atomic-rename writes; ffmpeg on Debian/Ubuntu won't
-                // infer the format from the `.tmp` suffix and dies with
-                // "Unable to find a suitable output format" on every video.
-                '-f', 'webp',
-                '-y',
-                dstAbs,
-            ];
-            await _runFfmpeg(args);
-        }
+              const args = [
+                  '-hide_banner',
+                  '-loglevel',
+                  'error',
+                  ...hwa,
+                  '-ss',
+                  String(sec),
+                  '-i',
+                  srcAbs,
+                  '-frames:v',
+                  '1',
+                  '-an',
+                  '-vf',
+                  `scale='min(${width},iw)':-2:flags=fast_bilinear`,
+                  '-c:v',
+                  'libwebp',
+                  '-quality',
+                  String(FFMPEG_WEBP_QUALITY),
+                  '-compression_level',
+                  String(FFMPEG_WEBP_COMPRESSION),
+                  // Force the WebP muxer explicitly. dstAbs ends in `.webp.tmp`
+                  // for atomic-rename writes; ffmpeg on Debian/Ubuntu won't
+                  // infer the format from the `.tmp` suffix and dies with
+                  // "Unable to find a suitable output format" on every video.
+                  '-f',
+                  'webp',
+                  '-y',
+                  dstAbs,
+              ];
+              await _runFfmpeg(args);
+          }
         : async (sec) => {
-            const tmpJpg = dstAbs + '.frame.jpg';
-            try {
-                await _runFfmpeg([
-                    '-hide_banner', '-loglevel', 'error',
-                    '-ss', String(sec),
-                    '-i', srcAbs,
-                    '-frames:v', '1',
-                    '-an',
-                    '-vf', `scale='min(${width},iw)':-2:flags=fast_bilinear`,
-                    '-q:v', '3',
-                    '-y',
-                    tmpJpg,
-                ]);
-                if (existsSync(tmpJpg)) {
-                    await sharp(tmpJpg, { failOn: 'none' })
-                        .rotate()
-                        .resize({ width, withoutEnlargement: true, fit: 'inside' })
-                        .webp({ quality: WEBP_QUALITY, effort: SHARP_EFFORT })
-                        .toFile(dstAbs);
-                }
-            } finally {
-                try { if (existsSync(tmpJpg)) await fs.unlink(tmpJpg); } catch { /* best-effort */ }
-            }
-        };
+              const tmpJpg = dstAbs + '.frame.jpg';
+              try {
+                  await _runFfmpeg([
+                      '-hide_banner',
+                      '-loglevel',
+                      'error',
+                      '-ss',
+                      String(sec),
+                      '-i',
+                      srcAbs,
+                      '-frames:v',
+                      '1',
+                      '-an',
+                      '-vf',
+                      `scale='min(${width},iw)':-2:flags=fast_bilinear`,
+                      '-q:v',
+                      '3',
+                      '-y',
+                      tmpJpg,
+                  ]);
+                  if (existsSync(tmpJpg)) {
+                      await sharp(tmpJpg, { failOn: 'none' })
+                          .rotate()
+                          .resize({ width, withoutEnlargement: true, fit: 'inside' })
+                          .webp({ quality: WEBP_QUALITY, effort: SHARP_EFFORT })
+                          .toFile(dstAbs);
+                  }
+              } finally {
+                  try {
+                      if (existsSync(tmpJpg)) await fs.unlink(tmpJpg);
+                  } catch {
+                      /* best-effort */
+                  }
+              }
+          };
     try {
         await tryAt(1);
         if (!existsSync(dstAbs)) await tryAt(0);
@@ -379,11 +460,16 @@ async function _generateAudioThumb(srcAbs, width, dstAbs) {
     const tmpJpg = dstAbs + '.cover.jpg';
     try {
         await _runFfmpeg([
-            '-hide_banner', '-loglevel', 'error',
-            '-i', srcAbs,
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-i',
+            srcAbs,
             '-an',
-            '-vcodec', 'copy',
-            '-map', '0:v?',
+            '-vcodec',
+            'copy',
+            '-map',
+            '0:v?',
             '-y',
             tmpJpg,
         ]);
@@ -393,7 +479,9 @@ async function _generateAudioThumb(srcAbs, width, dstAbs) {
             .webp({ quality: WEBP_QUALITY, effort: SHARP_EFFORT })
             .toFile(dstAbs);
     } finally {
-        try { if (existsSync(tmpJpg)) await fs.unlink(tmpJpg); } catch {}
+        try {
+            if (existsSync(tmpJpg)) await fs.unlink(tmpJpg);
+        } catch {}
     }
 }
 
@@ -418,12 +506,12 @@ export async function getOrCreateThumb(downloadId, widthHint) {
         try {
             const st = await fs.stat(cacheAbs);
             return { path: cacheAbs, width, mtime: st.mtimeMs };
-        } catch { /* fall through — regenerate */ }
+        } catch {
+            /* fall through — regenerate */
+        }
     }
 
-    const row = getDb().prepare(
-        'SELECT file_path, file_type FROM downloads WHERE id = ?'
-    ).get(id);
+    const row = getDb().prepare('SELECT file_path, file_type FROM downloads WHERE id = ?').get(id);
     if (!row) return null;
     const srcAbs = _resolveDownloadAbs(row.file_path);
     if (!srcAbs) return null;
@@ -433,7 +521,11 @@ export async function getOrCreateThumb(downloadId, widthHint) {
 
     const inflightKey = `${id}:${width}`;
     if (_inflight.has(inflightKey)) {
-        try { await _inflight.get(inflightKey); } catch { /* swallow */ }
+        try {
+            await _inflight.get(inflightKey);
+        } catch {
+            /* swallow */
+        }
         if (existsSync(cacheAbs)) {
             const st = await fs.stat(cacheAbs);
             return { path: cacheAbs, width, mtime: st.mtimeMs };
@@ -441,7 +533,7 @@ export async function getOrCreateThumb(downloadId, widthHint) {
         return null;
     }
 
-    const sem = (kind === 'image' || kind === 'audio') ? _imgSem : _vidSem;
+    const sem = kind === 'image' || kind === 'audio' ? _imgSem : _vidSem;
     const job = (async () => {
         await _ensureThumbsDir();
         await sem.acquire();
@@ -459,7 +551,9 @@ export async function getOrCreateThumb(downloadId, widthHint) {
             // file never becomes a "valid" cache hit on crash mid-write.
             if (existsSync(tmpAbs)) await fs.rename(tmpAbs, cacheAbs);
         } finally {
-            try { if (existsSync(tmpAbs)) await fs.unlink(tmpAbs); } catch {}
+            try {
+                if (existsSync(tmpAbs)) await fs.unlink(tmpAbs);
+            } catch {}
             sem.release();
         }
     })();
@@ -505,7 +599,10 @@ export async function purgeThumbsForDownload(downloadId) {
     for (const w of ALLOWED_WIDTHS) {
         const p = _cachePath(id, w);
         if (existsSync(p)) {
-            try { await fs.unlink(p); removed++; } catch {}
+            try {
+                await fs.unlink(p);
+                removed++;
+            } catch {}
         }
     }
     return removed;
@@ -518,7 +615,10 @@ export async function purgeAllThumbs() {
     let removed = 0;
     for (const n of names) {
         if (!n.endsWith('.webp') && !n.endsWith('.tmp')) continue;
-        try { await fs.unlink(path.join(THUMBS_DIR, n)); removed++; } catch {}
+        try {
+            await fs.unlink(path.join(THUMBS_DIR, n));
+            removed++;
+        } catch {}
     }
     return removed;
 }
@@ -542,16 +642,22 @@ export async function purgeAllThumbs() {
  */
 export async function buildAllThumbnails(opts = {}) {
     const { onProgress, signal } = opts;
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT id FROM downloads
          WHERE file_path IS NOT NULL
          ORDER BY created_at DESC
-    `).all();
+    `)
+        .all();
     const total = rows.length;
-    let processed = 0, built = 0, skipped = 0, errored = 0;
+    let processed = 0,
+        built = 0,
+        skipped = 0,
+        errored = 0;
 
     const tick = () => {
-        if (onProgress) onProgress({ stage: 'building', processed, total, built, skipped, errored });
+        if (onProgress)
+            onProgress({ stage: 'building', processed, total, built, skipped, errored });
     };
     tick();
 
@@ -559,7 +665,11 @@ export async function buildAllThumbnails(opts = {}) {
         if (signal?.aborted) break;
         processed++;
         const cacheAbs = _cachePath(r.id, DEFAULT_WIDTH);
-        if (existsSync(cacheAbs)) { skipped++; if (processed % 25 === 0 || processed === total) tick(); continue; }
+        if (existsSync(cacheAbs)) {
+            skipped++;
+            if (processed % 25 === 0 || processed === total) tick();
+            continue;
+        }
         try {
             const thumb = await getOrCreateThumb(r.id, DEFAULT_WIDTH);
             if (thumb) built++;
@@ -578,7 +688,8 @@ export async function buildAllThumbnails(opts = {}) {
 export async function getThumbsCacheStats() {
     if (!existsSync(THUMBS_DIR)) return { count: 0, bytes: 0 };
     const names = await fs.readdir(THUMBS_DIR).catch(() => []);
-    let count = 0, bytes = 0;
+    let count = 0,
+        bytes = 0;
     for (const n of names) {
         if (!n.endsWith('.webp')) continue;
         try {

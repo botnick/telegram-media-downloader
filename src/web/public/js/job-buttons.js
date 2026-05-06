@@ -38,7 +38,7 @@ import { t as i18nT } from './i18n.js';
 // Registry so we can hydrate every wired button on init / WS reconnect
 // without each caller having to remember to do it. Idempotent — wiring a
 // button twice is safe (the existing entry's WS subscription is reused).
-const _wired = new Map();      // btn → entry
+const _wired = new Map(); // btn → entry
 let _wsSubscribed = new Set(); // `${prefix}_progress` / `${prefix}_done`
 
 function _formatStage(snap) {
@@ -79,9 +79,19 @@ function _formatStage(snap) {
  *        /status and reflects WS state, just without a duplicate POST.
  */
 export function wireJobButton(opts) {
-    const { btn, statusEl, statusUrl, eventPrefix, runUrl,
-        runBody, runningLabel, idleLabel, onDone, preflightFail,
-        attachClick = true } = opts || {};
+    const {
+        btn,
+        statusEl,
+        statusUrl,
+        eventPrefix,
+        runUrl,
+        runBody,
+        runningLabel,
+        idleLabel,
+        onDone,
+        preflightFail,
+        attachClick = true,
+    } = opts || {};
     if (!btn || !statusUrl || !eventPrefix || !runUrl) {
         // Element may legitimately be absent on a route the user hasn't
         // visited yet — skip silently rather than throwing into init().
@@ -90,8 +100,16 @@ export function wireJobButton(opts) {
     if (_wired.has(btn)) return;
 
     const entry = {
-        btn, statusEl, statusUrl, eventPrefix, runUrl,
-        runBody: runBody || {}, runningLabel, idleLabel, onDone, preflightFail,
+        btn,
+        statusEl,
+        statusUrl,
+        eventPrefix,
+        runUrl,
+        runBody: runBody || {},
+        runningLabel,
+        idleLabel,
+        onDone,
+        preflightFail,
     };
     _wired.set(btn, entry);
 
@@ -141,7 +159,11 @@ export function wireJobButton(opts) {
                 }
                 if (e.statusEl) e.statusEl.textContent = m?.error || '';
                 if (typeof e.onDone === 'function') {
-                    try { e.onDone(m); } catch (err) { console.warn('job onDone:', err); }
+                    try {
+                        e.onDone(m);
+                    } catch (err) {
+                        console.warn('job onDone:', err);
+                    }
                 }
             }
         });
@@ -165,9 +187,13 @@ export function wireJobButton(opts) {
             if (r?.error) throw Object.assign(new Error(r.error), { data: r });
         } catch (e) {
             if (e?.data?.code === 'ALREADY_RUNNING') {
-                showToast(i18nT('jobs.already_running',
-                    'Already running on another tab — waiting for it to finish.'),
-                    'info');
+                showToast(
+                    i18nT(
+                        'jobs.already_running',
+                        'Already running on another tab — waiting for it to finish.',
+                    ),
+                    'info',
+                );
                 await _hydrate(entry).catch(() => {});
                 return;
             }
@@ -193,7 +219,9 @@ async function _hydrate(entry) {
             if (entry.idleLabel) entry.btn.textContent = entry.idleLabel;
             if (entry.statusEl) entry.statusEl.textContent = snap?.error || '';
         }
-    } catch { /* status endpoint failure = leave UI alone */ }
+    } catch {
+        /* status endpoint failure = leave UI alone */
+    }
 }
 
 /**

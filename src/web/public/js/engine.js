@@ -10,7 +10,10 @@
 import { api } from './api.js';
 import { showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
-import { subscribe as subscribeMonitorStatus, refreshNow as refreshMonitorStatus } from './monitor-status.js';
+import {
+    subscribe as subscribeMonitorStatus,
+    refreshNow as refreshMonitorStatus,
+} from './monitor-status.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,10 +34,22 @@ function applyStatus(status) {
     const stopBtn = $('engine-stop');
     const errEl = $('engine-error');
     const stateLabels = {
-        running: { text: i18nT('settings.engine.running', 'Running'), cls: 'bg-tg-green/20 text-tg-green' },
-        starting: { text: i18nT('settings.engine.starting', 'Starting…'), cls: 'bg-tg-blue/20 text-tg-blue' },
-        stopping: { text: i18nT('settings.engine.stopping', 'Stopping…'), cls: 'bg-tg-orange/20 text-tg-orange' },
-        stopped: { text: i18nT('settings.engine.stopped', 'Stopped'), cls: 'bg-gray-700 text-gray-300' },
+        running: {
+            text: i18nT('settings.engine.running', 'Running'),
+            cls: 'bg-tg-green/20 text-tg-green',
+        },
+        starting: {
+            text: i18nT('settings.engine.starting', 'Starting…'),
+            cls: 'bg-tg-blue/20 text-tg-blue',
+        },
+        stopping: {
+            text: i18nT('settings.engine.stopping', 'Stopping…'),
+            cls: 'bg-tg-orange/20 text-tg-orange',
+        },
+        stopped: {
+            text: i18nT('settings.engine.stopped', 'Stopped'),
+            cls: 'bg-gray-700 text-gray-300',
+        },
         error: { text: i18nT('settings.engine.error', 'Error'), cls: 'bg-red-500/20 text-red-300' },
     };
     const lbl = stateLabels[status.state] || stateLabels.stopped;
@@ -55,7 +70,10 @@ function applyStatus(status) {
             errEl.classList.add('hidden');
         }
     }
-    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    const set = (id, v) => {
+        const el = $(id);
+        if (el) el.textContent = v;
+    };
     set('engine-queue', status.queue ?? 0);
     set('engine-active', status.active ?? 0);
     set('engine-downloaded', status.stats?.downloaded ?? 0);
@@ -65,7 +83,9 @@ function applyStatus(status) {
 // Refresh helper — kept as a thin alias around the shared monitor-status
 // module so existing call sites in this file (WS handlers below) keep
 // reading naturally.
-function refresh() { refreshMonitorStatus(); }
+function refresh() {
+    refreshMonitorStatus();
+}
 
 export function initEngine() {
     // Idempotency guard — initEngine() runs every time the user navigates
@@ -88,7 +108,14 @@ export function initEngine() {
             applyStatus(r.status);
             showToast(i18nT('toast.monitor_started', 'Monitor started'), 'success');
         } catch (e) {
-            showToast(i18nTf('toast.monitor_start_failed', { msg: e.message }, `Start failed: ${e.message}`), 'error');
+            showToast(
+                i18nTf(
+                    'toast.monitor_start_failed',
+                    { msg: e.message },
+                    `Start failed: ${e.message}`,
+                ),
+                'error',
+            );
         } finally {
             $('engine-start').disabled = false;
         }
@@ -100,7 +127,14 @@ export function initEngine() {
             applyStatus(r.status);
             showToast(i18nT('toast.monitor_stopped', 'Monitor stopped'), 'info');
         } catch (e) {
-            showToast(i18nTf('toast.monitor_stop_failed', { msg: e.message }, `Stop failed: ${e.message}`), 'error');
+            showToast(
+                i18nTf(
+                    'toast.monitor_stop_failed',
+                    { msg: e.message },
+                    `Stop failed: ${e.message}`,
+                ),
+                'error',
+            );
         } finally {
             $('engine-stop').disabled = false;
         }
@@ -117,8 +151,12 @@ export function handleEngineWsMessage(msg) {
         setTimeout(refresh, 100);
         return;
     }
-    if (msg.type === 'history_progress' || msg.type === 'history_done'
-        || msg.type === 'history_error' || msg.type === 'history_cancelled') {
+    if (
+        msg.type === 'history_progress' ||
+        msg.type === 'history_done' ||
+        msg.type === 'history_error' ||
+        msg.type === 'history_cancelled'
+    ) {
         refresh();
         return;
     }
@@ -128,8 +166,12 @@ export function handleEngineWsMessage(msg) {
     // (or _complete / _error / _start, etc.). The Engine card's headline
     // counters are refreshed via the shared monitor-status poller, so we
     // only need to forward lifecycle/queue-length deltas here.
-    if (msg.type === 'download_complete' || msg.type === 'download_start'
-        || msg.type === 'download_error' || msg.type === 'queue_length') {
+    if (
+        msg.type === 'download_complete' ||
+        msg.type === 'download_start' ||
+        msg.type === 'download_error' ||
+        msg.type === 'queue_length'
+    ) {
         refresh();
     }
 }

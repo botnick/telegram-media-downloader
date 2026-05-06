@@ -23,30 +23,55 @@ import { Transform } from 'stream';
 import { BackupProvider, optionalDepError } from './base.js';
 import { encryptStream } from '../encryption.js';
 
-const DEFAULT_TIMEOUT_MS = Number(process.env.BACKUP_FTP_TIMEOUT_MS) > 0
-    ? Number(process.env.BACKUP_FTP_TIMEOUT_MS) : 30_000;
+const DEFAULT_TIMEOUT_MS =
+    Number(process.env.BACKUP_FTP_TIMEOUT_MS) > 0
+        ? Number(process.env.BACKUP_FTP_TIMEOUT_MS)
+        : 30_000;
 
 export class FtpProvider extends BackupProvider {
-    static get name() { return 'ftp'; }
-    static get displayName() { return 'FTP / FTPS'; }
+    static get name() {
+        return 'ftp';
+    }
+    static get displayName() {
+        return 'FTP / FTPS';
+    }
     static get configSchema() {
         return [
-            { name: 'host',       label: 'Host',       type: 'text',     required: true,
-                placeholder: 'ftp.example.com' },
-            { name: 'port',       label: 'Port',       type: 'number',                    placeholder: '21' },
-            { name: 'username',   label: 'Username',   type: 'text',     required: true },
-            { name: 'password',   label: 'Password',   type: 'password', secret: true,
-                help: 'Empty for anonymous FTP.' },
-            { name: 'secure',     label: 'TLS mode',   type: 'select',
+            {
+                name: 'host',
+                label: 'Host',
+                type: 'text',
+                required: true,
+                placeholder: 'ftp.example.com',
+            },
+            { name: 'port', label: 'Port', type: 'number', placeholder: '21' },
+            { name: 'username', label: 'Username', type: 'text', required: true },
+            {
+                name: 'password',
+                label: 'Password',
+                type: 'password',
+                secret: true,
+                help: 'Empty for anonymous FTP.',
+            },
+            {
+                name: 'secure',
+                label: 'TLS mode',
+                type: 'select',
                 options: [
-                    { value: 'false',   label: 'Plain FTP (no TLS)' },
+                    { value: 'false', label: 'Plain FTP (no TLS)' },
                     { value: 'control', label: 'Explicit FTPS — AUTH TLS on port 21' },
-                    { value: 'true',    label: 'Implicit FTPS — TLS from connect on port 990' },
+                    { value: 'true', label: 'Implicit FTPS — TLS from connect on port 990' },
                 ],
-                help: 'Most modern hosts use Explicit FTPS. Plain FTP transmits credentials in cleartext.' },
-            { name: 'remoteRoot', label: 'Remote root', type: 'text',    required: true,
+                help: 'Most modern hosts use Explicit FTPS. Plain FTP transmits credentials in cleartext.',
+            },
+            {
+                name: 'remoteRoot',
+                label: 'Remote root',
+                type: 'text',
+                required: true,
                 placeholder: '/tgdl-backup',
-                help: 'Absolute path on the remote where uploads land. Auto-created.' },
+                help: 'Absolute path on the remote where uploads land. Auto-created.',
+            },
         ];
     }
 
@@ -69,13 +94,16 @@ export class FtpProvider extends BackupProvider {
         const remoteRoot = this._normRemote(cfg?.remoteRoot || '/');
         if (!host) throw new Error('host required');
 
-        const secure = cfg?.secure === 'true' || cfg?.secure === true
-            ? true
-            : (cfg?.secure === 'control' ? 'control' : false);
+        const secure =
+            cfg?.secure === 'true' || cfg?.secure === true
+                ? true
+                : cfg?.secure === 'control'
+                  ? 'control'
+                  : false;
 
         // basic-ftp picks a sane default port from `secure` when omitted
         // (21 / 990) — but if the operator typed a custom port we honour it.
-        const port = Number(cfg?.port) > 0 ? Number(cfg.port) : (secure === true ? 990 : 21);
+        const port = Number(cfg?.port) > 0 ? Number(cfg.port) : secure === true ? 990 : 21;
 
         this._cfg = {
             host,
@@ -97,7 +125,9 @@ export class FtpProvider extends BackupProvider {
     /** Normalise a remote path: backslashes → forward, collapse `//`,
      *  ensure leading `/`. Drops trailing `/` except for the literal root. */
     _normRemote(p) {
-        let s = String(p == null ? '/' : p).replace(/\\/g, '/').replace(/\/+/g, '/');
+        let s = String(p == null ? '/' : p)
+            .replace(/\\/g, '/')
+            .replace(/\/+/g, '/');
         if (!s.startsWith('/')) s = '/' + s;
         if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
         return s;
@@ -106,7 +136,9 @@ export class FtpProvider extends BackupProvider {
     /** Resolve a relative remote path under the configured root. Refuses
      *  `..` escapes — symmetric with LocalProvider's _resolveSafe. */
     _resolve(remotePath) {
-        const norm = String(remotePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = String(remotePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
         if (norm.split('/').some((seg) => seg === '..')) {
             throw new Error(`unsafe remote path: ${remotePath}`);
         }
@@ -120,7 +152,12 @@ export class FtpProvider extends BackupProvider {
         const client = new this._ftp.Client(DEFAULT_TIMEOUT_MS);
         client.ftp.verbose = false;
         let aborted = false;
-        const onAbort = () => { aborted = true; try { client.close(); } catch {} };
+        const onAbort = () => {
+            aborted = true;
+            try {
+                client.close();
+            } catch {}
+        };
         if (ctx?.signal) {
             if (ctx.signal.aborted) onAbort();
             else ctx.signal.addEventListener('abort', onAbort, { once: true });
@@ -141,9 +178,13 @@ export class FtpProvider extends BackupProvider {
             if (aborted) throw new Error('aborted');
             return r;
         } finally {
-            try { client.close(); } catch {}
+            try {
+                client.close();
+            } catch {}
             if (ctx?.signal) {
-                try { ctx.signal.removeEventListener('abort', onAbort); } catch {}
+                try {
+                    ctx.signal.removeEventListener('abort', onAbort);
+                } catch {}
             }
         }
     }
@@ -162,16 +203,24 @@ export class FtpProvider extends BackupProvider {
                 body = body.pipe(encryptStream(opts.encryptKey));
             }
             if (typeof opts?.onProgress === 'function' || opts?.throttleBps) {
-                body = body.pipe(_makeProgressTransform({
-                    onProgress: opts?.onProgress,
-                    throttleBps: opts?.throttleBps,
-                    signal: ctx?.signal,
-                }));
+                body = body.pipe(
+                    _makeProgressTransform({
+                        onProgress: opts?.onProgress,
+                        throttleBps: opts?.throttleBps,
+                        signal: ctx?.signal,
+                    }),
+                );
             }
             if (ctx?.signal) {
-                ctx.signal.addEventListener('abort', () => {
-                    try { body.destroy(new Error('aborted')); } catch {}
-                }, { once: true });
+                ctx.signal.addEventListener(
+                    'abort',
+                    () => {
+                        try {
+                            body.destroy(new Error('aborted'));
+                        } catch {}
+                    },
+                    { once: true },
+                );
             }
 
             await client.uploadFrom(body, target);
@@ -180,9 +229,13 @@ export class FtpProvider extends BackupProvider {
             // `size` (some servers strip it from the LIST output for
             // FTPS) — fall back to the local file size.
             let bytes = 0;
-            try { bytes = Number(await client.size(target)) || 0; } catch {}
+            try {
+                bytes = Number(await client.size(target)) || 0;
+            } catch {}
             if (!bytes) {
-                try { bytes = (await fs.promises.stat(localPath)).size; } catch {}
+                try {
+                    bytes = (await fs.promises.stat(localPath)).size;
+                } catch {}
             }
             return {
                 remotePath,
@@ -211,16 +264,21 @@ export class FtpProvider extends BackupProvider {
         try {
             return await this._withClient(async (client) => {
                 let size = 0;
-                try { size = Number(await client.size(target)) || 0; } catch (e) {
+                try {
+                    size = Number(await client.size(target)) || 0;
+                } catch (e) {
                     const msg = String(e?.message || '');
-                    if (e?.code === 550 || /no such|not found|does not exist/i.test(msg)) return null;
+                    if (e?.code === 550 || /no such|not found|does not exist/i.test(msg))
+                        return null;
                     throw e;
                 }
                 let mtime = 0;
                 try {
                     const d = await client.lastMod(target);
                     if (d instanceof Date) mtime = d.getTime();
-                } catch { /* MDTM not supported on every server */ }
+                } catch {
+                    /* MDTM not supported on every server */
+                }
                 return { size, mtime, etag: null };
             }, ctx);
         } catch (e) {
@@ -279,13 +337,22 @@ export class FtpProvider extends BackupProvider {
             const msg = e?.message || String(e);
             // basic-ftp surfaces auth failures as code 530.
             if (e?.code === 530 || /530/.test(msg)) {
-                return { ok: false, detail: `Auth failed (530) — check username + password. ${msg}` };
+                return {
+                    ok: false,
+                    detail: `Auth failed (530) — check username + password. ${msg}`,
+                };
             }
             if (e?.code === 'ENOTFOUND' || /ENOTFOUND/.test(msg)) {
-                return { ok: false, detail: `Host not found — check spelling of "${this._cfg.host}"` };
+                return {
+                    ok: false,
+                    detail: `Host not found — check spelling of "${this._cfg.host}"`,
+                };
             }
             if (e?.code === 'ECONNREFUSED' || /ECONNREFUSED/.test(msg)) {
-                return { ok: false, detail: `Connection refused on port ${this._cfg.port} — wrong port or firewall blocked` };
+                return {
+                    ok: false,
+                    detail: `Connection refused on port ${this._cfg.port} — wrong port or firewall blocked`,
+                };
             }
             return { ok: false, detail: msg };
         }
@@ -307,7 +374,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                 if (signal?.aborted) return cb(new Error('aborted'));
                 bytes += chunk.length;
                 if (typeof onProgress === 'function') {
-                    try { onProgress({ bytesUploaded: bytes }); } catch {}
+                    try {
+                        onProgress({ bytesUploaded: bytes });
+                    } catch {}
                 }
                 if (throttleBps && throttleBps > 0) {
                     const elapsedMs = Date.now() - start;
@@ -318,8 +387,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                     }
                 }
                 cb(null, chunk);
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }
-

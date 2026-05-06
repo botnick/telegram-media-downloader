@@ -26,7 +26,7 @@
 
 import { listAllImageEmbeddings } from '../db.js';
 
-let _vecExtensionAvailable = null;  // lazy probe
+let _vecExtensionAvailable = null; // lazy probe
 
 /**
  * Try to load sqlite-vec into the live DB connection. Probe runs lazily on
@@ -36,8 +36,11 @@ let _vecExtensionAvailable = null;  // lazy probe
 export async function loadExtensionOnce(getDb, onLog) {
     if (_vecExtensionAvailable !== null) return _vecExtensionAvailable;
     const _log = (level, msg) => {
-        try { if (typeof onLog === 'function') onLog({ source: 'ai', level, msg }); }
-        catch { /* swallow */ }
+        try {
+            if (typeof onLog === 'function') onLog({ source: 'ai', level, msg });
+        } catch {
+            /* swallow */
+        }
     };
     try {
         const mod = await import('sqlite-vec').catch(() => null);
@@ -83,12 +86,15 @@ export function l2Normalize(vec) {
  */
 export function cosine(a, b) {
     if (!a || !b || a.length !== b.length) return 0;
-    let dot = 0, na = 0, nb = 0;
+    let dot = 0,
+        na = 0,
+        nb = 0;
     for (let i = 0; i < a.length; i++) {
-        const x = a[i], y = b[i];
+        const x = a[i],
+            y = b[i];
         dot += x * y;
-        na  += x * x;
-        nb  += y * y;
+        na += x * x;
+        nb += y * y;
     }
     const denom = Math.sqrt(na) * Math.sqrt(nb);
     if (denom === 0) return 0;
@@ -124,7 +130,7 @@ export function blobToVector(blob) {
 // indexed_at. Invalidated lazily — the search endpoint reloads when the
 // cache size doesn't match the table count.
 const _cache = {
-    vectors: null,        // Array<{ download_id, vec, row }>
+    vectors: null, // Array<{ download_id, vec, row }>
     rowsCount: -1,
     lastIndexedAt: 0,
 };

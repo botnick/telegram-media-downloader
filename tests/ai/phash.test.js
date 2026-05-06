@@ -19,31 +19,39 @@ import sharp from 'sharp';
 import { computePhash, hammingDistance, groupNearDuplicates } from '../../src/core/ai/phash.js';
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-phash-'));
-const A   = path.join(TMP, 'a.png');
-const A2  = path.join(TMP, 'a2.jpg');
-const B   = path.join(TMP, 'b.png');
+const A = path.join(TMP, 'a.png');
+const A2 = path.join(TMP, 'a2.jpg');
+const B = path.join(TMP, 'b.png');
 
 beforeAll(async () => {
     // Solid red 256x256 PNG. 100% identical pixel content makes the DCT
     // a delta function — gives every test run a reproducible baseline.
     await sharp({
         create: { width: 256, height: 256, channels: 3, background: { r: 220, g: 30, b: 30 } },
-    }).png().toFile(A);
+    })
+        .png()
+        .toFile(A);
 
     // Resized + JPEG-recompressed copy of the same red square. A pHash is
     // supposed to survive this; we expect Hamming distance well under 6.
     await sharp({
         create: { width: 220, height: 220, channels: 3, background: { r: 215, g: 40, b: 35 } },
-    }).jpeg({ quality: 60 }).toFile(A2);
+    })
+        .jpeg({ quality: 60 })
+        .toFile(A2);
 
     // Solid blue, completely different content.
     await sharp({
         create: { width: 256, height: 256, channels: 3, background: { r: 30, g: 30, b: 220 } },
-    }).png().toFile(B);
+    })
+        .png()
+        .toFile(B);
 });
 
 afterAll(() => {
-    try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
+    try {
+        fs.rmSync(TMP, { recursive: true, force: true });
+    } catch {}
 });
 
 describe('phash', () => {
@@ -89,8 +97,8 @@ describe('phash', () => {
         // 3 items: a + a' close, b far away.
         const items = [
             { id: 1, phash: 0n },
-            { id: 2, phash: 0b11n },        // 2 bits
-            { id: 3, phash: 0xffffffffn },  // 32 bits
+            { id: 2, phash: 0b11n }, // 2 bits
+            { id: 3, phash: 0xffffffffn }, // 32 bits
         ];
         const groups = groupNearDuplicates(items, 6);
         expect(groups.length).toBe(1);

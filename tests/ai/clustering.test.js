@@ -18,11 +18,14 @@ describe('dbscan()', () => {
     it('isolates 3 well-separated clusters', () => {
         const items = [];
         // Cluster A — pointing right (1, 0)
-        for (let i = 0; i < 5; i++) items.push({ id: `a${i}`, vec: vec(1 + i * 0.01, 0.01 * (i % 2)) });
+        for (let i = 0; i < 5; i++)
+            items.push({ id: `a${i}`, vec: vec(1 + i * 0.01, 0.01 * (i % 2)) });
         // Cluster B — pointing up (0, 1)
-        for (let i = 0; i < 5; i++) items.push({ id: `b${i}`, vec: vec(0.01 * (i % 2), 1 + i * 0.01) });
+        for (let i = 0; i < 5; i++)
+            items.push({ id: `b${i}`, vec: vec(0.01 * (i % 2), 1 + i * 0.01) });
         // Cluster C — pointing diagonally negative
-        for (let i = 0; i < 5; i++) items.push({ id: `c${i}`, vec: vec(-1 - i * 0.01, -1 - i * 0.01) });
+        for (let i = 0; i < 5; i++)
+            items.push({ id: `c${i}`, vec: vec(-1 - i * 0.01, -1 - i * 0.01) });
 
         const clusters = dbscan(items, { epsilon: 0.4, minPoints: 3 });
         expect(clusters.length).toBe(3);
@@ -34,7 +37,7 @@ describe('dbscan()', () => {
     it('returns no clusters when nothing satisfies minPoints', () => {
         const items = [
             { id: 1, vec: vec(1, 0) },
-            { id: 2, vec: vec(-1, 0) },   // antipode — far in cosine distance
+            { id: 2, vec: vec(-1, 0) }, // antipode — far in cosine distance
         ];
         const clusters = dbscan(items, { epsilon: 0.1, minPoints: 3 });
         expect(clusters.length).toBe(0);

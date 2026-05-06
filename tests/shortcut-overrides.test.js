@@ -12,11 +12,21 @@ import { describe, it, expect, beforeEach } from 'vitest';
 // that lacks `setItem`, which made these tests pass in isolation but
 // fail in `vitest run` ordering.
 class MemStore {
-    constructor() { this.m = new Map(); }
-    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
-    setItem(k, v) { this.m.set(k, String(v)); }
-    removeItem(k) { this.m.delete(k); }
-    clear() { this.m.clear(); }
+    constructor() {
+        this.m = new Map();
+    }
+    getItem(k) {
+        return this.m.has(k) ? this.m.get(k) : null;
+    }
+    setItem(k, v) {
+        this.m.set(k, String(v));
+    }
+    removeItem(k) {
+        this.m.delete(k);
+    }
+    clear() {
+        this.m.clear();
+    }
 }
 
 function installPolyfills() {
@@ -29,14 +39,22 @@ function installPolyfills() {
     } else {
         globalThis.window.localStorage = globalThis.localStorage;
         if (typeof globalThis.window.matchMedia !== 'function') {
-            globalThis.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+            globalThis.window.matchMedia = () => ({
+                matches: false,
+                addEventListener() {},
+                removeEventListener() {},
+            });
         }
     }
     if (typeof globalThis.document === 'undefined') {
         globalThis.document = {
             addEventListener() {},
-            querySelector() { return null; },
-            getElementById() { return null; },
+            querySelector() {
+                return null;
+            },
+            getElementById() {
+                return null;
+            },
         };
     }
 }
@@ -56,25 +74,30 @@ describe('shortcut overrides', () => {
     });
 
     it('setShortcutOverride persists the new binding across reads', async () => {
-        const { setShortcutOverride, loadShortcutOverrides } = await import('../src/web/public/js/shortcuts.js');
+        const { setShortcutOverride, loadShortcutOverrides } = await import(
+            '../src/web/public/js/shortcuts.js'
+        );
         setShortcutOverride('toggle_select', 'p');
         const map = loadShortcutOverrides();
         expect(map.toggle_select).toBe('p');
     });
 
     it('effectiveShortcuts replaces the built-in default with the user override', async () => {
-        const { setShortcutOverride, effectiveShortcuts } = await import('../src/web/public/js/shortcuts.js');
-        const before = effectiveShortcuts().find(s => s.id === 'toggle_select');
+        const { setShortcutOverride, effectiveShortcuts } = await import(
+            '../src/web/public/js/shortcuts.js'
+        );
+        const before = effectiveShortcuts().find((s) => s.id === 'toggle_select');
         expect(before.keys).toBe('s');
 
         setShortcutOverride('toggle_select', 'P');
-        const after = effectiveShortcuts().find(s => s.id === 'toggle_select');
+        const after = effectiveShortcuts().find((s) => s.id === 'toggle_select');
         expect(after.keys).toBe('P');
     });
 
     it('resetShortcutOverrides reverts to defaults', async () => {
-        const { setShortcutOverride, resetShortcutOverrides, loadShortcutOverrides } =
-            await import('../src/web/public/js/shortcuts.js');
+        const { setShortcutOverride, resetShortcutOverrides, loadShortcutOverrides } = await import(
+            '../src/web/public/js/shortcuts.js'
+        );
         setShortcutOverride('focus_search', 'k');
         expect(loadShortcutOverrides().focus_search).toBe('k');
         resetShortcutOverrides();
@@ -88,11 +111,14 @@ describe('shortcut overrides', () => {
     });
 
     it('drops non-string override values defensively', async () => {
-        globalThis.localStorage.setItem('tgdl-shortcut-overrides', JSON.stringify({
-            toggle_select: 'p',
-            invalid: { evil: 'object' },
-            other: 42,
-        }));
+        globalThis.localStorage.setItem(
+            'tgdl-shortcut-overrides',
+            JSON.stringify({
+                toggle_select: 'p',
+                invalid: { evil: 'object' },
+                other: 42,
+            }),
+        );
         const { loadShortcutOverrides } = await import('../src/web/public/js/shortcuts.js');
         const m = loadShortcutOverrides();
         expect(m.toggle_select).toBe('p');

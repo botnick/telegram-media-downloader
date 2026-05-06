@@ -70,26 +70,35 @@ function _renderSet(set, idx) {
     // Reclaim per set = (count - 1) × fileSize. We show this prominently
     // because it's the actual win — the "X copies" number alone doesn't
     // tell you whether deleting them is worth a click.
-    const reclaim = Math.max(0, (set.count - 1)) * (Number(set.fileSize) || 0);
-    const previewThumb = set.files?.[0]?.id != null
-        ? `<img loading="lazy" decoding="async"
+    const reclaim = Math.max(0, set.count - 1) * (Number(set.fileSize) || 0);
+    const previewThumb =
+        set.files?.[0]?.id != null
+            ? `<img loading="lazy" decoding="async"
                  class="w-10 h-10 object-cover rounded-md bg-tg-bg/40 shrink-0 ring-1 ring-tg-border/40"
                  src="/api/thumbs/${encodeURIComponent(set.files[0].id)}?w=120" alt="" onerror="this.style.display='none'">`
-        : '';
+            : '';
     return `
         <div class="bg-tg-bg/30 rounded-xl p-3 mb-2 border border-tg-border/30 hover:border-tg-blue/30 transition-colors" data-set="${escapeHtml(set.hash)}" data-set-idx="${idx}">
             <div class="flex items-center gap-3 mb-2">
                 ${previewThumb}
                 <div class="min-w-0 flex-1">
                     <div class="text-sm text-tg-text font-medium tabular-nums">
-                        ${escapeHtml(i18nTf('maintenance.dedup.set_header_v2',
-                            { count: set.count, size: _formatBytes(set.fileSize) },
-                            `${set.count} copies · ${_formatBytes(set.fileSize)} each`))}
+                        ${escapeHtml(
+                            i18nTf(
+                                'maintenance.dedup.set_header_v2',
+                                { count: set.count, size: _formatBytes(set.fileSize) },
+                                `${set.count} copies · ${_formatBytes(set.fileSize)} each`,
+                            ),
+                        )}
                     </div>
                     <div class="text-[11px] text-tg-green tabular-nums">
-                        <i class="ri-coins-line"></i> ${escapeHtml(i18nTf('maintenance.dedup.set_reclaim',
-                            { size: _formatBytes(reclaim) },
-                            `Up to ${_formatBytes(reclaim)} reclaimable`))}
+                        <i class="ri-coins-line"></i> ${escapeHtml(
+                            i18nTf(
+                                'maintenance.dedup.set_reclaim',
+                                { size: _formatBytes(reclaim) },
+                                `Up to ${_formatBytes(reclaim)} reclaimable`,
+                            ),
+                        )}
                     </div>
                 </div>
                 <div class="flex items-center gap-1 shrink-0 flex-wrap">
@@ -115,9 +124,11 @@ function _refreshSummary() {
     }
     const sum = $('dup-summary');
     if (sum) {
-        sum.textContent = i18nTf('maintenance.dedup.selected',
+        sum.textContent = i18nTf(
+            'maintenance.dedup.selected',
             { count: ids.length, freed: _formatBytes(bytes) },
-            `${ids.length} selected · ${_formatBytes(bytes)} will be freed`);
+            `${ids.length} selected · ${_formatBytes(bytes)} will be freed`,
+        );
     }
 }
 
@@ -130,9 +141,10 @@ const FIRST_PAINT_SETS = 30;
 const CHUNK_SETS = 50;
 let _renderToken = 0; // bumps every full render so a stale chunk loop bails out
 
-const _idleSchedule = (fn) => (typeof requestIdleCallback === 'function'
-    ? requestIdleCallback(fn, { timeout: 200 })
-    : setTimeout(fn, 32));
+const _idleSchedule = (fn) =>
+    typeof requestIdleCallback === 'function'
+        ? requestIdleCallback(fn, { timeout: 200 })
+        : setTimeout(fn, 32);
 
 function _renderSets(sets) {
     _sets = Array.isArray(sets) ? sets : [];
@@ -155,8 +167,8 @@ function _renderSets(sets) {
 
     const totalSets = _sets.length;
     const totalDupes = _sets.reduce((s, x) => s + (x.count - 1), 0);
-    const totalReclaim = _sets.reduce((s, x) => s + (x.fileSize * (x.count - 1)), 0);
-    const totalFiles  = _sets.reduce((s, x) => s + (x.count || 0), 0);
+    const totalReclaim = _sets.reduce((s, x) => s + x.fileSize * (x.count - 1), 0);
+    const totalFiles = _sets.reduce((s, x) => s + (x.count || 0), 0);
     if (totals) {
         // Stats grid — Telegram-style 4-up cards. Bigger numbers, clear
         // labels, the headline (reclaimable size) gets the green accent
@@ -189,8 +201,9 @@ function _renderSets(sets) {
     // First paint: render FIRST_PAINT_SETS synchronously. Below the fold
     // gets a "Loading remaining…" hint that's replaced as chunks land.
     const initial = _sets.slice(0, FIRST_PAINT_SETS);
-    list.innerHTML = initial.map((s, i) => _renderSet(s, i)).join('')
-        + (_sets.length > FIRST_PAINT_SETS
+    list.innerHTML =
+        initial.map((s, i) => _renderSet(s, i)).join('') +
+        (_sets.length > FIRST_PAINT_SETS
             ? `<div id="dup-list-pending" class="text-center text-xs text-tg-textSecondary py-3"><i class="ri-loader-4-line animate-spin mr-1"></i>${escapeHtml(i18nTf('maintenance.dedup.loading_remaining', { n: _sets.length - FIRST_PAINT_SETS }, `Rendering ${_sets.length - FIRST_PAINT_SETS} more sets…`))}</div>`
             : '');
     _applyDefaultSelection(initial);
@@ -237,7 +250,7 @@ function _applyDefaultSelection(setsSlice) {
             // Default: keep the oldest, mark the rest for delete. Recorded
             // on the in-memory model so chunk-rendered tail rows + bulk
             // operations all reference the same source of truth.
-            if (f._delete == null) f._delete = (f.id !== keepId);
+            if (f._delete == null) f._delete = f.id !== keepId;
             const cb = list.querySelector(`.dup-del[data-id="${f.id}"]`);
             if (cb) cb.checked = f._delete === true;
             const row = list.querySelector(`[data-file-row="${f.id}"]`);
@@ -283,7 +296,13 @@ async function _runScan() {
         // so the button stays disabled until the other client finishes.
         if (e?.data?.code === 'ALREADY_RUNNING') {
             _setScanUi(true);
-            showToast(i18nT('maintenance.dedup.already_running', 'A dedup scan is already running on another client.'), 'info');
+            showToast(
+                i18nT(
+                    'maintenance.dedup.already_running',
+                    'A dedup scan is already running on another client.',
+                ),
+                'info',
+            );
             return;
         }
         showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -301,7 +320,9 @@ async function _recoverScanState() {
         const r = await api.get('/api/maintenance/dedup/status');
         if (r?.running) _setScanUi(true);
         if (r?.result?.duplicateSets) _renderSets(r.result.duplicateSets);
-    } catch { /* non-fatal */ }
+    } catch {
+        /* non-fatal */
+    }
     try {
         const r = await api.get('/api/maintenance/dedup/delete/status');
         if (r?.running) _setDeleteUi(true);
@@ -335,9 +356,11 @@ async function _deleteSelected() {
     }
     const ok = await confirmSheet({
         title: i18nT('maintenance.dedup.confirm_title', 'Delete duplicate files?'),
-        message: i18nTf('maintenance.dedup.confirm_body',
+        message: i18nTf(
+            'maintenance.dedup.confirm_body',
             { n: ids.length },
-            `Permanently delete ${ids.length} file(s) from disk and database?`),
+            `Permanently delete ${ids.length} file(s) from disk and database?`,
+        ),
         confirmLabel: i18nT('maintenance.dedup.confirm_btn', 'Delete'),
         danger: true,
     });
@@ -352,8 +375,13 @@ async function _deleteSelected() {
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
         showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -399,29 +427,41 @@ function _wireWs() {
         const stage = $('dup-progress-stage');
         if (!bar) return;
         const total = Math.max(1, m.total || 1);
-        const pct = Math.min(100, Math.round((m.processed || 0) / total * 100));
+        const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
         bar.style.width = pct + '%';
         if (stage) {
-            stage.textContent = i18nTf('maintenance.dedup.progress',
+            stage.textContent = i18nTf(
+                'maintenance.dedup.progress',
                 { stage: m.stage || '', processed: m.processed || 0, total: m.total || 0 },
-                `${m.stage || ''} · ${m.processed || 0} / ${m.total || 0}`);
+                `${m.stage || ''} · ${m.processed || 0} / ${m.total || 0}`,
+            );
         }
     });
 
     ws.on('dedup_done', (m) => {
         _setScanUi(false);
         if (m?.error) {
-            showToast(i18nTf('maintenance.dedup.scan_failed',
-                { msg: m.error }, `Dedup scan failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf(
+                    'maintenance.dedup.scan_failed',
+                    { msg: m.error },
+                    `Dedup scan failed: ${m.error}`,
+                ),
+                'error',
+            );
             return;
         }
         const sets = Array.isArray(m?.duplicateSets) ? m.duplicateSets : [];
         _renderSets(sets);
         if (!sets.length) {
-            showToast(i18nTf('maintenance.dedup.none',
-                { scanned: m?.scanned ?? 0 },
-                `No duplicates found — scanned ${m?.scanned ?? 0} files.`),
-                'success');
+            showToast(
+                i18nTf(
+                    'maintenance.dedup.none',
+                    { scanned: m?.scanned ?? 0 },
+                    `No duplicates found — scanned ${m?.scanned ?? 0} files.`,
+                ),
+                'success',
+            );
         }
     });
 
@@ -437,17 +477,25 @@ function _wireWs() {
     ws.on('dedup_delete_done', async (m) => {
         _setDeleteUi(false);
         if (m?.error) {
-            showToast(i18nTf('maintenance.failed',
-                { msg: m.error }, `Failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`),
+                'error',
+            );
             return;
         }
         const removed = m?.removed ?? m?.deleted ?? 0;
         const freed = m?.freedBytes ?? 0;
-        showToast(i18nTf('maintenance.dedup.deleted',
-            { removed, freed: _formatBytes(freed) },
-            `Removed ${removed} files — freed ${_formatBytes(freed)}`),
-            'success');
-        try { await _runScan(); } catch {}
+        showToast(
+            i18nTf(
+                'maintenance.dedup.deleted',
+                { removed, freed: _formatBytes(freed) },
+                `Removed ${removed} files — freed ${_formatBytes(freed)}`,
+            ),
+            'success',
+        );
+        try {
+            await _runScan();
+        } catch {}
     });
 
     ws.on('reindex_progress', (m) => {
@@ -455,12 +503,14 @@ function _wireWs() {
         const status = $('dup-reindex-status');
         if (!bar) return;
         const total = Math.max(1, m.total || 1);
-        const pct = Math.min(100, Math.round((m.processed || 0) / total * 100));
+        const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
         bar.style.width = pct + '%';
         if (status) {
-            status.textContent = i18nTf('maintenance.reindex.progress',
+            status.textContent = i18nTf(
+                'maintenance.reindex.progress',
                 { processed: m.processed || 0, total: m.total || 0 },
-                `${m.processed || 0} / ${m.total || 0} groups`);
+                `${m.processed || 0} / ${m.total || 0} groups`,
+            );
         }
     });
 
@@ -474,16 +524,24 @@ function _wireWs() {
         }
         if (progress) progress.classList.add('hidden');
         if (m?.error) {
-            showToast(i18nTf('maintenance.reindex.failed',
-                { msg: m.error }, `Re-index failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf(
+                    'maintenance.reindex.failed',
+                    { msg: m.error },
+                    `Re-index failed: ${m.error}`,
+                ),
+                'error',
+            );
             if (status) status.textContent = '';
             return;
         }
         const added = m?.added ?? m?.indexed ?? 0;
         const scanned = m?.scanned ?? m?.total ?? 0;
-        const msg = i18nTf('maintenance.reindex.done',
+        const msg = i18nTf(
+            'maintenance.reindex.done',
             { added, scanned },
-            `Re-index done — added ${added} rows from ${scanned} files.`);
+            `Re-index done — added ${added} rows from ${scanned} files.`,
+        );
         showToast(msg, 'success');
         if (status) status.textContent = msg;
     });
@@ -504,11 +562,11 @@ function _bulkKeep(keep) {
             // Update the in-memory marker so `_renderSet` paints the right
             // checkbox/border state when this set is rendered later in the
             // chunk loop. (`_renderSet` reads `_keepDecision` if present.)
-            f._delete = (f.id !== keepId);
+            f._delete = f.id !== keepId;
             // If the set is already rendered, sync the DOM live.
             if (list) {
                 const cb = list.querySelector(`.dup-del[data-id="${f.id}"]`);
-                if (cb) cb.checked = (f.id !== keepId);
+                if (cb) cb.checked = f.id !== keepId;
                 const row = list.querySelector(`[data-file-row="${f.id}"]`);
                 if (row) {
                     row.classList.toggle('border-l-red-400/60', f.id !== keepId);
@@ -518,9 +576,14 @@ function _bulkKeep(keep) {
         }
     }
     _refreshSummary();
-    showToast(i18nTf('maintenance.duplicates.bulk.applied',
-        { n: _sets.length, mode: keep },
-        `Applied "keep ${keep}" to ${_sets.length} set(s)`), 'success');
+    showToast(
+        i18nTf(
+            'maintenance.duplicates.bulk.applied',
+            { n: _sets.length, mode: keep },
+            `Applied "keep ${keep}" to ${_sets.length} set(s)`,
+        ),
+        'success',
+    );
 }
 
 function _bulkClearSelection() {
@@ -529,7 +592,9 @@ function _bulkClearSelection() {
     for (const set of _sets) {
         for (const f of set.files) f._delete = false;
     }
-    list.querySelectorAll('.dup-del').forEach((cb) => { cb.checked = false; });
+    list.querySelectorAll('.dup-del').forEach((cb) => {
+        cb.checked = false;
+    });
     list.querySelectorAll('[data-file-row]').forEach((row) => {
         row.classList.remove('border-l-red-400/60');
         row.classList.add('border-l-tg-green/60');
@@ -572,12 +637,15 @@ export function init() {
                 const keep = btn.dataset.keep;
                 const set = _sets.find((s) => s.hash === hash);
                 if (!set) return;
-                const sortedAsc = [...set.files].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-                const keepId = (keep === 'newest' ? sortedAsc[sortedAsc.length - 1] : sortedAsc[0])?.id;
+                const sortedAsc = [...set.files].sort(
+                    (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
+                );
+                const keepId = (keep === 'newest' ? sortedAsc[sortedAsc.length - 1] : sortedAsc[0])
+                    ?.id;
                 for (const f of set.files) {
-                    f._delete = (f.id !== keepId);
+                    f._delete = f.id !== keepId;
                     const cb = list.querySelector(`.dup-del[data-id="${f.id}"]`);
-                    if (cb) cb.checked = (f.id !== keepId);
+                    if (cb) cb.checked = f.id !== keepId;
                     const row = list.querySelector(`[data-file-row="${f.id}"]`);
                     if (row) {
                         row.classList.toggle('border-l-red-400/60', f.id !== keepId);

@@ -60,9 +60,15 @@
  */
 
 export class BackupProvider {
-    static get name() { throw new Error('subclass must override static name'); }
-    static get displayName() { return this.name; }
-    static get configSchema() { return []; }
+    static get name() {
+        throw new Error('subclass must override static name');
+    }
+    static get displayName() {
+        return this.name;
+    }
+    static get configSchema() {
+        return [];
+    }
 
     /**
      * Validate config and warm up any long-lived clients (HTTP keep-alive,
@@ -71,7 +77,9 @@ export class BackupProvider {
      * @param {object} _cfg
      * @param {BackupContext} _ctx
      */
-    async init(_cfg, _ctx) { throw new Error('not implemented'); }
+    async init(_cfg, _ctx) {
+        throw new Error('not implemented');
+    }
 
     /**
      * Stream-upload `localPath` to `remotePath`.
@@ -82,7 +90,9 @@ export class BackupProvider {
      * @param {BackupContext} _ctx
      * @returns {Promise<UploadResult>}
      */
-    async upload(_localPath, _remotePath, _opts, _ctx) { throw new Error('not implemented'); }
+    async upload(_localPath, _remotePath, _opts, _ctx) {
+        throw new Error('not implemented');
+    }
 
     /**
      * Idempotent delete. Succeeds even if the remote object is already
@@ -92,7 +102,9 @@ export class BackupProvider {
      * @param {string} _remotePath
      * @param {BackupContext} _ctx
      */
-    async delete(_remotePath, _ctx) { throw new Error('not implemented'); }
+    async delete(_remotePath, _ctx) {
+        throw new Error('not implemented');
+    }
 
     /**
      * Stat one remote object. Returns null when absent — distinguishes
@@ -102,7 +114,9 @@ export class BackupProvider {
      * @param {BackupContext} _ctx
      * @returns {Promise<StatResult|null>}
      */
-    async stat(_remotePath, _ctx) { throw new Error('not implemented'); }
+    async stat(_remotePath, _ctx) {
+        throw new Error('not implemented');
+    }
 
     /**
      * List a prefix as an async iterable of `{name, size, mtime}`. The
@@ -113,7 +127,9 @@ export class BackupProvider {
      * @returns {AsyncIterable<{name:string,size:number,mtime:number}>}
      */
     // eslint-disable-next-line require-yield
-    async *list(_prefix, _ctx) { throw new Error('not implemented'); }
+    async *list(_prefix, _ctx) {
+        throw new Error('not implemented');
+    }
 
     /**
      * Cheap connection probe. Used by the dashboard's "Test connection"
@@ -123,10 +139,14 @@ export class BackupProvider {
      * @param {BackupContext} _ctx
      * @returns {Promise<{ok:boolean, detail:string}>}
      */
-    async testConnection(_ctx) { throw new Error('not implemented'); }
+    async testConnection(_ctx) {
+        throw new Error('not implemented');
+    }
 
     /** Free resources. Idempotent. */
-    async close() { /* default: nothing to do */ }
+    async close() {
+        /* default: nothing to do */
+    }
 }
 
 /**
@@ -136,7 +156,7 @@ export class BackupProvider {
 export function optionalDepError(provider, pkg) {
     const e = new Error(
         `Provider "${provider}" needs the optional dependency "${pkg}". ` +
-        `Install it with \`npm install ${pkg}\` and restart the server.`,
+            `Install it with \`npm install ${pkg}\` and restart the server.`,
     );
     e.code = 'OPTIONAL_DEP_MISSING';
     e.optionalDep = pkg;

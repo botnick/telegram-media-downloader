@@ -54,9 +54,15 @@ export async function listUserStories(client, usernameOrId) {
     if (!ref) throw new Error('username required');
     const entity = await client.getEntity(ref);
     const result = await client.invoke(new Api.stories.GetPeerStories({ peer: entity }));
-    const stories = (result?.stories?.stories || []).map(s => serialiseStory(s, ref.replace(/^@/, '')));
+    const stories = (result?.stories?.stories || []).map((s) =>
+        serialiseStory(s, ref.replace(/^@/, '')),
+    );
     return {
-        peer: { id: String(entity.id), username: entity.username || null, firstName: entity.firstName || null },
+        peer: {
+            id: String(entity.id),
+            username: entity.username || null,
+            firstName: entity.firstName || null,
+        },
         stories,
     };
 }
@@ -68,12 +74,12 @@ export async function listUserStories(client, usernameOrId) {
 export async function listAllStories(client) {
     const result = await client.invoke(new Api.stories.GetAllStories({}));
     const peerStories = result?.peerStories || [];
-    const grouped = peerStories.map(ps => {
+    const grouped = peerStories.map((ps) => {
         const peer = ps.peer;
         const peerId = String(peer?.userId || peer?.channelId || peer?.chatId || 'unknown');
         return {
             peerId,
-            stories: (ps.stories || []).map(s => serialiseStory(s)),
+            stories: (ps.stories || []).map((s) => serialiseStory(s)),
         };
     });
     return { groups: grouped, count: result?.count || grouped.length };

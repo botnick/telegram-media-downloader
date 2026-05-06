@@ -35,7 +35,13 @@ import {
     insertPerson,
     setFacePerson,
 } from '../db.js';
-import { vectorToBlob, blobToVector, l2Normalize, topK as vectorTopK, clearCache as clearVectorCache } from './vector-store.js';
+import {
+    vectorToBlob,
+    blobToVector,
+    l2Normalize,
+    topK as vectorTopK,
+    clearCache as clearVectorCache,
+} from './vector-store.js';
 import { embedImage, embedText } from './embeddings.js';
 import { detectFaces, embedFace, dbscan, centroidToBlob } from './faces.js';
 import { classifyImage } from './tags.js';
@@ -52,10 +58,9 @@ const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 export const AI_DEFAULTS = Object.freeze({
     enabled: false,
     embeddings: { enabled: false, model: 'Xenova/clip-vit-base-patch32' },
-    faces:      { enabled: false, model: 'Xenova/yolos-tiny',
-                  epsilon: 0.55, minPoints: 3 },
-    tags:       { enabled: false, model: 'Xenova/vit-base-patch16-224', topK: 5 },
-    phash:      { enabled: false },
+    faces: { enabled: false, model: 'Xenova/yolos-tiny', epsilon: 0.55, minPoints: 3 },
+    tags: { enabled: false, model: 'Xenova/vit-base-patch16-224', topK: 5 },
+    phash: { enabled: false },
     indexConcurrency: 1,
     batchSize: 25,
     fileTypes: ['photo'],
@@ -81,9 +86,9 @@ function _coerceConfig(cfg) {
         ...AI_DEFAULTS,
         ...(cfg || {}),
         embeddings: { ...AI_DEFAULTS.embeddings, ...(cfg?.embeddings || {}) },
-        faces:      { ...AI_DEFAULTS.faces,      ...(cfg?.faces || {}) },
-        tags:       { ...AI_DEFAULTS.tags,       ...(cfg?.tags || {}) },
-        phash:      { ...AI_DEFAULTS.phash,      ...(cfg?.phash || {}) },
+        faces: { ...AI_DEFAULTS.faces, ...(cfg?.faces || {}) },
+        tags: { ...AI_DEFAULTS.tags, ...(cfg?.tags || {}) },
+        phash: { ...AI_DEFAULTS.phash, ...(cfg?.phash || {}) },
         cacheDir: cfg?.cacheDir || null,
     };
     return merged;
@@ -108,7 +113,13 @@ async function _runOneRow(absPath, downloadId, cfg, onLog) {
                 touched = true;
             }
         } catch (e) {
-            try { onLog?.({ source: 'ai', level: 'warn', msg: `phash failed for #${downloadId}: ${e?.message || e}` }); } catch {}
+            try {
+                onLog?.({
+                    source: 'ai',
+                    level: 'warn',
+                    msg: `phash failed for #${downloadId}: ${e?.message || e}`,
+                });
+            } catch {}
         }
     }
 
@@ -122,7 +133,13 @@ async function _runOneRow(absPath, downloadId, cfg, onLog) {
                 clearVectorCache();
             }
         } catch (e) {
-            try { onLog?.({ source: 'ai', level: 'warn', msg: `embedding failed for #${downloadId}: ${e?.message || e}` }); } catch {}
+            try {
+                onLog?.({
+                    source: 'ai',
+                    level: 'warn',
+                    msg: `embedding failed for #${downloadId}: ${e?.message || e}`,
+                });
+            } catch {}
         }
     }
 
@@ -135,7 +152,13 @@ async function _runOneRow(absPath, downloadId, cfg, onLog) {
                 touched = true;
             }
         } catch (e) {
-            try { onLog?.({ source: 'ai', level: 'warn', msg: `tags failed for #${downloadId}: ${e?.message || e}` }); } catch {}
+            try {
+                onLog?.({
+                    source: 'ai',
+                    level: 'warn',
+                    msg: `tags failed for #${downloadId}: ${e?.message || e}`,
+                });
+            } catch {}
         }
     }
 
@@ -149,7 +172,10 @@ async function _runOneRow(absPath, downloadId, cfg, onLog) {
                     if (!fvec) continue;
                     insertFace({
                         downloadId,
-                        x: d.x, y: d.y, w: d.w, h: d.h,
+                        x: d.x,
+                        y: d.y,
+                        w: d.w,
+                        h: d.h,
                         embeddingBlob: vectorToBlob(fvec),
                         personId: null,
                     });
@@ -158,7 +184,13 @@ async function _runOneRow(absPath, downloadId, cfg, onLog) {
                 touched = true;
             }
         } catch (e) {
-            try { onLog?.({ source: 'ai', level: 'warn', msg: `faces failed for #${downloadId}: ${e?.message || e}` }); } catch {}
+            try {
+                onLog?.({
+                    source: 'ai',
+                    level: 'warn',
+                    msg: `faces failed for #${downloadId}: ${e?.message || e}`,
+                });
+            } catch {}
         }
     }
 
@@ -179,9 +211,9 @@ export async function runIndexScan(cfg, { onProgress, signal, onLog } = {}) {
     }
     const capabilities = {
         embeddings: !!merged.embeddings?.enabled,
-        faces:      !!merged.faces?.enabled,
-        tags:       !!merged.tags?.enabled,
-        phash:      !!merged.phash?.enabled,
+        faces: !!merged.faces?.enabled,
+        tags: !!merged.tags?.enabled,
+        phash: !!merged.phash?.enabled,
     };
     if (!Object.values(capabilities).some(Boolean)) {
         return { skipped: true, reason: 'No AI capabilities enabled' };
@@ -190,15 +222,27 @@ export async function runIndexScan(cfg, { onProgress, signal, onLog } = {}) {
     const fileTypes = merged.fileTypes;
     const batchSize = Math.max(1, Math.min(200, Number(merged.batchSize) || 25));
 
-    const summary = { processed: 0, embeddings: 0, faces: 0, tags: 0, phash: 0, errors: 0, total: 0 };
+    const summary = {
+        processed: 0,
+        embeddings: 0,
+        faces: 0,
+        tags: 0,
+        phash: 0,
+        errors: 0,
+        total: 0,
+    };
 
     // Pre-count for a determinate progress bar.
     try {
-        const countRow = getDb().prepare(
-            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${fileTypes.map(() => '?').join(',')}) AND ai_indexed_at IS NULL`
-        ).get(...fileTypes);
+        const countRow = getDb()
+            .prepare(
+                `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${fileTypes.map(() => '?').join(',')}) AND ai_indexed_at IS NULL`,
+            )
+            .get(...fileTypes);
         summary.total = countRow.n || 0;
-    } catch { /* leave at 0 */ }
+    } catch {
+        /* leave at 0 */
+    }
 
     onProgress?.({ stage: 'starting', processed: 0, total: summary.total, capabilities });
 
@@ -217,12 +261,18 @@ export async function runIndexScan(cfg, { onProgress, signal, onLog } = {}) {
                 const r = await _runOneRow(abs, row.id, { ...merged, capabilities }, onLog);
                 summary.processed += 1;
                 if (r.embedding) summary.embeddings += 1;
-                if (r.faces)     summary.faces      += r.faces;
-                if (r.tags)      summary.tags       += r.tags;
-                if (r.phash)     summary.phash      += 1;
+                if (r.faces) summary.faces += r.faces;
+                if (r.tags) summary.tags += r.tags;
+                if (r.phash) summary.phash += 1;
             } catch (e) {
                 summary.errors += 1;
-                try { onLog?.({ source: 'ai', level: 'error', msg: `index row #${row.id}: ${e?.message || e}` }); } catch {}
+                try {
+                    onLog?.({
+                        source: 'ai',
+                        level: 'error',
+                        msg: `index row #${row.id}: ${e?.message || e}`,
+                    });
+                } catch {}
             }
             if (summary.processed % 5 === 0 || summary.processed === summary.total) {
                 onProgress?.({
@@ -252,9 +302,11 @@ export async function runPhashScan({ onProgress, signal, onLog, fileTypes = ['ph
     const types = fileTypes.length ? fileTypes : ['photo'];
     const ph = types.map(() => '?').join(',');
     try {
-        const c = getDb().prepare(
-            `SELECT COUNT(*) AS n FROM downloads WHERE phash IS NULL AND file_type IN (${ph})`
-        ).get(...types);
+        const c = getDb()
+            .prepare(
+                `SELECT COUNT(*) AS n FROM downloads WHERE phash IS NULL AND file_type IN (${ph})`,
+            )
+            .get(...types);
         summary.total = c?.n || 0;
     } catch {}
 
@@ -262,13 +314,15 @@ export async function runPhashScan({ onProgress, signal, onLog, fileTypes = ['ph
 
     const batchSize = 50;
     while (!signal?.aborted) {
-        const batch = getDb().prepare(`
+        const batch = getDb()
+            .prepare(`
             SELECT id, file_path FROM downloads
              WHERE phash IS NULL
                AND file_type IN (${ph})
              ORDER BY created_at ASC
              LIMIT ?
-        `).all(...types, batchSize);
+        `)
+            .all(...types, batchSize);
         if (!batch.length) break;
         for (const row of batch) {
             if (signal?.aborted) break;
@@ -282,7 +336,13 @@ export async function runPhashScan({ onProgress, signal, onLog, fileTypes = ['ph
                 }
             } catch (e) {
                 summary.errors += 1;
-                try { onLog?.({ source: 'ai', level: 'warn', msg: `phash row #${row.id}: ${e?.message || e}` }); } catch {}
+                try {
+                    onLog?.({
+                        source: 'ai',
+                        level: 'warn',
+                        msg: `phash row #${row.id}: ${e?.message || e}`,
+                    });
+                } catch {}
             }
             summary.processed += 1;
             if (summary.processed % 25 === 0 || summary.processed === summary.total) {
@@ -306,11 +366,13 @@ export async function runFaceClustering(cfg, { onProgress, signal, onLog: _onLog
         onProgress?.({ stage: 'done', faces: 0, people: 0 });
         return { faces: 0, people: 0 };
     }
-    const items = faces.map((f) => {
-        const vec = blobToVector(f.embedding);
-        if (vec) l2Normalize(vec);
-        return { id: f.id, vec };
-    }).filter((x) => x.vec);
+    const items = faces
+        .map((f) => {
+            const vec = blobToVector(f.embedding);
+            if (vec) l2Normalize(vec);
+            return { id: f.id, vec };
+        })
+        .filter((x) => x.vec);
 
     if (signal?.aborted) return { aborted: true };
     onProgress?.({ stage: 'clustering', faces: items.length });
@@ -331,7 +393,9 @@ export async function runFaceClustering(cfg, { onProgress, signal, onLog: _onLog
             faceCount: c.size,
         });
         for (const faceId of c.members) {
-            try { setFacePerson(faceId, personId); } catch {}
+            try {
+                setFacePerson(faceId, personId);
+            } catch {}
         }
     }
 
@@ -365,7 +429,11 @@ export function findPhashGroups({ threshold = 6, fileTypes = ['photo'] } = {}) {
  * similarity. Returns `{ results: [...], total }` where each result has
  * `{ download_id, score, ...row }`.
  */
-export async function searchByText(query, cfg, { limit = 20, fileTypes = null, onLog = null } = {}) {
+export async function searchByText(
+    query,
+    cfg,
+    { limit = 20, fileTypes = null, onLog = null } = {},
+) {
     const merged = _coerceConfig(cfg);
     const vec = await embedText(query, merged.embeddings, undefined, onLog);
     if (!vec) return { results: [], total: 0 };
@@ -378,7 +446,7 @@ export async function searchByText(query, cfg, { limit = 20, fileTypes = null, o
             file_path: r.row.file_path,
             file_type: r.row.file_type,
             file_size: r.row.file_size,
-            group_id:  r.row.group_id,
+            group_id: r.row.group_id,
             group_name: r.row.group_name,
             created_at: r.row.created_at,
         })),
@@ -412,23 +480,35 @@ async function _drainBg() {
         try {
             const live = loadConfig();
             cfg = _coerceConfig(live.advanced?.ai || {});
-        } catch { cfg = _coerceConfig({}); }
-        if (!cfg.enabled) { _bgQueue.length = 0; return; }
+        } catch {
+            cfg = _coerceConfig({});
+        }
+        if (!cfg.enabled) {
+            _bgQueue.length = 0;
+            return;
+        }
         const capabilities = {
             embeddings: !!cfg.embeddings?.enabled,
-            faces:      !!cfg.faces?.enabled,
-            tags:       !!cfg.tags?.enabled,
-            phash:      !!cfg.phash?.enabled,
+            faces: !!cfg.faces?.enabled,
+            tags: !!cfg.tags?.enabled,
+            phash: !!cfg.phash?.enabled,
         };
-        if (!Object.values(capabilities).some(Boolean)) { _bgQueue.length = 0; return; }
+        if (!Object.values(capabilities).some(Boolean)) {
+            _bgQueue.length = 0;
+            return;
+        }
         const db = getDb();
-        const lookup = db.prepare('SELECT id, file_path, file_type, ai_indexed_at FROM downloads WHERE id = ?');
+        const lookup = db.prepare(
+            'SELECT id, file_path, file_type, ai_indexed_at FROM downloads WHERE id = ?',
+        );
         while (_bgQueue.length) {
             const id = _bgQueue.shift();
             const row = lookup.get(Number(id));
             if (!row) continue;
             if (row.ai_indexed_at != null) continue;
-            const eligible = (cfg.fileTypes || ['photo']).includes(String(row.file_type || '').toLowerCase());
+            const eligible = (cfg.fileTypes || ['photo']).includes(
+                String(row.file_type || '').toLowerCase(),
+            );
             if (!eligible) continue;
             const abs = _resolveAbs(row.file_path);
             if (!abs) {
@@ -437,7 +517,9 @@ async function _drainBg() {
             }
             try {
                 await _runOneRow(abs, row.id, { ...cfg, capabilities });
-            } catch { /* per-file failure is silent — the next batch scan will retry */ }
+            } catch {
+                /* per-file failure is silent — the next batch scan will retry */
+            }
         }
     } finally {
         _bgRunning = false;

@@ -72,23 +72,23 @@ export function getGroupName(id, opts = {}) {
     if (cached && !looksUnresolved(cached, key)) return cached;
 
     // 2. Config-defined groups (state.groups).
-    const cfg = (state.groups || []).find(g => String(g.id) === key);
+    const cfg = (state.groups || []).find((g) => String(g.id) === key);
     if (cfg && !looksUnresolved(cfg.name, key)) return cfg.name;
 
     // 3. Dialogs list (browse-chats picker).
-    const dlg = (state.allDialogs || []).find(d => String(d.id) === key);
+    const dlg = (state.allDialogs || []).find((d) => String(d.id) === key);
     if (dlg) {
         const dn = dlg.name || dlg.title;
         if (!looksUnresolved(dn, key)) return dn;
     }
 
     // 4. Downloads list (DB-side group_name).
-    const dn2 = (state.downloads || []).find(d => String(d.id) === key);
+    const dn2 = (state.downloads || []).find((d) => String(d.id) === key);
     if (dn2 && !looksUnresolved(dn2.name, key)) return dn2.name;
 
     // 5. Any file row carrying group_name for this id.
     const file = (state.files || []).find(
-        f => String(f.groupId ?? f.group_id ?? '') === key && (f.groupName || f.group_name)
+        (f) => String(f.groupId ?? f.group_id ?? '') === key && (f.groupName || f.group_name),
     );
     if (file) {
         const fn = file.groupName || file.group_name;

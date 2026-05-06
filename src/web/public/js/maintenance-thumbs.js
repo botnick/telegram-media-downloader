@@ -43,9 +43,12 @@ async function _refreshStats() {
             // Render each allowed width as a chip — the slash-joined
             // string read like a phone number; chips communicate "these
             // are distinct picker options the server will serve at".
-            widthsEl.innerHTML = r.allowedWidths.map((w) =>
-                `<span class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-tg-blue/15 text-tg-blue text-[11px] font-medium tabular-nums">${Number(w) || 0}<span class="text-tg-blue/70 ml-0.5">px</span></span>`
-            ).join('');
+            widthsEl.innerHTML = r.allowedWidths
+                .map(
+                    (w) =>
+                        `<span class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-tg-blue/15 text-tg-blue text-[11px] font-medium tabular-nums">${Number(w) || 0}<span class="text-tg-blue/70 ml-0.5">px</span></span>`,
+                )
+                .join('');
         }
         if (ffmpegChip) {
             ffmpegChip.classList.toggle('hidden', r.ffmpegAvailable !== false);
@@ -55,12 +58,17 @@ async function _refreshStats() {
             if (byKind && typeof byKind === 'object') {
                 const order = ['image', 'photo', 'video', 'audio', 'other'];
                 const entries = Object.entries(byKind).sort(
-                    (a, b) => (order.indexOf(a[0]) - order.indexOf(b[0])));
-                breakdownEl.innerHTML = entries.map(([k, v]) => `
+                    (a, b) => order.indexOf(a[0]) - order.indexOf(b[0]),
+                );
+                breakdownEl.innerHTML = entries
+                    .map(
+                        ([k, v]) => `
                     <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
                         <div class="text-xs text-tg-textSecondary uppercase tracking-wide">${k}</div>
                         <div class="text-lg font-semibold text-tg-text tabular-nums">${Number(v) || 0}</div>
-                    </div>`).join('');
+                    </div>`,
+                    )
+                    .join('');
             } else {
                 breakdownEl.innerHTML = '';
             }
@@ -110,7 +118,10 @@ async function _buildAll() {
 async function _wipeCache() {
     const ok = await confirmSheet({
         title: i18nT('maintenance.thumbs.rebuild_title', 'Rebuild thumbnail cache?'),
-        message: i18nT('maintenance.thumbs.rebuild_body', 'Wipes every cached thumbnail. The next gallery scroll regenerates them on demand. Useful when previews look stale or after a quality tweak.'),
+        message: i18nT(
+            'maintenance.thumbs.rebuild_body',
+            'Wipes every cached thumbnail. The next gallery scroll regenerates them on demand. Useful when previews look stale or after a quality tweak.',
+        ),
         confirmLabel: i18nT('maintenance.thumbs.rebuild_confirm', 'Wipe cache'),
         danger: true,
     });
@@ -125,8 +136,13 @@ async function _wipeCache() {
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
         showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -153,12 +169,14 @@ function _wireWs() {
         if (progress) progress.classList.remove('hidden');
         if (!bar) return;
         const total = Math.max(1, m.total || 1);
-        const pct = Math.min(100, Math.round((m.processed || 0) / total * 100));
+        const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
         bar.style.width = pct + '%';
         if (status) {
-            status.textContent = i18nTf('maintenance.thumbs.progress',
+            status.textContent = i18nTf(
+                'maintenance.thumbs.progress',
                 { processed: m.processed || 0, total: m.total || 0, built: m.built || 0 },
-                `${m.processed || 0} / ${m.total || 0} · ${m.built || 0} built`);
+                `${m.processed || 0} / ${m.total || 0} · ${m.built || 0} built`,
+            );
         }
     });
     ws.on('thumbs_done', (m) => {
@@ -166,10 +184,14 @@ function _wireWs() {
         if (m?.error) {
             showToast(m.error, 'error');
         } else {
-            showToast(i18nTf('maintenance.thumbs.done',
-                { built: m?.built || 0, skipped: m?.skipped || 0, scanned: m?.scanned || 0 },
-                `Built ${m?.built || 0}, ${m?.skipped || 0} already cached out of ${m?.scanned || 0}`),
-                'success');
+            showToast(
+                i18nTf(
+                    'maintenance.thumbs.done',
+                    { built: m?.built || 0, skipped: m?.skipped || 0, scanned: m?.scanned || 0 },
+                    `Built ${m?.built || 0}, ${m?.skipped || 0} already cached out of ${m?.scanned || 0}`,
+                ),
+                'success',
+            );
         }
         _refreshStats().catch(() => {});
     });
@@ -180,9 +202,14 @@ function _wireWs() {
         if (m?.error) {
             showToast(m.error, 'error');
         } else {
-            showToast(i18nTf('maintenance.thumbs.rebuilt',
-                { removed: m?.removed || 0 },
-                `Wiped ${m?.removed || 0} cached thumbnails`), 'success');
+            showToast(
+                i18nTf(
+                    'maintenance.thumbs.rebuilt',
+                    { removed: m?.removed || 0 },
+                    `Wiped ${m?.removed || 0} cached thumbnails`,
+                ),
+                'success',
+            );
         }
         _refreshStats().catch(() => {});
     });
@@ -194,7 +221,9 @@ async function _recoverBuildState() {
     try {
         const r = await api.get('/api/maintenance/thumbs/build/status');
         if (r?.running) _setBuildUi(true);
-    } catch { /* status endpoint failures are non-fatal */ }
+    } catch {
+        /* status endpoint failures are non-fatal */
+    }
     try {
         const r = await api.get('/api/maintenance/thumbs/rebuild/status');
         if (r?.running) _setWipeUi(true);
@@ -215,8 +244,12 @@ export function init() {
         try {
             const cfg = await api.get('/api/config');
             loadAdvanced(cfg);
-        } catch { /* select still operable; autosave still wired */ }
-        try { setupAutoSave(); } catch {}
+        } catch {
+            /* select still operable; autosave still wired */
+        }
+        try {
+            setupAutoSave();
+        } catch {}
     })();
     _refreshStats();
     _recoverBuildState();

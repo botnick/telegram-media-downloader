@@ -25,7 +25,7 @@ const TOOLS = [
         slug: 'duplicates',
         i18nTitle: 'maintenance.hub.duplicates.title',
         defaultTitle: 'Find duplicate files',
-        i18nBody:  'maintenance.hub.duplicates.body',
+        i18nBody: 'maintenance.hub.duplicates.body',
         defaultBody: 'Hash every file and reclaim space from byte-identical copies.',
         icon: 'ri-file-copy-2-line',
         accent: 'orange',
@@ -36,7 +36,7 @@ const TOOLS = [
         slug: 'thumbs',
         i18nTitle: 'maintenance.hub.thumbs.title',
         defaultTitle: 'Build thumbnails',
-        i18nBody:  'maintenance.hub.thumbs.body',
+        i18nBody: 'maintenance.hub.thumbs.body',
         defaultBody: 'Generate WebP previews for every catalogued file.',
         icon: 'ri-image-2-line',
         accent: 'blue',
@@ -47,8 +47,9 @@ const TOOLS = [
         slug: 'video',
         i18nTitle: 'maintenance.hub.video.title',
         defaultTitle: 'Optimise videos for streaming',
-        i18nBody:  'maintenance.hub.video.body',
-        defaultBody: 'Rewrite MP4s with `+faststart` so the player can seek + play audio without buffering the whole file.',
+        i18nBody: 'maintenance.hub.video.body',
+        defaultBody:
+            'Rewrite MP4s with `+faststart` so the player can seek + play audio without buffering the whole file.',
         icon: 'ri-film-line',
         accent: 'blue',
         statusUrl: '/api/maintenance/faststart/status',
@@ -58,7 +59,7 @@ const TOOLS = [
         slug: 'nsfw',
         i18nTitle: 'maintenance.hub.nsfw.title',
         defaultTitle: 'NSFW review',
-        i18nBody:  'maintenance.hub.nsfw.body',
+        i18nBody: 'maintenance.hub.nsfw.body',
         defaultBody: 'Five-tier classifier — keep what is confidently 18+, delete what is not.',
         icon: 'ri-alarm-warning-line',
         accent: 'red',
@@ -69,7 +70,7 @@ const TOOLS = [
         slug: 'logs',
         i18nTitle: 'maintenance.hub.logs.title',
         defaultTitle: 'Log viewer',
-        i18nBody:  'maintenance.hub.logs.body',
+        i18nBody: 'maintenance.hub.logs.body',
         defaultBody: 'Realtime tail of every backend log source — no docker logs needed.',
         icon: 'ri-terminal-box-line',
         accent: 'purple',
@@ -80,7 +81,7 @@ const TOOLS = [
         slug: 'backup',
         i18nTitle: 'maintenance.hub.backup.title',
         defaultTitle: 'Backup destinations',
-        i18nBody:  'maintenance.hub.backup.body',
+        i18nBody: 'maintenance.hub.backup.body',
         defaultBody: 'NAS / S3 / SFTP / Google Drive / Dropbox mirror + scheduled snapshots.',
         icon: 'ri-cloud-line',
         accent: 'green',
@@ -91,21 +92,30 @@ const TOOLS = [
         slug: 'ai',
         i18nTitle: 'maintenance.hub.ai.title',
         defaultTitle: 'AI search & people',
-        i18nBody:  'maintenance.hub.ai.body',
+        i18nBody: 'maintenance.hub.ai.body',
         defaultBody: 'Local-only semantic search, face clustering, perceptual dedup, auto-tags.',
         icon: 'ri-sparkling-2-line',
         accent: 'violet',
         statusUrl: '/api/ai/index/scan/status',
-        wsEvents: ['ai_index_progress', 'ai_index_done', 'ai_people_progress', 'ai_people_done', 'ai_phash_progress', 'ai_phash_done', 'ai_tags_progress', 'ai_tags_done'],
+        wsEvents: [
+            'ai_index_progress',
+            'ai_index_done',
+            'ai_people_progress',
+            'ai_people_done',
+            'ai_phash_progress',
+            'ai_phash_done',
+            'ai_tags_progress',
+            'ai_tags_done',
+        ],
     },
 ];
 
 const ACCENT_BG = {
     orange: 'bg-tg-orange/15 text-tg-orange',
-    blue:   'bg-tg-blue/15 text-tg-blue',
-    red:    'bg-red-500/15 text-red-300',
+    blue: 'bg-tg-blue/15 text-tg-blue',
+    red: 'bg-red-500/15 text-red-300',
     purple: 'bg-purple-500/15 text-purple-300',
-    green:  'bg-green-500/15 text-green-300',
+    green: 'bg-green-500/15 text-green-300',
     violet: 'bg-violet-500/15 text-violet-300',
 };
 
@@ -147,12 +157,16 @@ function _renderGrid() {
 }
 
 async function _refreshLive() {
-    await Promise.all(TOOLS.filter((t) => t.statusUrl).map(async (t) => {
-        try {
-            const r = await api.get(t.statusUrl);
-            _live.set(t.slug, { running: !!(r && r.running) });
-        } catch { /* status endpoint failures are non-fatal */ }
-    }));
+    await Promise.all(
+        TOOLS.filter((t) => t.statusUrl).map(async (t) => {
+            try {
+                const r = await api.get(t.statusUrl);
+                _live.set(t.slug, { running: !!(r && r.running) });
+            } catch {
+                /* status endpoint failures are non-fatal */
+            }
+        }),
+    );
     _renderGrid();
 }
 
@@ -164,12 +178,15 @@ function _wireWs() {
     for (const tool of TOOLS) {
         for (const evt of tool.wsEvents) {
             ws.on(evt, (m) => {
-                const running = evt.endsWith('_progress') ? true : (m?.running === true);
+                const running = evt.endsWith('_progress') ? true : m?.running === true;
                 _live.set(tool.slug, { running });
                 // Throttle re-render so a chatty progress stream doesn't
                 // re-paint the grid 60×/second. Use a coalescing timer.
                 if (!_wireWs._t) {
-                    _wireWs._t = setTimeout(() => { _wireWs._t = null; _renderGrid(); }, 200);
+                    _wireWs._t = setTimeout(() => {
+                        _wireWs._t = null;
+                        _renderGrid();
+                    }, 200);
                 }
             });
         }
