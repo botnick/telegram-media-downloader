@@ -2305,8 +2305,12 @@
 
                     <!-- Tier panel -->
                     <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
                             <div class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.tiers_heading">Tiers</div>
+                            <label class="inline-flex items-center gap-1.5 text-xs text-tg-textSecondary cursor-pointer select-none">
+                                <input id="nsfw-show-whitelisted" type="checkbox" class="accent-tg-blue">
+                                <span data-i18n="maintenance.nsfw.show_whitelisted">Show whitelisted</span>
+                            </label>
                         </div>
                         <div id="nsfw-tiers" class="grid grid-cols-2 sm:grid-cols-5 gap-2"></div>
                     </section>
@@ -2337,7 +2341,10 @@
                     <!-- Bulk actions toolbar (only when a tier is selected) -->
                     <section id="nsfw-bulk-bar" class="hidden bg-tg-panel rounded-xl p-3 mb-3">
                         <div class="flex items-center justify-between gap-3 flex-wrap">
-                            <div id="nsfw-bulk-label" class="text-xs text-tg-textSecondary"></div>
+                            <div class="min-w-0 flex-1">
+                                <div id="nsfw-bulk-label" class="text-xs text-tg-textSecondary"></div>
+                                <div id="nsfw-bulk-progress" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums" aria-live="polite"></div>
+                            </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 <button id="nsfw-bulk-reclassify-btn" class="tg-btn-secondary text-xs px-3 py-1.5"></button>
                                 <button id="nsfw-bulk-whitelist-btn" class="tg-btn-secondary text-xs px-3 py-1.5"></button>
