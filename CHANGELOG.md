@@ -2,10 +2,25 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.7.3] — 2026-05-07
+
+### Added — Multilingual AI search
+- **Default semantic-search model is now `Xenova/siglip-base-patch16-256-multilingual` (~370 MB, 768-dim, 50+ languages).** The previous default (`Xenova/clip-vit-base-patch32`, 90 MB / English-only) returned poor results for non-English queries — typing "แมว" or "หาดทราย" against a Thai-first archive ranked random photos at the top because CLIP doesn't know Thai. SigLIP's text encoder shares a vector space across the languages it was trained on, so the same query box now serves both English and Thai queries from one index. **First boot after upgrade auto-wipes existing 512-dim CLIP embeddings and re-indexes** — state-migration detects the model mismatch in `image_embeddings`, DELETEs the stale rows, and resets `downloads.ai_indexed_at = NULL` so the regular scan loop rebuilds them with SigLIP. Operators see a one-time `[state-migration] reembed sweep: dropping N stale row(s)` line in the boot transcript.
+- **Models panel preset chips.** New "English-only · CLIP" and "Multilingual · SigLIP" chips on `/maintenance/ai`. Click an inactive chip → confirmation sheet discloses download size + how many photos will need re-indexing → PATCH config + POST `/api/ai/index/reembed` in one round trip.
+- **`POST /api/ai/index/reembed`** endpoint — wipes embeddings whose `model` differs from the active id, then kicks `runIndexScan`. Atomic via the existing JobTracker (returns 409 ALREADY_RUNNING if a scan is already live).
+- **Defence-in-depth filters in vector-store.** `blobToVector` now rejects mismatched-dim blobs (a 512-dim CLIP row can't be silently treated as 768-dim SigLIP), and `topK()` filters cached rows by current model id so a runtime swap can't pollute results before the wipe completes.
+
+### Performance
+- **Gallery deep-scroll now holds 60 fps on 5000-tile archives.** The previous behaviour relied on `content-visibility: auto` to skip layout for off-screen tiles, but every tile still held a decoded thumbnail bitmap in memory — at 5000 tiles that was ~150 MB resident even when only ~20 were on screen, and main-thread time managing that working set dragged scroll down to ~20 fps past the 2000-row mark. A new tile-window `IntersectionObserver` (1500 px buffer either side of viewport) detaches `.tile-thumb` children into a per-tile `WeakMap`-stashed `DocumentFragment` when they leave the buffer and reattaches the fragment on re-entry. The browser image cache still answers from a 304 the second time around so there's no flicker. Selection state and click delegation are unaffected because they key off the outer `.media-item[data-path]` node — never evicted.
+- **Tile placeholder sizing tuned per mode/breakpoint.** The previous `contain-intrinsic-size: auto 200px` was 25-50 % off the real rendered tile height (120-180 px in grid mode depending on the column-width breakpoint), which made the scrollbar drift every time a tile crossed `content-visibility`'s reveal threshold. Set explicit values per `.view-compact`, `.view-list`, and the desktop breakpoint so the placeholder matches the real geometry.
+- **Dropped 10 000+ inline `onload` / `onerror` closures** from a typical 5000-tile gallery — replaced with two capture-phase delegated listeners on the grid root. Same visual outcome (fade-in on success, hide on failure), zero per-tile parser/GC cost.
 
 ### Fixed
 - **AI tag/face scans no longer fail with HuggingFace 401s.** Operators who installed before the public-default model swap still had `Xenova/mobilenet_v2` and `Xenova/yolov5n-face` saved in `kv['config'].advanced.ai`, both of which now require gated access; every scan would log `Unauthorized access to file: …/config.json` for those rows. Boot-time state-migration now sweeps known-gated ids out of saved config (rewriting them to the matching public default — `Xenova/vit-base-patch16-224` for tags, `Xenova/yolos-tiny` for faces). The `/api/ai/status` endpoint also returns a `gatedWarnings` array so the dashboard can show a one-click "Apply public default" banner when an operator pastes a gated id at runtime. Idempotent — clean configs are untouched.
+
+### Internal
+- SW bumped `v278` → `v279`.
+- `biome check --write .` swept 9 pre-existing format errors out of the tree (multi-line ternaries / chained `.status().json()` calls Biome wants on one line). Pure whitespace; no logic touched.
 
 ## [2.7.2] — 2026-05-07
 
