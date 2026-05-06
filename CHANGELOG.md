@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.14] — 2026-05-06
+
+### Internal
+- **Toolchain swap: Biome 2 + Lefthook replaces eslint, prettier, husky, and lint-staged.** Single binary now does lint + format + autofix; pre-commit hook runs `biome check --write` only on staged files (via `{staged_files}` in `lefthook.yml`). Lint config tuned to match the prior eslint.config.js intent (project predates a linter — focus on real bugs, not style; rules that would force source-code rewrites are off and can be enabled in follow-up PRs). 128 files reformatted on first pass — pure whitespace + quote churn from switching formatters; no behavior changes. README, CONTRIBUTING, and AUDIT.md updated to reflect the new toolchain. Five CodeQL alerts on the merge ref were dismissed (`won't fix`) because they were re-detections of pre-existing patterns at line numbers that shifted under reformat — the underlying logic was untouched. (PR #28)
+- Removed `apps/` and `packages/` directories — leftover artifacts (~10 MB) from a never-shipped monorepo experiment, unrelated to the runtime.
+- README's `npm run web` reference was a long-standing dead link (no such script). Replaced with `npm start` (dashboard) and `npm run menu` (interactive CLI menu).
+- SW bumped `v273` → `v274`.
+
 ## [2.6.13] — 2026-05-06
 
 ### Fixed
