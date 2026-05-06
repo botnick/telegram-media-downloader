@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] — 2026-05-06
+
+### Changed — NSFW review tool redesign
+- Grid view (3 / 4 / 6 cols by breakpoint) replaces the one-row-per-file list; click a tile to open the full media viewer with score / tier overlay.
+- Lightbox shortcuts: `w` whitelist (or restore) · `r` re-classify · `d` delete. Actions auto-advance so the operator never has to click "next".
+- Page shortcuts (modal closed): `[` / `]` page · `1`-`5` pick tier · `0` clear tier.
+- Tier + page + show-whitelisted live in `#/maintenance/nsfw?tier=...&page=...&whitelisted=...` so refresh / back-button restore filter context. Bare URL defaults to the `uncertain` tier.
+- "Show whitelisted" toggle + per-row Restore + bulk "Restore all" recover from accidental whitelists. `/v2/unwhitelist` now accepts the same `{tier|...}` body shape as the other bulk endpoints.
+- Histogram: `h-32`, tier-band shading behind bars, vertical threshold marker (`τ` label), x-axis ticks at 0 / 25 / 50 / 75 / 100%.
+- Settings card collapses into a native `<details>` / `<summary>` so the review surface lives above the fold.
+
+### Performance
+- `getNsfwHistogram` is one `GROUP BY bin` SQL pass (was: load every score into Node and bin in JS).
+- `getNsfwTierCounts` is one `CASE-SUM` (was: 5 separate `COUNT(*)`).
+- `getNsfwIdsByTier` is one `SELECT id` (was: paginated walker, 75+ queries on a 15k-row tier). `scoreMin` / `scoreMax` filters pushed into SQL.
+- New partial index `idx_nsfw_tier (file_type, nsfw_whitelist, nsfw_score) WHERE nsfw_score IS NOT NULL` covers the hot path for tier counts, list pagination, and bulk-id resolution.
+- Page init parallelises 5 independent fetches via `Promise.all`.
+
+### Fixed
+- Cache-clear confirm dialog now styles the destructive button correctly (`confirmDanger` was an unrecognized field; uses the documented `danger` flag).
+- Bulk-action buttons recover automatically when a `nsfw_bulk_done` event drops in flight: 60 s watchdog re-polls `/v2/bulk/status`, and `ws.on('open')` reconciles on reconnect.
+- `nsfw_bulk_progress` payload's `processed` / `total` now drives a live "Processing N / M…" hint instead of being discarded.
+- Duplicate "Keep" per-row button removed (was a wrapper around `/v2/reclassify`).
+
+### Tests
+- `tests/db-nsfw.test.js` (11) — tier-counts shape, histogram density + bin clamp, ids resolver edge cases, `EXPLAIN QUERY PLAN` index selection.
+
 ## [2.7.0] — 2026-05-06
 
 ### Changed — Runtime state moves into SQLite
