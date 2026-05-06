@@ -25,7 +25,7 @@ Requires **Node.js 22+** (24 LTS recommended). If `npm run doctor` reports `NODE
 - ES Modules everywhere (`"type": "module"`).
 - Telegram IDs are strings; large ints overflow `Number.MAX_SAFE_INTEGER`.
 - Reuse existing utilities — `sanitizeName`, `loadConfig`, `safeResolveDownload`, `web-auth`, `SecureSession`. Don't reinvent.
-- Run `npm run format` (Prettier) before committing.
+- The Lefthook pre-commit hook runs `biome check --write` on every staged file, so lint + format fixups happen automatically. Run `npm run check` manually if you want to apply them across the whole repo.
 
 Security issues → [`SECURITY.md`](SECURITY.md), not the public tracker.
 
