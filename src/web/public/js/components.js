@@ -23,6 +23,10 @@ import { createAvatar, escapeHtml, formatRelativeTime } from './utils.js';
  *       cog,                        // bool — render a cog button on the right
  *                                   // (action="settings" data attr) for one-tap
  *                                   // access to per-group settings
+ *       accountChips,               // [{ id, label, title? }] — small pills under
+ *                                   // the title showing which account(s) this
+ *                                   // chat lives in. Used by Manage Groups when
+ *                                   // multiple Telegram accounts are linked.
  *   })
  *
  * Returns an HTML string. The caller is responsible for attaching click
@@ -39,6 +43,7 @@ export function renderChatRow(opts) {
         time, lastDownloadAt,
         data = {},
         cog = false,
+        accountChips = null,
     } = opts;
 
     const avatar = createAvatar({
@@ -72,6 +77,25 @@ export function renderChatRow(opts) {
           </button>`
         : '';
 
+    // Account chips (multi-account installs only). Hash the accountId
+    // to a stable hue so the same account keeps the same chip color
+    // across rows + reloads — easier to scan visually than fixed slots.
+    let chipsHtml = '';
+    if (Array.isArray(accountChips) && accountChips.length > 0) {
+        chipsHtml = `<div class="row-account-chips">${
+            accountChips.map((c) => {
+                const cid = String(c.id || '');
+                let h = 0;
+                for (let i = 0; i < cid.length; i++) h = (h * 31 + cid.charCodeAt(i)) >>> 0;
+                const hue = h % 360;
+                const style = `--chip-hue:${hue}`;
+                const label = c.label || cid;
+                const title = c.title || label;
+                return `<span class="account-chip" style="${style}" title="${escapeHtml(title)}">${escapeHtml(label)}</span>`;
+            }).join('')
+        }</div>`;
+    }
+
     return `
         <div class="chat-row${selected ? ' is-selected' : ''}" ${datasetAttrs} role="button" tabindex="0">
             ${avatar}
@@ -80,6 +104,7 @@ export function renderChatRow(opts) {
                     <span class="row-title-name">${escapeHtml(String(name || id))}</span>
                 </div>
                 ${subtitle ? `<div class="row-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+                ${chipsHtml}
             </div>
             ${meta.length ? `<div class="row-meta">${meta.join('')}</div>` : ''}
             ${cogBtn}
