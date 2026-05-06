@@ -7754,6 +7754,20 @@ wss.on('connection', (ws) => {
     ws.on('close', () => clients.delete(ws));
 });
 
+// Last-resort handler — converts any throw or rejected promise that
+// escaped a route into a JSON 500 instead of leaving the response open
+// until the reverse proxy times out (manifests as 502 to the client).
+// Must be registered after all routes/middleware and before listen().
+app.use((err, req, res, _next) => {
+    if (res.headersSent) return;
+    log({
+        source: 'http',
+        level: 'error',
+        msg: `${req.method} ${req.url} → ${err?.stack || err?.message || err}`,
+    });
+    res.status(500).json({ error: err?.message || 'Internal Server Error' });
+});
+
 const PORT = process.env.PORT || 3000;
 // Without this, EADDRINUSE made the container exit silently with no clue
 // where to look. Print a clear message + exit non-zero so docker-compose
