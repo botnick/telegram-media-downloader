@@ -34,7 +34,6 @@ All notable changes to this project are documented here. The format is based on 
 - Bulk-action buttons recover automatically when a `nsfw_bulk_done` event drops in flight: 60 s watchdog re-polls `/v2/bulk/status`, and `ws.on('open')` reconciles on reconnect.
 - `nsfw_bulk_progress` payload's `processed` / `total` now drives a live "Processing N / M…" hint instead of being discarded.
 - Duplicate "Keep" per-row button removed (was a wrapper around `/v2/reclassify`).
-- **HTTP layer hardened against 502 bursts.** Uncaught exceptions now drain in-flight requests for 5 s (via `server.close()`) before exit instead of `process.exit(1)`-ing immediately; an Express error middleware converts thrown route handlers / `next(err)` into JSON 500s; Node socket timeouts (`keepAliveTimeout` 65 s, `headersTimeout` 70 s, `requestTimeout` 120 s) align with reverse-proxy windows so nginx/Cloudflare don't reuse sockets the origin closed.
 
 ### Fixed — HTTP resilience (no more 502 bursts on transient errors)
 - HTTP server drains in-flight requests on uncaught exceptions instead of calling `process.exit(1)` immediately. Concurrent clients hitting the box during the watchdog restart window used to all see `502 Bad Gateway`; the 5-second drain lets them complete (or get a clean 5xx) first.
