@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **AI tag/face scans no longer fail with HuggingFace 401s.** Operators who installed before the public-default model swap still had `Xenova/mobilenet_v2` and `Xenova/yolov5n-face` saved in `kv['config'].advanced.ai`, both of which now require gated access; every scan would log `Unauthorized access to file: …/config.json` for those rows. Boot-time state-migration now sweeps known-gated ids out of saved config (rewriting them to the matching public default — `Xenova/vit-base-patch16-224` for tags, `Xenova/yolos-tiny` for faces). The `/api/ai/status` endpoint also returns a `gatedWarnings` array so the dashboard can show a one-click "Apply public default" banner when an operator pastes a gated id at runtime. Idempotent — clean configs are untouched.
+
 ## [2.7.0] — 2026-05-06
 
 ### Changed — Runtime state moves into SQLite

@@ -681,8 +681,87 @@ async function _refreshAll() {
     } catch {
         s = null;
     }
-    if (s) _renderSettings(s);
+    if (s) {
+        _renderSettings(s);
+        _renderGatedWarning(s.gatedWarnings || []);
+    } else {
+        _renderGatedWarning([]);
+    }
     await Promise.all([_loadPeople(), _loadTags(), _loadPhashGroups()]).catch(() => {});
+}
+
+// ---- Gated-model warning banner -----------------------------------------
+//
+// Operators who installed before AI_MODEL_DEFAULTS was updated may still
+// have HuggingFace ids in their saved config that now return 401 (e.g.
+// Xenova/mobilenet_v2, Xenova/yolov5n-face). The startup state-migration
+// rewrites those automatically, but a runtime banner exists for two cases:
+//   - operator pasted a known-gated id manually after startup
+//   - operator hasn't restarted since the migration shipped
+// One click on "Apply public default" PATCHes config to the suggested ids.
+
+let _gatedPending = []; // most recent warnings list, used by the click handler
+
+function _renderGatedWarning(warnings) {
+    const banner = document.getElementById('ai-gated-warning');
+    if (!banner) return;
+    _gatedPending = Array.isArray(warnings) ? warnings : [];
+    if (!_gatedPending.length) {
+        banner.classList.add('hidden');
+        return;
+    }
+    banner.classList.remove('hidden');
+    const list = document.getElementById('ai-gated-warning-list');
+    if (list) {
+        list.innerHTML = _gatedPending
+            .map(
+                (w) => `
+                <div>
+                    <span class="text-amber-400">${escapeHtml(w.cap)}</span>:
+                    <span class="line-through text-tg-textSecondary/70">${escapeHtml(w.currentId || '')}</span>
+                    →
+                    <span class="text-tg-text">${escapeHtml(w.suggested || '')}</span>
+                </div>
+            `,
+            )
+            .join('');
+    }
+}
+
+async function _applyGatedFix() {
+    if (!_gatedPending.length) return;
+    const btn = document.getElementById('ai-gated-warning-apply');
+    if (btn) btn.disabled = true;
+    try {
+        // Build one PATCH that flips every offending capability at once. The
+        // server already accepts deeply-nested advanced.ai.<cap>.model writes
+        // (see _onMasterToggleClick + the per-cap toggle path).
+        const patch = { advanced: { ai: {} } };
+        for (const w of _gatedPending) {
+            patch.advanced.ai[w.cap] = { ...(patch.advanced.ai[w.cap] || {}), model: w.suggested };
+        }
+        await api.post('/api/config', patch);
+        showToast(
+            i18nT(
+                'maintenance.ai.gated_warning.applied_toast',
+                'Applied public defaults. Re-running scans will now succeed.',
+            ),
+            'success',
+        );
+        await _refreshAll().catch(() => {});
+        _refreshModels();
+    } catch (e) {
+        showToast(
+            i18nTf(
+                'maintenance.ai.gated_warning.apply_failed',
+                { msg: e?.message || e },
+                `Apply failed: ${e?.message || e}`,
+            ),
+            'error',
+        );
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 // Master AI start/stop click. Mirrors the optimistic-flip + PATCH /api/config
@@ -805,6 +884,8 @@ export async function init() {
         // it's always visible. Same flip-and-PATCH handler the per-cap
         // toggles use; bound once at init.
         $('setting-adv-ai-enabled')?.addEventListener('click', _onMasterToggleClick);
+        // Gated-model warning — single button bound once.
+        $('ai-gated-warning-apply')?.addEventListener('click', _applyGatedFix);
         _initOnce = true;
     }
     await _refreshAll();

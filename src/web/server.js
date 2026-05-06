@@ -5920,6 +5920,17 @@ app.get('/api/ai/status', async (_req, res) => {
         await _maybeProbeVec();
         const cfg = _aiCfg();
         const counts = getAiCounts({ fileTypes: cfg.fileTypes });
+        // Surface gated-model warnings so the dashboard can render an
+        // "Apply public default" banner. Mirrors the startup state-migration
+        // sweep — that one rewrites stored config in place; this one catches
+        // the case where the operator manually pasted a gated id at runtime
+        // (or a legacy install hasn't restarted since the migration shipped).
+        const gatedWarnings = [];
+        for (const cap of ['embeddings', 'faces', 'tags']) {
+            const cur = cfg[cap]?.model;
+            const repl = ai.suggestPublicReplacement(cur);
+            if (repl) gatedWarnings.push({ cap, currentId: cur, suggested: repl.suggested });
+        }
         res.json({
             success: true,
             enabled: cfg.enabled,
@@ -5937,6 +5948,7 @@ app.get('/api/ai/status', async (_req, res) => {
             },
             counts,
             loadedPipelines: ai.loadedPipelines(),
+            gatedWarnings,
         });
     } catch (e) {
         res.status(500).json({ error: e.message });

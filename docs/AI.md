@@ -15,9 +15,16 @@ for the 90 MB CLIP model.
 | Capability        | Model (default)                      | Disk    | Use                                          |
 | ----------------- | ------------------------------------ | ------- | -------------------------------------------- |
 | Semantic search   | `Xenova/clip-vit-base-patch32`       | ~90 MB  | Free-text search ("beach photos at sunset"). |
-| Face clustering   | `Xenova/yolov5n-face` + CLIP crops   | ~5 MB   | "People" view — group photos by who's in them. |
-| Auto-tagging      | `Xenova/mobilenet_v2`                | ~14 MB  | Per-image labels → tag cloud + #tag filters. |
+| Face clustering   | `Xenova/yolos-tiny` + CLIP crops     | ~31 MB  | "People" view — group photos by who's in them. |
+| Auto-tagging      | `Xenova/vit-base-patch16-224`        | ~85 MB  | Per-image labels → tag cloud + #tag filters. |
 | Perceptual dedup  | DCT pHash (no model)                 | 0       | Find near-duplicates (resized / re-encoded). |
+
+> **Public defaults only.** Earlier releases pointed at `Xenova/yolov5n-face`
+> and `Xenova/mobilenet_v2`; both have since become gated on the HuggingFace
+> hub and return 401 even with a valid token. Boot-time state-migration
+> rewrites those ids to the public defaults above for installs upgrading
+> from a config that still names them. Operators who paste a known-gated id
+> at runtime see a one-click "Apply public default" banner on the AI page.
 
 All four use the WASM execution provider through `@huggingface/transformers`
 — the same path that powers the NSFW classifier — so they work identically
@@ -33,8 +40,8 @@ Add to the runtime config (Settings tab in the dashboard, or directly in the `kv
         "ai": {
             "enabled": true,
             "embeddings": { "enabled": true, "model": "Xenova/clip-vit-base-patch32" },
-            "faces":      { "enabled": false, "model": "Xenova/yolov5n-face" },
-            "tags":       { "enabled": true,  "model": "Xenova/mobilenet_v2", "topK": 5 },
+            "faces":      { "enabled": false, "model": "Xenova/yolos-tiny" },
+            "tags":       { "enabled": true,  "model": "Xenova/vit-base-patch16-224", "topK": 5 },
             "phash":      { "enabled": true },
             "fileTypes": ["photo"],
             "indexConcurrency": 1,

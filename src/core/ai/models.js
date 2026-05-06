@@ -443,3 +443,45 @@ export const AI_MODEL_DEFAULTS = Object.freeze({
         topK: 5,
     },
 });
+
+/**
+ * Hugging Face model ids that used to be the default for a capability but
+ * have since become gated/restricted (401 even with a valid HF token).
+ *
+ * Anything in this set should be rewritten to the matching public default
+ * before it reaches the loader — both at startup (state-migration sweeps
+ * `kv['config']`) and at runtime (the dashboard surfaces a banner so the
+ * operator can apply the swap with one click).
+ *
+ * Entries map gated id → capability key in `AI_MODEL_DEFAULTS`. Add new
+ * ids here as they're discovered; the migration + UI banner pick them up
+ * automatically.
+ */
+export const KNOWN_GATED_MODELS = Object.freeze({
+    'Xenova/mobilenet_v2': 'tags',
+    'Xenova/yolov5n-face': 'faces',
+    'Xenova/yolov8n-face': 'faces',
+});
+
+/**
+ * Look up the public default that should replace a known-gated model id.
+ * Returns `{ cap, suggested }` when `modelId` is gated, otherwise `null`.
+ *
+ *   suggestPublicReplacement('Xenova/mobilenet_v2')
+ *     → { cap: 'tags', suggested: 'Xenova/vit-base-patch16-224' }
+ *   suggestPublicReplacement('some/other-model')        // → null
+ */
+export function suggestPublicReplacement(modelId) {
+    const id = String(modelId || '').trim();
+    if (!id) return null;
+    const cap = KNOWN_GATED_MODELS[id];
+    if (!cap) return null;
+    const def = AI_MODEL_DEFAULTS[cap];
+    if (!def?.modelId) return null;
+    return { cap, suggested: def.modelId };
+}
+
+/** Predicate form of `suggestPublicReplacement`. */
+export function isKnownGatedModel(modelId) {
+    return suggestPublicReplacement(modelId) !== null;
+}

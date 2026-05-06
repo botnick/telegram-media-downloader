@@ -14,6 +14,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { suggestPublicReplacement } from './ai/models.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.TGDL_DATA_DIR
     ? path.resolve(process.env.TGDL_DATA_DIR)
@@ -120,7 +122,50 @@ export function runStateMigration({ db, kvGet, kvSet, insertSession, listSession
         }
     }
 
+    // --- gated AI model id sweep ---
+    // Operators who installed before AI_MODEL_DEFAULTS was updated still
+    // have stale gated model ids saved in kv['config']; those throw 401
+    // every scan. Rewrite them to the matching public default in place.
+    try {
+        touched += _sanitiseAiModelIds({ kvGet, kvSet, log });
+    } catch (e) {
+        log(`gated-model sweep failed: ${e?.message || e}`);
+    }
+
     if (touched > 0) {
         log(`migration complete (${touched} item${touched === 1 ? '' : 's'} imported)`);
     }
+}
+
+/**
+ * Walk `kv['config'].advanced.ai.{embeddings,faces,tags}.model` and rewrite
+ * any id that appears in `KNOWN_GATED_MODELS` to the matching public default.
+ * Idempotent — running on an already-clean config is a no-op. Returns the
+ * number of fields rewritten so the outer migration counter stays accurate.
+ *
+ * Exported so unit tests can drive it directly without spinning up the rest
+ * of the migration plumbing.
+ */
+export function _sanitiseAiModelIds({ kvGet, kvSet, log = () => {} }) {
+    const cfg = kvGet('config');
+    if (!cfg || typeof cfg !== 'object') return 0;
+    const ai = cfg.advanced?.ai;
+    if (!ai || typeof ai !== 'object') return 0;
+
+    const caps = ['embeddings', 'faces', 'tags'];
+    let rewrites = 0;
+    let dirty = false;
+    for (const cap of caps) {
+        const node = ai[cap];
+        const cur = node?.model;
+        if (typeof cur !== 'string' || !cur.trim()) continue;
+        const repl = suggestPublicReplacement(cur);
+        if (!repl) continue;
+        log(`rewrote advanced.ai.${cap}.model: ${cur} → ${repl.suggested}`);
+        node.model = repl.suggested;
+        rewrites += 1;
+        dirty = true;
+    }
+    if (dirty) kvSet('config', cfg);
+    return rewrites;
 }

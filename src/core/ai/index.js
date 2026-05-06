@@ -41,4 +41,7 @@ export {
     pipelineErrorsSnapshot,
     setModelProgressHook,
     resolveCacheDir,
+    KNOWN_GATED_MODELS,
+    suggestPublicReplacement,
+    isKnownGatedModel,
 } from './models.js';

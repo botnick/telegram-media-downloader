@@ -2519,6 +2519,37 @@
                         <div id="ai-models-list" class="ai-models-list" aria-live="polite"></div>
                     </section>
 
+                    <!-- Gated-model warning. Hidden by default; maintenance-ai.js
+                         shows it when /api/ai/status reports `gatedWarnings`
+                         (= operator's saved config still references a HF
+                         model id that has become 401-gated). One click on
+                         "Apply public default" PATCHes config to the matching
+                         public model and the banner disappears. -->
+                    <section id="ai-gated-warning"
+                             class="hidden bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 mb-3"
+                             role="alert" aria-live="polite">
+                        <div class="flex items-start gap-2.5">
+                            <i class="ri-error-warning-line text-amber-400 text-xl shrink-0 mt-0.5" aria-hidden="true"></i>
+                            <div class="min-w-0 flex-1">
+                                <div class="text-tg-text font-medium text-sm" data-i18n="maintenance.ai.gated_warning.title">
+                                    Some AI models are no longer reachable
+                                </div>
+                                <p id="ai-gated-warning-body"
+                                   class="text-xs text-tg-textSecondary mt-0.5 leading-snug"
+                                   data-i18n="maintenance.ai.gated_warning.body">
+                                    Your saved config points at HuggingFace models that now require special access. Replace them with the public defaults to fix the 401 errors in scan logs.
+                                </p>
+                                <div id="ai-gated-warning-list"
+                                     class="mt-1.5 text-[11px] text-tg-textSecondary font-mono space-y-0.5"></div>
+                            </div>
+                            <button id="ai-gated-warning-apply" type="button"
+                                    class="tg-btn-primary text-xs px-3 py-1 shrink-0"
+                                    data-i18n="maintenance.ai.gated_warning.apply_btn">
+                                Apply public default
+                            </button>
+                        </div>
+                    </section>
+
                     <!-- AI subsystem master switch. Static so it ALWAYS
                          renders even if `_renderSettings` hasn't fired
                          yet (or fails). The toggle's `active` class is
