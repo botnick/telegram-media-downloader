@@ -4,11 +4,17 @@
 // Owns:
 //   - Top stats cards: scanned / whitelisted / last scan time.
 //   - Tier panel — clickable cards filter the row list below.
+//   - "Show whitelisted" toggle — surfaces previously-whitelisted rows so
+//     mistakes can be restored via the per-row Restore action.
 //   - Score histogram (vanilla SVG, tiers shaded with their accent colour).
 //   - Scan controls — start/cancel, threshold display, concurrency display,
 //     live progress bar.
-//   - Paginated row list — per-row keep / delete / whitelist / reclassify.
-//   - Bulk actions — delete / whitelist / reclassify the entire current tier.
+//   - Paginated row list — per-row whitelist (or restore) / reclassify / delete.
+//   - Bulk actions — delete / whitelist (or restore) / reclassify the
+//     entire current tier with live progress and stuck-state recovery.
+//
+// View state (tier + page + whitelisted toggle) lives in the URL hash so
+// refresh / back-button restore the operator's filter context.
 
 import { ws } from './ws.js';
 import { api } from './api.js';
@@ -31,15 +37,54 @@ const TIER_COLOR = {
     def: '#43A047',
 };
 
-// Local view state — persists for the lifetime of the SPA.
+// Local view state — persists for the lifetime of the SPA. Hydrated
+// from the URL hash on init so refresh / back-button restore the
+// operator's filter context.
 const view = {
     tier: null, // null = all tiers
     page: 1,
     limit: 50,
     totalPages: 1,
+    includeWhitelisted: false, // toggle to surface previously-whitelisted rows
     tiersMeta: null, // [{ id, min, max, label }]
     tierCounts: null, // { tiers: {def_not: n, ...}, scanned, totalEligible, whitelisted, threshold }
 };
+
+// Hash state lives at #/maintenance/nsfw?tier=...&page=...&whitelisted=0|1
+// so refresh / browser-history navigation restore the filter context.
+// Default tier on a clean URL is `uncertain` (the actual review queue) so
+// new arrivals don't have to wade through 95% of def_not items first.
+const DEFAULT_TIER = 'uncertain';
+
+function _readHashState() {
+    const raw = window.location.hash || '';
+    const qIdx = raw.indexOf('?');
+    if (qIdx < 0) return {};
+    const qs = new URLSearchParams(raw.slice(qIdx + 1));
+    const out = {};
+    if (qs.has('tier')) out.tier = qs.get('tier') || null;
+    if (qs.has('page')) {
+        const p = Number(qs.get('page'));
+        if (Number.isFinite(p) && p >= 1) out.page = Math.floor(p);
+    }
+    if (qs.has('whitelisted')) out.includeWhitelisted = qs.get('whitelisted') === '1';
+    return out;
+}
+
+function _writeHashState() {
+    const raw = window.location.hash || '';
+    const qIdx = raw.indexOf('?');
+    const path = qIdx >= 0 ? raw.slice(0, qIdx) : raw;
+    const qs = new URLSearchParams();
+    if (view.tier) qs.set('tier', view.tier);
+    if (view.page > 1) qs.set('page', String(view.page));
+    if (view.includeWhitelisted) qs.set('whitelisted', '1');
+    const nextHash = qs.toString() ? `${path || '#'}?${qs.toString()}` : path;
+    if (nextHash !== raw) {
+        // replaceState — we don't want every tier click to grow history.
+        history.replaceState(null, '', nextHash || window.location.pathname);
+    }
+}
 
 function _formatRelTime(epochMs) {
     if (!epochMs) return '—';
@@ -107,6 +152,7 @@ function _renderTiersPanel(tierCounts) {
             const next = btn.dataset.tier;
             view.tier = view.tier === next ? null : next;
             view.page = 1;
+            _writeHashState();
             _renderTiersPanel(view.tierCounts || tierCounts);
             _renderBulkBar();
             _loadList();
@@ -146,16 +192,30 @@ function _renderBulkBar() {
         'maintenance.nsfw.bulk.delete_in_tier',
         'Delete all in {tier}',
     );
-    setLabel(
-        'nsfw-bulk-whitelist-btn',
-        'maintenance.nsfw.bulk.whitelist_in_tier',
-        'Whitelist all in {tier}',
-    );
+    // The whitelist button doubles as a Restore button when the show-
+    // whitelisted toggle is on — same visual slot, opposite semantic.
+    if (view.includeWhitelisted) {
+        setLabel(
+            'nsfw-bulk-whitelist-btn',
+            'maintenance.nsfw.bulk.restore_in_tier',
+            'Restore all in {tier} to review',
+        );
+    } else {
+        setLabel(
+            'nsfw-bulk-whitelist-btn',
+            'maintenance.nsfw.bulk.whitelist_in_tier',
+            'Whitelist all in {tier}',
+        );
+    }
     setLabel(
         'nsfw-bulk-reclassify-btn',
         'maintenance.nsfw.bulk.reclassify_in_tier',
         'Re-classify all in {tier}',
     );
+    // Clear stale progress text when the bar re-renders (e.g. after a
+    // tier change). Live progress is wired in _wireWs.
+    const progEl = $('nsfw-bulk-progress');
+    if (progEl) progEl.textContent = '';
 }
 
 function _renderHistogram(hist) {
@@ -199,6 +259,16 @@ function _renderRow(file) {
     const score = Math.round((file.nsfw_score || 0) * 100);
     const checked = file.nsfw_checked_at ? _formatRelTime(file.nsfw_checked_at) : '—';
     const thumb = `/api/thumbs/${encodeURIComponent(file.id)}?w=120`;
+    // Already-whitelisted rows show a "Restore" action that flips the
+    // flag back so they re-enter the review queue. Other rows show
+    // Whitelist (mark-as-18+) instead.
+    const isWhitelisted = !!file.nsfw_whitelist;
+    const primaryBtn = isWhitelisted
+        ? `<button type="button" data-act="restore" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-blue hover:border-tg-blue" data-i18n="maintenance.nsfw.row.restore">Restore</button>`
+        : `<button type="button" data-act="whitelist" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-blue hover:border-tg-blue" data-i18n="maintenance.nsfw.row.whitelist">Whitelist</button>`;
+    const wlBadge = isWhitelisted
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/15 text-tg-blue ml-1" data-i18n="maintenance.nsfw.row.whitelisted_badge">Whitelisted</span>`
+        : '';
     return `
         <div class="flex items-center gap-2 p-2 rounded-md hover:bg-tg-hover" data-row-id="${file.id}">
             <img loading="lazy" decoding="async"
@@ -206,13 +276,12 @@ function _renderRow(file) {
                  src="${escapeHtml(thumb)}" alt=""
                  onerror="this.style.display='none'">
             <div class="min-w-0 flex-1">
-                <div class="text-sm text-tg-text truncate">${escapeHtml(file.file_name || '')}</div>
+                <div class="text-sm text-tg-text truncate">${escapeHtml(file.file_name || '')}${wlBadge}</div>
                 <div class="text-xs text-tg-textSecondary truncate">${escapeHtml(file.group_name || file.group_id || '')} · ${escapeHtml(checked)}</div>
                 <div class="text-[10px] text-tg-textSecondary mt-0.5">NSFW score: ${score}%</div>
             </div>
             <div class="flex items-center gap-1 shrink-0">
-                <button type="button" data-act="keep" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-green hover:border-tg-green" data-i18n="maintenance.nsfw.row.keep">Keep</button>
-                <button type="button" data-act="whitelist" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-blue hover:border-tg-blue" data-i18n="maintenance.nsfw.row.whitelist">Whitelist</button>
+                ${primaryBtn}
                 <button type="button" data-act="reclassify" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-orange hover:border-tg-orange" data-i18n="maintenance.nsfw.row.reclassify">Re-classify</button>
                 <button type="button" data-act="delete" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-red-500/30 text-red-400 hover:bg-red-500/10" data-i18n="maintenance.nsfw.row.delete">Delete</button>
             </div>
@@ -231,21 +300,19 @@ function _wireRowActions() {
             if (!id || !act) return;
             btn.disabled = true;
             try {
-                if (act === 'keep') {
-                    // "Keep" without whitelisting just re-classifies so it
-                    // drops out of low-score tiers next scan.
-                    await api.post('/api/maintenance/nsfw/v2/reclassify', { ids: [id] });
-                    showToast(
-                        i18nT(
-                            'maintenance.nsfw.row.keep_done',
-                            'Kept — will re-classify on next scan',
-                        ),
-                        'success',
-                    );
-                } else if (act === 'whitelist') {
+                if (act === 'whitelist') {
                     await api.post('/api/maintenance/nsfw/v2/bulk-whitelist', { ids: [id] });
                     showToast(
                         i18nT('maintenance.nsfw.marked_kept', 'Marked as 18+ (kept)'),
+                        'success',
+                    );
+                } else if (act === 'restore') {
+                    // Flips nsfw_whitelist back to 0 so the row re-enters the
+                    // review queue. Counterpart to whitelist for accidental
+                    // mark-as-18+ recovery.
+                    await api.post('/api/maintenance/nsfw/v2/unwhitelist', { ids: [id] });
+                    showToast(
+                        i18nT('maintenance.nsfw.row.restore_done', 'Restored to review'),
                         'success',
                     );
                 } else if (act === 'reclassify') {
@@ -299,6 +366,43 @@ function _wireRowActions() {
     });
 }
 
+function _renderEmptyState(total) {
+    const empty = $('nsfw-empty');
+    if (!empty) return;
+    const counts = view.tierCounts || {};
+    const scanned = counts.scanned ?? 0;
+    const totalEligible = counts.totalEligible ?? 0;
+    let text;
+    if (scanned === 0 && totalEligible > 0) {
+        text = i18nT(
+            'maintenance.nsfw.empty.never_scanned',
+            'Nothing scanned yet — click Scan above to score this library.',
+        );
+    } else if (view.tier && total === 0) {
+        // Suggest the next non-empty tier so the operator doesn't bounce
+        // back to the panel to find one with content.
+        const tierMap = counts.tiers || {};
+        const fallback = Object.entries(tierMap).find(([id, n]) => n > 0 && id !== view.tier);
+        const fallbackLabel = fallback ? _tierLabel(fallback[0]) : '';
+        const tierLbl = _tierLabel(view.tier);
+        text = fallback
+            ? i18nTf(
+                  'maintenance.nsfw.empty.tier_with_suggestion',
+                  { tier: tierLbl, next: fallbackLabel, count: fallback[1] },
+                  `No items in "${tierLbl}". Try "${fallbackLabel}" — ${fallback[1]} item(s) waiting.`,
+              )
+            : i18nTf(
+                  'maintenance.nsfw.empty.tier',
+                  { tier: tierLbl },
+                  `No items in "${tierLbl}".`,
+              );
+    } else {
+        text = i18nT('maintenance.nsfw.empty', 'No candidates — the library is clean.');
+    }
+    empty.textContent = text;
+    empty.classList.remove('hidden');
+}
+
 async function _loadList() {
     const list = $('nsfw-list');
     const empty = $('nsfw-empty');
@@ -313,6 +417,7 @@ async function _loadList() {
         qs.set('page', String(view.page));
         qs.set('limit', String(view.limit));
         if (view.tier) qs.set('tier', view.tier);
+        if (view.includeWhitelisted) qs.set('include_whitelisted', '1');
         const r = await api.get(`/api/maintenance/nsfw/v2/list?${qs.toString()}`);
         view.totalPages = r.totalPages || 1;
         if (banner) {
@@ -323,7 +428,7 @@ async function _loadList() {
         }
         if (!r.rows?.length) {
             list.innerHTML = '';
-            if (empty) empty.classList.remove('hidden');
+            _renderEmptyState(r.total || 0);
         } else {
             if (empty) empty.classList.add('hidden');
             list.innerHTML = r.rows.map(_renderRow).join('');
@@ -443,6 +548,10 @@ async function _toggleScan() {
     }
 }
 
+// Watchdog so a dropped `nsfw_bulk_done` event doesn't strand the UI
+// with disabled buttons forever. Cleared whenever the WS event arrives
+// or another _setBulkUi(false) fires.
+let _bulkWatchdog = null;
 function _setBulkUi(running) {
     for (const id of [
         'nsfw-bulk-delete-btn',
@@ -451,6 +560,24 @@ function _setBulkUi(running) {
     ]) {
         const b = $(id);
         if (b) b.disabled = !!running;
+    }
+    if (_bulkWatchdog) {
+        clearTimeout(_bulkWatchdog);
+        _bulkWatchdog = null;
+    }
+    if (running) {
+        // 60 s after we go busy, fall back to the canonical server status
+        // — if the tracker says it's idle we re-enable the buttons even
+        // though we never saw the done event (lost-WS-event recovery).
+        _bulkWatchdog = setTimeout(async () => {
+            try {
+                const s = await api.get('/api/maintenance/nsfw/v2/bulk/status');
+                if (!s?.running) _setBulkUi(false);
+            } catch {}
+        }, 60_000);
+    } else {
+        const progEl = $('nsfw-bulk-progress');
+        if (progEl) progEl.textContent = '';
     }
 }
 
@@ -477,19 +604,40 @@ async function _bulkAction(kind) {
         body.confirm = true;
         url = '/api/maintenance/nsfw/v2/bulk-delete';
     } else if (kind === 'whitelist') {
-        confirmOpts = {
-            title: i18nTf(
-                'maintenance.nsfw.bulk.confirm_whitelist_title',
-                { tier: tierLabel },
-                `Whitelist every photo in "${tierLabel}"?`,
-            ),
-            message: i18nT(
-                'maintenance.nsfw.bulk.confirm_whitelist_body',
-                'Marks every file in this tier as confirmed 18+. They will be skipped on future scans.',
-            ),
-            confirmLabel: i18nT('maintenance.nsfw.bulk.whitelist_confirm', 'Whitelist'),
-        };
-        url = '/api/maintenance/nsfw/v2/bulk-whitelist';
+        // The same toolbar slot does Whitelist OR Restore, depending on
+        // whether the operator has the "Show whitelisted" toggle on.
+        // The unwhitelist endpoint resolves the tier server-side (with
+        // includeWhitelisted forced true) so we just send the same body
+        // shape and a different URL.
+        if (view.includeWhitelisted) {
+            confirmOpts = {
+                title: i18nTf(
+                    'maintenance.nsfw.bulk.confirm_restore_title',
+                    { tier: tierLabel },
+                    `Restore every photo in "${tierLabel}" to review?`,
+                ),
+                message: i18nT(
+                    'maintenance.nsfw.bulk.confirm_restore_body',
+                    'Flips the whitelist flag back to 0 so the next scan can pick them up again.',
+                ),
+                confirmLabel: i18nT('maintenance.nsfw.bulk.restore_confirm', 'Restore'),
+            };
+            url = '/api/maintenance/nsfw/v2/unwhitelist';
+        } else {
+            confirmOpts = {
+                title: i18nTf(
+                    'maintenance.nsfw.bulk.confirm_whitelist_title',
+                    { tier: tierLabel },
+                    `Whitelist every photo in "${tierLabel}"?`,
+                ),
+                message: i18nT(
+                    'maintenance.nsfw.bulk.confirm_whitelist_body',
+                    'Marks every file in this tier as confirmed 18+. They will be skipped on future scans.',
+                ),
+                confirmLabel: i18nT('maintenance.nsfw.bulk.whitelist_confirm', 'Whitelist'),
+            };
+            url = '/api/maintenance/nsfw/v2/bulk-whitelist';
+        }
     } else if (kind === 'reclassify') {
         confirmOpts = {
             title: i18nTf(
@@ -598,8 +746,28 @@ function _wireWs() {
 
     // Bulk-delete / whitelist / unwhitelist / reclassify share one
     // `nsfwBulk` tracker, so a single done event covers all four ops.
-    // The payload's `op` field tells us which toast to render.
-    ws.on('nsfw_bulk_progress', () => _setBulkUi(true));
+    // The payload's `op` field tells us which toast to render. The
+    // progress payload's `processed`/`total` (when the op exposes them
+    // — only delete does today) drives a small "Processing N/M" hint.
+    ws.on('nsfw_bulk_progress', (m) => {
+        _setBulkUi(true);
+        const progEl = $('nsfw-bulk-progress');
+        if (!progEl) return;
+        if (Number.isFinite(m?.processed) && Number.isFinite(m?.total) && m.total > 0) {
+            progEl.textContent = i18nTf(
+                'maintenance.nsfw.bulk.progress',
+                { n: m.processed, total: m.total },
+                `Processing ${m.processed} / ${m.total}…`,
+            );
+        } else if (m?.stage) {
+            // Earlier stages (resolving / updating / clearing) just print
+            // the stage so the operator sees something is alive.
+            progEl.textContent = i18nT(
+                `maintenance.nsfw.bulk.stage_${m.stage}`,
+                m.stage.charAt(0).toUpperCase() + m.stage.slice(1) + '…',
+            );
+        }
+    });
     ws.on('nsfw_bulk_done', async (m) => {
         _setBulkUi(false);
         if (m?.error) {
@@ -651,6 +819,17 @@ function _wireWs() {
         } catch {}
         try {
             await _loadList();
+        } catch {}
+    });
+
+    // WebSocket reconnect path: when the socket comes back up after a
+    // drop, re-poll the bulk tracker so the bar's enabled/disabled state
+    // matches reality. Without this, a bulk op that finished while we
+    // were offline would leave the buttons stuck disabled.
+    ws.on('open', async () => {
+        try {
+            const s = await api.get('/api/maintenance/nsfw/v2/bulk/status');
+            _setBulkUi(!!s?.running);
         } catch {}
     });
 }
@@ -800,6 +979,17 @@ async function _onCacheClearClick() {
     }
 }
 
+// Apply hash state to the view, falling back to the review-queue tier
+// when the URL is bare. Pulled out of init() so popstate can re-run it.
+function _applyHashState() {
+    const hash = _readHashState();
+    view.tier = hash.tier !== undefined ? hash.tier : DEFAULT_TIER;
+    view.page = hash.page || 1;
+    view.includeWhitelisted = !!hash.includeWhitelisted;
+    const wlToggle = $('nsfw-show-whitelisted');
+    if (wlToggle) wlToggle.checked = view.includeWhitelisted;
+}
+
 export function init() {
     _wireWs();
     if (!_pageWired) {
@@ -808,12 +998,14 @@ export function init() {
         $('nsfw-prev-btn')?.addEventListener('click', () => {
             if (view.page > 1) {
                 view.page -= 1;
+                _writeHashState();
                 _loadList();
             }
         });
         $('nsfw-next-btn')?.addEventListener('click', () => {
             if (view.page < view.totalPages) {
                 view.page += 1;
+                _writeHashState();
                 _loadList();
             }
         });
@@ -822,7 +1014,34 @@ export function init() {
         $('nsfw-bulk-reclassify-btn')?.addEventListener('click', () => _bulkAction('reclassify'));
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
+        $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {
+            view.includeWhitelisted = !!ev.target.checked;
+            view.page = 1;
+            _writeHashState();
+            _renderBulkBar();
+            _loadList();
+        });
+        // Browser back / hash edit — re-hydrate state and re-render
+        // without re-running the whole init pipeline.
+        window.addEventListener('hashchange', () => {
+            _applyHashState();
+            _renderTiersPanel(view.tierCounts || { tiers: {} });
+            _renderBulkBar();
+            _loadList();
+        });
+        // Dismiss the review badge on the maintenance hub the moment the
+        // operator lands here — they've now "seen" the candidates so the
+        // unread dot shouldn't keep nagging on the dashboard.
+        try {
+            const status = api.get('/api/maintenance/nsfw/status');
+            status.then((s) => {
+                try {
+                    localStorage.setItem('tgdl.nsfw.lastSeen', String(s?.candidates || 0));
+                } catch {}
+            }).catch(() => {});
+        } catch {}
     }
+    _applyHashState();
     (async () => {
         // Hydrate the Settings card inputs from /api/config so the model
         // id, dtype, threshold, etc. show the persisted values. Same path
@@ -833,22 +1052,26 @@ export function init() {
         } catch {
             /* best-effort — input still typeable, autosave still works */
         }
-        // Wire the autosave pipeline so input changes here PATCH /api/config
-        // through the same debounced flush the Settings page uses.
         try {
             setupAutoSave();
         } catch {}
-        await _loadTiersMeta();
-        await _refreshStats();
-        await _refreshHistogram();
+        // Independent fetches run in parallel so the page renders in one
+        // round-trip instead of waiting for each to finish in turn.
+        await Promise.all([
+            _loadTiersMeta(),
+            _refreshStats(),
+            _refreshHistogram(),
+            _refreshModelStatus(),
+            (async () => {
+                try {
+                    const s = await api.get('/api/maintenance/nsfw/v2/bulk/status');
+                    if (s?.running) _setBulkUi(true);
+                } catch {}
+            })(),
+        ]);
         _renderBulkBar();
+        // The list depends on tiersMeta + tierCounts being hydrated so
+        // empty-state copy can suggest a fallback tier — runs last.
         await _loadList();
-        await _refreshModelStatus();
-        // Hydrate bulk-action state — a job started elsewhere keeps
-        // this tab's bulk buttons disabled until it finishes.
-        try {
-            const s = await api.get('/api/maintenance/nsfw/v2/bulk/status');
-            if (s?.running) _setBulkUi(true);
-        } catch {}
     })();
 }

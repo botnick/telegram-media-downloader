@@ -5493,11 +5493,20 @@ app.post('/api/maintenance/nsfw/v2/bulk-whitelist', async (req, res) => {
     res.json({ success: true, started: true });
 });
 
+// Unwhitelist accepts the same `{tier|ids|...}` body shape as the other
+// three bulk endpoints — when a tier filter is supplied we force
+// includeWhitelisted=true on the resolver because the whole point of the
+// op is to act on whitelisted rows (which the default resolver hides).
 app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
-    const ids = (req.body?.ids || []).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    if (!ids.length) return res.status(400).json({ error: 'ids array required' });
+    const body = req.body || {};
     const tracker = _jobTrackers.nsfwBulk;
     const r = tracker.tryStart(async ({ onProgress }) => {
+        onProgress({ stage: 'resolving', op: 'unwhitelist' });
+        const resolveBody = Array.isArray(body.ids) && body.ids.length
+            ? body
+            : { ...body, includeWhitelisted: true };
+        const ids = _resolveBulkIds(resolveBody);
+        if (!ids.length) return { op: 'unwhitelist', updated: 0, ids: [] };
         onProgress({ stage: 'updating', op: 'unwhitelist', total: ids.length });
         const updated = unwhitelistNsfw(ids);
         try {
