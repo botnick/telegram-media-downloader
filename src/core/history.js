@@ -8,6 +8,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import { Api } from 'telegram';
 import { getMessageIdRange } from './db.js';
+import { BACKPRESSURE_CAP_DEFAULT } from './constants.js';
 
 export class HistoryDownloader extends EventEmitter {
     constructor(client, downloader, config, accountManager = null) {
@@ -250,7 +251,9 @@ export class HistoryDownloader extends EventEmitter {
                 //   workers are alive — the runtime-side FloodWait
                 //   recovery will eventually drain the queue.
                 {
-                    const cap = Number(this.config?.advanced?.history?.backpressureCap) || 500;
+                    const cap =
+                        Number(this.config?.advanced?.history?.backpressureCap) ||
+                        BACKPRESSURE_CAP_DEFAULT;
                     const MAX_WAIT_MS =
                         Number(this.config?.advanced?.history?.backpressureMaxWaitMs) ||
                         15 * 60 * 1000;

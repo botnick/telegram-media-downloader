@@ -2,6 +2,7 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { fileURLToPath } from 'url';
 import { kvGet, kvSet } from '../core/db.js';
+import { BACKPRESSURE_CAP_DEFAULT } from '../core/constants.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -78,7 +79,7 @@ const DEFAULT_CONFIG = {
         history: {
             // Backfill pauses iteration when the downloader queue is above
             // this size — bounds RAM during a 100k-message backfill.
-            backpressureCap: 500,
+            backpressureCap: BACKPRESSURE_CAP_DEFAULT,
             // If backpressure can't drain inside this window, the backfill
             // aborts so a stuck downloader doesn't hang the command forever.
             backpressureMaxWaitMs: 5 * 60 * 1000,
