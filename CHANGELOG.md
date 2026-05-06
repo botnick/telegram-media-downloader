@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.16] — 2026-05-06
+
+### Fixed
+- **Docker image shipped ffmpeg with VA-API compiled in but no userland drivers**, so `-hwaccel vaapi` silently fell back to CPU decode inside the container even when the host passed `/dev/dri` through. The Settings → Advanced → Thumbnails dropdown listed `vaapi` as available (because `ffmpeg -hwaccels` advertises it from compile-time support, regardless of runtime), but selecting it produced no actual acceleration. Adds `intel-media-va-driver` (iHD, Gen8+ + Quick Sync runtime), `i965-va-driver` (Gen4-Gen7), and `vainfo` (operators can now `docker exec <ctr> vainfo` to confirm the driver loaded inside the container without baking their own debug image). All three packages live in Debian bookworm `main` so no non-free repo enablement is required. AMD users go through Mesa's `radeonsi` (`mesa-va-drivers`) — left out to keep the image lean; can be added in a follow-up if reported.
+
+### Internal
+- SW bumped `v275` → `v276`.
+
 ## [2.6.15] — 2026-05-06
 
 ### Fixed
