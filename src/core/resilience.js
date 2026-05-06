@@ -76,6 +76,9 @@ export class Resilience {
         if (isAuth) {
             console.log(colorize('❌ Session Invalid. Login required.', 'red'));
             process.exit(1);
+            // Tests stub process.exit; without an explicit return the throw
+            // below would fire and turn a controlled shutdown into a rejection.
+            return;
         }
 
         // Default: Throw to caller if not handled
