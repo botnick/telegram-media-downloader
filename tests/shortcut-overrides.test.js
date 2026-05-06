@@ -6,7 +6,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 // Vitest in node mode doesn't have window/localStorage by default. We
 // install a minimal in-memory polyfill so the module-under-test can read
-// + write without hitting the real browser store.
+// + write without hitting the real browser store. We always-assign (not
+// "if undefined") because some Vitest environment plugins or earlier
+// test files in the suite leave a stub Storage object on globalThis
+// that lacks `setItem`, which made these tests pass in isolation but
+// fail in `vitest run` ordering.
 class MemStore {
     constructor() { this.m = new Map(); }
     getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
@@ -15,27 +19,34 @@ class MemStore {
     clear() { this.m.clear(); }
 }
 
-if (typeof globalThis.localStorage === 'undefined') {
+function installPolyfills() {
     globalThis.localStorage = new MemStore();
+    if (typeof globalThis.window === 'undefined') {
+        globalThis.window = {
+            localStorage: globalThis.localStorage,
+            matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+        };
+    } else {
+        globalThis.window.localStorage = globalThis.localStorage;
+        if (typeof globalThis.window.matchMedia !== 'function') {
+            globalThis.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+        }
+    }
+    if (typeof globalThis.document === 'undefined') {
+        globalThis.document = {
+            addEventListener() {},
+            querySelector() { return null; },
+            getElementById() { return null; },
+        };
+    }
 }
-if (typeof globalThis.window === 'undefined') {
-    globalThis.window = {
-        localStorage: globalThis.localStorage,
-        matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
-    };
-} else if (typeof globalThis.window.matchMedia !== 'function') {
-    globalThis.window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-}
-if (typeof globalThis.document === 'undefined') {
-    globalThis.document = {
-        addEventListener() {},
-        querySelector() { return null; },
-        getElementById() { return null; },
-    };
-}
+installPolyfills();
 
 beforeEach(() => {
-    if (globalThis.localStorage.clear) globalThis.localStorage.clear();
+    // Re-install before every test so each one sees a fresh writable
+    // store, regardless of what test ordering / environment plugin did
+    // to globalThis.localStorage in between.
+    installPolyfills();
 });
 
 describe('shortcut overrides', () => {

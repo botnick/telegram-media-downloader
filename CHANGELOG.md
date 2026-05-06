@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.13] — 2026-05-06
+
+### Fixed
+- **Manage Groups only showed chats from one account** when 2+ Telegram accounts were linked. `/api/dialogs` was calling `getDialogs()` on the AccountManager's *default* client only, so any chat exclusive to a second/third account silently disappeared from the picker (the sidebar's `/api/groups` view was already correct because it goes through `getDialogsNameCache()`, which fans out across all clients). The endpoint now fans out across every connected client in parallel, dedupes by chat id (first sighting wins; active beats archived), and also returns an `accounts: [{id, name, phone, username}]` directory + `accountIds: []` per dialog so the SPA can attribute each chat back to the account(s) it lives in.
+- **Manage Groups now shows account chips** under each chat title (only when 2+ accounts are linked — single-account installs see no change). Each account gets a stable color hashed from its id so the same chip is recognisable across rows + reloads. The chip label prefers `@username`, falls back to phone, then display name. Hovering shows a richer title (name · phone · @username). A chat shared by both accounts gets two chips. Added on `.chat-row .row-account-chips` + `.chat-row .account-chip` with dark/light theme variants.
+- **i18n: 8 referenced keys were never added to the locale files** so they showed their inline fallback text in both English and Thai instead of the translation: `maintenance.dedup.set_header_v2`, `maintenance.dedup.set_reclaim`, `maintenance.dedup.loading_remaining`, `maintenance.dedup.stat.{sets,copies,files,reclaim}`, and `maintenance.ai.toggle.failed`. Added all 8 to `en.json` + `th.json` (en/th now have full key parity at 1335 each).
+- **`tests/shortcut-overrides.test.js` was failing 5/6 in `vitest run`** because the polyfill installed at module top-level only ran when `globalThis.localStorage` was strictly `undefined`; some other test in the suite leaked a stub Storage object (no `setItem`) onto the global, so the polyfill never installed and `localStorage.setItem(...)` from inside test bodies threw. Switched to always-assigning the polyfill and re-installing in `beforeEach` so each test sees a fresh writable store regardless of suite ordering.
+
+### Internal
+- SW bumped `v272` → `v273`.
+
 ## [2.6.12] — 2026-05-06
 
 ### Fixed

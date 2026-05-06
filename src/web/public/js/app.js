@@ -1715,6 +1715,10 @@ async function renderGroupsConfig() {
     try {
         const res = await api.get('/api/dialogs');
         const dialogs = res.dialogs || res || [];
+        // Stash the account directory for chip rendering in renderDialogsList.
+        // Only meaningful when 2+ accounts are linked — otherwise chips would
+        // be visual noise (they all carry the same single label).
+        state.dialogsAccounts = Array.isArray(res.accounts) ? res.accounts : [];
         state.allDialogs = dialogs;
         renderDialogsList(dialogs);
     } catch (e) {
@@ -1751,7 +1755,24 @@ function renderDialogsList(dialogs) {
         return;
     }
 
-    list.innerHTML = filtered.map(d => {
+    // Build an `accountId -> short label` map once per render. Skip chip
+    // rendering entirely when 0–1 accounts are linked — a single-account
+    // install would just see "[Default]" on every row, pure noise.
+    const accountsList = state.dialogsAccounts || [];
+    const showChips = accountsList.length >= 2;
+    const accountLabelById = new Map();
+    if (showChips) {
+        for (const a of accountsList) {
+            const label = a.username
+                ? `@${a.username}`
+                : (a.phone || a.name || a.id);
+            const title = [a.name, a.phone, a.username ? `@${a.username}` : '']
+                .filter(Boolean).join(' · ') || a.id;
+            accountLabelById.set(a.id, { label, title });
+        }
+    }
+
+    const rowHtml = filtered.map(d => {
         const typeLabel = d.type === 'channel' ? i18nT('groups.type.channel', 'Channel')
             : d.type === 'group' ? i18nT('groups.type.group', 'Group')
             : d.type === 'bot' ? i18nT('groups.type.bot', 'Bot')
@@ -1770,14 +1791,25 @@ function renderDialogsList(dialogs) {
         // (Telegram-side title) but route through getGroupName so a config
         // override (custom label) wins when present.
         const dispName = getGroupName(d.id, { fallback: d.name || d.title });
+
+        let accountChips = null;
+        if (showChips && Array.isArray(d.accountIds) && d.accountIds.length > 0) {
+            accountChips = d.accountIds.map(id => {
+                const meta = accountLabelById.get(id);
+                return { id, label: meta?.label || id, title: meta?.title || id };
+            });
+        }
+
         return renderChatRow({
             id: d.id,
             name: dispName,
             avatarType: d.type,
             subtitle: subParts.join(' · '),
             statusPill,
+            accountChips,
         });
     }).join('');
+    list.innerHTML = rowHtml;
 
     // Click anywhere on the row → open the group settings sheet for that
     // dialog. Re-resolve through the canonical store at click time.

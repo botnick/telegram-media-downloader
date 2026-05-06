@@ -1560,6 +1560,39 @@ button:focus, input:focus, select:focus, textarea:focus { outline: none; }
 .chat-row .status-pill-paused   { background: rgba(255,152,0,0.18);  color: #FFB54E; }
 .chat-row .status-pill-add      { background: rgba(255,255,255,0.06); color: var(--tg-textSecondary, #8B9BAA); }
 
+/* Account chips — shown under the title in Manage Groups when 2+
+   Telegram accounts are linked, so the operator can see at a glance
+   which account a chat lives in. --chip-hue is set inline by
+   renderChatRow() from a hash of the accountId, so each account keeps
+   a stable color across rows + reloads. */
+.chat-row .row-account-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+.chat-row .account-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 1px 7px;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.6;
+    background: hsl(var(--chip-hue, 210), 60%, 22%);
+    color: hsl(var(--chip-hue, 210), 80%, 80%);
+    border: 1px solid hsl(var(--chip-hue, 210), 60%, 32%);
+}
+html.theme-light .chat-row .account-chip {
+    background: hsl(var(--chip-hue, 210), 70%, 92%);
+    color: hsl(var(--chip-hue, 210), 70%, 28%);
+    border-color: hsl(var(--chip-hue, 210), 60%, 80%);
+}
+
 /* Guest sessions hide every element marked admin-only. Single source
    of truth so we don't have to thread `state.role` through every
    render path. body[data-role] is set on boot in app.js init() from
