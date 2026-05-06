@@ -157,6 +157,17 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_nsfw_review ON downloads(nsfw_score, nsfw_whitelist) WHERE nsfw_score IS NOT NULL',
         );
     } catch {}
+    // Tier-aware review path — covers the "rows of {file_type} not whitelisted
+    // ordered/filtered by nsfw_score" pattern that drives tier counts, the
+    // tier-list pagination, and bulk-id resolution. The leftmost column is
+    // file_type so the IN-list filter binds an index range, then whitelist=0
+    // narrows further, then nsfw_score sorts/ranges. The partial WHERE keeps
+    // the index small (rows that have never been scored aren't indexed).
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_nsfw_tier ON downloads(file_type, nsfw_whitelist, nsfw_score) WHERE nsfw_score IS NOT NULL',
+        );
+    } catch {}
     // AI subsystem indexes — driven by the perceptual-dedup grouping pass and
     // the "what's left to AI-index?" backfill query.
     try {
@@ -1062,38 +1073,46 @@ function _tierBounds(tierId) {
  * Per-tier counts. `whitelist` rows count toward `whitelistTotal` and are
  * NOT included in tier counts (they were admin-confirmed 18+ even when
  * the score might disagree). The UI uses this to render the stats cards.
+ *
+ * Single SQL pass — one CASE-SUM aggregation gives all five tier counts
+ * plus scanned/totalEligible. The whitelist count is unfiltered by
+ * file_type by design (it's a global "how many rows did the operator
+ * mark as confirmed-18+", not a per-photo metric) so it stays separate.
  */
 export function getNsfwTierCounts(fileTypes) {
     const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const db = getDb();
-    const out = { tiers: {}, scanned: 0, unscanned: 0, whitelisted: 0, totalEligible: 0 };
-    for (const tier of NSFW_TIERS) {
-        const n = db
-            .prepare(`
-            SELECT COUNT(*) AS n FROM downloads
+    // Build the per-tier SUM(CASE...) clauses from NSFW_TIERS so the
+    // bucket boundaries stay defined in one place.
+    const tierSums = NSFW_TIERS.map(
+        (t) =>
+            `SUM(CASE WHEN nsfw_score IS NOT NULL AND nsfw_whitelist = 0 AND nsfw_score >= ${t.min} AND nsfw_score < ${t.max} THEN 1 ELSE 0 END) AS tier_${t.id}`,
+    ).join(',\n               ');
+    const row = db
+        .prepare(`
+            SELECT
+               ${tierSums},
+               SUM(CASE WHEN nsfw_checked_at IS NOT NULL THEN 1 ELSE 0 END) AS scanned,
+               COUNT(*) AS total_eligible
+              FROM downloads
              WHERE file_type IN (${placeholders})
-               AND nsfw_score IS NOT NULL
-               AND nsfw_score >= ?
-               AND nsfw_score < ?
-               AND nsfw_whitelist = 0
         `)
-            .get(...types, tier.min, tier.max).n;
-        out.tiers[tier.id] = n;
-    }
-    out.scanned = db
-        .prepare(
-            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_checked_at IS NOT NULL`,
-        )
-        .get(...types).n;
-    out.totalEligible = db
-        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`)
-        .get(...types).n;
-    out.unscanned = Math.max(0, out.totalEligible - out.scanned);
-    out.whitelisted = db
+        .get(...types);
+    const tiers = {};
+    for (const t of NSFW_TIERS) tiers[t.id] = row[`tier_${t.id}`] || 0;
+    const whitelisted = db
         .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE nsfw_whitelist = 1`)
         .get().n;
-    return out;
+    const scanned = row.scanned || 0;
+    const totalEligible = row.total_eligible || 0;
+    return {
+        tiers,
+        scanned,
+        unscanned: Math.max(0, totalEligible - scanned),
+        whitelisted,
+        totalEligible,
+    };
 }
 
 /**
@@ -1101,22 +1120,38 @@ export function getNsfwTierCounts(fileTypes) {
  * on the review page so the operator can spot model bias / clustering at
  * a glance (e.g. classifier scoring everything in 0.4-0.6 = the model is
  * uncertain; consider a different model).
+ *
+ * SQL-side aggregation: GROUP BY a CAST(score*N AS INTEGER) bin index so
+ * the database returns one row per non-empty bin (max 21 rows for the
+ * default 20 bins, since the score=1.0 edge case lands in bin N-1). The
+ * dense output array is built from the sparse result so callers see a
+ * fixed-length counts[] like before.
  */
 export function getNsfwHistogram(fileTypes, bins = 20) {
     const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const n = Math.max(4, Math.min(50, Number(bins) || 20));
     const out = new Array(n).fill(0);
+    // Cap at n-1 so a perfect 1.0 score lands in the last bin instead of
+    // an out-of-range bucket. The CASE expression mirrors the JS
+    // `Math.floor(score*n); if (idx>=n) idx=n-1` clamp.
     const rows = getDb()
-        .prepare(
-            `SELECT nsfw_score FROM downloads WHERE file_type IN (${placeholders}) AND nsfw_score IS NOT NULL`,
-        )
-        .all(...types);
+        .prepare(`
+            SELECT
+               CASE WHEN CAST(nsfw_score * ? AS INTEGER) >= ?
+                    THEN ? - 1
+                    ELSE CAST(nsfw_score * ? AS INTEGER)
+               END AS bin,
+               COUNT(*) AS n
+              FROM downloads
+             WHERE file_type IN (${placeholders})
+               AND nsfw_score IS NOT NULL
+             GROUP BY bin
+        `)
+        .all(n, n, n, n, ...types);
     for (const r of rows) {
-        let idx = Math.floor(Number(r.nsfw_score) * n);
-        if (idx >= n) idx = n - 1;
-        if (idx < 0) idx = 0;
-        out[idx] += 1;
+        const idx = Math.max(0, Math.min(n - 1, Number(r.bin) || 0));
+        out[idx] = Number(r.n) || 0;
     }
     return { bins: n, counts: out };
 }
@@ -1176,6 +1211,59 @@ export function getNsfwListByTier({
         page: p,
         totalPages: Math.max(1, Math.ceil(totalRow.n / lim)),
     };
+}
+
+/**
+ * Resolve a tier-or-range filter to a flat array of row ids in one SQL
+ * statement. Replaces the old paginated walker that issued ~75 queries
+ * to collect 15k ids on the def_not tier — now it's a single index scan
+ * with no LIMIT/OFFSET dance.
+ *
+ * `scoreMin` / `scoreMax` are pushed into the WHERE clause too so a
+ * narrow score band (e.g. 0.55..0.62 for spot-checking) doesn't pull
+ * the whole tier into memory and filter post-query.
+ */
+export function getNsfwIdsByTier({
+    tier = null,
+    fileTypes,
+    groupId = null,
+    includeWhitelisted = false,
+    scoreMin = null,
+    scoreMax = null,
+} = {}) {
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
+    const placeholders = types.map(() => '?').join(',');
+    const where = [`file_type IN (${placeholders})`, 'nsfw_score IS NOT NULL'];
+    const params = [...types];
+    if (tier) {
+        const bounds = _tierBounds(tier);
+        if (bounds) {
+            where.push('nsfw_score >= ?');
+            where.push('nsfw_score < ?');
+            params.push(bounds.min, bounds.max);
+        }
+    }
+    if (Number.isFinite(scoreMin)) {
+        where.push('nsfw_score >= ?');
+        params.push(Number(scoreMin));
+    }
+    if (Number.isFinite(scoreMax)) {
+        where.push('nsfw_score < ?');
+        params.push(Number(scoreMax));
+    }
+    if (!includeWhitelisted) where.push('nsfw_whitelist = 0');
+    if (groupId) {
+        where.push('group_id = ?');
+        params.push(String(groupId));
+    }
+    const rows = getDb()
+        .prepare(`
+            SELECT id FROM downloads
+             WHERE ${where.join(' AND ')}
+             ORDER BY nsfw_score ASC, id ASC
+        `)
+        .all(...params);
+    return rows.map((r) => Number(r.id)).filter((n) => Number.isInteger(n) && n > 0);
 }
 
 /**

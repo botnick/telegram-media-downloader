@@ -37,6 +37,7 @@ import {
     getNsfwTierCounts,
     getNsfwHistogram,
     getNsfwListByTier,
+    getNsfwIdsByTier,
     reclassifyNsfw,
     unwhitelistNsfw,
     NSFW_TIERS,
@@ -5390,36 +5391,25 @@ app.get('/api/maintenance/nsfw/v2/list', async (req, res) => {
 // requested action. Single funnel keeps the four bulk endpoints (delete /
 // whitelist / unwhitelist / reclassify) consistent — they all accept the
 // same `{ tier?, scoreMax?, scoreMin?, groupId?, fileTypes?, ids? }` body.
-async function _resolveBulkIds(body) {
+//
+// One SQL statement covers the largest tiers; scoreMin/scoreMax are
+// pushed into the WHERE clause so a narrow band doesn't pull the whole
+// tier into memory.
+function _resolveBulkIds(body) {
     if (Array.isArray(body?.ids) && body.ids.length) {
         return body.ids.map(Number).filter((n) => Number.isInteger(n) && n > 0);
     }
     const cfg = _nsfwCfg();
     const fileTypes =
         Array.isArray(body?.fileTypes) && body.fileTypes.length ? body.fileTypes : cfg.fileTypes;
-    // Walk the entire matching set page-by-page so very large tiers (15 000
-    // rows in `def_not`) don't exceed any single-query limit.
-    const all = [];
-    let page = 1;
-    while (true) {
-        const r = getNsfwListByTier({
-            tier: body?.tier || null,
-            fileTypes,
-            groupId: body?.groupId || null,
-            includeWhitelisted: body?.includeWhitelisted === true,
-            page,
-            limit: 200,
-        });
-        for (const row of r.rows) {
-            const sc = Number(row.nsfw_score);
-            if (Number.isFinite(body?.scoreMax) && sc >= body.scoreMax) continue;
-            if (Number.isFinite(body?.scoreMin) && sc < body.scoreMin) continue;
-            all.push(row.id);
-        }
-        if (page >= r.totalPages) break;
-        page += 1;
-    }
-    return all;
+    return getNsfwIdsByTier({
+        tier: body?.tier || null,
+        fileTypes,
+        groupId: body?.groupId || null,
+        includeWhitelisted: body?.includeWhitelisted === true,
+        scoreMin: Number.isFinite(body?.scoreMin) ? Number(body.scoreMin) : null,
+        scoreMax: Number.isFinite(body?.scoreMax) ? Number(body.scoreMax) : null,
+    });
 }
 
 // All four NSFW v2 bulk endpoints share a single `nsfwBulk` tracker so

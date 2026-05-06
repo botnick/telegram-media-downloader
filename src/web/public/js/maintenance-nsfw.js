@@ -771,12 +771,12 @@ async function _onPreloadClick() {
 async function _onCacheClearClick() {
     const ok = await confirmSheet({
         title: i18nT('maintenance.nsfw.cache_clear.confirm_title', 'Wipe cached weights?'),
-        body: i18nT(
+        message: i18nT(
             'maintenance.nsfw.cache_clear.confirm_body',
             'The classifier cache directory will be emptied. The next scan or preload will re-download the model.',
         ),
-        confirmText: i18nT('common.delete', 'Delete'),
-        confirmDanger: true,
+        confirmLabel: i18nT('common.delete', 'Delete'),
+        danger: true,
     });
     if (!ok) return;
     const btn = $('nsfw-cache-clear-btn');
