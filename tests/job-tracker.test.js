@@ -106,7 +106,10 @@ describe('createJobTracker', () => {
         const sinkA = [];
         const sinkB = [];
         // Simulate "broadcast to every connected client" by feeding two sinks.
-        const broadcast = (m) => { sinkA.push(m); sinkB.push(m); };
+        const broadcast = (m) => {
+            sinkA.push(m);
+            sinkB.push(m);
+        };
         const t = createJobTracker({ kind: 'multi', broadcast });
         t.tryStart(async ({ onProgress }) => {
             onProgress({ processed: 1, total: 10, stage: 'hashing' });
@@ -127,7 +130,8 @@ describe('createJobTracker', () => {
     it('honours an eventPrefix override', async () => {
         const broadcasts = [];
         const t = createJobTracker({
-            kind: 'group:purge:42', broadcast: (m) => broadcasts.push(m),
+            kind: 'group:purge:42',
+            broadcast: (m) => broadcasts.push(m),
             eventPrefix: 'group_purge',
         });
         t.tryStart(async () => ({ deleted: 5 }));
@@ -139,7 +143,9 @@ describe('createJobTracker', () => {
     it('logs through the supplied log fn', async () => {
         const logs = [];
         const t = createJobTracker({
-            kind: 'logged', broadcast: () => {}, log: (e) => logs.push(e),
+            kind: 'logged',
+            broadcast: () => {},
+            log: (e) => logs.push(e),
         });
         t.tryStart(async () => ({ ok: true }));
         await flushAsync(10);
@@ -155,7 +161,10 @@ describe('createJobTracker — multi-client WS guarantees', () => {
         // Two virtual WS clients reading the same broadcast pipe.
         const clientA = [];
         const clientB = [];
-        const broadcast = (m) => { clientA.push(m); clientB.push(m); };
+        const broadcast = (m) => {
+            clientA.push(m);
+            clientB.push(m);
+        };
         const t = createJobTracker({ kind: 'fan', broadcast });
         t.tryStart(async ({ onProgress }) => {
             for (let i = 0; i < 3; i++) {

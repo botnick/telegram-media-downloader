@@ -24,7 +24,7 @@ export class AutoForwarder {
         const { filePath, groupId, groupName, message } = downloadInfo;
 
         // 1. Check Group Config
-        const groupConfig = this.config.groups.find(g => String(g.id) === String(groupId));
+        const groupConfig = this.config.groups.find((g) => String(g.id) === String(groupId));
         if (!groupConfig || !groupConfig.autoForward || !groupConfig.autoForward.enabled) {
             return;
         }
@@ -32,9 +32,10 @@ export class AutoForwarder {
         const settings = groupConfig.autoForward;
 
         // Use per-group forward account if configured
-        const fwdClient = (this.accountManager && groupConfig.forwardAccount)
-            ? this.accountManager.getClient(groupConfig.forwardAccount)
-            : this.client;
+        const fwdClient =
+            this.accountManager && groupConfig.forwardAccount
+                ? this.accountManager.getClient(groupConfig.forwardAccount)
+                : this.client;
 
         console.log(colorize(`➡️  [AutoForward] Processing for ${groupName}...`, 'cyan'));
 
@@ -42,13 +43,15 @@ export class AutoForwarder {
             // 2. Resolve Destination
             let targetPeer = await this.resolveDestination(settings.destination, fwdClient);
             if (!targetPeer) {
-                console.log(colorize(`⚠️  [AutoForward] Could not resolve destination. Skipping.`, 'yellow'));
+                console.log(
+                    colorize(`⚠️  [AutoForward] Could not resolve destination. Skipping.`, 'yellow'),
+                );
                 return;
             }
 
             // 3. Prepare Caption with Message Link
             let caption = message?.message || message?.text || '';
-            
+
             // Generate message link
             // Format: t.me/c/CHANNEL_ID/MESSAGE_ID (private) or t.me/USERNAME/MESSAGE_ID (public)
             let messageLink = '';
@@ -58,7 +61,7 @@ export class AutoForwarder {
                 const cleanId = String(groupId).replace(/^-100/, '');
                 messageLink = `https://t.me/c/${cleanId}/${msgId}`;
             }
-            
+
             // Add source attribution with clickable link
             if (messageLink) {
                 caption += `\n\n📌 Source: [${groupName}](${messageLink})`;
@@ -72,7 +75,7 @@ export class AutoForwarder {
                 file: filePath,
                 caption: caption,
                 forceDocument: false,
-                workers: 1 // Safer for automated uploads
+                workers: 1, // Safer for automated uploads
             });
 
             // GramJS returns the new message; surface its TG message-id in the log
@@ -91,12 +94,21 @@ export class AutoForwarder {
             if (settings.deleteAfterForward) {
                 try {
                     await fs.unlink(filePath);
-                    console.log(colorize(`🗑️  [AutoForward] Deleted local file: ${path.basename(filePath)}`, 'gray'));
+                    console.log(
+                        colorize(
+                            `🗑️  [AutoForward] Deleted local file: ${path.basename(filePath)}`,
+                            'gray',
+                        ),
+                    );
                 } catch (unlinkErr) {
-                    console.warn(colorize(`⚠️  [AutoForward] Forwarded but local delete failed for ${path.basename(filePath)}: ${unlinkErr.message}`, 'yellow'));
+                    console.warn(
+                        colorize(
+                            `⚠️  [AutoForward] Forwarded but local delete failed for ${path.basename(filePath)}: ${unlinkErr.message}`,
+                            'yellow',
+                        ),
+                    );
                 }
             }
-
         } catch (error) {
             console.log(colorize(`❌ [AutoForward] Error: ${error.message}`, 'red'));
         }
@@ -118,14 +130,20 @@ export class AutoForwarder {
                     const id = BigInt(destination);
 
                     // Primary: cheap, returns InputPeer if GramJS already has the entity cached.
-                    try { return await client.getInputEntity(id); } catch { /* fall through */ }
+                    try {
+                        return await client.getInputEntity(id);
+                    } catch {
+                        /* fall through */
+                    }
 
                     // Secondary: heavier — scans dialogs and resolves usernames/peers, often
                     // succeeds where getInputEntity fails (e.g. channel never seen on this client).
                     try {
                         const entity = await client.getEntity(id);
                         if (entity) return entity;
-                    } catch { /* fall through */ }
+                    } catch {
+                        /* fall through */
+                    }
 
                     // Last resort: hand-roll an InputPeer from the canonical -100… layout.
                     // accessHash=0 only resolves for channels the bot/user has interacted with
@@ -134,18 +152,24 @@ export class AutoForwarder {
                     // mysterious resolve hang. Logging the fallback so operators can spot it.
                     const raw = String(destination);
                     if (raw.startsWith('-100')) {
-                        console.warn(colorize(
-                            `⚠️  [AutoForward] Falling back to manual InputPeerChannel for ${raw} — peer is not in dialog cache. If sends fail, open the channel once from the configured account.`,
-                            'yellow'));
+                        console.warn(
+                            colorize(
+                                `⚠️  [AutoForward] Falling back to manual InputPeerChannel for ${raw} — peer is not in dialog cache. If sends fail, open the channel once from the configured account.`,
+                                'yellow',
+                            ),
+                        );
                         return new Api.InputPeerChannel({
                             channelId: BigInt(raw.replace(/^-100/, '')),
                             accessHash: BigInt(0),
                         });
                     }
                     if (raw.startsWith('-')) {
-                        console.warn(colorize(
-                            `⚠️  [AutoForward] Falling back to manual InputPeerChat for ${raw}.`,
-                            'yellow'));
+                        console.warn(
+                            colorize(
+                                `⚠️  [AutoForward] Falling back to manual InputPeerChat for ${raw}.`,
+                                'yellow',
+                            ),
+                        );
                         return new Api.InputPeerChat({ chatId: BigInt(raw.replace(/^-/, '')) });
                     }
                     return id;
@@ -164,8 +188,8 @@ export class AutoForwarder {
         // Try to find existing "Telegram Downloader Storage" in dialogs
         try {
             const dialogs = await client.getDialogs({ limit: 100 });
-            const found = dialogs.find(d => d.title === 'Telegram Downloader Storage');
-            
+            const found = dialogs.find((d) => d.title === 'Telegram Downloader Storage');
+
             if (found) {
                 this.storageChannelId = found.entity;
                 return this.storageChannelId;
@@ -178,19 +202,28 @@ export class AutoForwarder {
                     title: 'Telegram Downloader Storage',
                     about: 'Auto-forwarded media storage from Telegram Media Downloader',
                     broadcast: true,
-                    megagroup: false
-                })
+                    megagroup: false,
+                }),
             );
 
             // Access the created channel
             if (result.chats && result.chats[0]) {
                 this.storageChannelId = result.chats[0];
-                console.log(colorize(`✅ [AutoForward] Created channel: Telegram Downloader Storage`, 'green'));
+                console.log(
+                    colorize(
+                        `✅ [AutoForward] Created channel: Telegram Downloader Storage`,
+                        'green',
+                    ),
+                );
                 return this.storageChannelId;
             }
-
         } catch (e) {
-            console.log(colorize(`❌ [AutoForward] Failed to create/find storage channel: ${e.message}`, 'red'));
+            console.log(
+                colorize(
+                    `❌ [AutoForward] Failed to create/find storage channel: ${e.message}`,
+                    'red',
+                ),
+            );
         }
 
         return null;

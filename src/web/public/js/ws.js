@@ -11,13 +11,23 @@ let socket = null;
 let backoff = 1000;
 let alive = false;
 let attemptCount = 0;
-const MAX_ATTEMPTS_BEFORE_PAUSE = 12;   // ~6 min of capped 30 s backoff = enough to notice
+const MAX_ATTEMPTS_BEFORE_PAUSE = 12; // ~6 min of capped 30 s backoff = enough to notice
 
 function dispatch(msg) {
     const set = handlers.get(msg.type);
-    if (set) for (const fn of set) try { fn(msg); } catch (e) { console.error('ws handler', e); }
+    if (set)
+        for (const fn of set)
+            try {
+                fn(msg);
+            } catch (e) {
+                console.error('ws handler', e);
+            }
     const all = handlers.get('*');
-    if (all) for (const fn of all) try { fn(msg); } catch {}
+    if (all)
+        for (const fn of all)
+            try {
+                fn(msg);
+            } catch {}
 }
 
 function open() {
@@ -37,7 +47,11 @@ function open() {
     });
     socket.addEventListener('message', (ev) => {
         let msg;
-        try { msg = JSON.parse(ev.data); } catch { return; }
+        try {
+            msg = JSON.parse(ev.data);
+        } catch {
+            return;
+        }
         if (msg && typeof msg === 'object' && msg.type) dispatch(msg);
     });
     socket.addEventListener('close', () => {
@@ -46,7 +60,9 @@ function open() {
         scheduleReconnect();
     });
     socket.addEventListener('error', () => {
-        try { socket.close(); } catch {}
+        try {
+            socket.close();
+        } catch {}
     });
 }
 
@@ -68,10 +84,14 @@ function scheduleReconnect() {
     setTimeout(open, backoff);
     backoff = Math.min(backoff * 2, 30000);
 }
-function oneShot() { open(); }
+function oneShot() {
+    open();
+}
 
 export const ws = {
-    connect() { if (!socket || socket.readyState >= 2) open(); },
+    connect() {
+        if (!socket || socket.readyState >= 2) open();
+    },
     /** Manual retry after we paused on too-many-attempts. */
     retry() {
         attemptCount = 0;
@@ -83,6 +103,10 @@ export const ws = {
         handlers.get(type).add(fn);
         return () => handlers.get(type)?.delete(fn);
     },
-    off(type, fn) { handlers.get(type)?.delete(fn); },
-    isConnected() { return alive; },
+    off(type, fn) {
+        handlers.get(type)?.delete(fn);
+    },
+    isConnected() {
+        return alive;
+    },
 };

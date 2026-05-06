@@ -1,0 +1,112 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "ignoreUnknown": true,
+        "includes": [
+            "**",
+            "!node_modules/**",
+            "!data/**",
+            "!docs/**",
+            "!**/*.min.js",
+            "!package-lock.json"
+        ]
+    },
+    "formatter": {
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 100,
+        "lineEnding": "lf"
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "a11y": {
+                "useButtonType": "off",
+                "useKeyWithClickEvents": "off",
+                "useValidAnchor": "off",
+                "noStaticElementInteractions": "off",
+                "noNoninteractiveElementToInteractiveRole": "off",
+                "useSemanticElements": "off",
+                "noLabelWithoutControl": "off",
+                "useAriaPropsForRole": "off",
+                "noSvgWithoutTitle": "off",
+                "useMediaCaption": "off",
+                "noAutofocus": "off",
+                "useAltText": "off",
+                "useHeadingContent": "off",
+                "useAnchorContent": "off"
+            },
+            "correctness": {
+                "noUnusedVariables": "off",
+                "noUnusedFunctionParameters": "off",
+                "noUnusedImports": "off",
+                "useParseIntRadix": "off",
+                "useYield": "off",
+                "noConstantCondition": "warn",
+                "noSelfAssign": "warn"
+            },
+            "suspicious": {
+                "noControlCharactersInRegex": "off",
+                "noEmptyBlockStatements": "off",
+                "noPrototypeBuiltins": "off",
+                "noAssignInExpressions": "off",
+                "noExplicitAny": "off",
+                "noGlobalIsNan": "off",
+                "useIterableCallbackReturn": "off",
+                "useBiomeIgnoreFolder": "off",
+                "noShorthandPropertyOverrides": "off",
+                "noDuplicateProperties": "off"
+            },
+            "style": {
+                "useNodejsImportProtocol": "off",
+                "useTemplate": "off",
+                "noUselessElse": "off",
+                "noParameterAssign": "off",
+                "useNumberNamespace": "off",
+                "useConst": "off",
+                "useExponentiationOperator": "off",
+                "noDescendingSpecificity": "off"
+            },
+            "complexity": {
+                "useArrowFunction": "off",
+                "useOptionalChain": "off",
+                "useFlatMap": "off",
+                "noForEach": "off",
+                "noUselessSwitchCase": "off",
+                "useLiteralKeys": "off",
+                "noStaticOnlyClass": "off",
+                "noThisInStatic": "off",
+                "noUselessConstructor": "off",
+                "noImportantStyles": "off"
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "single",
+            "trailingCommas": "all",
+            "arrowParentheses": "always",
+            "semicolons": "always"
+        }
+    },
+    "json": {
+        "formatter": {
+            "trailingCommas": "none"
+        }
+    },
+    "assist": {
+        "enabled": true,
+        "actions": {
+            "source": {
+                "organizeImports": "off"
+            }
+        }
+    }
+}

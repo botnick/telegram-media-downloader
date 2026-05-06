@@ -19,7 +19,7 @@ export async function loadSettings() {
         // and continue with an empty config — the localStorage-backed Video
         // Player + Appearance + font wiring below still runs, which is the
         // only Settings surface a guest sees anyway.
-        const isGuest = (typeof document !== 'undefined' && document.body?.dataset?.role === 'guest');
+        const isGuest = typeof document !== 'undefined' && document.body?.dataset?.role === 'guest';
         let config = {};
         if (!isGuest) {
             config = await api.get('/api/config');
@@ -39,7 +39,9 @@ export async function loadSettings() {
                     _fontPickerWired = true;
                 }
             }
-        } catch (e) { console.warn('[settings] font picker re-init:', e); }
+        } catch (e) {
+            console.warn('[settings] font picker re-init:', e);
+        }
 
         const bind = (id, val) => {
             const el = document.getElementById(id);
@@ -72,16 +74,24 @@ export async function loadSettings() {
         // gets the raw bytes so the save path's `get('setting-max-speed')`
         // works unchanged.
         const speedHidden = document.getElementById('setting-max-speed');
-        const speedValEl  = document.getElementById('setting-max-speed-value');
+        const speedValEl = document.getElementById('setting-max-speed-value');
         const speedUnitEl = document.getElementById('setting-max-speed-unit');
-        const speedLabel  = document.getElementById('speed-value');
+        const speedLabel = document.getElementById('speed-value');
         if (speedHidden && speedValEl && speedUnitEl) {
             const bytes = Number(dl.maxSpeed) || 0;
-            let unit = 'MB', value = '';
+            let unit = 'MB',
+                value = '';
             if (bytes > 0) {
-                if (bytes >= 1024 * 1024 * 1024) { unit = 'GB'; value = +(bytes / 1073741824).toFixed(2); }
-                else if (bytes >= 1024 * 1024)   { unit = 'MB'; value = +(bytes / 1048576).toFixed(2); }
-                else                             { unit = 'KB'; value = +(bytes / 1024).toFixed(2); }
+                if (bytes >= 1024 * 1024 * 1024) {
+                    unit = 'GB';
+                    value = +(bytes / 1073741824).toFixed(2);
+                } else if (bytes >= 1024 * 1024) {
+                    unit = 'MB';
+                    value = +(bytes / 1048576).toFixed(2);
+                } else {
+                    unit = 'KB';
+                    value = +(bytes / 1024).toFixed(2);
+                }
             }
             speedValEl.value = value === 0 ? '' : String(value);
             speedUnitEl.value = unit;
@@ -90,7 +100,8 @@ export async function loadSettings() {
                 const u = speedUnitEl.value;
                 if (!Number.isFinite(v) || v <= 0) {
                     speedHidden.value = '0';
-                    if (speedLabel) speedLabel.textContent = i18nT('settings.download.unlimited', 'Unlimited');
+                    if (speedLabel)
+                        speedLabel.textContent = i18nT('settings.download.unlimited', 'Unlimited');
                     return;
                 }
                 const mult = u === 'GB' ? 1073741824 : u === 'KB' ? 1024 : 1048576;
@@ -125,10 +136,12 @@ export async function loadSettings() {
                 e.preventDefault();
                 rotateToggle.classList.toggle('active');
                 const on = rotateToggle.classList.contains('active');
-                showToast(on
-                    ? i18nT('toast.rotate_on', 'Auto-rotate enabled — save to apply')
-                    : i18nT('toast.rotate_off', 'Auto-rotate disabled — save to apply'),
-                    on ? 'success' : 'info');
+                showToast(
+                    on
+                        ? i18nT('toast.rotate_on', 'Auto-rotate enabled — save to apply')
+                        : i18nT('toast.rotate_off', 'Auto-rotate disabled — save to apply'),
+                    on ? 'success' : 'info',
+                );
             };
         }
 
@@ -143,10 +156,15 @@ export async function loadSettings() {
                 e.preventDefault();
                 rescueDefaultToggle.classList.toggle('active');
                 const on = rescueDefaultToggle.classList.contains('active');
-                showToast(on
-                    ? i18nT('toast.rescue_default_on', 'Rescue mode default on — save to apply')
-                    : i18nT('toast.rescue_default_off', 'Rescue mode default off — save to apply'),
-                    on ? 'success' : 'info');
+                showToast(
+                    on
+                        ? i18nT('toast.rescue_default_on', 'Rescue mode default on — save to apply')
+                        : i18nT(
+                              'toast.rescue_default_off',
+                              'Rescue mode default off — save to apply',
+                          ),
+                    on ? 'success' : 'info',
+                );
             };
         }
         bind('setting-rescue-default-hours', rescueCfg.retentionHours ?? 48);
@@ -175,15 +193,39 @@ export async function loadSettings() {
             el.onclick = (e) => {
                 e.preventDefault();
                 const on = localStorage.getItem(key) !== '1';
-                try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* private mode */ }
+                try {
+                    localStorage.setItem(key, on ? '1' : '0');
+                } catch {
+                    /* private mode */
+                }
                 refresh();
                 showToast(on ? i18nT(onMsg, onMsg) : i18nT(offMsg, offMsg), 'info');
             };
         };
-        wireBoolPref('setting-viewer-autoplay',     'viewer-autoplay',     'toast.viewer_autoplay_on',     'toast.viewer_autoplay_off');
-        wireBoolPref('setting-viewer-start-muted',  'video-muted',         'toast.viewer_muted_on',        'toast.viewer_muted_off');
-        wireBoolPref('setting-viewer-loop',         'viewer-loop',         'toast.viewer_loop_on',         'toast.viewer_loop_off');
-        wireBoolPref('setting-viewer-auto-advance', 'viewer-auto-advance', 'toast.viewer_advance_on',      'toast.viewer_advance_off');
+        wireBoolPref(
+            'setting-viewer-autoplay',
+            'viewer-autoplay',
+            'toast.viewer_autoplay_on',
+            'toast.viewer_autoplay_off',
+        );
+        wireBoolPref(
+            'setting-viewer-start-muted',
+            'video-muted',
+            'toast.viewer_muted_on',
+            'toast.viewer_muted_off',
+        );
+        wireBoolPref(
+            'setting-viewer-loop',
+            'viewer-loop',
+            'toast.viewer_loop_on',
+            'toast.viewer_loop_off',
+        );
+        wireBoolPref(
+            'setting-viewer-auto-advance',
+            'viewer-auto-advance',
+            'toast.viewer_advance_on',
+            'toast.viewer_advance_off',
+        );
         // PiP / Speed button visibility — defaults to ON (legacy behaviour).
         // Use inverted-sense keys ('viewer-hide-pip' = '1' → hidden) so
         // existing users who never touched the toggle keep both visible.
@@ -192,46 +234,77 @@ export async function loadSettings() {
             if (!el) return;
             const refresh = () => el.classList.toggle('active', localStorage.getItem(key) !== '1');
             const apply = () => applyFn(localStorage.getItem(key) !== '1');
-            refresh(); apply();
+            refresh();
+            apply();
             el.onclick = (e) => {
                 e.preventDefault();
                 const visible = localStorage.getItem(key) !== '1';
-                try { localStorage.setItem(key, visible ? '1' : '0'); } catch {}
-                refresh(); apply();
+                try {
+                    localStorage.setItem(key, visible ? '1' : '0');
+                } catch {}
+                refresh();
+                apply();
                 showToast(visible ? i18nT(offMsg, offMsg) : i18nT(onMsg, onMsg), 'info');
             };
         };
-        wireHidePref('setting-viewer-show-pip',   'viewer-hide-pip',
-            (visible) => { const b = document.getElementById('video-pip-btn'); if (b) b.style.display = visible ? '' : 'none'; },
-            'toast.viewer_pip_on', 'toast.viewer_pip_off');
-        wireHidePref('setting-viewer-show-speed', 'viewer-hide-speed',
-            (visible) => { const b = document.getElementById('video-settings-btn'); if (b) b.style.display = visible ? '' : 'none'; },
-            'toast.viewer_speedbtn_on', 'toast.viewer_speedbtn_off');
+        wireHidePref(
+            'setting-viewer-show-pip',
+            'viewer-hide-pip',
+            (visible) => {
+                const b = document.getElementById('video-pip-btn');
+                if (b) b.style.display = visible ? '' : 'none';
+            },
+            'toast.viewer_pip_on',
+            'toast.viewer_pip_off',
+        );
+        wireHidePref(
+            'setting-viewer-show-speed',
+            'viewer-hide-speed',
+            (visible) => {
+                const b = document.getElementById('video-settings-btn');
+                if (b) b.style.display = visible ? '' : 'none';
+            },
+            'toast.viewer_speedbtn_on',
+            'toast.viewer_speedbtn_off',
+        );
         // Seed default ON for double-tap-fullscreen so the toggle reflects
         // the legacy behaviour on first visit. Once set, user clicks
         // toggle as expected.
         if (localStorage.getItem('viewer-dbl-tap-fs') === null) {
-            try { localStorage.setItem('viewer-dbl-tap-fs', '1'); } catch {}
+            try {
+                localStorage.setItem('viewer-dbl-tap-fs', '1');
+            } catch {}
         }
-        wireBoolPref('setting-viewer-dbl-tap-fs', 'viewer-dbl-tap-fs',
-            'toast.viewer_dbltap_on', 'toast.viewer_dbltap_off');
+        wireBoolPref(
+            'setting-viewer-dbl-tap-fs',
+            'viewer-dbl-tap-fs',
+            'toast.viewer_dbltap_on',
+            'toast.viewer_dbltap_off',
+        );
         // Resume defaults to ON (legacy behaviour) — store the OPPOSITE
         // sense ('viewer-no-resume' = 1 when disabled) so existing users
         // who never touched the toggle keep their resume behaviour.
         const resumeEl = document.getElementById('setting-viewer-resume');
         if (resumeEl) {
             const KEY = 'viewer-no-resume';
-            const refresh = () => resumeEl.classList.toggle('active', localStorage.getItem(KEY) !== '1');
+            const refresh = () =>
+                resumeEl.classList.toggle('active', localStorage.getItem(KEY) !== '1');
             refresh();
             resumeEl.onclick = (e) => {
                 e.preventDefault();
                 const wasOn = localStorage.getItem(KEY) !== '1';
-                try { localStorage.setItem(KEY, wasOn ? '1' : '0'); } catch { /* private mode */ }
+                try {
+                    localStorage.setItem(KEY, wasOn ? '1' : '0');
+                } catch {
+                    /* private mode */
+                }
                 refresh();
-                showToast(wasOn
-                    ? i18nT('toast.viewer_resume_off', 'Resume disabled')
-                    : i18nT('toast.viewer_resume_on', 'Resume enabled'),
-                    'info');
+                showToast(
+                    wasOn
+                        ? i18nT('toast.viewer_resume_off', 'Resume disabled')
+                        : i18nT('toast.viewer_resume_on', 'Resume enabled'),
+                    'info',
+                );
             };
         }
         // Default speed — bound directly to the existing video-speed key
@@ -241,12 +314,14 @@ export async function loadSettings() {
             const cur = parseFloat(localStorage.getItem('video-speed') || '1');
             speedSel.value = String(Number.isFinite(cur) && cur > 0 ? cur : 1);
             speedSel.onchange = () => {
-                try { localStorage.setItem('video-speed', String(parseFloat(speedSel.value) || 1)); } catch {}
+                try {
+                    localStorage.setItem('video-speed', String(parseFloat(speedSel.value) || 1));
+                } catch {}
             };
         }
         // Default volume — same pattern, just clamped 0..1.
         const volSlider = document.getElementById('setting-viewer-default-volume');
-        const volLabel  = document.getElementById('setting-viewer-default-volume-val');
+        const volLabel = document.getElementById('setting-viewer-default-volume-val');
         if (volSlider) {
             const cur = parseFloat(localStorage.getItem('video-volume') || '1');
             const pct = Math.round((Number.isFinite(cur) ? cur : 1) * 100);
@@ -255,7 +330,9 @@ export async function loadSettings() {
             volSlider.oninput = () => {
                 const n = parseInt(volSlider.value, 10);
                 if (volLabel) volLabel.textContent = String(n);
-                try { localStorage.setItem('video-volume', String(Math.max(0, Math.min(1, n / 100)))); } catch {}
+                try {
+                    localStorage.setItem('video-volume', String(Math.max(0, Math.min(1, n / 100))));
+                } catch {}
             };
         }
         // Skip step (left/right arrow seek seconds) + auto-hide controls
@@ -268,15 +345,18 @@ export async function loadSettings() {
             el.value = String(Number.isFinite(cur) && cur >= min && cur <= max ? cur : def);
             el.oninput = () => {
                 const n = Math.max(min, Math.min(max, parseInt(el.value, 10) || def));
-                try { localStorage.setItem(key, String(n)); } catch {}
+                try {
+                    localStorage.setItem(key, String(n));
+                } catch {}
             };
         };
-        wireNumberPref('setting-viewer-skip-step',  'viewer-skip-step',  5, 1, 60);
+        wireNumberPref('setting-viewer-skip-step', 'viewer-skip-step', 5, 1, 60);
         wireNumberPref('setting-viewer-hide-delay', 'viewer-hide-delay', 3, 1, 30);
 
         const notifyToggle = document.getElementById('setting-notifications');
         if (notifyToggle) {
-            const refresh = () => notifyToggle.classList.toggle('active', Notifications.isEnabled());
+            const refresh = () =>
+                notifyToggle.classList.toggle('active', Notifications.isEnabled());
             refresh();
             notifyToggle.onclick = async (e) => {
                 e.preventDefault();
@@ -285,10 +365,12 @@ export async function loadSettings() {
                     showToast(i18nT('toast.notify_disabled', 'Notifications disabled'), 'info');
                 } else {
                     const ok = await Notifications.requestEnable();
-                    showToast(ok
-                        ? i18nT('toast.notify_enabled', 'Notifications enabled')
-                        : i18nT('toast.notify_denied', 'Permission denied'),
-                        ok ? 'success' : 'error');
+                    showToast(
+                        ok
+                            ? i18nT('toast.notify_enabled', 'Notifications enabled')
+                            : i18nT('toast.notify_denied', 'Permission denied'),
+                        ok ? 'success' : 'error',
+                    );
                 }
                 refresh();
             };
@@ -296,7 +378,8 @@ export async function loadSettings() {
 
         const httpsToggle = document.getElementById('setting-force-https');
         if (httpsToggle) {
-            const refresh = () => httpsToggle.classList.toggle('active', config.web?.forceHttps === true);
+            const refresh = () =>
+                httpsToggle.classList.toggle('active', config.web?.forceHttps === true);
             refresh();
             httpsToggle.onclick = async (e) => {
                 e.preventDefault();
@@ -308,9 +391,18 @@ export async function loadSettings() {
                 // toggle on disable (escape hatch should be friction-free).
                 if (next) {
                     const ok = await confirmSheet({
-                        title: i18nT('settings.security.force_https_confirm_title', 'Enable Force HTTPS?'),
-                        message: i18nT('settings.security.force_https_confirm_body', 'Every HTTP request will 308-redirect to HTTPS. Make sure your reverse proxy has a working TLS cert and TRUST_PROXY=1 is set, otherwise the dashboard becomes unreachable. Localhost is exempt so you can still recover from the host.'),
-                        confirmLabel: i18nT('settings.security.force_https_confirm_ok', 'Enable Force HTTPS'),
+                        title: i18nT(
+                            'settings.security.force_https_confirm_title',
+                            'Enable Force HTTPS?',
+                        ),
+                        message: i18nT(
+                            'settings.security.force_https_confirm_body',
+                            'Every HTTP request will 308-redirect to HTTPS. Make sure your reverse proxy has a working TLS cert and TRUST_PROXY=1 is set, otherwise the dashboard becomes unreachable. Localhost is exempt so you can still recover from the host.',
+                        ),
+                        confirmLabel: i18nT(
+                            'settings.security.force_https_confirm_ok',
+                            'Enable Force HTTPS',
+                        ),
                         danger: true,
                     });
                     if (!ok) return;
@@ -318,35 +410,60 @@ export async function loadSettings() {
                 try {
                     await api.post('/api/config', { web: { forceHttps: next } });
                     httpsToggle.classList.toggle('active', next);
-                    showToast(next
-                        ? i18nT('toast.https_on', 'Force HTTPS enabled')
-                        : i18nT('toast.https_off', 'Force HTTPS disabled'),
-                        next ? 'success' : 'info');
+                    showToast(
+                        next
+                            ? i18nT('toast.https_on', 'Force HTTPS enabled')
+                            : i18nT('toast.https_off', 'Force HTTPS disabled'),
+                        next ? 'success' : 'info',
+                    );
                 } catch (err) {
-                    showToast(i18nTf('toast.save_failed', { msg: err.message }, `Save failed: ${err.message}`), 'error');
+                    showToast(
+                        i18nTf(
+                            'toast.save_failed',
+                            { msg: err.message },
+                            `Save failed: ${err.message}`,
+                        ),
+                        'error',
+                    );
                 }
             };
         }
 
         const rlToggle = document.getElementById('setting-rate-limit');
-        const rlInput  = document.getElementById('setting-rate-limit-rpm');
+        const rlInput = document.getElementById('setting-rate-limit-rpm');
         if (rlToggle && rlInput) {
             const rlCfg = config.web?.rateLimit || {};
             rlToggle.classList.toggle('active', rlCfg.enabled === true);
             rlInput.value = rlCfg.perMinute || 10000;
 
             const saveRateLimit = async () => {
-                const enabled   = rlToggle.classList.contains('active');
-                const perMinute = Math.max(10, Math.min(1000000, parseInt(rlInput.value, 10) || 10000));
+                const enabled = rlToggle.classList.contains('active');
+                const perMinute = Math.max(
+                    10,
+                    Math.min(1000000, parseInt(rlInput.value, 10) || 10000),
+                );
                 rlInput.value = perMinute;
                 try {
                     await api.post('/api/config', { web: { rateLimit: { enabled, perMinute } } });
-                    showToast(enabled
-                        ? i18nTf('toast.rate_on', { n: perMinute }, `Rate limit: ${perMinute}/min`)
-                        : i18nT('toast.rate_off', 'Rate limit disabled'),
-                        enabled ? 'success' : 'info');
+                    showToast(
+                        enabled
+                            ? i18nTf(
+                                  'toast.rate_on',
+                                  { n: perMinute },
+                                  `Rate limit: ${perMinute}/min`,
+                              )
+                            : i18nT('toast.rate_off', 'Rate limit disabled'),
+                        enabled ? 'success' : 'info',
+                    );
                 } catch (err) {
-                    showToast(i18nTf('toast.save_failed', { msg: err.message }, `Save failed: ${err.message}`), 'error');
+                    showToast(
+                        i18nTf(
+                            'toast.save_failed',
+                            { msg: err.message },
+                            `Save failed: ${err.message}`,
+                        ),
+                        'error',
+                    );
                 }
             };
 
@@ -371,11 +488,15 @@ export async function loadSettings() {
         bind('proxy-secret', proxy.secret || '');
         // password is intentionally never echoed back; placeholder hint:
         const pw = document.getElementById('proxy-password');
-        if (pw) pw.placeholder = proxy.password ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)') : '';
+        if (pw)
+            pw.placeholder = proxy.password
+                ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)')
+                : '';
         const apiHashEl = document.getElementById('setting-api-hash');
-        if (apiHashEl) apiHashEl.placeholder = tg.apiHashSet
-            ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)')
-            : i18nT('settings.tg_api.id_placeholder', 'From my.telegram.org');
+        if (apiHashEl)
+            apiHashEl.placeholder = tg.apiHashSet
+                ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)')
+                : i18nT('settings.tg_api.id_placeholder', 'From my.telegram.org');
 
         // Admin-only sub-panels — skip for guest sessions to avoid 403s.
         if (!isGuest) {
@@ -394,7 +515,6 @@ export async function loadSettings() {
             // Guest password sub-block (lives inside Dashboard Security).
             wireGuestPassword();
         }
-
     } catch (e) {
         console.error('Failed to load settings', e);
     }
@@ -419,10 +539,18 @@ async function wireGuestPassword() {
             enableToggle.classList.toggle('active', enabled);
             if (status) {
                 status.textContent = enabled
-                    ? i18nT('settings.security.guest_enabled_on', 'Enabled — share the guest password with read-only viewers.')
-                    : i18nT('settings.security.guest_enabled_off', 'Disabled — set a guest password and toggle on to share view-only access.');
+                    ? i18nT(
+                          'settings.security.guest_enabled_on',
+                          'Enabled — share the guest password with read-only viewers.',
+                      )
+                    : i18nT(
+                          'settings.security.guest_enabled_off',
+                          'Disabled — set a guest password and toggle on to share view-only access.',
+                      );
             }
-        } catch { /* admin-only endpoint should always succeed for admin */ }
+        } catch {
+            /* admin-only endpoint should always succeed for admin */
+        }
     };
     refreshStatus();
 
@@ -436,9 +564,14 @@ async function wireGuestPassword() {
             const r = await api.post('/api/auth/guest-password', { enabled: willEnable });
             enableToggle.classList.toggle('active', !!r.enabled);
             refreshStatus();
-            showToast(willEnable
-                ? i18nT('settings.security.guest_enabled_toast_on', 'Guest access enabled')
-                : i18nT('settings.security.guest_enabled_toast_off', 'Guest access disabled — existing guest sessions revoked'));
+            showToast(
+                willEnable
+                    ? i18nT('settings.security.guest_enabled_toast_on', 'Guest access enabled')
+                    : i18nT(
+                          'settings.security.guest_enabled_toast_off',
+                          'Guest access disabled — existing guest sessions revoked',
+                      ),
+            );
         } catch (err) {
             showToast(err.data?.error || err.message || 'Failed', 'error');
         }
@@ -447,7 +580,13 @@ async function wireGuestPassword() {
     setBtn.addEventListener('click', async () => {
         const password = pwInput.value;
         if (!password || password.length < 8) {
-            showToast(i18nT('settings.security.guest_password_short', 'Guest password must be at least 8 characters'), 'error');
+            showToast(
+                i18nT(
+                    'settings.security.guest_password_short',
+                    'Guest password must be at least 8 characters',
+                ),
+                'error',
+            );
             return;
         }
         setBtn.disabled = true;
@@ -459,7 +598,13 @@ async function wireGuestPassword() {
         } catch (err) {
             const code = err.data?.code;
             if (code === 'SAME_AS_ADMIN') {
-                showToast(i18nT('settings.security.guest_same_as_admin', 'Guest password must differ from admin'), 'error');
+                showToast(
+                    i18nT(
+                        'settings.security.guest_same_as_admin',
+                        'Guest password must differ from admin',
+                    ),
+                    'error',
+                );
             } else {
                 showToast(err.data?.error || err.message || 'Failed', 'error');
             }
@@ -471,7 +616,10 @@ async function wireGuestPassword() {
     clearBtn.addEventListener('click', async () => {
         const ok = await confirmSheet({
             title: i18nT('settings.security.guest_clear_title', 'Clear guest password?'),
-            body: i18nT('settings.security.guest_clear_body', 'This will disable guest access and sign out anyone currently logged in as guest.'),
+            body: i18nT(
+                'settings.security.guest_clear_body',
+                'This will disable guest access and sign out anyone currently logged in as guest.',
+            ),
             confirmText: i18nT('settings.security.guest_clear_confirm', 'Clear'),
             destructive: true,
         });
@@ -531,12 +679,14 @@ const ADVANCED_DEFAULTS = {
 function parseDiskCap(s) {
     if (s == null || s === '' || s === 0 || s === '0') return { value: '', unit: '' };
     if (typeof s === 'number' && Number.isFinite(s)) return { value: String(s), unit: 'MB' };
-    const m = String(s).trim().match(/^([\d.]+)\s*([KMGT]?B?)?$/i);
+    const m = String(s)
+        .trim()
+        .match(/^([\d.]+)\s*([KMGT]?B?)?$/i);
     if (!m) return { value: '', unit: '' };
     const num = parseFloat(m[1]);
     if (!Number.isFinite(num) || num <= 0) return { value: '', unit: '' };
     let unit = (m[2] || 'MB').toUpperCase();
-    if (unit === 'K' || unit === 'KB') unit = 'MB';   // drop sub-MB granularity, the disk rotator works in MB
+    if (unit === 'K' || unit === 'KB') unit = 'MB'; // drop sub-MB granularity, the disk rotator works in MB
     if (unit === 'G') unit = 'GB';
     if (unit === 'T') unit = 'TB';
     if (unit === 'M') unit = 'MB';
@@ -550,7 +700,9 @@ function parseDiskCap(s) {
  */
 function combineDiskCap(value, unit) {
     const v = String(value ?? '').trim();
-    const u = String(unit ?? '').trim().toUpperCase();
+    const u = String(unit ?? '')
+        .trim()
+        .toUpperCase();
     if (!v || !u) return null;
     const n = parseFloat(v);
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -567,19 +719,19 @@ export function loadAdvanced(config) {
         if (el && val != null) el.value = val;
     };
     const dl = { ...ADVANCED_DEFAULTS.downloader, ...(adv.downloader || {}) };
-    set('setting-adv-min-concurrency',   dl.minConcurrency);
-    set('setting-adv-max-concurrency',   dl.maxConcurrency);
-    set('setting-adv-scaler-sec',        dl.scalerIntervalSec);
-    set('setting-adv-idle-sleep-ms',     dl.idleSleepMs);
-    set('setting-adv-spillover',         dl.spilloverThreshold);
+    set('setting-adv-min-concurrency', dl.minConcurrency);
+    set('setting-adv-max-concurrency', dl.maxConcurrency);
+    set('setting-adv-scaler-sec', dl.scalerIntervalSec);
+    set('setting-adv-idle-sleep-ms', dl.idleSleepMs);
+    set('setting-adv-spillover', dl.spilloverThreshold);
 
     const h = { ...ADVANCED_DEFAULTS.history, ...(adv.history || {}) };
-    set('setting-adv-backpressure',      h.backpressureCap);
+    set('setting-adv-backpressure', h.backpressureCap);
     set('setting-adv-backpressure-wait', h.backpressureMaxWaitMs);
-    set('setting-adv-short-break',       h.shortBreakEveryN);
-    set('setting-adv-long-break',        h.longBreakEveryN);
-    set('setting-adv-auto-first-limit',  Number.isFinite(h.autoFirstLimit) ? h.autoFirstLimit : 100);
-    set('setting-adv-batch-insert',      Number.isFinite(h.batchInsertSize) ? h.batchInsertSize : 50);
+    set('setting-adv-short-break', h.shortBreakEveryN);
+    set('setting-adv-long-break', h.longBreakEveryN);
+    set('setting-adv-auto-first-limit', Number.isFinite(h.autoFirstLimit) ? h.autoFirstLimit : 100);
+    set('setting-adv-batch-insert', Number.isFinite(h.batchInsertSize) ? h.batchInsertSize : 50);
     // Toggle widgets — flip on click, default to ON when undefined.
     const _wireToggle = (id, current) => {
         const el = document.getElementById(id);
@@ -587,22 +739,25 @@ export function loadAdvanced(config) {
         el.classList.toggle('active', current !== false);
         if (!el.dataset.wired) {
             el.dataset.wired = '1';
-            el.addEventListener('click', (e) => { e.preventDefault(); el.classList.toggle('active'); });
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                el.classList.toggle('active');
+            });
         }
     };
     _wireToggle('setting-adv-auto-first-backfill', h.autoFirstBackfill);
-    _wireToggle('setting-adv-auto-catchup',        h.autoCatchUp);
+    _wireToggle('setting-adv-auto-catchup', h.autoCatchUp);
 
     const r = { ...ADVANCED_DEFAULTS.diskRotator, ...(adv.diskRotator || {}) };
-    set('setting-adv-sweep-batch',       r.sweepBatch);
-    set('setting-adv-max-deletes',       r.maxDeletesPerSweep);
+    set('setting-adv-sweep-batch', r.sweepBatch);
+    set('setting-adv-max-deletes', r.maxDeletesPerSweep);
 
     const it = { ...ADVANCED_DEFAULTS.integrity, ...(adv.integrity || {}) };
-    set('setting-adv-integrity-min',     it.intervalMin);
-    set('setting-adv-integrity-batch',   it.batchSize);
+    set('setting-adv-integrity-min', it.intervalMin);
+    set('setting-adv-integrity-batch', it.batchSize);
 
     const w = { ...ADVANCED_DEFAULTS.web, ...(adv.web || {}) };
-    set('setting-adv-session-days',      w.sessionTtlDays);
+    set('setting-adv-session-days', w.sessionTtlDays);
 
     // NSFW review tool — opt-in toggle + model id + dtype + threshold +
     // concurrency + preload-on-start. The toggles use the `.tg-toggle`
@@ -623,9 +778,17 @@ export function loadAdvanced(config) {
     };
     wireToggle('setting-adv-nsfw-enabled', ns.enabled === true);
     wireToggle('setting-adv-nsfw-preload', ns.preload === true);
-    set('setting-adv-nsfw-model',       (typeof ns.model === 'string' && ns.model.trim()) ? ns.model.trim() : 'AdamCodd/vit-base-nsfw-detector');
-    set('setting-adv-nsfw-dtype',       ['q8', 'fp16', 'fp32', 'q4'].includes(ns.dtype) ? ns.dtype : 'q8');
-    set('setting-adv-nsfw-threshold',   Number.isFinite(ns.threshold) ? ns.threshold : 0.6);
+    set(
+        'setting-adv-nsfw-model',
+        typeof ns.model === 'string' && ns.model.trim()
+            ? ns.model.trim()
+            : 'AdamCodd/vit-base-nsfw-detector',
+    );
+    set(
+        'setting-adv-nsfw-dtype',
+        ['q8', 'fp16', 'fp32', 'q4'].includes(ns.dtype) ? ns.dtype : 'q8',
+    );
+    set('setting-adv-nsfw-threshold', Number.isFinite(ns.threshold) ? ns.threshold : 0.6);
     set('setting-adv-nsfw-concurrency', Number.isFinite(ns.concurrency) ? ns.concurrency : 1);
 
     // AI subsystem — HuggingFace access token. Optional; surfaces on
@@ -663,10 +826,14 @@ export function loadAdvanced(config) {
                     if (!r?.available?.length) {
                         probeOut.innerHTML = `<span class="px-2 py-0.5 rounded-full bg-tg-bg/40 text-tg-textSecondary text-[11px]">${escapeHtml(i18nT('settings.advanced.thumbs.hwaccel_probe_none', 'No hardware backends available — CPU only'))}</span>`;
                     } else {
-                        probeOut.innerHTML = r.available.map((b) =>
-                            `<span class="px-2 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue text-[11px] inline-flex items-center gap-1">
+                        probeOut.innerHTML = r.available
+                            .map(
+                                (b) =>
+                                    `<span class="px-2 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue text-[11px] inline-flex items-center gap-1">
                                 <i class="ri-check-line"></i>${escapeHtml(b)}
-                            </span>`).join('');
+                            </span>`,
+                            )
+                            .join('');
                     }
                 }
             } catch (err) {
@@ -689,37 +856,78 @@ function gatherAdvanced() {
     };
     return {
         downloader: {
-            minConcurrency:     num('setting-adv-min-concurrency',   ADVANCED_DEFAULTS.downloader.minConcurrency),
-            maxConcurrency:     num('setting-adv-max-concurrency',   ADVANCED_DEFAULTS.downloader.maxConcurrency),
-            scalerIntervalSec:  num('setting-adv-scaler-sec',        ADVANCED_DEFAULTS.downloader.scalerIntervalSec),
-            idleSleepMs:        num('setting-adv-idle-sleep-ms',     ADVANCED_DEFAULTS.downloader.idleSleepMs),
-            spilloverThreshold: num('setting-adv-spillover',         ADVANCED_DEFAULTS.downloader.spilloverThreshold),
+            minConcurrency: num(
+                'setting-adv-min-concurrency',
+                ADVANCED_DEFAULTS.downloader.minConcurrency,
+            ),
+            maxConcurrency: num(
+                'setting-adv-max-concurrency',
+                ADVANCED_DEFAULTS.downloader.maxConcurrency,
+            ),
+            scalerIntervalSec: num(
+                'setting-adv-scaler-sec',
+                ADVANCED_DEFAULTS.downloader.scalerIntervalSec,
+            ),
+            idleSleepMs: num('setting-adv-idle-sleep-ms', ADVANCED_DEFAULTS.downloader.idleSleepMs),
+            spilloverThreshold: num(
+                'setting-adv-spillover',
+                ADVANCED_DEFAULTS.downloader.spilloverThreshold,
+            ),
         },
         history: {
-            backpressureCap:        num('setting-adv-backpressure',      ADVANCED_DEFAULTS.history.backpressureCap),
-            backpressureMaxWaitMs:  num('setting-adv-backpressure-wait', ADVANCED_DEFAULTS.history.backpressureMaxWaitMs),
-            shortBreakEveryN:       num('setting-adv-short-break',       ADVANCED_DEFAULTS.history.shortBreakEveryN),
-            longBreakEveryN:        num('setting-adv-long-break',        ADVANCED_DEFAULTS.history.longBreakEveryN),
-            autoFirstBackfill:      document.getElementById('setting-adv-auto-first-backfill')?.classList.contains('active') !== false,
-            autoFirstLimit:         num('setting-adv-auto-first-limit',  100),
-            autoCatchUp:            document.getElementById('setting-adv-auto-catchup')?.classList.contains('active') !== false,
-            batchInsertSize:        num('setting-adv-batch-insert',      50),
+            backpressureCap: num(
+                'setting-adv-backpressure',
+                ADVANCED_DEFAULTS.history.backpressureCap,
+            ),
+            backpressureMaxWaitMs: num(
+                'setting-adv-backpressure-wait',
+                ADVANCED_DEFAULTS.history.backpressureMaxWaitMs,
+            ),
+            shortBreakEveryN: num(
+                'setting-adv-short-break',
+                ADVANCED_DEFAULTS.history.shortBreakEveryN,
+            ),
+            longBreakEveryN: num(
+                'setting-adv-long-break',
+                ADVANCED_DEFAULTS.history.longBreakEveryN,
+            ),
+            autoFirstBackfill:
+                document
+                    .getElementById('setting-adv-auto-first-backfill')
+                    ?.classList.contains('active') !== false,
+            autoFirstLimit: num('setting-adv-auto-first-limit', 100),
+            autoCatchUp:
+                document
+                    .getElementById('setting-adv-auto-catchup')
+                    ?.classList.contains('active') !== false,
+            batchInsertSize: num('setting-adv-batch-insert', 50),
         },
         diskRotator: {
-            sweepBatch:         num('setting-adv-sweep-batch', ADVANCED_DEFAULTS.diskRotator.sweepBatch),
-            maxDeletesPerSweep: num('setting-adv-max-deletes', ADVANCED_DEFAULTS.diskRotator.maxDeletesPerSweep),
+            sweepBatch: num('setting-adv-sweep-batch', ADVANCED_DEFAULTS.diskRotator.sweepBatch),
+            maxDeletesPerSweep: num(
+                'setting-adv-max-deletes',
+                ADVANCED_DEFAULTS.diskRotator.maxDeletesPerSweep,
+            ),
         },
         integrity: {
-            intervalMin: num('setting-adv-integrity-min',   ADVANCED_DEFAULTS.integrity.intervalMin),
-            batchSize:   num('setting-adv-integrity-batch', ADVANCED_DEFAULTS.integrity.batchSize),
+            intervalMin: num('setting-adv-integrity-min', ADVANCED_DEFAULTS.integrity.intervalMin),
+            batchSize: num('setting-adv-integrity-batch', ADVANCED_DEFAULTS.integrity.batchSize),
         },
         web: {
             sessionTtlDays: num('setting-adv-session-days', ADVANCED_DEFAULTS.web.sessionTtlDays),
         },
         nsfw: {
-            enabled: document.getElementById('setting-adv-nsfw-enabled')?.classList.contains('active') === true,
-            preload: document.getElementById('setting-adv-nsfw-preload')?.classList.contains('active') === true,
-            model: String(get('setting-adv-nsfw-model') || '').trim() || 'AdamCodd/vit-base-nsfw-detector',
+            enabled:
+                document
+                    .getElementById('setting-adv-nsfw-enabled')
+                    ?.classList.contains('active') === true,
+            preload:
+                document
+                    .getElementById('setting-adv-nsfw-preload')
+                    ?.classList.contains('active') === true,
+            model:
+                String(get('setting-adv-nsfw-model') || '').trim() ||
+                'AdamCodd/vit-base-nsfw-detector',
             dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
             threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
             concurrency: num('setting-adv-nsfw-concurrency', 1),
@@ -729,7 +937,10 @@ function gatherAdvanced() {
             // allow-list so a hand-edited config can't pass arbitrary
             // values through to the ffmpeg process.
             hwaccel: String(get('setting-adv-ffmpeg-hwaccel') || ''),
-            warnMisses: document.getElementById('setting-adv-thumbs-warn-misses')?.classList.contains('active') !== false,
+            warnMisses:
+                document
+                    .getElementById('setting-adv-thumbs-warn-misses')
+                    ?.classList.contains('active') !== false,
         },
         ai: {
             // HuggingFace access token. Trimmed; empty = unset.
@@ -754,7 +965,7 @@ async function refreshRescueStats() {
         line.textContent = i18nTf(
             'settings.rescue.stats',
             { pending: s.pending || 0, rescued: s.rescued || 0, swept: s.lastSweepCleared || 0 },
-            `${s.pending || 0} pending · ${s.rescued || 0} rescued · ${s.lastSweepCleared || 0} cleared last sweep`
+            `${s.pending || 0} pending · ${s.rescued || 0} rescued · ${s.lastSweepCleared || 0} cleared last sweep`,
         );
     } catch {
         line.textContent = i18nT('settings.rescue.stats_unavailable', 'Rescue stats unavailable.');
@@ -804,13 +1015,16 @@ function _setAutosaveStatus(state, msg) {
     const iconEl = document.getElementById('settings-autosave-icon');
     const textEl = document.getElementById('settings-autosave-text');
     if (!root || !iconEl || !textEl) return;
-    if (_autoSaveStatusFadeTimer) { clearTimeout(_autoSaveStatusFadeTimer); _autoSaveStatusFadeTimer = null; }
+    if (_autoSaveStatusFadeTimer) {
+        clearTimeout(_autoSaveStatusFadeTimer);
+        _autoSaveStatusFadeTimer = null;
+    }
     const ICON = {
-        idle:   '',
-        dirty:  '<i class="ri-edit-2-line"></i>',
+        idle: '',
+        dirty: '<i class="ri-edit-2-line"></i>',
         saving: '<i class="ri-loader-4-line"></i>',
-        saved:  '<i class="ri-checkbox-circle-fill"></i>',
-        error:  '<i class="ri-error-warning-fill"></i>',
+        saved: '<i class="ri-checkbox-circle-fill"></i>',
+        error: '<i class="ri-error-warning-fill"></i>',
     };
     iconEl.innerHTML = ICON[state] || '';
     textEl.textContent = msg || '';
@@ -828,7 +1042,9 @@ async function _notifyAutoSave(level, msg) {
     try {
         const { pushLogToNotify } = await import('./header-mobile.js');
         pushLogToNotify({ ts: Date.now(), source: 'settings', level, msg });
-    } catch { /* bell not available (e.g. tests / cold-load race) — silent */ }
+    } catch {
+        /* bell not available (e.g. tests / cold-load race) — silent */
+    }
 }
 
 async function _autoSaveFlush() {
@@ -839,11 +1055,21 @@ async function _autoSaveFlush() {
         _scheduleAutoSave();
         return;
     }
-    if (_autoSaveTimer) { clearTimeout(_autoSaveTimer); _autoSaveTimer = null; }
+    if (_autoSaveTimer) {
+        clearTimeout(_autoSaveTimer);
+        _autoSaveTimer = null;
+    }
 
     let payload;
-    try { payload = _gatherSettingsPayload(); }
-    catch (e) { _setAutosaveStatus('error', i18nT('settings.autosave.error', 'Could not gather settings: ') + (e?.message || e)); return; }
+    try {
+        payload = _gatherSettingsPayload();
+    } catch (e) {
+        _setAutosaveStatus(
+            'error',
+            i18nT('settings.autosave.error', 'Could not gather settings: ') + (e?.message || e),
+        );
+        return;
+    }
 
     const json = JSON.stringify(payload);
     if (json === _autoSaveSnapshot) {
@@ -862,7 +1088,11 @@ async function _autoSaveFlush() {
         const hh = String(ts.getHours()).padStart(2, '0');
         const mm = String(ts.getMinutes()).padStart(2, '0');
         const ss = String(ts.getSeconds()).padStart(2, '0');
-        const savedMsg = i18nTf('settings.autosave.saved', { time: `${hh}:${mm}:${ss}` }, `Saved at ${hh}:${mm}:${ss}`);
+        const savedMsg = i18nTf(
+            'settings.autosave.saved',
+            { time: `${hh}:${mm}:${ss}` },
+            `Saved at ${hh}:${mm}:${ss}`,
+        );
         _setAutosaveStatus('saved', savedMsg);
         // Mirror to the notification bell as `info` — bell only surfaces
         // warn/error in its dropdown by default, but `info` writes into
@@ -870,7 +1100,11 @@ async function _autoSaveFlush() {
         // every save.
         _notifyAutoSave('info', i18nT('settings.autosave.notify.saved', 'Settings saved.'));
     } catch (e) {
-        const failMsg = i18nTf('settings.autosave.failed', { msg: e?.message || String(e) }, `Save failed: ${e?.message || e}`);
+        const failMsg = i18nTf(
+            'settings.autosave.failed',
+            { msg: e?.message || String(e) },
+            `Save failed: ${e?.message || e}`,
+        );
         _setAutosaveStatus('error', failMsg);
         // Bell DOES surface this — `error` level pings the badge so the
         // operator notices a failed save even after they scrolled away.
@@ -891,10 +1125,18 @@ function _scheduleAutoSave() {
 // logic in lock-step.
 function _gatherSettingsPayload() {
     const get = (id) => document.getElementById(id)?.value;
-    const dmActive = document.getElementById('setting-allow-dm')?.classList.contains('active') === true;
-    const rescueDefaultOn = document.getElementById('setting-rescue-default')?.classList.contains('active') === true;
-    const rescueHours = Math.max(1, Math.min(720, parseInt(get('setting-rescue-default-hours'), 10) || 48));
-    const rescueSweep = Math.max(1, Math.min(1440, parseInt(get('setting-rescue-sweep-min'), 10) || 10));
+    const dmActive =
+        document.getElementById('setting-allow-dm')?.classList.contains('active') === true;
+    const rescueDefaultOn =
+        document.getElementById('setting-rescue-default')?.classList.contains('active') === true;
+    const rescueHours = Math.max(
+        1,
+        Math.min(720, parseInt(get('setting-rescue-default-hours'), 10) || 48),
+    );
+    const rescueSweep = Math.max(
+        1,
+        Math.min(1440, parseInt(get('setting-rescue-sweep-min'), 10) || 10),
+    );
     return {
         download: {
             concurrent: parseInt(get('setting-concurrent')),
@@ -904,12 +1146,21 @@ function _gatherSettingsPayload() {
         rateLimits: { requestsPerMinute: parseInt(get('setting-rpm')) },
         pollingInterval: parseInt(get('setting-polling')),
         diskManagement: {
-            maxTotalSize: combineDiskCap(get('setting-max-disk-value'), get('setting-max-disk-unit')),
+            maxTotalSize: combineDiskCap(
+                get('setting-max-disk-value'),
+                get('setting-max-disk-unit'),
+            ),
             maxVideoSize: get('setting-max-video') || null,
             maxImageSize: get('setting-max-image') || null,
-            enabled: document.getElementById('setting-disk-rotate')?.classList.contains('active') === true,
+            enabled:
+                document.getElementById('setting-disk-rotate')?.classList.contains('active') ===
+                true,
         },
-        rescue: { enabled: rescueDefaultOn, retentionHours: rescueHours, sweepIntervalMin: rescueSweep },
+        rescue: {
+            enabled: rescueDefaultOn,
+            retentionHours: rescueHours,
+            sweepIntervalMin: rescueSweep,
+        },
         advanced: gatherAdvanced(),
         allowDmDownloads: dmActive,
     };
@@ -938,7 +1189,9 @@ export function setupAutoSave() {
     // trip a save. loadSettings() will fire input events as it populates,
     // we delay the first arm by a microtask so they don't all queue saves.
     queueMicrotask(() => {
-        try { _autoSaveSnapshot = JSON.stringify(_gatherSettingsPayload()); } catch {}
+        try {
+            _autoSaveSnapshot = JSON.stringify(_gatherSettingsPayload());
+        } catch {}
     });
 
     // Inputs that opt in to autosave are flagged either by an `id` that
@@ -988,13 +1241,21 @@ export function setupAutoSave() {
 export async function saveSettings() {
     const get = (id) => document.getElementById(id)?.value;
 
-    const dmActive = document.getElementById('setting-allow-dm')?.classList.contains('active') === true;
+    const dmActive =
+        document.getElementById('setting-allow-dm')?.classList.contains('active') === true;
     // Rescue Mode global config. Hours / sweep min get clamped server-side too,
     // but we sanitise here so the toast doesn't confusingly say "saved" when
     // the value was rejected.
-    const rescueDefaultOn = document.getElementById('setting-rescue-default')?.classList.contains('active') === true;
-    const rescueHours = Math.max(1, Math.min(720, parseInt(get('setting-rescue-default-hours'), 10) || 48));
-    const rescueSweep = Math.max(1, Math.min(1440, parseInt(get('setting-rescue-sweep-min'), 10) || 10));
+    const rescueDefaultOn =
+        document.getElementById('setting-rescue-default')?.classList.contains('active') === true;
+    const rescueHours = Math.max(
+        1,
+        Math.min(720, parseInt(get('setting-rescue-default-hours'), 10) || 48),
+    );
+    const rescueSweep = Math.max(
+        1,
+        Math.min(1440, parseInt(get('setting-rescue-sweep-min'), 10) || 10),
+    );
 
     const data = {
         download: {
@@ -1007,10 +1268,15 @@ export async function saveSettings() {
         },
         pollingInterval: parseInt(get('setting-polling')),
         diskManagement: {
-            maxTotalSize: combineDiskCap(get('setting-max-disk-value'), get('setting-max-disk-unit')),
+            maxTotalSize: combineDiskCap(
+                get('setting-max-disk-value'),
+                get('setting-max-disk-unit'),
+            ),
             maxVideoSize: get('setting-max-video') || null,
             maxImageSize: get('setting-max-image') || null,
-            enabled: document.getElementById('setting-disk-rotate')?.classList.contains('active') === true,
+            enabled:
+                document.getElementById('setting-disk-rotate')?.classList.contains('active') ===
+                true,
         },
         rescue: {
             enabled: rescueDefaultOn,
@@ -1028,7 +1294,14 @@ export async function saveSettings() {
         await api.post('/api/config', data);
         showToast(i18nT('toast.settings_saved', 'Settings saved!'), 'success');
     } catch (e) {
-        showToast(i18nTf('toast.settings_save_failed', { msg: e.message }, `Failed to save settings: ${e.message}`), 'error');
+        showToast(
+            i18nTf(
+                'toast.settings_save_failed',
+                { msg: e.message },
+                `Failed to save settings: ${e.message}`,
+            ),
+            'error',
+        );
     }
 }
 
@@ -1065,33 +1338,60 @@ export async function saveProxy() {
         showToast(i18nT('toast.proxy_disabled', 'Proxy disabled'), 'info');
         return;
     }
-    if (!host || !port) { showToast(i18nT('toast.proxy_host_port_required', 'Host and port required'), 'error'); return; }
+    if (!host || !port) {
+        showToast(i18nT('toast.proxy_host_port_required', 'Host and port required'), 'error');
+        return;
+    }
     const proxy = { type, host, port: parseInt(port, 10) };
-    const username = get('proxy-username'); if (username) proxy.username = username;
-    const password = get('proxy-password'); if (password) proxy.password = password;
-    const secret = get('proxy-secret'); if (secret) proxy.secret = secret;
+    const username = get('proxy-username');
+    if (username) proxy.username = username;
+    const password = get('proxy-password');
+    if (password) proxy.password = password;
+    const secret = get('proxy-secret');
+    if (secret) proxy.secret = secret;
     try {
         await api.post('/api/config', { proxy });
-        showToast(i18nT('toast.proxy_saved', 'Proxy saved — restart the monitor for it to take effect'), 'success');
+        showToast(
+            i18nT('toast.proxy_saved', 'Proxy saved — restart the monitor for it to take effect'),
+            'success',
+        );
     } catch (e) {
-        showToast(i18nTf('toast.save_failed', { msg: e.message }, `Save failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('toast.save_failed', { msg: e.message }, `Save failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
 export async function testProxy() {
     const get = (id) => document.getElementById(id)?.value.trim();
-    const host = get('proxy-host'); const port = get('proxy-port');
+    const host = get('proxy-host');
+    const port = get('proxy-port');
     const status = document.getElementById('proxy-status');
-    if (!host || !port) { showToast(i18nT('toast.proxy_host_port_required', 'Host and port required'), 'error'); return; }
-    if (status) { status.textContent = i18nT('settings.proxy.connecting', 'Connecting…'); status.className = 'text-xs text-tg-textSecondary mt-2'; }
+    if (!host || !port) {
+        showToast(i18nT('toast.proxy_host_port_required', 'Host and port required'), 'error');
+        return;
+    }
+    if (status) {
+        status.textContent = i18nT('settings.proxy.connecting', 'Connecting…');
+        status.className = 'text-xs text-tg-textSecondary mt-2';
+    }
     try {
         const r = await api.post('/api/proxy/test', { host, port: parseInt(port, 10) });
         if (status) {
             if (r.ok) {
-                status.textContent = i18nTf('toast.proxy_reachable', { ms: r.ms }, `✓ Reachable (${r.ms}ms TCP) — protocol handshake happens at monitor start.`);
+                status.textContent = i18nTf(
+                    'toast.proxy_reachable',
+                    { ms: r.ms },
+                    `✓ Reachable (${r.ms}ms TCP) — protocol handshake happens at monitor start.`,
+                );
                 status.className = 'text-xs text-tg-green mt-2';
             } else {
-                status.textContent = i18nTf('toast.proxy_failed', { msg: r.error }, `✗ Failed: ${r.error}`);
+                status.textContent = i18nTf(
+                    'toast.proxy_failed',
+                    { msg: r.error },
+                    `✗ Failed: ${r.error}`,
+                );
                 status.className = 'text-xs text-red-400 mt-2';
             }
         }
@@ -1120,7 +1420,10 @@ export async function saveApiCredentials() {
         document.getElementById('setting-api-hash').value = '';
         loadSettings();
     } catch (e) {
-        showToast(i18nTf('toast.credentials_failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('toast.credentials_failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -1137,10 +1440,13 @@ export async function loadAccounts() {
         }
         const removeLbl = i18nT('settings.accounts.remove', 'Remove');
         const defaultLbl = i18nT('settings.accounts.default', 'default');
-        container.innerHTML = accounts.map(a => {
-            const star = a.isDefault ? `<span class="text-tg-blue text-xs">★ ${escapeHtml(defaultLbl)}</span>` : '';
-            const sub = [a.username && `@${a.username}`, a.phone].filter(Boolean).join(' • ');
-            return `
+        container.innerHTML = accounts
+            .map((a) => {
+                const star = a.isDefault
+                    ? `<span class="text-tg-blue text-xs">★ ${escapeHtml(defaultLbl)}</span>`
+                    : '';
+                const sub = [a.username && `@${a.username}`, a.phone].filter(Boolean).join(' • ');
+                return `
             <div class="flex items-center justify-between bg-tg-bg/40 rounded-lg p-3" data-account="${escapeHtml(a.id)}">
                 <div class="min-w-0">
                     <div class="text-tg-text text-sm font-medium truncate">${escapeHtml(a.name || a.id)} ${star}</div>
@@ -1150,8 +1456,9 @@ export async function loadAccounts() {
                     ${escapeHtml(removeLbl)}
                 </button>
             </div>`;
-        }).join('');
-        container.querySelectorAll('[data-action="remove-account"]').forEach(btn => {
+            })
+            .join('');
+        container.querySelectorAll('[data-action="remove-account"]').forEach((btn) => {
             btn.addEventListener('click', () => removeAccount(btn.dataset.id));
         });
     } catch (e) {
@@ -1160,18 +1467,28 @@ export async function loadAccounts() {
 }
 
 async function removeAccount(id) {
-    if (!(await confirmSheet({
-        title: i18nT('settings.accounts.remove', 'Remove'),
-        message: i18nTf('account.remove.confirm', { id }, `Remove account "${id}"? The encrypted session file will be deleted.`),
-        confirmLabel: i18nT('settings.accounts.remove', 'Remove'),
-        danger: true,
-    }))) return;
+    if (
+        !(await confirmSheet({
+            title: i18nT('settings.accounts.remove', 'Remove'),
+            message: i18nTf(
+                'account.remove.confirm',
+                { id },
+                `Remove account "${id}"? The encrypted session file will be deleted.`,
+            ),
+            confirmLabel: i18nT('settings.accounts.remove', 'Remove'),
+            danger: true,
+        }))
+    )
+        return;
     try {
         await api.delete(`/api/accounts/${encodeURIComponent(id)}`);
         showToast(i18nT('account.remove.success', 'Account removed'), 'success');
         loadAccounts();
     } catch (e) {
-        showToast(i18nTf('account.remove.failed', { msg: e.message }, `Remove failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('account.remove.failed', { msg: e.message }, `Remove failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -1180,22 +1497,40 @@ async function removeAccount(id) {
 export async function changePassword() {
     const cur = document.getElementById('sec-current')?.value;
     const next = document.getElementById('sec-new')?.value;
-    if (!cur || !next) { showToast(i18nT('toast.password_both_required', 'Both fields required'), 'error'); return; }
-    if (next.length < 8) { showToast(i18nT('toast.password_short', 'New password must be at least 8 characters'), 'error'); return; }
+    if (!cur || !next) {
+        showToast(i18nT('toast.password_both_required', 'Both fields required'), 'error');
+        return;
+    }
+    if (next.length < 8) {
+        showToast(
+            i18nT('toast.password_short', 'New password must be at least 8 characters'),
+            'error',
+        );
+        return;
+    }
     try {
         await api.post('/api/auth/change-password', { currentPassword: cur, newPassword: next });
         document.getElementById('sec-current').value = '';
         document.getElementById('sec-new').value = '';
         showToast(i18nT('toast.password_changed', 'Password changed'), 'success');
     } catch (e) {
-        showToast(i18nTf('toast.password_change_failed', { msg: e.message }, `Change failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf(
+                'toast.password_change_failed',
+                { msg: e.message },
+                `Change failed: ${e.message}`,
+            ),
+            'error',
+        );
     }
 }
 
 export async function signOut() {
     try {
         await api.post('/api/logout');
-    } catch { /* ignore — we're leaving anyway */ }
+    } catch {
+        /* ignore — we're leaving anyway */
+    }
     window.location.href = '/login.html';
 }
 
@@ -1228,7 +1563,11 @@ function wireMaintenance() {
     // (maintFindDuplicates, maintBuildThumbs, maintRebuildThumbs, maintBrowseLogs,
     // and the NSFW review sheet in nsfw-ui.js) are kept for now as a fallback
     // in case the SPA needs to fall back to the legacy flow.
-    const _go = (slug) => () => { try { window.navigateTo?.(slug); } catch {} };
+    const _go = (slug) => () => {
+        try {
+            window.navigateTo?.(slug);
+        } catch {}
+    };
     once(document.getElementById('maint-dedup-btn'), _go('maintenance/duplicates'));
     once(document.getElementById('maint-shares-btn'), maintManageShares);
     once(document.getElementById('maint-thumbs-build-btn'), _go('maintenance/thumbs'));
@@ -1244,7 +1583,9 @@ function wireMaintenance() {
     // Refresh the cache stat line on first open + after each operation.
     refreshThumbsStats();
     refreshUpdateStatus();
-    _nsfwModule().then(m => m.refreshNsfwStatus()).catch(() => {});
+    _nsfwModule()
+        .then((m) => m.refreshNsfwStatus())
+        .catch(() => {});
     // Hydrate every fire-and-forget admin button + subscribe to its
     // `*_done` WS event so a job started on phone re-paints the
     // desktop's button when it finishes.
@@ -1263,29 +1604,42 @@ async function refreshThumbsStats() {
     try {
         const r = await api.get('/api/maintenance/thumbs/stats');
         const mb = r.bytes ? (r.bytes / (1024 * 1024)).toFixed(1) : '0';
-        const noFf = r.ffmpegAvailable === false
-            ? ' · ' + i18nT('maintenance.thumbs.no_ffmpeg', 'ffmpeg unavailable — image-only')
-            : '';
+        const noFf =
+            r.ffmpegAvailable === false
+                ? ' · ' + i18nT('maintenance.thumbs.no_ffmpeg', 'ffmpeg unavailable — image-only')
+                : '';
         el.textContent = `· ${r.count} cached, ${mb} MB${noFf}`;
-    } catch { /* ignore */ }
+    } catch {
+        /* ignore */
+    }
 }
 
 // Kept as a fallback in case we need to re-wire to a Settings sheet — the
 // canonical entry-point is now the standalone Maintenance → Thumbnails page.
 async function _maintBuildThumbs() {
     const btn = document.getElementById('maint-thumbs-build-btn');
-    if (btn) { btn.disabled = true; btn.textContent = i18nT('maintenance.thumbs.building', 'Building…'); }
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = i18nT('maintenance.thumbs.building', 'Building…');
+    }
     try {
         const r = await api.post('/api/maintenance/thumbs/build-all', {});
-        showToast(i18nTf('maintenance.thumbs.done',
-            { built: r.built, skipped: r.skipped, scanned: r.scanned },
-            `Built ${r.built}, ${r.skipped} already cached out of ${r.scanned}`),
-            'success');
+        showToast(
+            i18nTf(
+                'maintenance.thumbs.done',
+                { built: r.built, skipped: r.skipped, scanned: r.scanned },
+                `Built ${r.built}, ${r.skipped} already cached out of ${r.scanned}`,
+            ),
+            'success',
+        );
         refreshThumbsStats();
     } catch (e) {
         showToast(e?.data?.error || e.message || 'Failed', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = i18nT('maintenance.thumbs.action', 'Build'); }
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = i18nT('maintenance.thumbs.action', 'Build');
+        }
     }
 }
 
@@ -1300,10 +1654,14 @@ async function maintInstallUpdate() {
         const v = await api.get('/api/version/check');
         latest = v?.latest || null;
         releaseUrl = v?.releaseUrl || null;
-    } catch { /* ignore */ }
+    } catch {
+        /* ignore */
+    }
     if (!latest) {
-        showToast(i18nT('maintenance.update.up_to_date',
-            'Already running the latest release.'), 'success');
+        showToast(
+            i18nT('maintenance.update.up_to_date', 'Already running the latest release.'),
+            'success',
+        );
         return;
     }
     try {
@@ -1326,9 +1684,19 @@ async function refreshUpdateStatus() {
             if (s.available) {
                 el.textContent = '· ' + i18nT('maintenance.update.ready', 'auto-update ready');
             } else if (!s.inDocker) {
-                el.textContent = '· ' + i18nT('maintenance.update.not_docker', 'standalone install — manual update only');
+                el.textContent =
+                    '· ' +
+                    i18nT(
+                        'maintenance.update.not_docker',
+                        'standalone install — manual update only',
+                    );
             } else {
-                el.textContent = '· ' + i18nT('maintenance.update.no_watchtower', 'enable the auto-update profile to use this');
+                el.textContent =
+                    '· ' +
+                    i18nT(
+                        'maintenance.update.no_watchtower',
+                        'enable the auto-update profile to use this',
+                    );
             }
         }
         // Cross-check the actual release feed so the button reflects
@@ -1345,23 +1713,35 @@ async function refreshUpdateStatus() {
                 const labelEl = btn.querySelector('[data-i18n]') || btn;
                 if (upToDate) {
                     labelEl.textContent = i18nT('maintenance.update.up_to_date_btn', 'Up to date');
-                    btn.title = i18nT('maintenance.update.up_to_date',
-                        'Already running the latest release.');
+                    btn.title = i18nT(
+                        'maintenance.update.up_to_date',
+                        'Already running the latest release.',
+                    );
                 } else {
-                    labelEl.textContent = i18nTf('maintenance.update.action_with_version',
-                        { version: v.latest }, `Install v${v.latest}`);
+                    labelEl.textContent = i18nTf(
+                        'maintenance.update.action_with_version',
+                        { version: v.latest },
+                        `Install v${v.latest}`,
+                    );
                     btn.title = '';
                 }
-            } catch { /* leave default */ }
+            } catch {
+                /* leave default */
+            }
         }
-    } catch { /* leave blank */ }
+    } catch {
+        /* leave blank */
+    }
 }
 
 // Kept as a fallback — see _maintBuildThumbs comment above.
 async function _maintRebuildThumbs() {
     const ok = await confirmSheet({
         title: i18nT('maintenance.thumbs.rebuild_title', 'Rebuild thumbnail cache?'),
-        body: i18nT('maintenance.thumbs.rebuild_body', 'Wipes every cached thumbnail. The next gallery scroll regenerates them on demand. Useful when previews look stale or after a quality tweak.'),
+        body: i18nT(
+            'maintenance.thumbs.rebuild_body',
+            'Wipes every cached thumbnail. The next gallery scroll regenerates them on demand. Useful when previews look stale or after a quality tweak.',
+        ),
         confirmText: i18nT('maintenance.thumbs.rebuild_confirm', 'Wipe cache'),
         destructive: true,
     });
@@ -1370,10 +1750,14 @@ async function _maintRebuildThumbs() {
     if (btn) btn.disabled = true;
     try {
         const r = await api.post('/api/maintenance/thumbs/rebuild', {});
-        showToast(i18nTf('maintenance.thumbs.rebuilt',
-            { removed: r.removed },
-            `Wiped ${r.removed} cached thumbnails`),
-            'success');
+        showToast(
+            i18nTf(
+                'maintenance.thumbs.rebuilt',
+                { removed: r.removed },
+                `Wiped ${r.removed} cached thumbnails`,
+            ),
+            'success',
+        );
         refreshThumbsStats();
     } catch (e) {
         showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -1399,22 +1783,38 @@ async function maintManageShares() {
 // Kept as a fallback — see _maintBuildThumbs comment above.
 async function _maintFindDuplicates() {
     const btn = document.getElementById('maint-dedup-btn');
-    if (btn) { btn.disabled = true; btn.textContent = i18nT('maintenance.dedup.scanning', 'Scanning…'); }
-    showToast(i18nT('maintenance.dedup.starting', 'Scanning files — this may take a while on the first run'), 'info');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = i18nT('maintenance.dedup.scanning', 'Scanning…');
+    }
+    showToast(
+        i18nT(
+            'maintenance.dedup.starting',
+            'Scanning files — this may take a while on the first run',
+        ),
+        'info',
+    );
     try {
         const r = await api.post('/api/maintenance/dedup/scan', {});
         if (!r.duplicateSets?.length) {
-            showToast(i18nTf('maintenance.dedup.none',
-                { scanned: r.scanned ?? 0 },
-                `No duplicates found — scanned ${r.scanned ?? 0} files.`),
-                'success');
+            showToast(
+                i18nTf(
+                    'maintenance.dedup.none',
+                    { scanned: r.scanned ?? 0 },
+                    `No duplicates found — scanned ${r.scanned ?? 0} files.`,
+                ),
+                'success',
+            );
             return;
         }
         await openDedupSheet(r.duplicateSets);
     } catch (e) {
         showToast(e?.data?.error || e.message || 'Failed', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = i18nT('maintenance.dedup.action', 'Scan'); }
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = i18nT('maintenance.dedup.action', 'Scan');
+        }
     }
 }
 
@@ -1426,17 +1826,21 @@ function _formatBytesLocal(bytes) {
     return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
-function _isImage(t) { return /^(image|photo)/i.test(t || ''); }
-function _isVideo(t) { return /^video/i.test(t || ''); }
+function _isImage(t) {
+    return /^(image|photo)/i.test(t || '');
+}
+function _isVideo(t) {
+    return /^video/i.test(t || '');
+}
 
 async function openDedupSheet(sets) {
     const totalSets = sets.length;
     const totalDupes = sets.reduce((s, x) => s + (x.count - 1), 0);
-    const totalReclaim = sets.reduce((s, x) => s + (x.fileSize * (x.count - 1)), 0);
+    const totalReclaim = sets.reduce((s, x) => s + x.fileSize * (x.count - 1), 0);
 
     // Default selection — keep the OLDEST (first by createdAt asc) of every
     // set, mark the rest for deletion. Users can flip per-row before confirm.
-    const selected = new Set();   // ids marked FOR DELETION
+    const selected = new Set(); // ids marked FOR DELETION
     for (const set of sets) {
         for (let i = 1; i < set.files.length; i++) selected.add(set.files[i].id);
     }
@@ -1447,9 +1851,8 @@ async function openDedupSheet(sets) {
         // Server-side WebP thumbnail — way smaller than the full file and
         // works for video previews too (first-frame extraction).
         const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1`;
-        const thumbUrl = (isThumb || isVideo)
-            ? `/api/thumbs/${encodeURIComponent(file.id)}?w=120`
-            : null;
+        const thumbUrl =
+            isThumb || isVideo ? `/api/thumbs/${encodeURIComponent(file.id)}?w=120` : null;
         const thumb = thumbUrl
             ? `<img loading="lazy" decoding="async" class="w-12 h-12 object-cover rounded-md bg-tg-bg/40" src="${escapeHtml(thumbUrl)}" alt="" onerror="this.style.display='none'">`
             : `<div class="w-12 h-12 rounded-md bg-tg-bg/60 flex items-center justify-center text-tg-textSecondary"><i class="ri-file-line text-xl"></i></div>`;
@@ -1474,9 +1877,13 @@ async function openDedupSheet(sets) {
         <div class="bg-tg-bg/40 rounded-lg p-3 mb-3 border border-tg-border/40" data-set="${escapeHtml(set.hash)}">
             <div class="flex items-center justify-between mb-2 gap-2">
                 <div class="text-xs text-tg-textSecondary">
-                    ${escapeHtml(i18nTf('maintenance.dedup.set_header',
-                        { count: set.count, size: _formatBytesLocal(set.fileSize) },
-                        `${set.count} copies · ${_formatBytesLocal(set.fileSize)} each`))}
+                    ${escapeHtml(
+                        i18nTf(
+                            'maintenance.dedup.set_header',
+                            { count: set.count, size: _formatBytesLocal(set.fileSize) },
+                            `${set.count} copies · ${_formatBytesLocal(set.fileSize)} each`,
+                        ),
+                    )}
                 </div>
                 <div class="flex items-center gap-1">
                     <button type="button" class="text-xs px-2 py-0.5 rounded border border-tg-border text-tg-textSecondary hover:text-tg-blue hover:border-tg-blue"
@@ -1489,14 +1896,18 @@ async function openDedupSheet(sets) {
                     </button>
                 </div>
             </div>
-            <div class="space-y-1">${set.files.map(f => renderRow(f, set)).join('')}</div>
+            <div class="space-y-1">${set.files.map((f) => renderRow(f, set)).join('')}</div>
         </div>`;
 
     const html = `
         <div class="text-sm text-tg-text mb-2">
-            ${escapeHtml(i18nTf('maintenance.dedup.summary',
-                { sets: totalSets, dupes: totalDupes, freed: _formatBytesLocal(totalReclaim) },
-                `${totalSets} duplicate sets · ${totalDupes} extra copies · up to ${_formatBytesLocal(totalReclaim)} reclaimable`))}
+            ${escapeHtml(
+                i18nTf(
+                    'maintenance.dedup.summary',
+                    { sets: totalSets, dupes: totalDupes, freed: _formatBytesLocal(totalReclaim) },
+                    `${totalSets} duplicate sets · ${totalDupes} extra copies · up to ${_formatBytesLocal(totalReclaim)} reclaimable`,
+                ),
+            )}
         </div>
         <p class="text-xs text-tg-textSecondary mb-3" data-i18n="maintenance.dedup.help_pick">Each set below contains byte-identical files. Tick the copies you want to delete; the rest are kept. Default selection deletes everything except the oldest copy.</p>
         <div id="dedup-list" class="max-h-[60vh] overflow-y-auto pr-1">
@@ -1522,31 +1933,39 @@ async function openDedupSheet(sets) {
     const sumEl = root.querySelector('#dedup-summary');
 
     const refreshSummary = () => {
-        const ids = [...root.querySelectorAll('.dedup-del:checked')].map(el => Number(el.dataset.id));
+        const ids = [...root.querySelectorAll('.dedup-del:checked')].map((el) =>
+            Number(el.dataset.id),
+        );
         let bytes = 0;
         for (const set of sets) {
             for (const f of set.files) if (ids.includes(f.id)) bytes += Number(f.fileSize) || 0;
         }
         if (sumEl) {
-            sumEl.textContent = i18nTf('maintenance.dedup.selected',
+            sumEl.textContent = i18nTf(
+                'maintenance.dedup.selected',
                 { count: ids.length, freed: _formatBytesLocal(bytes) },
-                `${ids.length} selected · ${_formatBytesLocal(bytes)} will be freed`);
+                `${ids.length} selected · ${_formatBytesLocal(bytes)} will be freed`,
+            );
         }
     };
-    root.querySelectorAll('.dedup-del').forEach(cb => cb.addEventListener('change', refreshSummary));
+    root.querySelectorAll('.dedup-del').forEach((cb) =>
+        cb.addEventListener('change', refreshSummary),
+    );
 
     // Quick "keep oldest/newest" per set — flips checkboxes in one click.
-    root.querySelectorAll('[data-keep]').forEach(btn => {
+    root.querySelectorAll('[data-keep]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const hash = btn.dataset.hash;
             const keep = btn.dataset.keep;
-            const set = sets.find(s => s.hash === hash);
+            const set = sets.find((s) => s.hash === hash);
             if (!set) return;
-            const sortedAsc = [...set.files].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            const sortedAsc = [...set.files].sort(
+                (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
+            );
             const keepId = (keep === 'newest' ? sortedAsc[sortedAsc.length - 1] : sortedAsc[0]).id;
             for (const f of set.files) {
                 const cb = root.querySelector(`.dedup-del[data-id="${f.id}"]`);
-                if (cb) cb.checked = (f.id !== keepId);
+                if (cb) cb.checked = f.id !== keepId;
             }
             refreshSummary();
         });
@@ -1556,26 +1975,34 @@ async function openDedupSheet(sets) {
 
     root.querySelector('#dedup-cancel')?.addEventListener('click', () => sheet?.close());
     root.querySelector('#dedup-delete')?.addEventListener('click', async () => {
-        const ids = [...root.querySelectorAll('.dedup-del:checked')].map(el => Number(el.dataset.id));
+        const ids = [...root.querySelectorAll('.dedup-del:checked')].map((el) =>
+            Number(el.dataset.id),
+        );
         if (!ids.length) {
             showToast(i18nT('maintenance.dedup.nothing', 'Nothing selected'), 'info');
             return;
         }
         const ok = await confirmSheet({
             title: i18nT('maintenance.dedup.confirm_title', 'Delete duplicate files?'),
-            body: i18nTf('maintenance.dedup.confirm_body',
+            body: i18nTf(
+                'maintenance.dedup.confirm_body',
                 { n: ids.length },
-                `Permanently delete ${ids.length} file(s) from disk and database?`),
+                `Permanently delete ${ids.length} file(s) from disk and database?`,
+            ),
             confirmText: i18nT('maintenance.dedup.confirm_btn', 'Delete'),
             destructive: true,
         });
         if (!ok) return;
         try {
             const r = await api.post('/api/maintenance/dedup/delete', { ids });
-            showToast(i18nTf('maintenance.dedup.deleted',
-                { removed: r.removed, freed: _formatBytesLocal(r.freedBytes) },
-                `Removed ${r.removed} files — freed ${_formatBytesLocal(r.freedBytes)}`),
-                'success');
+            showToast(
+                i18nTf(
+                    'maintenance.dedup.deleted',
+                    { removed: r.removed, freed: _formatBytesLocal(r.freedBytes) },
+                    `Removed ${r.removed} files — freed ${_formatBytesLocal(r.freedBytes)}`,
+                ),
+                'success',
+            );
             sheet?.close();
         } catch (e) {
             showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -1597,11 +2024,19 @@ async function maintVerifyFiles() {
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -1612,32 +2047,53 @@ async function maintResyncDialogs() {
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
 async function maintRestartMonitor() {
-    if (!(await confirmSheet({
-        title: i18nT('maintenance.restart.title', 'Restart monitor'),
-        message: i18nT('maintenance.restart.confirm',
-            'Stop and restart the realtime monitor? In-flight downloads will be paused briefly.'),
-        confirmLabel: i18nT('maintenance.restart.action', 'Restart'),
-    }))) return;
+    if (
+        !(await confirmSheet({
+            title: i18nT('maintenance.restart.title', 'Restart monitor'),
+            message: i18nT(
+                'maintenance.restart.confirm',
+                'Stop and restart the realtime monitor? In-flight downloads will be paused briefly.',
+            ),
+            confirmLabel: i18nT('maintenance.restart.action', 'Restart'),
+        }))
+    )
+        return;
     try {
         showToast(i18nT('maintenance.restart.running', 'Restarting monitor…'), 'info');
         const r = await api.post('/api/maintenance/restart-monitor', { confirm: true });
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -1648,32 +2104,53 @@ async function maintDbIntegrity() {
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
 async function maintDbVacuum() {
-    if (!(await confirmSheet({
-        title: i18nT('maintenance.db_vacuum.title', 'VACUUM database'),
-        message: i18nT('maintenance.db_vacuum.confirm',
-            'Run VACUUM on the SQLite database? It briefly locks the DB and may take a minute on large datasets.'),
-        confirmLabel: i18nT('maintenance.db_vacuum.action', 'Vacuum'),
-    }))) return;
+    if (
+        !(await confirmSheet({
+            title: i18nT('maintenance.db_vacuum.title', 'VACUUM database'),
+            message: i18nT(
+                'maintenance.db_vacuum.confirm',
+                'Run VACUUM on the SQLite database? It briefly locks the DB and may take a minute on large datasets.',
+            ),
+            confirmLabel: i18nT('maintenance.db_vacuum.action', 'Vacuum'),
+        }))
+    )
+        return;
     try {
         showToast(i18nT('maintenance.db_vacuum.running', 'Running VACUUM…'), 'info');
         const r = await api.post('/api/maintenance/db/vacuum', { confirm: true });
         if (!r?.started && !r?.success) throw new Error('Failed to start');
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -1700,26 +2177,36 @@ function wireMaintenanceJobToasts() {
             // Persist failures to the bell so the operator sees them after
             // the toast auto-dismisses (especially relevant for jobs that
             // started on another device).
-            import('./header-mobile.js').then((mod) => mod.pushLogToNotify({
-                level: 'error',
-                source: 'verify',
-                msg,
-                ts: Date.now(),
-            })).catch(() => {});
+            import('./header-mobile.js')
+                .then((mod) =>
+                    mod.pushLogToNotify({
+                        level: 'error',
+                        source: 'verify',
+                        msg,
+                        ts: Date.now(),
+                    }),
+                )
+                .catch(() => {});
             return;
         }
         const scanned = m?.scanned ?? 0;
         const pruned = m?.pruned ?? 0;
-        const msg = i18nTf('maintenance.verify.done',
+        const msg = i18nTf(
+            'maintenance.verify.done',
             { scanned, pruned },
-            `Verified ${scanned} files — pruned ${pruned} missing rows`);
+            `Verified ${scanned} files — pruned ${pruned} missing rows`,
+        );
         showToast(msg, pruned > 0 ? 'warning' : 'success');
-        import('./header-mobile.js').then((mod) => mod.pushLogToNotify({
-            level: pruned > 0 ? 'warn' : 'info',
-            source: 'verify',
-            msg,
-            ts: Date.now(),
-        })).catch(() => {});
+        import('./header-mobile.js')
+            .then((mod) =>
+                mod.pushLogToNotify({
+                    level: pruned > 0 ? 'warn' : 'info',
+                    source: 'verify',
+                    msg,
+                    ts: Date.now(),
+                }),
+            )
+            .catch(() => {});
     });
 
     // db/integrity
@@ -1732,15 +2219,20 @@ function wireMaintenanceJobToasts() {
     });
     ws.on('db_integrity_done', (m) => {
         if (m?.error) {
-            showToast(i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`),
+                'error',
+            );
             return;
         }
         if (m?.ok) {
             showToast(i18nT('maintenance.db_check.ok', 'Database integrity: ok'), 'success');
         } else {
             const msg = (m?.messages || []).slice(0, 3).join(' / ') || 'unknown';
-            showToast(i18nTf('maintenance.db_check.bad', { msg },
-                `Database issues: ${msg}`), 'error');
+            showToast(
+                i18nTf('maintenance.db_check.bad', { msg }, `Database issues: ${msg}`),
+                'error',
+            );
         }
     });
 
@@ -1756,12 +2248,21 @@ function wireMaintenanceJobToasts() {
     });
     ws.on('db_vacuum_done', (m) => {
         if (m?.error) {
-            showToast(i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`),
+                'error',
+            );
             return;
         }
         const reclaimed = formatBytesShort(m?.reclaimedBytes || 0);
-        showToast(i18nTf('maintenance.db_vacuum.done', { bytes: reclaimed },
-            `VACUUM done — reclaimed ${reclaimed}`), 'success');
+        showToast(
+            i18nTf(
+                'maintenance.db_vacuum.done',
+                { bytes: reclaimed },
+                `VACUUM done — reclaimed ${reclaimed}`,
+            ),
+            'success',
+        );
     });
 
     // restart-monitor
@@ -1775,14 +2276,19 @@ function wireMaintenanceJobToasts() {
     });
     ws.on('restart_monitor_done', (m) => {
         if (m?.error) {
-            showToast(i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`),
+                'error',
+            );
             return;
         }
         if (m?.restarted) {
             showToast(i18nT('maintenance.restart.done', 'Monitor restarted'), 'success');
         } else {
-            showToast(m?.note || i18nT('maintenance.restart.idle',
-                'Monitor was not running.'), 'info');
+            showToast(
+                m?.note || i18nT('maintenance.restart.idle', 'Monitor was not running.'),
+                'info',
+            );
         }
     });
 
@@ -1796,12 +2302,20 @@ function wireMaintenanceJobToasts() {
     });
     ws.on('resync_dialogs_done', (m) => {
         if (m?.error) {
-            showToast(i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`), 'error');
+            showToast(
+                i18nTf('maintenance.failed', { msg: m.error }, `Failed: ${m.error}`),
+                'error',
+            );
             return;
         }
-        showToast(i18nTf('maintenance.resync.done',
-            { updated: m?.updated || 0, scanned: m?.scanned || 0 },
-            `Resynced ${m?.updated || 0} of ${m?.scanned || 0} groups`), 'success');
+        showToast(
+            i18nTf(
+                'maintenance.resync.done',
+                { updated: m?.updated || 0, scanned: m?.scanned || 0 },
+                `Resynced ${m?.updated || 0} of ${m?.scanned || 0} groups`,
+            ),
+            'success',
+        );
     });
 
     // auto-update — the click handler opens a sheet, so we only wire
@@ -1825,7 +2339,9 @@ async function _maintBrowseLogs() {
             showToast(i18nT('maintenance.logs.empty', 'No log files yet.'), 'info');
             return;
         }
-        const items = files.map(f => `
+        const items = files
+            .map(
+                (f) => `
             <div class="flex items-center justify-between gap-3 bg-tg-bg/40 rounded-lg p-3">
                 <div class="min-w-0">
                     <div class="text-tg-text text-sm font-medium truncate">${escapeHtml(f.name)}</div>
@@ -1840,7 +2356,9 @@ async function _maintBrowseLogs() {
                     </a>
                 </div>
             </div>
-        `).join('');
+        `,
+            )
+            .join('');
         openSheet({
             title: i18nT('maintenance.logs.title', 'Log files'),
             content: `<div class="space-y-2" id="maint-logs-list">${items}</div>
@@ -1850,7 +2368,7 @@ async function _maintBrowseLogs() {
         // sheet with the tail of the file in a <pre> for in-browser reading
         // (no need to download + open a separate viewer).
         setTimeout(() => {
-            document.querySelectorAll('#maint-logs-list [data-log-view]').forEach(btn => {
+            document.querySelectorAll('#maint-logs-list [data-log-view]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
                     const name = btn.dataset.logView;
                     btn.disabled = true;
@@ -1860,7 +2378,10 @@ async function _maintBrowseLogs() {
                     const ctrl = new AbortController();
                     const timer = setTimeout(() => ctrl.abort(), 30000);
                     try {
-                        const res = await fetch(`/api/maintenance/logs/download?name=${encodeURIComponent(name)}&lines=10000`, { signal: ctrl.signal });
+                        const res = await fetch(
+                            `/api/maintenance/logs/download?name=${encodeURIComponent(name)}&lines=10000`,
+                            { signal: ctrl.signal },
+                        );
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const text = await res.text();
                         openSheet({
@@ -1881,16 +2402,29 @@ async function _maintBrowseLogs() {
                             cp?.addEventListener('click', async () => {
                                 try {
                                     await navigator.clipboard.writeText(text);
-                                    showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
+                                    showToast(
+                                        i18nT('maintenance.export.copied', 'Copied'),
+                                        'success',
+                                    );
                                 } catch {
-                                    showToast(i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'), 'info');
+                                    showToast(
+                                        i18nT(
+                                            'maintenance.export.copy_manual',
+                                            'Press Ctrl/Cmd+C to copy',
+                                        ),
+                                        'info',
+                                    );
                                 }
                             });
                         }, 50);
                     } catch (e) {
-                        const msg = e?.name === 'AbortError'
-                            ? i18nT('maintenance.logs.timeout', 'Log read timed out (file too large or server busy)')
-                            : (e?.message || String(e));
+                        const msg =
+                            e?.name === 'AbortError'
+                                ? i18nT(
+                                      'maintenance.logs.timeout',
+                                      'Log read timed out (file too large or server busy)',
+                                  )
+                                : e?.message || String(e);
                         showToast(i18nTf('maintenance.failed', { msg }, `Failed: ${msg}`), 'error');
                     } finally {
                         clearTimeout(timer);
@@ -1900,7 +2434,10 @@ async function _maintBrowseLogs() {
             });
         }, 50);
     } catch (e) {
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -1918,18 +2455,30 @@ async function _maintBrowseLogs() {
 function _renderJsonTree(value, key = null, path = '$') {
     const isLeaf = (v) => v === null || typeof v !== 'object';
     const wrap = (cls, content) => `<span class="${cls}">${content}</span>`;
-    const fullPath = key === null ? path : (Number.isInteger(key) ? `${path}[${key}]` : `${path}.${escapeHtml(String(key))}`);
-    const keyTok = key === null
-        ? ''
-        : `<span class="text-tg-blue/90 font-medium">"${escapeHtml(String(key))}"</span><span class="text-tg-textSecondary">: </span>`;
+    const fullPath =
+        key === null
+            ? path
+            : Number.isInteger(key)
+              ? `${path}[${key}]`
+              : `${path}.${escapeHtml(String(key))}`;
+    const keyTok =
+        key === null
+            ? ''
+            : `<span class="text-tg-blue/90 font-medium">"${escapeHtml(String(key))}"</span><span class="text-tg-textSecondary">: </span>`;
 
     // Leaves render inline.
     let valTok = '';
     let valText = '';
-    if (value === null) { valTok = wrap('text-tg-textSecondary italic', 'null'); valText = 'null'; }
-    else if (typeof value === 'boolean') { valTok = wrap('text-purple-300', String(value)); valText = String(value); }
-    else if (typeof value === 'number') { valTok = wrap('text-tg-orange tabular-nums', String(value)); valText = String(value); }
-    else if (typeof value === 'string') {
+    if (value === null) {
+        valTok = wrap('text-tg-textSecondary italic', 'null');
+        valText = 'null';
+    } else if (typeof value === 'boolean') {
+        valTok = wrap('text-purple-300', String(value));
+        valText = String(value);
+    } else if (typeof value === 'number') {
+        valTok = wrap('text-tg-orange tabular-nums', String(value));
+        valText = String(value);
+    } else if (typeof value === 'string') {
         const safe = escapeHtml(value);
         valTok = wrap('text-tg-green break-all', `"${safe}"`);
         valText = value;
@@ -1954,9 +2503,12 @@ function _renderJsonTree(value, key = null, path = '$') {
             ${keyTok}${open}${close}
         </div>`;
     }
-    const children = entries.map(([k, v], i) =>
-        `<div class="json-child" data-child>${_renderJsonTree(v, k, fullPath)}<span class="text-tg-textSecondary/60">${i < entries.length - 1 ? ',' : ''}</span></div>`
-    ).join('');
+    const children = entries
+        .map(
+            ([k, v], i) =>
+                `<div class="json-child" data-child>${_renderJsonTree(v, k, fullPath)}<span class="text-tg-textSecondary/60">${i < entries.length - 1 ? ',' : ''}</span></div>`,
+        )
+        .join('');
     return `<details class="json-node" data-key-path="${escapeHtml(fullPath)}" open>
         <summary class="json-summary list-none cursor-pointer flex items-center gap-1 px-1 py-0.5 rounded hover:bg-tg-hover/40 select-none">
             <i class="json-chev ri-arrow-down-s-line text-sm text-tg-textSecondary shrink-0 transition-transform"></i>
@@ -2015,15 +2567,23 @@ async function maintViewConfig() {
         setTimeout(() => {
             const root = document.getElementById('maint-config-tree');
             if (!root) return;
-            const expandAll = (open) => root.querySelectorAll('details.json-node').forEach(d => d.open = open);
-            document.querySelector('[data-config-collapse]')?.addEventListener('click', () => expandAll(false));
-            document.querySelector('[data-config-expand]')?.addEventListener('click', () => expandAll(true));
+            const expandAll = (open) =>
+                root.querySelectorAll('details.json-node').forEach((d) => (d.open = open));
+            document
+                .querySelector('[data-config-collapse]')
+                ?.addEventListener('click', () => expandAll(false));
+            document
+                .querySelector('[data-config-expand]')
+                ?.addEventListener('click', () => expandAll(true));
             document.querySelector('[data-config-copy]')?.addEventListener('click', async () => {
                 try {
                     await navigator.clipboard.writeText(text);
                     showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
                 } catch {
-                    showToast(i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'), 'info');
+                    showToast(
+                        i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'),
+                        'info',
+                    );
                 }
             });
             document.querySelector('[data-config-download]')?.addEventListener('click', () => {
@@ -2047,7 +2607,10 @@ async function maintViewConfig() {
                     await navigator.clipboard.writeText(btn.dataset.copy || '');
                     showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
                 } catch {
-                    showToast(i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'), 'info');
+                    showToast(
+                        i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'),
+                        'info',
+                    );
                 }
             });
             // Live filter — hides rows that don't match the query.
@@ -2058,11 +2621,13 @@ async function maintViewConfig() {
             const matchCount = document.getElementById('config-match-count');
             let searchTimer = null;
             const applyFilter = (q) => {
-                q = String(q || '').trim().toLowerCase();
+                q = String(q || '')
+                    .trim()
+                    .toLowerCase();
                 let matches = 0;
                 const allRows = root.querySelectorAll('.json-row, details.json-node');
                 if (!q) {
-                    allRows.forEach(el => el.classList.remove('hidden'));
+                    allRows.forEach((el) => el.classList.remove('hidden'));
                     if (matchCount) matchCount.textContent = '';
                     return;
                 }
@@ -2077,8 +2642,10 @@ async function maintViewConfig() {
                     let visible = false;
                     const children = el.querySelectorAll(':scope > .json-children > [data-child]');
                     if (children.length) {
-                        children.forEach(child => {
-                            const innerNode = child.querySelector(':scope > details.json-node, :scope > .json-row');
+                        children.forEach((child) => {
+                            const innerNode = child.querySelector(
+                                ':scope > details.json-node, :scope > .json-row',
+                            );
                             if (!innerNode) return;
                             const childVisible = visit(innerNode);
                             child.classList.toggle('hidden', !childVisible);
@@ -2090,12 +2657,26 @@ async function maintViewConfig() {
                     // Self can also match by its summary (e.g. searching 'web' on the {web:…} container)
                     if (!visible && matchesRow(el)) visible = true;
                     el.classList.toggle('hidden', !visible);
-                    if (visible && (el.classList.contains('json-row') || !el.querySelectorAll(':scope > .json-children > [data-child] > .json-row, :scope > .json-children > [data-child] > details').length)) matches += 1;
+                    if (
+                        visible &&
+                        (el.classList.contains('json-row') ||
+                            !el.querySelectorAll(
+                                ':scope > .json-children > [data-child] > .json-row, :scope > .json-children > [data-child] > details',
+                            ).length)
+                    )
+                        matches += 1;
                     if (visible && el.tagName === 'DETAILS') el.open = true;
                     return visible;
                 };
-                root.querySelectorAll(':scope > details.json-node, :scope > .json-row').forEach(visit);
-                if (matchCount) matchCount.textContent = i18nTf('maintenance.config.matches', { n: matches }, `${matches} match${matches === 1 ? '' : 'es'}`);
+                root.querySelectorAll(':scope > details.json-node, :scope > .json-row').forEach(
+                    visit,
+                );
+                if (matchCount)
+                    matchCount.textContent = i18nTf(
+                        'maintenance.config.matches',
+                        { n: matches },
+                        `${matches} match${matches === 1 ? '' : 'es'}`,
+                    );
             };
             search?.addEventListener('input', () => {
                 if (searchTimer) clearTimeout(searchTimer);
@@ -2103,30 +2684,46 @@ async function maintViewConfig() {
             });
         }, 60);
     } catch (e) {
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
 async function maintExportSession() {
     let accounts = [];
-    try { accounts = await api.get('/api/accounts'); }
-    catch (e) {
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+    try {
+        accounts = await api.get('/api/accounts');
+    } catch (e) {
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
         return;
     }
     if (!accounts.length) {
         showToast(i18nT('maintenance.export.empty', 'No saved accounts to export.'), 'info');
         return;
     }
-    const opts = accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)} · ${escapeHtml(a.id)}</option>`).join('');
+    const opts = accounts
+        .map(
+            (a) =>
+                `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name || a.id)} · ${escapeHtml(a.id)}</option>`,
+        )
+        .join('');
     const html = `
         <div class="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3">
             <div class="flex items-start gap-2">
                 <i class="ri-error-warning-line text-red-400 text-base mt-0.5"></i>
                 <div>
                     <div class="text-red-300 text-sm font-medium">${escapeHtml(i18nT('maintenance.export.warn_title', 'Sensitive — full account access'))}</div>
-                    <p class="text-xs text-red-200/90 mt-1 leading-snug">${escapeHtml(i18nT('maintenance.export.warn',
-                        'Anyone with this string can act as the account. Treat it like a password.'))}</p>
+                    <p class="text-xs text-red-200/90 mt-1 leading-snug">${escapeHtml(
+                        i18nT(
+                            'maintenance.export.warn',
+                            'Anyone with this string can act as the account. Treat it like a password.',
+                        ),
+                    )}</p>
                 </div>
             </div>
         </div>
@@ -2159,83 +2756,114 @@ async function maintExportSession() {
         const out = document.getElementById('maint-export-out');
         const str = document.getElementById('maint-export-str');
         const copy = document.getElementById('maint-export-copy');
-        if (doBtn) doBtn.addEventListener('click', async () => {
-            // Force the user to retype their dashboard password — exporting
-            // a session string lets the holder act as the account, so cookie
-            // alone is not enough proof of identity.
-            const password = await promptSheet({
-                title: i18nT('maintenance.export.title', 'Export Telegram session'),
-                message: i18nT('maintenance.export.password_prompt',
-                    'Enter your dashboard password to export the session string:'),
-                inputType: 'password',
-                confirmLabel: i18nT('maintenance.export.action', 'Export'),
-            });
-            if (password == null || password === '') return;
-            doBtn.disabled = true;
-            try {
-                const r = await api.post('/api/maintenance/session/export', {
-                    confirm: true,
-                    accountId: pick.value,
-                    password,
+        if (doBtn)
+            doBtn.addEventListener('click', async () => {
+                // Force the user to retype their dashboard password — exporting
+                // a session string lets the holder act as the account, so cookie
+                // alone is not enough proof of identity.
+                const password = await promptSheet({
+                    title: i18nT('maintenance.export.title', 'Export Telegram session'),
+                    message: i18nT(
+                        'maintenance.export.password_prompt',
+                        'Enter your dashboard password to export the session string:',
+                    ),
+                    inputType: 'password',
+                    confirmLabel: i18nT('maintenance.export.action', 'Export'),
                 });
-                if (str) str.value = r.session || '';
-                if (out) out.classList.remove('hidden');
-                // Auto-clear after 60 s — even if the user walks away, the
-                // sensitive string doesn't sit on the screen forever.
-                if (autoClearTimer) clearTimeout(autoClearTimer);
-                autoClearTimer = setTimeout(() => {
-                    if (str) str.value = '';
-                    if (out) out.classList.add('hidden');
-                    showToast(i18nT('maintenance.export.cleared', 'Session string cleared from screen'), 'info');
-                }, 60 * 1000);
-            } catch (e) {
-                showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
-            } finally {
-                doBtn.disabled = false;
-            }
-        });
+                if (password == null || password === '') return;
+                doBtn.disabled = true;
+                try {
+                    const r = await api.post('/api/maintenance/session/export', {
+                        confirm: true,
+                        accountId: pick.value,
+                        password,
+                    });
+                    if (str) str.value = r.session || '';
+                    if (out) out.classList.remove('hidden');
+                    // Auto-clear after 60 s — even if the user walks away, the
+                    // sensitive string doesn't sit on the screen forever.
+                    if (autoClearTimer) clearTimeout(autoClearTimer);
+                    autoClearTimer = setTimeout(() => {
+                        if (str) str.value = '';
+                        if (out) out.classList.add('hidden');
+                        showToast(
+                            i18nT(
+                                'maintenance.export.cleared',
+                                'Session string cleared from screen',
+                            ),
+                            'info',
+                        );
+                    }, 60 * 1000);
+                } catch (e) {
+                    showToast(
+                        i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+                        'error',
+                    );
+                } finally {
+                    doBtn.disabled = false;
+                }
+            });
         // Reveal — drop the blur + remove the cover button so the textarea
         // is readable. One-shot per export.
         const reveal = document.getElementById('maint-export-reveal');
-        if (reveal) reveal.addEventListener('click', () => {
-            str?.classList.remove('blur-sm');
-            reveal.remove();
-        });
+        if (reveal)
+            reveal.addEventListener('click', () => {
+                str?.classList.remove('blur-sm');
+                reveal.remove();
+            });
         // Manual clear button — wipe the string immediately.
         const clearBtn = document.getElementById('maint-export-clear');
-        if (clearBtn) clearBtn.addEventListener('click', () => {
-            if (str) str.value = '';
-            if (out) out.classList.add('hidden');
-            if (autoClearTimer) { clearTimeout(autoClearTimer); autoClearTimer = null; }
-            showToast(i18nT('maintenance.export.cleared', 'Session string cleared from screen'), 'info');
-        });
-        if (copy) copy.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(str.value);
-                showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
-            } catch {
-                str.select();
-                showToast(i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'), 'info');
-            }
-        });
+        if (clearBtn)
+            clearBtn.addEventListener('click', () => {
+                if (str) str.value = '';
+                if (out) out.classList.add('hidden');
+                if (autoClearTimer) {
+                    clearTimeout(autoClearTimer);
+                    autoClearTimer = null;
+                }
+                showToast(
+                    i18nT('maintenance.export.cleared', 'Session string cleared from screen'),
+                    'info',
+                );
+            });
+        if (copy)
+            copy.addEventListener('click', async () => {
+                try {
+                    await navigator.clipboard.writeText(str.value);
+                    showToast(i18nT('maintenance.export.copied', 'Copied'), 'success');
+                } catch {
+                    str.select();
+                    showToast(
+                        i18nT('maintenance.export.copy_manual', 'Press Ctrl/Cmd+C to copy'),
+                        'info',
+                    );
+                }
+            });
     }, 50);
 }
 let autoClearTimer = null;
 
 async function maintRevokeAllSessions() {
-    if (!(await confirmSheet({
-        title: i18nT('maintenance.signout_all.title', 'Sign out everywhere'),
-        message: i18nT('maintenance.signout_all.confirm',
-            'Sign out every browser? You will be redirected to the login page.'),
-        confirmLabel: i18nT('maintenance.signout_all.action', 'Sign out all'),
-        danger: true,
-    }))) return;
+    if (
+        !(await confirmSheet({
+            title: i18nT('maintenance.signout_all.title', 'Sign out everywhere'),
+            message: i18nT(
+                'maintenance.signout_all.confirm',
+                'Sign out every browser? You will be redirected to the login page.',
+            ),
+            confirmLabel: i18nT('maintenance.signout_all.action', 'Sign out all'),
+            danger: true,
+        }))
+    )
+        return;
     // Require the dashboard password — without it a stolen cookie could
     // mass-evict everyone else off the dashboard.
     const password = await promptSheet({
         title: i18nT('maintenance.signout_all.title', 'Sign out everywhere'),
-        message: i18nT('maintenance.signout_all.password_prompt',
-            'Enter your dashboard password to sign out every browser:'),
+        message: i18nT(
+            'maintenance.signout_all.password_prompt',
+            'Enter your dashboard password to sign out every browser:',
+        ),
         inputType: 'password',
         confirmLabel: i18nT('maintenance.signout_all.action', 'Sign out all'),
     });
@@ -2243,9 +2871,14 @@ async function maintRevokeAllSessions() {
     try {
         await api.post('/api/maintenance/sessions/revoke-all', { confirm: true, password });
         showToast(i18nT('maintenance.signout_all.done', 'All sessions revoked'), 'success');
-        setTimeout(() => { window.location.href = '/login.html'; }, 600);
+        setTimeout(() => {
+            window.location.href = '/login.html';
+        }, 600);
     } catch (e) {
-        showToast(i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('maintenance.failed', { msg: e.message }, `Failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -2257,6 +2890,9 @@ function formatBytesShort(bytes) {
     const units = ['KB', 'MB', 'GB', 'TB'];
     let v = n / 1024;
     let i = 0;
-    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    while (v >= 1024 && i < units.length - 1) {
+        v /= 1024;
+        i++;
+    }
     return v.toFixed(v >= 10 ? 0 : 1) + ' ' + units[i];
 }

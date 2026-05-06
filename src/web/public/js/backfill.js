@@ -33,7 +33,7 @@ const PRESETS = [
 ];
 
 const activeJobs = new Map(); // jobId → { id, group, groupId, processed, downloaded, limit, startedAt, ... }
-let recentJobs = [];          // server-provided list of finished jobs
+let recentJobs = []; // server-provided list of finished jobs
 let selectedGroupId = null;
 let selectedLimit = 100;
 let customLimitTouched = false;
@@ -70,11 +70,11 @@ export function initBackfillPage() {
     // Cross-tab: another admin tab deleted a row → drop it locally too.
     ws.on('history_deleted', (m) => {
         if (!m?.jobId) return;
-        recentJobs = recentJobs.filter(j => String(j.id) !== String(m.jobId));
+        recentJobs = recentJobs.filter((j) => String(j.id) !== String(m.jobId));
         renderRecent();
     });
     ws.on('history_cleared', () => {
-        recentJobs = recentJobs.filter(j => j.state === 'running');
+        recentJobs = recentJobs.filter((j) => j.state === 'running');
         renderRecent();
     });
 }
@@ -98,7 +98,7 @@ export async function showBackfillPage(params = {}) {
  */
 export function deepLinkFromModal(groupId, limit) {
     selectedGroupId = String(groupId);
-    selectedLimit = (limit === 0 || limit === '0') ? 0 : parseInt(limit, 10) || 100;
+    selectedLimit = limit === 0 || limit === '0' ? 0 : parseInt(limit, 10) || 100;
     customLimitTouched = false;
     const customInput = document.getElementById('backfill-custom-limit');
     if (customInput) customInput.value = '';
@@ -117,7 +117,7 @@ async function refreshFromServer() {
         // Re-seed the in-memory active map from the server (covers
         // browser refreshes / first visits while a job is still running).
         const seen = new Set();
-        for (const j of (r.active || [])) {
+        for (const j of r.active || []) {
             seen.add(j.id);
             const existing = activeJobs.get(j.id) || {};
             activeJobs.set(j.id, { ...existing, ...j });
@@ -188,7 +188,10 @@ function onError(m) {
             });
         }, 2500);
     }
-    showToast(i18nTf('backfill.row.failed', { msg: m.error || '' }, `Backfill failed: ${m.error || ''}`), 'error');
+    showToast(
+        i18nTf('backfill.row.failed', { msg: m.error || '' }, `Backfill failed: ${m.error || ''}`),
+        'error',
+    );
 }
 
 function onCancelled(m) {
@@ -231,7 +234,7 @@ function renderActive() {
     if (!list) return;
 
     const jobs = Array.from(activeJobs.values()).sort(
-        (a, b) => (b.startedAt || 0) - (a.startedAt || 0)
+        (a, b) => (b.startedAt || 0) - (a.startedAt || 0),
     );
 
     if (jobs.length === 0) {
@@ -301,13 +304,24 @@ function _patchActiveRow(node, job) {
     const downloaded = job.downloaded || 0;
     const elapsed = formatElapsed(Date.now() - (job.startedAt || Date.now()));
     const procEl = node.querySelector('[data-row-processed]');
-    if (procEl) procEl.textContent = i18nTf('backfill.row.processed', { n: processed }, `${processed} processed`);
+    if (procEl)
+        procEl.textContent = i18nTf(
+            'backfill.row.processed',
+            { n: processed },
+            `${processed} processed`,
+        );
     const dlEl = node.querySelector('[data-row-downloaded]');
-    if (dlEl) dlEl.textContent = i18nTf('backfill.row.downloaded', { n: downloaded }, `${downloaded} downloaded`);
+    if (dlEl)
+        dlEl.textContent = i18nTf(
+            'backfill.row.downloaded',
+            { n: downloaded },
+            `${downloaded} downloaded`,
+        );
     const elEl = node.querySelector('[data-elapsed]');
     if (elEl) elEl.dataset.elapsed = job.startedAt || '';
     const elText = node.querySelector('[data-elapsed-text]');
-    if (elText) elText.textContent = i18nTf('backfill.row.elapsed', { t: elapsed }, `elapsed ${elapsed}`);
+    if (elText)
+        elText.textContent = i18nTf('backfill.row.elapsed', { t: elapsed }, `elapsed ${elapsed}`);
     const bar = node.querySelector('[data-row-bar]');
     if (bar && job.limit && job.limit > 0) {
         const pct = Math.min(100, Math.round((processed / job.limit) * 100));
@@ -318,15 +332,21 @@ function _patchActiveRow(node, job) {
 function renderActiveRow(job) {
     const id = String(job.id);
     const groupName = getGroupName(job.groupId, { fallback: job.group || job.groupId });
-    const target = job.limit === null || job.limit === 0
-        ? i18nT('backfill.preset.all', 'All')
-        : i18nTf('backfill.preset.last_n', { n: formatLimit(job.limit) }, `Last ${formatLimit(job.limit)}`);
+    const target =
+        job.limit === null || job.limit === 0
+            ? i18nT('backfill.preset.all', 'All')
+            : i18nTf(
+                  'backfill.preset.last_n',
+                  { n: formatLimit(job.limit) },
+                  `Last ${formatLimit(job.limit)}`,
+              );
     const processed = job.processed || 0;
     const downloaded = job.downloaded || 0;
     const elapsed = formatElapsed(Date.now() - (job.startedAt || Date.now()));
-    const pct = (job.limit && job.limit > 0)
-        ? Math.min(100, Math.round((processed / job.limit) * 100))
-        : null;
+    const pct =
+        job.limit && job.limit > 0
+            ? Math.min(100, Math.round((processed / job.limit) * 100))
+            : null;
 
     let flashClass = '';
     let stateBadge = '';
@@ -344,11 +364,12 @@ function renderActiveRow(job) {
     }
 
     const showCancel = job.state === 'running' && !job._flash;
-    const progressBar = pct !== null
-        ? `<div class="mt-2 h-1.5 bg-tg-bg/60 rounded-full overflow-hidden">
+    const progressBar =
+        pct !== null
+            ? `<div class="mt-2 h-1.5 bg-tg-bg/60 rounded-full overflow-hidden">
               <div data-row-bar class="h-full bg-tg-blue transition-all" style="width: ${pct}%"></div>
            </div>`
-        : `<div class="mt-2 h-1.5 bg-tg-bg/60 rounded-full overflow-hidden">
+            : `<div class="mt-2 h-1.5 bg-tg-bg/60 rounded-full overflow-hidden">
               <div data-row-bar class="h-full bg-tg-blue/60 animate-pulse" style="width: 30%"></div>
            </div>`;
     const flashAttr = job._flash ? `data-flash="${escapeHtml(job._flash)}"` : '';
@@ -370,11 +391,15 @@ function renderActiveRow(job) {
                         ${stateBadge}
                     </div>
                 </div>
-                ${showCancel ? `
+                ${
+                    showCancel
+                        ? `
                     <button type="button" data-cancel-job="${escapeHtml(id)}"
                         class="text-xs px-2.5 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-red-400 hover:border-red-400 transition-colors flex-shrink-0 inline-flex items-center gap-1">
                         <i class="ri-stop-circle-line"></i>${escapeHtml(i18nT('backfill.row.cancel', 'Cancel'))}
-                    </button>` : ''}
+                    </button>`
+                        : ''
+                }
             </div>
             ${progressBar}
         </div>`;
@@ -382,17 +407,23 @@ function renderActiveRow(job) {
 
 async function cancelJob(jobId) {
     if (!jobId) return;
-    if (!(await confirmSheet({
-        title: i18nT('backfill.row.cancel_title', 'Cancel backfill?'),
-        message: i18nT('backfill.row.cancel_confirm', 'Cancel this backfill?'),
-        confirmLabel: i18nT('backfill.row.cancel', 'Cancel backfill'),
-        cancelLabel: i18nT('common.close', 'Close'),
-        danger: true,
-    }))) return;
+    if (
+        !(await confirmSheet({
+            title: i18nT('backfill.row.cancel_title', 'Cancel backfill?'),
+            message: i18nT('backfill.row.cancel_confirm', 'Cancel this backfill?'),
+            confirmLabel: i18nT('backfill.row.cancel', 'Cancel backfill'),
+            cancelLabel: i18nT('common.close', 'Close'),
+            danger: true,
+        }))
+    )
+        return;
     try {
         await api.post(`/api/history/${encodeURIComponent(jobId)}/cancel`, {});
     } catch (e) {
-        showToast(i18nTf('backfill.row.cancel_failed', { msg: e.message }, `Cancel failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('backfill.row.cancel_failed', { msg: e.message }, `Cancel failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -407,12 +438,12 @@ function setupGroupPicker() {
     if (!input || !results) return;
 
     const renderResults = (q) => {
-        const groups = (state.groups || []);
+        const groups = state.groups || [];
         const needle = q.toLowerCase().trim();
         const matched = needle
-            ? groups.filter(g => {
-                const name = getGroupName(g.id, { fallback: g.name }).toLowerCase();
-                return name.includes(needle) || String(g.id).includes(needle);
+            ? groups.filter((g) => {
+                  const name = getGroupName(g.id, { fallback: g.name }).toLowerCase();
+                  return name.includes(needle) || String(g.id).includes(needle);
               })
             : groups;
         if (matched.length === 0) {
@@ -420,17 +451,20 @@ function setupGroupPicker() {
             results.classList.remove('hidden');
             return;
         }
-        results.innerHTML = matched.slice(0, 50).map(g => {
-            const name = getGroupName(g.id, { fallback: g.name });
-            return `
+        results.innerHTML = matched
+            .slice(0, 50)
+            .map((g) => {
+                const name = getGroupName(g.id, { fallback: g.name });
+                return `
                 <button type="button" data-pick-group="${escapeHtml(String(g.id))}"
                     class="w-full text-left px-3 py-2 hover:bg-tg-hover text-sm text-tg-text truncate block">
                     ${escapeHtml(name)}
                     <span class="text-xs text-tg-textSecondary ml-1">· ${escapeHtml(String(g.id))}</span>
                 </button>`;
-        }).join('');
+            })
+            .join('');
         results.classList.remove('hidden');
-        results.querySelectorAll('[data-pick-group]').forEach(btn => {
+        results.querySelectorAll('[data-pick-group]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 preselectGroup(btn.dataset.pickGroup);
             });
@@ -479,12 +513,14 @@ function renderSelectedGroup() {
 function setupPresetRow() {
     const row = document.getElementById('backfill-preset-row');
     if (!row) return;
-    row.innerHTML = PRESETS.map(p => `
+    row.innerHTML = PRESETS.map(
+        (p) => `
         <button type="button" data-preset-limit="${p.value}"
             class="px-3 py-1.5 rounded-full text-xs border transition-colors"
             data-i18n="${p.key}">${escapeHtml(p.fallback)}</button>
-    `).join('');
-    row.querySelectorAll('[data-preset-limit]').forEach(btn => {
+    `,
+    ).join('');
+    row.querySelectorAll('[data-preset-limit]').forEach((btn) => {
         btn.addEventListener('click', () => {
             selectedLimit = parseInt(btn.dataset.presetLimit, 10);
             customLimitTouched = false;
@@ -501,7 +537,7 @@ function renderPresetSelection() {
     const row = document.getElementById('backfill-preset-row');
     if (!row) return;
     const effective = customLimitTouched ? -1 : selectedLimit;
-    row.querySelectorAll('[data-preset-limit]').forEach(btn => {
+    row.querySelectorAll('[data-preset-limit]').forEach((btn) => {
         const val = parseInt(btn.dataset.presetLimit, 10);
         const active = val === effective;
         btn.classList.toggle('bg-tg-blue', active);
@@ -558,19 +594,31 @@ async function startBackfill() {
     }
     const groupName = getGroupName(selectedGroupId, { fallback: selectedGroupId });
     if (lim === 0) {
-        if (!(await confirmSheet({
-            title: i18nT('group.backfill.all', 'All'),
-            message: i18nT('group.backfill.all_confirm',
-                'Backfill ALL history for this chat? This may take hours and download a lot of data.'),
-            confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
-            danger: true,
-        }))) return;
+        if (
+            !(await confirmSheet({
+                title: i18nT('group.backfill.all', 'All'),
+                message: i18nT(
+                    'group.backfill.all_confirm',
+                    'Backfill ALL history for this chat? This may take hours and download a lot of data.',
+                ),
+                confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
+                danger: true,
+            }))
+        )
+            return;
     } else {
-        if (!(await confirmSheet({
-            title: i18nT('backfill.start.title', 'Start a new backfill'),
-            message: i18nTf('group.backfill.confirm_n', { n: lim, name: groupName }, `Download the last ${lim} messages of "${groupName}" into the queue?`),
-            confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
-        }))) return;
+        if (
+            !(await confirmSheet({
+                title: i18nT('backfill.start.title', 'Start a new backfill'),
+                message: i18nTf(
+                    'group.backfill.confirm_n',
+                    { n: lim, name: groupName },
+                    `Download the last ${lim} messages of "${groupName}" into the queue?`,
+                ),
+                confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
+            }))
+        )
+            return;
     }
 
     if (btn) {
@@ -602,10 +650,15 @@ async function startBackfill() {
         // toast in that case so the user understands why their click
         // didn't spawn a new job.
         if (e?.status === 409 && e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('backfill.already_running',
-                'A backfill is already running for this group'), 'warning');
+            showToast(
+                i18nT('backfill.already_running', 'A backfill is already running for this group'),
+                'warning',
+            );
         } else {
-            showToast(i18nTf('group.backfill.failed', { msg: e.message }, `History failed: ${e.message}`), 'error');
+            showToast(
+                i18nTf('group.backfill.failed', { msg: e.message }, `History failed: ${e.message}`),
+                'error',
+            );
         }
     } finally {
         if (btn) {
@@ -640,7 +693,7 @@ function renderRecent() {
     // "× N attempts" badge so the user can still see they retried.
     // Different limits (Last 100 vs All) stay separate because they're
     // genuinely different actions.
-    const grouped = new Map();   // key → { newest, count }
+    const grouped = new Map(); // key → { newest, count }
     for (const j of recentJobs) {
         const key = `${String(j.groupId)}|${j.limit ?? 0}`;
         const tsOf = (x) => x.finishedAt || x.startedAt || 0;
@@ -658,10 +711,10 @@ function renderRecent() {
     });
     list.innerHTML = display.map(({ newest, count }) => renderRecentRow(newest, count)).join('');
 
-    list.querySelectorAll('[data-rerun]').forEach(btn => {
+    list.querySelectorAll('[data-rerun]').forEach((btn) => {
         btn.addEventListener('click', () => rerunFromRecent(btn.dataset.rerun));
     });
-    list.querySelectorAll('[data-delete-recent]').forEach(btn => {
+    list.querySelectorAll('[data-delete-recent]').forEach((btn) => {
         btn.addEventListener('click', () => deleteRecent(btn.dataset.deleteRecent, btn));
     });
 }
@@ -669,11 +722,19 @@ function renderRecent() {
 function renderRecentRow(job, attempts = 1) {
     const id = String(job.id);
     const name = getGroupName(job.groupId, { fallback: job.group || job.groupId });
-    const target = job.limit === null || job.limit === 0
-        ? i18nT('backfill.preset.all', 'All')
-        : i18nTf('backfill.preset.last_n', { n: formatLimit(job.limit) }, `Last ${formatLimit(job.limit)}`);
-    const when = job.finishedAt ? new Date(job.finishedAt).toLocaleString()
-        : (job.startedAt ? new Date(job.startedAt).toLocaleString() : '—');
+    const target =
+        job.limit === null || job.limit === 0
+            ? i18nT('backfill.preset.all', 'All')
+            : i18nTf(
+                  'backfill.preset.last_n',
+                  { n: formatLimit(job.limit) },
+                  `Last ${formatLimit(job.limit)}`,
+              );
+    const when = job.finishedAt
+        ? new Date(job.finishedAt).toLocaleString()
+        : job.startedAt
+          ? new Date(job.startedAt).toLocaleString()
+          : '—';
 
     let statePill = '';
     if (job.state === 'done') {
@@ -687,12 +748,13 @@ function renderRecentRow(job, attempts = 1) {
     // Surface the dedupe count when the same (group, limit) pair was
     // attempted more than once. Tooltip tells the user this row is the
     // newest attempt; older attempts are folded in.
-    const attemptsBadge = attempts > 1
-        ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-tg-bg/60 text-tg-textSecondary"
+    const attemptsBadge =
+        attempts > 1
+            ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-tg-bg/60 text-tg-textSecondary"
                  title="${escapeHtml(i18nT('backfill.row.attempts_help', 'Newest attempt shown — older attempts collapsed'))}">
               ${escapeHtml(i18nTf('backfill.row.attempts', { n: attempts }, `× ${attempts} attempts`))}
            </span>`
-        : '';
+            : '';
 
     return `
         <div class="rounded-lg border border-tg-border/40 p-3" data-recent-row="${escapeHtml(id)}">
@@ -736,10 +798,15 @@ async function deleteRecent(jobId, btn) {
         await api.delete(`/api/history/${encodeURIComponent(jobId)}`);
         // Optimistic removal — also drop any same-key duplicates that the
         // dedupe view collapsed into this row.
-        recentJobs = recentJobs.filter(j => String(j.id) !== String(jobId));
+        recentJobs = recentJobs.filter((j) => String(j.id) !== String(jobId));
         renderRecent();
     } catch (e) {
-        try { (await import('./utils.js')).showToast(e?.data?.error || e.message || 'Failed', 'error'); } catch {}
+        try {
+            (await import('./utils.js')).showToast(
+                e?.data?.error || e.message || 'Failed',
+                'error',
+            );
+        } catch {}
         if (btn) btn.disabled = false;
     }
 }
@@ -753,26 +820,36 @@ async function clearAllRecent() {
         const sheet = await import('./sheet.js');
         ok = await sheet.confirmSheet({
             title: i18nT('backfill.recent.clear_title', 'Clear all recent backfills?'),
-            body: i18nT('backfill.recent.clear_body', 'This removes every entry from the Recent backfills list. Running jobs are preserved. Files already downloaded are not affected.'),
+            body: i18nT(
+                'backfill.recent.clear_body',
+                'This removes every entry from the Recent backfills list. Running jobs are preserved. Files already downloaded are not affected.',
+            ),
             confirmText: i18nT('backfill.recent.clear_confirm', 'Clear all'),
             destructive: true,
         });
-    } catch { ok = false; }
+    } catch {
+        ok = false;
+    }
     if (!ok) return;
     try {
         await api.delete('/api/history');
-        recentJobs = recentJobs.filter(j => j.state === 'running');
+        recentJobs = recentJobs.filter((j) => j.state === 'running');
         renderRecent();
     } catch (e) {
-        try { (await import('./utils.js')).showToast(e?.data?.error || e.message || 'Failed', 'error'); } catch {}
+        try {
+            (await import('./utils.js')).showToast(
+                e?.data?.error || e.message || 'Failed',
+                'error',
+            );
+        } catch {}
     }
 }
 
 async function rerunFromRecent(jobId) {
-    const job = recentJobs.find(j => String(j.id) === String(jobId));
+    const job = recentJobs.find((j) => String(j.id) === String(jobId));
     if (!job) return;
     selectedGroupId = String(job.groupId);
-    selectedLimit = (job.limit === null || job.limit === 0) ? 0 : (job.limit || 100);
+    selectedLimit = job.limit === null || job.limit === 0 ? 0 : job.limit || 100;
     customLimitTouched = false;
     const customInput = document.getElementById('backfill-custom-limit');
     if (customInput) customInput.value = '';
@@ -803,7 +880,7 @@ function startElapsedTimer() {
     if (elapsedTimer) clearInterval(elapsedTimer);
     elapsedTimer = setInterval(() => {
         if (state.currentPage !== 'backfill') return;
-        document.querySelectorAll('#backfill-active-list [data-elapsed]').forEach(el => {
+        document.querySelectorAll('#backfill-active-list [data-elapsed]').forEach((el) => {
             const startedAt = parseInt(el.dataset.elapsed, 10);
             if (!Number.isFinite(startedAt) || !startedAt) return;
             const t = formatElapsed(Date.now() - startedAt);

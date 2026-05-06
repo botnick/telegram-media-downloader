@@ -20,19 +20,19 @@ export class RateLimiter extends EventEmitter {
         }
 
         const now = Date.now();
-        this.requests = this.requests.filter(t => now - t < 60000);
+        this.requests = this.requests.filter((t) => now - t < 60000);
 
         if (this.requests.length >= this.maxPerMinute) {
             const waitTime = 60000 - (now - this.requests[0]) + 1000;
             // Emit event instead of printing directly
-            this.emit('wait', Math.ceil(waitTime/1000));
-            await this.sleep(1000); 
+            this.emit('wait', Math.ceil(waitTime / 1000));
+            await this.sleep(1000);
             return this.acquire();
         }
 
         const delay = this.delayMin + Math.random() * (this.delayMax - this.delayMin);
         await this.sleep(delay);
-        
+
         this.requests.push(Date.now());
         return true;
     }
@@ -45,7 +45,7 @@ export class RateLimiter extends EventEmitter {
     }
 
     sleep(ms) {
-        return new Promise(r => setTimeout(r, ms));
+        return new Promise((r) => setTimeout(r, ms));
     }
 }
 
@@ -89,10 +89,7 @@ export class SecureSession {
         const iv = crypto.randomBytes(16);
         const key = this._deriveKey(salt);
         const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-        const encrypted = Buffer.concat([
-            cipher.update(data, 'utf8'),
-            cipher.final(),
-        ]);
+        const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
         return {
             v: 2,
             salt: salt.toString('hex'),
@@ -104,15 +101,9 @@ export class SecureSession {
 
     decrypt(obj) {
         const version = obj.v || 1;
-        const salt = version >= 2 && obj.salt
-            ? Buffer.from(obj.salt, 'hex')
-            : LEGACY_SALT;
+        const salt = version >= 2 && obj.salt ? Buffer.from(obj.salt, 'hex') : LEGACY_SALT;
         const key = this._deriveKey(salt);
-        const decipher = crypto.createDecipheriv(
-            'aes-256-gcm',
-            key,
-            Buffer.from(obj.iv, 'hex'),
-        );
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(obj.iv, 'hex'));
         decipher.setAuthTag(Buffer.from(obj.tag, 'hex'));
         return Buffer.concat([
             decipher.update(Buffer.from(obj.data, 'hex')),

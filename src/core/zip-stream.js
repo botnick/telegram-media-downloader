@@ -26,30 +26,34 @@
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
 
-const SIG_LOCAL_FILE        = 0x04034b50;
-const SIG_CENTRAL_FILE      = 0x02014b50;
-const SIG_END_OF_CENTRAL    = 0x06054b50;
-const STORE                 = 0;
-const VERSION_MADE_BY       = 0x031E; // 3.0, UNIX
-const VERSION_NEEDED        = 20;     // 2.0
-const FLAG_UTF8             = 0x0800;
+const SIG_LOCAL_FILE = 0x04034b50;
+const SIG_CENTRAL_FILE = 0x02014b50;
+const SIG_END_OF_CENTRAL = 0x06054b50;
+const STORE = 0;
+const VERSION_MADE_BY = 0x031e; // 3.0, UNIX
+const VERSION_NEEDED = 20; // 2.0
+const FLAG_UTF8 = 0x0800;
 
 // Per-archive ceiling — we don't emit ZIP64 records, so anything that
 // would push us past 4 GiB has to be rejected at the API layer.
-export const ZIP_MAX_BYTES   = 0xFFFFFFFE;
-export const ZIP_MAX_ENTRIES = 0xFFFE;
+export const ZIP_MAX_BYTES = 0xfffffffe;
+export const ZIP_MAX_ENTRIES = 0xfffe;
 
 function toDosTime(d = new Date()) {
-    const time = ((d.getHours() & 0x1F) << 11)
-               | ((d.getMinutes() & 0x3F) << 5)
-               | ((Math.floor(d.getSeconds() / 2)) & 0x1F);
-    const date = (((d.getFullYear() - 1980) & 0x7F) << 9)
-               | (((d.getMonth() + 1) & 0x0F) << 5)
-               | (d.getDate() & 0x1F);
+    const time =
+        ((d.getHours() & 0x1f) << 11) |
+        ((d.getMinutes() & 0x3f) << 5) |
+        (Math.floor(d.getSeconds() / 2) & 0x1f);
+    const date =
+        (((d.getFullYear() - 1980) & 0x7f) << 9) |
+        (((d.getMonth() + 1) & 0x0f) << 5) |
+        (d.getDate() & 0x1f);
     return { time, date };
 }
 
-function utf8Buf(s) { return Buffer.from(String(s), 'utf8'); }
+function utf8Buf(s) {
+    return Buffer.from(String(s), 'utf8');
+}
 
 /**
  * Streaming ZIP writer.
@@ -66,9 +70,9 @@ function utf8Buf(s) { return Buffer.from(String(s), 'utf8'); }
  */
 export class ZipStream {
     constructor() {
-        this._sink = null;        // Writable to pipe into
-        this._offset = 0;         // bytes emitted so far
-        this._central = [];       // central-directory records
+        this._sink = null; // Writable to pipe into
+        this._offset = 0; // bytes emitted so far
+        this._central = []; // central-directory records
         this._finalized = false;
     }
 
@@ -116,11 +120,11 @@ export class ZipStream {
         localHeader.writeUInt16LE(STORE, 8);
         localHeader.writeUInt16LE(time, 10);
         localHeader.writeUInt16LE(date, 12);
-        localHeader.writeUInt32LE(0, 14);          // crc32 placeholder
-        localHeader.writeUInt32LE(0, 18);          // compressed size placeholder
-        localHeader.writeUInt32LE(0, 22);          // uncompressed size placeholder
+        localHeader.writeUInt32LE(0, 14); // crc32 placeholder
+        localHeader.writeUInt32LE(0, 18); // compressed size placeholder
+        localHeader.writeUInt32LE(0, 22); // uncompressed size placeholder
         localHeader.writeUInt16LE(nameBuf.length, 26);
-        localHeader.writeUInt16LE(0, 28);          // extra-field length
+        localHeader.writeUInt16LE(0, 28); // extra-field length
         await this._write(localHeader);
         await this._write(nameBuf);
 
@@ -184,11 +188,11 @@ export class ZipStream {
             buf.writeUInt32LE(e.size, 20);
             buf.writeUInt32LE(e.size, 24);
             buf.writeUInt16LE(e.nameBuf.length, 28);
-            buf.writeUInt16LE(0, 30);    // extra
-            buf.writeUInt16LE(0, 32);    // comment
-            buf.writeUInt16LE(0, 34);    // disk
-            buf.writeUInt16LE(0, 36);    // internal attrs
-            buf.writeUInt32LE(0, 38);    // external attrs
+            buf.writeUInt16LE(0, 30); // extra
+            buf.writeUInt16LE(0, 32); // comment
+            buf.writeUInt16LE(0, 34); // disk
+            buf.writeUInt16LE(0, 36); // internal attrs
+            buf.writeUInt32LE(0, 38); // external attrs
             buf.writeUInt32LE(e.localHeaderOffset, 42);
             await this._write(buf);
             await this._write(e.nameBuf);
@@ -196,13 +200,13 @@ export class ZipStream {
         const cdEnd = this._offset;
         const eocd = Buffer.alloc(22);
         eocd.writeUInt32LE(SIG_END_OF_CENTRAL, 0);
-        eocd.writeUInt16LE(0, 4);                    // disk number
-        eocd.writeUInt16LE(0, 6);                    // disk where CD starts
+        eocd.writeUInt16LE(0, 4); // disk number
+        eocd.writeUInt16LE(0, 6); // disk where CD starts
         eocd.writeUInt16LE(this._central.length, 8);
         eocd.writeUInt16LE(this._central.length, 10);
         eocd.writeUInt32LE(cdEnd - cdStart, 12);
         eocd.writeUInt32LE(cdStart, 16);
-        eocd.writeUInt16LE(0, 20);                   // archive comment length
+        eocd.writeUInt16LE(0, 20); // archive comment length
         await this._write(eocd);
         if (this._sink && typeof this._sink.end === 'function') {
             this._sink.end();
@@ -218,7 +222,7 @@ const CRC_TABLE = (() => {
     for (let i = 0; i < 256; i++) {
         let c = i;
         for (let k = 0; k < 8; k++) {
-            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
         }
         t[i] = c;
     }
@@ -226,11 +230,11 @@ const CRC_TABLE = (() => {
 })();
 
 function _crc32Update(prev, buf) {
-    let c = (prev ^ 0xFFFFFFFF) | 0;
+    let c = (prev ^ 0xffffffff) | 0;
     for (let i = 0; i < buf.length; i++) {
-        c = (CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8)) | 0;
+        c = (CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)) | 0;
     }
-    return (c ^ 0xFFFFFFFF) >>> 0;
+    return (c ^ 0xffffffff) >>> 0;
 }
 
 /**

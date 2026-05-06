@@ -20,7 +20,7 @@ export class HistoryDownloader extends EventEmitter {
             processed: 0,
             downloaded: 0,
             skipped: 0,
-            urls: 0
+            urls: 0,
         };
     }
 
@@ -52,7 +52,7 @@ export class HistoryDownloader extends EventEmitter {
             links: 0,
             voice: 0,
             gifs: 0,
-            total: 0
+            total: 0,
         };
 
         try {
@@ -69,24 +69,25 @@ export class HistoryDownloader extends EventEmitter {
                 { key: 'files', filter: new Api.InputMessagesFilterDocument() },
                 { key: 'links', filter: new Api.InputMessagesFilterUrl() },
                 { key: 'voice', filter: new Api.InputMessagesFilterVoice() },
-                { key: 'gifs', filter: new Api.InputMessagesFilterGif() }
+                { key: 'gifs', filter: new Api.InputMessagesFilterGif() },
             ];
 
-            const results = await Promise.all(queries.map(async (q) => {
-                try {
-                    const res = await workingClient.getMessages(groupId, {
-                        limit: 1, // We just need count
-                        filter: q.filter
-                    });
-                    return { key: q.key, count: res.total || 0 };
-                } catch (e) {
-                    return { key: q.key, count: 0 };
-                }
-            }));
+            const results = await Promise.all(
+                queries.map(async (q) => {
+                    try {
+                        const res = await workingClient.getMessages(groupId, {
+                            limit: 1, // We just need count
+                            filter: q.filter,
+                        });
+                        return { key: q.key, count: res.total || 0 };
+                    } catch (e) {
+                        return { key: q.key, count: 0 };
+                    }
+                }),
+            );
 
-            results.forEach(r => counts[r.key] = r.count);
+            results.forEach((r) => (counts[r.key] = r.count));
             counts.total = Object.values(counts).reduce((a, b) => a + b, 0);
-
         } catch (e) {
             // Fallback or error
             console.error('Scan failed:', e);
@@ -119,13 +120,12 @@ export class HistoryDownloader extends EventEmitter {
         // null / undefined / 0 → "no limit" — iterate the entire history.
         // Any positive number caps the iteration to that many messages.
         const rawLimit = options.limit;
-        const limit = (rawLimit === undefined || rawLimit === null || rawLimit === 0)
-            ? undefined
-            : rawLimit;
+        const limit =
+            rawLimit === undefined || rawLimit === null || rawLimit === 0 ? undefined : rawLimit;
         const offsetId = options.offsetId || 0;
 
         // Find group config
-        const group = this.config.groups.find(g => String(g.id) === String(groupId));
+        const group = this.config.groups.find((g) => String(g.id) === String(groupId));
         if (!group) throw new Error('Group config not found');
 
         // ---- Smart resume (v2.3.34) ---------------------------------------
@@ -148,12 +148,15 @@ export class HistoryDownloader extends EventEmitter {
         // path. Telegram-side filtering replaces millions of round trips
         // with a single offsetId hint.
         const explicitOffset = !!options.offsetId;
-        const requestedMode = options.mode === 'catch-up' ? 'catch-up'
-            : options.mode === 'rescan' ? 'rescan'
-            : 'pull-older';
+        const requestedMode =
+            options.mode === 'catch-up'
+                ? 'catch-up'
+                : options.mode === 'rescan'
+                  ? 'rescan'
+                  : 'pull-older';
         let mode = requestedMode;
-        let iterMaxId;     // gramJS reads as `maxId`
-        let iterMinId;     // gramJS reads as `minId`
+        let iterMaxId; // gramJS reads as `maxId`
+        let iterMinId; // gramJS reads as `minId`
         if (explicitOffset || mode === 'rescan') {
             mode = 'rescan';
             iterMaxId = offsetId || undefined;
@@ -233,14 +236,18 @@ export class HistoryDownloader extends EventEmitter {
                 //   recovery will eventually drain the queue.
                 {
                     const cap = Number(this.config?.advanced?.history?.backpressureCap) || 500;
-                    const MAX_WAIT_MS = Number(this.config?.advanced?.history?.backpressureMaxWaitMs) || (15 * 60 * 1000);
+                    const MAX_WAIT_MS =
+                        Number(this.config?.advanced?.history?.backpressureMaxWaitMs) ||
+                        15 * 60 * 1000;
                     const STALL_WARN_AT = Math.floor(MAX_WAIT_MS / 2);
 
                     if (this.downloader.pendingCount > cap) {
                         let lastProgressAt = Date.now();
                         let lastPending = this.downloader.pendingCount;
                         let warnedStalled = false;
-                        const onComplete = () => { lastProgressAt = Date.now(); };
+                        const onComplete = () => {
+                            lastProgressAt = Date.now();
+                        };
                         this.downloader.on('complete', onComplete);
                         try {
                             while (this.downloader.pendingCount > cap) {
@@ -264,12 +271,14 @@ export class HistoryDownloader extends EventEmitter {
                                 }
                                 if (stallMs > MAX_WAIT_MS) {
                                     const mins = Math.round(MAX_WAIT_MS / 60000);
-                                    throw new Error(`History backpressure: downloader made no progress for ${mins}min (pending=${this.downloader.pendingCount}, cap=${cap}). Check Engine card for FloodWait or stalled workers.`);
+                                    throw new Error(
+                                        `History backpressure: downloader made no progress for ${mins}min (pending=${this.downloader.pendingCount}, cap=${cap}). Check Engine card for FloodWait or stalled workers.`,
+                                    );
                                 }
                             }
                         } finally {
-                            this.downloader.off?.('complete', onComplete)
-                                || this.downloader.removeListener?.('complete', onComplete);
+                            this.downloader.off?.('complete', onComplete) ||
+                                this.downloader.removeListener?.('complete', onComplete);
                         }
                     }
                 }
@@ -290,9 +299,9 @@ export class HistoryDownloader extends EventEmitter {
                 // Setting either to 0 disables that break entirely (useful
                 // for power users who manage their own rate limits).
                 const shortEvery = Number(this.config?.advanced?.history?.shortBreakEveryN);
-                const longEvery  = Number(this.config?.advanced?.history?.longBreakEveryN);
+                const longEvery = Number(this.config?.advanced?.history?.longBreakEveryN);
                 const shortN = Number.isFinite(shortEvery) ? shortEvery : 100;
-                const longN  = Number.isFinite(longEvery)  ? longEvery  : 1000;
+                const longN = Number.isFinite(longEvery) ? longEvery : 1000;
 
                 // Short break (2-5s) - Like scrolling pause
                 if (shortN > 0 && this.stats.processed % shortN === 0) {
@@ -305,8 +314,8 @@ export class HistoryDownloader extends EventEmitter {
                 // Long break (60-120s) - Like getting coffee
                 if (longN > 0 && this.stats.processed % longN === 0) {
                     const delay = Math.floor(Math.random() * 60000) + 60000;
-                    this.emit('log', `🛌 Long break: ${delay/1000}s (Safety First)`);
-                    await new Promise(r => setTimeout(r, delay));
+                    this.emit('log', `🛌 Long break: ${delay / 1000}s (Safety First)`);
+                    await new Promise((r) => setTimeout(r, delay));
                 }
             }
         } catch (error) {
@@ -326,8 +335,6 @@ export class HistoryDownloader extends EventEmitter {
             this.emit('complete', { ...this.stats, lastMessageId: lastId, cancelled });
         }
     }
-
-
 
     async processMessage(message, group) {
         // User tracking filter
@@ -350,7 +357,7 @@ export class HistoryDownloader extends EventEmitter {
         // Handle Media
         if (this.hasMedia(message)) {
             const mediaType = this.getMediaType(message);
-            
+
             // Check filter (Granular default to true if undefined)
             const filterValue = group.filters?.[mediaType];
             const isAllowed = filterValue !== false;
@@ -361,12 +368,15 @@ export class HistoryDownloader extends EventEmitter {
             }
 
             // Enqueue (Priority 2 for history, lower than realtime)
-            const added = await this.downloader.enqueue({
-                message,
-                groupId: group.id,
-                groupName: group.name,
-                mediaType
-            }, 2);
+            const added = await this.downloader.enqueue(
+                {
+                    message,
+                    groupId: group.id,
+                    groupName: group.name,
+                    mediaType,
+                },
+                2,
+            );
 
             if (added) {
                 this.stats.downloaded++;
@@ -384,11 +394,11 @@ export class HistoryDownloader extends EventEmitter {
 
         const senderId = String(message.senderId || '');
         const isTracked = (group.trackUsers.users || []).some(
-            u => String(u.id) === senderId || u.username === message.sender?.username
+            (u) => String(u.id) === senderId || u.username === message.sender?.username,
         );
 
         const globalTracked = (this.config.globalTrackedUsers || []).some(
-            u => String(u.id) === senderId || u.username === message.sender?.username
+            (u) => String(u.id) === senderId || u.username === message.sender?.username,
         );
 
         const tracked = isTracked || globalTracked;
@@ -400,7 +410,7 @@ export class HistoryDownloader extends EventEmitter {
 
     passTopicFilter(message, group) {
         if (!group.topics?.enabled) return true;
-        
+
         const replyTo = message.replyTo;
         if (!replyTo?.forumTopic) return true;
 
@@ -413,26 +423,33 @@ export class HistoryDownloader extends EventEmitter {
     }
 
     hasMedia(message) {
-        return !!(message.photo || message.video || message.document || 
-                  message.audio || message.voice || message.sticker ||
-                  message.videoNote || message.gif);
+        return !!(
+            message.photo ||
+            message.video ||
+            message.document ||
+            message.audio ||
+            message.voice ||
+            message.sticker ||
+            message.videoNote ||
+            message.gif
+        );
     }
 
     sleep(ms) {
-        return new Promise(r => setTimeout(r, ms));
+        return new Promise((r) => setTimeout(r, ms));
     }
 
     getMediaType(message) {
         if (message.photo) return 'photos';
-        
+
         if (message.video || message.videoNote) {
-             if (message.gif || (message.document?.mimeType === 'image/gif')) return 'gifs';
-             return 'videos';
+            if (message.gif || message.document?.mimeType === 'image/gif') return 'gifs';
+            return 'videos';
         }
-        
+
         if (message.voice) return 'voice';
         if (message.audio) return 'audio';
-        
+
         if (message.document) {
             const mime = message.document.mimeType || '';
             if (mime.includes('image/gif')) return 'gifs';
@@ -440,7 +457,7 @@ export class HistoryDownloader extends EventEmitter {
             if (mime.includes('image/')) return 'photos';
             if (mime.includes('audio/')) return 'audio';
         }
-        
+
         return 'files';
     }
 
@@ -452,14 +469,14 @@ export class HistoryDownloader extends EventEmitter {
         try {
             const basePath = this.config.download?.path || './data/downloads';
             const groupDir = path.join(basePath, this.sanitize(group.name));
-            
+
             if (!fsSync.existsSync(groupDir)) {
                 await fs.mkdir(groupDir, { recursive: true });
             }
 
             const date = new Date(message.date * 1000).toISOString().split('T')[0];
-            const lines = urls.map(url => `[${date}] ${url}`).join('\n') + '\n';
-            
+            const lines = urls.map((url) => `[${date}] ${url}`).join('\n') + '\n';
+
             await fs.appendFile(path.join(groupDir, 'urls.txt'), lines);
             this.stats.urls += urls.length;
         } catch (error) {

@@ -60,14 +60,21 @@ function makeSemaphore(max) {
     return {
         acquire() {
             return new Promise((resolve) => {
-                if (active < max) { active++; resolve(); return; }
+                if (active < max) {
+                    active++;
+                    resolve();
+                    return;
+                }
                 queue.push(resolve);
             });
         },
         release() {
             active--;
             const next = queue.shift();
-            if (next) { active++; next(); }
+            if (next) {
+                active++;
+                next();
+            }
         },
     };
 }
@@ -128,7 +135,11 @@ async function _peekSecondAtom(absPath) {
     } catch {
         return null;
     } finally {
-        try { await fh?.close(); } catch { /* best-effort */ }
+        try {
+            await fh?.close();
+        } catch {
+            /* best-effort */
+        }
     }
 }
 
@@ -158,12 +169,19 @@ async function _remuxInPlace(absPath) {
     // Stream-copy both A and V, only rewrite container metadata. `-y`
     // overwrites any stale .tmp left over from a prior crash.
     await _runFfmpeg([
-        '-hide_banner', '-loglevel', 'error',
-        '-i', absPath,
-        '-c', 'copy',
-        '-map', '0',          // copy every stream (video + audio + subs + …)
-        '-movflags', '+faststart',
-        '-f', 'mp4',          // explicit muxer — `.tmp` defeats inference (same lesson as thumbs.js)
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        absPath,
+        '-c',
+        'copy',
+        '-map',
+        '0', // copy every stream (video + audio + subs + …)
+        '-movflags',
+        '+faststart',
+        '-f',
+        'mp4', // explicit muxer — `.tmp` defeats inference (same lesson as thumbs.js)
         '-y',
         tmp,
     ]);
@@ -172,8 +190,10 @@ async function _remuxInPlace(absPath) {
     // A wildly different size means something went wrong (codec
     // mismatch, container conversion). Bail rather than overwrite.
     const [srcStat, tmpStat] = await Promise.all([fs.stat(absPath), fs.stat(tmp)]);
-    if (tmpStat.size < srcStat.size * 0.95 || tmpStat.size > srcStat.size * 1.10) {
-        try { await fs.unlink(tmp); } catch {}
+    if (tmpStat.size < srcStat.size * 0.95 || tmpStat.size > srcStat.size * 1.1) {
+        try {
+            await fs.unlink(tmp);
+        } catch {}
         throw new Error(`tmp size sanity check failed: src=${srcStat.size} tmp=${tmpStat.size}`);
     }
     await fs.rename(tmp, absPath);
@@ -197,9 +217,9 @@ export async function optimizeDownload(id) {
     const dlId = parseInt(id, 10);
     if (!Number.isInteger(dlId) || dlId <= 0) return { status: 'skipped', reason: 'bad id' };
     if (!hasFfmpeg()) return { status: 'skipped', reason: 'no ffmpeg' };
-    const row = getDb().prepare(
-        'SELECT id, file_path, file_type FROM downloads WHERE id = ?'
-    ).get(dlId);
+    const row = getDb()
+        .prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?')
+        .get(dlId);
     if (!row) return { status: 'skipped', reason: 'no row' };
     if (row.file_type !== 'video') return { status: 'skipped', reason: 'not video' };
     const abs = _resolveAbs(row.file_path);
@@ -216,14 +236,18 @@ export async function optimizeDownload(id) {
         // this number on the row. Keep it honest.
         try {
             getDb().prepare('UPDATE downloads SET file_size = ? WHERE id = ?').run(newSize, dlId);
-        } catch { /* best-effort; the file is already optimised */ }
+        } catch {
+            /* best-effort; the file is already optimised */
+        }
         // The video thumb (if cached) was generated against the old
         // file path's first keyframe. The frame is bit-identical after
         // a stream-copy, so the cached webp would still be valid — but
         // mtime-based cache validation might end up serving a 304 with
         // a now-stale Last-Modified. Cheaper to drop the cache and let
         // the next gallery render regenerate.
-        try { await purgeThumbsForDownload(dlId); } catch {}
+        try {
+            await purgeThumbsForDownload(dlId);
+        } catch {}
         return { status: 'optimized', newSize };
     } catch (e) {
         return { status: 'errored', error: e?.message || String(e) };
@@ -241,11 +265,13 @@ export async function optimizeDownload(id) {
  */
 export function optimizeDownloadInBackground(id) {
     queueMicrotask(() => {
-        optimizeDownload(id).then((r) => {
-            if (r?.status === 'errored') {
-                console.warn(`[faststart] id=${id} failed: ${r.error}`);
-            }
-        }).catch(() => {});
+        optimizeDownload(id)
+            .then((r) => {
+                if (r?.status === 'errored') {
+                    console.warn(`[faststart] id=${id} failed: ${r.error}`);
+                }
+            })
+            .catch(() => {});
     });
 }
 
@@ -259,19 +285,31 @@ export function optimizeDownloadInBackground(id) {
  */
 export async function optimizeAll(opts = {}) {
     const { onProgress, signal } = opts;
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT id FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
          ORDER BY id DESC
-    `).all();
+    `)
+        .all();
     const total = rows.length;
-    let processed = 0, optimized = 0, already = 0, skipped = 0, errored = 0;
+    let processed = 0,
+        optimized = 0,
+        already = 0,
+        skipped = 0,
+        errored = 0;
 
     const tick = () => {
-        if (onProgress) onProgress({
-            stage: 'optimizing', processed, total,
-            optimized, already, skipped, errored,
-        });
+        if (onProgress)
+            onProgress({
+                stage: 'optimizing',
+                processed,
+                total,
+                optimized,
+                already,
+                skipped,
+                errored,
+            });
     };
     tick();
 
@@ -290,10 +328,16 @@ export async function optimizeAll(opts = {}) {
         if (processed % 5 === 0 || processed === total) tick();
     }
 
-    if (onProgress) onProgress({
-        stage: 'done', processed, total,
-        optimized, already, skipped, errored,
-    });
+    if (onProgress)
+        onProgress({
+            stage: 'done',
+            processed,
+            total,
+            optimized,
+            already,
+            skipped,
+            errored,
+        });
     return { scanned: total, optimized, already, skipped, errored };
 }
 
@@ -304,17 +348,29 @@ export async function optimizeAll(opts = {}) {
  * second on SSD. Errors are silently coerced into the "unknown" bucket.
  */
 export async function getStats() {
-    const rows = getDb().prepare(`
+    const rows = getDb()
+        .prepare(`
         SELECT id, file_path FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
-    `).all();
-    let total = 0, optimized = 0, pending = 0, missing = 0, unknown = 0;
+    `)
+        .all();
+    let total = 0,
+        optimized = 0,
+        pending = 0,
+        missing = 0,
+        unknown = 0;
     for (const r of rows) {
         total++;
         const abs = _resolveAbs(r.file_path);
-        if (!abs) { missing++; continue; }
+        if (!abs) {
+            missing++;
+            continue;
+        }
         const ext = path.extname(abs).toLowerCase();
-        if (!FASTSTART_EXTS.has(ext)) { unknown++; continue; }
+        if (!FASTSTART_EXTS.has(ext)) {
+            unknown++;
+            continue;
+        }
         const which = await _peekSecondAtom(abs);
         if (which === 'moov') optimized++;
         else if (which === 'mdat' || which === 'other') pending++;

@@ -20,9 +20,15 @@ class MockClient {
         this.ftp = { verbose: false };
         this._closed = false;
     }
-    async access(opts) { calls.push(['access', opts]); }
-    async ensureDir(p) { calls.push(['ensureDir', p]); }
-    async cd(p) { calls.push(['cd', p]); }
+    async access(opts) {
+        calls.push(['access', opts]);
+    }
+    async ensureDir(p) {
+        calls.push(['ensureDir', p]);
+    }
+    async cd(p) {
+        calls.push(['cd', p]);
+    }
     async uploadFrom(stream, target) {
         calls.push(['uploadFrom', target]);
         // Drain the stream so transforms / pipes finish.
@@ -62,11 +68,14 @@ class MockClient {
             return [
                 { name: 'a.txt', type: 1, size: 18, modifiedAt: new Date('2025-01-02') },
                 { name: 'photos', type: 2 },
-            ].filter((e) => dir === '/tgdl-backup' ? true : e.name === 'a.txt');
+            ].filter((e) => (dir === '/tgdl-backup' ? true : e.name === 'a.txt'));
         }
         return [];
     }
-    close() { this._closed = true; calls.push(['close']); }
+    close() {
+        this._closed = true;
+        calls.push(['close']);
+    }
 }
 
 vi.mock('basic-ftp', () => ({
@@ -85,13 +94,16 @@ beforeEach(async () => {
 describe('backup/providers/ftp (mocked)', () => {
     it('init connects + ensures the remote root', async () => {
         const p = new FtpProvider();
-        await p.init({
-            host: 'example.com',
-            username: 'tester',
-            password: 'pw',
-            secure: 'control',
-            remoteRoot: '/tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                host: 'example.com',
+                username: 'tester',
+                password: 'pw',
+                secure: 'control',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
         const access = calls.find((c) => c[0] === 'access');
         expect(access[1].host).toBe('example.com');
         expect(access[1].user).toBe('tester');
@@ -105,8 +117,9 @@ describe('backup/providers/ftp (mocked)', () => {
         await p.init({ host: 'h', username: 'u', remoteRoot: '/r' }, ctx);
         // Use a fake local path; we never actually open it before path
         // validation.
-        await expect(p.upload('does-not-matter', '../escape.txt', {}, ctx))
-            .rejects.toThrow(/unsafe/);
+        await expect(p.upload('does-not-matter', '../escape.txt', {}, ctx)).rejects.toThrow(
+            /unsafe/,
+        );
     });
 
     it('delete is idempotent — 550 from server is swallowed', async () => {
@@ -115,7 +128,9 @@ describe('backup/providers/ftp (mocked)', () => {
         // Should not throw.
         await expect(p.delete('photos/already-gone.txt', ctx)).resolves.toBeUndefined();
         // remove was attempted on the right absolute path.
-        expect(calls.find((c) => c[0] === 'remove')[1]).toBe('/tgdl-backup/photos/already-gone.txt');
+        expect(calls.find((c) => c[0] === 'remove')[1]).toBe(
+            '/tgdl-backup/photos/already-gone.txt',
+        );
     });
 
     it('list yields files relative to the remote root, recursing into dirs', async () => {

@@ -36,7 +36,12 @@ import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
 import crypto from 'crypto';
 import { createReadStream } from 'fs';
 
-import { CHECKSUM_ALGO, CHECKSUM_VERSION, CHECKSUM_HEX_LENGTH, CHECKSUM_HEX_RE } from './checksum.js';
+import {
+    CHECKSUM_ALGO,
+    CHECKSUM_VERSION,
+    CHECKSUM_HEX_LENGTH,
+    CHECKSUM_HEX_RE,
+} from './checksum.js';
 
 export { CHECKSUM_ALGO, CHECKSUM_VERSION, CHECKSUM_HEX_LENGTH, CHECKSUM_HEX_RE };
 
@@ -220,4 +225,6 @@ export async function shutdownHashPool() {
 }
 
 /** Internal — exported only for tests / diagnostics. */
-export function _poolSize() { return _pool ? _pool.length : 0; }
+export function _poolSize() {
+    return _pool ? _pool.length : 0;
+}

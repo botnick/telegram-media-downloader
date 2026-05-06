@@ -19,7 +19,14 @@ fs.writeFileSync(bigFile, Buffer.alloc(160 * 1024 * 1024));
 const calls = [];
 class MockDropbox {
     constructor(opts) {
-        calls.push(['constructor', { hasKey: !!opts.clientId, hasSecret: !!opts.clientSecret, hasRefresh: !!opts.refreshToken }]);
+        calls.push([
+            'constructor',
+            {
+                hasKey: !!opts.clientId,
+                hasSecret: !!opts.clientSecret,
+                hasRefresh: !!opts.refreshToken,
+            },
+        ]);
     }
     async usersGetCurrentAccount() {
         calls.push(['usersGetCurrentAccount']);
@@ -36,7 +43,14 @@ class MockDropbox {
             e.error = { error_summary: 'path/not_found/' };
             throw e;
         }
-        return { result: { '.tag': 'file', size: 13, server_modified: '2025-01-02T03:04:05Z', content_hash: 'hash' } };
+        return {
+            result: {
+                '.tag': 'file',
+                size: 13,
+                server_modified: '2025-01-02T03:04:05Z',
+                content_hash: 'hash',
+            },
+        };
     }
     async filesUpload(args) {
         calls.push(['filesUpload', { path: args.path, size: args.contents?.length }]);
@@ -47,12 +61,24 @@ class MockDropbox {
         return { result: { session_id: 'sid-1' } };
     }
     async filesUploadSessionAppendV2(args) {
-        calls.push(['filesUploadSessionAppendV2', { offset: args.cursor.offset, len: args.contents?.length }]);
+        calls.push([
+            'filesUploadSessionAppendV2',
+            { offset: args.cursor.offset, len: args.contents?.length },
+        ]);
         return {};
     }
     async filesUploadSessionFinish(args) {
-        calls.push(['filesUploadSessionFinish', { offset: args.cursor.offset, len: args.contents?.length, path: args.commit.path }]);
-        return { result: { id: 'id:big', size: args.cursor.offset + (args.contents?.length || 0), content_hash: 'hash' } };
+        calls.push([
+            'filesUploadSessionFinish',
+            { offset: args.cursor.offset, len: args.contents?.length, path: args.commit.path },
+        ]);
+        return {
+            result: {
+                id: 'id:big',
+                size: args.cursor.offset + (args.contents?.length || 0),
+                content_hash: 'hash',
+            },
+        };
     }
     async filesDeleteV2(args) {
         calls.push(['filesDeleteV2', args.path]);
@@ -68,7 +94,13 @@ class MockDropbox {
         return {
             result: {
                 entries: [
-                    { '.tag': 'file', path_display: '/tgdl-backup/a.txt', name: 'a.txt', size: 5, server_modified: '2025-01-02T03:04:05Z' },
+                    {
+                        '.tag': 'file',
+                        path_display: '/tgdl-backup/a.txt',
+                        name: 'a.txt',
+                        size: 5,
+                        server_modified: '2025-01-02T03:04:05Z',
+                    },
                     { '.tag': 'folder', path_display: '/tgdl-backup/photos', name: 'photos' },
                 ],
                 has_more: false,
@@ -96,18 +128,32 @@ describe('backup/providers/dropbox (mocked)', () => {
 
     it('init verifies auth + ensures the remote root', async () => {
         const p = new DropboxProvider();
-        await p.init({
-            appKey: 'k', appSecret: 's', refreshToken: 't', remoteRoot: '/tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                appKey: 'k',
+                appSecret: 's',
+                refreshToken: 't',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
         expect(calls.some((c) => c[0] === 'usersGetCurrentAccount')).toBe(true);
-        expect(calls.some((c) => c[0] === 'filesCreateFolderV2' && c[1] === '/tgdl-backup')).toBe(true);
+        expect(calls.some((c) => c[0] === 'filesCreateFolderV2' && c[1] === '/tgdl-backup')).toBe(
+            true,
+        );
     });
 
     it('small upload uses filesUpload (not the chunked session API)', async () => {
         const p = new DropboxProvider();
-        await p.init({
-            appKey: 'k', appSecret: 's', refreshToken: 't', remoteRoot: '/tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                appKey: 'k',
+                appSecret: 's',
+                refreshToken: 't',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
         const r = await p.upload(smallFile, 'small.txt', {}, ctx);
         expect(r.remotePath).toBe('small.txt');
         const single = calls.find((c) => c[0] === 'filesUpload');
@@ -118,9 +164,15 @@ describe('backup/providers/dropbox (mocked)', () => {
 
     it('big upload uses the chunked session API', async () => {
         const p = new DropboxProvider();
-        await p.init({
-            appKey: 'k', appSecret: 's', refreshToken: 't', remoteRoot: '/tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                appKey: 'k',
+                appSecret: 's',
+                refreshToken: 't',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
         const r = await p.upload(bigFile, 'big.bin', {}, ctx);
         expect(r.remotePath).toBe('big.bin');
         expect(calls.find((c) => c[0] === 'filesUploadSessionStart')).toBeTruthy();
@@ -129,17 +181,29 @@ describe('backup/providers/dropbox (mocked)', () => {
 
     it('delete is idempotent for a missing path', async () => {
         const p = new DropboxProvider();
-        await p.init({
-            appKey: 'k', appSecret: 's', refreshToken: 't', remoteRoot: '/tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                appKey: 'k',
+                appSecret: 's',
+                refreshToken: 't',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
         await expect(p.delete('photos/already-gone.txt', ctx)).resolves.toBeUndefined();
     });
 
     it('stat returns null for a missing file (not throw)', async () => {
         const p = new DropboxProvider();
-        await p.init({
-            appKey: 'k', appSecret: 's', refreshToken: 't', remoteRoot: '/tgdl-backup',
-        }, ctx);
+        await p.init(
+            {
+                appKey: 'k',
+                appSecret: 's',
+                refreshToken: 't',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
         const st = await p.stat('photos/missing.txt', ctx);
         expect(st).toBeNull();
     });

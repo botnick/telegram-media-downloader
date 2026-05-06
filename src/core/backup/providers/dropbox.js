@@ -27,23 +27,53 @@ import { BackupProvider, optionalDepError } from './base.js';
 import { encryptStream } from '../encryption.js';
 
 const SINGLE_SHOT_LIMIT = 150 * 1024 * 1024;
-const DEFAULT_CHUNK_BYTES = Number(process.env.BACKUP_DROPBOX_CHUNK_BYTES) > 0
-    ? Math.max(4 * 1024 * 1024, Math.min(150 * 1024 * 1024, Number(process.env.BACKUP_DROPBOX_CHUNK_BYTES)))
-    : 8 * 1024 * 1024;
+const DEFAULT_CHUNK_BYTES =
+    Number(process.env.BACKUP_DROPBOX_CHUNK_BYTES) > 0
+        ? Math.max(
+              4 * 1024 * 1024,
+              Math.min(150 * 1024 * 1024, Number(process.env.BACKUP_DROPBOX_CHUNK_BYTES)),
+          )
+        : 8 * 1024 * 1024;
 
 export class DropboxProvider extends BackupProvider {
-    static get name() { return 'dropbox'; }
-    static get displayName() { return 'Dropbox'; }
+    static get name() {
+        return 'dropbox';
+    }
+    static get displayName() {
+        return 'Dropbox';
+    }
     static get configSchema() {
         return [
-            { name: 'appKey',       label: 'App key',          type: 'text',     required: true,
-                help: 'Found in Dropbox developer console → Apps → Settings tab.' },
-            { name: 'appSecret',    label: 'App secret',       type: 'password', secret: true, required: true },
-            { name: 'refreshToken', label: 'Refresh token',    type: 'password', secret: true, required: true,
-                help: 'Long-lived token from the OAuth flow. See the walkthrough below.' },
-            { name: 'remoteRoot',   label: 'Remote root path', type: 'text',     required: true,
+            {
+                name: 'appKey',
+                label: 'App key',
+                type: 'text',
+                required: true,
+                help: 'Found in Dropbox developer console → Apps → Settings tab.',
+            },
+            {
+                name: 'appSecret',
+                label: 'App secret',
+                type: 'password',
+                secret: true,
+                required: true,
+            },
+            {
+                name: 'refreshToken',
+                label: 'Refresh token',
+                type: 'password',
+                secret: true,
+                required: true,
+                help: 'Long-lived token from the OAuth flow. See the walkthrough below.',
+            },
+            {
+                name: 'remoteRoot',
+                label: 'Remote root path',
+                type: 'text',
+                required: true,
                 placeholder: '/tgdl-backup',
-                help: 'Absolute path inside the app folder (or full Dropbox if your app has full-access scope).' },
+                help: 'Absolute path inside the app folder (or full Dropbox if your app has full-access scope).',
+            },
         ];
     }
 
@@ -73,7 +103,7 @@ export class DropboxProvider extends BackupProvider {
         if (!appKey || !appSecret || !refreshToken) {
             throw new Error(
                 'Dropbox needs appKey + appSecret + refreshToken. ' +
-                'See docs/BACKUP.md → "Dropbox setup" for the OAuth walkthrough.',
+                    'See docs/BACKUP.md → "Dropbox setup" for the OAuth walkthrough.',
             );
         }
         this._cfg = { appKey, appSecret, refreshToken };
@@ -97,7 +127,7 @@ export class DropboxProvider extends BackupProvider {
             if (/invalid_grant/i.test(msg) || /expired/i.test(msg)) {
                 throw new Error(
                     'Dropbox auth failed: refresh token rejected. ' +
-                    'Re-generate via the developer console — see docs/BACKUP.md.',
+                        'Re-generate via the developer console — see docs/BACKUP.md.',
                 );
             }
             throw new Error(`Dropbox auth failed: ${msg}`);
@@ -113,7 +143,9 @@ export class DropboxProvider extends BackupProvider {
      *  trailing slash (except for the literal root). Dropbox itself is
      *  picky — `/foo/` returns `path/malformed_path`. */
     _normRemote(p) {
-        let s = String(p == null ? '/' : p).replace(/\\/g, '/').replace(/\/+/g, '/');
+        let s = String(p == null ? '/' : p)
+            .replace(/\\/g, '/')
+            .replace(/\/+/g, '/');
         if (!s.startsWith('/')) s = '/' + s;
         if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
         return s;
@@ -121,7 +153,9 @@ export class DropboxProvider extends BackupProvider {
 
     /** Resolve a relative path under the configured root. */
     _resolve(remotePath) {
-        const norm = String(remotePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = String(remotePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
         if (norm.split('/').some((seg) => seg === '..')) {
             throw new Error(`unsafe remote path: ${remotePath}`);
         }
@@ -137,7 +171,11 @@ export class DropboxProvider extends BackupProvider {
         } catch (e) {
             const tag = e?.error?.error?.['.tag'] || e?.error?.error_summary || '';
             // 409 / path/conflict/folder = already exists, fine.
-            if (/path\/conflict/i.test(String(tag)) || /already_exists/i.test(String(tag)) || e?.status === 409) {
+            if (
+                /path\/conflict/i.test(String(tag)) ||
+                /already_exists/i.test(String(tag)) ||
+                e?.status === 409
+            ) {
                 return;
             }
             // Some hosts return tag = "path" with sub-tag "conflict". The
@@ -171,7 +209,9 @@ export class DropboxProvider extends BackupProvider {
         // overhead (33 bytes) when a key is provided. That's enough to
         // route to the right upload path.
         let localSize = 0;
-        try { localSize = (await fs.promises.stat(localPath)).size; } catch {}
+        try {
+            localSize = (await fs.promises.stat(localPath)).size;
+        } catch {}
         const wireSize = opts?.encryptKey ? localSize + 33 : localSize;
 
         if (wireSize <= SINGLE_SHOT_LIMIT) {
@@ -219,7 +259,8 @@ export class DropboxProvider extends BackupProvider {
                     contents: buf,
                 });
                 sessionId = (r?.result || r)?.session_id;
-                if (!sessionId) throw new Error('Dropbox: filesUploadSessionStart returned no session_id');
+                if (!sessionId)
+                    throw new Error('Dropbox: filesUploadSessionStart returned no session_id');
                 offset += buf.length;
                 return;
             }
@@ -262,7 +303,7 @@ export class DropboxProvider extends BackupProvider {
             const data = r?.result || r || {};
             return {
                 remotePath,
-                bytes: Number(data.size || (lastChunk?.length || 0)),
+                bytes: Number(data.size || lastChunk?.length || 0),
                 etag: data.content_hash || null,
                 remoteId: data.id || undefined,
             };
@@ -280,7 +321,7 @@ export class DropboxProvider extends BackupProvider {
         const data = finishR?.result || finishR || {};
         return {
             remotePath,
-            bytes: Number(data.size || (offset + (lastChunk?.length || 0))),
+            bytes: Number(data.size || offset + (lastChunk?.length || 0)),
             etag: data.content_hash || null,
             remoteId: data.id || undefined,
         };
@@ -293,16 +334,24 @@ export class DropboxProvider extends BackupProvider {
             body = body.pipe(encryptStream(opts.encryptKey));
         }
         if (typeof opts?.onProgress === 'function' || opts?.throttleBps) {
-            body = body.pipe(_makeProgressTransform({
-                onProgress: opts?.onProgress,
-                throttleBps: opts?.throttleBps,
-                signal: ctx?.signal,
-            }));
+            body = body.pipe(
+                _makeProgressTransform({
+                    onProgress: opts?.onProgress,
+                    throttleBps: opts?.throttleBps,
+                    signal: ctx?.signal,
+                }),
+            );
         }
         if (ctx?.signal) {
-            ctx.signal.addEventListener('abort', () => {
-                try { body.destroy(new Error('aborted')); } catch {}
-            }, { once: true });
+            ctx.signal.addEventListener(
+                'abort',
+                () => {
+                    try {
+                        body.destroy(new Error('aborted'));
+                    } catch {}
+                },
+                { once: true },
+            );
         }
         return body;
     }
@@ -338,7 +387,9 @@ export class DropboxProvider extends BackupProvider {
                 size: Number(data.size || 0),
                 mtime: data.server_modified
                     ? new Date(data.server_modified).getTime()
-                    : (data.client_modified ? new Date(data.client_modified).getTime() : 0),
+                    : data.client_modified
+                      ? new Date(data.client_modified).getTime()
+                      : 0,
                 etag: data.content_hash || undefined,
             };
         } catch (e) {
@@ -386,8 +437,11 @@ export class DropboxProvider extends BackupProvider {
             // Trim our configured root to keep names symmetric with
             // upload/delete inputs.
             let rel = absPath;
-            if (this._remoteRoot && this._remoteRoot !== '/' &&
-                rel.toLowerCase().startsWith(this._remoteRoot.toLowerCase() + '/')) {
+            if (
+                this._remoteRoot &&
+                this._remoteRoot !== '/' &&
+                rel.toLowerCase().startsWith(this._remoteRoot.toLowerCase() + '/')
+            ) {
                 rel = rel.slice(this._remoteRoot.length + 1);
             } else if (rel.startsWith('/')) {
                 rel = rel.slice(1);
@@ -397,7 +451,9 @@ export class DropboxProvider extends BackupProvider {
                 size: Number(entry.size || 0),
                 mtime: entry.server_modified
                     ? new Date(entry.server_modified).getTime()
-                    : (entry.client_modified ? new Date(entry.client_modified).getTime() : 0),
+                    : entry.client_modified
+                      ? new Date(entry.client_modified).getTime()
+                      : 0,
             };
         }
     }
@@ -424,7 +480,10 @@ export class DropboxProvider extends BackupProvider {
         } catch (e) {
             const msg = this._errMsg(e);
             if (/invalid_grant/i.test(msg)) {
-                return { ok: false, detail: 'Refresh token rejected. Re-generate via the developer console.' };
+                return {
+                    ok: false,
+                    detail: 'Refresh token rejected. Re-generate via the developer console.',
+                };
             }
             return { ok: false, detail: msg };
         }
@@ -457,7 +516,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                 if (signal?.aborted) return cb(new Error('aborted'));
                 bytes += chunk.length;
                 if (typeof onProgress === 'function') {
-                    try { onProgress({ bytesUploaded: bytes }); } catch {}
+                    try {
+                        onProgress({ bytesUploaded: bytes });
+                    } catch {}
                 }
                 if (throttleBps && throttleBps > 0) {
                     const elapsedMs = Date.now() - start;
@@ -468,8 +529,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                     }
                 }
                 cb(null, chunk);
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }
-

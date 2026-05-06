@@ -24,31 +24,40 @@ function postForm(url, params) {
     return new Promise((resolve, reject) => {
         const body = new URLSearchParams(params).toString();
         const u = new URL(url);
-        const req = https.request({
-            method: 'POST',
-            hostname: u.hostname,
-            path: u.pathname + u.search,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Content-Length': Buffer.byteLength(body),
+        const req = https.request(
+            {
+                method: 'POST',
+                hostname: u.hostname,
+                path: u.pathname + u.search,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Length': Buffer.byteLength(body),
+                },
             },
-        }, (res) => {
-            const chunks = [];
-            res.on('data', (c) => chunks.push(c));
-            res.on('end', () => {
-                const text = Buffer.concat(chunks).toString('utf8');
-                let parsed;
-                try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; }
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(parsed);
-                } else {
-                    const e = new Error(`HTTP ${res.statusCode}: ${parsed.error_description || parsed.raw || text}`);
-                    e.statusCode = res.statusCode;
-                    e.body = parsed;
-                    reject(e);
-                }
-            });
-        });
+            (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => {
+                    const text = Buffer.concat(chunks).toString('utf8');
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(text);
+                    } catch {
+                        parsed = { raw: text };
+                    }
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        resolve(parsed);
+                    } else {
+                        const e = new Error(
+                            `HTTP ${res.statusCode}: ${parsed.error_description || parsed.raw || text}`,
+                        );
+                        e.statusCode = res.statusCode;
+                        e.body = parsed;
+                        reject(e);
+                    }
+                });
+            },
+        );
         req.on('error', reject);
         req.write(body);
         req.end();
@@ -63,7 +72,9 @@ async function main() {
     try {
         await import('dropbox');
     } catch {
-        console.warn('Note: the `dropbox` package is not installed. Install it before running real backups: npm install dropbox\n');
+        console.warn(
+            'Note: the `dropbox` package is not installed. Install it before running real backups: npm install dropbox\n',
+        );
     }
 
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -84,7 +95,8 @@ async function main() {
     // long-lived refresh_token alongside the short-lived access token.
     const authUrl =
         'https://www.dropbox.com/oauth2/authorize' +
-        '?client_id=' + encodeURIComponent(appKey) +
+        '?client_id=' +
+        encodeURIComponent(appKey) +
         '&response_type=code' +
         '&token_access_type=offline';
 
@@ -114,7 +126,9 @@ async function main() {
     }
 
     if (!tokenResp.refresh_token) {
-        console.error('Dropbox did not return a refresh_token. Make sure you set token_access_type=offline in the authorise URL — this script does that for you, so the most likely cause is the app was created without "offline" / "long-lived" enabled. Recreate the app or re-check Permissions.');
+        console.error(
+            'Dropbox did not return a refresh_token. Make sure you set token_access_type=offline in the authorise URL — this script does that for you, so the most likely cause is the app was created without "offline" / "long-lived" enabled. Recreate the app or re-check Permissions.',
+        );
         process.exit(1);
     }
 

@@ -14,11 +14,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
-import {
-    getExpiredPending,
-    deleteDownloadsBy,
-    setRescueLastSweep,
-} from './db.js';
+import { getExpiredPending, deleteDownloadsBy, setRescueLastSweep } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
@@ -71,9 +67,16 @@ export class RescueSweeper {
     start() {
         this.stop();
         let cfg;
-        try { cfg = this._loadConfig(); } catch { return false; }
+        try {
+            cfg = this._loadConfig();
+        } catch {
+            return false;
+        }
         const rescue = cfg?.rescue || {};
-        const minutes = Math.max(MIN_SWEEP_MIN, Math.min(MAX_SWEEP_MIN, parseInt(rescue.sweepIntervalMin, 10) || DEFAULT_SWEEP_MIN));
+        const minutes = Math.max(
+            MIN_SWEEP_MIN,
+            Math.min(MAX_SWEEP_MIN, parseInt(rescue.sweepIntervalMin, 10) || DEFAULT_SWEEP_MIN),
+        );
         this._intervalMs = minutes * 60 * 1000;
 
         // First sweep shortly after start so a freshly-restarted sweeper
@@ -144,7 +147,9 @@ export class RescueSweeper {
             console.log(`[rescue] sweep ${JSON.stringify({ swept, scanned: rows.length })}`);
             // Aggregate broadcast so the SPA can refresh stats once instead of
             // per-row. Per-row events still fire (above) for granular UI.
-            try { this._broadcast({ type: 'rescue_sweep_done', count: swept }); } catch {}
+            try {
+                this._broadcast({ type: 'rescue_sweep_done', count: swept });
+            } catch {}
             return { swept, scanned: rows.length };
         } finally {
             this._sweeping = false;
@@ -178,11 +183,12 @@ export function effectiveRescueMs(group, cfg) {
     else if (groupMode === 'off') on = false;
     else on = rescueCfg.enabled === true;
     if (!on) return null;
-    const hours = Number(group?.rescueRetentionHours) > 0
-        ? Number(group.rescueRetentionHours)
-        : Number(rescueCfg.retentionHours) > 0
-            ? Number(rescueCfg.retentionHours)
-            : 48;
+    const hours =
+        Number(group?.rescueRetentionHours) > 0
+            ? Number(group.rescueRetentionHours)
+            : Number(rescueCfg.retentionHours) > 0
+              ? Number(rescueCfg.retentionHours)
+              : 48;
     const clamped = Math.max(1, Math.min(720, hours));
     return clamped * 60 * 60 * 1000;
 }

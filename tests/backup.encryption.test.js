@@ -4,10 +4,15 @@ import { describe, it, expect } from 'vitest';
 import crypto from 'crypto';
 import { Readable } from 'stream';
 import {
-    deriveKey, generateSalt,
-    encryptBuffer, decryptBuffer,
-    encryptStream, decryptStream,
-    MAGIC, VERSION, KEY_LEN,
+    deriveKey,
+    generateSalt,
+    encryptBuffer,
+    decryptBuffer,
+    encryptStream,
+    decryptStream,
+    MAGIC,
+    VERSION,
+    KEY_LEN,
 } from '../src/core/backup/encryption.js';
 
 function streamToBuffer(stream) {

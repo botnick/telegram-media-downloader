@@ -17,7 +17,7 @@
 import readline from 'readline';
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const REDIRECT = 'urn:ietf:wg:oauth:2.0:oob';   // legacy "out-of-band" copy-paste flow
+const REDIRECT = 'urn:ietf:wg:oauth:2.0:oob'; // legacy "out-of-band" copy-paste flow
 
 function ask(rl, q) {
     return new Promise((res) => rl.question(q, (a) => res(a.trim())));
@@ -55,7 +55,9 @@ async function main() {
 
     console.log('\n1) Open this URL in your browser:');
     console.log('   ' + url);
-    console.log('\n2) Sign in, click "Allow", and copy the authorisation code shown on the next page.');
+    console.log(
+        '\n2) Sign in, click "Allow", and copy the authorisation code shown on the next page.',
+    );
 
     const code = await ask(rl, '\nPaste the authorisation code: ');
     rl.close();
@@ -75,7 +77,9 @@ async function main() {
     }
 
     if (!tokens.refresh_token) {
-        console.error('Google did not return a refresh_token. This usually means you have already authorised this app — go to https://myaccount.google.com/permissions, revoke the app, then re-run this script.');
+        console.error(
+            'Google did not return a refresh_token. This usually means you have already authorised this app — go to https://myaccount.google.com/permissions, revoke the app, then re-run this script.',
+        );
         process.exit(1);
     }
 

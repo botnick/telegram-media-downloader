@@ -1,4 +1,3 @@
-
 /**
  * Migration Script: JSON -> SQLite
  * Reads all legacy JSON log files and inserts them into the new SQLite database.
@@ -16,7 +15,7 @@ const LOGS_DIR = path.join(DATA_DIR, 'logs');
 async function migrate() {
     console.log('🚀 Starting Migration: JSON -> SQLite...');
 
-    if (!await fileExists(LOGS_DIR)) {
+    if (!(await fileExists(LOGS_DIR))) {
         console.log('❌ No logs directory found. Nothing to migrate.');
         return;
     }
@@ -37,7 +36,9 @@ async function migrate() {
             // Check for bucket files
             if (file.startsWith('bucket_') && file.endsWith('.json')) {
                 try {
-                    const content = JSON.parse(await fs.readFile(path.join(groupDir, file), 'utf8'));
+                    const content = JSON.parse(
+                        await fs.readFile(path.join(groupDir, file), 'utf8'),
+                    );
                     await importBucket(groupId, content);
                     totalImported += Object.keys(content).length;
                 } catch (e) {
@@ -47,8 +48,10 @@ async function migrate() {
             }
             // Check for legacy flat files (if any remain)
             else if (file === `${groupId}.json`) {
-                 try {
-                    const content = JSON.parse(await fs.readFile(path.join(groupDir, file), 'utf8'));
+                try {
+                    const content = JSON.parse(
+                        await fs.readFile(path.join(groupDir, file), 'utf8'),
+                    );
                     if (content.files) {
                         await importBucket(groupId, content.files);
                         totalImported += Object.keys(content.files).length;
@@ -69,7 +72,7 @@ async function migrate() {
 
 async function importBucket(groupId, data) {
     const db = getDb();
-    
+
     // Use transaction for speed
     const insert = db.prepare(`
         INSERT OR IGNORE INTO downloads (group_id, message_id, file_name, file_size, file_type, file_path, created_at)
@@ -87,13 +90,13 @@ async function importBucket(groupId, data) {
         // Key: "groupId_msgId"
         const parts = key.split('_');
         const msgId = parts.length > 1 ? parts[1] : 0;
-        
+
         let type = 'document'; // default
         // Infer type from extension if available, or just generic
         // In legacy JSON, we didn't store 'type' explicitly in all versions.
         // We can inspect extension.
         // Assuming meta has { file, size, date }
-        
+
         if (meta.file) {
             const ext = path.extname(meta.file).toLowerCase();
             if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) type = 'photo';
@@ -108,11 +111,11 @@ async function importBucket(groupId, data) {
             fileSize: meta.size || 0,
             fileType: type,
             filePath: meta.file, // We only stored filename in JSON usually, assume relative path matching downloader logic?
-                                 // Actually downloader v1 stored just filename. 
-                                 // We need to reconstruct path? 
-                                 // New `downloader.js` expects `filePath` to be relative path.
-                                 // If we only have filename, we can put filename.
-            createdAt: meta.date ? new Date(meta.date).toISOString() : new Date().toISOString()
+            // Actually downloader v1 stored just filename.
+            // We need to reconstruct path?
+            // New `downloader.js` expects `filePath` to be relative path.
+            // If we only have filename, we can put filename.
+            createdAt: meta.date ? new Date(meta.date).toISOString() : new Date().toISOString(),
         });
     }
 

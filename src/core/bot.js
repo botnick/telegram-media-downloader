@@ -1,4 +1,3 @@
-
 /**
  * Telegram Bot Control
  * Handles commands via Telegram chat to control the downloader.
@@ -15,8 +14,10 @@ export class BotControl {
     }
 
     start() {
-        console.log('🤖 Bot Control Active. Send /status to your account (Saved Messages) or the bot account.');
-        
+        console.log(
+            '🤖 Bot Control Active. Send /status to your account (Saved Messages) or the bot account.',
+        );
+
         this.client.addEventHandler(async (event) => {
             const message = event.message;
             if (!message || !message.text) return;
@@ -27,13 +28,13 @@ export class BotControl {
             // For now, let's restrict to "Self" (Saved Messages) or if we are a bot, the owner.
             // But since this runs as Userbot usually, we check if `out` is true (sent by us) or from specific user.
             // Let's allow commands from "Saved Messages" (which has peerId = user's ID)
-            
+
             const senderId = message.senderId ? message.senderId.toString() : '';
             const me = await this.client.getMe();
             const myId = me.id.toString();
 
             // Allow if sender is ME
-            if (senderId !== myId) return; 
+            if (senderId !== myId) return;
 
             // Handle Commands
             if (text.startsWith('/status')) {
@@ -47,15 +48,14 @@ export class BotControl {
             } else if (text.startsWith('/ping')) {
                 await this.reply(message, '🏓 Pong!');
             }
-
         }, new NewMessage({}));
     }
 
     async reply(message, text) {
         try {
-            await this.client.sendMessage(message.chatId, { 
-                message: text, 
-                replyTo: message.id 
+            await this.client.sendMessage(message.chatId, {
+                message: text,
+                replyTo: message.id,
             });
         } catch (e) {
             console.error('Bot Reply Error:', e);
@@ -65,7 +65,7 @@ export class BotControl {
     async handleStatus(message) {
         const stats = this.downloader.getStatus(); // { queued, active, completed, downloads }
         const uptime = Math.floor((Date.now() - this.startTime) / 1000);
-        
+
         const h = Math.floor(uptime / 3600);
         const m = Math.floor((uptime % 3600) / 60);
 
@@ -74,10 +74,10 @@ export class BotControl {
         msg += `📥 Active: ${stats.active}\n`;
         msg += `⏳ Queued: ${stats.queued}\n`;
         msg += `✅ Session Completed: ${stats.completed}\n`;
-        
+
         if (stats.active > 0) {
             msg += `\n**Currently Downloading:**\n`;
-            stats.downloads.forEach(d => {
+            stats.downloads.forEach((d) => {
                 msg += `🔹 ${d.mediaType} (${d.progress || 0}%)\n`;
             });
         }
@@ -102,20 +102,23 @@ export class BotControl {
                     id: entity.id.toString(),
                     name: entity.title || entity.username || 'New Group',
                     enabled: true,
-                    filters: { photos: true, videos: true, files: true, links: true }
+                    filters: { photos: true, videos: true, files: true, links: true },
                 };
-                
-                // We need to update existing config. 
+
+                // We need to update existing config.
                 // Since Config Manager isn't exported as singleton with write access easily here,
                 // we might need to rely on the fs direct write or a passed save function.
                 // NOTE: For now, we just mock the success or need to use the `config/manager.js` if available.
                 // Let's try to read/write config file directly for simplicity here as we did in server.js
-                
-                // Or better, emit an event? 
-                // Let's just say "Please add via Web UI" for complex stuff, 
+
+                // Or better, emit an event?
+                // Let's just say "Please add via Web UI" for complex stuff,
                 // but if we want to support it, we need to request Config reload.
-                
-                await this.reply(message, `✅ Found: **${newGroup.name}**\nID: \`${newGroup.id}\`\n\n(Auto-add via bot is pending implementation - please use Web UI or add ID manually for now)`);
+
+                await this.reply(
+                    message,
+                    `✅ Found: **${newGroup.name}**\nID: \`${newGroup.id}\`\n\n(Auto-add via bot is pending implementation - please use Web UI or add ID manually for now)`,
+                );
             }
         } catch (e) {
             await this.reply(message, `❌ Error: ${e.message}`);

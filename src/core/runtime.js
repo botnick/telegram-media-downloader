@@ -74,7 +74,11 @@ class Runtime extends EventEmitter {
             this._downloader = new DownloadManager(client, config, this._rateLimiter);
             this._forwarder = new AutoForwarder(client, config, accountManager);
             this._monitor = new RealtimeMonitor(
-                client, this._downloader, config, CONFIG_PATH, accountManager,
+                client,
+                this._downloader,
+                config,
+                CONFIG_PATH,
+                accountManager,
             );
 
             // Bridge engine events → 'event' channel for WebSocket fan-out.
@@ -85,7 +89,9 @@ class Runtime extends EventEmitter {
             this.startedAt = Date.now();
             this.setState('running');
         } catch (e) {
-            try { await this._cleanup(); } catch {}
+            try {
+                await this._cleanup();
+            } catch {}
             this.setState('error', e?.message || String(e));
             throw e;
         }
@@ -102,8 +108,12 @@ class Runtime extends EventEmitter {
     }
 
     async _cleanup() {
-        try { if (this._monitor) await this._monitor.stop(); } catch {}
-        try { if (this._downloader) await this._downloader.stop(); } catch {}
+        try {
+            if (this._monitor) await this._monitor.stop();
+        } catch {}
+        try {
+            if (this._downloader) await this._downloader.stop();
+        } catch {}
         this._monitor = null;
         this._downloader = null;
         this._forwarder = null;
@@ -114,8 +124,12 @@ class Runtime extends EventEmitter {
     _wireEvents() {
         const fwd = (type) => (payload) => this.emit('event', { type, payload });
 
-        this._rateLimiter.on('wait', (seconds) => this.emit('event', { type: 'rate_wait', payload: { seconds } }));
-        this._rateLimiter.on('flood', (seconds) => this.emit('event', { type: 'flood_wait', payload: { seconds } }));
+        this._rateLimiter.on('wait', (seconds) =>
+            this.emit('event', { type: 'rate_wait', payload: { seconds } }),
+        );
+        this._rateLimiter.on('flood', (seconds) =>
+            this.emit('event', { type: 'flood_wait', payload: { seconds } }),
+        );
 
         this._downloader.on('start', (job) => {
             this.emit('event', { type: 'download_start', payload: this._serializeJob(job) });
@@ -129,11 +143,15 @@ class Runtime extends EventEmitter {
             metrics.inc('tgdl_downloads_total', 1, { type: job?.mediaType || 'other' });
             if (job?.__startedAt) {
                 const sec = (Date.now() - job.__startedAt) / 1000;
-                metrics.observe('tgdl_download_duration_seconds', sec, { type: job.mediaType || 'other' });
+                metrics.observe('tgdl_download_duration_seconds', sec, {
+                    type: job.mediaType || 'other',
+                });
             }
         });
         this._downloader.on('download_complete', async (info) => {
-            try { await this._forwarder.process(info); } catch (e) {
+            try {
+                await this._forwarder.process(info);
+            } catch (e) {
                 this.emit('event', { type: 'forward_error', payload: { error: e.message } });
             }
         });
@@ -149,10 +167,14 @@ class Runtime extends EventEmitter {
             this.emit('event', { type: 'queue_length', payload: { length } });
             metrics.set('tgdl_queue_size', length);
         });
-        this._downloader.on('progress', (p) => this.emit('event', { type: 'download_progress', payload: p }));
+        this._downloader.on('progress', (p) =>
+            this.emit('event', { type: 'download_progress', payload: p }),
+        );
         // Bridge per-key + global queue mutations so the IDM-style Queue
         // page can re-render in lock-step (no polling required).
-        this._downloader.on('queue_changed', (info) => this.emit('event', { type: 'queue_changed', payload: info }));
+        this._downloader.on('queue_changed', (info) =>
+            this.emit('event', { type: 'queue_changed', payload: info }),
+        );
 
         this._monitor.on('configReloaded', (newConfig) => {
             if (this._forwarder) this._forwarder.config = newConfig;

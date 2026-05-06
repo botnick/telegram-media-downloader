@@ -4,7 +4,10 @@ import { api } from './api.js';
 import { ws } from './ws.js';
 import { formatBytes, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
-import { subscribe as subscribeMonitorStatus, refreshNow as refreshMonitorStatus } from './monitor-status.js';
+import {
+    subscribe as subscribeMonitorStatus,
+    refreshNow as refreshMonitorStatus,
+} from './monitor-status.js';
 import { openSheet, confirmSheet } from './sheet.js';
 
 const $ = (id) => document.getElementById(id);
@@ -27,15 +30,20 @@ function applyState(state) {
         pillEl.dataset.state = state || 'stopped';
         const pillLbl = pillEl.querySelector('.engine-status-label');
         if (pillLbl) pillLbl.textContent = m.text;
-        pillEl.setAttribute('aria-label', i18nTf('header.engine_state', { state: m.text }, `Engine status: ${m.text}`));
+        pillEl.setAttribute(
+            'aria-label',
+            i18nTf('header.engine_state', { state: m.text }, `Engine status: ${m.text}`),
+        );
     }
 }
 
 function applyMonitor(mon) {
     if (!mon) return;
     applyState(mon.state);
-    const q = $('status-queue'); if (q) q.textContent = mon.queue ?? 0;
-    const a = $('status-active'); if (a) a.textContent = mon.active ?? 0;
+    const q = $('status-queue');
+    if (q) q.textContent = mon.queue ?? 0;
+    const a = $('status-active');
+    if (a) a.textContent = mon.active ?? 0;
     // Bottom-nav engine badge — surface "there's something happening on
     // the Engine page" without forcing the user to navigate there. The
     // queue tab already has its own badge sourced from queue.js (which
@@ -58,10 +66,14 @@ async function refreshStats() {
     try {
         const stats = await api.get('/api/stats').catch(() => null);
         if (stats) {
-            const f = $('status-files'); if (f) f.textContent = stats.totalFiles ?? 0;
-            const d = $('status-disk'); if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
+            const f = $('status-files');
+            if (f) f.textContent = stats.totalFiles ?? 0;
+            const d = $('status-disk');
+            if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
         }
-    } catch { /* keep last values */ }
+    } catch {
+        /* keep last values */
+    }
 }
 
 async function paintVersion() {
@@ -81,7 +93,9 @@ async function paintVersion() {
         if (r.commit && r.commit !== 'dev') {
             el.href = `https://github.com/botnick/telegram-media-downloader/commit/${r.commit}`;
         }
-    } catch { /* best-effort cosmetic */ }
+    } catch {
+        /* best-effort cosmetic */
+    }
 }
 
 // Update-check: poll /api/version/check (server-cached at 6 h) and surface a
@@ -101,15 +115,26 @@ async function paintUpdateBadge() {
     };
     try {
         const r = await api.get('/api/version/check').catch(() => null);
-        if (!r || !r.updateAvailable || !r.latest) { hide(); return; }
-        if (localStorage.getItem(UPDATE_DISMISS_KEY) === r.latest) { hide(); return; }
+        if (!r || !r.updateAvailable || !r.latest) {
+            hide();
+            return;
+        }
+        if (localStorage.getItem(UPDATE_DISMISS_KEY) === r.latest) {
+            hide();
+            return;
+        }
 
         const latest = r.latest;
         badge.textContent = `${i18nT('update.available', 'Update available')} → ${latest}`;
-        badge.title = i18nT('update.click_to_install', 'v{version} is out — click for install / release notes').replace('{version}', latest);
+        badge.title = i18nT(
+            'update.click_to_install',
+            'v{version} is out — click for install / release notes',
+        ).replace('{version}', latest);
         // Click opens a tiny chooser sheet so admins can pick between
         // one-click install (when configured) and the release-notes link.
-        badge.href = r.releaseUrl || `https://github.com/botnick/telegram-media-downloader/releases/tag/${latest}`;
+        badge.href =
+            r.releaseUrl ||
+            `https://github.com/botnick/telegram-media-downloader/releases/tag/${latest}`;
         badge.onclick = (e) => {
             e.preventDefault();
             _openUpdateChooser(latest, r.releaseUrl).catch(() => {});
@@ -124,17 +149,30 @@ async function paintUpdateBadge() {
             dismiss.onclick = () => {
                 if (dismissing) return;
                 dismissing = true;
-                try { localStorage.setItem(UPDATE_DISMISS_KEY, latest); } catch { /* private mode */ }
+                try {
+                    localStorage.setItem(UPDATE_DISMISS_KEY, latest);
+                } catch {
+                    /* private mode */
+                }
                 hide();
             };
         }
 
         if (sessionStorage.getItem(UPDATE_TOASTED_KEY) !== latest) {
-            try { sessionStorage.setItem(UPDATE_TOASTED_KEY, latest); } catch { /* private mode */ }
-            const msg = i18nT('update.toast', 'Update available — {version}').replace('{version}', latest);
+            try {
+                sessionStorage.setItem(UPDATE_TOASTED_KEY, latest);
+            } catch {
+                /* private mode */
+            }
+            const msg = i18nT('update.toast', 'Update available — {version}').replace(
+                '{version}',
+                latest,
+            );
             showToast(msg, 'info', 6000);
         }
-    } catch { hide(); }
+    } catch {
+        hide();
+    }
 }
 
 let _updatePollHandle = null;
@@ -171,8 +209,12 @@ export function initStatusBar() {
     refreshStats();
     ws.on('stats_push', (msg) => {
         if (!msg?.payload) return;
-        const f = $('status-files'); if (f) f.textContent = msg.payload.totalFiles ?? 0;
-        const d = $('status-disk'); if (d) d.textContent = msg.payload.diskUsageFormatted || formatBytes(msg.payload.diskUsage || 0);
+        const f = $('status-files');
+        if (f) f.textContent = msg.payload.totalFiles ?? 0;
+        const d = $('status-disk');
+        if (d)
+            d.textContent =
+                msg.payload.diskUsageFormatted || formatBytes(msg.payload.diskUsage || 0);
     });
     ws.on('__ws_open', () => refreshStats());
     const wsRefresh = () => refreshStats();
@@ -184,10 +226,12 @@ export function initStatusBar() {
 
     // Live cues from the WebSocket
     ws.on('__ws_open', () => {
-        const dot = $('status-ws'); if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-tg-green mr-1';
+        const dot = $('status-ws');
+        if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-tg-green mr-1';
     });
     ws.on('__ws_close', () => {
-        const dot = $('status-ws'); if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-tg-red mr-1';
+        const dot = $('status-ws');
+        if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-tg-red mr-1';
     });
     // Surface a one-time toast + offer manual retry when ws.js gives up
     // after MAX_ATTEMPTS_BEFORE_PAUSE so the user isn't left looking at a
@@ -203,12 +247,21 @@ export function initStatusBar() {
                 ws.retry();
             };
         }
-        showToast(i18nT('ws.giveup', 'Lost connection to server — click WS dot to retry.'), 'warning', 8000);
+        showToast(
+            i18nT('ws.giveup', 'Lost connection to server — click WS dot to retry.'),
+            'warning',
+            8000,
+        );
     });
     ws.on('monitor_state', (m) => applyState(m.state));
     ws.on('*', (m) => {
         // refresh counters on relevant events; ignore most chatter to avoid stalls
-        if (m.type && /^(download_complete|history_done|file_deleted|group_purged|purge_all|monitor_event)$/.test(m.type)) {
+        if (
+            m.type &&
+            /^(download_complete|history_done|file_deleted|group_purged|purge_all|monitor_event)$/.test(
+                m.type,
+            )
+        ) {
             refreshMonitorStatus();
             refreshStats();
         }
@@ -222,7 +275,11 @@ export function initStatusBar() {
     // pick up the new SPA bundle.
     ws.on('update_started', () => _showUpdateOverlay());
     let _versionAtBoot = null;
-    api.get('/api/version').then(r => { _versionAtBoot = r?.version || null; }).catch(() => {});
+    api.get('/api/version')
+        .then((r) => {
+            _versionAtBoot = r?.version || null;
+        })
+        .catch(() => {});
     ws.on('__ws_open', async () => {
         // Only check after a real reconnect (we have the boot version
         // cached). If the version changed we reload — the new SPA bundle
@@ -231,11 +288,20 @@ export function initStatusBar() {
         try {
             const r = await api.get('/api/version');
             if (r?.version && r.version !== _versionAtBoot) {
-                showToast(i18nTf('update.completed', { version: r.version },
-                    `Updated to v${r.version} — reloading`), 'success', 3000);
+                showToast(
+                    i18nTf(
+                        'update.completed',
+                        { version: r.version },
+                        `Updated to v${r.version} — reloading`,
+                    ),
+                    'success',
+                    3000,
+                );
                 setTimeout(() => location.reload(), 1500);
             }
-        } catch { /* ignore — overlay will time out */ }
+        } catch {
+            /* ignore — overlay will time out */
+        }
     });
 }
 
@@ -249,25 +315,45 @@ export function initStatusBar() {
 
 export async function _openUpdateChooser(latest, releaseUrl) {
     let status = { available: false };
-    try { status = await api.get('/api/update/status'); } catch { /* ignore */ }
+    try {
+        status = await api.get('/api/update/status');
+    } catch {
+        /* ignore */
+    }
 
     const installButtonHtml = status.available
         ? `<button id="upd-install-btn" class="tg-btn w-full flex items-center justify-center gap-2">
-              <i class="ri-download-cloud-2-line"></i><span>${i18nTf('update.install_now',
-                { version: latest }, `Install v${latest}`)}</span>
+              <i class="ri-download-cloud-2-line"></i><span>${i18nTf(
+                  'update.install_now',
+                  { version: latest },
+                  `Install v${latest}`,
+              )}</span>
            </button>`
         : `<button class="tg-btn-secondary w-full flex items-center justify-center gap-2 opacity-60 cursor-not-allowed" disabled
-                   title="${(!status.inDocker
-                       ? i18nT('update.not_docker', 'Auto-update only works inside Docker.')
-                       : i18nT('update.no_watchtower', 'Watchtower sidecar is not configured. See docker-compose.yml comments to enable the auto-update profile.'))}">
+                   title="${
+                       !status.inDocker
+                           ? i18nT('update.not_docker', 'Auto-update only works inside Docker.')
+                           : i18nT(
+                                 'update.no_watchtower',
+                                 'Watchtower sidecar is not configured. See docker-compose.yml comments to enable the auto-update profile.',
+                             )
+                   }">
               <i class="ri-download-cloud-2-line"></i><span>${i18nT('update.install_disabled', 'Install (unavailable)')}</span>
            </button>`;
 
     const helpHtml = !status.available
         ? `<div class="mt-3 p-3 rounded-lg bg-tg-bg/40 border border-tg-border/40 text-xs text-tg-textSecondary">
-            ${(!status.inDocker
-                ? i18nT('update.help_not_docker', 'You are running outside Docker — pull the latest source and restart manually.')
-                : i18nT('update.help_no_watchtower_html', 'To enable: <code>docker compose --profile auto-update up -d</code> after setting <code>WATCHTOWER_HTTP_API_TOKEN</code> in <code>.env</code>. See <code>docker-compose.yml</code> for the full setup.'))}
+            ${
+                !status.inDocker
+                    ? i18nT(
+                          'update.help_not_docker',
+                          'You are running outside Docker — pull the latest source and restart manually.',
+                      )
+                    : i18nT(
+                          'update.help_no_watchtower_html',
+                          'To enable: <code>docker compose --profile auto-update up -d</code> after setting <code>WATCHTOWER_HTTP_API_TOKEN</code> in <code>.env</code>. See <code>docker-compose.yml</code> for the full setup.',
+                      )
+            }
         </div>`
         : '';
 
@@ -275,8 +361,10 @@ export async function _openUpdateChooser(latest, releaseUrl) {
         title: i18nTf('update.sheet_title', { version: latest }, `Update available — v${latest}`),
         size: 'sm',
         content: `
-            <p class="text-xs text-tg-textSecondary mb-3">${i18nT('update.sheet_help',
-                'Installing pulls the new image and recreates this container. Your data volume and config are preserved; the SQLite database is snapshotted to data/backups/ first. The dashboard reconnects automatically once the new container passes its healthcheck.')}</p>
+            <p class="text-xs text-tg-textSecondary mb-3">${i18nT(
+                'update.sheet_help',
+                'Installing pulls the new image and recreates this container. Your data volume and config are preserved; the SQLite database is snapshotted to data/backups/ first. The dashboard reconnects automatically once the new container passes its healthcheck.',
+            )}</p>
             <div class="space-y-2">
                 ${installButtonHtml}
                 <a class="tg-btn-secondary w-full flex items-center justify-center gap-2"
@@ -293,7 +381,10 @@ export async function _openUpdateChooser(latest, releaseUrl) {
         installBtn.addEventListener('click', async () => {
             const ok = await confirmSheet({
                 title: i18nT('update.confirm_title', 'Install update now?'),
-                body: i18nT('update.confirm_body', 'The dashboard will go offline briefly while the new image swaps in (~30 seconds). This page will reconnect automatically.'),
+                body: i18nT(
+                    'update.confirm_body',
+                    'The dashboard will go offline briefly while the new image swaps in (~30 seconds). This page will reconnect automatically.',
+                ),
                 confirmText: i18nT('update.confirm_btn', 'Install update'),
             });
             if (!ok) return;
@@ -305,8 +396,11 @@ export async function _openUpdateChooser(latest, releaseUrl) {
                 sheet?.close?.();
             } catch (e) {
                 installBtn.disabled = false;
-                installBtn.innerHTML = `<i class="ri-download-cloud-2-line"></i><span>${i18nTf('update.install_now',
-                    { version: latest }, `Install v${latest}`)}</span>`;
+                installBtn.innerHTML = `<i class="ri-download-cloud-2-line"></i><span>${i18nTf(
+                    'update.install_now',
+                    { version: latest },
+                    `Install v${latest}`,
+                )}</span>`;
                 showToast(e?.data?.error || e.message || 'Update failed', 'error');
             }
         });
@@ -333,10 +427,11 @@ function _showUpdateOverlay() {
         <div style="text-align: center; color: #E2E8F0; max-width: 440px; padding: 32px;">
             <div style="display: inline-block; width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.18); border-top-color: #2AABEE; border-radius: 50%; animation: tgdl-spin 1s linear infinite; margin-bottom: 20px;"></div>
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">${i18nT('update.overlay_title', 'Updating…')}</h2>
-            <p style="font-size: 13px; opacity: 0.8; line-height: 1.5;">${i18nT('update.overlay_body',
-                'Pulling the new image and restarting the container. The dashboard will reconnect automatically once the new version passes its healthcheck.')}</p>
+            <p style="font-size: 13px; opacity: 0.8; line-height: 1.5;">${i18nT(
+                'update.overlay_body',
+                'Pulling the new image and restarting the container. The dashboard will reconnect automatically once the new version passes its healthcheck.',
+            )}</p>
         </div>
         <style>@keyframes tgdl-spin { to { transform: rotate(360deg); } }</style>`;
     document.body.appendChild(div);
 }
-

@@ -54,7 +54,7 @@ function _truncUtf8(s, maxBytes) {
     // Walk back from maxBytes until we land on a UTF-8 codepoint boundary
     // (the high bits of a continuation byte are 10xxxxxx → 0x80..0xBF).
     let cut = maxBytes;
-    while (cut > 0 && (bytes[cut] & 0xC0) === 0x80) cut--;
+    while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) cut--;
     return dec.decode(bytes.subarray(0, cut));
 }
 
@@ -66,7 +66,7 @@ export async function migrateFolders(downloadPath) {
     try {
         if (!existsSync(basePath)) return;
         const entries = await fs.readdir(basePath, { withFileTypes: true });
-        const dirs = entries.filter(e => e.isDirectory());
+        const dirs = entries.filter((e) => e.isDirectory());
 
         for (const dir of dirs) {
             const sanitized = sanitizeName(dir.name);
@@ -163,7 +163,7 @@ export class DownloadManager extends EventEmitter {
         // resolve filenames + sizes for entries that haven't started yet.
         // Kept in lock-step with enqueue/cancel to stay O(1).
         this._jobs = new Map();
-        
+
         // Ensure directories
         fs.mkdir(DOWNLOADS_DIR, { recursive: true }).catch(() => {});
         fs.mkdir(LOGS_DIR, { recursive: true }).catch(() => {});
@@ -175,8 +175,10 @@ export class DownloadManager extends EventEmitter {
         let doc = message.document;
         if (!doc && message.media) {
             if (message.media.document) doc = message.media.document;
-            else if (message.media.className === 'MessageMediaDocument') doc = message.media.document;
-            else if (message.media.webpage && message.media.webpage.document) doc = message.media.webpage.document;
+            else if (message.media.className === 'MessageMediaDocument')
+                doc = message.media.document;
+            else if (message.media.webpage && message.media.webpage.document)
+                doc = message.media.webpage.document;
         }
 
         if (doc) {
@@ -186,7 +188,7 @@ export class DownloadManager extends EventEmitter {
                 id: doc.id,
                 accessHash: doc.accessHash,
                 fileReference: fileRef,
-                thumbSize: '' // Full size
+                thumbSize: '', // Full size
             });
         }
 
@@ -195,15 +197,16 @@ export class DownloadManager extends EventEmitter {
         if (!photo && message.media) {
             if (message.media.photo) photo = message.media.photo;
             else if (message.media.className === 'MessageMediaPhoto') photo = message.media.photo;
-            else if (message.media.webpage && message.media.webpage.photo) photo = message.media.webpage.photo;
+            else if (message.media.webpage && message.media.webpage.photo)
+                photo = message.media.webpage.photo;
         }
 
         if (photo) {
-             return new Api.InputPhotoFileLocation({
+            return new Api.InputPhotoFileLocation({
                 id: photo.id,
                 accessHash: photo.accessHash,
                 fileReference: photo.fileReference || Buffer.alloc(0),
-                thumbSize: 'y' // Largest usually
+                thumbSize: 'y', // Largest usually
             });
         }
 
@@ -222,10 +225,12 @@ export class DownloadManager extends EventEmitter {
      * Generate unique key using Telegram server-side IDs
      */
     generateKey(message) {
-        const chatId = message.peerId?.channelId || 
-                       message.peerId?.chatId || 
-                       message.peerId?.userId ||
-                       message.chatId || 'unknown';
+        const chatId =
+            message.peerId?.channelId ||
+            message.peerId?.chatId ||
+            message.peerId?.userId ||
+            message.chatId ||
+            'unknown';
         return { key: `${chatId}_${message.id}`, groupId: String(chatId) };
     }
 
@@ -240,9 +245,10 @@ export class DownloadManager extends EventEmitter {
 
         // Dynamic scaler — tunable via config.advanced.downloader.scalerIntervalSec.
         const scalerSec = Number(this.config?.advanced?.downloader?.scalerIntervalSec);
-        const scalerMs = Number.isFinite(scalerSec) && scalerSec > 0
-            ? Math.floor(scalerSec * 1000)
-            : DEFAULT_SCALER_INTERVAL_MS;
+        const scalerMs =
+            Number.isFinite(scalerSec) && scalerSec > 0
+                ? Math.floor(scalerSec * 1000)
+                : DEFAULT_SCALER_INTERVAL_MS;
         this._scalerInterval = setInterval(() => this._autoScale(), scalerMs);
     }
 
@@ -290,14 +296,14 @@ export class DownloadManager extends EventEmitter {
     async stop() {
         this.running = false;
         if (this._scalerInterval) clearInterval(this._scalerInterval);
-        
+
         // Flush pending disk usage save
         if (this._saveTimeout) {
             clearTimeout(this._saveTimeout);
             await this.saveDiskUsageCache();
         }
     }
-    
+
     async enqueue(job, priority = 1) {
         const key = `${job.groupId}_${job.message.id}`;
         job.key = key;
@@ -307,7 +313,9 @@ export class DownloadManager extends EventEmitter {
         // Cache a thin file-size hint so the snapshot can render size +
         // progress before the worker actually starts the job.
         if (job.fileSize == null) {
-            try { job.fileSize = this.getFileSize(job.message); } catch {}
+            try {
+                job.fileSize = this.getFileSize(job.message);
+            } catch {}
         }
 
         // Dedup check (Memory + Active)
@@ -319,16 +327,19 @@ export class DownloadManager extends EventEmitter {
         // --- DYNAMIC DEFENSE: DISK SPILLOVER ---
         // Only history (priority 2) ever spills; realtime stays in RAM so
         // a long backfill can't push live messages off the front of the queue.
-        const spillover = Number(this.config?.advanced?.downloader?.spilloverThreshold)
-            || DEFAULT_SPILLOVER_THRESHOLD;
+        const spillover =
+            Number(this.config?.advanced?.downloader?.spilloverThreshold) ||
+            DEFAULT_SPILLOVER_THRESHOLD;
         if (priority === 2 && this.queue.length > spillover) {
             await this.spillToDisk(job);
             return true;
         }
 
-        if (priority === 2) this.queue.push(job);             // history: FIFO normal lane
-        else if (priority === 0) this._high.unshift(job);     // TTL/preempt: front of high lane
-        else this._high.push(job);                            // realtime: FIFO high lane
+        if (priority === 2)
+            this.queue.push(job); // history: FIFO normal lane
+        else if (priority === 0)
+            this._high.unshift(job); // TTL/preempt: front of high lane
+        else this._high.push(job); // realtime: FIFO high lane
 
         // Track for snapshot()/cancel(). Kept tiny on purpose — only the
         // fields the Queue page actually renders.
@@ -376,9 +387,9 @@ export class DownloadManager extends EventEmitter {
 
         // Queued path: drop from lane.
         const before = this._high.length + this.queue.length;
-        this._high = this._high.filter(j => j.key !== key);
-        this.queue = this.queue.filter(j => j.key !== key);
-        const dequeued = (this._high.length + this.queue.length) < before;
+        this._high = this._high.filter((j) => j.key !== key);
+        this.queue = this.queue.filter((j) => j.key !== key);
+        const dequeued = this._high.length + this.queue.length < before;
 
         // Active path: flag the key so the next progressCallback throws.
         const wasActive = this.active.has(key);
@@ -471,7 +482,7 @@ export class DownloadManager extends EventEmitter {
             const total = st.total || st.fileSize || 0;
             const received = st.received || 0;
             const bps = st.bps || 0;
-            const eta = (bps > 0 && total > received) ? Math.round((total - received) / bps) : null;
+            const eta = bps > 0 && total > received ? Math.round((total - received) / bps) : null;
             active.push({
                 key: st.key,
                 groupId: String(st.groupId || ''),
@@ -505,7 +516,7 @@ export class DownloadManager extends EventEmitter {
     // --- SPILLOVER LOGIC ---
     async spillToDisk(job) {
         if (!this.BACKLOG_PATH) {
-             this.BACKLOG_PATH = path.join(this.LOG_DIR, 'queue_backlog.jsonl');
+            this.BACKLOG_PATH = path.join(this.LOG_DIR, 'queue_backlog.jsonl');
         }
         try {
             const line = JSON.stringify(job) + '\n';
@@ -522,13 +533,13 @@ export class DownloadManager extends EventEmitter {
             const content = await fs.readFile(this.BACKLOG_PATH, 'utf8');
             if (!content.trim()) return false;
 
-            const lines = content.split('\n').filter(l => l.trim());
+            const lines = content.split('\n').filter((l) => l.trim());
             const chunk = lines.splice(0, 1000); // Take 1000
-            
+
             for (const line of chunk) {
                 try {
                     this.queue.push(JSON.parse(line));
-                } catch(e) {}
+                } catch (e) {}
             }
 
             if (lines.length > 0) {
@@ -537,7 +548,6 @@ export class DownloadManager extends EventEmitter {
                 await fs.unlink(this.BACKLOG_PATH);
             }
             return true;
-
         } catch (e) {
             return false;
         }
@@ -565,8 +575,8 @@ export class DownloadManager extends EventEmitter {
 
             // 3. Still empty? Sleep.
             if (!job) {
-                const idle = Number(this.config?.advanced?.downloader?.idleSleepMs)
-                    || DEFAULT_IDLE_SLEEP_MS;
+                const idle =
+                    Number(this.config?.advanced?.downloader?.idleSleepMs) || DEFAULT_IDLE_SLEEP_MS;
                 await this.sleep(idle);
                 continue;
             }
@@ -587,8 +597,8 @@ export class DownloadManager extends EventEmitter {
             try {
                 // Final Check DB before start (minimize race)
                 if (this.isDownloaded(job.groupId, job.message.id)) {
-                     this.active.delete(job.key);
-                     continue;
+                    this.active.delete(job.key);
+                    continue;
                 }
 
                 const filePath = await this.download(job);
@@ -622,11 +632,11 @@ export class DownloadManager extends EventEmitter {
         try {
             // 1. Check Disk Quota
             if (this.config.diskManagement?.maxTotalSize) {
-               const usage = await this.getDiskUsage();
-               const limit = this.parseSize(this.config.diskManagement.maxTotalSize);
-               if (usage > limit) {
-                   throw new Error(`Disk Quota Exceeded: ${usage} / ${limit} bytes`);
-               }
+                const usage = await this.getDiskUsage();
+                const limit = this.parseSize(this.config.diskManagement.maxTotalSize);
+                if (usage > limit) {
+                    throw new Error(`Disk Quota Exceeded: ${usage} / ${limit} bytes`);
+                }
             }
 
             // 2. Prepare File Info & Check Limits
@@ -639,7 +649,9 @@ export class DownloadManager extends EventEmitter {
                 if (limitStr) {
                     const maxBytes = this.parseSize(limitStr);
                     if (fileSize > maxBytes) {
-                        throw new Error(`File too large (${this.formatBytes(fileSize)} > ${limitStr})`);
+                        throw new Error(
+                            `File too large (${this.formatBytes(fileSize)} > ${limitStr})`,
+                        );
                     }
                 }
             }
@@ -680,8 +692,11 @@ export class DownloadManager extends EventEmitter {
                         const now = Date.now();
                         const dtMs = Math.max(now - prevTs, 1);
                         const dB = Number(downloadedN - prevBytes);
-                        const bps = dtMs > 50 ? Math.max(0, Math.round(dB * 1000 / dtMs)) : null;
-                        if (dtMs > 200) { prevTs = now; prevBytes = downloadedN; }
+                        const bps = dtMs > 50 ? Math.max(0, Math.round((dB * 1000) / dtMs)) : null;
+                        if (dtMs > 200) {
+                            prevTs = now;
+                            prevBytes = downloadedN;
+                        }
 
                         const active = this.active.get(job.key);
                         if (active) {
@@ -708,7 +723,9 @@ export class DownloadManager extends EventEmitter {
                 // was requested between dequeue and now, drop the .part.
                 if (this.isCancelling(job.key)) {
                     this._cancelling.delete(job.key);
-                    try { if (existsSync(partPath)) await fs.unlink(partPath); } catch {}
+                    try {
+                        if (existsSync(partPath)) await fs.unlink(partPath);
+                    } catch {}
                     const err = new Error('Cancelled');
                     err.cancelled = true;
                     throw err;
@@ -725,7 +742,9 @@ export class DownloadManager extends EventEmitter {
                 // retry path runs instead of registering a dead DB row.
                 const partStats = await fs.stat(partPath);
                 if (!partStats.size) {
-                    try { await fs.unlink(partPath); } catch {}
+                    try {
+                        await fs.unlink(partPath);
+                    } catch {}
                     throw new Error('Downloaded file is empty (0 bytes)');
                 }
                 // Collision guard: `fs.rename` silently overwrites an
@@ -745,18 +764,22 @@ export class DownloadManager extends EventEmitter {
                 }
                 await fs.rename(partPath, writtenPath);
                 let finalStats;
-                try { finalStats = await fs.stat(writtenPath); }
-                catch (e) { throw new Error(`Post-rename verify failed: ${e.message}`); }
+                try {
+                    finalStats = await fs.stat(writtenPath);
+                } catch (e) {
+                    throw new Error(`Post-rename verify failed: ${e.message}`);
+                }
                 if (!finalStats.size) {
-                    try { await fs.unlink(writtenPath); } catch {}
+                    try {
+                        await fs.unlink(writtenPath);
+                    } catch {}
                     throw new Error('Final file is 0 bytes after rename');
                 }
                 return await this.registerDownload(job, writtenPath, finalStats.size);
-
             } catch (error) {
                 try {
                     if (existsSync(partPath)) await fs.unlink(partPath);
-                } catch (cleanupErr) { }
+                } catch (cleanupErr) {}
                 throw error;
             } finally {
                 // Hand control of the paths back to the rotator regardless
@@ -766,7 +789,6 @@ export class DownloadManager extends EventEmitter {
                 this._activeFilePaths.delete(partPath);
                 this._activeFilePaths.delete(finalPath);
             }
-
         } catch (error) {
             // User-initiated cancel — don't retry, don't report as failure.
             // The .part is already gone (cleanup in inner catch). Emit a
@@ -794,18 +816,25 @@ export class DownloadManager extends EventEmitter {
                 if (floods <= MAX_FLOOD_RETRIES) {
                     return this.download(job, attempt);
                 }
-                throw new Error(`FloodWait retry cap (${MAX_FLOOD_RETRIES}) exceeded for ${job.fileName || job.key}`);
+                throw new Error(
+                    `FloodWait retry cap (${MAX_FLOOD_RETRIES}) exceeded for ${job.fileName || job.key}`,
+                );
             }
 
-            if (error.message?.includes('FILE_REFERENCE_EXPIRED') || error.errorMessage === 'FILE_REFERENCE_EXPIRED') {
+            if (
+                error.message?.includes('FILE_REFERENCE_EXPIRED') ||
+                error.errorMessage === 'FILE_REFERENCE_EXPIRED'
+            ) {
                 if (attempt < maxRetries) {
                     try {
-                        const messages = await this.client.getMessages(job.message.peerId, { ids: [job.message.id] });
+                        const messages = await this.client.getMessages(job.message.peerId, {
+                            ids: [job.message.id],
+                        });
                         if (messages && messages.length > 0) {
                             job.message = messages[0];
                             return this.download(job, attempt + 1);
                         }
-                    } catch (e) { }
+                    } catch (e) {}
                 }
             }
 
@@ -851,12 +880,14 @@ export class DownloadManager extends EventEmitter {
             // Match on hash AND size — size match guards against the
             // (vanishingly improbable) SHA-256 collision and rejects rows
             // with a NULL/zero size from older downloader versions.
-            const dup = getDb().prepare(`
+            const dup = getDb()
+                .prepare(`
                 SELECT id, file_path, file_size FROM downloads
                  WHERE file_hash = ? AND file_size = ?
                  ORDER BY id ASC
                  LIMIT 1
-            `).get(fileHash, size);
+            `)
+                .get(fileHash, size);
             if (dup && dup.file_path) {
                 // Confirm the existing pointer still resolves before we
                 // unlink the freshly downloaded copy — otherwise we'd end
@@ -865,9 +896,13 @@ export class DownloadManager extends EventEmitter {
                     ? dup.file_path
                     : path.resolve(DOWNLOADS_DIR, dup.file_path);
                 if (existsSync(dupAbs)) {
-                    try { await fs.unlink(filePath); } catch { /* leave stale; integrity sweep handles it */ }
-                    storedPath = dupAbs;        // share the existing on-disk file
-                    bytesAddedToDisk = 0;       // no new bytes written
+                    try {
+                        await fs.unlink(filePath);
+                    } catch {
+                        /* leave stale; integrity sweep handles it */
+                    }
+                    storedPath = dupAbs; // share the existing on-disk file
+                    bytesAddedToDisk = 0; // no new bytes written
                     storedSize = dup.file_size; // exactly equal to `size` here
                 }
             }
@@ -886,9 +921,11 @@ export class DownloadManager extends EventEmitter {
             // in the "documents" bucket and never preview.
             let type = 'document';
             const ext = path.extname(storedPath).toLowerCase();
-            if (['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif'].includes(ext)) type = 'photo';
+            if (['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif'].includes(ext))
+                type = 'photo';
             else if (['.mp4', '.mov', '.avi', '.mkv', '.webm'].includes(ext)) type = 'video';
-            else if (['.mp3', '.ogg', '.wav', '.m4a', '.opus', '.flac'].includes(ext)) type = 'audio';
+            else if (['.mp3', '.ogg', '.wav', '.m4a', '.opus', '.flac'].includes(ext))
+                type = 'audio';
 
             const insertResult = insertDownload({
                 groupId: String(groupId),
@@ -917,9 +954,15 @@ export class DownloadManager extends EventEmitter {
                 // Background, fire-and-forget. Both are no-ops when their
                 // respective features are disabled; thumbs is always-on,
                 // NSFW is opt-in via config.advanced.nsfw.enabled.
-                try { pregenerateThumb(newId); } catch {}
-                try { pregenerateNsfw(newId); } catch {}
-                try { pregenerateAi(newId); } catch {}
+                try {
+                    pregenerateThumb(newId);
+                } catch {}
+                try {
+                    pregenerateNsfw(newId);
+                } catch {}
+                try {
+                    pregenerateAi(newId);
+                } catch {}
                 // Faststart-optimise newly-downloaded MP4s so the
                 // gallery's HTML5 player can seek + start audio
                 // without waiting for the entire mdat to stream
@@ -929,10 +972,12 @@ export class DownloadManager extends EventEmitter {
                 // sees the cached preview before the (slightly larger)
                 // file replaces the original on disk.
                 if (type === 'video') {
-                    try { faststartInBackground(newId); } catch {}
+                    try {
+                        faststartInBackground(newId);
+                    } catch {}
                 }
             }
-        } catch(e) {
+        } catch (e) {
             console.error('DB Insert Error', e);
         }
 
@@ -945,7 +990,11 @@ export class DownloadManager extends EventEmitter {
         // payload (`{ ...job, filePath }`) carries `deduped` through to
         // runtime.js → broadcast → queue.js, which surfaces a "Duplicate"
         // tag on the row.
-        try { job.deduped = wasDeduped; } catch { /* job object frozen — old path */ }
+        try {
+            job.deduped = wasDeduped;
+        } catch {
+            /* job object frozen — old path */
+        }
 
         this.emit('download_complete', {
             filePath: storedPath,
@@ -992,28 +1041,28 @@ export class DownloadManager extends EventEmitter {
     }
 
     async getDiskUsage() {
-         if (this._diskUsageCache) return this._diskUsageCache.size;
+        if (this._diskUsageCache) return this._diskUsageCache.size;
 
-         const cachePath = path.join(this.LOG_DIR, '../disk_usage.json');
-         try {
-             if (existsSync(cachePath)) {
-                 const data = JSON.parse(await fs.readFile(cachePath, 'utf8'));
-                 this._diskUsageCache = { size: data.size, timestamp: Date.now() };
-                 return data.size;
-             }
-         } catch (e) {}
+        const cachePath = path.join(this.LOG_DIR, '../disk_usage.json');
+        try {
+            if (existsSync(cachePath)) {
+                const data = JSON.parse(await fs.readFile(cachePath, 'utf8'));
+                this._diskUsageCache = { size: data.size, timestamp: Date.now() };
+                return data.size;
+            }
+        } catch (e) {}
 
-         const total = await this.scanDiskDeep();
-         this._diskUsageCache = { size: total, timestamp: Date.now() };
-         this.saveDiskUsageCache();
-         return total;
+        const total = await this.scanDiskDeep();
+        this._diskUsageCache = { size: total, timestamp: Date.now() };
+        this.saveDiskUsageCache();
+        return total;
     }
 
     async scanDiskDeep() {
-         let total = 0;
-         const basePath = this.config.download?.path || './data/downloads';
-         const calculateSize = async (dir) => {
-             try {
+        let total = 0;
+        const basePath = this.config.download?.path || './data/downloads';
+        const calculateSize = async (dir) => {
+            try {
                 const entries = await fs.readdir(dir, { withFileTypes: true });
                 for (const entry of entries) {
                     const fullPath = path.join(dir, entry.name);
@@ -1024,20 +1073,23 @@ export class DownloadManager extends EventEmitter {
                         total += stats.size;
                     }
                 }
-             } catch (e) {}
-         };
-         await calculateSize(basePath);
-         return total;
+            } catch (e) {}
+        };
+        await calculateSize(basePath);
+        return total;
     }
 
     async saveDiskUsageCache() {
         if (!this._diskUsageCache) return;
         const cachePath = path.join(this.LOG_DIR, '../disk_usage.json');
         try {
-            await fs.writeFile(cachePath, JSON.stringify({
-                size: this._diskUsageCache.size,
-                lastScan: Date.now()
-            }));
+            await fs.writeFile(
+                cachePath,
+                JSON.stringify({
+                    size: this._diskUsageCache.size,
+                    lastScan: Date.now(),
+                }),
+            );
         } catch (e) {}
     }
 
@@ -1049,7 +1101,7 @@ export class DownloadManager extends EventEmitter {
     }
 
     parseSize(str) {
-        const units = { 'B': 1, 'KB': 1024, 'MB': 1024**2, 'GB': 1024**3, 'TB': 1024**4 };
+        const units = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 };
         const match = String(str).match(/^(\d+(\.\d+)?)\s*([A-Za-z]+)$/);
         if (!match) return Infinity;
         const val = parseFloat(match[1]);
@@ -1060,7 +1112,7 @@ export class DownloadManager extends EventEmitter {
     async buildPath(job) {
         const basePath = this.config.download?.path || './data/downloads';
         const groupDir = this.sanitize(job.groupName || 'Unknown');
-        
+
         let typeFolder = 'others';
         const type = job.mediaType || this.getFileTypeCategory(job.message);
 
@@ -1070,7 +1122,7 @@ export class DownloadManager extends EventEmitter {
         else if (type === 'gifs') typeFolder = 'gifs';
         else if (type === 'stickers') typeFolder = 'stickers';
         else typeFolder = 'documents';
-        
+
         const fullDir = path.join(basePath, groupDir, typeFolder);
         await fs.mkdir(fullDir, { recursive: true });
 
@@ -1088,7 +1140,9 @@ export class DownloadManager extends EventEmitter {
         const epochSec = Number.isFinite(msg?.date) ? msg.date : Math.floor(Date.now() / 1000);
         const d = new Date(epochSec * 1000);
         const timestamp = (Number.isNaN(d.getTime()) ? new Date() : d)
-            .toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            .toISOString()
+            .replace(/[:.]/g, '-')
+            .slice(0, 19);
         return `${timestamp}_${msg?.id ?? 'noid'}${ext}`;
     }
 
@@ -1099,7 +1153,7 @@ export class DownloadManager extends EventEmitter {
         if (message.audio) return '.mp3';
         if (message.videoNote) return '.mp4';
         if (message.sticker) return '.webp';
-        
+
         if (message.document) {
             const attrs = message.document.attributes || [];
             for (const attr of attrs) {
@@ -1122,11 +1176,11 @@ export class DownloadManager extends EventEmitter {
             queued: this.pendingCount,
             active: this.active.size,
             completed: 0, // Could track via counter if needed
-            downloads: Array.from(this.active.values())
+            downloads: Array.from(this.active.values()),
         };
     }
 
     sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 }

@@ -12,7 +12,9 @@ export function isSupported() {
 }
 
 export function isEnabled() {
-    return isSupported() && localStorage.getItem(KEY) === '1' && Notification.permission === 'granted';
+    return (
+        isSupported() && localStorage.getItem(KEY) === '1' && Notification.permission === 'granted'
+    );
 }
 
 export async function requestEnable() {
@@ -37,7 +39,9 @@ export function notifyDownloadComplete(payload) {
         return;
     }
     lastBatch = { ts: now, count: 1 };
-    const fileName = payload?.filePath ? payload.filePath.split(/[\\/]/).pop() : i18nT('notify.download_complete_file', 'a file');
+    const fileName = payload?.filePath
+        ? payload.filePath.split(/[\\/]/).pop()
+        : i18nT('notify.download_complete_file', 'a file');
     const n = new Notification(i18nT('notify.download_complete', 'Download complete'), {
         body: fileName,
         icon: '/favicon.ico',
@@ -51,7 +55,9 @@ export function notifyDownloadComplete(payload) {
         try {
             window.focus();
             if (typeof window.navigateTo === 'function') window.navigateTo('viewer');
-        } catch { /* best-effort */ }
+        } catch {
+            /* best-effort */
+        }
         n.close();
     };
 }
@@ -64,14 +70,32 @@ export function notifyDownloadComplete(payload) {
 export function notifyGeneric(title, body) {
     if (!isEnabled()) return;
     try {
-        const n = new Notification(title, { body: body || '', icon: '/favicon.ico', tag: 'tgdl-generic' });
-        n.onclick = () => { try { window.focus(); } catch {} n.close(); };
-    } catch { /* permission revoked since enable */ }
+        const n = new Notification(title, {
+            body: body || '',
+            icon: '/favicon.ico',
+            tag: 'tgdl-generic',
+        });
+        n.onclick = () => {
+            try {
+                window.focus();
+            } catch {}
+            n.close();
+        };
+    } catch {
+        /* permission revoked since enable */
+    }
 }
 
 export function flushPending() {
     if (lastBatch.count > 1 && isEnabled()) {
-        new Notification(i18nTf('notify.batch_complete', { n: lastBatch.count }, `${lastBatch.count} downloads complete`), { tag: 'tgdl-batch' });
+        new Notification(
+            i18nTf(
+                'notify.batch_complete',
+                { n: lastBatch.count },
+                `${lastBatch.count} downloads complete`,
+            ),
+            { tag: 'tgdl-batch' },
+        );
     }
     lastBatch = { ts: 0, count: 0 };
 }

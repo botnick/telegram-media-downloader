@@ -23,8 +23,12 @@ import { l2Normalize } from './vector-store.js';
 let _imagePipelinePromise = null;
 let _textPipelinePromise = null;
 
-function _imageModelId(cfg) { return cfg?.model || AI_MODEL_DEFAULTS.embeddings.modelId; }
-function _textModelId(cfg)  { return cfg?.textModel || _imageModelId(cfg); }
+function _imageModelId(cfg) {
+    return cfg?.model || AI_MODEL_DEFAULTS.embeddings.modelId;
+}
+function _textModelId(cfg) {
+    return cfg?.textModel || _imageModelId(cfg);
+}
 
 async function _getImagePipeline(cfg, onProgress, onLog) {
     if (_imagePipelinePromise) return _imagePipelinePromise;
@@ -32,8 +36,12 @@ async function _getImagePipeline(cfg, onProgress, onLog) {
         kind: AI_MODEL_DEFAULTS.embeddings.kind,
         modelId: _imageModelId(cfg),
         cacheDir: cfg?.cacheDir,
-        onProgress, onLog,
-    }).catch((e) => { _imagePipelinePromise = null; throw e; });
+        onProgress,
+        onLog,
+    }).catch((e) => {
+        _imagePipelinePromise = null;
+        throw e;
+    });
     return _imagePipelinePromise;
 }
 
@@ -43,8 +51,12 @@ async function _getTextPipeline(cfg, onProgress, onLog) {
         kind: AI_MODEL_DEFAULTS.embeddings.textKind,
         modelId: _textModelId(cfg),
         cacheDir: cfg?.cacheDir,
-        onProgress, onLog,
-    }).catch((e) => { _textPipelinePromise = null; throw e; });
+        onProgress,
+        onLog,
+    }).catch((e) => {
+        _textPipelinePromise = null;
+        throw e;
+    });
     return _textPipelinePromise;
 }
 
@@ -96,7 +108,8 @@ function _toFloat32(out) {
     if (!out) return null;
     let arr = null;
     if (out instanceof Float32Array) arr = out;
-    else if (Array.isArray(out) && out.length && out[0]?.data) arr = _arrayLikeToFloat32(out[0].data);
+    else if (Array.isArray(out) && out.length && out[0]?.data)
+        arr = _arrayLikeToFloat32(out[0].data);
     else if (out.data) arr = _arrayLikeToFloat32(out.data);
     else if (Array.isArray(out)) arr = _arrayLikeToFloat32(out);
     if (!arr || !arr.length) return null;
@@ -104,7 +117,7 @@ function _toFloat32(out) {
 }
 
 function _arrayLikeToFloat32(x) {
-    if (x instanceof Float32Array) return new Float32Array(x);  // copy so the caller's normalize doesn't mutate the pipeline's buffer
+    if (x instanceof Float32Array) return new Float32Array(x); // copy so the caller's normalize doesn't mutate the pipeline's buffer
     if (Array.isArray(x) || ArrayBuffer.isView(x)) return Float32Array.from(x);
     return null;
 }

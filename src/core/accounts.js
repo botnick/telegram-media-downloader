@@ -17,7 +17,10 @@ import { buildProxy } from './proxy.js';
 
 function deferred() {
     let resolve, reject;
-    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
     return { promise, resolve, reject };
 }
 
@@ -47,7 +50,7 @@ function createLogger(label) {
         },
         debug: () => {},
         error: (msg) => {
-            const str = typeof msg === 'object' ? (msg.message || String(msg)) : String(msg);
+            const str = typeof msg === 'object' ? msg.message || String(msg) : String(msg);
             if (suppressNoise(str, label)) return;
             console.error(colorize(`❌ [${label}] ${str}`, 'red'));
         },
@@ -62,8 +65,8 @@ export class AccountManager {
     constructor(config) {
         this.config = config;
         this.secure = new SecureSession(SESSION_PASSWORD);
-        this.clients = new Map();   // accountId -> TelegramClient
-        this.metadata = new Map();  // accountId -> { id, name, phone, userId }
+        this.clients = new Map(); // accountId -> TelegramClient
+        this.metadata = new Map(); // accountId -> { id, name, phone, userId }
         this._authFlows = new Map(); // sessionId -> PhoneAuthFlow (for web wizard)
     }
 
@@ -76,14 +79,15 @@ export class AccountManager {
         await this.migrateLegacy();
 
         // Load all .enc session files, sorted by mtime (oldest first = default)
-        const files = fs.readdirSync(SESSIONS_DIR)
-            .filter(f => f.endsWith('.enc'))
+        const files = fs
+            .readdirSync(SESSIONS_DIR)
+            .filter((f) => f.endsWith('.enc'))
             .sort((a, b) => {
                 const statA = fs.statSync(path.join(SESSIONS_DIR, a));
                 const statB = fs.statSync(path.join(SESSIONS_DIR, b));
                 return statA.mtimeMs - statB.mtimeMs;
             });
-        
+
         if (files.length === 0) {
             return 0;
         }
@@ -101,7 +105,9 @@ export class AccountManager {
 
                 const isAuthorized = await client.checkAuthorization();
                 if (!isAuthorized) {
-                    console.log(colorize(`⚠️  Account "${accountId}" session expired, skipping`, 'yellow'));
+                    console.log(
+                        colorize(`⚠️  Account "${accountId}" session expired, skipping`, 'yellow'),
+                    );
                     await client.disconnect().catch(() => {});
                     continue;
                 }
@@ -113,11 +119,16 @@ export class AccountManager {
                     name: `${me.firstName || ''} ${me.lastName || ''}`.trim(),
                     phone: me.phone || '',
                     userId: String(me.id),
-                    username: me.username || ''
+                    username: me.username || '',
                 });
 
                 loaded++;
-                console.log(colorize(`  ✅ ${accountId}: ${me.firstName || 'Unknown'} (@${me.username || 'N/A'})`, 'green'));
+                console.log(
+                    colorize(
+                        `  ✅ ${accountId}: ${me.firstName || 'Unknown'} (@${me.username || 'N/A'})`,
+                        'green',
+                    ),
+                );
             } catch (e) {
                 console.log(colorize(`  ❌ Failed to load "${accountId}": ${e.message}`, 'red'));
             }
@@ -161,14 +172,16 @@ export class AccountManager {
             const now = Date.now();
             for (const [id, client] of this.clients) {
                 if (!client?.connected) continue;
-                if ((skipUntil.get(id) || 0) > now) continue;   // serving FloodWait penalty
+                if ((skipUntil.get(id) || 0) > now) continue; // serving FloodWait penalty
                 try {
                     // 90 s extension — keeps the connection past the next
                     // tick (60 s) with comfortable headroom.
-                    await client.invoke(new Api.PingDelayDisconnect({
-                        pingId: BigInt(Date.now()),
-                        disconnectDelay: 90,
-                    }));
+                    await client.invoke(
+                        new Api.PingDelayDisconnect({
+                            pingId: BigInt(Date.now()),
+                            disconnectDelay: 90,
+                        }),
+                    );
                     lastWarnAt.delete(id);
                     skipUntil.delete(id);
                 } catch (e) {
@@ -184,7 +197,9 @@ export class AccountManager {
                         const prev = lastWarnAt.get(id) || 0;
                         if (Date.now() - prev > FLOOD_WARN_INTERVAL_MS) {
                             lastWarnAt.set(id, Date.now());
-                            console.warn(`[keep-alive] FloodWait on account ${id}, pausing pings for 10m: ${text}`);
+                            console.warn(
+                                `[keep-alive] FloodWait on account ${id}, pausing pings for 10m: ${text}`,
+                            );
                         }
                     }
                 }
@@ -209,11 +224,11 @@ export class AccountManager {
      */
     async migrateLegacy() {
         const legacyPath = path.join(__dirname, '../../data/session.enc');
-        
+
         // Only migrate if legacy file exists AND no sessions exist yet
         if (!fs.existsSync(legacyPath)) return;
-        
-        const existingFiles = fs.readdirSync(SESSIONS_DIR).filter(f => f.endsWith('.enc'));
+
+        const existingFiles = fs.readdirSync(SESSIONS_DIR).filter((f) => f.endsWith('.enc'));
         if (existingFiles.length > 0) return; // Already migrated
 
         try {
@@ -232,7 +247,7 @@ export class AccountManager {
             const newEncrypted = this.secure.encrypt(sessionString);
             fs.writeFileSync(
                 path.join(SESSIONS_DIR, `${accountId}.enc`),
-                JSON.stringify(newEncrypted, null, 2)
+                JSON.stringify(newEncrypted, null, 2),
             );
 
             console.log(colorize(`🔄 Migrated legacy session → "${accountId}"`, 'cyan'));
@@ -260,7 +275,9 @@ export class AccountManager {
             const proxy = buildProxy(this.config);
             if (proxy) opts.proxy = proxy;
         } catch (e) {
-            console.log(colorize(`⚠️  Proxy config invalid (${e.message}) — connecting direct`, 'yellow'));
+            console.log(
+                colorize(`⚠️  Proxy config invalid (${e.message}) — connecting direct`, 'yellow'),
+            );
         }
         return new TelegramClient(
             new StringSession(sessionString),
@@ -278,18 +295,24 @@ export class AccountManager {
     async addAccount(questionFn) {
         console.log();
         console.log(colorize('╭──────────────────────────────────────────────╮', 'cyan'));
-        console.log(colorize('│', 'cyan') + colorize('           ➕ ADD NEW TELEGRAM ACCOUNT          ', 'white', 'bold') + colorize('│', 'cyan'));
+        console.log(
+            colorize('│', 'cyan') +
+                colorize('           ➕ ADD NEW TELEGRAM ACCOUNT          ', 'white', 'bold') +
+                colorize('│', 'cyan'),
+        );
         console.log(colorize('╰──────────────────────────────────────────────╯', 'cyan'));
         console.log();
 
         // Get account label
-        console.log(colorize('Give this account a short name (e.g. "main", "bot2", "viewer")', 'dim'));
+        console.log(
+            colorize('Give this account a short name (e.g. "main", "bot2", "viewer")', 'dim'),
+        );
         console.log(colorize('Leave blank to auto-use Telegram username/phone', 'dim'));
         const label = await questionFn(colorize('📝 Account Name: ', 'cyan'));
-        
+
         let isTempId = false;
         let accountId = label.trim().replace(/\s+/g, '_').toLowerCase();
-        
+
         if (!accountId) {
             accountId = `temp_${Date.now()}`;
             isTempId = true;
@@ -303,17 +326,19 @@ export class AccountManager {
 
         // Create client and start login
         const client = await this.createClient(isTempId ? 'New Account' : accountId);
-        
+
         try {
             await client.connect();
-            
+
             console.log();
             console.log(colorize('🔐 Starting Telegram login...', 'cyan'));
             console.log();
 
             await client.start({
                 phoneNumber: async () => {
-                    console.log(colorize('Enter phone with country code (e.g. +66812345678)', 'dim'));
+                    console.log(
+                        colorize('Enter phone with country code (e.g. +66812345678)', 'dim'),
+                    );
                     const phone = await questionFn(colorize('📞 Phone: ', 'cyan'));
                     return phone.trim();
                 },
@@ -331,12 +356,12 @@ export class AccountManager {
                 },
                 onError: (err) => {
                     console.log(colorize(`❌ Error: ${err.message}`, 'red'));
-                }
+                },
             });
 
             // Get user info and determine final ID
             const me = await client.getMe();
-            
+
             let finalAccountId = accountId;
             if (isTempId) {
                 finalAccountId = (me.username || `acc_${me.phone || Date.now()}`).toLowerCase();
@@ -347,7 +372,7 @@ export class AccountManager {
                     finalAccountId = `${base}_${counter}`;
                     counter++;
                 }
-                
+
                 // Update client logger label now that we have a real ID
                 client.baseLogger = createLogger(finalAccountId);
             }
@@ -357,7 +382,7 @@ export class AccountManager {
             const encrypted = this.secure.encrypt(sessionStr);
             fs.writeFileSync(
                 path.join(SESSIONS_DIR, `${finalAccountId}.enc`),
-                JSON.stringify(encrypted, null, 2)
+                JSON.stringify(encrypted, null, 2),
             );
 
             this.clients.set(finalAccountId, client);
@@ -366,7 +391,7 @@ export class AccountManager {
                 name: `${me.firstName || ''} ${me.lastName || ''}`.trim(),
                 phone: me.phone || '',
                 userId: String(me.id),
-                username: me.username || ''
+                username: me.username || '',
             });
             // Re-arm the keep-alive sweep so the freshly-added client gets
             // pinged on the next tick instead of waiting up to 60 s.
@@ -382,7 +407,6 @@ export class AccountManager {
             await this.syncToConfig();
 
             return finalAccountId;
-
         } catch (e) {
             console.log(colorize(`❌ Login failed: ${e.message}`, 'red'));
             await client.disconnect().catch(() => {});
@@ -499,7 +523,9 @@ export class AccountManager {
 
     async beginPhoneAuth(label) {
         if (!this.config.telegram?.apiId || !this.config.telegram?.apiHash) {
-            throw new Error('Telegram API credentials not configured. Set telegram.apiId and telegram.apiHash in config first.');
+            throw new Error(
+                'Telegram API credentials not configured. Set telegram.apiId and telegram.apiHash in config first.',
+            );
         }
         const requestedLabel = (label || '').trim().replace(/\s+/g, '_').toLowerCase();
         const isTempId = !requestedLabel;
@@ -534,66 +560,75 @@ export class AccountManager {
 
         const setState = (s) => {
             flow.state = s;
-            for (const fn of flow.stateWaiters) try { fn(s); } catch {}
+            for (const fn of flow.stateWaiters)
+                try {
+                    fn(s);
+                } catch {}
         };
 
-        client.start({
-            phoneNumber: () => {
-                setState('phone');
-                return flow.phoneDeferred.promise;
-            },
-            phoneCode: () => {
-                setState('code');
-                return flow.codeDeferred.promise;
-            },
-            password: () => {
-                setState('password');
-                return flow.passwordDeferred.promise;
-            },
-            onError: (err) => {
-                flow.error = err?.message || String(err);
-            },
-        }).then(async () => {
-            // Login succeeded — promote the temp client to a saved session.
-            try {
-                const me = await client.getMe();
-                let finalId = isTempId
-                    ? (me.username || `acc_${me.phone || Date.now()}`).toLowerCase()
-                    : accountId;
-                let base = finalId, n = 1;
-                while (this.clients.has(finalId)) finalId = `${base}_${n++}`;
+        client
+            .start({
+                phoneNumber: () => {
+                    setState('phone');
+                    return flow.phoneDeferred.promise;
+                },
+                phoneCode: () => {
+                    setState('code');
+                    return flow.codeDeferred.promise;
+                },
+                password: () => {
+                    setState('password');
+                    return flow.passwordDeferred.promise;
+                },
+                onError: (err) => {
+                    flow.error = err?.message || String(err);
+                },
+            })
+            .then(async () => {
+                // Login succeeded — promote the temp client to a saved session.
+                try {
+                    const me = await client.getMe();
+                    let finalId = isTempId
+                        ? (me.username || `acc_${me.phone || Date.now()}`).toLowerCase()
+                        : accountId;
+                    let base = finalId,
+                        n = 1;
+                    while (this.clients.has(finalId)) finalId = `${base}_${n++}`;
 
-                const sessionStr = client.session.save();
-                const encrypted = this.secure.encrypt(sessionStr);
-                fs.writeFileSync(
-                    path.join(SESSIONS_DIR, `${finalId}.enc`),
-                    JSON.stringify(encrypted, null, 2),
-                );
-                this.clients.set(finalId, client);
-                this.metadata.set(finalId, {
-                    id: finalId,
-                    name: `${me.firstName || ''} ${me.lastName || ''}`.trim(),
-                    phone: me.phone || '',
-                    userId: String(me.id),
-                    username: me.username || '',
-                });
-                await this.syncToConfig().catch(() => {});
-                this._startKeepAlive();
-                flow.accountId = finalId;
-                setState('done');
-            } catch (e) {
-                flow.error = e?.message || String(e);
+                    const sessionStr = client.session.save();
+                    const encrypted = this.secure.encrypt(sessionStr);
+                    fs.writeFileSync(
+                        path.join(SESSIONS_DIR, `${finalId}.enc`),
+                        JSON.stringify(encrypted, null, 2),
+                    );
+                    this.clients.set(finalId, client);
+                    this.metadata.set(finalId, {
+                        id: finalId,
+                        name: `${me.firstName || ''} ${me.lastName || ''}`.trim(),
+                        phone: me.phone || '',
+                        userId: String(me.id),
+                        username: me.username || '',
+                    });
+                    await this.syncToConfig().catch(() => {});
+                    this._startKeepAlive();
+                    flow.accountId = finalId;
+                    setState('done');
+                } catch (e) {
+                    flow.error = e?.message || String(e);
+                    setState('error');
+                }
+                // Auth flows are short-lived; clean up after a grace period so the
+                // SPA can poll one last time and read the final state.
+                setTimeout(() => this._authFlows.delete(sessionId), 60000);
+            })
+            .catch((err) => {
+                flow.error = err?.message || String(err);
                 setState('error');
-            }
-            // Auth flows are short-lived; clean up after a grace period so the
-            // SPA can poll one last time and read the final state.
-            setTimeout(() => this._authFlows.delete(sessionId), 60000);
-        }).catch((err) => {
-            flow.error = err?.message || String(err);
-            setState('error');
-            try { client.disconnect().catch(() => {}); } catch {}
-            setTimeout(() => this._authFlows.delete(sessionId), 60000);
-        });
+                try {
+                    client.disconnect().catch(() => {});
+                } catch {}
+                setTimeout(() => this._authFlows.delete(sessionId), 60000);
+            });
 
         return { sessionId, state: 'phone' };
     }
@@ -652,11 +687,19 @@ export class AccountManager {
         if (!flow) return { ok: false, reason: 'not_found' };
         flow.state = 'cancelled';
         // Reject all deferreds to unblock client.start()
-        try { flow.phoneDeferred.reject(new Error('cancelled')); } catch {}
-        try { flow.codeDeferred.reject(new Error('cancelled')); } catch {}
-        try { flow.passwordDeferred.reject(new Error('cancelled')); } catch {}
+        try {
+            flow.phoneDeferred.reject(new Error('cancelled'));
+        } catch {}
+        try {
+            flow.codeDeferred.reject(new Error('cancelled'));
+        } catch {}
+        try {
+            flow.passwordDeferred.reject(new Error('cancelled'));
+        } catch {}
         if (flow.client) {
-            try { await flow.client.disconnect(); } catch {}
+            try {
+                await flow.client.disconnect();
+            } catch {}
         }
         this._authFlows.delete(sessionId);
         return { ok: true };

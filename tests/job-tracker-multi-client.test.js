@@ -52,7 +52,8 @@ describe('JobTracker multi-client WS contract', () => {
     it('a second tryStart while the first is in flight returns ALREADY_RUNNING with snapshot', async () => {
         const broadcasts = [];
         const tracker = createJobTracker({
-            kind: 'singleflight', broadcast: (m) => broadcasts.push(m),
+            kind: 'singleflight',
+            broadcast: (m) => broadcasts.push(m),
         });
 
         tracker.tryStart(async ({ onProgress }) => {

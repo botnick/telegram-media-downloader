@@ -31,7 +31,7 @@ const PEOPLE_LIMIT = 6;
 let _queryToken = 0;
 let _lastResults = [];
 let _focusIdx = -1;
-let _similarSource = null;  // {download_id, file_name, ...}
+let _similarSource = null; // {download_id, file_name, ...}
 let _hasEmbeddings = null;
 
 // ---- localStorage recent-searches ----------------------------------------
@@ -41,8 +41,12 @@ function _loadRecent() {
         const raw = localStorage.getItem(RECENT_LS_KEY);
         if (!raw) return [];
         const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr.filter((s) => typeof s === 'string').slice(0, RECENT_LIMIT) : [];
-    } catch { return []; }
+        return Array.isArray(arr)
+            ? arr.filter((s) => typeof s === 'string').slice(0, RECENT_LIMIT)
+            : [];
+    } catch {
+        return [];
+    }
 }
 
 function _saveRecent(query) {
@@ -53,8 +57,11 @@ function _saveRecent(query) {
     recent = recent.filter((s) => s.toLowerCase() !== q.toLowerCase());
     recent.unshift(q);
     recent = recent.slice(0, RECENT_LIMIT);
-    try { localStorage.setItem(RECENT_LS_KEY, JSON.stringify(recent)); }
-    catch { /* quota or disabled — silent */ }
+    try {
+        localStorage.setItem(RECENT_LS_KEY, JSON.stringify(recent));
+    } catch {
+        /* quota or disabled — silent */
+    }
 }
 
 // ---- Suggestion chip rendering -------------------------------------------
@@ -69,26 +76,29 @@ function _renderChipRow(rowEl, chips, onClick) {
         return;
     }
     rowEl.classList.remove('hidden');
-    list.innerHTML = chips.map((c) => {
-        if (c.kind === 'person') {
-            const cover = c.cover_download_id
-                ? `<img src="/api/thumbs/${c.cover_download_id}?w=64" alt="" class="ai-chip-avatar" onerror="this.style.display='none'"/>`
-                : `<span class="ai-chip-avatar ai-chip-avatar-fallback"><i class="ri-user-line"></i></span>`;
-            return `
+    list.innerHTML = chips
+        .map((c) => {
+            if (c.kind === 'person') {
+                const cover = c.cover_download_id
+                    ? `<img src="/api/thumbs/${c.cover_download_id}?w=64" alt="" class="ai-chip-avatar" onerror="this.style.display='none'"/>`
+                    : `<span class="ai-chip-avatar ai-chip-avatar-fallback"><i class="ri-user-line"></i></span>`;
+                return `
                 <button type="button" class="ai-chip ai-chip-person" data-chip-query="${escapeHtml(c.query)}" data-chip-kind="person" role="listitem">
                     ${cover}
                     <span class="ai-chip-text">${escapeHtml(c.label)}</span>
                 </button>
             `;
-        }
-        const icon = c.icon ? `<i class="${c.icon}" aria-hidden="true"></i>` : '';
-        const count = c.count != null ? `<span class="ai-chip-count tabular-nums">${c.count}</span>` : '';
-        return `
+            }
+            const icon = c.icon ? `<i class="${c.icon}" aria-hidden="true"></i>` : '';
+            const count =
+                c.count != null ? `<span class="ai-chip-count tabular-nums">${c.count}</span>` : '';
+            return `
             <button type="button" class="ai-chip" data-chip-query="${escapeHtml(c.query)}" role="listitem">
                 ${icon}<span class="ai-chip-text">${escapeHtml(c.label)}</span>${count}
             </button>
         `;
-    }).join('');
+        })
+        .join('');
     list.querySelectorAll('.ai-chip').forEach((b) => {
         b.addEventListener('click', () => onClick(b.dataset.chipQuery, b.dataset.chipKind || ''));
     });
@@ -98,35 +108,58 @@ async function _refreshChips({ inputEl, resultsEl, emptyEl, ctaEl, metaEl }) {
     // Recent
     const recentEl = document.getElementById('ai-chips-recent');
     const recent = _loadRecent();
-    _renderChipRow(recentEl, recent.map((q) => ({ query: q, label: q, icon: 'ri-history-line' })),
-        (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }));
+    _renderChipRow(
+        recentEl,
+        recent.map((q) => ({ query: q, label: q, icon: 'ri-history-line' })),
+        (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }),
+    );
 
     // Try
     const tryEl = document.getElementById('ai-chips-try');
-    _renderChipRow(tryEl, TRY_CHIPS.map((q) => ({ query: q, label: q })),
-        (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }));
+    _renderChipRow(
+        tryEl,
+        TRY_CHIPS.map((q) => ({ query: q, label: q })),
+        (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }),
+    );
 
     // Top tags + people — best-effort, fail silent.
     try {
         const r = await api.get('/api/ai/tags?min_count=2');
         const tags = (r?.tags || []).slice(0, TOP_TAGS_LIMIT);
-        _renderChipRow(document.getElementById('ai-chips-tags'),
-            tags.map((t) => ({ query: t.tag, label: t.tag, count: t.count, icon: 'ri-price-tag-3-line' })),
-            (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }));
-    } catch { _renderChipRow(document.getElementById('ai-chips-tags'), [], () => {}); }
+        _renderChipRow(
+            document.getElementById('ai-chips-tags'),
+            tags.map((t) => ({
+                query: t.tag,
+                label: t.tag,
+                count: t.count,
+                icon: 'ri-price-tag-3-line',
+            })),
+            (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }),
+        );
+    } catch {
+        _renderChipRow(document.getElementById('ai-chips-tags'), [], () => {});
+    }
 
     try {
         const r = await api.get('/api/ai/people');
         const people = (r?.people || []).slice(0, PEOPLE_LIMIT);
-        _renderChipRow(document.getElementById('ai-chips-people'),
+        _renderChipRow(
+            document.getElementById('ai-chips-people'),
             people.map((p) => ({
                 kind: 'person',
-                query: (p.label && p.label.trim()) || i18nT('maintenance.ai.people.unnamed', 'Unnamed person'),
-                label: (p.label && p.label.trim()) || i18nT('maintenance.ai.people.unnamed', 'Unnamed person'),
+                query:
+                    (p.label && p.label.trim()) ||
+                    i18nT('maintenance.ai.people.unnamed', 'Unnamed person'),
+                label:
+                    (p.label && p.label.trim()) ||
+                    i18nT('maintenance.ai.people.unnamed', 'Unnamed person'),
                 cover_download_id: p.cover_download_id,
             })),
-            (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }));
-    } catch { _renderChipRow(document.getElementById('ai-chips-people'), [], () => {}); }
+            (q) => _runSearchFromChip(q, { inputEl, resultsEl, emptyEl, ctaEl, metaEl }),
+        );
+    } catch {
+        _renderChipRow(document.getElementById('ai-chips-people'), [], () => {});
+    }
 }
 
 function _runSearchFromChip(query, ctx) {
@@ -164,7 +197,9 @@ function _renderThumbCard(r, idx) {
 }
 
 function _renderShimmerTiles(count = 8) {
-    const tiles = Array.from({ length: count }, () => `
+    const tiles = Array.from(
+        { length: count },
+        () => `
         <div class="ai-result-tile ai-result-skeleton" aria-hidden="true">
             <div class="ai-result-thumb"></div>
             <div class="ai-result-meta">
@@ -172,7 +207,8 @@ function _renderShimmerTiles(count = 8) {
                 <div class="ai-result-group"></div>
             </div>
         </div>
-    `).join('');
+    `,
+    ).join('');
     return tiles;
 }
 
@@ -221,8 +257,15 @@ function _clearSimilar(ctx) {
  * @param {Element} [opts.ctaEl]
  * @param {Element} [opts.metaEl]
  */
-export async function runSearch({ query, limit = 24, fileTypes = null,
-                                   resultsEl, emptyEl, ctaEl, metaEl } = {}) {
+export async function runSearch({
+    query,
+    limit = 24,
+    fileTypes = null,
+    resultsEl,
+    emptyEl,
+    ctaEl,
+    metaEl,
+} = {}) {
     if (!query || !query.trim()) {
         if (resultsEl) resultsEl.innerHTML = '';
         if (metaEl) metaEl.textContent = '';
@@ -244,17 +287,22 @@ export async function runSearch({ query, limit = 24, fileTypes = null,
         // instead of an error message; the operator's next move is to
         // enable AI / kick a scan.
         const code = e?.data?.code || '';
-        const isDisabled = code === 'EMBEDDINGS_DISABLED' || code === 'AI_DISABLED' || e?.status === 503;
+        const isDisabled =
+            code === 'EMBEDDINGS_DISABLED' || code === 'AI_DISABLED' || e?.status === 503;
         if (isDisabled) {
             if (ctaEl) ctaEl.classList.remove('hidden');
             if (metaEl) metaEl.textContent = '';
         } else if (metaEl) {
             const msg = String(e?.message || '');
-            metaEl.textContent = i18nTf('maintenance.ai.search.error', { msg }, `Search failed: ${msg}`);
+            metaEl.textContent = i18nTf(
+                'maintenance.ai.search.error',
+                { msg },
+                `Search failed: ${msg}`,
+            );
         }
         return;
     }
-    if (myToken !== _queryToken) return;  // stale response — discard
+    if (myToken !== _queryToken) return; // stale response — discard
     _saveRecent(query);
 
     const results = r?.results || [];
@@ -268,9 +316,11 @@ export async function runSearch({ query, limit = 24, fileTypes = null,
     }
     if (resultsEl) resultsEl.innerHTML = results.map(_renderThumbCard).join('');
     if (metaEl) {
-        metaEl.textContent = i18nTf('maintenance.ai.search.found',
+        metaEl.textContent = i18nTf(
+            'maintenance.ai.search.found',
             { n: results.length },
-            `${results.length} matches`);
+            `${results.length} matches`,
+        );
     }
 }
 
@@ -291,8 +341,19 @@ async function runSimilar({ source, limit = 24, resultsEl, emptyEl, ctaEl, metaE
     } catch (e) {
         if (myToken !== _queryToken) return;
         if (resultsEl) resultsEl.innerHTML = '';
-        if (metaEl) metaEl.textContent = i18nTf('maintenance.ai.search.error', { msg: e.message }, `Search failed: ${e.message}`);
-        showToast(i18nTf('maintenance.ai.search.similar_failed', { msg: e.message }, `Couldn't find similar: ${e.message}`));
+        if (metaEl)
+            metaEl.textContent = i18nTf(
+                'maintenance.ai.search.error',
+                { msg: e.message },
+                `Search failed: ${e.message}`,
+            );
+        showToast(
+            i18nTf(
+                'maintenance.ai.search.similar_failed',
+                { msg: e.message },
+                `Couldn't find similar: ${e.message}`,
+            ),
+        );
         return;
     }
     if (myToken !== _queryToken) return;
@@ -309,9 +370,11 @@ async function runSimilar({ source, limit = 24, resultsEl, emptyEl, ctaEl, metaE
     }
     if (resultsEl) resultsEl.innerHTML = results.map(_renderThumbCard).join('');
     if (metaEl) {
-        metaEl.textContent = i18nTf('maintenance.ai.search.found',
+        metaEl.textContent = i18nTf(
+            'maintenance.ai.search.found',
             { n: results.length },
-            `${results.length} matches`);
+            `${results.length} matches`,
+        );
     }
 }
 
@@ -355,7 +418,10 @@ export function bindSearchUi({ inputEl, buttonEl, resultsEl, emptyEl, metaEl, ct
         clearTimeout(timer);
         timer = setTimeout(() => {
             // Typing while in similar-mode drops out of similar-mode.
-            if (_similarSource) { _similarSource = null; _setSimilarBar(null); }
+            if (_similarSource) {
+                _similarSource = null;
+                _setSimilarBar(null);
+            }
             runSearch({ query: inputEl.value, ...ctx });
             _toggleClearBtn();
         }, DEBOUNCE_MS);
@@ -367,7 +433,10 @@ export function bindSearchUi({ inputEl, buttonEl, resultsEl, emptyEl, metaEl, ct
     const onKey = (e) => {
         if (e.key === 'Enter') {
             clearTimeout(timer);
-            if (_similarSource) { _similarSource = null; _setSimilarBar(null); }
+            if (_similarSource) {
+                _similarSource = null;
+                _setSimilarBar(null);
+            }
             runSearch({ query: inputEl.value, ...ctx });
         } else if (e.key === 'Escape' && inputEl.value) {
             inputEl.value = '';
@@ -386,7 +455,10 @@ export function bindSearchUi({ inputEl, buttonEl, resultsEl, emptyEl, metaEl, ct
     const onClear = () => {
         inputEl.value = '';
         clearTimeout(timer);
-        if (_similarSource) { _similarSource = null; _setSimilarBar(null); }
+        if (_similarSource) {
+            _similarSource = null;
+            _setSimilarBar(null);
+        }
         runSearch({ query: '', ...ctx });
         inputEl.focus();
         _toggleClearBtn();
@@ -398,17 +470,24 @@ export function bindSearchUi({ inputEl, buttonEl, resultsEl, emptyEl, metaEl, ct
     if (buttonEl) buttonEl.addEventListener('click', onClickGo);
     if (clearBtn) clearBtn.addEventListener('click', onClear);
     if (similarClear) similarClear.addEventListener('click', onSimilarClear);
-    if (ctaBtn) ctaBtn.addEventListener('click', async () => {
-        try {
-            await api.post('/api/ai/index/scan', {});
-            showToast(i18nT('maintenance.ai.scan.started', 'Scan started'));
-        } catch (e) {
-            // The most common cause is the whole AI subsystem being off
-            // in Settings → Advanced. Surface the toast verbatim — the
-            // 503 body usually says exactly that.
-            showToast(i18nTf('maintenance.ai.scan.failed', { msg: e.message }, `Failed: ${e.message}`));
-        }
-    });
+    if (ctaBtn)
+        ctaBtn.addEventListener('click', async () => {
+            try {
+                await api.post('/api/ai/index/scan', {});
+                showToast(i18nT('maintenance.ai.scan.started', 'Scan started'));
+            } catch (e) {
+                // The most common cause is the whole AI subsystem being off
+                // in Settings → Advanced. Surface the toast verbatim — the
+                // 503 body usually says exactly that.
+                showToast(
+                    i18nTf(
+                        'maintenance.ai.scan.failed',
+                        { msg: e.message },
+                        `Failed: ${e.message}`,
+                    ),
+                );
+            }
+        });
 
     // Result grid — event delegation for actions + keyboard nav.
     if (resultsEl) {
@@ -438,16 +517,20 @@ export function bindSearchUi({ inputEl, buttonEl, resultsEl, emptyEl, metaEl, ct
             if (e.key === 'Enter') {
                 e.preventDefault();
                 const row = _lastResults[idx];
-                if (row) openResultViewer(row, {
-                    onSimilar: (r) => runSimilar({ source: r, ...ctx }),
-                    onTagClick: (tag) => _runSearchFromChip(tag, ctx),
-                });
+                if (row)
+                    openResultViewer(row, {
+                        onSimilar: (r) => runSimilar({ source: r, ...ctx }),
+                        onTagClick: (tag) => _runSearchFromChip(tag, ctx),
+                    });
             } else if (e.key === 'ArrowRight') {
-                e.preventDefault(); _focusTile(idx + 1, resultsEl);
+                e.preventDefault();
+                _focusTile(idx + 1, resultsEl);
             } else if (e.key === 'ArrowLeft') {
-                e.preventDefault(); _focusTile(idx - 1, resultsEl);
+                e.preventDefault();
+                _focusTile(idx - 1, resultsEl);
             } else if (e.key === 'ArrowDown') {
-                e.preventDefault(); _focusTile(idx + cols, resultsEl);
+                e.preventDefault();
+                _focusTile(idx + cols, resultsEl);
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (idx - cols < 0) inputEl.focus();
@@ -493,6 +576,8 @@ export async function probeHasEmbeddings() {
     try {
         const s = await api.get('/api/ai/status');
         _hasEmbeddings = !!(s?.counts?.indexed > 0);
-    } catch { _hasEmbeddings = false; }
+    } catch {
+        _hasEmbeddings = false;
+    }
     return _hasEmbeddings;
 }

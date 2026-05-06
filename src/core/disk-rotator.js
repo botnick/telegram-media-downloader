@@ -20,17 +20,13 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
-import {
-    getTotalSizeBytes,
-    getOldestDownloads,
-    deleteDownloadsBy,
-} from './db.js';
+import { getTotalSizeBytes, getOldestDownloads, deleteDownloadsBy } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
 
 const DEFAULT_SWEEP_MIN = 10;
-const SWEEP_BATCH = 50;          // candidate rows fetched per pass
+const SWEEP_BATCH = 50; // candidate rows fetched per pass
 const MAX_DELETES_PER_SWEEP = 5000; // hard ceiling to avoid runaway loops
 
 /**
@@ -95,9 +91,8 @@ export class DiskRotator {
         // being written by the downloader. The rotator skips any candidate
         // whose absolute path is in the Set, so we never yank a file out
         // from under an active write.
-        this._getActiveFilePaths = typeof getActiveFilePaths === 'function'
-            ? getActiveFilePaths
-            : () => null;
+        this._getActiveFilePaths =
+            typeof getActiveFilePaths === 'function' ? getActiveFilePaths : () => null;
         this._timer = null;
         this._sweeping = false;
         this._intervalMs = 0;
@@ -111,17 +106,28 @@ export class DiskRotator {
     start() {
         this.stop();
         let cfg;
-        try { cfg = this._loadConfig(); } catch { return false; }
+        try {
+            cfg = this._loadConfig();
+        } catch {
+            return false;
+        }
         const dm = cfg?.diskManagement || {};
         if (!dm.enabled) return false;
 
-        const minutes = Math.max(1, Math.min(1440, parseInt(dm.sweepIntervalMin, 10) || DEFAULT_SWEEP_MIN));
+        const minutes = Math.max(
+            1,
+            Math.min(1440, parseInt(dm.sweepIntervalMin, 10) || DEFAULT_SWEEP_MIN),
+        );
         this._intervalMs = minutes * 60 * 1000;
 
         // Kick off one sweep shortly after start so a freshly-enabled rotator
         // doesn't make the user wait `sweepIntervalMin` for the first pass.
         // Don't await — start() must stay non-blocking for callers.
-        setTimeout(() => { this.sweep().catch((e) => console.warn('[disk-rotator] initial sweep failed:', e.message)); }, 5_000).unref?.();
+        setTimeout(() => {
+            this.sweep().catch((e) =>
+                console.warn('[disk-rotator] initial sweep failed:', e.message),
+            );
+        }, 5_000).unref?.();
 
         this._timer = setInterval(() => {
             this.sweep().catch((e) => console.warn('[disk-rotator] sweep failed:', e.message));
@@ -156,7 +162,11 @@ export class DiskRotator {
         this._sweeping = true;
         try {
             let cfg;
-            try { cfg = this._loadConfig(); } catch { return null; }
+            try {
+                cfg = this._loadConfig();
+            } catch {
+                return null;
+            }
             const dm = cfg?.diskManagement || {};
             if (!dm.enabled) return null;
             const capBytes = parseSize(dm.maxTotalSize);
@@ -174,7 +184,10 @@ export class DiskRotator {
             // config behaves identically.
             const adv = cfg?.advanced?.diskRotator || {};
             const batch = Math.max(1, parseInt(adv.sweepBatch, 10) || SWEEP_BATCH);
-            const maxDeletes = Math.max(1, parseInt(adv.maxDeletesPerSweep, 10) || MAX_DELETES_PER_SWEEP);
+            const maxDeletes = Math.max(
+                1,
+                parseInt(adv.maxDeletesPerSweep, 10) || MAX_DELETES_PER_SWEEP,
+            );
 
             let total = before;
             let deleted = 0;
@@ -197,7 +210,7 @@ export class DiskRotator {
                 if (!candidates.length) break;
                 for (const row of candidates) {
                     if (total <= capBytes || safety <= 0) break outer;
-                    if (isInFlight(row)) continue;   // skip — downloader is mid-write
+                    if (isInFlight(row)) continue; // skip — downloader is mid-write
                     await tryUnlink(row);
                     const removed = deleteDownloadsBy({ ids: [row.id] });
                     if (removed > 0) {
@@ -205,7 +218,13 @@ export class DiskRotator {
                         total -= sz;
                         deleted += 1;
                         safety -= 1;
-                        try { this._broadcast({ type: 'file_deleted', id: row.id, path: row.file_path || null }); } catch {}
+                        try {
+                            this._broadcast({
+                                type: 'file_deleted',
+                                id: row.id,
+                                path: row.file_path || null,
+                            });
+                        } catch {}
                     } else {
                         // Row vanished between fetch and delete — skip and
                         // requery so we don't loop on the same id.
@@ -215,7 +234,9 @@ export class DiskRotator {
             }
 
             const after = getTotalSizeBytes();
-            console.log(`[disk-rotator] sweep ${JSON.stringify({ before, deleted, after, capBytes })}`);
+            console.log(
+                `[disk-rotator] sweep ${JSON.stringify({ before, deleted, after, capBytes })}`,
+            );
             return { before, deleted, after, capBytes };
         } finally {
             this._sweeping = false;

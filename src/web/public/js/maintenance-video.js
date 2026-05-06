@@ -70,8 +70,13 @@ async function _scanAll() {
         // toast here — the operator will see the bar fill regardless.
     } catch (e) {
         if (e?.data?.code === 'ALREADY_RUNNING') {
-            showToast(i18nT('jobs.already_running',
-                'Already running on another tab — waiting for it to finish.'), 'info');
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
             return;
         }
         showToast(e?.data?.error || e.message || 'Failed', 'error');
@@ -89,16 +94,18 @@ function _wireWs() {
         if (progress) progress.classList.remove('hidden');
         if (!bar) return;
         const total = Math.max(1, m.total || 1);
-        const pct = Math.min(100, Math.round((m.processed || 0) / total * 100));
+        const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
         bar.style.width = pct + '%';
         if (status) {
-            status.textContent = i18nTf('maintenance.video.progress',
+            status.textContent = i18nTf(
+                'maintenance.video.progress',
                 {
                     processed: m.processed || 0,
                     total: m.total || 0,
                     optimized: m.optimized || 0,
                 },
-                `${m.processed || 0} / ${m.total || 0} · ${m.optimized || 0} optimised`);
+                `${m.processed || 0} / ${m.total || 0} · ${m.optimized || 0} optimised`,
+            );
         }
     });
     ws.on('faststart_done', (m) => {
@@ -106,14 +113,18 @@ function _wireWs() {
         if (m?.error) {
             showToast(m.error, 'error');
         } else {
-            showToast(i18nTf('maintenance.video.done',
-                {
-                    optimized: m?.optimized || 0,
-                    already: m?.already || 0,
-                    scanned: m?.scanned || 0,
-                },
-                `Optimised ${m?.optimized || 0}, ${m?.already || 0} already faststart out of ${m?.scanned || 0}`),
-                'success');
+            showToast(
+                i18nTf(
+                    'maintenance.video.done',
+                    {
+                        optimized: m?.optimized || 0,
+                        already: m?.already || 0,
+                        scanned: m?.scanned || 0,
+                    },
+                    `Optimised ${m?.optimized || 0}, ${m?.already || 0} already faststart out of ${m?.scanned || 0}`,
+                ),
+                'success',
+            );
         }
         _refreshStats().catch(() => {});
     });
@@ -123,7 +134,9 @@ async function _recoverState() {
     try {
         const r = await api.get('/api/maintenance/faststart/status');
         if (r?.running) _setUi(true);
-    } catch { /* status endpoint failures are non-fatal */ }
+    } catch {
+        /* status endpoint failures are non-fatal */
+    }
 }
 
 export function init() {

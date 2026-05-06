@@ -62,7 +62,10 @@ export async function setLang(lang) {
     document.documentElement.lang = active;
     await load(active);
     applyToDOM();
-    for (const fn of listeners) try { fn(active); } catch {}
+    for (const fn of listeners)
+        try {
+            fn(active);
+        } catch {}
 }
 
 export function onLanguageChange(fn) {
@@ -88,7 +91,9 @@ export function applyToDOM(root = document) {
     for (const attr of ['aria-label', 'placeholder', 'title']) {
         const dataAttr = `i18n${attr.replace(/-([a-z])/g, (_, c) => c.toUpperCase()).replace(/^./, (c) => c.toUpperCase())}`;
         // dataset key is camelCased: aria-label → i18nAriaLabel
-        root.querySelectorAll(`[data-${attr === 'aria-label' ? 'i18n-aria-label' : `i18n-${attr}`}]`).forEach((el) => {
+        root.querySelectorAll(
+            `[data-${attr === 'aria-label' ? 'i18n-aria-label' : `i18n-${attr}`}]`,
+        ).forEach((el) => {
             const key = el.dataset[dataAttr] || el.getAttribute(`data-i18n-${attr}`);
             if (!key) return;
             el.setAttribute(attr, t(key, el.getAttribute(attr) || ''));
@@ -100,7 +105,9 @@ export function applyToDOM(root = document) {
 // (before initI18n() has resolved) can `await ready` to avoid getting an
 // empty dict. `initI18n()` assigns this on first call.
 let _readyResolve;
-export const ready = new Promise((resolve) => { _readyResolve = resolve; });
+export const ready = new Promise((resolve) => {
+    _readyResolve = resolve;
+});
 
 export async function initI18n() {
     const stored = localStorage.getItem(LS_KEY) || 'auto';
@@ -108,5 +115,7 @@ export async function initI18n() {
     document.documentElement.lang = active;
     await load(active);
     applyToDOM();
-    try { _readyResolve?.(active); } catch {}
+    try {
+        _readyResolve?.(active);
+    } catch {}
 }

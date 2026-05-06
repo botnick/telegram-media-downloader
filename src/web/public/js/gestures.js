@@ -3,8 +3,8 @@
 // viewer. Everything is built on the unified Pointer Events API so a mouse,
 // touch, and pen all behave the same way without separate handlers.
 
-const TAP_DISTANCE = 10;     // px — beyond this, a press is no longer a tap
-const LONG_PRESS_MS = 500;   // ms — Telegram-typical long-press threshold
+const TAP_DISTANCE = 10; // px — beyond this, a press is no longer a tap
+const LONG_PRESS_MS = 500; // ms — Telegram-typical long-press threshold
 
 /**
  * Fire `onLongPress(target, event)` when the user holds a press for at least
@@ -15,10 +15,16 @@ const LONG_PRESS_MS = 500;   // ms — Telegram-typical long-press threshold
  */
 export function attachLongPress(host, { selector, onLongPress }) {
     let timer = null;
-    let startX = 0, startY = 0, target = null, pointerId = null;
+    let startX = 0,
+        startY = 0,
+        target = null,
+        pointerId = null;
 
     function clear() {
-        if (timer) { clearTimeout(timer); timer = null; }
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
         target = null;
         pointerId = null;
     }
@@ -28,10 +34,15 @@ export function attachLongPress(host, { selector, onLongPress }) {
         if (!t || !host.contains(t)) return;
         target = t;
         pointerId = e.pointerId;
-        startX = e.clientX; startY = e.clientY;
+        startX = e.clientX;
+        startY = e.clientY;
         timer = setTimeout(() => {
             if (!target) return;
-            try { onLongPress(target, e); } catch (err) { console.error(err); }
+            try {
+                onLongPress(target, e);
+            } catch (err) {
+                console.error(err);
+            }
             // Suppress the click that would otherwise fire after release.
             target.dataset.longPressFired = '1';
             timer = null;
@@ -47,7 +58,8 @@ export function attachLongPress(host, { selector, onLongPress }) {
     }
     function suppressClick(e) {
         if (e.target?.dataset?.longPressFired === '1') {
-            e.preventDefault(); e.stopPropagation();
+            e.preventDefault();
+            e.stopPropagation();
             delete e.target.dataset.longPressFired;
         }
     }
@@ -85,7 +97,8 @@ export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
     if (!indicator) {
         indicator = document.createElement('div');
         indicator.className = 'ptr-indicator';
-        indicator.style.cssText = 'position:sticky;top:0;display:flex;align-items:center;justify-content:center;height:0;overflow:hidden;color:var(--tg-textSecondary,#8B9BAA);font-size:13px;pointer-events:none;transition:height 120ms ease;';
+        indicator.style.cssText =
+            'position:sticky;top:0;display:flex;align-items:center;justify-content:center;height:0;overflow:hidden;color:var(--tg-textSecondary,#8B9BAA);font-size:13px;pointer-events:none;transition:height 120ms ease;';
         indicator.innerHTML = '<i class="ri-arrow-down-line"></i>&nbsp;Pull to refresh';
         container.insertBefore(indicator, container.firstChild);
     }
@@ -100,7 +113,11 @@ export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
     function move(e) {
         if (!active || e.pointerId !== pointerId) return;
         const d = e.clientY - startY;
-        if (d <= 0) { active = false; indicator.style.height = '0'; return; }
+        if (d <= 0) {
+            active = false;
+            indicator.style.height = '0';
+            return;
+        }
         dy = Math.min(d, threshold * 1.5);
         indicator.style.height = `${Math.min(dy, threshold)}px`;
         indicator.firstChild.style.transform = dy > threshold ? 'rotate(180deg)' : 'rotate(0deg)';
@@ -140,12 +157,16 @@ export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
  * displacement dominates (≥ 1.5× the vertical).
  */
 export function attachSwipe(el, { onSwipe, threshold = 60 }) {
-    let startX = 0, startY = 0, pointerId = null, active = false;
+    let startX = 0,
+        startY = 0,
+        pointerId = null,
+        active = false;
     function down(e) {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         active = true;
         pointerId = e.pointerId;
-        startX = e.clientX; startY = e.clientY;
+        startX = e.clientX;
+        startY = e.clientY;
     }
     function up(e) {
         if (!active || e.pointerId !== pointerId) return;
@@ -172,7 +193,10 @@ export function attachSwipe(el, { onSwipe, threshold = 60 }) {
  * temporary translateY for visual feedback.
  */
 export function attachDragDismiss(el, { onDismiss, threshold = 80 }) {
-    let startY = 0, dy = 0, pointerId = null, active = false;
+    let startY = 0,
+        dy = 0,
+        pointerId = null,
+        active = false;
     function down(e) {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         active = true;

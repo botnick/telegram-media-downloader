@@ -43,16 +43,20 @@ export async function sweep(onProgress) {
     const result = { scanned: 0, pruned: 0, sizeFixed: 0 };
     const _emit = (extra) => {
         if (typeof onProgress !== 'function') return;
-        try { onProgress({ ...result, ...(extra || {}) }); } catch {}
+        try {
+            onProgress({ ...result, ...(extra || {}) });
+        } catch {}
     };
     try {
         // Pull file_size too so we can repair NULL / 0 sizes from old
         // downloader versions that didn't always stat the file before
         // INSERT — that's the source of the "Disk: 1 MB for 8000 files"
         // status-bar nonsense the user kept seeing.
-        const rows = getDb().prepare(
-            `SELECT id, file_path, file_name, group_id, file_size FROM downloads WHERE file_path IS NOT NULL`
-        ).all();
+        const rows = getDb()
+            .prepare(
+                `SELECT id, file_path, file_name, group_id, file_size FROM downloads WHERE file_path IS NOT NULL`,
+            )
+            .all();
         result.scanned = rows.length;
         _emit({ processed: 0, total: rows.length, stage: 'scanning' });
 
@@ -67,30 +71,33 @@ export async function sweep(onProgress) {
         let processed = 0;
         for (let i = 0; i < rows.length; i += BATCH) {
             const slice = rows.slice(i, i + BATCH);
-            const checks = await Promise.all(slice.map(async (r) => {
-                let rel = String(r.file_path || '').replace(/\\/g, '/');
-                if (!rel) return null;
-                // Tolerate the legacy `data/downloads/` prefix that some
-                // older rows still carry — same fix that
-                // safeResolveDownload() does in the request path.
-                while (rel.startsWith('data/downloads/')) rel = rel.slice('data/downloads/'.length);
-                // Defence-in-depth: refuse to stat anything that walks outside
-                // DOWNLOADS_DIR. Rows with bogus paths get pruned.
-                if (rel.includes('..') || path.isAbsolute(rel)) return r.id;
-                const abs = path.join(DOWNLOADS_DIR, rel);
-                try {
-                    const st = await fs.stat(abs);
-                    if (st.size <= 0) return r.id;
-                    // Backfill or correct the stored file_size if it's
-                    // null / 0 / wrong. Tolerance > 0 for the rare case
-                    // an editor / re-encode legitimately changed bytes.
-                    const stored = Number(r.file_size) || 0;
-                    if (stored !== st.size) sizeFixes.push({ id: r.id, size: st.size });
-                    return null;
-                } catch {
-                    return r.id;
-                }
-            }));
+            const checks = await Promise.all(
+                slice.map(async (r) => {
+                    let rel = String(r.file_path || '').replace(/\\/g, '/');
+                    if (!rel) return null;
+                    // Tolerate the legacy `data/downloads/` prefix that some
+                    // older rows still carry — same fix that
+                    // safeResolveDownload() does in the request path.
+                    while (rel.startsWith('data/downloads/'))
+                        rel = rel.slice('data/downloads/'.length);
+                    // Defence-in-depth: refuse to stat anything that walks outside
+                    // DOWNLOADS_DIR. Rows with bogus paths get pruned.
+                    if (rel.includes('..') || path.isAbsolute(rel)) return r.id;
+                    const abs = path.join(DOWNLOADS_DIR, rel);
+                    try {
+                        const st = await fs.stat(abs);
+                        if (st.size <= 0) return r.id;
+                        // Backfill or correct the stored file_size if it's
+                        // null / 0 / wrong. Tolerance > 0 for the rare case
+                        // an editor / re-encode legitimately changed bytes.
+                        const stored = Number(r.file_size) || 0;
+                        if (stored !== st.size) sizeFixes.push({ id: r.id, size: st.size });
+                        return null;
+                    } catch {
+                        return r.id;
+                    }
+                }),
+            );
             for (const id of checks) if (id) deleteIds.push(id);
             processed += slice.length;
             _emit({ processed, total: rows.length, stage: 'scanning' });
@@ -109,11 +116,17 @@ export async function sweep(onProgress) {
         if (deleteIds.length) {
             _emit({ processed, total: rows.length, stage: 'pruning' });
             const stmt = getDb().prepare(
-                `DELETE FROM downloads WHERE id IN (${deleteIds.map(() => '?').join(',')})`
+                `DELETE FROM downloads WHERE id IN (${deleteIds.map(() => '?').join(',')})`,
             );
             const r = stmt.run(...deleteIds);
             result.pruned = r.changes;
-            try { _broadcast({ type: 'integrity_swept', pruned: result.pruned, scanned: result.scanned }); } catch {}
+            try {
+                _broadcast({
+                    type: 'integrity_swept',
+                    pruned: result.pruned,
+                    scanned: result.scanned,
+                });
+            } catch {}
         }
         _emit({ processed: rows.length, total: rows.length, stage: 'done' });
     } finally {
@@ -135,24 +148,38 @@ export function start({ broadcast, intervalMin = 60, batchSize = 64 } = {}) {
     if (Number.isFinite(batchSize) && batchSize > 0) _batchSize = Math.floor(batchSize);
     if (_timer) clearInterval(_timer);
     setTimeout(() => {
-        sweep().then(({ scanned, pruned }) => {
-            if (pruned > 0) {
-                console.log(`[integrity] boot sweep — pruned ${pruned} dead rows out of ${scanned}`);
-            }
-        }).catch((e) => console.warn('[integrity] boot sweep failed:', e.message));
+        sweep()
+            .then(({ scanned, pruned }) => {
+                if (pruned > 0) {
+                    console.log(
+                        `[integrity] boot sweep — pruned ${pruned} dead rows out of ${scanned}`,
+                    );
+                }
+            })
+            .catch((e) => console.warn('[integrity] boot sweep failed:', e.message));
     }, 30 * 1000);
-    _timer = setInterval(() => {
-        sweep().then(({ scanned, pruned }) => {
-            if (pruned > 0) {
-                console.log(`[integrity] periodic sweep — pruned ${pruned} dead rows out of ${scanned}`);
-            }
-        }).catch(() => {});
-    }, Math.max(60, intervalMin) * 60 * 1000);
+    _timer = setInterval(
+        () => {
+            sweep()
+                .then(({ scanned, pruned }) => {
+                    if (pruned > 0) {
+                        console.log(
+                            `[integrity] periodic sweep — pruned ${pruned} dead rows out of ${scanned}`,
+                        );
+                    }
+                })
+                .catch(() => {});
+        },
+        Math.max(60, intervalMin) * 60 * 1000,
+    );
     _timer.unref?.();
 }
 
 export function stop() {
-    if (_timer) { clearInterval(_timer); _timer = null; }
+    if (_timer) {
+        clearInterval(_timer);
+        _timer = null;
+    }
 }
 
 // ---- Re-index from disk --------------------------------------------------
@@ -236,7 +263,14 @@ let _reindexRunning = false;
 export async function reindexFromDisk(configGroups, onProgress) {
     if (_reindexRunning) return { running: true };
     _reindexRunning = true;
-    const result = { scanned: 0, added: 0, skipped: 0, errors: 0, groups: 0, startedAt: Date.now() };
+    const result = {
+        scanned: 0,
+        added: 0,
+        skipped: 0,
+        errors: 0,
+        groups: 0,
+        startedAt: Date.now(),
+    };
     try {
         let topEntries = [];
         try {
@@ -256,33 +290,61 @@ export async function reindexFromDisk(configGroups, onProgress) {
             // Two-deep walk: <group>/<typeFolder>/<file>. Files at the
             // top level of <group>/ (rare, but happens with hand-pasted
             // archives) get bucketed by extension.
-            const subEntries = await fs.readdir(path.join(DOWNLOADS_DIR, folderName), { withFileTypes: true });
+            const subEntries = await fs.readdir(path.join(DOWNLOADS_DIR, folderName), {
+                withFileTypes: true,
+            });
             for (const sub of subEntries) {
                 if (sub.isDirectory()) {
                     const typeFolder = sub.name;
                     const folderType = TYPE_FOLDER_TO_FILETYPE[typeFolder] || null;
                     let files = [];
                     try {
-                        files = await fs.readdir(path.join(DOWNLOADS_DIR, folderName, typeFolder), { withFileTypes: true });
-                    } catch { continue; }
+                        files = await fs.readdir(path.join(DOWNLOADS_DIR, folderName, typeFolder), {
+                            withFileTypes: true,
+                        });
+                    } catch {
+                        continue;
+                    }
                     for (const f of files) {
                         if (!f.isFile()) continue;
                         const fullAbs = path.join(DOWNLOADS_DIR, folderName, typeFolder, f.name);
-                        const relPath = path.posix.join(folderName, typeFolder, f.name).replace(/\\/g, '/');
-                        await _ingestOne({ result, fullAbs, relPath, fileName: f.name,
-                            groupId, groupName, fileType: folderType || fileTypeFromExt(path.extname(f.name).toLowerCase()) });
+                        const relPath = path.posix
+                            .join(folderName, typeFolder, f.name)
+                            .replace(/\\/g, '/');
+                        await _ingestOne({
+                            result,
+                            fullAbs,
+                            relPath,
+                            fileName: f.name,
+                            groupId,
+                            groupName,
+                            fileType:
+                                folderType || fileTypeFromExt(path.extname(f.name).toLowerCase()),
+                        });
                     }
                 } else if (sub.isFile()) {
                     const fullAbs = path.join(DOWNLOADS_DIR, folderName, sub.name);
                     const relPath = path.posix.join(folderName, sub.name).replace(/\\/g, '/');
-                    await _ingestOne({ result, fullAbs, relPath, fileName: sub.name,
-                        groupId, groupName, fileType: fileTypeFromExt(path.extname(sub.name).toLowerCase()) });
+                    await _ingestOne({
+                        result,
+                        fullAbs,
+                        relPath,
+                        fileName: sub.name,
+                        groupId,
+                        groupName,
+                        fileType: fileTypeFromExt(path.extname(sub.name).toLowerCase()),
+                    });
                 }
             }
-            try { if (typeof onProgress === 'function') onProgress({ ...result, currentGroup: groupName }); } catch {}
+            try {
+                if (typeof onProgress === 'function')
+                    onProgress({ ...result, currentGroup: groupName });
+            } catch {}
         }
         result.finishedAt = Date.now();
-        try { _broadcast({ type: 'reindex_done', ...result }); } catch {}
+        try {
+            _broadcast({ type: 'reindex_done', ...result });
+        } catch {}
         return result;
     } finally {
         _reindexRunning = false;
@@ -293,20 +355,31 @@ async function _ingestOne({ result, fullAbs, relPath, fileName, groupId, groupNa
     result.scanned += 1;
     try {
         const st = await fs.stat(fullAbs);
-        if (!st.isFile() || st.size <= 0) { result.skipped += 1; return; }
+        if (!st.isFile() || st.size <= 0) {
+            result.skipped += 1;
+            return;
+        }
         const messageId = deriveMessageId(relPath, fileName);
         // INSERT OR IGNORE drops the row when (group_id, message_id) is
         // already present, so re-runs converge instead of doubling.
         const r = insertDownload({
-            groupId, groupName, messageId,
-            fileName, fileSize: st.size, fileType, filePath: relPath,
+            groupId,
+            groupName,
+            messageId,
+            fileName,
+            fileSize: st.size,
+            fileType,
+            filePath: relPath,
         });
         if (r && r.changes > 0) result.added += 1;
         else result.skipped += 1;
     } catch (e) {
         result.errors += 1;
-        if (process.env.TGDL_DEBUG) console.warn('[reindex] ingest failed:', relPath, e?.message || e);
+        if (process.env.TGDL_DEBUG)
+            console.warn('[reindex] ingest failed:', relPath, e?.message || e);
     }
 }
 
-export function isReindexRunning() { return _reindexRunning; }
+export function isReindexRunning() {
+    return _reindexRunning;
+}

@@ -43,7 +43,12 @@ function _matchesFilter(entry) {
     if (rank < (LEVEL_RANK[_filter.minLevel] ?? 0)) return false;
     if (_filter.search) {
         const needle = _filter.search.toLowerCase();
-        if (!String(entry.msg || '').toLowerCase().includes(needle)) return false;
+        if (
+            !String(entry.msg || '')
+                .toLowerCase()
+                .includes(needle)
+        )
+            return false;
     }
     return true;
 }
@@ -52,18 +57,18 @@ function _matchesFilter(entry) {
 // can scan a chatty terminal and pick out the line it cares about. Same
 // pattern as how `tail -f` colour wrappers (lnav, multitail, etc.) work.
 const SOURCE_HUE = {
-    app:        'text-emerald-400',
-    nsfw:       'text-pink-400',
-    thumbs:     'text-cyan-400',
-    dedup:      'text-amber-400',
-    integrity:  'text-violet-400',
-    gramjs:     'text-sky-400',
+    app: 'text-emerald-400',
+    nsfw: 'text-pink-400',
+    thumbs: 'text-cyan-400',
+    dedup: 'text-amber-400',
+    integrity: 'text-violet-400',
+    gramjs: 'text-sky-400',
     downloader: 'text-lime-400',
-    monitor:    'text-fuchsia-400',
-    backup:     'text-teal-400',
-    ai:         'text-indigo-400',
-    settings:   'text-orange-400',
-    backfill:   'text-yellow-400',
+    monitor: 'text-fuchsia-400',
+    backup: 'text-teal-400',
+    ai: 'text-indigo-400',
+    settings: 'text-orange-400',
+    backfill: 'text-yellow-400',
 };
 
 function _renderLine(entry) {
@@ -73,21 +78,27 @@ function _renderLine(entry) {
     // copy-paste pulls the raw line.
     const tsCls = 'text-tg-textSecondary/70';
     const srcCls = SOURCE_HUE[entry.source] || 'text-tg-textSecondary';
-    const levelGlyph = entry.level === 'error' ? '✖'
-        : entry.level === 'warn' ? '▲'
-        : '•';
-    const levelCls = entry.level === 'error' ? 'text-red-400'
-        : entry.level === 'warn' ? 'text-yellow-400'
-        : 'text-emerald-400/80';
-    const msgCls = entry.level === 'error' ? 'text-red-300'
-        : entry.level === 'warn' ? 'text-yellow-200'
-        : 'text-tg-text';
-    return `<div class="logline" data-level="${escapeHtml(entry.level)}" data-source="${escapeHtml(entry.source)}">`
-        + `<span class="${tsCls}">${_formatTime(entry.ts)}</span> `
-        + `<span class="${levelCls}">${levelGlyph}</span> `
-        + `<span class="${srcCls}">${escapeHtml(entry.source.padEnd(10))}</span> `
-        + `<span class="${msgCls}">${escapeHtml(entry.msg)}</span>`
-        + `</div>`;
+    const levelGlyph = entry.level === 'error' ? '✖' : entry.level === 'warn' ? '▲' : '•';
+    const levelCls =
+        entry.level === 'error'
+            ? 'text-red-400'
+            : entry.level === 'warn'
+              ? 'text-yellow-400'
+              : 'text-emerald-400/80';
+    const msgCls =
+        entry.level === 'error'
+            ? 'text-red-300'
+            : entry.level === 'warn'
+              ? 'text-yellow-200'
+              : 'text-tg-text';
+    return (
+        `<div class="logline" data-level="${escapeHtml(entry.level)}" data-source="${escapeHtml(entry.source)}">` +
+        `<span class="${tsCls}">${_formatTime(entry.ts)}</span> ` +
+        `<span class="${levelCls}">${levelGlyph}</span> ` +
+        `<span class="${srcCls}">${escapeHtml(entry.source.padEnd(10))}</span> ` +
+        `<span class="${msgCls}">${escapeHtml(entry.msg)}</span>` +
+        `</div>`
+    );
 }
 
 function _renderAll() {
@@ -184,12 +195,15 @@ function _wireFilters() {
             if (quick) {
                 const action = quick.dataset.action;
                 if (action === 'all') {
-                    SOURCES.forEach(s => _filter.sources.add(s));
+                    SOURCES.forEach((s) => _filter.sources.add(s));
                 } else if (action === 'none') {
                     _filter.sources.clear();
                 }
-                sourceWrap.querySelectorAll('.log-src-chip').forEach(btn => {
-                    btn.setAttribute('aria-pressed', _filter.sources.has(btn.dataset.source) ? 'true' : 'false');
+                sourceWrap.querySelectorAll('.log-src-chip').forEach((btn) => {
+                    btn.setAttribute(
+                        'aria-pressed',
+                        _filter.sources.has(btn.dataset.source) ? 'true' : 'false',
+                    );
                 });
                 _renderAll();
                 return;
@@ -228,7 +242,9 @@ function _wireFilters() {
     }
     const autoCb = $('logs-autoscroll');
     if (autoCb) {
-        autoCb.addEventListener('change', () => { _autoscroll = autoCb.checked; });
+        autoCb.addEventListener('change', () => {
+            _autoscroll = autoCb.checked;
+        });
     }
     const pauseBtn = $('logs-pause-btn');
     if (pauseBtn) {
@@ -247,17 +263,25 @@ function _wireFilters() {
             _lines.length = 0;
             const pre = $('logs-stream');
             if (pre) pre.innerHTML = '';
-            showToast(i18nT('maintenance.logs.cleared', 'Cleared (visual only — server buffer untouched).'), 'info');
+            showToast(
+                i18nT(
+                    'maintenance.logs.cleared',
+                    'Cleared (visual only — server buffer untouched).',
+                ),
+                'info',
+            );
         });
     }
     const dlBtn = $('logs-download-btn');
     if (dlBtn) {
         dlBtn.addEventListener('click', () => {
             const filtered = _lines.filter(_matchesFilter);
-            const text = filtered.map((e) => {
-                const ts = new Date(e.ts).toISOString();
-                return `[${ts}] [${e.source}] [${e.level}] ${e.msg}`;
-            }).join('\n');
+            const text = filtered
+                .map((e) => {
+                    const ts = new Date(e.ts).toISOString();
+                    return `[${ts}] [${e.source}] [${e.level}] ${e.msg}`;
+                })
+                .join('\n');
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

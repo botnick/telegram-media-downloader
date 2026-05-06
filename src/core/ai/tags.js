@@ -23,8 +23,12 @@ async function _getClassifier(cfg, onProgress, onLog) {
         kind: AI_MODEL_DEFAULTS.tags.kind,
         modelId: cfg?.model || AI_MODEL_DEFAULTS.tags.modelId,
         cacheDir: cfg?.cacheDir,
-        onProgress, onLog,
-    }).catch((e) => { _classifierPromise = null; throw e; });
+        onProgress,
+        onLog,
+    }).catch((e) => {
+        _classifierPromise = null;
+        throw e;
+    });
     return _classifierPromise;
 }
 
@@ -46,15 +50,21 @@ export async function classifyImage(absPath, cfg, onProgress, onLog) {
     if (!Array.isArray(out)) return [];
     // Normalise label strings — ImageNet labels often look like
     //   "tabby, tabby cat" — we keep just the head word for a cleaner cloud.
-    return out.slice(0, topK).map((r) => ({
-        tag: _cleanLabel(r?.label || ''),
-        score: Math.max(0, Math.min(1, Number(r?.score) || 0)),
-    })).filter((t) => !!t.tag);
+    return out
+        .slice(0, topK)
+        .map((r) => ({
+            tag: _cleanLabel(r?.label || ''),
+            score: Math.max(0, Math.min(1, Number(r?.score) || 0)),
+        }))
+        .filter((t) => !!t.tag);
 }
 
 function _cleanLabel(raw) {
     if (!raw) return '';
     const head = String(raw).split(',')[0].trim().toLowerCase();
     // Replace whitespace + underscores with single hyphens for a tag-friendly slug.
-    return head.replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
+    return head
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .slice(0, 40);
 }

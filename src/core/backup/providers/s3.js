@@ -28,8 +28,12 @@ import { BackupProvider } from './base.js';
 import { encryptStream } from '../encryption.js';
 
 export class S3Provider extends BackupProvider {
-    static get name() { return 's3'; }
-    static get displayName() { return 'S3-compatible (AWS / R2 / B2 / MinIO / Wasabi)'; }
+    static get name() {
+        return 's3';
+    }
+    static get displayName() {
+        return 'S3-compatible (AWS / R2 / B2 / MinIO / Wasabi)';
+    }
     static get configSchema() {
         return [
             {
@@ -80,11 +84,11 @@ export class S3Provider extends BackupProvider {
                 label: 'Force path-style addressing',
                 type: 'select',
                 options: [
-                    { value: 'auto',  label: 'Auto (off for AWS, on for MinIO)' },
-                    { value: 'true',  label: 'On' },
+                    { value: 'auto', label: 'Auto (off for AWS, on for MinIO)' },
+                    { value: 'true', label: 'On' },
                     { value: 'false', label: 'Off' },
                 ],
-                help: 'MinIO and some self-hosted gateways require path-style. Cloud S3 / R2 / B2 don\'t.',
+                help: "MinIO and some self-hosted gateways require path-style. Cloud S3 / R2 / B2 don't.",
             },
         ];
     }
@@ -122,12 +126,16 @@ export class S3Provider extends BackupProvider {
             credentials: { accessKeyId, secretAccessKey },
         });
         this.bucket = bucket;
-        this.prefix = String(cfg?.prefix || '').replace(/^\/+/, '').replace(/\/+$/, '');
+        this.prefix = String(cfg?.prefix || '')
+            .replace(/^\/+/, '')
+            .replace(/\/+$/, '');
     }
 
     /** Build a full S3 key from a remote path. */
     _key(remotePath) {
-        const norm = String(remotePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const norm = String(remotePath || '')
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '');
         return this.prefix ? `${this.prefix}/${norm}` : norm;
     }
 
@@ -139,11 +147,13 @@ export class S3Provider extends BackupProvider {
             body = body.pipe(encryptStream(opts.encryptKey));
         }
         if (typeof opts?.onProgress === 'function' || opts?.throttleBps) {
-            body = body.pipe(_makeProgressTransform({
-                onProgress: opts?.onProgress,
-                throttleBps: opts?.throttleBps,
-                signal: ctx?.signal,
-            }));
+            body = body.pipe(
+                _makeProgressTransform({
+                    onProgress: opts?.onProgress,
+                    throttleBps: opts?.throttleBps,
+                    signal: ctx?.signal,
+                }),
+            );
         }
         const uploader = new Upload({
             client: this.client,
@@ -174,15 +184,20 @@ export class S3Provider extends BackupProvider {
 
     async delete(remotePath, _ctx) {
         try {
-            await this.client.send(new DeleteObjectCommand({
-                Bucket: this.bucket,
-                Key: this._key(remotePath),
-            }));
+            await this.client.send(
+                new DeleteObjectCommand({
+                    Bucket: this.bucket,
+                    Key: this._key(remotePath),
+                }),
+            );
         } catch (e) {
             // S3 returns 204 for both "deleted" and "didn't exist" — only
             // genuine network/auth errors land here.
-            if (e?.$metadata?.httpStatusCode && e.$metadata.httpStatusCode >= 400
-                && e.$metadata.httpStatusCode !== 404) {
+            if (
+                e?.$metadata?.httpStatusCode &&
+                e.$metadata.httpStatusCode >= 400 &&
+                e.$metadata.httpStatusCode !== 404
+            ) {
                 throw e;
             }
         }
@@ -190,10 +205,12 @@ export class S3Provider extends BackupProvider {
 
     async stat(remotePath, _ctx) {
         try {
-            const r = await this.client.send(new HeadObjectCommand({
-                Bucket: this.bucket,
-                Key: this._key(remotePath),
-            }));
+            const r = await this.client.send(
+                new HeadObjectCommand({
+                    Bucket: this.bucket,
+                    Key: this._key(remotePath),
+                }),
+            );
             return {
                 size: Number(r?.ContentLength || 0),
                 mtime: r?.LastModified ? new Date(r.LastModified).getTime() : 0,
@@ -211,13 +228,15 @@ export class S3Provider extends BackupProvider {
         const Prefix = this._key(prefix || '');
         do {
             if (ctx?.signal?.aborted) throw new Error('aborted');
-            const r = await this.client.send(new ListObjectsV2Command({
-                Bucket: this.bucket,
-                Prefix,
-                ContinuationToken,
-                MaxKeys: 1000,
-            }));
-            for (const obj of (r.Contents || [])) {
+            const r = await this.client.send(
+                new ListObjectsV2Command({
+                    Bucket: this.bucket,
+                    Prefix,
+                    ContinuationToken,
+                    MaxKeys: 1000,
+                }),
+            );
+            for (const obj of r.Contents || []) {
                 // Trim our configured prefix back off so the caller sees
                 // remote-paths in the same shape it passes in.
                 let name = obj.Key || '';
@@ -240,30 +259,35 @@ export class S3Provider extends BackupProvider {
             return { ok: true, detail: `HeadBucket ${this.bucket} → 200` };
         } catch (e) {
             const code = e?.$metadata?.httpStatusCode;
-            return { ok: false, detail: `${e.name || 'Error'}${code ? ' (' + code + ')' : ''}: ${e.message}` };
+            return {
+                ok: false,
+                detail: `${e.name || 'Error'}${code ? ' (' + code + ')' : ''}: ${e.message}`,
+            };
         }
     }
 
     async close() {
-        try { this.client?.destroy?.(); } catch {}
+        try {
+            this.client?.destroy?.();
+        } catch {}
         this.client = null;
     }
 }
 
 const _CT = {
-    '.gz':   'application/gzip',
-    '.tar':  'application/x-tar',
-    '.tgz':  'application/gzip',
-    '.zip':  'application/zip',
+    '.gz': 'application/gzip',
+    '.tar': 'application/x-tar',
+    '.tgz': 'application/gzip',
+    '.zip': 'application/zip',
     '.json': 'application/json',
-    '.txt':  'text/plain',
-    '.jpg':  'image/jpeg',
+    '.txt': 'text/plain',
+    '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
-    '.png':  'image/png',
+    '.png': 'image/png',
     '.webp': 'image/webp',
-    '.mp4':  'video/mp4',
-    '.mov':  'video/quicktime',
-    '.mp3':  'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.mp3': 'audio/mpeg',
 };
 function _guessContentType(p) {
     const ext = path.posix.extname(String(p || '')).toLowerCase();
@@ -279,7 +303,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                 if (signal?.aborted) return cb(new Error('aborted'));
                 bytes += chunk.length;
                 if (typeof onProgress === 'function') {
-                    try { onProgress({ bytesUploaded: bytes }); } catch {}
+                    try {
+                        onProgress({ bytesUploaded: bytes });
+                    } catch {}
                 }
                 if (throttleBps && throttleBps > 0) {
                     const elapsedMs = Date.now() - start;
@@ -290,7 +316,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal }) {
                     }
                 }
                 cb(null, chunk);
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }

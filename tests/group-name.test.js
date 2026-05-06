@@ -8,8 +8,12 @@
 // resolution-order contract so future refactors don't reopen that gap.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { state, getGroupName, updateGroupNameCache, isUnresolvedName }
-    from '../src/web/public/js/store.js';
+import {
+    state,
+    getGroupName,
+    updateGroupNameCache,
+    isUnresolvedName,
+} from '../src/web/public/js/store.js';
 
 beforeEach(() => {
     // Reset every slice we touch — store.js is a singleton, so leaks across

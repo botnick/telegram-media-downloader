@@ -15,7 +15,7 @@ function ensureDataDir() {
 
 export function getOrGenerateSecret() {
     ensureDataDir();
-    
+
     if (fs.existsSync(SECRET_PATH)) {
         try {
             const secret = fs.readFileSync(SECRET_PATH, 'utf8').trim();
@@ -33,6 +33,6 @@ export function getOrGenerateSecret() {
     } catch (e) {
         console.error('Error writing secret file:', e);
     }
-    
+
     return newSecret;
 }

@@ -114,7 +114,9 @@ export function decryptConfig(blob, shareSecret) {
  * format — falls through to "needs re-entry" instead of crashing.
  */
 export function looksLikeCredentialsBlob(blob) {
-    return Buffer.isBuffer(blob)
-        && blob.length >= MAGIC.length
-        && blob.slice(0, MAGIC.length).equals(MAGIC);
+    return (
+        Buffer.isBuffer(blob) &&
+        blob.length >= MAGIC.length &&
+        blob.slice(0, MAGIC.length).equals(MAGIC)
+    );
 }

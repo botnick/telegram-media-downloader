@@ -30,7 +30,8 @@ function parseTmeHttp(url) {
 
     if (segs[0] === 'c') {
         // /c/<id>/<msg> or /c/<id>/<topic>/<msg>
-        if (segs.length < 3) throw new UrlParseError('Private-channel URL must include a message id');
+        if (segs.length < 3)
+            throw new UrlParseError('Private-channel URL must include a message id');
         const chatRef = toChannelId(segs[1]);
         if (segs.length === 3) {
             return { chatRef, messageId: parseInt(segs[2], 10) };
@@ -56,7 +57,7 @@ function parseTgScheme(url) {
     if (!m) throw new UrlParseError('Unknown tg:// URL');
     const action = m[1];
     const params = Object.fromEntries(
-        m[2].split('&').map(p => p.split('=').map(decodeURIComponent)),
+        m[2].split('&').map((p) => p.split('=').map(decodeURIComponent)),
     );
     if (action === 'resolve') {
         if (!params.domain) throw new UrlParseError('tg://resolve missing domain');
@@ -83,7 +84,11 @@ export function parseTelegramUrl(input) {
     if (trimmed.startsWith('tg://')) return parseTgScheme(trimmed);
 
     let urlObj;
-    try { urlObj = new URL(trimmed); } catch { throw new UrlParseError('Not a valid URL'); }
+    try {
+        urlObj = new URL(trimmed);
+    } catch {
+        throw new UrlParseError('Not a valid URL');
+    }
     const host = urlObj.host.toLowerCase();
     if (host !== 't.me' && host !== 'telegram.me' && host !== 'telegram.dog') {
         throw new UrlParseError(`Unsupported host: ${host}`);
@@ -95,6 +100,6 @@ export function parseTelegramUrl(input) {
 export function parseUrlList(text) {
     return String(text || '')
         .split(/[\r\n]+/)
-        .map(s => s.trim())
+        .map((s) => s.trim())
         .filter(Boolean);
 }

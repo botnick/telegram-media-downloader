@@ -10,7 +10,11 @@
 
 async function parseJsonSafe(res) {
     const text = await res.text();
-    try { return text ? JSON.parse(text) : {}; } catch { return { raw: text }; }
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch {
+        return { raw: text };
+    }
 }
 
 let _adminToastInFlight = false;
@@ -19,11 +23,15 @@ function _toastAdminOnly(msg) {
     // want one toast on screen.
     if (_adminToastInFlight) return;
     _adminToastInFlight = true;
-    setTimeout(() => { _adminToastInFlight = false; }, 1500);
+    setTimeout(() => {
+        _adminToastInFlight = false;
+    }, 1500);
     try {
         // Lazy import to avoid a circular dep at module-eval time.
         import('./utils.js').then(({ showToast }) => showToast(msg));
-    } catch { /* ignore */ }
+    } catch {
+        /* ignore */
+    }
 }
 
 async function request(method, url, body) {
@@ -48,7 +56,11 @@ async function request(method, url, body) {
 
     const data = await parseJsonSafe(res);
 
-    if (res.status === 503 && data.setupRequired && !window.location.pathname.startsWith('/setup-needed')) {
+    if (
+        res.status === 503 &&
+        data.setupRequired &&
+        !window.location.pathname.startsWith('/setup-needed')
+    ) {
         window.location.href = '/setup-needed.html';
         const err = new Error(data.error || 'Setup required');
         err.status = 503;

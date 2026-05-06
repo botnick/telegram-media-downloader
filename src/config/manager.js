@@ -8,7 +8,7 @@ const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
 const DEFAULT_CONFIG = {
     telegram: {
         apiId: '',
-        apiHash: ''
+        apiHash: '',
     },
     accounts: [],
     pollingInterval: 10,
@@ -17,11 +17,11 @@ const DEFAULT_CONFIG = {
         path: './data/downloads',
         concurrent: 10,
         retries: 5,
-        maxSpeed: 0 // 0 = unlimited
+        maxSpeed: 0, // 0 = unlimited
     },
     rateLimits: {
         requestsPerMinute: 60,
-        delayMs: { min: 100, max: 300 }
+        delayMs: { min: 100, max: 300 },
     },
     diskManagement: {
         maxTotalSize: '50GB',
@@ -30,7 +30,7 @@ const DEFAULT_CONFIG = {
         // the disk-rotator sweeps the oldest unpinned downloads off until the
         // cap is satisfied. Sweep cadence in minutes.
         enabled: false,
-        sweepIntervalMin: 10
+        sweepIntervalMin: 10,
     },
     // Rescue Mode: per-group "keep only what gets deleted from source" mode.
     // When enabled (globally or per-group), every monitored download is
@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
     rescue: {
         enabled: false,
         retentionHours: 48,
-        sweepIntervalMin: 10
+        sweepIntervalMin: 10,
     },
     // Advanced runtime tuning. Every value here mirrors a previously-hardcoded
     // constant in the hot path; consumers MUST read with the inline literal
@@ -67,7 +67,7 @@ const DEFAULT_CONFIG = {
             idleSleepMs: 200,
             // History (priority 2) queue length above which new jobs spill
             // to disk instead of growing RAM. Realtime never spills.
-            spilloverThreshold: 2000
+            spilloverThreshold: 2000,
         },
         history: {
             // Backfill pauses iteration when the downloader queue is above
@@ -81,7 +81,7 @@ const DEFAULT_CONFIG = {
             shortBreakEveryN: 100,
             // Insert a 60-120s "coffee break" every N processed messages.
             // Set to 0 to disable. Helps avoid Telegram anti-flood bans.
-            longBreakEveryN: 1000
+            longBreakEveryN: 1000,
         },
         diskRotator: {
             // Rows fetched per pass when the rotator needs to delete old
@@ -89,7 +89,7 @@ const DEFAULT_CONFIG = {
             sweepBatch: 50,
             // Hard ceiling on deletes per sweep — defends against a
             // misconfigured cap nuking everything in one tick.
-            maxDeletesPerSweep: 5000
+            maxDeletesPerSweep: 5000,
         },
         integrity: {
             // How often to walk every DB row and prune entries whose file
@@ -97,14 +97,14 @@ const DEFAULT_CONFIG = {
             intervalMin: 60,
             // stat() concurrency per batch. Bigger = faster on SSDs, more
             // FD pressure on busy systems.
-            batchSize: 64
+            batchSize: 64,
         },
         web: {
             // Dashboard cookie lifetime in days. Existing tokens keep their
             // original expiry; only newly-issued sessions use this value.
-            sessionTtlDays: 7
-        }
-    }
+            sessionTtlDays: 7,
+        },
+    },
 };
 
 const DEFAULT_FILTERS = {
@@ -116,7 +116,7 @@ const DEFAULT_FILTERS = {
     audio: false,
     gifs: false,
     stickers: false, // Default false for stickers
-    urls: true
+    urls: true,
 };
 
 export function loadConfig() {
@@ -129,10 +129,10 @@ export function loadConfig() {
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 4));
             return DEFAULT_CONFIG;
         }
-        
+
         const data = fs.readFileSync(CONFIG_PATH, 'utf8');
         const userConfig = JSON.parse(data);
-        
+
         // Deep Merge to ensure new defaults are present in old configs
         const userAdvanced = userConfig.advanced || {};
         const config = {
@@ -150,17 +150,26 @@ export function loadConfig() {
             advanced: {
                 ...DEFAULT_CONFIG.advanced,
                 ...userAdvanced,
-                downloader: { ...DEFAULT_CONFIG.advanced.downloader, ...(userAdvanced.downloader || {}) },
+                downloader: {
+                    ...DEFAULT_CONFIG.advanced.downloader,
+                    ...(userAdvanced.downloader || {}),
+                },
                 history: { ...DEFAULT_CONFIG.advanced.history, ...(userAdvanced.history || {}) },
-                diskRotator: { ...DEFAULT_CONFIG.advanced.diskRotator, ...(userAdvanced.diskRotator || {}) },
-                integrity: { ...DEFAULT_CONFIG.advanced.integrity, ...(userAdvanced.integrity || {}) },
-                web: { ...DEFAULT_CONFIG.advanced.web, ...(userAdvanced.web || {}) }
+                diskRotator: {
+                    ...DEFAULT_CONFIG.advanced.diskRotator,
+                    ...(userAdvanced.diskRotator || {}),
+                },
+                integrity: {
+                    ...DEFAULT_CONFIG.advanced.integrity,
+                    ...(userAdvanced.integrity || {}),
+                },
+                web: { ...DEFAULT_CONFIG.advanced.web, ...(userAdvanced.web || {}) },
             },
             // Heal Groups: Ensure every group has latest filter keys
-            groups: (userConfig.groups || []).map(group => ({
+            groups: (userConfig.groups || []).map((group) => ({
                 ...group,
-                filters: { ...DEFAULT_FILTERS, ...(group.filters || {}) }
-            }))
+                filters: { ...DEFAULT_FILTERS, ...(group.filters || {}) },
+            })),
         };
 
         // Self-Healing: If structure changed (new keys added), save back to disk
@@ -169,12 +178,12 @@ export function loadConfig() {
         // Note: Simple stringify comparison order check is risky, but for adding keys it works.
         // Or we just save it always? No, disk write spam.
         // Lets checks if keys count changed or important keys missing.
-        
+
         // Robust check: Compare loaded 'userConfig' vs 'config' (merged)
         // If 'config' (merged) has keys that 'userConfig' didn't, we should save.
         if (JSON.stringify(config) !== JSON.stringify(userConfig)) {
-             // console.log('🔄 Updating config file with new defaults...');
-             fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4));
+            // console.log('🔄 Updating config file with new defaults...');
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4));
         }
 
         return config;
@@ -195,7 +204,7 @@ export function saveConfig(config) {
 }
 
 export function addGroup(config, group) {
-    const existingIndex = config.groups.findIndex(g => g.id === group.id);
+    const existingIndex = config.groups.findIndex((g) => g.id === group.id);
     if (existingIndex >= 0) {
         config.groups[existingIndex] = group;
     } else {
@@ -221,7 +230,14 @@ export function watchConfig(callback) {
     // Returns an unsubscriber so callers can release the watcher + pending
     // debounce timer cleanly on shutdown / reconfigure.
     return () => {
-        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
-        try { watcher.close(); } catch { /* already closed */ }
+        if (debounceTimer) {
+            clearTimeout(debounceTimer);
+            debounceTimer = null;
+        }
+        try {
+            watcher.close();
+        } catch {
+            /* already closed */
+        }
     };
 }

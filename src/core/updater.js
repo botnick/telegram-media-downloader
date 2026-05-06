@@ -101,8 +101,10 @@ async function _ensureBackupsDir() {
 function _timestampSlug() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`
-        + `-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`;
+    return (
+        `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}` +
+        `-${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}`
+    );
 }
 
 /**
@@ -123,7 +125,11 @@ async function _snapshotDb() {
     await _ensureBackupsDir();
 
     const db = getDb();
-    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* non-fatal */ }
+    try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch {
+        /* non-fatal */
+    }
 
     const dst = path.join(BACKUPS_DIR, `db-pre-update-${_timestampSlug()}.sqlite`);
     try {
@@ -145,18 +151,27 @@ async function _snapshotDb() {
 
     // Prune older backups, keep the most-recent KEEP_BACKUPS files.
     try {
-        const files = (await fs.readdir(BACKUPS_DIR))
-            .filter((n) => n.startsWith('db-pre-update-') && n.endsWith('.sqlite'));
-        const stats = await Promise.all(files.map(async (n) => {
-            const full = path.join(BACKUPS_DIR, n);
-            const s = await fs.stat(full).catch(() => null);
-            return s ? { full, mtime: s.mtimeMs } : null;
-        }));
+        const files = (await fs.readdir(BACKUPS_DIR)).filter(
+            (n) => n.startsWith('db-pre-update-') && n.endsWith('.sqlite'),
+        );
+        const stats = await Promise.all(
+            files.map(async (n) => {
+                const full = path.join(BACKUPS_DIR, n);
+                const s = await fs.stat(full).catch(() => null);
+                return s ? { full, mtime: s.mtimeMs } : null;
+            }),
+        );
         const sorted = stats.filter(Boolean).sort((a, b) => b.mtime - a.mtime);
         for (const old of sorted.slice(KEEP_BACKUPS)) {
-            try { await fs.unlink(old.full); } catch { /* best-effort */ }
+            try {
+                await fs.unlink(old.full);
+            } catch {
+                /* best-effort */
+            }
         }
-    } catch { /* prune is best-effort */ }
+    } catch {
+        /* prune is best-effort */
+    }
 
     return { path: dst, sizeBytes: stat.size };
 }
@@ -179,7 +194,7 @@ async function _triggerWatchtower() {
     try {
         const res = await fetch(`${ep.url}/v1/update`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${ep.token}` },
+            headers: { Authorization: `Bearer ${ep.token}` },
             signal: ctrl.signal,
         });
         if (!res.ok) {

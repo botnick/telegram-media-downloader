@@ -42,7 +42,7 @@ import crypto from 'crypto';
 // ---- secret bootstrap ------------------------------------------------------
 
 const SECRET_BYTES = 32;
-let _cachedSecret = null;          // hex string
+let _cachedSecret = null; // hex string
 let _cachedSecretFingerprint = '';
 
 /**
@@ -89,10 +89,7 @@ export function getShareSecretFingerprint() {
 // ---- base64url helpers -----------------------------------------------------
 
 function toBase64Url(buf) {
-    return buf.toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
+    return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 // Decoder kept for parity / future verification flows that need raw
@@ -102,8 +99,11 @@ function _fromBase64Url(s) {
     if (!/^[A-Za-z0-9_-]+$/.test(s) || s.length > 512) return Buffer.alloc(0);
     let b64 = s.replace(/-/g, '+').replace(/_/g, '/');
     while (b64.length % 4) b64 += '=';
-    try { return Buffer.from(b64, 'base64'); }
-    catch { return Buffer.alloc(0); }
+    try {
+        return Buffer.from(b64, 'base64');
+    } catch {
+        return Buffer.alloc(0);
+    }
 }
 
 // ---- sign / verify ---------------------------------------------------------
@@ -133,8 +133,11 @@ export function verifyShareToken(linkId, expEpochSeconds, sig) {
     const expected = Buffer.from(signShareToken(linkId, expEpochSeconds), 'utf8');
     const got = Buffer.from(String(sig || ''), 'utf8');
     if (expected.length !== got.length) return false;
-    try { return crypto.timingSafeEqual(expected, got); }
-    catch { return false; }
+    try {
+        return crypto.timingSafeEqual(expected, got);
+    } catch {
+        return false;
+    }
 }
 
 // Filename sanitiser for the URL path segment. Strips any character that
@@ -190,9 +193,9 @@ export function buildShareUrlPath(linkId, expEpochSeconds, fileName = null) {
 // `_ttl*` variables below shadow them once the server applies a config.
 // Importers that want the *current* effective limits should call
 // `getShareLimits()` rather than reading these constants directly.
-export const TTL_MIN_SEC_DEFAULT = 60;                 // 1 minute floor
-export const TTL_MAX_SEC_DEFAULT = 90 * 24 * 3600;     // 90 days ceiling
-export const TTL_DEFAULT_SEC_DEFAULT = 7 * 24 * 3600;  // 7 days
+export const TTL_MIN_SEC_DEFAULT = 60; // 1 minute floor
+export const TTL_MAX_SEC_DEFAULT = 90 * 24 * 3600; // 90 days ceiling
+export const TTL_DEFAULT_SEC_DEFAULT = 7 * 24 * 3600; // 7 days
 // Backwards-compat aliases. Existing callers (and the test suite) read
 // these as plain constants; they keep returning the spec default values.
 export const TTL_MIN_SEC = TTL_MIN_SEC_DEFAULT;
@@ -221,15 +224,17 @@ export function applyShareLimits(cfg = {}) {
     const maxIn = Number(cfg.ttlMaxSec);
     const defIn = Number(cfg.ttlDefaultSec);
     // Floor: at least 1 second; can't go below 1 or the URL is meaningless.
-    const min = Number.isFinite(minIn) && minIn >= 1
-        ? Math.floor(minIn) : TTL_MIN_SEC_DEFAULT;
+    const min = Number.isFinite(minIn) && minIn >= 1 ? Math.floor(minIn) : TTL_MIN_SEC_DEFAULT;
     // Ceiling: at most 10 years (defensive — keeps signed-integer epoch
     // math comfortably inside JS safe range).
     const TEN_YEARS_SEC = 10 * 365 * 24 * 3600;
-    const max = Number.isFinite(maxIn) && maxIn >= min
-        ? Math.min(TEN_YEARS_SEC, Math.floor(maxIn)) : TTL_MAX_SEC_DEFAULT;
+    const max =
+        Number.isFinite(maxIn) && maxIn >= min
+            ? Math.min(TEN_YEARS_SEC, Math.floor(maxIn))
+            : TTL_MAX_SEC_DEFAULT;
     const def = Number.isFinite(defIn)
-        ? Math.max(min, Math.min(max, Math.floor(defIn))) : TTL_DEFAULT_SEC_DEFAULT;
+        ? Math.max(min, Math.min(max, Math.floor(defIn)))
+        : TTL_DEFAULT_SEC_DEFAULT;
     _ttlMin = min;
     _ttlMax = max;
     _ttlDefault = def;

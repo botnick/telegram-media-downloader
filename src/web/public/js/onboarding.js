@@ -7,7 +7,10 @@
 // share one.
 
 import { t as i18nT } from './i18n.js';
-import { subscribe as subscribeMonitorStatus, refreshNow as refreshMonitorStatus } from './monitor-status.js';
+import {
+    subscribe as subscribeMonitorStatus,
+    refreshNow as refreshMonitorStatus,
+} from './monitor-status.js';
 
 const HINTS_DEF = {
     'configure-api': {
@@ -16,7 +19,8 @@ const HINTS_DEF = {
         bodyKey: 'onboard.configure_api.body_html',
         actionKey: 'onboard.configure_api.action',
         defTitle: 'Step 1 of 3 — paste your Telegram API credentials',
-        defBody: 'Get apiId + apiHash from <a href="https://my.telegram.org" target="_blank" rel="noopener" class="underline">my.telegram.org</a>, then save them under Settings → Telegram API.',
+        defBody:
+            'Get apiId + apiHash from <a href="https://my.telegram.org" target="_blank" rel="noopener" class="underline">my.telegram.org</a>, then save them under Settings → Telegram API.',
         defAction: 'Open Settings',
     },
     'add-account': {
@@ -25,7 +29,8 @@ const HINTS_DEF = {
         bodyKey: 'onboard.add_account.body_html',
         actionKey: 'onboard.add_account.action',
         defTitle: 'Step 2 of 3 — add a Telegram account',
-        defBody: 'Sign in with your phone number (and 2FA if you have it). Sessions are stored encrypted under <code>data/sessions/</code>.',
+        defBody:
+            'Sign in with your phone number (and 2FA if you have it). Sessions are stored encrypted under <code>data/sessions/</code>.',
         defAction: 'Add account',
     },
     'enable-group': {
@@ -34,7 +39,8 @@ const HINTS_DEF = {
         bodyKey: 'onboard.enable_group.body_html',
         actionKey: 'onboard.enable_group.action',
         defTitle: 'Step 3 of 3 — pick a chat to monitor',
-        defBody: 'Open the Groups page, click a chat to add it, or paste a <code>t.me/...</code> link from the top bar to download a single message right away.',
+        defBody:
+            'Open the Groups page, click a chat to add it, or paste a <code>t.me/...</code> link from the top bar to download a single message right away.',
         defAction: 'Choose a group',
     },
 };
@@ -57,7 +63,8 @@ function ensureHost() {
     if (host) return host;
     host = document.createElement('div');
     host.id = 'onboarding-banner';
-    host.className = 'hidden bg-tg-blue/10 border-b border-tg-blue/30 text-tg-text px-4 py-3 text-sm';
+    host.className =
+        'hidden bg-tg-blue/10 border-b border-tg-blue/30 text-tg-text px-4 py-3 text-sm';
     host.style.position = 'sticky';
     host.style.top = '0';
     host.style.zIndex = '30';
@@ -123,4 +130,6 @@ export function initOnboarding() {
     unsubscribe = subscribeMonitorStatus(applyStatus);
 }
 
-export function refreshOnboarding() { refreshMonitorStatus(); }
+export function refreshOnboarding() {
+    refreshMonitorStatus();
+}

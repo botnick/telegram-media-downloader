@@ -85,10 +85,10 @@ self.addEventListener('install', (event) => {
                 SHELL_URLS.map((u) =>
                     cache.add(u).catch(() => {
                         /* swallow — best-effort precache */
-                    })
-                )
-            )
-        )
+                    }),
+                ),
+            ),
+        ),
     );
     self.skipWaiting();
 });
@@ -100,10 +100,10 @@ self.addEventListener('activate', (event) => {
             await Promise.all(
                 keys
                     .filter((k) => k !== SHELL_CACHE && k !== ASSET_CACHE)
-                    .map((k) => caches.delete(k))
+                    .map((k) => caches.delete(k)),
             );
             await self.clients.claim();
-        })()
+        })(),
     );
 });
 
@@ -120,7 +120,11 @@ self.addEventListener('fetch', (event) => {
     // requests for Tailwind/Remixicon, etc.).
     if (req.method !== 'GET') return;
     let url;
-    try { url = new URL(req.url); } catch { return; }
+    try {
+        url = new URL(req.url);
+    } catch {
+        return;
+    }
     if (url.origin !== self.location.origin) return;
 
     if (isBypass(url)) return;
@@ -144,7 +148,7 @@ self.addEventListener('fetch', (event) => {
                     const cached = (await cache.match(req)) || (await cache.match('/index.html'));
                     return cached || Response.error();
                 }
-            })()
+            })(),
         );
         return;
     }
@@ -165,7 +169,7 @@ self.addEventListener('fetch', (event) => {
                     const cached = await cache.match(req);
                     return cached || Response.error();
                 }
-            })()
+            })(),
         );
         return;
     }
@@ -185,7 +189,7 @@ self.addEventListener('fetch', (event) => {
                     })
                     .catch(() => cached || Response.error());
                 return cached || networkPromise;
-            })()
+            })(),
         );
     }
     // Anything else — let the network handle it.

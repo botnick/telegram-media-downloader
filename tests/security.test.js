@@ -19,7 +19,12 @@ describe('SecureSession', () => {
         const cipher = crypto.createCipheriv('aes-256-gcm', legacyKey, iv);
         const data = Buffer.concat([cipher.update('legacy', 'utf8'), cipher.final()]);
         const tag = cipher.getAuthTag();
-        const blob = { v: 1, iv: iv.toString('hex'), data: data.toString('hex'), tag: tag.toString('hex') };
+        const blob = {
+            v: 1,
+            iv: iv.toString('hex'),
+            data: data.toString('hex'),
+            tag: tag.toString('hex'),
+        };
 
         const s = new SecureSession(password);
         expect(s.decrypt(blob)).toBe('legacy');

@@ -51,10 +51,11 @@ export class ConnectionManager {
 
             // Reset failures if successful
             this.failures = 0;
-
         } catch (error) {
             this.failures++;
-            console.log(colorize(`⚠️ Connection lost (Att ${this.failures}): ${error.message}`, 'yellow'));
+            console.log(
+                colorize(`⚠️ Connection lost (Att ${this.failures}): ${error.message}`, 'yellow'),
+            );
 
             try {
                 // Force reconnect

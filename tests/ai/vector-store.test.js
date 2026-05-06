@@ -12,7 +12,12 @@ import fs from 'fs';
 import os from 'os';
 
 import {
-    cosine, l2Normalize, vectorToBlob, blobToVector, topK, clearCache,
+    cosine,
+    l2Normalize,
+    vectorToBlob,
+    blobToVector,
+    topK,
+    clearCache,
 } from '../../src/core/ai/vector-store.js';
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-vec-'));
@@ -21,11 +26,13 @@ let downloadsApi;
 beforeAll(async () => {
     process.env.TGDL_DATA_DIR = TMP;
     downloadsApi = await import('../../src/core/db.js');
-    downloadsApi.getDb();   // boot schema
+    downloadsApi.getDb(); // boot schema
 });
 
 afterAll(() => {
-    try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
+    try {
+        fs.rmSync(TMP, { recursive: true, force: true });
+    } catch {}
     delete process.env.TGDL_DATA_DIR;
 });
 
@@ -85,8 +92,12 @@ describe('topK()', () => {
         for (let i = 0; i < vecs.length; i++) {
             l2Normalize(vecs[i]);
             insertDownload({
-                groupId: 'g', groupName: 'G', messageId: 100 + i,
-                fileName: `f${i}.jpg`, fileSize: 1000, fileType: 'photo',
+                groupId: 'g',
+                groupName: 'G',
+                messageId: 100 + i,
+                fileName: `f${i}.jpg`,
+                fileSize: 1000,
+                fileType: 'photo',
                 filePath: `g/images/f${i}.jpg`,
             });
         }
@@ -96,7 +107,7 @@ describe('topK()', () => {
             setImageEmbedding(rows[i].id, vectorToBlob(vecs[i]), 'test/model');
         }
 
-        clearCache();   // important: per-test isolation
+        clearCache(); // important: per-test isolation
         const q = new Float32Array([0, 1, 0, 0]);
         l2Normalize(q);
         const out = topK(q, { limit: 3 });

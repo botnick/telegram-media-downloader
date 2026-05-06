@@ -1,7 +1,7 @@
 /**
  * 🌍 Universal Watchdog Runner
  * Works on: Windows, macOS, Linux
- * 
+ *
  * Usage: node runner.js
  */
 
@@ -36,19 +36,19 @@ function logCrash(code) {
     const msg = `[${timestamp}] Crashed with exit code ${code}\n`;
     fs.appendFileSync(LOG_FILE, msg);
     console.log('\x1b[31m%s\x1b[0m', `❌ ${msg.trim()}`);
-    
+
     // Play sound (Cross-platform bell)
     process.stdout.write('\x07');
 }
 
 function startApp() {
     const startTime = Date.now();
-    
+
     console.log('\x1b[32m%s\x1b[0m', `🚀 Launching Process (Attempt #${crashCount + 1})...`);
-    
+
     const child = spawn('node', [APP_SCRIPT, ...APP_ARGS], {
         stdio: 'inherit', // Preserve colors and dashboard
-        cwd: __dirname
+        cwd: __dirname,
     });
 
     child.on('close', (code) => {
@@ -75,7 +75,7 @@ function startApp() {
 
         const delay = Math.min(30, 5 * (crashCount + 1));
         console.log('\x1b[33m%s\x1b[0m', `⏳ Restarting in ${delay} seconds...`);
-        
+
         setTimeout(startApp, delay * 1000);
     });
 }

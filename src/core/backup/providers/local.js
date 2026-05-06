@@ -16,8 +16,12 @@ import { BackupProvider } from './base.js';
 import { encryptStream } from '../encryption.js';
 
 export class LocalProvider extends BackupProvider {
-    static get name() { return 'local'; }
-    static get displayName() { return 'Local filesystem / NAS mount'; }
+    static get name() {
+        return 'local';
+    }
+    static get displayName() {
+        return 'Local filesystem / NAS mount';
+    }
     static get configSchema() {
         return [
             {
@@ -78,18 +82,24 @@ export class LocalProvider extends BackupProvider {
         let bytesIn = 0;
         const onProgress = opts?.onProgress;
         if (typeof onProgress === 'function' || opts?.throttleBps) {
-            transforms.push(_makeProgressTransform({
-                onProgress,
-                throttleBps: opts?.throttleBps,
-                signal: ctx?.signal,
-                onBytes: (n) => { bytesIn = n; },
-            }));
+            transforms.push(
+                _makeProgressTransform({
+                    onProgress,
+                    throttleBps: opts?.throttleBps,
+                    signal: ctx?.signal,
+                    onBytes: (n) => {
+                        bytesIn = n;
+                    },
+                }),
+            );
         }
         const stages = [src, ...transforms, dst];
         try {
             await pipeline(stages, { signal: ctx?.signal });
         } catch (e) {
-            try { await fsp.unlink(tmp); } catch {}
+            try {
+                await fsp.unlink(tmp);
+            } catch {}
             throw e;
         }
         await fsp.rename(tmp, dest);
@@ -141,12 +151,11 @@ export class LocalProvider extends BackupProvider {
             if (e.isFile()) {
                 try {
                     const st = await fsp.stat(abs);
-                    const rel = path.posix.join(
-                        String(prefix || '').replace(/\\/g, '/'),
-                        e.name,
-                    );
+                    const rel = path.posix.join(String(prefix || '').replace(/\\/g, '/'), e.name);
                     yield { name: rel, size: st.size, mtime: st.mtimeMs };
-                } catch { /* file disappeared mid-list */ }
+                } catch {
+                    /* file disappeared mid-list */
+                }
             } else if (e.isDirectory()) {
                 // Recurse — snapshot retention only walks shallow prefixes
                 // so depth is bounded in practice.
@@ -188,7 +197,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal, onBytes }) {
                 bytes += chunk.length;
                 if (typeof onBytes === 'function') onBytes(bytes);
                 if (typeof onProgress === 'function') {
-                    try { onProgress({ bytesUploaded: bytes }); } catch {}
+                    try {
+                        onProgress({ bytesUploaded: bytes });
+                    } catch {}
                 }
                 if (throttleBps && throttleBps > 0) {
                     const elapsedMs = Date.now() - start;
@@ -199,7 +210,9 @@ function _makeProgressTransform({ onProgress, throttleBps, signal, onBytes }) {
                     }
                 }
                 cb(null, chunk);
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }

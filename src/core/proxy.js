@@ -31,7 +31,9 @@ export function buildProxy(config) {
     if (type === 'http') {
         // gramJS's WebSocket transport doesn't natively tunnel through HTTP
         // proxies on Node — surface a clear error instead of silently failing.
-        throw new Error('HTTP proxy is not supported by gramJS in this build. Use SOCKS5 or MTProxy.');
+        throw new Error(
+            'HTTP proxy is not supported by gramJS in this build. Use SOCKS5 or MTProxy.',
+        );
     }
     throw new Error(`Unknown proxy type: ${type}`);
 }

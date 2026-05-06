@@ -16,8 +16,12 @@
 import { t as i18nT } from './i18n.js';
 
 const FOCUSABLE_SELECTOR = [
-    'a[href]', 'button:not([disabled])', 'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])', 'textarea:not([disabled])', '[tabindex]:not([tabindex="-1"])',
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled]):not([type="hidden"])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -28,20 +32,29 @@ const stack = []; // { root, opts, returnFocus }
 function trapFocus(root) {
     function onKeydown(e) {
         if (e.key !== 'Tab') return;
-        const focusables = Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR))
-            .filter(el => !el.hasAttribute('inert'));
-        if (focusables.length === 0) { e.preventDefault(); return; }
+        const focusables = Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+            (el) => !el.hasAttribute('inert'),
+        );
+        if (focusables.length === 0) {
+            e.preventDefault();
+            return;
+        }
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
     }
     root.addEventListener('keydown', onKeydown);
     return () => root.removeEventListener('keydown', onKeydown);
 }
 
 function attachDragToDismiss(card, handleEl, onDismiss) {
-    if (!DESKTOP.matches === false) return () => {};   // desktop → no-op
+    if (!DESKTOP.matches === false) return () => {}; // desktop → no-op
     if (REDUCED.matches) return () => {};
 
     let startY = 0;
@@ -99,18 +112,27 @@ export function openSheet(opts) {
     if (title) root.setAttribute('aria-label', title);
     root.tabIndex = -1;
 
-    const widthByDesktopSize = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-2xl', fit: 'max-w-fit' };
+    const widthByDesktopSize = {
+        sm: 'max-w-sm',
+        md: 'max-w-md',
+        lg: 'max-w-2xl',
+        fit: 'max-w-fit',
+    };
     const dw = widthByDesktopSize[size] || widthByDesktopSize.md;
     root.innerHTML = `
         <div class="sheet-backdrop"></div>
         <div class="sheet-card ${dw}" tabindex="-1">
-            ${title ? `
+            ${
+                title
+                    ? `
                 <div class="sheet-header">
                     <span class="sheet-handle" aria-hidden="true"></span>
                     <h3 class="sheet-title">${escapeHtml(title)}</h3>
                     <button class="sheet-close" aria-label="${escapeHtml(i18nT('common.close', 'Close'))}">&times;</button>
                 </div>
-            ` : `<span class="sheet-handle" aria-hidden="true"></span>`}
+            `
+                    : `<span class="sheet-handle" aria-hidden="true"></span>`
+            }
             <div class="sheet-body"></div>
         </div>`;
     const card = root.querySelector('.sheet-card');
@@ -135,7 +157,8 @@ export function openSheet(opts) {
     const returnFocus = document.activeElement;
     setTimeout(() => {
         const first = card.querySelector(FOCUSABLE_SELECTOR);
-        if (first) first.focus(); else card.focus();
+        if (first) first.focus();
+        else card.focus();
     }, 50);
 
     const releaseTrap = trapFocus(root);
@@ -177,14 +200,18 @@ export function openSheet(opts) {
         root.classList.remove('sheet-open');
         const after = () => {
             root.remove();
-            const idx = stack.findIndex(s => s.root === root);
+            const idx = stack.findIndex((s) => s.root === root);
             if (idx >= 0) stack.splice(idx, 1);
             if (stack.length === 0) {
                 document.body.style.overflow = '';
                 delete document.body.dataset.sheetOpen;
             }
-            try { returnFocus?.focus?.(); } catch {}
-            try { onClose?.(); } catch {}
+            try {
+                returnFocus?.focus?.();
+            } catch {}
+            try {
+                onClose?.();
+            } catch {}
         };
         if (REDUCED.matches) after();
         else setTimeout(after, 220);
@@ -197,8 +224,11 @@ export function openSheet(opts) {
 
 function escapeHtml(s) {
     return String(s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 /** Close the topmost open sheet, if any. */
@@ -207,7 +237,9 @@ export function closeTopSheet() {
     if (top) top.close();
 }
 
-export function sheetCount() { return stack.length; }
+export function sheetCount() {
+    return stack.length;
+}
 
 /**
  * Themed prompt dialog — async drop-in replacement for `window.prompt()`.
@@ -232,9 +264,16 @@ export function promptSheet(opts = {}) {
 
     return new Promise((resolve) => {
         let decided = false;
-        const settle = (value) => { if (decided) return; decided = true; resolve(value); };
+        const settle = (value) => {
+            if (decided) return;
+            decided = true;
+            resolve(value);
+        };
 
-        const escMsg = String(message).split('\n').map(l => escapeHtml(l)).join('<br>');
+        const escMsg = String(message)
+            .split('\n')
+            .map((l) => escapeHtml(l))
+            .join('<br>');
 
         const sheet = openSheet({
             title,
@@ -255,15 +294,24 @@ export function promptSheet(opts = {}) {
 
         setTimeout(() => {
             const root = stack[stack.length - 1]?.root;
-            if (!root) { settle(null); return; }
+            if (!root) {
+                settle(null);
+                return;
+            }
             const input = root.querySelector('[data-prompt-input]');
             const ok = root.querySelector('[data-prompt-ok]');
             const cancel = root.querySelector('[data-prompt-cancel]');
             cancel?.addEventListener('click', () => sheet.close());
-            const submit = () => { settle(input?.value ?? ''); sheet.close(); };
+            const submit = () => {
+                settle(input?.value ?? '');
+                sheet.close();
+            };
             ok?.addEventListener('click', submit);
             input?.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); submit(); }
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submit();
+                }
             });
             input?.focus();
             input?.select?.();
@@ -290,19 +338,27 @@ export function confirmSheet(opts = {}) {
     // body + default Confirm label.
     const title = opts.title ?? i18nT('common.confirm', 'Confirm');
     const message = opts.message ?? opts.body ?? '';
-    const confirmLabel = opts.confirmLabel ?? opts.confirmText ?? i18nT('common.confirm', 'Confirm');
-    const cancelLabel  = opts.cancelLabel  ?? opts.cancelText  ?? i18nT('common.cancel', 'Cancel');
+    const confirmLabel =
+        opts.confirmLabel ?? opts.confirmText ?? i18nT('common.confirm', 'Confirm');
+    const cancelLabel = opts.cancelLabel ?? opts.cancelText ?? i18nT('common.cancel', 'Cancel');
     const danger = opts.danger === true || opts.destructive === true;
 
     return new Promise((resolve) => {
         let decided = false;
-        const settle = (value) => { if (decided) return; decided = true; resolve(value); };
+        const settle = (value) => {
+            if (decided) return;
+            decided = true;
+            resolve(value);
+        };
 
         const confirmCls = danger
             ? 'px-4 py-2 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 font-medium text-sm transition'
             : 'px-4 py-2 rounded-lg bg-tg-blue text-white hover:bg-opacity-90 font-medium text-sm transition';
 
-        const escMsg = String(message).split('\n').map(line => escapeHtml(line)).join('<br>');
+        const escMsg = String(message)
+            .split('\n')
+            .map((line) => escapeHtml(line))
+            .join('<br>');
 
         const sheet = openSheet({
             title,
@@ -319,11 +375,19 @@ export function confirmSheet(opts = {}) {
         // Wire the per-button handlers after the sheet's DOM is in place.
         setTimeout(() => {
             const root = stack[stack.length - 1]?.root;
-            if (!root) { settle(false); return; }
-            root.querySelector('[data-confirm-cancel]')?.addEventListener('click', () => sheet.close());
+            if (!root) {
+                settle(false);
+                return;
+            }
+            root.querySelector('[data-confirm-cancel]')?.addEventListener('click', () =>
+                sheet.close(),
+            );
             const ok = root.querySelector('[data-confirm-ok]');
             if (ok) {
-                ok.addEventListener('click', () => { settle(true); sheet.close(); });
+                ok.addEventListener('click', () => {
+                    settle(true);
+                    sheet.close();
+                });
                 // Make Enter on the dialog confirm — natural follow-on from
                 // typing in the previous input or hitting the action.
                 root.addEventListener('keydown', (e) => {

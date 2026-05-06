@@ -21,10 +21,10 @@ import { Transform } from 'stream';
 
 export const MAGIC = Buffer.from('TGDB', 'utf8');
 export const VERSION = 1;
-export const IV_LEN = 12;       // 96 bits — GCM standard
-export const TAG_LEN = 16;      // 128 bits — GCM standard
+export const IV_LEN = 12; // 96 bits — GCM standard
+export const TAG_LEN = 16; // 128 bits — GCM standard
 export const HEADER_LEN = MAGIC.length + 1 + IV_LEN; // 17 bytes
-export const KEY_LEN = 32;      // 256 bits
+export const KEY_LEN = 32; // 256 bits
 
 // PBKDF2 cost. 200k iterations of SHA-256 takes ~150 ms on a modern
 // laptop — slow enough to deter brute force, fast enough that an
@@ -46,13 +46,7 @@ export function deriveKey(passphrase, salt) {
     if (!Buffer.isBuffer(salt) || salt.length < 8) {
         throw new Error('salt must be a Buffer of at least 8 bytes');
     }
-    return crypto.pbkdf2Sync(
-        Buffer.from(passphrase, 'utf8'),
-        salt,
-        PBKDF2_ITER,
-        KEY_LEN,
-        'sha256',
-    );
+    return crypto.pbkdf2Sync(Buffer.from(passphrase, 'utf8'), salt, PBKDF2_ITER, KEY_LEN, 'sha256');
 }
 
 /** Generate a fresh random salt suitable for `deriveKey`. */
@@ -140,7 +134,9 @@ export function encryptStream(key) {
                 }
                 this.push(cipher.update(chunk));
                 cb();
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
         flush(cb) {
             try {
@@ -151,7 +147,9 @@ export function encryptStream(key) {
                 this.push(cipher.final());
                 this.push(cipher.getAuthTag());
                 cb();
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }
@@ -203,7 +201,9 @@ export function decryptStream(key) {
                 trailing = combined.slice(combined.length - TAG_LEN);
                 this.push(decipher.update(usable));
                 cb();
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
         flush(cb) {
             try {
@@ -214,7 +214,9 @@ export function decryptStream(key) {
                 decipher.setAuthTag(trailing);
                 this.push(decipher.final());
                 cb();
-            } catch (e) { cb(e); }
+            } catch (e) {
+                cb(e);
+            }
         },
     });
 }

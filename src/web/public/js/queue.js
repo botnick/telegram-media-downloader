@@ -37,20 +37,45 @@ import { confirmSheet } from './sheet.js';
 //     instead of "everything appears at once on heavy filter change".
 const INITIAL_RENDER = 50;
 const PAGE_SIZE = 50;
-const RENDER_COALESCE_MS = 60;  // collapse WS bursts into one rAF tick
+const RENDER_COALESCE_MS = 60; // collapse WS bursts into one rAF tick
 
 // Filter chip definitions. Order matters — also drives the keyboard tab order.
 // `dupe` is a cross-cutting filter (any status, but only rows the
 // downloader flagged as duplicates) — surfaces the rows that produced no
 // new bytes on disk, so the operator can see "what got skipped today".
 const STATUS_FILTERS = [
-    { id: 'all',     i18n: 'queue.chip.all',     fallback: 'All',     match: () => true },
-    { id: 'active',  i18n: 'queue.chip.active',  fallback: 'Active',  match: (j) => j.status === 'active' },
-    { id: 'queued',  i18n: 'queue.chip.queued',  fallback: 'Queued',  match: (j) => j.status === 'queued' },
-    { id: 'paused',  i18n: 'queue.chip.paused',  fallback: 'Paused',  match: (j) => j.status === 'paused' },
-    { id: 'failed',  i18n: 'queue.chip.failed',  fallback: 'Failed',  match: (j) => j.status === 'failed' },
-    { id: 'done',    i18n: 'queue.chip.done',    fallback: 'Done',    match: (j) => j.status === 'done' },
-    { id: 'dupe',    i18n: 'queue.chip.dupe',    fallback: 'Duplicate', match: (j) => j.deduped === true },
+    { id: 'all', i18n: 'queue.chip.all', fallback: 'All', match: () => true },
+    {
+        id: 'active',
+        i18n: 'queue.chip.active',
+        fallback: 'Active',
+        match: (j) => j.status === 'active',
+    },
+    {
+        id: 'queued',
+        i18n: 'queue.chip.queued',
+        fallback: 'Queued',
+        match: (j) => j.status === 'queued',
+    },
+    {
+        id: 'paused',
+        i18n: 'queue.chip.paused',
+        fallback: 'Paused',
+        match: (j) => j.status === 'paused',
+    },
+    {
+        id: 'failed',
+        i18n: 'queue.chip.failed',
+        fallback: 'Failed',
+        match: (j) => j.status === 'failed',
+    },
+    { id: 'done', i18n: 'queue.chip.done', fallback: 'Done', match: (j) => j.status === 'done' },
+    {
+        id: 'dupe',
+        i18n: 'queue.chip.dupe',
+        fallback: 'Duplicate',
+        match: (j) => j.deduped === true,
+    },
 ];
 
 // ============ Store ============
@@ -68,13 +93,13 @@ let maxSpeedConfig = null;
 // View state — survives across navigations to the same page.
 const view = {
     filter: 'all',
-    sort: 'addedAt',     // 'addedAt' | 'size' | 'progress' | 'group' | 'filename'
+    sort: 'addedAt', // 'addedAt' | 'size' | 'progress' | 'group' | 'filename'
     sortDir: 'desc',
     search: '',
     scrollTop: 0,
     booted: false,
     visible: false,
-    rendered: 0,         // how many rows of the filtered list are in the DOM
+    rendered: 0, // how many rows of the filtered list are in the DOM
 };
 let _loadMoreObserver = null;
 // Keys whose rows landed in the DOM since the last full re-render. We
@@ -120,7 +145,8 @@ function bumpStatus(status, delta) {
     if (!status) return;
     const cur = statusCounts.get(status) || 0;
     const next = Math.max(0, cur + delta);
-    if (next === 0) statusCounts.delete(status); else statusCounts.set(status, next);
+    if (next === 0) statusCounts.delete(status);
+    else statusCounts.set(status, next);
 }
 
 function upsert(entry) {
@@ -151,7 +177,7 @@ function patchProgress(payload) {
     const total = payload.total || prev?.total || prev?.fileSize || 0;
     const received = payload.received || 0;
     const bps = payload.bps || 0;
-    const eta = (bps > 0 && total > received) ? Math.round((total - received) / bps) : null;
+    const eta = bps > 0 && total > received ? Math.round((total - received) / bps) : null;
     const next = {
         key: payload.key,
         groupId: String(payload.groupId || prev?.groupId || ''),
@@ -188,7 +214,14 @@ async function loadSnapshot() {
         scheduleStructuralRender();
     } catch (e) {
         if (e.status !== 401) {
-            showToast(i18nTf('queue.toast.snapshot_failed', { msg: e.message }, `Failed to load queue: ${e.message}`), 'error');
+            showToast(
+                i18nTf(
+                    'queue.toast.snapshot_failed',
+                    { msg: e.message },
+                    `Failed to load queue: ${e.message}`,
+                ),
+                'error',
+            );
         }
     }
 }
@@ -204,7 +237,8 @@ function handleWs(msg) {
         if (msg.state === 'stopped' || msg.state === 'error') {
             // Drop active/queued; keep recent done/failed history.
             for (const [k, v] of store) {
-                if (v.status === 'active' || v.status === 'queued' || v.status === 'paused') remove(k);
+                if (v.status === 'active' || v.status === 'queued' || v.status === 'paused')
+                    remove(k);
             }
             scheduleStructuralRender();
         } else {
@@ -214,8 +248,16 @@ function handleWs(msg) {
     }
     if (msg.type === 'queue_changed') {
         const p = msg.payload || {};
-        if (p.op === 'pause-all') { globalPaused = true; scheduleStructuralRender(); return; }
-        if (p.op === 'resume-all') { globalPaused = false; scheduleStructuralRender(); return; }
+        if (p.op === 'pause-all') {
+            globalPaused = true;
+            scheduleStructuralRender();
+            return;
+        }
+        if (p.op === 'resume-all') {
+            globalPaused = false;
+            scheduleStructuralRender();
+            return;
+        }
         if (p.op === 'cancel-all') {
             for (const [k, v] of store) {
                 if (v.status === 'queued' || v.status === 'paused') remove(k);
@@ -228,12 +270,34 @@ function handleWs(msg) {
             scheduleStructuralRender();
             return;
         }
-        if (!p.key) { scheduleRender(); return; }
+        if (!p.key) {
+            scheduleRender();
+            return;
+        }
         const cur = store.get(p.key);
-        if (p.op === 'pause' && cur) { cur.status = 'paused'; bumpStatus('queued', -1); bumpStatus('active', -1); bumpStatus('paused', 1); }
-        else if (p.op === 'resume' && cur) { cur.status = cur.received ? 'active' : 'queued'; bumpStatus('paused', -1); bumpStatus(cur.status, 1); }
-        else if (p.op === 'cancel') { remove(p.key); scheduleStructuralRender(); return; }
-        else if (p.op === 'retry' && cur) { cur.status = 'queued'; cur.error = null; cur.progress = 0; cur.received = 0; cur.bps = 0; cur.eta = null; bumpStatus('failed', -1); bumpStatus('queued', 1); }
+        if (p.op === 'pause' && cur) {
+            cur.status = 'paused';
+            bumpStatus('queued', -1);
+            bumpStatus('active', -1);
+            bumpStatus('paused', 1);
+        } else if (p.op === 'resume' && cur) {
+            cur.status = cur.received ? 'active' : 'queued';
+            bumpStatus('paused', -1);
+            bumpStatus(cur.status, 1);
+        } else if (p.op === 'cancel') {
+            remove(p.key);
+            scheduleStructuralRender();
+            return;
+        } else if (p.op === 'retry' && cur) {
+            cur.status = 'queued';
+            cur.error = null;
+            cur.progress = 0;
+            cur.received = 0;
+            cur.bps = 0;
+            cur.eta = null;
+            bumpStatus('failed', -1);
+            bumpStatus('queued', 1);
+        }
         // Single-row status flip — patcher detects + replaces just that row.
         scheduleRender();
         return;
@@ -329,14 +393,16 @@ let _filteredCacheTag = '';
 function getFilteredSorted() {
     const tag = `${view.filter}|${view.sort}|${view.sortDir}|${view.search}|${store.size}`;
     if (tag === _filteredCacheTag && _filteredCache) return _filteredCache;
-    const filterFn = (STATUS_FILTERS.find(f => f.id === view.filter) || STATUS_FILTERS[0]).match;
+    const filterFn = (STATUS_FILTERS.find((f) => f.id === view.filter) || STATUS_FILTERS[0]).match;
     const q = view.search.trim().toLowerCase();
     const out = [];
     for (const job of store.values()) {
         if (!filterFn(job)) continue;
         if (q) {
             const name = (job.fileName || '').toLowerCase();
-            const group = (getGroupName(job.groupId, { fallback: job.groupName || '' }) || '').toLowerCase();
+            const group = (
+                getGroupName(job.groupId, { fallback: job.groupName || '' }) || ''
+            ).toLowerCase();
             if (!name.includes(q) && !group.includes(q)) continue;
         }
         out.push(job);
@@ -344,15 +410,21 @@ function getFilteredSorted() {
     const dir = view.sortDir === 'asc' ? 1 : -1;
     const get = (j) => {
         switch (view.sort) {
-            case 'size':     return j.fileSize || 0;
-            case 'progress': return j.progress || 0;
-            case 'group':    return getGroupName(j.groupId, { fallback: j.groupName || '' }) || '';
-            case 'filename': return j.fileName || '';
-            default:         return j.addedAt || 0;
+            case 'size':
+                return j.fileSize || 0;
+            case 'progress':
+                return j.progress || 0;
+            case 'group':
+                return getGroupName(j.groupId, { fallback: j.groupName || '' }) || '';
+            case 'filename':
+                return j.fileName || '';
+            default:
+                return j.addedAt || 0;
         }
     };
     out.sort((a, b) => {
-        const av = get(a); const bv = get(b);
+        const av = get(a);
+        const bv = get(b);
         if (typeof av === 'string') return av.localeCompare(bv) * dir;
         return ((av || 0) - (bv || 0)) * dir;
     });
@@ -361,7 +433,9 @@ function getFilteredSorted() {
     return out;
 }
 
-function invalidateFilterCache() { _filteredCacheTag = ''; }
+function invalidateFilterCache() {
+    _filteredCacheTag = '';
+}
 
 // ============ Render ============
 function renderChips() {
@@ -376,7 +450,7 @@ function renderChips() {
         failed: statusCounts.get('failed') || 0,
         done: statusCounts.get('done') || 0,
     };
-    host.innerHTML = STATUS_FILTERS.map(f => {
+    host.innerHTML = STATUS_FILTERS.map((f) => {
         const active = view.filter === f.id;
         const cls = active
             ? 'bg-tg-blue/20 text-tg-blue border-tg-blue/40'
@@ -387,13 +461,14 @@ function renderChips() {
             <span class="tabular-nums opacity-80">${counts[f.id] ?? 0}</span>
         </button>`;
     }).join('');
-    host.querySelectorAll('[data-chip]').forEach(btn => {
+    host.querySelectorAll('[data-chip]').forEach((btn) => {
         btn.addEventListener('click', () => {
             view.filter = btn.dataset.chip;
             invalidateFilterCache();
             // Update the URL without re-dispatching the route handler so
             // back/forward still work but we don't churn the page.
-            const target = view.filter === 'all' ? '#/queue' : `#/queue/${encodeURIComponent(view.filter)}`;
+            const target =
+                view.filter === 'all' ? '#/queue' : `#/queue/${encodeURIComponent(view.filter)}`;
             if (location.hash !== target) history.replaceState(null, '', target);
             renderChips();
             // Filter changed → row set changed → full re-render. Reset
@@ -431,7 +506,7 @@ function renderRows() {
 
     const initial = Math.min(INITIAL_RENDER, rows.length);
     const slice = rows.slice(0, initial);
-    rowsHost.innerHTML = slice.map(j => renderRow(j)).join('');
+    rowsHost.innerHTML = slice.map((j) => renderRow(j)).join('');
     for (const j of slice) _renderedKeys.add(j.key);
     view.rendered = initial;
 
@@ -462,10 +537,14 @@ function renderRows() {
         // Build a minimal `state.files`-shaped record + 0-index so the
         // gallery's existing openMediaViewer pipeline can take over —
         // works for image / video / audio / document alike.
-        const fileType = row.dataset.rowOpenType === 'video' ? 'videos'
-            : row.dataset.rowOpenType === 'image' ? 'images'
-            : row.dataset.rowOpenType === 'audio' ? 'audio'
-            : 'documents';
+        const fileType =
+            row.dataset.rowOpenType === 'video'
+                ? 'videos'
+                : row.dataset.rowOpenType === 'image'
+                  ? 'images'
+                  : row.dataset.rowOpenType === 'audio'
+                    ? 'audio'
+                    : 'documents';
         const ext = (fp.split('.').pop() || '').toLowerCase();
         try {
             // Stash the synthetic file in window so app.js's viewer can
@@ -510,7 +589,7 @@ function appendNextPage() {
     // doesn't re-parse the existing rows — a `rowsHost.innerHTML += …`
     // would re-parse the entire prior content, killing performance on
     // a long queue.
-    rowsHost.insertAdjacentHTML('beforeend', slice.map(j => renderRow(j)).join(''));
+    rowsHost.insertAdjacentHTML('beforeend', slice.map((j) => renderRow(j)).join(''));
     for (const j of slice) _renderedKeys.add(j.key);
     view.rendered += slice.length;
     _toggleSentinel(view.rendered < rows.length);
@@ -530,21 +609,24 @@ function _ensureLoadMoreObserver() {
     const viewport = document.getElementById('queue-viewport');
     if (!sentinel || !viewport) return;
     if (_loadMoreObserver) return;
-    _loadMoreObserver = new IntersectionObserver((entries) => {
-        for (const e of entries) {
-            if (e.isIntersecting) {
-                appendNextPage();
-                break;
+    _loadMoreObserver = new IntersectionObserver(
+        (entries) => {
+            for (const e of entries) {
+                if (e.isIntersecting) {
+                    appendNextPage();
+                    break;
+                }
             }
-        }
-    }, {
-        // root: the queue viewport (a scrollable element). 200 px
-        // pre-fetch margin so the next batch is in flight before the
-        // user actually reaches the bottom — no flash of "Loading…".
-        root: viewport,
-        rootMargin: '200px 0px 200px 0px',
-        threshold: 0,
-    });
+        },
+        {
+            // root: the queue viewport (a scrollable element). 200 px
+            // pre-fetch margin so the next batch is in flight before the
+            // user actually reaches the bottom — no flash of "Loading…".
+            root: viewport,
+            rootMargin: '200px 0px 200px 0px',
+            threshold: 0,
+        },
+    );
     _loadMoreObserver.observe(sentinel);
 }
 
@@ -572,7 +654,10 @@ function patchRenderedRows() {
         return;
     }
     for (const k of _renderedKeys) {
-        if (!filteredKeys.has(k)) { renderRows(); return; }
+        if (!filteredKeys.has(k)) {
+            renderRows();
+            return;
+        }
     }
     // Patch in place. Each `[data-key]` row has a small set of named
     // child nodes the patcher knows about; update only those.
@@ -597,7 +682,9 @@ function _patchRowNode(rowEl, job) {
         const total = job.total || job.fileSize || 0;
         const sizeLine = total
             ? `${formatBytes(job.received || 0)} / ${formatBytes(total)}`
-            : (job.received ? formatBytes(job.received) : '');
+            : job.received
+              ? formatBytes(job.received)
+              : '';
         const speed = job.bps ? `${formatBytes(job.bps)}/s` : '';
         const eta = job.eta != null ? formatEta(job.eta) : '';
         meta.textContent = [sizeLine, speed, eta].filter(Boolean).join(' · ');
@@ -617,16 +704,30 @@ function _patchRowNode(rowEl, job) {
 }
 
 function renderRow(j) {
-    const name = j.fileName || (j.messageId ? `#${j.messageId}` : i18nT('queue.row.unnamed', 'Unnamed file'));
+    const name =
+        j.fileName ||
+        (j.messageId ? `#${j.messageId}` : i18nT('queue.row.unnamed', 'Unnamed file'));
     const groupName = getGroupName(j.groupId, { fallback: j.groupName || j.groupId || '?' });
     const ext = (name.split('.').pop() || '').toLowerCase();
-    const isImage = j.mediaType === 'image' || j.mediaType === 'photos' || ['jpg','jpeg','png','webp','gif','bmp'].includes(ext);
-    const isVideo = j.mediaType === 'video' || j.mediaType === 'videos' || ['mp4','mkv','mov','avi','webm'].includes(ext);
-    const isAudio = j.mediaType === 'audio' || j.mediaType === 'voice' || ['mp3','m4a','flac','wav','ogg'].includes(ext);
-    const icon = isVideo ? 'ri-video-line'
-        : isImage ? 'ri-image-line'
-        : isAudio ? 'ri-music-line'
-        : getFileIcon(ext);
+    const isImage =
+        j.mediaType === 'image' ||
+        j.mediaType === 'photos' ||
+        ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'].includes(ext);
+    const isVideo =
+        j.mediaType === 'video' ||
+        j.mediaType === 'videos' ||
+        ['mp4', 'mkv', 'mov', 'avi', 'webm'].includes(ext);
+    const isAudio =
+        j.mediaType === 'audio' ||
+        j.mediaType === 'voice' ||
+        ['mp3', 'm4a', 'flac', 'wav', 'ogg'].includes(ext);
+    const icon = isVideo
+        ? 'ri-video-line'
+        : isImage
+          ? 'ri-image-line'
+          : isAudio
+            ? 'ri-music-line'
+            : getFileIcon(ext);
 
     // Status-aware progress: completed jobs always read 100, queued reads
     // blank, otherwise use the live %. Without this, finished rows kept
@@ -635,19 +736,18 @@ function renderRow(j) {
     const pct = isDone ? 100 : Math.max(0, Math.min(100, j.progress || 0));
     // Size is only meaningful once Telegram has told us; show "—" only
     // while the job is queued and the size is genuinely unknown.
-    const sizeStr = j.fileSize
-        ? formatBytes(j.fileSize)
-        : (j.status === 'queued' ? '…' : '—');
-    const speedStr = (j.status === 'active' && j.bps) ? `${formatBytes(j.bps)}/s` : '—';
-    const etaStr = (j.status === 'active' && j.eta != null) ? formatEta(j.eta) : '—';
+    const sizeStr = j.fileSize ? formatBytes(j.fileSize) : j.status === 'queued' ? '…' : '—';
+    const speedStr = j.status === 'active' && j.bps ? `${formatBytes(j.bps)}/s` : '—';
+    const etaStr = j.status === 'active' && j.eta != null ? formatEta(j.eta) : '—';
 
-    const pillCls = {
-        active:  'bg-tg-blue/20 text-tg-blue',
-        queued:  'bg-gray-700/40 text-gray-300',
-        paused:  'bg-tg-orange/20 text-tg-orange',
-        failed:  'bg-red-500/20 text-red-400',
-        done:    'bg-tg-green/20 text-tg-green',
-    }[j.status] || 'bg-gray-700/40 text-gray-300';
+    const pillCls =
+        {
+            active: 'bg-tg-blue/20 text-tg-blue',
+            queued: 'bg-gray-700/40 text-gray-300',
+            paused: 'bg-tg-orange/20 text-tg-orange',
+            failed: 'bg-red-500/20 text-red-400',
+            done: 'bg-tg-green/20 text-tg-green',
+        }[j.status] || 'bg-gray-700/40 text-gray-300';
     const pillLabel = i18nT(`queue.status.${j.status}`, j.status);
 
     // "Duplicate" tag — emitted when the downloader finished but the file
@@ -679,10 +779,13 @@ function renderRow(j) {
     // The row is still clickable + opens the actual file in the
     // viewer when it's done — the icon-only placeholder is enough
     // visual cue, with zero network and no 404 risk.
-    const tint = isVideo ? 'bg-black/70 text-white'
-        : isImage ? 'bg-tg-blue/15 text-tg-blue'
-        : isAudio ? 'bg-tg-orange/15 text-tg-orange'
-        : 'bg-tg-bg/40 text-tg-textSecondary';
+    const tint = isVideo
+        ? 'bg-black/70 text-white'
+        : isImage
+          ? 'bg-tg-blue/15 text-tg-blue'
+          : isAudio
+            ? 'bg-tg-orange/15 text-tg-orange'
+            : 'bg-tg-bg/40 text-tg-textSecondary';
     const thumb = `
         <div class="w-9 h-9 rounded ${tint} flex items-center justify-center">
             <i class="${icon}"></i>
@@ -693,21 +796,39 @@ function renderRow(j) {
     const actions = [];
     if (j.status === 'active' || j.status === 'queued') {
         actions.push(actionBtn('pause', 'ri-pause-line', i18nT('queue.action.pause', 'Pause')));
-        actions.push(actionBtn('cancel', 'ri-close-line', i18nT('queue.action.cancel', 'Cancel'), 'text-red-400'));
+        actions.push(
+            actionBtn(
+                'cancel',
+                'ri-close-line',
+                i18nT('queue.action.cancel', 'Cancel'),
+                'text-red-400',
+            ),
+        );
     } else if (j.status === 'paused') {
         actions.push(actionBtn('resume', 'ri-play-line', i18nT('queue.action.resume', 'Resume')));
-        actions.push(actionBtn('cancel', 'ri-close-line', i18nT('queue.action.cancel', 'Cancel'), 'text-red-400'));
+        actions.push(
+            actionBtn(
+                'cancel',
+                'ri-close-line',
+                i18nT('queue.action.cancel', 'Cancel'),
+                'text-red-400',
+            ),
+        );
     } else if (j.status === 'failed') {
         actions.push(actionBtn('retry', 'ri-refresh-line', i18nT('queue.action.retry', 'Retry')));
-        actions.push(actionBtn('dismiss', 'ri-delete-bin-line', i18nT('queue.action.dismiss', 'Dismiss')));
+        actions.push(
+            actionBtn('dismiss', 'ri-delete-bin-line', i18nT('queue.action.dismiss', 'Dismiss')),
+        );
     } else if (j.status === 'done') {
-        actions.push(actionBtn('dismiss', 'ri-delete-bin-line', i18nT('queue.action.dismiss', 'Dismiss')));
+        actions.push(
+            actionBtn('dismiss', 'ri-delete-bin-line', i18nT('queue.action.dismiss', 'Dismiss')),
+        );
     }
 
     // Hide the % under a finished bar (label is redundant against the
     // pill) and show "100%" only while in-flight so the progress feedback
     // stays meaningful.
-    const pctLabel = isDone ? '' : (j.status === 'queued' ? '' : `${pct}%`);
+    const pctLabel = isDone ? '' : j.status === 'queued' ? '' : `${pct}%`;
 
     // The hooks `data-row-bar`, `data-row-pct`, `data-row-meta`, and
     // `data-row-status` let `_patchRowNode()` update only the changing
@@ -750,10 +871,14 @@ function formatEta(seconds) {
 function renderAggregate() {
     const host = document.getElementById('queue-aggregate');
     if (!host) return;
-    let active = 0, queued = 0, totalBps = 0;
+    let active = 0,
+        queued = 0,
+        totalBps = 0;
     for (const j of store.values()) {
-        if (j.status === 'active') { active++; totalBps += j.bps || 0; }
-        else if (j.status === 'queued') queued++;
+        if (j.status === 'active') {
+            active++;
+            totalBps += j.bps || 0;
+        } else if (j.status === 'queued') queued++;
     }
     const speed = totalBps ? `${formatBytes(totalBps)}/s` : '0 B/s';
     host.innerHTML = `
@@ -787,12 +912,18 @@ async function runRowAction(action, key) {
         } else if (action === 'cancel') {
             // Confirm before aborting an in-flight download — easy to
             // mis-tap on mobile and the work is already partially done.
-            if (!(await confirmSheet({
-                title: i18nT('queue.confirm.cancel_title', 'Cancel download?'),
-                message: i18nT('queue.confirm.cancel', 'Stop this download? Any partial bytes will be discarded.'),
-                confirmLabel: i18nT('queue.action.cancel', 'Cancel'),
-                danger: true,
-            }))) return;
+            if (
+                !(await confirmSheet({
+                    title: i18nT('queue.confirm.cancel_title', 'Cancel download?'),
+                    message: i18nT(
+                        'queue.confirm.cancel',
+                        'Stop this download? Any partial bytes will be discarded.',
+                    ),
+                    confirmLabel: i18nT('queue.action.cancel', 'Cancel'),
+                    danger: true,
+                }))
+            )
+                return;
             await api.post(`/api/queue/${encodeURIComponent(key)}/cancel`);
             remove(key);
             scheduleRender();
@@ -807,7 +938,10 @@ async function runRowAction(action, key) {
             scheduleRender();
         }
     } catch (e) {
-        showToast(i18nTf('queue.toast.action_failed', { msg: e.message }, `Action failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('queue.toast.action_failed', { msg: e.message }, `Action failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -820,12 +954,18 @@ async function runGlobalAction(action) {
             await api.post('/api/queue/resume-all');
             showToast(i18nT('queue.toast.resumed_all', 'Resumed all downloads'), 'success');
         } else if (action === 'cancel-all') {
-            if (!(await confirmSheet({
-                title: i18nT('queue.action.cancel_all', 'Cancel queued'),
-                message: i18nT('queue.confirm.cancel_all', 'Cancel every queued download? Active jobs continue.'),
-                confirmLabel: i18nT('queue.action.cancel_all', 'Cancel queued'),
-                danger: true,
-            }))) return;
+            if (
+                !(await confirmSheet({
+                    title: i18nT('queue.action.cancel_all', 'Cancel queued'),
+                    message: i18nT(
+                        'queue.confirm.cancel_all',
+                        'Cancel every queued download? Active jobs continue.',
+                    ),
+                    confirmLabel: i18nT('queue.action.cancel_all', 'Cancel queued'),
+                    danger: true,
+                }))
+            )
+                return;
             await api.post('/api/queue/cancel-all');
             showToast(i18nT('queue.toast.cancelled_all', 'Queued downloads cancelled'), 'info');
         } else if (action === 'clear-finished') {
@@ -837,7 +977,10 @@ async function runGlobalAction(action) {
             showToast(i18nT('queue.toast.cleared_finished', 'Cleared finished'), 'success');
         }
     } catch (e) {
-        showToast(i18nTf('queue.toast.action_failed', { msg: e.message }, `Action failed: ${e.message}`), 'error');
+        showToast(
+            i18nTf('queue.toast.action_failed', { msg: e.message }, `Action failed: ${e.message}`),
+            'error',
+        );
     }
 }
 
@@ -864,7 +1007,14 @@ function bindThrottleSlider() {
                 maxSpeedConfig = bytes || null;
                 showToast(i18nT('queue.toast.throttle_saved', 'Speed limit updated'), 'success');
             } catch (e) {
-                showToast(i18nTf('queue.toast.throttle_failed', { msg: e.message }, `Failed to update: ${e.message}`), 'error');
+                showToast(
+                    i18nTf(
+                        'queue.toast.throttle_failed',
+                        { msg: e.message },
+                        `Failed to update: ${e.message}`,
+                    ),
+                    'error',
+                );
             }
         }, 400);
     });
@@ -893,7 +1043,7 @@ export function initQueue() {
 
 export async function showQueuePage(params = {}) {
     view.visible = true;
-    if (params?.status && STATUS_FILTERS.some(f => f.id === params.status)) {
+    if (params?.status && STATUS_FILTERS.some((f) => f.id === params.status)) {
         view.filter = params.status;
         invalidateFilterCache();
     }
@@ -932,19 +1082,31 @@ function wireOnce() {
         const vp = document.getElementById('queue-viewport');
         if (vp) vp.scrollTop = 0;
     });
-    document.getElementById('queue-pause-all')?.addEventListener('click', () => runGlobalAction('pause-all'));
-    document.getElementById('queue-resume-all')?.addEventListener('click', () => runGlobalAction('resume-all'));
-    document.getElementById('queue-cancel-all')?.addEventListener('click', () => runGlobalAction('cancel-all'));
-    document.getElementById('queue-clear-finished')?.addEventListener('click', () => runGlobalAction('clear-finished'));
+    document
+        .getElementById('queue-pause-all')
+        ?.addEventListener('click', () => runGlobalAction('pause-all'));
+    document
+        .getElementById('queue-resume-all')
+        ?.addEventListener('click', () => runGlobalAction('resume-all'));
+    document
+        .getElementById('queue-cancel-all')
+        ?.addEventListener('click', () => runGlobalAction('cancel-all'));
+    document
+        .getElementById('queue-clear-finished')
+        ?.addEventListener('click', () => runGlobalAction('clear-finished'));
 
     // Track scroll position so a navigation away and back lands at the
     // same spot — the IntersectionObserver on `#queue-load-more` does
     // the actual append-on-scroll work, no per-frame render needed here.
     const viewport = document.getElementById('queue-viewport');
     if (viewport) {
-        viewport.addEventListener('scroll', () => {
-            view.scrollTop = viewport.scrollTop;
-        }, { passive: true });
+        viewport.addEventListener(
+            'scroll',
+            () => {
+                view.scrollTop = viewport.scrollTop;
+            },
+            { passive: true },
+        );
     }
 
     // Hide the page when navigating away — the WS handlers keep mutating

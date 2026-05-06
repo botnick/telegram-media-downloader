@@ -21,9 +21,15 @@ let _wired = false;
 let _shown = false;
 let _restoreIndex = null;
 
-function _miniEl()      { return document.getElementById('mini-player'); }
-function _miniVideo()   { return document.getElementById('mini-player-video'); }
-function _modalVideo()  { return document.getElementById('modal-video'); }
+function _miniEl() {
+    return document.getElementById('mini-player');
+}
+function _miniVideo() {
+    return document.getElementById('mini-player-video');
+}
+function _modalVideo() {
+    return document.getElementById('modal-video');
+}
 
 export function setupMiniPlayer() {
     if (_wired) return;
@@ -32,8 +38,8 @@ export function setupMiniPlayer() {
     const mini = _miniEl();
     if (!mini) return;
     const expandBtn = document.getElementById('mini-player-expand');
-    const closeBtn  = document.getElementById('mini-player-close');
-    const vid       = _miniVideo();
+    const closeBtn = document.getElementById('mini-player-close');
+    const vid = _miniVideo();
 
     expandBtn?.addEventListener('click', expand);
     vid?.addEventListener('click', expand);
@@ -54,7 +60,9 @@ export function shrinkToMini() {
 
     const src = big.currentSrc || big.src;
     if (v.src !== src) v.src = src;
-    try { v.currentTime = big.currentTime || 0; } catch {}
+    try {
+        v.currentTime = big.currentTime || 0;
+    } catch {}
     v.muted = big.muted;
     v.volume = big.volume;
     v.playbackRate = big.playbackRate || 1;
@@ -82,7 +90,9 @@ export async function expand() {
         const big = _modalVideo();
         if (big) {
             const seek = () => {
-                try { big.currentTime = t; } catch {}
+                try {
+                    big.currentTime = t;
+                } catch {}
                 big.removeEventListener('loadedmetadata', seek);
             };
             big.addEventListener('loadedmetadata', seek);
@@ -95,12 +105,19 @@ export function dismiss() {
     const mini = _miniEl();
     const v = _miniVideo();
     if (!mini) return;
-    try { v?.pause(); } catch {}
-    try { v?.removeAttribute('src'); v?.load(); } catch {}
+    try {
+        v?.pause();
+    } catch {}
+    try {
+        v?.removeAttribute('src');
+        v?.load();
+    } catch {}
     mini.classList.add('hidden');
     mini.setAttribute('aria-hidden', 'true');
     _shown = false;
     _restoreIndex = null;
 }
 
-export function isMiniVisible() { return _shown; }
+export function isMiniVisible() {
+    return _shown;
+}

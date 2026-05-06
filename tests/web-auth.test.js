@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { hashPassword, verifyPassword, loginVerify, isAuthConfigured, isGuestEnabled,
-         issueSession, validateSession, revokeSession,
-         revokeAllSessions, revokeAllGuestSessions } from '../src/core/web-auth.js';
+import {
+    hashPassword,
+    verifyPassword,
+    loginVerify,
+    isAuthConfigured,
+    isGuestEnabled,
+    issueSession,
+    validateSession,
+    revokeSession,
+    revokeAllSessions,
+    revokeAllGuestSessions,
+} from '../src/core/web-auth.js';
 
 describe('hashPassword / verifyPassword', () => {
     it('round-trips a password', () => {
@@ -55,7 +64,7 @@ describe('loginVerify (guest role)', () => {
         };
         expect(loginVerify('admin-pw', cfg)).toEqual({ ok: true, role: 'admin' });
         expect(loginVerify('guest-pw', cfg)).toEqual({ ok: true, role: 'guest' });
-        expect(loginVerify('nope',     cfg)).toEqual({ ok: false });
+        expect(loginVerify('nope', cfg)).toEqual({ ok: false });
     });
 
     it('rejects guest password when guestEnabled is false', () => {
@@ -97,13 +106,17 @@ describe('isAuthConfigured / isGuestEnabled', () => {
         expect(isGuestEnabled(null)).toBe(false);
         expect(isGuestEnabled({})).toBe(false);
         expect(isGuestEnabled({ guestPasswordHash: hashPassword('g') })).toBe(true);
-        expect(isGuestEnabled({ guestPasswordHash: hashPassword('g'), guestEnabled: false })).toBe(false);
+        expect(isGuestEnabled({ guestPasswordHash: hashPassword('g'), guestEnabled: false })).toBe(
+            false,
+        );
         expect(isGuestEnabled({ guestEnabled: true })).toBe(false);
     });
 });
 
 describe('session tokens — role', () => {
-    beforeEach(() => { revokeAllSessions(); });
+    beforeEach(() => {
+        revokeAllSessions();
+    });
 
     it('issues an admin session by default', () => {
         const { token, role } = issueSession();
