@@ -166,10 +166,15 @@ process.on('uncaughtException', (err) => {
         return;
     }
     // Non-native uncaught exceptions are real bugs — surface them and
-    // crash so the watchdog can restart cleanly. Mirroring the Node
-    // default: print stack + exit non-zero.
+    // crash so the watchdog can restart cleanly. Stop accepting new
+    // connections and give in-flight requests up to 5 s to flush
+    // before exiting; without the drain, every unhandled bug produces
+    // a 502 burst for every concurrent client during the restart.
     console.error('Uncaught exception:', err);
-    process.exit(1);
+    try {
+        server.close();
+    } catch {}
+    setTimeout(() => process.exit(1), 5000).unref();
 });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
