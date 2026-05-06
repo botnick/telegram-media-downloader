@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] — 2026-05-06
+
+### Changed — Runtime state moves into SQLite
+- **`data/config.json` → `kv['config']` row** in `data/db.sqlite`. `loadConfig()` / `saveConfig()` keep their existing signatures; only the storage backend changes. Atomic writes ride on SQLite transactions instead of tmp+rename.
+- **`data/web-sessions.json` → `web_sessions` table.** Indexed `expires_at` makes the GC sweep an O(log n) delete instead of a whole-file rewrite on every login/logout.
+- **`data/disk_usage.json` → `kv['disk_usage']` row.** Same 10-second debounce window, no more JSON file on disk.
+- **`fs.watch` → in-process `EventEmitter`.** `saveConfig()` emits `change` synchronously after the row commits; `monitor.js` subscribes via `watchConfig()` and reloads without a filesystem signal. Removes the 100 ms debounce and dodges the cross-platform inconsistency of `fs.watch`.
+
+### Added
+- Generic kv accessors in `src/core/db.js`: `kvGet`, `kvSet`, `kvDelete`, `kvList`.
+- Session accessors: `insertSession`, `findSession`, `deleteSession`, `deleteAllSessions`, `deleteSessionsByRole`, `deleteExpiredSessions`, `listSessions`.
+- `src/core/state-migration.js` — one-shot importer that runs inside `getDb()` on first boot. Reads any leftover `config.json` / `disk_usage.json` / `web-sessions.json`, writes them into the new tables, then renames the sources to `<file>.migrated` as a reversible backup. Idempotent on re-run.
+
+### Migration
+Existing installs upgrade in place — first boot moves your settings, sessions, and disk-usage cache into `data/db.sqlite` and renames the JSON files to `*.migrated`. To roll back, stop the dashboard, rename the `.migrated` files back to `.json`, and downgrade.
+
+### Tests
+- `tests/kv.test.js` (8) — round-trip, UPSERT, updated_at, delete, list, corrupt-row tolerance.
+- `tests/web-sessions.test.js` (8) — insert / find / role check / by-role / GC / self-clean of expired tokens.
+- `tests/state-migration.test.js` (5) — full fixture: 3 JSON files in, 3 rows out + `.migrated` renames + expired-token drop.
+- `tests/config-manager.test.js` (7) — kv-backed seed, deep-merge, self-heal write-back, addGroup upsert, EventEmitter delivery + unsubscribe.
+
 ## [2.6.16] — 2026-05-06
 
 ### Fixed

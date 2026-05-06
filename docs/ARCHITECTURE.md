@@ -5,7 +5,7 @@ Two top-level entry points share state through `data/`:
 1. **CLI** (`src/index.js`) — interactive menus, ad-hoc commands.
 2. **Web server** (`src/web/server.js`) — Express + WebSocket on `:3000`, serves the SPA from `src/web/public/`.
 
-Both load the same `data/config.json` and `data/db.sqlite` (WAL mode → safe shared reads, single writer).
+Both share state through `data/db.sqlite` (WAL mode → safe shared reads, single writer). All runtime configuration (settings, account list, group filters, session tokens, disk-usage cache) lives in SQLite tables — there is no JSON state file in normal operation. Legacy installs that used `data/config.json` / `data/web-sessions.json` / `data/disk_usage.json` are auto-imported on first boot and the source files are renamed to `*.migrated`.
 
 ## Request flow
 
@@ -42,10 +42,9 @@ flowchart LR
 
 ```
 data/
-├── config.json           # canonical settings (deep-merged on load)
-├── db.sqlite             # downloads, queue, share_links — WAL mode
+├── db.sqlite             # downloads, queue, share_links, kv, web_sessions — WAL mode
+│                          (kv holds config + disk_usage; deep-merged on load)
 ├── secret.key            # AES key for sessions; back this up
-├── web-sessions.json     # active dashboard tokens (each carries a role)
 ├── sessions/<id>.enc     # per-account scrypt+AES-GCM encrypted sessions
 ├── photos/<id>.jpg       # cached chat profile photos
 ├── downloads/            # canonical media tree
@@ -58,6 +57,16 @@ data/
     ├── network.log       # noise-classified gramJS chatter
     └── protection_log.txt
 ```
+
+**State storage.** Runtime state lives in three SQLite surfaces:
+
+| Surface | Source of truth | Replaces |
+|---|---|---|
+| `kv['config']` | `src/config/manager.js` (`loadConfig` / `saveConfig`) | `data/config.json` |
+| `kv['disk_usage']` | `src/core/downloader.js` `getDiskUsage` / `saveDiskUsageCache` | `data/disk_usage.json` |
+| `web_sessions` table | `src/core/web-auth.js` + `src/core/db.js` accessors | `data/web-sessions.json` |
+
+`saveConfig()` emits a `change` event on an in-process `EventEmitter` after every commit — `monitor.js` subscribes via `watchConfig()` and reloads without any filesystem watcher. Migration from JSON files is one-shot, idempotent, and runs inside `getDb()`; source files are renamed to `*.migrated` and kept as a reversible backup.
 
 ## Multi-account routing
 
