@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.17] — 2026-05-06
+
+### Added
+- **Queue page batch actions + Retry All.** The Queue only had per-row controls and three "all queued" shortcuts (pause/resume/cancel); long failure runs after a network hiccup or session re-auth meant clicking Retry on every failed row, and there was no way to act on a chosen subset. This release adds: per-row checkboxes + a header tri-state checkbox; click toggles, Shift+click does range, Ctrl/Cmd+click toggles a single row, Ctrl/Cmd+A selects all visible, Esc clears; a floating action bar that appears at the bottom when ≥1 row is selected and mirrors the per-row vocabulary (Pause / Resume / Retry / Dismiss / Cancel) — the bar respects the queue page's visibility so it doesn't leak across navigation; and a new "Retry All" toolbar button that's disabled when there are no failed rows. Backed by two new endpoints — `POST /api/queue/retry-all` walks every cached failed job, and `POST /api/queue/batch` accepts `{ keys, action }` so one user gesture is one round trip regardless of selection size. Selection survives WS churn (jobs are pinned by key, not row ref); rows that disappear via cancel/dismiss are pruned out of the selection automatically.
+
+### Internal
+- SW bumped `v276` → `v277`.
+
 ## [2.6.16] — 2026-05-06
 
 ### Fixed
