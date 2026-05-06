@@ -2,14 +2,18 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.7.2] — 2026-05-07
 
 ### Fixed
+- **`GET /api/config` and 23 other endpoints failed with `ENOENT: config.json`** after the v2.7.0 SQLite migration archived the file. Writes were already routed through `saveConfig()` (kv-backed), but every per-request reader still pulled the tree via `fs.readFile(CONFIG_PATH)` — fine while the file existed alongside the new kv row, but ENOENT'd the moment migration renamed it to `config.json.migrated` on first boot. Most user-visible symptom: the SPA's "Downloaded Groups" sidebar rendered empty even though SQLite had the full group list. The Queue / Settings / Backfill panels silently degraded the same way. Replaced every stale read with `loadConfig()` (kv-backed since v2.7.0, self-heals when the merged shape diverges).
 - **`GET /api/ai/perceptual-dedup/groups` no longer returns 500 with "Do not know how to serialize a BigInt"** — the BigInt `phash` field is stripped from response rows. The field was unused by the UI; the in-memory grouper still uses it internally.
 - **Front-end API client aborts requests after 60 s** (`AbortController`) instead of hanging indefinitely when the backend stalls. Errors carry `timedOut === true` so callers can show a specific toast.
 
 ### Tests
 - `tests/api-resilience.test.js` (5) — Express error-middleware shape, `api.js` fetch-timeout abort path, `findPhashGroups` response is JSON-safe.
+
+### Internal
+- SW bumped `v277` → `v278`.
 
 ## [2.7.1] — 2026-05-06
 
