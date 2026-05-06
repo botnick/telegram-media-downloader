@@ -681,8 +681,210 @@ async function _refreshAll() {
     } catch {
         s = null;
     }
-    if (s) _renderSettings(s);
+    if (s) {
+        _renderSettings(s);
+        _renderGatedWarning(s.gatedWarnings || []);
+        _renderEmbeddingPresets(s);
+    } else {
+        _renderGatedWarning([]);
+        _renderEmbeddingPresets(null);
+    }
     await Promise.all([_loadPeople(), _loadTags(), _loadPhashGroups()]).catch(() => {});
+}
+
+// ---- Gated-model warning banner -----------------------------------------
+//
+// Operators who installed before AI_MODEL_DEFAULTS was updated may still
+// have HuggingFace ids in their saved config that now return 401 (e.g.
+// Xenova/mobilenet_v2, Xenova/yolov5n-face). The startup state-migration
+// rewrites those automatically, but a runtime banner exists for two cases:
+//   - operator pasted a known-gated id manually after startup
+//   - operator hasn't restarted since the migration shipped
+// One click on "Apply public default" PATCHes config to the suggested ids.
+
+let _gatedPending = []; // most recent warnings list, used by the click handler
+
+function _renderGatedWarning(warnings) {
+    const banner = document.getElementById('ai-gated-warning');
+    if (!banner) return;
+    _gatedPending = Array.isArray(warnings) ? warnings : [];
+    if (!_gatedPending.length) {
+        banner.classList.add('hidden');
+        return;
+    }
+    banner.classList.remove('hidden');
+    const list = document.getElementById('ai-gated-warning-list');
+    if (list) {
+        list.innerHTML = _gatedPending
+            .map(
+                (w) => `
+                <div>
+                    <span class="text-amber-400">${escapeHtml(w.cap)}</span>:
+                    <span class="line-through text-tg-textSecondary/70">${escapeHtml(w.currentId || '')}</span>
+                    →
+                    <span class="text-tg-text">${escapeHtml(w.suggested || '')}</span>
+                </div>
+            `,
+            )
+            .join('');
+    }
+}
+
+// ---- Embedding-model preset chips ---------------------------------------
+//
+// Renders one chip per entry in /api/ai/status.embeddingPresets. The active
+// chip (modelId === currentEmbeddingModel) gets the primary style; inactive
+// chips are clickable. Clicking an inactive chip opens a confirmation sheet
+// that discloses the download size + how many photos will need re-indexing,
+// then PATCHes config and triggers POST /api/ai/index/reembed.
+
+let _statusSnapshot = null; // memoised most recent /status response
+
+function _renderEmbeddingPresets(status) {
+    _statusSnapshot = status;
+    const wrap = document.getElementById('ai-embedding-presets');
+    if (!wrap) return;
+    const presets = Array.isArray(status?.embeddingPresets) ? status.embeddingPresets : [];
+    const current = status?.currentEmbeddingModel || '';
+    if (!presets.length) {
+        wrap.innerHTML = '';
+        return;
+    }
+    wrap.innerHTML = presets
+        .map((p) => {
+            const active = p.modelId === current;
+            const langs = Array.isArray(p.languages) ? p.languages.join(', ') : '';
+            const klass = active
+                ? 'ai-preset-chip ai-preset-active tg-btn-primary'
+                : 'ai-preset-chip tg-btn-secondary';
+            const labelKey = `maintenance.ai.preset.${p.key.replace('-', '_')}.label`;
+            const label = i18nT(labelKey, p.key);
+            const sizeLbl = i18nTf(
+                'maintenance.ai.preset.size_dim',
+                { size: p.sizeMB, dim: p.dim },
+                `${p.sizeMB} MB · ${p.dim}-d`,
+            );
+            return `
+                <button type="button" class="${klass} text-[11px] px-2.5 py-1 rounded-full mr-1.5 mb-1"
+                        data-preset-key="${escapeHtml(p.key)}"
+                        data-preset-model="${escapeHtml(p.modelId)}"
+                        ${active ? 'aria-pressed="true"' : ''}
+                        title="${escapeHtml(`${langs} · ${sizeLbl}`)}">
+                    <i class="ri-${active ? 'check-line' : 'arrow-left-right-line'}" aria-hidden="true"></i>
+                    <span class="ml-1">${escapeHtml(label)}</span>
+                    <span class="opacity-70 ml-1">· ${escapeHtml(sizeLbl)}</span>
+                </button>
+            `;
+        })
+        .join('');
+    wrap.querySelectorAll('[data-preset-key]').forEach((btn) => {
+        btn.addEventListener('click', () => _onPresetClick(btn.dataset.presetModel));
+    });
+}
+
+async function _onPresetClick(modelId) {
+    const target = String(modelId || '').trim();
+    if (!target) return;
+    const status = _statusSnapshot;
+    if (status?.currentEmbeddingModel === target) return; // already active
+    const preset = (status?.embeddingPresets || []).find((p) => p.modelId === target);
+    if (!preset) return;
+    const indexed = Number(status?.counts?.indexed || 0);
+    const langs = Array.isArray(preset.languages) ? preset.languages.join(', ') : '';
+    const { confirmSheet } = await import('./sheet.js');
+    const ok = await confirmSheet({
+        title: i18nT('maintenance.ai.reembed.confirm_title', 'Switch embedding model?'),
+        body: i18nTf(
+            'maintenance.ai.reembed.confirm_body',
+            { size: preset.sizeMB, langs, n: indexed },
+            `Will download ~${preset.sizeMB} MB (${langs}) and re-embed ${indexed} photos. Existing search results will be empty until the scan completes.`,
+        ),
+        confirmText: i18nT('maintenance.ai.reembed.confirm_btn', 'Switch and re-index'),
+    });
+    if (!ok) return;
+    try {
+        await api.post('/api/config', {
+            advanced: { ai: { embeddings: { model: target } } },
+        });
+    } catch (e) {
+        showToast(
+            i18nTf(
+                'maintenance.ai.reembed.apply_failed',
+                { msg: e?.message || e },
+                `Save failed: ${e?.message || e}`,
+            ),
+            'error',
+        );
+        return;
+    }
+    try {
+        await api.post('/api/ai/index/reembed', {});
+        showToast(
+            i18nT(
+                'maintenance.ai.reembed.started_toast',
+                'Re-index started — see capabilities below for progress.',
+            ),
+            'success',
+        );
+    } catch (e) {
+        const code = e?.data?.code || '';
+        if (code === 'ALREADY_RUNNING') {
+            showToast(
+                i18nT(
+                    'maintenance.ai.reembed.already_running',
+                    'A scan is already running. Cancel it first, then switch.',
+                ),
+                'error',
+            );
+        } else {
+            showToast(
+                i18nTf(
+                    'maintenance.ai.reembed.start_failed',
+                    { msg: e?.message || e },
+                    `Re-index failed: ${e?.message || e}`,
+                ),
+                'error',
+            );
+        }
+    }
+    _refreshAll().catch(() => {});
+    _refreshModels();
+}
+
+async function _applyGatedFix() {
+    if (!_gatedPending.length) return;
+    const btn = document.getElementById('ai-gated-warning-apply');
+    if (btn) btn.disabled = true;
+    try {
+        // Build one PATCH that flips every offending capability at once. The
+        // server already accepts deeply-nested advanced.ai.<cap>.model writes
+        // (see _onMasterToggleClick + the per-cap toggle path).
+        const patch = { advanced: { ai: {} } };
+        for (const w of _gatedPending) {
+            patch.advanced.ai[w.cap] = { ...(patch.advanced.ai[w.cap] || {}), model: w.suggested };
+        }
+        await api.post('/api/config', patch);
+        showToast(
+            i18nT(
+                'maintenance.ai.gated_warning.applied_toast',
+                'Applied public defaults. Re-running scans will now succeed.',
+            ),
+            'success',
+        );
+        await _refreshAll().catch(() => {});
+        _refreshModels();
+    } catch (e) {
+        showToast(
+            i18nTf(
+                'maintenance.ai.gated_warning.apply_failed',
+                { msg: e?.message || e },
+                `Apply failed: ${e?.message || e}`,
+            ),
+            'error',
+        );
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 // Master AI start/stop click. Mirrors the optimistic-flip + PATCH /api/config
@@ -805,6 +1007,8 @@ export async function init() {
         // it's always visible. Same flip-and-PATCH handler the per-cap
         // toggles use; bound once at init.
         $('setting-adv-ai-enabled')?.addEventListener('click', _onMasterToggleClick);
+        // Gated-model warning — single button bound once.
+        $('ai-gated-warning-apply')?.addEventListener('click', _applyGatedFix);
         _initOnce = true;
     }
     await _refreshAll();

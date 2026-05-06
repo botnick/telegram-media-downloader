@@ -161,4 +161,3 @@ export async function maintNsfwScan() {
         btn.disabled = false;
     }
 }
-

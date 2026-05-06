@@ -268,10 +268,11 @@ function _renderHistogram(hist) {
     // is in [0,1] so x = threshold * W.
     const threshold = Number(view.tierCounts?.threshold) || 0;
     const tx = (threshold * W).toFixed(1);
-    const thresholdLine = threshold > 0 && threshold < 1
-        ? `<line x1="${tx}" y1="${PLOT_TOP - 4}" x2="${tx}" y2="${PLOT_TOP + PLOT_H}" stroke="#fff" stroke-opacity="0.65" stroke-width="1" stroke-dasharray="3 3"/>
+    const thresholdLine =
+        threshold > 0 && threshold < 1
+            ? `<line x1="${tx}" y1="${PLOT_TOP - 4}" x2="${tx}" y2="${PLOT_TOP + PLOT_H}" stroke="#fff" stroke-opacity="0.65" stroke-width="1" stroke-dasharray="3 3"/>
            <text x="${tx}" y="${PLOT_TOP - 6}" font-size="9" fill="currentColor" fill-opacity="0.75" text-anchor="middle">τ=${threshold.toFixed(2)}</text>`
-        : '';
+            : '';
     // X-axis ticks at 0/25/50/75/100% and a baseline rule.
     const baselineY = PLOT_TOP + PLOT_H + 0.5;
     const ticks = [0, 25, 50, 75, 100]
@@ -333,7 +334,8 @@ let _currentRows = [];
 //   `fullPath` becomes the URL the modal loads (`/files/<encoded>?inline=1`)
 //   `type` swaps to the gallery's plural (photo→images, video→videos)
 function _rowToViewerFile(row) {
-    const type = row.file_type === 'photo' ? 'images' : row.file_type === 'video' ? 'videos' : 'images';
+    const type =
+        row.file_type === 'photo' ? 'images' : row.file_type === 'video' ? 'videos' : 'images';
     const sizeMb = row.file_size ? (row.file_size / (1024 * 1024)).toFixed(1) : '0';
     return {
         fullPath: row.file_path || '',
@@ -540,11 +542,7 @@ function _renderEmptyState(total) {
                   { tier: tierLbl, next: fallbackLabel, count: fallback[1] },
                   `No items in "${tierLbl}". Try "${fallbackLabel}" — ${fallback[1]} item(s) waiting.`,
               )
-            : i18nTf(
-                  'maintenance.nsfw.empty.tier',
-                  { tier: tierLbl },
-                  `No items in "${tierLbl}".`,
-              );
+            : i18nTf('maintenance.nsfw.empty.tier', { tier: tierLbl }, `No items in "${tierLbl}".`);
     } else {
         text = i18nT('maintenance.nsfw.empty', 'No candidates — the library is clean.');
     }
@@ -1241,11 +1239,13 @@ export function init() {
         // unread dot shouldn't keep nagging on the dashboard.
         try {
             const status = api.get('/api/maintenance/nsfw/status');
-            status.then((s) => {
-                try {
-                    localStorage.setItem('tgdl.nsfw.lastSeen', String(s?.candidates || 0));
-                } catch {}
-            }).catch(() => {});
+            status
+                .then((s) => {
+                    try {
+                        localStorage.setItem('tgdl.nsfw.lastSeen', String(s?.candidates || 0));
+                    } catch {}
+                })
+                .catch(() => {});
         } catch {}
     }
     _applyHashState();

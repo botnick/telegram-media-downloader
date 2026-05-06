@@ -102,18 +102,54 @@ export async function embedText(query, cfg, onProgress, onLog) {
  *   - [ { data: ... } ]                                     (some text pipelines wrap)
  *   - Float32Array                                          (rare)
  *
- * After flattening, we L2-normalise so `dot(a, b) === cosine(a, b)`.
+ * Shape handling. `dims` from a Transformers.js Tensor tells us how to
+ * collapse the buffer:
+ *   - `[batch, dim]`       → row 0 verbatim (CLIP image / pooled text)
+ *   - `[batch, seq, dim]`  → mean-pool over the seq axis (SigLIP text
+ *                            encoder when `pooling:'mean'` doesn't get
+ *                            applied because the head returns the raw
+ *                            sequence). Defence-in-depth: even when we
+ *                            pass `{pooling:'mean'}` the model output
+ *                            shape varies between transformers.js patch
+ *                            versions, so we cover the unpooled case.
+ *   - flat / unknown       → treat the buffer as a single 1-D vector
+ *
+ * After collapsing, we L2-normalise so `dot(a, b) === cosine(a, b)`.
  */
 function _toFloat32(out) {
     if (!out) return null;
-    let arr = null;
-    if (out instanceof Float32Array) arr = out;
-    else if (Array.isArray(out) && out.length && out[0]?.data)
-        arr = _arrayLikeToFloat32(out[0].data);
-    else if (out.data) arr = _arrayLikeToFloat32(out.data);
-    else if (Array.isArray(out)) arr = _arrayLikeToFloat32(out);
-    if (!arr || !arr.length) return null;
-    return l2Normalize(arr);
+    // Some text pipelines wrap the result in a [{ data, dims }] array.
+    if (Array.isArray(out) && out.length && out[0]?.data) out = out[0];
+    // Direct Float32Array / number[] payload — no shape hint, treat as 1-D.
+    if (out instanceof Float32Array || (Array.isArray(out) && typeof out[0] === 'number')) {
+        const arr = _arrayLikeToFloat32(out);
+        return arr && arr.length ? l2Normalize(arr) : null;
+    }
+    const dims = Array.isArray(out.dims) ? out.dims : null;
+    const buf = _arrayLikeToFloat32(out.data || out);
+    if (!buf || !buf.length) return null;
+    let collapsed = buf;
+    if (dims && dims.length === 3) {
+        // [batch, seq, dim] — mean-pool over seq. Use first batch only;
+        // we never call with batched queries.
+        const seq = Number(dims[1]) || 1;
+        const dim = Number(dims[2]) || buf.length / seq;
+        if (seq > 0 && dim > 0 && seq * dim <= buf.length) {
+            collapsed = new Float32Array(dim);
+            for (let s = 0; s < seq; s++) {
+                const base = s * dim;
+                for (let d = 0; d < dim; d++) collapsed[d] += buf[base + d];
+            }
+            for (let d = 0; d < dim; d++) collapsed[d] /= seq;
+        }
+    } else if (dims && dims.length === 2) {
+        // [batch, dim] — take row 0.
+        const dim = Number(dims[1]) || buf.length;
+        if (dim > 0 && dim <= buf.length) {
+            collapsed = new Float32Array(buf.subarray(0, dim));
+        }
+    }
+    return collapsed.length ? l2Normalize(collapsed) : null;
 }
 
 function _arrayLikeToFloat32(x) {
@@ -130,3 +166,9 @@ export function _resetForTests() {
     _imagePipelinePromise = null;
     _textPipelinePromise = null;
 }
+
+/**
+ * Exported for unit tests of the output-shape adapter — direct access
+ * lets us probe each branch without spinning up Transformers.js.
+ */
+export const _internals = { toFloat32: _toFloat32 };

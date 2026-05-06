@@ -9,13 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Api } from 'telegram';
 import { DebugLogger } from './logger.js';
-import {
-    getDb,
-    insertDownload,
-    isDownloaded as dbIsDownloaded,
-    kvGet,
-    kvSet,
-} from './db.js';
+import { getDb, insertDownload, isDownloaded as dbIsDownloaded, kvGet, kvSet } from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';

@@ -12,12 +12,36 @@ for the 90 MB CLIP model.
 
 ## Capabilities
 
-| Capability        | Model (default)                      | Disk    | Use                                          |
-| ----------------- | ------------------------------------ | ------- | -------------------------------------------- |
-| Semantic search   | `Xenova/clip-vit-base-patch32`       | ~90 MB  | Free-text search ("beach photos at sunset"). |
-| Face clustering   | `Xenova/yolov5n-face` + CLIP crops   | ~5 MB   | "People" view — group photos by who's in them. |
-| Auto-tagging      | `Xenova/mobilenet_v2`                | ~14 MB  | Per-image labels → tag cloud + #tag filters. |
-| Perceptual dedup  | DCT pHash (no model)                 | 0       | Find near-duplicates (resized / re-encoded). |
+| Capability        | Model (default)                                       | Disk    | Use                                          |
+| ----------------- | ----------------------------------------------------- | ------- | -------------------------------------------- |
+| Semantic search   | `Xenova/siglip-base-patch16-256-multilingual`         | ~370 MB | Free-text search in 50+ languages (incl. Thai). |
+| Face clustering   | `Xenova/yolos-tiny` + CLIP crops                      | ~31 MB  | "People" view — group photos by who's in them. |
+| Auto-tagging      | `Xenova/vit-base-patch16-224`                         | ~85 MB  | Per-image labels → tag cloud + #tag filters. |
+| Perceptual dedup  | DCT pHash (no model)                                  | 0       | Find near-duplicates (resized / re-encoded). |
+
+> **Public defaults only.** Earlier releases pointed at `Xenova/yolov5n-face`
+> and `Xenova/mobilenet_v2`; both have since become gated on the HuggingFace
+> hub and return 401 even with a valid token. Boot-time state-migration
+> rewrites those ids to the public defaults above for installs upgrading
+> from a config that still names them. Operators who paste a known-gated id
+> at runtime see a one-click "Apply public default" banner on the AI page.
+
+## Switching embedding models
+
+Two presets ship out of the box, listed at the top of the Models panel:
+
+- **English-only · CLIP** — `Xenova/clip-vit-base-patch32`, 90 MB, 512-dim. Smaller, faster, lower-memory. Good fit for English-only archives.
+- **Multilingual · SigLIP** — `Xenova/siglip-base-patch16-256-multilingual`, 370 MB, 768-dim. Default. Required for non-English queries (Thai, Spanish, Arabic, etc.).
+
+Clicking the inactive preset opens a confirmation sheet that discloses the download size + how many photos will need re-indexing. Confirming PATCHes `advanced.ai.embeddings.model` and POSTs `/api/ai/index/reembed`, which:
+
+1. Drops every `image_embeddings` row whose `model` column doesn't match the new id.
+2. Resets `downloads.ai_indexed_at = NULL` for those rows so the scan loop picks them up.
+3. Kicks `runIndexScan` to rebuild every embedding with the new model.
+
+The two preset embeddings are not interchangeable — different vector spaces — so the wipe is always full. Operators can also point at an arbitrary HF id via the Models panel's swap UI; the same re-index flow runs whenever the saved id changes.
+
+Boot-time state-migration runs the same sweep automatically when it detects a stale row set (e.g. fresh upgrade from a CLIP-EN install). Look for `[state-migration] reembed sweep: dropping N stale row(s) — current=...` in the boot transcript.
 
 All four use the WASM execution provider through `@huggingface/transformers`
 — the same path that powers the NSFW classifier — so they work identically
@@ -32,9 +56,9 @@ Add to the runtime config (Settings tab in the dashboard, or directly in the `kv
     "advanced": {
         "ai": {
             "enabled": true,
-            "embeddings": { "enabled": true, "model": "Xenova/clip-vit-base-patch32" },
-            "faces":      { "enabled": false, "model": "Xenova/yolov5n-face" },
-            "tags":       { "enabled": true,  "model": "Xenova/mobilenet_v2", "topK": 5 },
+            "embeddings": { "enabled": true, "model": "Xenova/siglip-base-patch16-256-multilingual" },
+            "faces":      { "enabled": false, "model": "Xenova/yolos-tiny" },
+            "tags":       { "enabled": true,  "model": "Xenova/vit-base-patch16-224", "topK": 5 },
             "phash":      { "enabled": true },
             "fileTypes": ["photo"],
             "indexConcurrency": 1,

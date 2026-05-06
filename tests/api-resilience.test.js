@@ -159,9 +159,7 @@ describe('findPhashGroups response shape', () => {
                 fileType: 'photo',
                 filePath: `pHash_response_fixture/images/f${i}.jpg`,
             });
-            const row = db
-                .prepare('SELECT id FROM downloads WHERE message_id = ?')
-                .get(i);
+            const row = db.prepare('SELECT id FROM downloads WHERE message_id = ?').get(i);
             dbApi.setPhash(row.id, h);
         }
     });

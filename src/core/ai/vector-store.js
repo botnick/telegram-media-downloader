@@ -115,10 +115,21 @@ export function vectorToBlob(vec) {
     return Buffer.from(f.buffer);
 }
 
-export function blobToVector(blob) {
+/**
+ * Decode a SQLite BLOB into a Float32Array.
+ *
+ * `expectedDim` is optional. When provided, a blob whose float-count does
+ * NOT match the expected dim is rejected with `null`. Used by `topK()` so
+ * a stale 512-dim CLIP vector can't be silently mis-aligned against a
+ * 768-dim SigLIP query — without this guard `cosine()` would just return
+ * 0 for the mismatched length and the row would still appear in the
+ * scored list (sorted to the bottom but visible).
+ */
+export function blobToVector(blob, expectedDim) {
     if (!blob) return null;
     const buf = Buffer.isBuffer(blob) ? blob : Buffer.from(blob);
     const len = buf.byteLength >>> 2;
+    if (Number.isFinite(expectedDim) && expectedDim > 0 && len !== expectedDim) return null;
     const out = new Float32Array(len);
     for (let i = 0; i < len; i++) {
         out[i] = buf.readFloatLE(i * 4);
@@ -133,12 +144,17 @@ const _cache = {
     vectors: null, // Array<{ download_id, vec, row }>
     rowsCount: -1,
     lastIndexedAt: 0,
+    model: null, // current model id used to populate the cache
 };
 
 const VECTOR_CACHE_MAX = 50000;
 
-function _cacheValid(currentCount) {
-    return _cache.vectors !== null && _cache.rowsCount === currentCount;
+function _cacheKeyMatches(currentCount, currentModel) {
+    return (
+        _cache.vectors !== null &&
+        _cache.rowsCount === currentCount &&
+        _cache.model === (currentModel || null)
+    );
 }
 
 /**
@@ -148,22 +164,32 @@ function _cacheValid(currentCount) {
  * @param {object} [opts]
  * @param {number} [opts.limit=20]
  * @param {string[]} [opts.fileTypes]  Optional file_type allowlist.
+ * @param {string} [opts.currentModel]  Filter rows by `model` column. When
+ *                                      set, rows whose model doesn't match
+ *                                      are skipped. Defence-in-depth so a
+ *                                      stale 512-dim row can't pollute
+ *                                      results after a model swap.
  * @returns {Array<{ download_id, score, row }>}
  */
-export function topK(queryVec, { limit = 20, fileTypes = null } = {}) {
+export function topK(queryVec, { limit = 20, fileTypes = null, currentModel = null } = {}) {
     const lim = Math.max(1, Math.min(500, Number(limit) || 20));
+    const expectedDim = queryVec?.length || 0;
 
     const rows = listAllImageEmbeddings({ fileTypes });
     if (!rows.length) return [];
 
-    if (!_cacheValid(rows.length)) {
+    if (!_cacheKeyMatches(rows.length, currentModel)) {
         const trimmed = rows.length > VECTOR_CACHE_MAX ? rows.slice(0, VECTOR_CACHE_MAX) : rows;
-        _cache.vectors = trimmed.map((r) => ({
-            download_id: r.download_id,
-            vec: blobToVector(r.embedding),
-            row: r,
-        }));
+        const filtered = currentModel ? trimmed.filter((r) => r.model === currentModel) : trimmed;
+        _cache.vectors = filtered
+            .map((r) => ({
+                download_id: r.download_id,
+                vec: blobToVector(r.embedding, expectedDim),
+                row: r,
+            }))
+            .filter((v) => v.vec !== null);
         _cache.rowsCount = rows.length;
+        _cache.model = currentModel || null;
     }
 
     // Single-pass top-K via a tiny min-heap on `score` would be marginally
@@ -183,4 +209,5 @@ export function clearCache() {
     _cache.vectors = null;
     _cache.rowsCount = -1;
     _cache.lastIndexedAt = 0;
+    _cache.model = null;
 }

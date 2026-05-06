@@ -55,7 +55,15 @@ export function getDb() {
     if (!_stateMigrationRan) {
         _stateMigrationRan = true;
         try {
-            runStateMigration({ db, kvGet, kvSet, insertSession, listSessions });
+            runStateMigration({
+                db,
+                kvGet,
+                kvSet,
+                insertSession,
+                listSessions,
+                listEmbeddingModels,
+                clearStaleEmbeddings,
+            });
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[state-migration] failed:', e.message);
@@ -1399,6 +1407,53 @@ export function listAllImageEmbeddings({ fileTypes = null } = {}) {
         .all(...params);
 }
 
+/**
+ * List the distinct embedding-model values currently stored. Returns an
+ * array of `{ model, count }` rows. Used by state-migration to detect
+ * when a swap to a new default has left stale vectors behind.
+ */
+export function listEmbeddingModels() {
+    return getDb()
+        .prepare(`
+        SELECT model, COUNT(*) AS count
+          FROM image_embeddings
+         GROUP BY model
+    `)
+        .all();
+}
+
+/**
+ * Drop every embedding row whose `model` differs from `currentModelId`,
+ * then reset `downloads.ai_indexed_at = NULL` for the affected rows so
+ * the next scan re-embeds them with the new model. Wrapped in one
+ * transaction so a partial state can never linger. Returns
+ * `{ dropped, requeued }`.
+ */
+export function clearStaleEmbeddings(currentModelId) {
+    const target = String(currentModelId || '').trim();
+    if (!target) return { dropped: 0, requeued: 0 };
+    const db = getDb();
+    const tx = db.transaction((modelId) => {
+        const dropped = db
+            .prepare(`DELETE FROM image_embeddings WHERE model != ?`)
+            .run(modelId).changes;
+        // Mark every download that no longer has an embedding row as
+        // un-indexed so the scan loop picks it up. We can't rely on the
+        // FK ON DELETE CASCADE here — the ai_indexed_at column lives on
+        // `downloads`, which is the parent side of the FK.
+        const requeued = db
+            .prepare(`
+                UPDATE downloads
+                   SET ai_indexed_at = NULL
+                 WHERE id NOT IN (SELECT download_id FROM image_embeddings)
+                   AND ai_indexed_at IS NOT NULL
+            `)
+            .run().changes;
+        return { dropped, requeued };
+    });
+    return tx(target);
+}
+
 // ---- Faces & people -------------------------------------------------------
 
 export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null }) {
@@ -1711,10 +1766,7 @@ export function findSession(token) {
 }
 
 export function touchSession(token) {
-    _prep('UPDATE web_sessions SET last_seen = ? WHERE token = ?').run(
-        Date.now(),
-        String(token),
-    );
+    _prep('UPDATE web_sessions SET last_seen = ? WHERE token = ?').run(Date.now(), String(token));
 }
 
 export function deleteSession(token) {
@@ -1737,7 +1789,5 @@ export function deleteExpiredSessions(nowMs = Date.now()) {
 }
 
 export function listSessions() {
-    return _prep(
-        'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions',
-    ).all();
+    return _prep('SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions').all();
 }
