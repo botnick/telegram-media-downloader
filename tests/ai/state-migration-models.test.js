@@ -53,9 +53,7 @@ describe('_sanitiseAiModelIds', () => {
             log: (m) => logs.push(m),
         });
         expect(n).toBe(1);
-        expect(kv.snapshot().config.advanced.ai.tags.model).toBe(
-            AI_MODEL_DEFAULTS.tags.modelId,
-        );
+        expect(kv.snapshot().config.advanced.ai.tags.model).toBe(AI_MODEL_DEFAULTS.tags.modelId);
         // The other fields must be preserved (we mutate model, not the whole node).
         expect(kv.snapshot().config.advanced.ai.tags.enabled).toBe(true);
         // Migration logs the rewrite for the boot transcript.
@@ -70,9 +68,7 @@ describe('_sanitiseAiModelIds', () => {
         });
         const n = _sanitiseAiModelIds({ kvGet: kv.kvGet, kvSet: kv.kvSet });
         expect(n).toBe(1);
-        expect(kv.snapshot().config.advanced.ai.faces.model).toBe(
-            AI_MODEL_DEFAULTS.faces.modelId,
-        );
+        expect(kv.snapshot().config.advanced.ai.faces.model).toBe(AI_MODEL_DEFAULTS.faces.modelId);
     });
 
     it('rewrites multiple gated ids in a single pass', () => {
@@ -88,12 +84,8 @@ describe('_sanitiseAiModelIds', () => {
         });
         const n = _sanitiseAiModelIds({ kvGet: kv.kvGet, kvSet: kv.kvSet });
         expect(n).toBe(2);
-        expect(kv.snapshot().config.advanced.ai.tags.model).toBe(
-            AI_MODEL_DEFAULTS.tags.modelId,
-        );
-        expect(kv.snapshot().config.advanced.ai.faces.model).toBe(
-            AI_MODEL_DEFAULTS.faces.modelId,
-        );
+        expect(kv.snapshot().config.advanced.ai.tags.model).toBe(AI_MODEL_DEFAULTS.tags.modelId);
+        expect(kv.snapshot().config.advanced.ai.faces.model).toBe(AI_MODEL_DEFAULTS.faces.modelId);
     });
 
     it('is idempotent — second run is a no-op', () => {

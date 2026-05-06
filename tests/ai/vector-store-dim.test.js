@@ -6,11 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import {
-    blobToVector,
-    vectorToBlob,
-    l2Normalize,
-} from '../../src/core/ai/vector-store.js';
+import { blobToVector, vectorToBlob, l2Normalize } from '../../src/core/ai/vector-store.js';
 
 describe('blobToVector — dim guard', () => {
     it('returns the vector when no expectedDim is given', () => {

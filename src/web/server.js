@@ -168,10 +168,15 @@ process.on('uncaughtException', (err) => {
         return;
     }
     // Non-native uncaught exceptions are real bugs — surface them and
-    // crash so the watchdog can restart cleanly. Mirroring the Node
-    // default: print stack + exit non-zero.
+    // crash so the watchdog can restart cleanly. Stop accepting new
+    // connections and give in-flight requests up to 5 s to flush
+    // before exiting; without the drain, every unhandled bug produces
+    // a 502 burst for every concurrent client during the restart.
     console.error('Uncaught exception:', err);
-    process.exit(1);
+    try {
+        server.close();
+    } catch {}
+    setTimeout(() => process.exit(1), 5000).unref();
 });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -184,6 +189,14 @@ const SESSION_PASSWORD = getOrGenerateSecret();
 
 const app = express();
 const server = createServer(app);
+// Cloudflare's idle/origin window is ~100 s; nginx default proxy_read_timeout
+// is 60 s. Setting our own timeouts slightly above keepAliveTimeout avoids
+// the Node-default mismatch (5 s) where a long-poll request still inside
+// the proxy's window gets reset by the origin and the proxy reports 502.
+// headersTimeout must be ≥ keepAliveTimeout per Node docs.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 70_000;
+server.requestTimeout = 120_000;
 // noServer: we authenticate the upgrade ourselves before handing the socket
 // off to the WebSocketServer. Without this, ws auto-binds to `server` and
 // accepts every connection including unauthenticated ones.
@@ -1696,7 +1709,7 @@ app.get('/api/accounts', async (req, res) => {
             });
 
         // Try to load metadata from config
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const configAccounts = config.accounts || [];
 
         const accounts = files.map((f, index) => {
@@ -2982,7 +2995,7 @@ app.post('/api/download/url', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
     try {
         const dbStats = getDbStats(); // From DB
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
 
         // Disk usage: prefer the live `SUM(file_size)` from the DB because
         // it's always in sync with the row count we just read. If the DB
@@ -3102,7 +3115,7 @@ app.get('/api/dialogs', async (req, res) => {
                 .json({ error: 'not_connected', message: 'Telegram client not connected' });
         }
 
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const configGroups = config.groups || [];
         const allowDM = config.allowDmDownloads === true;
 
@@ -3335,7 +3348,7 @@ function dialogsTypeFor(id) {
 
 app.get('/api/groups', async (req, res) => {
     try {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         // Pull the best DB-side name per group_id so a config row with
         // "Unknown" doesn't shadow a real name we already saved at
         // download time. Plain MAX(group_name) misbehaves on this
@@ -3398,7 +3411,7 @@ app.get('/api/groups', async (req, res) => {
 // 4. Downloads Aggregate (Folders + DB Counts)
 app.get('/api/downloads', async (req, res) => {
     try {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const configGroups = config.groups || [];
         const db = getDb();
 
@@ -3483,7 +3496,7 @@ app.get('/api/downloads/all', async (req, res) => {
         // preserved on every tile.
         let config = {};
         try {
-            config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+            config = loadConfig();
         } catch {
             /* ok — fall back to row.group_name */
         }
@@ -3549,7 +3562,7 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
         const offset = (page - 1) * limit;
 
         // Find group name from config or DB to build correct folder path
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const configGroup = (config.groups || []).find((g) => String(g.id) === String(groupId));
         const dbRow = getDb()
             .prepare(
@@ -3673,7 +3686,7 @@ app.get('/api/downloads/search', async (req, res) => {
         const groupId = req.query.groupId ? String(req.query.groupId) : undefined;
         const r = searchDownloads(q, { limit, offset: (page - 1) * limit, groupId });
 
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const groupFolderById = new Map();
         for (const g of config.groups || [])
             groupFolderById.set(String(g.id), sanitizeName(g.name));
@@ -3761,7 +3774,7 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                     `SELECT id, group_id, group_name, file_name, file_type FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`,
                 )
                 .all(...idList);
-            const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+            const config = loadConfig();
             const folderById = new Map();
             for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
             for (const row of rows) {
@@ -3869,7 +3882,7 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
 
         let configGroups = new Map();
         try {
-            const cfg = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+            const cfg = loadConfig();
             for (const g of cfg.groups || []) configGroups.set(String(g.id), g);
         } catch {
             /* fall back to row.group_name */
@@ -4019,7 +4032,7 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
     const groupId = req.params.id;
     const tracker = _groupPurgeTracker(groupId);
     const r = tracker.tryStart(async ({ onProgress }) => {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const configGroup = (config.groups || []).find((g) => String(g.id) === String(groupId));
         const dbRow = getDb()
             .prepare(
@@ -4126,7 +4139,7 @@ app.delete('/api/purge/all', async (req, res) => {
         onProgress({ stage: 'deleting_rows' });
         const dbResult = deleteAllDownloads();
 
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         config.groups = [];
         await writeConfigAtomic(config);
 
@@ -4240,7 +4253,7 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         try {
             entityCache.clear();
         } catch {}
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
             const rows = getDb().prepare('SELECT DISTINCT group_id FROM downloads').all();
@@ -5504,9 +5517,10 @@ app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
     const tracker = _jobTrackers.nsfwBulk;
     const r = tracker.tryStart(async ({ onProgress }) => {
         onProgress({ stage: 'resolving', op: 'unwhitelist' });
-        const resolveBody = Array.isArray(body.ids) && body.ids.length
-            ? body
-            : { ...body, includeWhitelisted: true };
+        const resolveBody =
+            Array.isArray(body.ids) && body.ids.length
+                ? body
+                : { ...body, includeWhitelisted: true };
         const ids = _resolveBulkIds(resolveBody);
         if (!ids.length) return { op: 'unwhitelist', updated: 0, ids: [] };
         onProgress({ stage: 'updating', op: 'unwhitelist', total: ids.length });
@@ -6003,9 +6017,7 @@ app.post('/api/ai/index/scan', async (_req, res) => {
 app.post('/api/ai/index/reembed', async (_req, res) => {
     const cfg = _aiCfg();
     if (!cfg.enabled) {
-        return res
-            .status(503)
-            .json({ error: 'AI subsystem disabled', code: 'AI_DISABLED' });
+        return res.status(503).json({ error: 'AI subsystem disabled', code: 'AI_DISABLED' });
     }
     if (!cfg.embeddings.enabled) {
         return res
@@ -6604,7 +6616,7 @@ app.post('/api/maintenance/sessions/revoke-all', async (req, res) => {
 // are stripped — see /api/config for the existing redaction policy.
 app.get('/api/maintenance/config/raw', async (req, res) => {
     try {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         if (config.telegram?.apiHash) config.telegram.apiHash = '••••••• (redacted)';
         if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
         if (config.web?.password) config.web.password = '••••••• (redacted)';
@@ -6622,7 +6634,7 @@ app.get('/api/maintenance/config/raw', async (req, res) => {
 
 app.get('/api/config', async (req, res) => {
     try {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const safe = JSON.parse(JSON.stringify(config));
         // The Telegram apiId is essentially public (it identifies the
         // application registration, not a user) so we surface it to the SPA
@@ -6703,7 +6715,7 @@ app.post('/api/config', async (req, res) => {
         };
         sanitizePollutionKeys(req.body);
 
-        const currentConfig = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const currentConfig = loadConfig();
         const newConfig = { ...currentConfig, ...req.body };
 
         // Deep-merge sub-sections so a partial PATCH (e.g., only telegram.apiId)
@@ -7029,7 +7041,7 @@ app.post('/api/config', async (req, res) => {
 // 8. Group Update
 app.put('/api/groups/:id', async (req, res) => {
     try {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const groupId = req.params.id;
         let groupIndex = config.groups.findIndex((g) => String(g.id) === groupId);
 
@@ -7339,7 +7351,7 @@ app.get('/api/groups/:id/photo', async (req, res) => {
 app.post('/api/groups/refresh-info', async (req, res) => {
     const tracker = _jobTrackers.groupsRefreshInfo;
     const r = tracker.tryStart(async ({ onProgress }) => {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
             const rows = getDb()
@@ -7417,7 +7429,7 @@ app.get('/api/groups/refresh-info/status', async (req, res) => {
 app.post('/api/groups/refresh-photos', async (req, res) => {
     const tracker = _jobTrackers.groupsRefreshPhotos;
     const r = tracker.tryStart(async ({ onProgress }) => {
-        const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const groups = config.groups || [];
         const total = groups.length;
         let processed = 0;
@@ -7567,7 +7579,7 @@ async function connectTelegram() {
     // Quiet, configuration-aware: no creds → no work, no scary warning.
     let config;
     try {
-        config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        config = loadConfig();
     } catch (e) {
         if (e.code !== 'ENOENT') console.log('⚠️ Could not read config.json:', e.message);
         return null;
@@ -7835,6 +7847,20 @@ wss.on('connection', (ws) => {
     ws.on('close', () => clients.delete(ws));
 });
 
+// Last-resort handler — converts any throw or rejected promise that
+// escaped a route into a JSON 500 instead of leaving the response open
+// until the reverse proxy times out (manifests as 502 to the client).
+// Must be registered after all routes/middleware and before listen().
+app.use((err, req, res, _next) => {
+    if (res.headersSent) return;
+    log({
+        source: 'http',
+        level: 'error',
+        msg: `${req.method} ${req.url} → ${err?.stack || err?.message || err}`,
+    });
+    res.status(500).json({ error: err?.message || 'Internal Server Error' });
+});
+
 const PORT = process.env.PORT || 3000;
 // Without this, EADDRINUSE made the container exit silently with no clue
 // where to look. Print a clear message + exit non-zero so docker-compose
@@ -7852,7 +7878,7 @@ server.on('error', (e) => {
 server.listen(PORT, async () => {
     // Backfill group names for existing records
     try {
-        const config = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
+        const config = loadConfig();
         const updated = backfillGroupNames(config.groups || []);
         if (updated > 0) console.log(`📝 Backfilled group names for ${updated} records`);
     } catch (e) {
@@ -7863,7 +7889,7 @@ server.listen(PORT, async () => {
     // in (configured vs first-run) instead of dumping a generic header.
     let cfgState = 'first-run';
     try {
-        const cfg = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
+        const cfg = loadConfig();
         if (isAuthConfigured(cfg.web)) cfgState = 'ready';
         else if (cfg.telegram?.apiId) cfgState = 'needs-password';
     } catch {
@@ -7955,7 +7981,7 @@ ${tip}
             log,
             getShareSecret: () => {
                 try {
-                    const cfg = JSON.parse(fsSync.readFileSync(CONFIG_PATH, 'utf8'));
+                    const cfg = loadConfig();
                     return cfg?.web?.shareSecret || null;
                 } catch {
                     return null;
@@ -8094,7 +8120,7 @@ async function resolveGroupNamesFromTelegram() {
         // Collect all IDs that need fixing (from config)
         let config;
         try {
-            config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+            config = loadConfig();
         } catch {
             config = { groups: [] };
         }

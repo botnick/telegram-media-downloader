@@ -34,13 +34,37 @@ function _toastAdminOnly(msg) {
     }
 }
 
-async function request(method, url, body) {
+// Default request timeout. Long enough for slow SQLite aggregations and
+// thumbnail builds; short enough that a stalled backend doesn't leave the
+// UI hanging forever — users hit Refresh, retries pile up, and the
+// recovering server gets thundering-herded. Callers can override via
+// `opts.timeoutMs` for endpoints that genuinely need longer.
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+async function request(method, url, body, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
     const init = { method };
     if (body !== undefined) {
         init.headers = { 'Content-Type': 'application/json' };
         init.body = JSON.stringify(body);
     }
-    const res = await fetch(url, init);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    init.signal = ctrl.signal;
+
+    let res;
+    try {
+        res = await fetch(url, init);
+    } catch (e) {
+        if (e?.name === 'AbortError') {
+            const err = new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+            err.status = 0;
+            err.timedOut = true;
+            throw err;
+        }
+        throw e;
+    } finally {
+        clearTimeout(timer);
+    }
 
     if (res.status === 401) {
         // Skip the redirect for the auth-check itself so login.html doesn't loop.
@@ -82,8 +106,8 @@ async function request(method, url, body) {
 }
 
 export const api = {
-    get: (url) => request('GET', url),
-    post: (url, data) => request('POST', url, data),
-    put: (url, data) => request('PUT', url, data),
-    delete: (url, data) => request('DELETE', url, data),
+    get: (url, opts) => request('GET', url, undefined, opts),
+    post: (url, data, opts) => request('POST', url, data, opts),
+    put: (url, data, opts) => request('PUT', url, data, opts),
+    delete: (url, data, opts) => request('DELETE', url, data, opts),
 };

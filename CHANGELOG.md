@@ -4,14 +4,53 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
-### Added — Multilingual AI search
-- **Default semantic-search model is now `Xenova/siglip-base-patch16-256-multilingual` (~370 MB, 768-dim, 50+ languages).** The previous default (`Xenova/clip-vit-base-patch32`, 90 MB / English-only) returned poor results for non-English queries — typing "แมว" or "หาดทราย" against a Thai-first archive ranked random photos at the top because CLIP doesn't know Thai. SigLIP's text encoder shares a vector space across the languages it was trained on, so the same query box now serves both English and Thai queries from one index. **First boot after upgrade auto-wipes existing 512-dim CLIP embeddings and re-indexes** — state-migration detects the model mismatch in `image_embeddings`, DELETEs the stale rows, and resets `downloads.ai_indexed_at = NULL` so the regular scan loop rebuilds them with SigLIP. Operators see a one-time `[state-migration] reembed sweep: dropping N stale row(s)` line in the boot transcript.
-- **Models panel preset chips.** New "English-only · CLIP" and "Multilingual · SigLIP" chips on `/maintenance/ai`. Click an inactive chip → confirmation sheet discloses download size + how many photos will need re-indexing → PATCH config + POST `/api/ai/index/reembed` in one round trip.
-- **`POST /api/ai/index/reembed`** endpoint — wipes embeddings whose `model` differs from the active id, then kicks `runIndexScan`. Atomic via the existing JobTracker (returns 409 ALREADY_RUNNING if a scan is already live).
-- **Defence-in-depth filters in vector-store.** `blobToVector` now rejects mismatched-dim blobs (a 512-dim CLIP row can't be silently treated as 768-dim SigLIP), and `topK()` filters cached rows by current model id so a runtime swap can't pollute results before the wipe completes.
-
 ### Fixed
 - **AI tag/face scans no longer fail with HuggingFace 401s.** Operators who installed before the public-default model swap still had `Xenova/mobilenet_v2` and `Xenova/yolov5n-face` saved in `kv['config'].advanced.ai`, both of which now require gated access; every scan would log `Unauthorized access to file: …/config.json` for those rows. Boot-time state-migration now sweeps known-gated ids out of saved config (rewriting them to the matching public default — `Xenova/vit-base-patch16-224` for tags, `Xenova/yolos-tiny` for faces). The `/api/ai/status` endpoint also returns a `gatedWarnings` array so the dashboard can show a one-click "Apply public default" banner when an operator pastes a gated id at runtime. Idempotent — clean configs are untouched.
+
+## [2.7.2] — 2026-05-07
+
+### Fixed
+- **`GET /api/config` and 23 other endpoints failed with `ENOENT: config.json`** after the v2.7.0 SQLite migration archived the file. Writes were already routed through `saveConfig()` (kv-backed), but every per-request reader still pulled the tree via `fs.readFile(CONFIG_PATH)` — fine while the file existed alongside the new kv row, but ENOENT'd the moment migration renamed it to `config.json.migrated` on first boot. Most user-visible symptom: the SPA's "Downloaded Groups" sidebar rendered empty even though SQLite had the full group list. The Queue / Settings / Backfill panels silently degraded the same way. Replaced every stale read with `loadConfig()` (kv-backed since v2.7.0, self-heals when the merged shape diverges).
+- **`GET /api/ai/perceptual-dedup/groups` no longer returns 500 with "Do not know how to serialize a BigInt"** — the BigInt `phash` field is stripped from response rows. The field was unused by the UI; the in-memory grouper still uses it internally.
+- **Front-end API client aborts requests after 60 s** (`AbortController`) instead of hanging indefinitely when the backend stalls. Errors carry `timedOut === true` so callers can show a specific toast.
+
+### Tests
+- `tests/api-resilience.test.js` (5) — Express error-middleware shape, `api.js` fetch-timeout abort path, `findPhashGroups` response is JSON-safe.
+
+### Internal
+- SW bumped `v277` → `v278`.
+
+## [2.7.1] — 2026-05-06
+
+### Changed — NSFW review tool redesign
+- Grid view (3 / 4 / 6 cols by breakpoint) replaces the one-row-per-file list; click a tile to open the full media viewer with score / tier overlay.
+- Lightbox shortcuts: `w` whitelist (or restore) · `r` re-classify · `d` delete. Actions auto-advance so the operator never has to click "next".
+- Page shortcuts (modal closed): `[` / `]` page · `1`-`5` pick tier · `0` clear tier.
+- Tier + page + show-whitelisted live in `#/maintenance/nsfw?tier=...&page=...&whitelisted=...` so refresh / back-button restore filter context. Bare URL defaults to the `uncertain` tier.
+- "Show whitelisted" toggle + per-row Restore + bulk "Restore all" recover from accidental whitelists. `/v2/unwhitelist` now accepts the same `{tier|...}` body shape as the other bulk endpoints.
+- Histogram: `h-32`, tier-band shading behind bars, vertical threshold marker (`τ` label), x-axis ticks at 0 / 25 / 50 / 75 / 100%.
+- Settings card collapses into a native `<details>` / `<summary>` so the review surface lives above the fold.
+
+### Performance
+- `getNsfwHistogram` is one `GROUP BY bin` SQL pass (was: load every score into Node and bin in JS).
+- `getNsfwTierCounts` is one `CASE-SUM` (was: 5 separate `COUNT(*)`).
+- `getNsfwIdsByTier` is one `SELECT id` (was: paginated walker, 75+ queries on a 15k-row tier). `scoreMin` / `scoreMax` filters pushed into SQL.
+- New partial index `idx_nsfw_tier (file_type, nsfw_whitelist, nsfw_score) WHERE nsfw_score IS NOT NULL` covers the hot path for tier counts, list pagination, and bulk-id resolution.
+- Page init parallelises 5 independent fetches via `Promise.all`.
+
+### Fixed — NSFW review
+- Cache-clear confirm dialog now styles the destructive button correctly (`confirmDanger` was an unrecognized field; uses the documented `danger` flag).
+- Bulk-action buttons recover automatically when a `nsfw_bulk_done` event drops in flight: 60 s watchdog re-polls `/v2/bulk/status`, and `ws.on('open')` reconciles on reconnect.
+- `nsfw_bulk_progress` payload's `processed` / `total` now drives a live "Processing N / M…" hint instead of being discarded.
+- Duplicate "Keep" per-row button removed (was a wrapper around `/v2/reclassify`).
+
+### Fixed — HTTP resilience (no more 502 bursts on transient errors)
+- HTTP server drains in-flight requests on uncaught exceptions instead of calling `process.exit(1)` immediately. Concurrent clients hitting the box during the watchdog restart window used to all see `502 Bad Gateway`; the 5-second drain lets them complete (or get a clean 5xx) first.
+- Express error middleware converts a thrown route handler or `next(err)` call into a JSON 500 instead of leaving the response open until the reverse proxy times out (which surfaces as 502 to the client).
+- Node socket timeouts aligned with reverse-proxy windows — `keepAliveTimeout` 65 s, `headersTimeout` 70 s, `requestTimeout` 120 s. The Node default of 5 s let nginx / Cloudflare reuse a keep-alive socket the origin had already closed, producing spurious 502s.
+
+### Tests
+- `tests/db-nsfw.test.js` (11) — tier-counts shape, histogram density + bin clamp, ids resolver edge cases, `EXPLAIN QUERY PLAN` index selection.
 
 ## [2.7.0] — 2026-05-06
 

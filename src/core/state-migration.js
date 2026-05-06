@@ -229,8 +229,7 @@ export function _reembedOnModelChange({
     const cfg = kvGet('config');
     const explicit = cfg?.advanced?.ai?.embeddings?.model;
     const currentModel =
-        (typeof explicit === 'string' && explicit.trim()) ||
-        AI_MODEL_DEFAULTS.embeddings.modelId;
+        (typeof explicit === 'string' && explicit.trim()) || AI_MODEL_DEFAULTS.embeddings.modelId;
 
     let stored;
     try {

@@ -820,7 +820,10 @@ async function _onPresetClick(modelId) {
     try {
         await api.post('/api/ai/index/reembed', {});
         showToast(
-            i18nT('maintenance.ai.reembed.started_toast', 'Re-index started — see capabilities below for progress.'),
+            i18nT(
+                'maintenance.ai.reembed.started_toast',
+                'Re-index started — see capabilities below for progress.',
+            ),
             'success',
         );
     } catch (e) {

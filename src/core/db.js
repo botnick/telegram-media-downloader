@@ -1766,10 +1766,7 @@ export function findSession(token) {
 }
 
 export function touchSession(token) {
-    _prep('UPDATE web_sessions SET last_seen = ? WHERE token = ?').run(
-        Date.now(),
-        String(token),
-    );
+    _prep('UPDATE web_sessions SET last_seen = ? WHERE token = ?').run(Date.now(), String(token));
 }
 
 export function deleteSession(token) {
@@ -1792,7 +1789,5 @@ export function deleteExpiredSessions(nowMs = Date.now()) {
 }
 
 export function listSessions() {
-    return _prep(
-        'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions',
-    ).all();
+    return _prep('SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions').all();
 }
