@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`GET /api/ai/perceptual-dedup/groups` no longer returns 500 with "Do not know how to serialize a BigInt"** — the BigInt `phash` field is stripped from response rows. The field was unused by the UI; the in-memory grouper still uses it internally.
+- **Front-end API client aborts requests after 60 s** (`AbortController`) instead of hanging indefinitely when the backend stalls. Errors carry `timedOut === true` so callers can show a specific toast.
+
+### Tests
+- `tests/api-resilience.test.js` (5) — Express error-middleware shape, `api.js` fetch-timeout abort path, `findPhashGroups` response is JSON-safe.
+
 ## [2.7.1] — 2026-05-06
 
 ### Changed — NSFW review tool redesign
@@ -25,6 +34,7 @@ All notable changes to this project are documented here. The format is based on 
 - Bulk-action buttons recover automatically when a `nsfw_bulk_done` event drops in flight: 60 s watchdog re-polls `/v2/bulk/status`, and `ws.on('open')` reconciles on reconnect.
 - `nsfw_bulk_progress` payload's `processed` / `total` now drives a live "Processing N / M…" hint instead of being discarded.
 - Duplicate "Keep" per-row button removed (was a wrapper around `/v2/reclassify`).
+- **HTTP layer hardened against 502 bursts.** Uncaught exceptions now drain in-flight requests for 5 s (via `server.close()`) before exit instead of `process.exit(1)`-ing immediately; an Express error middleware converts thrown route handlers / `next(err)` into JSON 500s; Node socket timeouts (`keepAliveTimeout` 65 s, `headersTimeout` 70 s, `requestTimeout` 120 s) align with reverse-proxy windows so nginx/Cloudflare don't reuse sockets the origin closed.
 
 ### Tests
 - `tests/db-nsfw.test.js` (11) — tier-counts shape, histogram density + bin clamp, ids resolver edge cases, `EXPLAIN QUERY PLAN` index selection.

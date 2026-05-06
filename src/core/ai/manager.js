@@ -418,7 +418,18 @@ export function findPhashGroups({ threshold = 6, fileTypes = ['photo'] } = {}) {
         groups: clusters.map((c) => ({
             ids: c.ids,
             size: c.size,
-            rows: c.ids.map((id) => idToRow.get(id)).filter(Boolean),
+            // Strip `phash` — it's a 64-bit BigInt (kept that way in
+            // listAllPhashes() so the in-memory grouper can XOR/bucket
+            // on it) and JSON.stringify throws on BigInt. The UI never
+            // reads this field; only id / file_path / file_name / etc.
+            rows: c.ids
+                .map((id) => {
+                    const r = idToRow.get(id);
+                    if (!r) return null;
+                    const { phash: _drop, ...rest } = r;
+                    return rest;
+                })
+                .filter(Boolean),
         })),
         total: clusters.length,
     };
