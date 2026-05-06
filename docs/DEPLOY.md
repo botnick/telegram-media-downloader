@@ -191,6 +191,25 @@ sudo systemctl enable --now telegram-downloader
 journalctl -u telegram-downloader -f
 ```
 
+## PM2 (bare-metal Node, alternative to systemd)
+
+If you'd rather use a userland process manager — handy on a Synology NAS, a
+shared host without root, or any environment where editing `/etc/systemd`
+isn't an option — the repo ships an `ecosystem.config.cjs` at the root.
+
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.cjs               # production profile (PORT=3000)
+pm2 start ecosystem.config.cjs --env staging # staging profile  (PORT=3010)
+pm2 logs telegram-media-downloader
+pm2 save && pm2 startup                      # persist across reboots
+```
+
+The bundled config caps restarts at 10 with a 2-second backoff (so a
+crash-loop surfaces instead of pinning the CPU), tags log lines with
+timestamps, and writes both streams to `data/logs/pm2-{out,err}.log` so
+the existing backup/rotation paths cover them.
+
 ## Backups
 
 Back up `data/secret.key` and `data/sessions/*.enc` together — losing `secret.key` means none of the sessions decrypt and every account has to re-login. `data/db.sqlite` and the downloads tree are easy to recreate from Telegram if needed.
