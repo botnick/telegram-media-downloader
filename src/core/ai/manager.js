@@ -437,7 +437,11 @@ export async function searchByText(
     const merged = _coerceConfig(cfg);
     const vec = await embedText(query, merged.embeddings, undefined, onLog);
     if (!vec) return { results: [], total: 0 };
-    const top = vectorTopK(vec, { limit, fileTypes });
+    // Pass currentModel so the vector-store cache filters out stale rows
+    // from a previous model swap. Defence-in-depth — the state-migration
+    // sweep wipes mismatched rows at boot, but a runtime swap might race
+    // a search before the wipe completes.
+    const top = vectorTopK(vec, { limit, fileTypes, currentModel: merged.embeddings.model });
     return {
         results: top.map((r) => ({
             download_id: r.download_id,

@@ -44,4 +44,6 @@ export {
     KNOWN_GATED_MODELS,
     suggestPublicReplacement,
     isKnownGatedModel,
+    EMBEDDING_PRESETS,
+    findEmbeddingPreset,
 } from './models.js';

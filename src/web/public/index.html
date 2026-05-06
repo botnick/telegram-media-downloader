@@ -2516,6 +2516,13 @@
                                 <i class="ri-refresh-line"></i>
                             </button>
                         </div>
+
+                        <!-- Embedding-model presets. Populated by maintenance-ai.js
+                             from /api/ai/status.embeddingPresets. Click an inactive
+                             preset → confirmation sheet (download size + row count)
+                             → PATCH config + POST /api/ai/index/reembed. -->
+                        <div id="ai-embedding-presets" class="ai-presets-row mb-2.5"></div>
+
                         <div id="ai-models-list" class="ai-models-list" aria-live="polite"></div>
                     </section>
 
