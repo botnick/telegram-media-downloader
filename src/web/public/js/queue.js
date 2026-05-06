@@ -106,6 +106,15 @@ let _loadMoreObserver = null;
 // cap this so an indefinite-scroll session doesn't grow the Set forever.
 const _renderedKeys = new Set();
 
+// Selected job keys — drives the floating action bar + per-row checkbox
+// state. Survives WS patches because we keep keys here, not row refs;
+// rows that disappear (cancel/dismiss/done-then-cleared) are pruned by
+// `pruneSelection()` on every structural change.
+const _selected = new Set();
+// Pivot for shift-click range selection — last single toggle that
+// happened in the rendered window. Cleared when the row disappears.
+let _selectionPivot = null;
+
 // Render scheduling — collapse WS bursts into one rAF tick. Two paths:
 //   - `scheduleRender()`         → cheap, patches the rendered window
 //                                  rows in place + refreshes chips +
@@ -133,6 +142,15 @@ function scheduleRender() {
             renderChips();
             renderAggregate();
             updateNavBadge();
+            // Refresh batch-action button state alongside other toolbar
+            // counters — cheap (looks at statusCounts) and always
+            // surfaces "Retry all" the moment a job lands in `failed`.
+            renderToolbarState();
+            // Selection bar + checkbox states need the latest filtered
+            // set to compute tri-state — easy to lose this on a structural
+            // re-render that wiped the row HTML.
+            _patchSelectionDom();
+            renderSelectionBar();
         });
     }, RENDER_COALESCE_MS);
 }
@@ -169,6 +187,206 @@ function remove(key) {
     if (!prev) return;
     bumpStatus(prev.status, -1);
     store.delete(key);
+    // A removed row can never be acted on again — drop it from the
+    // selection so the floating-bar count and "select all" tri-state
+    // stay accurate even when the underlying list churns.
+    if (_selected.delete(key)) {
+        if (_selectionPivot === key) _selectionPivot = null;
+        scheduleSelectionRender();
+    }
+}
+
+// ============ Selection ============
+//
+// Lightweight multi-select for the Queue page. The Set sits at module
+// scope so navigation away + back keeps the selection (the Queue store
+// already does the same for filter/sort/scroll). Render path: the row
+// template reads `_selected` to decide checkbox state + row tint, and
+// `renderSelectionBar()` shows/hides the floating action bar.
+
+function selectionToggle(key) {
+    if (!key) return;
+    if (_selected.has(key)) _selected.delete(key);
+    else _selected.add(key);
+    _selectionPivot = key;
+    scheduleSelectionRender();
+}
+
+function selectionClear() {
+    if (_selected.size === 0) return;
+    _selected.clear();
+    _selectionPivot = null;
+    scheduleSelectionRender();
+}
+
+// Range-select between the pivot and `key` based on current filtered+
+// sorted order. Idempotent — already-selected rows in the range stay
+// selected (we union, never subtract).
+function selectionRange(toKey) {
+    if (!_selectionPivot || _selectionPivot === toKey) {
+        selectionToggle(toKey);
+        return;
+    }
+    const rows = getFilteredSorted();
+    const fromIdx = rows.findIndex((r) => r.key === _selectionPivot);
+    const toIdx = rows.findIndex((r) => r.key === toKey);
+    if (fromIdx === -1 || toIdx === -1) {
+        selectionToggle(toKey);
+        return;
+    }
+    const [lo, hi] = fromIdx <= toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+    for (let i = lo; i <= hi; i++) _selected.add(rows[i].key);
+    _selectionPivot = toKey;
+    scheduleSelectionRender();
+}
+
+function selectionSelectAllVisible() {
+    const rows = getFilteredSorted();
+    if (rows.length === 0) return;
+    const everyOn = rows.every((r) => _selected.has(r.key));
+    if (everyOn) {
+        for (const r of rows) _selected.delete(r.key);
+        _selectionPivot = null;
+    } else {
+        for (const r of rows) _selected.add(r.key);
+    }
+    scheduleSelectionRender();
+}
+
+// Sync the in-DOM checkbox checked state + row tint without re-rendering
+// the whole row. Cheap enough to call on every selection mutation
+// because we only touch the rows in the rendered window.
+function _patchSelectionDom() {
+    const rowsHost = document.getElementById('queue-rows');
+    if (!rowsHost) return;
+    rowsHost.querySelectorAll('[data-key]').forEach((row) => {
+        const key = row.dataset.key;
+        const on = _selected.has(key);
+        row.classList.toggle('bg-tg-blue/10', on);
+        const cb = row.querySelector('input[data-row-select]');
+        if (cb) cb.checked = on;
+    });
+    const headerCb = document.getElementById('queue-select-all');
+    if (headerCb) {
+        const rows = getFilteredSorted();
+        if (rows.length === 0) {
+            headerCb.checked = false;
+            headerCb.indeterminate = false;
+        } else {
+            const onCount = rows.reduce((n, r) => n + (_selected.has(r.key) ? 1 : 0), 0);
+            headerCb.checked = onCount === rows.length;
+            headerCb.indeterminate = onCount > 0 && onCount < rows.length;
+        }
+    }
+}
+
+function renderSelectionBar() {
+    const bar = document.getElementById('queue-selection-bar');
+    const counter = document.getElementById('queue-selection-count');
+    if (!bar) return;
+    const n = _selected.size;
+    // Bar is `position: fixed` in the viewport, so we must hide it when
+    // the queue page itself isn't visible — otherwise it leaks across
+    // navigation and floats over Settings / Maintenance / etc.
+    if (n === 0 || !view.visible) {
+        bar.classList.add('hidden');
+        return;
+    }
+    bar.classList.remove('hidden');
+    if (counter) {
+        counter.textContent = i18nTf(
+            'queue.selection.count',
+            { n },
+            n === 1 ? '1 selected' : `${n} selected`,
+        );
+    }
+}
+
+let _selectionRenderScheduled = false;
+function scheduleSelectionRender() {
+    if (_selectionRenderScheduled) return;
+    _selectionRenderScheduled = true;
+    requestAnimationFrame(() => {
+        _selectionRenderScheduled = false;
+        _patchSelectionDom();
+        renderSelectionBar();
+    });
+}
+
+// Run a multi-row server action over the current selection. Coalesces
+// the `keys` snapshot up front so a slow round-trip can't act on a
+// stale set if the user keeps tweaking the selection mid-flight.
+async function runBatchAction(action) {
+    if (_selected.size === 0) return;
+    const keys = Array.from(_selected);
+    try {
+        if (action === 'cancel') {
+            if (
+                !(await confirmSheet({
+                    title: i18nT('queue.confirm.cancel_title', 'Cancel download?'),
+                    message: i18nTf(
+                        'queue.confirm.cancel_n',
+                        { n: keys.length },
+                        keys.length === 1
+                            ? 'Stop this download? Any partial bytes will be discarded.'
+                            : `Stop ${keys.length} downloads? Any partial bytes will be discarded.`,
+                    ),
+                    confirmLabel: i18nT('queue.action.cancel', 'Cancel'),
+                    danger: true,
+                }))
+            )
+                return;
+        }
+        const r = await api.post('/api/queue/batch', { keys, action });
+        // The downloader's per-key `queue_changed` events update each
+        // row, but `dismiss` is a client-only "drop from view" — handle
+        // it here so the UI reacts immediately for done/failed rows.
+        if (action === 'dismiss') {
+            for (const k of keys) remove(k);
+            scheduleStructuralRender();
+        }
+        showToast(
+            i18nTf(
+                'queue.toast.batch_done',
+                { ok: r?.ok ?? keys.length, action },
+                `${r?.ok ?? keys.length} updated (${action})`,
+            ),
+            'success',
+        );
+        selectionClear();
+    } catch (e) {
+        showToast(
+            i18nTf('queue.toast.action_failed', { msg: e.message }, `Action failed: ${e.message}`),
+            'error',
+        );
+    }
+}
+
+async function runRetryAll() {
+    try {
+        const r = await api.post('/api/queue/retry-all');
+        const retried = r?.retried || 0;
+        const skipped = r?.skipped || 0;
+        if (retried === 0 && skipped === 0) {
+            showToast(i18nT('queue.toast.no_failed', 'No failed jobs to retry'), 'info');
+            return;
+        }
+        showToast(
+            i18nTf(
+                'queue.toast.retried_all',
+                { retried, skipped },
+                skipped > 0
+                    ? `Retried ${retried}, skipped ${skipped}`
+                    : `Retried ${retried} failed downloads`,
+            ),
+            'success',
+        );
+    } catch (e) {
+        showToast(
+            i18nTf('queue.toast.action_failed', { msg: e.message }, `Action failed: ${e.message}`),
+            'error',
+        );
+    }
 }
 
 function patchProgress(payload) {
@@ -527,6 +745,29 @@ function renderRows() {
     // (rather than per-row addEventListener) keeps the cost O(1) per
     // re-render even with 100+ visible rows.
     rowsHost.onclick = (ev) => {
+        // Per-row checkbox — toggle selection without acting on the row.
+        const cb = ev.target.closest('input[data-row-select]');
+        if (cb) {
+            ev.stopPropagation();
+            const rowEl = cb.closest('[data-key]');
+            const key = rowEl?.dataset.key;
+            if (!key) return;
+            // Shift+click on a checkbox = range select from pivot →
+            // current. Plain click = single toggle. (We don't auto-toggle
+            // here — the browser already changed `cb.checked`; we mirror
+            // the desired final state into the Set.)
+            if (ev.shiftKey && _selectionPivot && _selectionPivot !== key) {
+                cb.checked = !cb.checked; // undo browser default — selectionRange decides final
+                ev.preventDefault();
+                selectionRange(key);
+            } else {
+                if (cb.checked) _selected.add(key);
+                else _selected.delete(key);
+                _selectionPivot = key;
+                scheduleSelectionRender();
+            }
+            return;
+        }
         const btn = ev.target.closest('[data-row-action]');
         if (btn) {
             ev.preventDefault();
@@ -534,6 +775,18 @@ function renderRows() {
             const key = btn.closest('[data-key]')?.dataset.key;
             if (!key) return;
             runRowAction(btn.dataset.rowAction, key);
+            return;
+        }
+        // Click anywhere else with a modifier key = selection gesture
+        // (Ctrl/Cmd toggle, Shift range). Falls through to the
+        // open-viewer path only on plain clicks.
+        const rowSel = ev.target.closest('[data-key]');
+        if (rowSel && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const key = rowSel.dataset.key;
+            if (ev.shiftKey) selectionRange(key);
+            else selectionToggle(key);
             return;
         }
         // Click anywhere else on a "done" row → open the media in the
@@ -847,12 +1100,28 @@ function renderRow(j) {
     // stays meaningful.
     const pctLabel = isDone ? '' : j.status === 'queued' ? '' : `${pct}%`;
 
+    // Per-row selection checkbox — `data-row-select` lets the click
+    // delegate toggle the checked state without re-rendering the whole
+    // row. Hidden on mobile (the layout collapses to single-column there
+    // and the floating bar covers selection actions) but the checkbox
+    // is still in the DOM so keyboard shortcuts keep working.
+    const isSelected = _selected.has(j.key);
+    const selectCell = `
+        <span class="hidden md:flex items-center justify-center">
+            <input type="checkbox" data-row-select
+                class="rounded border-tg-border bg-tg-bg cursor-pointer accent-tg-blue"
+                ${isSelected ? 'checked' : ''}
+                aria-label="Select row">
+        </span>`;
+
     // The hooks `data-row-bar`, `data-row-pct`, `data-row-meta`, and
     // `data-row-status` let `_patchRowNode()` update only the changing
     // bits on every WS progress tick (no full re-render of the row).
+    const rowSelClass = isSelected ? ' bg-tg-blue/10' : '';
     return `
         <div data-key="${escapeHtml(j.key)}" ${rowAttrs}
-             class="grid grid-cols-[40px_minmax(0,2.5fr)_90px_minmax(140px,1.4fr)_80px_70px_90px_120px] items-center gap-2 px-3 py-2 hover:bg-tg-hover/40${rowExtraCls}">
+             class="grid grid-cols-[32px_40px_minmax(0,2.5fr)_90px_minmax(140px,1.4fr)_80px_70px_90px_120px] items-center gap-2 px-3 py-2 hover:bg-tg-hover/40${rowExtraCls}${rowSelClass}">
+            ${selectCell}
             ${thumb}
             <div class="min-w-0">
                 <div class="text-sm text-tg-text truncate" title="${escapeHtml(name)}">${escapeHtml(name)}${accountChip}</div>
@@ -883,6 +1152,16 @@ function formatEta(seconds) {
     if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
     if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
     return `${Math.round(seconds / 3600)}h`;
+}
+
+// Toolbar state — currently just enables / disables the "Retry all"
+// button. Cheap on the existing statusCounts map; called from the same
+// scheduleRender tick so it stays in lock-step with the chip counts.
+function renderToolbarState() {
+    const btn = document.getElementById('queue-retry-all');
+    if (!btn) return;
+    const failed = statusCounts.get('failed') || 0;
+    btn.disabled = failed === 0;
 }
 
 function renderAggregate() {
@@ -1070,6 +1349,9 @@ export async function showQueuePage(params = {}) {
     renderChips();
     renderAggregate();
     renderRows();
+    renderToolbarState();
+    _patchSelectionDom();
+    renderSelectionBar();
     updateNavBadge();
 }
 
@@ -1111,6 +1393,52 @@ function wireOnce() {
     document
         .getElementById('queue-clear-finished')
         ?.addEventListener('click', () => runGlobalAction('clear-finished'));
+    document.getElementById('queue-retry-all')?.addEventListener('click', () => runRetryAll());
+
+    // Header "select all visible" checkbox. Tri-state: empty / partial /
+    // full. Clicking from any state goes to "full"; clicking when already
+    // full clears.
+    document.getElementById('queue-select-all')?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        selectionSelectAllVisible();
+    });
+
+    // Floating selection bar buttons.
+    document.getElementById('queue-selection-bar')?.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-batch-action]');
+        if (btn) {
+            ev.preventDefault();
+            runBatchAction(btn.dataset.batchAction);
+            return;
+        }
+        if (ev.target.closest('#queue-selection-clear')) {
+            ev.preventDefault();
+            selectionClear();
+        }
+    });
+
+    // Document-level keyboard shortcuts. Ignored when the user is typing
+    // in an input/textarea/contenteditable so they don't fight the
+    // search box.
+    document.addEventListener('keydown', (ev) => {
+        // Only when the queue page is the visible one — the SPA shows
+        // multiple pages and these shortcuts shouldn't leak.
+        if (!view.visible) return;
+        const tag = (ev.target?.tagName || '').toLowerCase();
+        const inField = tag === 'input' || tag === 'textarea' || ev.target?.isContentEditable;
+        if (inField) return;
+
+        if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'a' || ev.key === 'A')) {
+            ev.preventDefault();
+            selectionSelectAllVisible();
+            return;
+        }
+        if (ev.key === 'Escape' && _selected.size > 0) {
+            ev.preventDefault();
+            selectionClear();
+            return;
+        }
+    });
 
     // Track scroll position so a navigation away and back lands at the
     // same spot — the IntersectionObserver on `#queue-load-more` does
@@ -1131,7 +1459,11 @@ function wireOnce() {
     const observer = new MutationObserver(() => {
         const el = document.getElementById('page-queue');
         if (!el) return;
+        const wasVisible = view.visible;
         view.visible = !el.classList.contains('hidden');
+        // Selection bar is `position: fixed` so it would leak across
+        // navigation. Re-paint it whenever the page's visibility flips.
+        if (wasVisible !== view.visible) renderSelectionBar();
     });
     const queuePage = document.getElementById('page-queue');
     if (queuePage) observer.observe(queuePage, { attributes: true, attributeFilter: ['class'] });
