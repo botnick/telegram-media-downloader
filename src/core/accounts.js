@@ -14,6 +14,7 @@ import { getOrGenerateSecret } from './secret.js';
 import { colorize } from '../cli/colors.js';
 import { suppressNoise } from './logger.js';
 import { buildProxy } from './proxy.js';
+import { loadConfig, saveConfig } from '../config/manager.js';
 
 function deferred() {
     let resolve, reject;
@@ -26,7 +27,6 @@ function deferred() {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SESSIONS_DIR = path.join(__dirname, '../../data/sessions');
-const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
 const SESSION_PASSWORD = getOrGenerateSecret();
 
 // Ensure sessions directory exists
@@ -435,16 +435,17 @@ export class AccountManager {
     }
 
     /**
-     * Persist account metadata to config.json for Web API access
+     * Persist account metadata to config (SQLite kv-backed) for Web API access.
+     * Goes through saveConfig() so the in-process change-bus fires and any
+     * watchConfig subscriber (monitor, runtime) sees the new account list.
      */
     async syncToConfig() {
         try {
-            const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
-            const config = JSON.parse(raw);
+            const config = loadConfig();
             config.accounts = this.getList();
-            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4));
+            saveConfig(config);
         } catch (e) {
-            // Config file may not exist yet during first run
+            // DB may not be initialised yet during first run — non-fatal.
         }
     }
 

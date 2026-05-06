@@ -10,6 +10,7 @@ import { colorize } from '../cli/colors.js';
 import { sanitizeName } from './downloader.js';
 import { markRescued } from './db.js';
 import { effectiveRescueMs } from './rescue.js';
+import { loadConfig, watchConfig } from '../config/manager.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -34,10 +35,11 @@ export class RealtimeMonitor extends EventEmitter {
         };
         this.spamGuard = new SpamGuard(); // Active Defense System
 
-        // Config file watcher for live sync with Web UI
-        if (configPath && fsSync.existsSync(configPath)) {
-            this.watchConfig();
-        }
+        // Live sync with Web UI: subscribe to the in-process config bus.
+        // The configPath argument is kept for callers that still pass it,
+        // but the actual signal comes from manager.js' EventEmitter — no
+        // filesystem watch is needed any more.
+        this.watchConfig();
     }
 
     /**
@@ -99,24 +101,22 @@ export class RealtimeMonitor extends EventEmitter {
     }
 
     watchConfig() {
-        let debounce = null;
-        const watcher = fsSync.watch(this.configPath, (eventType) => {
-            if (eventType !== 'change') return;
-            clearTimeout(debounce);
-            debounce = setTimeout(() => this.reloadConfig(), 500);
+        // Subscribe to the EventEmitter that saveConfig() fires after every
+        // commit to the kv table. Synchronous delivery, no debounce window
+        // needed — the previous fs.watch debounce existed only to coalesce
+        // duplicate filesystem events from the OS, which no longer apply.
+        const unsub = watchConfig((newConfig) => {
+            this.reloadConfig(newConfig);
         });
-        this._configWatcher = watcher;
-        this._configWatchDebounceClear = () => {
-            if (debounce) {
-                clearTimeout(debounce);
-                debounce = null;
-            }
-        };
+        this._configWatcher = { close: unsub };
+        this._configWatchDebounceClear = () => {};
     }
 
-    async reloadConfig() {
+    async reloadConfig(maybeConfig) {
         try {
-            const newConfig = JSON.parse(await fs.readFile(this.configPath, 'utf8'));
+            // Accept the freshly-saved tree from the bus when available;
+            // otherwise re-read it (covers manual reloadConfig() callers).
+            const newConfig = maybeConfig || loadConfig();
             const oldGroupIds = this.config.groups.map((g) => String(g.id));
             const newGroupIds = newConfig.groups.map((g) => String(g.id));
 

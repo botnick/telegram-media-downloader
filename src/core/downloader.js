@@ -9,7 +9,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Api } from 'telegram';
 import { DebugLogger } from './logger.js';
-import { getDb, insertDownload, isDownloaded as dbIsDownloaded } from './db.js';
+import {
+    getDb,
+    insertDownload,
+    isDownloaded as dbIsDownloaded,
+    kvGet,
+    kvSet,
+} from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
@@ -1058,10 +1064,9 @@ export class DownloadManager extends EventEmitter {
     async getDiskUsage() {
         if (this._diskUsageCache) return this._diskUsageCache.size;
 
-        const cachePath = path.join(this.LOG_DIR, '../disk_usage.json');
         try {
-            if (existsSync(cachePath)) {
-                const data = JSON.parse(await fs.readFile(cachePath, 'utf8'));
+            const data = kvGet('disk_usage');
+            if (data && Number.isFinite(data.size)) {
                 this._diskUsageCache = { size: data.size, timestamp: Date.now() };
                 return data.size;
             }
@@ -1096,15 +1101,11 @@ export class DownloadManager extends EventEmitter {
 
     async saveDiskUsageCache() {
         if (!this._diskUsageCache) return;
-        const cachePath = path.join(this.LOG_DIR, '../disk_usage.json');
         try {
-            await fs.writeFile(
-                cachePath,
-                JSON.stringify({
-                    size: this._diskUsageCache.size,
-                    lastScan: Date.now(),
-                }),
-            );
+            kvSet('disk_usage', {
+                size: this._diskUsageCache.size,
+                lastScan: Date.now(),
+            });
         } catch (e) {}
     }
 

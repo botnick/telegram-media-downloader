@@ -1,9 +1,15 @@
-import fs from 'fs';
 import path from 'path';
+import { EventEmitter } from 'events';
 import { fileURLToPath } from 'url';
+import { kvGet, kvSet } from '../core/db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
+
+// Legacy JSON path retained for the one-shot migration runner only. Once
+// migrate_json_state.js renames it to .migrated, this file is never read
+// again — kv['config'] is the single source of truth.
+const LEGACY_CONFIG_PATH = path.join(__dirname, '../../data/config.json');
+const KV_KEY = 'config';
 
 const DEFAULT_CONFIG = {
     telegram: {
@@ -47,10 +53,10 @@ const DEFAULT_CONFIG = {
     // Advanced runtime tuning. Every value here mirrors a previously-hardcoded
     // constant in the hot path; consumers MUST read with the inline literal
     // as fallback (config.advanced?.x?.y ?? <existing-default>) so a fresh
-    // install — or a config.json that pre-dates this block — behaves
-    // bit-identically to the old hardcoded version. Only surface what most
-    // operators will plausibly want to tune; do NOT expose security/protocol
-    // primitives (scrypt params, spam-guard limits, etc) here.
+    // install — or a config that pre-dates this block — behaves bit-identically
+    // to the old hardcoded version. Only surface what most operators will
+    // plausibly want to tune; do NOT expose security/protocol primitives
+    // (scrypt params, spam-guard limits, etc) here.
     advanced: {
         downloader: {
             // Lower bound on worker count. Auto-scaler never goes below this,
@@ -119,71 +125,74 @@ const DEFAULT_FILTERS = {
     urls: true,
 };
 
+// In-process pub/sub. Replaces the fs.watch + 100ms debounce that the old
+// JSON-file backend relied on. Every saveConfig() emits 'change' synchronously
+// after the DB row is updated, so any module that subscribed via
+// watchConfig(cb) gets the new tree without needing a filesystem signal.
+const bus = new EventEmitter();
+bus.setMaxListeners(50);
+
+function mergeConfig(userConfig) {
+    const userAdvanced = userConfig.advanced || {};
+    return {
+        ...DEFAULT_CONFIG,
+        ...userConfig, // User values overwrite defaults
+        telegram: { ...DEFAULT_CONFIG.telegram, ...userConfig.telegram },
+        download: { ...DEFAULT_CONFIG.download, ...userConfig.download },
+        rateLimits: { ...DEFAULT_CONFIG.rateLimits, ...userConfig.rateLimits },
+        diskManagement: { ...DEFAULT_CONFIG.diskManagement, ...userConfig.diskManagement },
+        rescue: { ...DEFAULT_CONFIG.rescue, ...userConfig.rescue },
+        // Two-level merge for `advanced`: each sub-namespace (downloader,
+        // history, …) gets its own spread so users who only set a single
+        // value (e.g. advanced.downloader.maxConcurrency) keep the rest
+        // of the defaults instead of erasing them.
+        advanced: {
+            ...DEFAULT_CONFIG.advanced,
+            ...userAdvanced,
+            downloader: {
+                ...DEFAULT_CONFIG.advanced.downloader,
+                ...(userAdvanced.downloader || {}),
+            },
+            history: { ...DEFAULT_CONFIG.advanced.history, ...(userAdvanced.history || {}) },
+            diskRotator: {
+                ...DEFAULT_CONFIG.advanced.diskRotator,
+                ...(userAdvanced.diskRotator || {}),
+            },
+            integrity: {
+                ...DEFAULT_CONFIG.advanced.integrity,
+                ...(userAdvanced.integrity || {}),
+            },
+            web: { ...DEFAULT_CONFIG.advanced.web, ...(userAdvanced.web || {}) },
+        },
+        // Heal Groups: Ensure every group has latest filter keys
+        groups: (userConfig.groups || []).map((group) => ({
+            ...group,
+            filters: { ...DEFAULT_FILTERS, ...(group.filters || {}) },
+        })),
+    };
+}
+
 export function loadConfig() {
     try {
-        if (!fs.existsSync(CONFIG_PATH)) {
-            const dir = path.dirname(CONFIG_PATH);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 4));
+        const stored = kvGet(KV_KEY);
+
+        if (!stored) {
+            // Fresh install — seed the row with defaults so subsequent reads
+            // are stable and the operator can edit through the dashboard
+            // without ever needing a config file on disk.
+            kvSet(KV_KEY, DEFAULT_CONFIG);
             return DEFAULT_CONFIG;
         }
 
-        const data = fs.readFileSync(CONFIG_PATH, 'utf8');
-        const userConfig = JSON.parse(data);
+        const config = mergeConfig(stored);
 
-        // Deep Merge to ensure new defaults are present in old configs
-        const userAdvanced = userConfig.advanced || {};
-        const config = {
-            ...DEFAULT_CONFIG,
-            ...userConfig, // User values overwrite defaults
-            telegram: { ...DEFAULT_CONFIG.telegram, ...userConfig.telegram },
-            download: { ...DEFAULT_CONFIG.download, ...userConfig.download },
-            rateLimits: { ...DEFAULT_CONFIG.rateLimits, ...userConfig.rateLimits },
-            diskManagement: { ...DEFAULT_CONFIG.diskManagement, ...userConfig.diskManagement },
-            rescue: { ...DEFAULT_CONFIG.rescue, ...userConfig.rescue },
-            // Two-level merge for `advanced`: each sub-namespace (downloader,
-            // history, …) gets its own spread so users who only set a single
-            // value (e.g. advanced.downloader.maxConcurrency) keep the rest
-            // of the defaults instead of erasing them.
-            advanced: {
-                ...DEFAULT_CONFIG.advanced,
-                ...userAdvanced,
-                downloader: {
-                    ...DEFAULT_CONFIG.advanced.downloader,
-                    ...(userAdvanced.downloader || {}),
-                },
-                history: { ...DEFAULT_CONFIG.advanced.history, ...(userAdvanced.history || {}) },
-                diskRotator: {
-                    ...DEFAULT_CONFIG.advanced.diskRotator,
-                    ...(userAdvanced.diskRotator || {}),
-                },
-                integrity: {
-                    ...DEFAULT_CONFIG.advanced.integrity,
-                    ...(userAdvanced.integrity || {}),
-                },
-                web: { ...DEFAULT_CONFIG.advanced.web, ...(userAdvanced.web || {}) },
-            },
-            // Heal Groups: Ensure every group has latest filter keys
-            groups: (userConfig.groups || []).map((group) => ({
-                ...group,
-                filters: { ...DEFAULT_FILTERS, ...(group.filters || {}) },
-            })),
-        };
-
-        // Self-Healing: If structure changed (new keys added), save back to disk
-        // We compare the keys or string length to decide if update is needed
-        // Better check: If stringified output is different, it means we added something
-        // Note: Simple stringify comparison order check is risky, but for adding keys it works.
-        // Or we just save it always? No, disk write spam.
-        // Lets checks if keys count changed or important keys missing.
-
-        // Robust check: Compare loaded 'userConfig' vs 'config' (merged)
-        // If 'config' (merged) has keys that 'userConfig' didn't, we should save.
-        if (JSON.stringify(config) !== JSON.stringify(userConfig)) {
-            // console.log('🔄 Updating config file with new defaults...');
-            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4));
+        // Self-Healing: if merge surfaced new defaults (e.g. a release added
+        // a new advanced.* sub-section), persist the merged tree so future
+        // reads skip the merge cost and the dashboard sees the up-to-date
+        // shape. JSON-string compare is good enough for this — only fires
+        // when keys / values genuinely differ.
+        if (JSON.stringify(config) !== JSON.stringify(stored)) {
+            kvSet(KV_KEY, config);
         }
 
         return config;
@@ -194,13 +203,17 @@ export function loadConfig() {
 }
 
 export function saveConfig(config) {
-    // Atomic write: stage to a temp file, then rename. Without this, an
-    // fs.watch consumer (monitor.js) could read a half-written JSON if
-    // the process is preempted mid-write, and JSON.parse would throw.
-    // rename() is atomic on the same filesystem on POSIX + on NTFS.
-    const tmp = `${CONFIG_PATH}.tmp.${process.pid}.${Date.now()}`;
-    fs.writeFileSync(tmp, JSON.stringify(config, null, 4));
-    fs.renameSync(tmp, CONFIG_PATH);
+    // SQLite transactions give us the same atomicity the old tmp+rename
+    // pattern provided: a writer crash mid-statement rolls back, no reader
+    // ever sees a half-written row.
+    kvSet(KV_KEY, config);
+    // Notify in-process subscribers (monitor, runtime, etc). Errors in
+    // listeners must not break the save itself.
+    try {
+        bus.emit('change', config);
+    } catch (e) {
+        console.error('config change listener error:', e.message);
+    }
 }
 
 export function addGroup(config, group) {
@@ -215,29 +228,27 @@ export function addGroup(config, group) {
 }
 
 export function watchConfig(callback) {
-    let debounceTimer = null;
-    const watcher = fs.watch(CONFIG_PATH, (event, filename) => {
-        if (filename && event === 'change') {
-            if (debounceTimer) return;
-            debounceTimer = setTimeout(() => {
-                debounceTimer = null;
-                console.log('\x1b[36m%s\x1b[0m', '🔄 Config change detected. Reloading...');
-                const newConfig = loadConfig();
-                callback(newConfig);
-            }, 100);
-        }
-    });
-    // Returns an unsubscriber so callers can release the watcher + pending
-    // debounce timer cleanly on shutdown / reconfigure.
-    return () => {
-        if (debounceTimer) {
-            clearTimeout(debounceTimer);
-            debounceTimer = null;
-        }
+    // EventEmitter-based watcher. Subscribers run inside the same process —
+    // saveConfig() emits synchronously after the DB row is updated, so
+    // callbacks see the freshly-merged tree without any debounce window.
+    const handler = (newConfig) => {
         try {
-            watcher.close();
-        } catch {
-            /* already closed */
+            callback(newConfig);
+        } catch (e) {
+            console.error('watchConfig listener error:', e.message);
         }
     };
+    bus.on('change', handler);
+    return () => bus.off('change', handler);
 }
+
+// Test-only helper: lets tests reset the in-process bus between runs so
+// listeners from a previous spec don't fire on the next.
+export function _resetConfigBus() {
+    bus.removeAllListeners();
+}
+
+// Exposed for the migration runner so it can detect whether the legacy
+// JSON file is still around without duplicating the path constant.
+export const _LEGACY_CONFIG_PATH = LEGACY_CONFIG_PATH;
+export const _CONFIG_KV_KEY = KV_KEY;

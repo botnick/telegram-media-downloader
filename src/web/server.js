@@ -54,7 +54,7 @@ import * as ai from '../core/ai/index.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager } from '../core/accounts.js';
-import { loadConfig } from '../config/manager.js';
+import { loadConfig, saveConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
@@ -629,13 +629,13 @@ app.use((req, res, next) => {
     next();
 });
 
-// In-process cache for config.json. checkAuth + the force-https +
+// In-process cache for the config tree. checkAuth + the force-https +
 // rate-limit middlewares all call readConfigSafe() on every request —
 // during a video playback, the browser issues many 64 KB range GETs to
-// /files/* and each one used to disk-read + JSON.parse the config. The
-// 2-second TTL is short enough that toggle changes feel instant in the
-// settings UI but long enough to fold the per-clip request burst into
-// a single read.
+// /files/* and each one would otherwise hit the kv table. The 2-second
+// TTL is short enough that toggle changes feel instant in the settings
+// UI but long enough to fold the per-clip request burst into a single
+// read. (better-sqlite3 is fast, but a Map lookup is still cheaper.)
 //
 // Note: the `let _configCache` variable is declared further up (right
 // before the share-secret bootstrap IIFE) to dodge a temporal dead-zone
@@ -644,7 +644,7 @@ async function readConfigSafe() {
     const now = Date.now();
     if (_configCache.value && now - _configCache.at < 2000) return _configCache.value;
     try {
-        const value = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
+        const value = loadConfig();
         _configCache = { at: now, value };
         return value;
     } catch {
@@ -656,13 +656,13 @@ function invalidateConfigCache() {
     _configCache = { at: 0, value: null };
 }
 
-// Atomic config writer — temp-file + rename so a crash mid-write can't
-// leave config.json half-flushed. Several handlers used to call
-// `fs.writeFile(CONFIG_PATH, …)` directly; route them through this.
+// Atomic config writer. Backed by kv['config'] in SQLite — the SQLite
+// transaction inside saveConfig() gives us the same all-or-nothing
+// guarantee the previous tmp-file + rename pattern provided, with the
+// added benefit that other readers see the new tree the instant the
+// transaction commits.
 async function writeConfigAtomic(config) {
-    const tmp = CONFIG_PATH + '.tmp';
-    await fs.writeFile(tmp, JSON.stringify(config, null, 4));
-    await fs.rename(tmp, CONFIG_PATH);
+    saveConfig(config);
     invalidateConfigCache();
 }
 

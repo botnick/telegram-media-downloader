@@ -1,11 +1,10 @@
 /**
  * Web Dashboard authentication.
  *
- * Replaces the legacy plaintext-password-as-cookie scheme with:
- *   - scrypt-hashed password (per-password random salt, stored in config.json
- *     under web.passwordHash)
- *   - random session tokens (cookie value), persisted to data/web-sessions.json
- *   - timing-safe verification (crypto.timingSafeEqual)
+ * - scrypt-hashed password (per-password random salt, stored under
+ *   config.web.passwordHash)
+ * - random session tokens persisted in the SQLite `web_sessions` table
+ * - timing-safe verification (crypto.timingSafeEqual)
  *
  * Backward compatibility: if config.web.password (legacy plaintext) is set,
  * loginVerify() accepts it and rehashes on first successful login. The legacy
@@ -13,13 +12,14 @@
  */
 
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data');
-const SESSIONS_PATH = path.join(DATA_DIR, 'web-sessions.json');
+import {
+    insertSession,
+    findSession,
+    deleteSession,
+    deleteAllSessions,
+    deleteSessionsByRole,
+    deleteExpiredSessions,
+} from './db.js';
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };
 // Default 7-day cookie lifetime. Callers (server.js) may override per-issue
@@ -121,105 +121,55 @@ export function isGuestEnabled(webConfig) {
 }
 
 // ---- session token store --------------------------------------------------
-
-let sessions = null; // { [token]: { createdAt, expiresAt } }
-
-function ensureLoaded() {
-    if (sessions !== null) return;
-    sessions = {};
-    try {
-        if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-        if (fs.existsSync(SESSIONS_PATH)) {
-            const raw = fs.readFileSync(SESSIONS_PATH, 'utf8');
-            const parsed = JSON.parse(raw);
-            const now = Date.now();
-            for (const [tok, meta] of Object.entries(parsed || {})) {
-                if (meta && meta.expiresAt > now) sessions[tok] = meta;
-            }
-        }
-    } catch {
-        sessions = {};
-    }
-}
-
-function persist() {
-    try {
-        fs.writeFileSync(SESSIONS_PATH, JSON.stringify(sessions), { mode: 0o600 });
-    } catch {
-        // Non-fatal: tokens still work in-memory until restart.
-    }
-}
+//
+// Backed by the SQLite `web_sessions` table. Each accessor maps to a typed
+// helper in core/db.js — no in-memory state, no JSON-file persistence, GC
+// is an indexed `expires_at <= ?` delete instead of a full-file rewrite.
 
 export function issueSession(opts = {}) {
-    ensureLoaded();
     const token = crypto.randomBytes(TOKEN_BYTES).toString('hex');
     const now = Date.now();
     // Per-issue override; falls back to the original 7-day default.
     const ttlMs =
         Number.isFinite(opts.ttlMs) && opts.ttlMs > 0 ? Math.floor(opts.ttlMs) : SESSION_TTL_MS;
     const role = opts.role === 'guest' ? 'guest' : 'admin';
-    sessions[token] = { createdAt: now, expiresAt: now + ttlMs, role };
-    persist();
+    insertSession({ token, role, expiresAt: now + ttlMs, issuedAt: now });
     return { token, maxAgeMs: ttlMs, role };
 }
 
 /**
  * Returns false if the session is invalid/expired, otherwise an object with
- * `{ role }`. Sessions persisted before the role field existed default to
- * `admin` so a config upgrade doesn't force every signed-in user to re-login.
+ * `{ role }`. findSession() self-cleans expired rows so a stale token never
+ * satisfies a request.
  */
 export function validateSession(token) {
-    ensureLoaded();
     if (!token || typeof token !== 'string') return false;
-    const meta = sessions[token];
-    if (!meta) return false;
-    if (meta.expiresAt <= Date.now()) {
-        delete sessions[token];
-        persist();
-        return false;
-    }
-    return { role: meta.role === 'guest' ? 'guest' : 'admin' };
+    const row = findSession(token);
+    if (!row) return false;
+    return { role: row.role === 'guest' ? 'guest' : 'admin' };
 }
 
 export function revokeSession(token) {
-    ensureLoaded();
-    if (sessions[token]) {
-        delete sessions[token];
-        persist();
-    }
+    if (typeof token !== 'string' || !token) return;
+    deleteSession(token);
 }
 
 export function revokeAllSessions() {
-    ensureLoaded();
-    sessions = {};
-    persist();
+    deleteAllSessions();
 }
 
 export function revokeAllGuestSessions() {
-    ensureLoaded();
-    let dirty = false;
-    for (const [tok, meta] of Object.entries(sessions)) {
-        if (meta?.role === 'guest') {
-            delete sessions[tok];
-            dirty = true;
-        }
-    }
-    if (dirty) persist();
+    deleteSessionsByRole('guest');
 }
 
 // Periodic cleanup; safe to call repeatedly.
 export function startSessionGc(intervalMs = 60 * 60 * 1000) {
-    ensureLoaded();
     const t = setInterval(() => {
-        const now = Date.now();
-        let dirty = false;
-        for (const [tok, meta] of Object.entries(sessions)) {
-            if (meta.expiresAt <= now) {
-                delete sessions[tok];
-                dirty = true;
-            }
+        try {
+            deleteExpiredSessions(Date.now());
+        } catch {
+            /* DB unavailable — try again next tick */
         }
-        if (dirty) persist();
     }, intervalMs);
     if (typeof t.unref === 'function') t.unref();
     return t;
