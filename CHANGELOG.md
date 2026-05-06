@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.4] — 2026-05-07
+
+### Added
+- **PM2 ecosystem.config.cjs** for bare-metal Node deploys (Synology NAS, shared hosts, anywhere systemd isn't available or you'd rather not edit `/etc/systemd`). Caps restarts at 10 with a 2 s backoff so a bad config surfaces as a stopped process instead of pinning the CPU; tags log lines with timestamps; writes both streams to `data/logs/pm2-{out,err}.log` so existing backup/rotation paths cover them; ships `prod` (PORT=3000) and `staging` (PORT=3010) env profiles. Documented in `docs/DEPLOY.md`.
+
+### Fixed
+- **`Resilience.handleError` no longer rethrows after exit on `AUTH_KEY_UNREGISTERED`.** The auth-fail branch called `process.exit(1)` without a `return`, so when `exit` was stubbed (test runners, hosted environments where the harness intercepts exits) the function fell through to `throw error` and turned a controlled shutdown into an unhandled rejection.
+
+### Tests
+- `tests/resilience.test.js` (13), `tests/runtime.test.js` (13), `tests/forwarder.test.js` (15) — `guard()` / `handleFatal()` classification + recovery branches, runtime lifecycle + state-machine emissions + status() shape, auto-forwarder early-exit gates + destination resolution chain (alias → InputEntity → Entity → manual `InputPeerChannel` for `-100…` IDs).
+
+### Internal
+- `src/core/constants.js` centralises `BACKFILL_MAX_LIMIT`, `DIALOG_CACHE_TTL_MS`, `HISTORY_JOB_TTL_MS`, `BACKPRESSURE_CAP_DEFAULT` — previously duplicated across `server.js` (3-4 sites each), `history.js`, and `config/manager.js`. Pure extraction; values unchanged.
+- `NATIVE_LOAD_FAIL` regex moved to `core/logger.js` as a single named export — was duplicated in `server.js`, `index.js`, and a narrower copy in the doctor check that has been widened to match.
+
 ## [2.7.3] — 2026-05-07
 
 ### Added — Multilingual AI search
