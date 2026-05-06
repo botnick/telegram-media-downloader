@@ -22,6 +22,17 @@ let zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0, startX: 0, sta
 /** @type {VideoPlayer|null} */
 let videoPlayer = null;
 
+// Review-mode action toolbar — populated by openMediaViewerForReview and
+// cleared on close. Each entry: { key, label, icon?, danger?, handler }.
+// `handler(file, index)` is invoked on click or matching keydown; if it
+// returns `'advance'` the viewer auto-navigates forward (so e.g. `w`
+// whitelist + advance keeps the operator moving without extra clicks).
+let _reviewActions = null;
+// Optional per-row metadata renderer for review mode (e.g. NSFW score
+// badge). Receives the current file and returns an HTML string painted
+// into #viewer-review-meta on every openMediaViewer call.
+let _reviewMetaRender = null;
+
 /**
  * One-shot open: hand a `{ fullPath, type, name, … }` record straight to
  * the modal without first walking it through a gallery list. Used by the
@@ -35,6 +46,99 @@ export function openMediaViewerSingle(file) {
     if (!file?.fullPath) return;
     state.files = [file];
     openMediaViewer(0);
+}
+
+/**
+ * Review-mode open: hand the viewer an arbitrary list of files plus a
+ * set of action buttons (whitelist / delete / re-classify, etc.) to
+ * render alongside the existing controls. Same `state.files` swap as
+ * openMediaViewerSingle so prev/next + zoom + swipe-dismiss all work,
+ * but with a custom action toolbar wired to single-letter shortcuts.
+ *
+ *   files:   [{ fullPath, type, name, sizeFormatted, modified }, ...]
+ *   index:   start index into `files`
+ *   opts.actions:    Array<{ key, label, icon?, danger?, handler }>
+ *                    handler(file, index) may return 'advance' to auto-step
+ *                    forward (whitelist/delete style) or 'remove-and-advance'
+ *                    to drop the current item from `files` first.
+ *   opts.metaRender: (file, index) => HTML string painted into the review
+ *                    meta slot (score badge etc.). Optional.
+ */
+export function openMediaViewerForReview(files, index, opts = {}) {
+    if (!Array.isArray(files) || !files.length) return;
+    state.files = files;
+    _reviewActions = Array.isArray(opts.actions) ? opts.actions : [];
+    _reviewMetaRender = typeof opts.metaRender === 'function' ? opts.metaRender : null;
+    openMediaViewer(Math.max(0, Math.min(index || 0, files.length - 1)));
+}
+
+// Render the review action toolbar + per-file meta into the modal. Pulls
+// from module-level state set by openMediaViewerForReview; safe to call
+// when the modal is opened in normal (non-review) mode — the elements
+// stay hidden because _reviewActions is null.
+function _renderReviewToolbar(file, index) {
+    const wrapper = document.getElementById('viewer-review-bar');
+    const bar = document.getElementById('viewer-review-actions');
+    const meta = document.getElementById('viewer-review-meta');
+    if (!bar || !meta) return;
+    if (!_reviewActions?.length) {
+        wrapper?.classList.add('hidden');
+        bar.classList.add('hidden');
+        meta.classList.add('hidden');
+        return;
+    }
+    wrapper?.classList.remove('hidden');
+    bar.classList.remove('hidden');
+    meta.classList.toggle('hidden', !_reviewMetaRender);
+    if (_reviewMetaRender) meta.innerHTML = _reviewMetaRender(file, index) || '';
+    bar.innerHTML = _reviewActions
+        .map((a, i) => {
+            const danger = a.danger
+                ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border-red-500/30'
+                : 'border-tg-border text-tg-text hover:bg-tg-hover';
+            const iconHtml = a.icon ? `<i class="${a.icon}"></i>` : '';
+            const keyHtml = a.key
+                ? `<span class="ml-1 text-[10px] opacity-60 uppercase">${a.key}</span>`
+                : '';
+            return `<button type="button" data-review-act="${i}" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border ${danger} text-sm transition">${iconHtml}<span>${a.label || ''}</span>${keyHtml}</button>`;
+        })
+        .join('');
+    for (const btn of bar.querySelectorAll('[data-review-act]')) {
+        btn.onclick = async () => {
+            const i = Number(btn.dataset.reviewAct);
+            const action = _reviewActions?.[i];
+            if (!action) return;
+            await _runReviewAction(action);
+        };
+    }
+}
+
+async function _runReviewAction(action) {
+    const idx = state.currentFileIndex;
+    const file = state.files[idx];
+    if (!file) return;
+    let outcome;
+    try {
+        outcome = await action.handler(file, idx);
+    } catch {
+        return;
+    }
+    if (outcome === 'remove-and-advance') {
+        const removed = state.files.splice(idx, 1);
+        if (!state.files.length) {
+            closeMediaViewer();
+            return;
+        }
+        const nextIdx = Math.min(idx, state.files.length - 1);
+        openMediaViewer(nextIdx);
+        if (typeof action.afterRemove === 'function') {
+            try {
+                action.afterRemove(removed[0]);
+            } catch {}
+        }
+    } else if (outcome === 'advance') {
+        if (idx + 1 < state.files.length) openMediaViewer(idx + 1);
+    }
 }
 
 export function openMediaViewer(index) {
@@ -83,6 +187,8 @@ export function openMediaViewer(index) {
     document.body.style.overflow = 'hidden';
 
     prefetchNeighbor(index + 1);
+
+    _renderReviewToolbar(file, index);
 }
 
 let _prefetchLink = null;
@@ -918,6 +1024,13 @@ export function closeMediaViewer() {
     if (videoPlayer) videoPlayer.unload();
     const image = document.getElementById('modal-image');
     if (image) image.removeAttribute('src');
+    // Drop review-mode wiring so the next normal open doesn't render
+    // the action toolbar by mistake.
+    _reviewActions = null;
+    _reviewMetaRender = null;
+    document.getElementById('viewer-review-bar')?.classList.add('hidden');
+    document.getElementById('viewer-review-actions')?.classList.add('hidden');
+    document.getElementById('viewer-review-meta')?.classList.add('hidden');
 }
 
 export function setupViewerEvents() {
@@ -1018,6 +1131,28 @@ export function setupViewerEvents() {
             }
             if (e.key === 'ArrowRight') {
                 navigateMedia(1);
+                return;
+            }
+        }
+
+        // Review-mode action shortcuts — match by single-letter key
+        // (case-insensitive) so j/k/w/d feel native. Skip when modifiers
+        // are held so Cmd/Ctrl combos still bubble to the browser.
+        if (
+            _reviewActions?.length &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            !e.altKey &&
+            e.key &&
+            e.key.length === 1
+        ) {
+            const want = e.key.toLowerCase();
+            const action = _reviewActions.find(
+                (a) => typeof a.key === 'string' && a.key.toLowerCase() === want,
+            );
+            if (action) {
+                e.preventDefault();
+                _runReviewAction(action);
                 return;
             }
         }
