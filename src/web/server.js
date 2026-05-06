@@ -187,6 +187,14 @@ const SESSION_PASSWORD = getOrGenerateSecret();
 
 const app = express();
 const server = createServer(app);
+// Cloudflare's idle/origin window is ~100 s; nginx default proxy_read_timeout
+// is 60 s. Setting our own timeouts slightly above keepAliveTimeout avoids
+// the Node-default mismatch (5 s) where a long-poll request still inside
+// the proxy's window gets reset by the origin and the proxy reports 502.
+// headersTimeout must be ≥ keepAliveTimeout per Node docs.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 70_000;
+server.requestTimeout = 120_000;
 // noServer: we authenticate the upgrade ourselves before handing the socket
 // off to the WebSocketServer. Without this, ws auto-binds to `server` and
 // accepts every connection including unauthenticated ones.
