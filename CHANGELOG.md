@@ -2,9 +2,10 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.7.2] — 2026-05-07
 
 ### Fixed
+- **`GET /api/config` (and the SPA's "Downloaded Groups" sidebar) repaired after the v2.7.0 SQLite migration archived `data/config.json`.** 24 endpoints in `server.js` were still reading config via `fs.readFile(CONFIG_PATH)` and ENOENT'd the moment the migration renamed the file to `config.json.migrated`. Replaced every stale read with `loadConfig()` (kv-backed since 2.7.0, self-heals on divergence). Queue, Settings, and Backfill panels were silently degrading on the same path; all are restored.
 - **`GET /api/ai/perceptual-dedup/groups` no longer returns 500 with "Do not know how to serialize a BigInt"** — the BigInt `phash` field is stripped from response rows. The field was unused by the UI; the in-memory grouper still uses it internally.
 - **Front-end API client aborts requests after 60 s** (`AbortController`) instead of hanging indefinitely when the backend stalls. Errors carry `timedOut === true` so callers can show a specific toast.
 
