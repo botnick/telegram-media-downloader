@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { runStateMigration } from './state-migration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // `TGDL_DATA_DIR` overrides the on-disk data root. Used by the test suite to
@@ -16,6 +17,10 @@ const DB_PATH = path.join(DATA_DIR, 'db.sqlite');
 
 // Singleton connection
 let db;
+// Run the JSON→SQLite state migration exactly once per process. Cheap to
+// re-check (idempotent), but we'd still rather skip the fs.existsSync calls
+// on every getDb() once we've done it.
+let _stateMigrationRan = false;
 
 export function getDb() {
     if (db) return db;
@@ -42,6 +47,21 @@ export function getDb() {
     db.pragma('foreign_keys = ON');
 
     initSchema();
+
+    // Import any legacy JSON state files (config.json / disk_usage.json /
+    // web-sessions.json) into the kv + web_sessions tables. Runs once per
+    // process, synchronously before we hand the connection back, so the
+    // very first kvGet() call sees the migrated rows.
+    if (!_stateMigrationRan) {
+        _stateMigrationRan = true;
+        try {
+            runStateMigration({ db, kvGet, kvSet, insertSession, listSessions });
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[state-migration] failed:', e.message);
+        }
+    }
+
     return db;
 }
 
@@ -299,6 +319,48 @@ function initSchema() {
     try {
         db.exec('ALTER TABLE backup_destinations ADD COLUMN throttle_bps INTEGER');
     } catch {}
+
+    // Generic KV blob store. Holds runtime state that used to live in
+    // standalone JSON files (config.json, disk_usage.json) — single source
+    // of truth, atomic writes via SQLite transactions, no fs.watch needed.
+    // Keys are arbitrary strings; values are JSON-encoded text.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS kv (
+            key        TEXT    PRIMARY KEY,
+            value      TEXT    NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+    `);
+
+    // Dashboard session tokens. Replaces data/web-sessions.json so the GC
+    // sweep can use an indexed expires_at scan instead of rewriting the
+    // whole file every login/logout. Role is constrained — anything other
+    // than 'admin' / 'guest' is a programming error and should fail loud.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS web_sessions (
+            token      TEXT    PRIMARY KEY,
+            role       TEXT    NOT NULL CHECK(role IN ('admin','guest')),
+            issued_at  INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            last_seen  INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_web_sessions_expires ON web_sessions(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_web_sessions_role    ON web_sessions(role);
+    `);
+
+    // Smoke-test the new tables the same way we do for downloads: force a
+    // SELECT against every column the rest of the code path depends on so
+    // a failed CREATE TABLE surfaces at boot, not mid-request.
+    try {
+        db.prepare('SELECT key, value, updated_at FROM kv LIMIT 0').all();
+        db.prepare(
+            'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions LIMIT 0',
+        ).all();
+    } catch (e) {
+        throw new Error(
+            `DB schema migration incomplete — kv / web_sessions tables not ready: ${e.message}`,
+        );
+    }
 
     // FK enforcement is per-connection in SQLite — flip it on once we know
     // the table exists. Without this, ON DELETE CASCADE silently no-ops.
@@ -1473,4 +1535,121 @@ export function listAllPhashes({ fileTypes = ['photo'] } = {}) {
         created_at: typeof r.created_at === 'bigint' ? Number(r.created_at) : r.created_at,
         // phash stays BigInt — hammingDistance + bucketByPrefix expect it.
     }));
+}
+
+// ---- KV blob store --------------------------------------------------------
+//
+// Generic key/value persistence that replaces the old data/*.json files.
+// Values are arbitrary JSON; everything is round-tripped through
+// JSON.stringify / JSON.parse so callers see real objects, not strings.
+// kvSet wraps the upsert in a transaction so a partial write can never
+// land — same atomicity guarantee the previous tmp+rename pattern gave us.
+
+export function kvGet(key) {
+    const row = _prep('SELECT value FROM kv WHERE key = ?').get(String(key));
+    if (!row) return null;
+    try {
+        return JSON.parse(row.value);
+    } catch {
+        // Corrupt row — surface as null so the caller falls back to defaults
+        // rather than crashing the whole boot path.
+        return null;
+    }
+}
+
+export function kvSet(key, value) {
+    const json = JSON.stringify(value);
+    const now = Date.now();
+    const stmt = _prep(`
+        INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `);
+    getDb().transaction(() => {
+        stmt.run(String(key), json, now);
+    })();
+}
+
+export function kvDelete(key) {
+    return _prep('DELETE FROM kv WHERE key = ?').run(String(key)).changes;
+}
+
+export function kvList() {
+    const rows = _prep('SELECT key, value FROM kv').all();
+    const out = {};
+    for (const r of rows) {
+        try {
+            out[r.key] = JSON.parse(r.value);
+        } catch {
+            /* skip corrupt row */
+        }
+    }
+    return out;
+}
+
+// ---- Dashboard sessions ---------------------------------------------------
+//
+// Replaces the in-memory map + data/web-sessions.json file in core/web-auth.
+// Each accessor maps 1:1 to the previous public method on web-auth so the
+// caller surface stays unchanged.
+
+export function insertSession({ token, role, expiresAt, issuedAt = Date.now() }) {
+    if (role !== 'admin' && role !== 'guest') {
+        throw new Error(`insertSession: invalid role ${role}`);
+    }
+    _prep(`
+        INSERT INTO web_sessions (token, role, issued_at, expires_at, last_seen)
+        VALUES (?, ?, ?, ?, ?)
+    `).run(String(token), role, Number(issuedAt), Number(expiresAt), Number(issuedAt));
+}
+
+export function findSession(token) {
+    const row = _prep(
+        'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions WHERE token = ?',
+    ).get(String(token));
+    if (!row) return null;
+    if (Number(row.expires_at) <= Date.now()) {
+        // Self-clean expired tokens at lookup time so a stale row never
+        // satisfies a request even if the GC hasn't run yet.
+        deleteSession(token);
+        return null;
+    }
+    return {
+        token: row.token,
+        role: row.role,
+        issuedAt: Number(row.issued_at),
+        expiresAt: Number(row.expires_at),
+        lastSeen: Number(row.last_seen),
+    };
+}
+
+export function touchSession(token) {
+    _prep('UPDATE web_sessions SET last_seen = ? WHERE token = ?').run(
+        Date.now(),
+        String(token),
+    );
+}
+
+export function deleteSession(token) {
+    return _prep('DELETE FROM web_sessions WHERE token = ?').run(String(token)).changes;
+}
+
+export function deleteAllSessions() {
+    return _prep('DELETE FROM web_sessions').run().changes;
+}
+
+export function deleteSessionsByRole(role) {
+    if (role !== 'admin' && role !== 'guest') {
+        throw new Error(`deleteSessionsByRole: invalid role ${role}`);
+    }
+    return _prep('DELETE FROM web_sessions WHERE role = ?').run(role).changes;
+}
+
+export function deleteExpiredSessions(nowMs = Date.now()) {
+    return _prep('DELETE FROM web_sessions WHERE expires_at <= ?').run(Number(nowMs)).changes;
+}
+
+export function listSessions() {
+    return _prep(
+        'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions',
+    ).all();
 }
