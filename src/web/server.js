@@ -120,7 +120,7 @@ import {
     revokeAllGuestSessions,
     startSessionGc,
 } from '../core/web-auth.js';
-import { suppressNoise, wrapConsoleMethod } from '../core/logger.js';
+import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from '../core/logger.js';
 import { createJobTracker } from '../core/job-tracker.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
@@ -141,8 +141,8 @@ console.error = wrapConsoleMethod(console.error, 'gramjs');
 // package.json so a default install doesn't pull it at all, but a
 // historical install or a re-deploy without `npm prune` may leave the
 // broken module on disk. Catch the rejection here, log once, move on.
-const NATIVE_LOAD_FAIL =
-    /(ld-linux|ld-musl|libonnxruntime|GLIBC_|NODE_MODULE_VERSION|cannot open shared object|Error loading shared library)/i;
+// The detector pattern lives in core/logger.js so this file, src/index.js,
+// and the doctor check can't drift apart.
 let _nativeLoadFailWarned = false;
 process.on('unhandledRejection', (reason) => {
     const msg = reason?.message || String(reason);

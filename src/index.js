@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url';
 
 import { loadConfig, saveConfig, addGroup } from './config/manager.js';
 import { hashPassword } from './core/web-auth.js';
-import { suppressNoise, wrapConsoleMethod } from './core/logger.js';
+import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from './core/logger.js';
 import { RateLimiter, SecureSession } from './core/security.js';
 import { ConnectionManager } from './core/connection.js';
 import { AccountManager } from './core/accounts.js';
@@ -44,12 +44,10 @@ const CONFIG_PATH = path.join(__dirname, '../data/config.json');
 // from dying on `Error loading shared library ld-linux-…` when an
 // optional dep (most often `onnxruntime-node`, transitively from the
 // optional NSFW classifier) ships glibc-only prebuilds on a musl image.
-const _NATIVE_LOAD_FAIL_CLI =
-    /(ld-linux|ld-musl|libonnxruntime|GLIBC_|NODE_MODULE_VERSION|cannot open shared object|Error loading shared library)/i;
 process.on('unhandledRejection', (reason) => {
     const msg = reason?.message || String(reason);
     if (suppressNoise(msg, 'unhandledRejection')) return;
-    if (_NATIVE_LOAD_FAIL_CLI.test(msg)) {
+    if (NATIVE_LOAD_FAIL.test(msg)) {
         console.warn('[startup] An optional native module failed to load:', msg.slice(0, 200));
         return;
     }
@@ -195,10 +193,7 @@ async function runDoctor() {
         });
     } catch (e) {
         const msg = e?.message || String(e);
-        const native =
-            /(ld-linux|libonnxruntime|GLIBC_|NODE_MODULE_VERSION|cannot open shared object)/i.test(
-                msg,
-            );
+        const native = NATIVE_LOAD_FAIL.test(msg);
         checks.push({
             name: 'NSFW classifier (optional)',
             level: 'warn',
