@@ -684,8 +684,10 @@ async function _refreshAll() {
     if (s) {
         _renderSettings(s);
         _renderGatedWarning(s.gatedWarnings || []);
+        _renderEmbeddingPresets(s);
     } else {
         _renderGatedWarning([]);
+        _renderEmbeddingPresets(null);
     }
     await Promise.all([_loadPeople(), _loadTags(), _loadPhashGroups()]).catch(() => {});
 }
@@ -726,6 +728,124 @@ function _renderGatedWarning(warnings) {
             )
             .join('');
     }
+}
+
+// ---- Embedding-model preset chips ---------------------------------------
+//
+// Renders one chip per entry in /api/ai/status.embeddingPresets. The active
+// chip (modelId === currentEmbeddingModel) gets the primary style; inactive
+// chips are clickable. Clicking an inactive chip opens a confirmation sheet
+// that discloses the download size + how many photos will need re-indexing,
+// then PATCHes config and triggers POST /api/ai/index/reembed.
+
+let _statusSnapshot = null; // memoised most recent /status response
+
+function _renderEmbeddingPresets(status) {
+    _statusSnapshot = status;
+    const wrap = document.getElementById('ai-embedding-presets');
+    if (!wrap) return;
+    const presets = Array.isArray(status?.embeddingPresets) ? status.embeddingPresets : [];
+    const current = status?.currentEmbeddingModel || '';
+    if (!presets.length) {
+        wrap.innerHTML = '';
+        return;
+    }
+    wrap.innerHTML = presets
+        .map((p) => {
+            const active = p.modelId === current;
+            const langs = Array.isArray(p.languages) ? p.languages.join(', ') : '';
+            const klass = active
+                ? 'ai-preset-chip ai-preset-active tg-btn-primary'
+                : 'ai-preset-chip tg-btn-secondary';
+            const labelKey = `maintenance.ai.preset.${p.key.replace('-', '_')}.label`;
+            const label = i18nT(labelKey, p.key);
+            const sizeLbl = i18nTf(
+                'maintenance.ai.preset.size_dim',
+                { size: p.sizeMB, dim: p.dim },
+                `${p.sizeMB} MB · ${p.dim}-d`,
+            );
+            return `
+                <button type="button" class="${klass} text-[11px] px-2.5 py-1 rounded-full mr-1.5 mb-1"
+                        data-preset-key="${escapeHtml(p.key)}"
+                        data-preset-model="${escapeHtml(p.modelId)}"
+                        ${active ? 'aria-pressed="true"' : ''}
+                        title="${escapeHtml(`${langs} · ${sizeLbl}`)}">
+                    <i class="ri-${active ? 'check-line' : 'arrow-left-right-line'}" aria-hidden="true"></i>
+                    <span class="ml-1">${escapeHtml(label)}</span>
+                    <span class="opacity-70 ml-1">· ${escapeHtml(sizeLbl)}</span>
+                </button>
+            `;
+        })
+        .join('');
+    wrap.querySelectorAll('[data-preset-key]').forEach((btn) => {
+        btn.addEventListener('click', () => _onPresetClick(btn.dataset.presetModel));
+    });
+}
+
+async function _onPresetClick(modelId) {
+    const target = String(modelId || '').trim();
+    if (!target) return;
+    const status = _statusSnapshot;
+    if (status?.currentEmbeddingModel === target) return; // already active
+    const preset = (status?.embeddingPresets || []).find((p) => p.modelId === target);
+    if (!preset) return;
+    const indexed = Number(status?.counts?.indexed || 0);
+    const langs = Array.isArray(preset.languages) ? preset.languages.join(', ') : '';
+    const { confirmSheet } = await import('./sheet.js');
+    const ok = await confirmSheet({
+        title: i18nT('maintenance.ai.reembed.confirm_title', 'Switch embedding model?'),
+        body: i18nTf(
+            'maintenance.ai.reembed.confirm_body',
+            { size: preset.sizeMB, langs, n: indexed },
+            `Will download ~${preset.sizeMB} MB (${langs}) and re-embed ${indexed} photos. Existing search results will be empty until the scan completes.`,
+        ),
+        confirmText: i18nT('maintenance.ai.reembed.confirm_btn', 'Switch and re-index'),
+    });
+    if (!ok) return;
+    try {
+        await api.post('/api/config', {
+            advanced: { ai: { embeddings: { model: target } } },
+        });
+    } catch (e) {
+        showToast(
+            i18nTf(
+                'maintenance.ai.reembed.apply_failed',
+                { msg: e?.message || e },
+                `Save failed: ${e?.message || e}`,
+            ),
+            'error',
+        );
+        return;
+    }
+    try {
+        await api.post('/api/ai/index/reembed', {});
+        showToast(
+            i18nT('maintenance.ai.reembed.started_toast', 'Re-index started — see capabilities below for progress.'),
+            'success',
+        );
+    } catch (e) {
+        const code = e?.data?.code || '';
+        if (code === 'ALREADY_RUNNING') {
+            showToast(
+                i18nT(
+                    'maintenance.ai.reembed.already_running',
+                    'A scan is already running. Cancel it first, then switch.',
+                ),
+                'error',
+            );
+        } else {
+            showToast(
+                i18nTf(
+                    'maintenance.ai.reembed.start_failed',
+                    { msg: e?.message || e },
+                    `Re-index failed: ${e?.message || e}`,
+                ),
+                'error',
+            );
+        }
+    }
+    _refreshAll().catch(() => {});
+    _refreshModels();
 }
 
 async function _applyGatedFix() {

@@ -420,9 +420,16 @@ export function loadedPipelines() {
 export const AI_MODEL_DEFAULTS = Object.freeze({
     embeddings: {
         kind: 'image-feature-extraction',
-        modelId: 'Xenova/clip-vit-base-patch32',
+        // SigLIP multilingual — ~370 MB, 768-dim, 50+ languages.
+        // The previous default was the monolingual `Xenova/clip-vit-base-patch32`
+        // (90 MB / 512-dim), which only understood English queries. The
+        // operator-facing search box is bilingual (en/th) and the codebase
+        // is Thai-first, so we ship the multilingual model as the default.
+        // Operators who prefer the smaller English-only encoder can flip
+        // back via the Models panel preset — see EMBEDDING_PRESETS below.
+        modelId: 'Xenova/siglip-base-patch16-256-multilingual',
         textKind: 'feature-extraction', // text encoder uses the text head
-        dim: 512,
+        dim: 768,
     },
     faces: {
         kind: 'object-detection',
@@ -484,4 +491,42 @@ export function suggestPublicReplacement(modelId) {
 /** Predicate form of `suggestPublicReplacement`. */
 export function isKnownGatedModel(modelId) {
     return suggestPublicReplacement(modelId) !== null;
+}
+
+/**
+ * Operator-facing presets for the semantic-search embedding model. The
+ * Models panel renders one chip per entry; clicking a chip PATCHes the
+ * `advanced.ai.embeddings.model` field and triggers the re-embed flow.
+ *
+ *  - `mono-en`: `Xenova/clip-vit-base-patch32` — 90 MB, 512-dim, English only.
+ *    Smaller, faster, lower-memory. Good fit for English-only archives.
+ *  - `multi`:   `Xenova/siglip-base-patch16-256-multilingual` — 370 MB,
+ *    768-dim, 50+ languages. Default. Required for non-English queries.
+ *
+ * `sizeMB` is the on-disk weight footprint after Transformers.js writes
+ * its quantised ONNX into `data/models/`. Used by the UI to disclose the
+ * download cost before kicking the swap.
+ */
+export const EMBEDDING_PRESETS = Object.freeze([
+    Object.freeze({
+        key: 'mono-en',
+        modelId: 'Xenova/clip-vit-base-patch32',
+        dim: 512,
+        sizeMB: 90,
+        languages: ['English'],
+    }),
+    Object.freeze({
+        key: 'multi',
+        modelId: 'Xenova/siglip-base-patch16-256-multilingual',
+        dim: 768,
+        sizeMB: 370,
+        languages: ['Multilingual (50+)'],
+    }),
+]);
+
+/** Find a preset by either its key or its model id. Returns null on miss. */
+export function findEmbeddingPreset(keyOrModelId) {
+    const v = String(keyOrModelId || '').trim();
+    if (!v) return null;
+    return EMBEDDING_PRESETS.find((p) => p.key === v || p.modelId === v) || null;
 }

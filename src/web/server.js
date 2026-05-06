@@ -50,6 +50,8 @@ import {
     deletePerson,
     listAllTags,
     listPhotosForTag,
+    listEmbeddingModels,
+    clearStaleEmbeddings,
 } from '../core/db.js';
 import * as ai from '../core/ai/index.js';
 import { sanitizeName } from '../core/downloader.js';
@@ -5931,6 +5933,22 @@ app.get('/api/ai/status', async (_req, res) => {
             const repl = ai.suggestPublicReplacement(cur);
             if (repl) gatedWarnings.push({ cap, currentId: cur, suggested: repl.suggested });
         }
+        // Surface stale-embedding rows so the dashboard can render a
+        // "Re-index needed" pill on the Models panel. The state-migration
+        // wipes mismatched rows at boot, but a runtime model swap leaves
+        // them around until the operator clicks Re-index.
+        const currentEmbeddingModel = cfg.embeddings.model;
+        let staleEmbeddings = { count: 0, distinctModels: [] };
+        try {
+            const rows = listEmbeddingModels();
+            const stale = rows.filter((r) => r.model !== currentEmbeddingModel);
+            staleEmbeddings = {
+                count: stale.reduce((n, r) => n + (Number(r.count) || 0), 0),
+                distinctModels: stale.map((r) => r.model || ''),
+            };
+        } catch {
+            /* table missing on fresh installs — leave the zero default */
+        }
         res.json({
             success: true,
             enabled: cfg.enabled,
@@ -5949,6 +5967,9 @@ app.get('/api/ai/status', async (_req, res) => {
             counts,
             loadedPipelines: ai.loadedPipelines(),
             gatedWarnings,
+            embeddingPresets: ai.EMBEDDING_PRESETS,
+            currentEmbeddingModel,
+            staleEmbeddings,
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -5971,6 +5992,54 @@ app.post('/api/ai/index/scan', async (_req, res) => {
         return res
             .status(409)
             .json({ error: 'AI index scan already running', code: 'ALREADY_RUNNING' });
+    res.json({ success: true, started: true });
+});
+
+// Wipe every embedding row whose `model` differs from the active embeddings
+// model and queue the affected downloads for re-scan, then immediately kick
+// the regular index scan. Used when the operator picks a different model
+// preset on the Models panel — the model id has already been PATCHed onto
+// `advanced.ai.embeddings.model` by the time this fires.
+app.post('/api/ai/index/reembed', async (_req, res) => {
+    const cfg = _aiCfg();
+    if (!cfg.enabled) {
+        return res
+            .status(503)
+            .json({ error: 'AI subsystem disabled', code: 'AI_DISABLED' });
+    }
+    if (!cfg.embeddings.enabled) {
+        return res
+            .status(503)
+            .json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
+    }
+    const tracker = _jobTrackers.aiIndex;
+    // Bundle the wipe + scan kick inside a single tryStart so an
+    // already-running scan can't race with the destructive DELETE.
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        let cleared = { dropped: 0, requeued: 0 };
+        try {
+            cleared = clearStaleEmbeddings(cfg.embeddings.model);
+        } catch (e) {
+            log({ source: 'ai', level: 'error', msg: `reembed wipe failed: ${e?.message || e}` });
+            throw e;
+        }
+        try {
+            ai.clearVectorCache?.();
+        } catch {
+            /* cache helper not loaded — fine, it'll rebuild lazily */
+        }
+        log({
+            source: 'ai',
+            level: 'info',
+            msg: `reembed: dropped ${cleared.dropped} stale row(s), requeued ${cleared.requeued} download(s) for ${cfg.embeddings.model}`,
+        });
+        return ai.runIndexScan(cfg, { onProgress, signal, onLog: log });
+    });
+    if (!r.started) {
+        return res
+            .status(409)
+            .json({ error: 'AI index scan already running', code: 'ALREADY_RUNNING' });
+    }
     res.json({ success: true, started: true });
 });
 
