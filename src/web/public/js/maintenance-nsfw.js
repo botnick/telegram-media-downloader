@@ -22,6 +22,7 @@ import { showToast, escapeHtml } from './utils.js';
 import { confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { loadAdvanced, setupAutoSave } from './settings.js';
+import { openMediaViewerForReview } from './viewer.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -229,7 +230,10 @@ function _renderHistogram(hist) {
     }
     const maxN = Math.max(1, ...counts);
     const W = 600;
-    const H = 80;
+    const H = 140;
+    const PLOT_TOP = 8; // breathing room above the tallest bar
+    const PLOT_BOT = 28; // baseline + axis labels
+    const PLOT_H = H - PLOT_TOP - PLOT_BOT;
     const barW = W / bins;
     const tiers = view.tiersMeta || [];
     const tierFor = (mid) => {
@@ -238,84 +242,188 @@ function _renderHistogram(hist) {
         }
         return null;
     };
+    // Tier-band shading: paint each tier's score range as a light wash
+    // behind the bars so the operator sees which bin lives in which
+    // bucket without consulting the legend.
+    const bands = tiers
+        .map((t) => {
+            const x = t.min * W;
+            const w = (Math.min(1, t.max) - t.min) * W;
+            const color = TIER_COLOR[t.id] || '#9E9E9E';
+            return `<rect x="${x.toFixed(1)}" y="${PLOT_TOP}" width="${w.toFixed(1)}" height="${PLOT_H}" fill="${color}" opacity="0.08"/>`;
+        })
+        .join('');
     const bars = counts
         .map((n, i) => {
             const mid = (i + 0.5) / bins;
             const tid = tierFor(mid);
             const color = TIER_COLOR[tid] || '#9E9E9E';
-            const h = (n / maxN) * (H - 4);
+            const h = (n / maxN) * (PLOT_H - 2);
             const x = i * barW + 0.5;
-            const y = H - h;
-            return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" opacity="0.85"><title>${(mid * 100).toFixed(0)}%: ${n}</title></rect>`;
+            const y = PLOT_TOP + PLOT_H - h;
+            return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" opacity="0.9"><title>${(mid * 100).toFixed(0)}%: ${n}</title></rect>`;
+        })
+        .join('');
+    // Threshold marker (vertical line at the configured cutoff). Score
+    // is in [0,1] so x = threshold * W.
+    const threshold = Number(view.tierCounts?.threshold) || 0;
+    const tx = (threshold * W).toFixed(1);
+    const thresholdLine = threshold > 0 && threshold < 1
+        ? `<line x1="${tx}" y1="${PLOT_TOP - 4}" x2="${tx}" y2="${PLOT_TOP + PLOT_H}" stroke="#fff" stroke-opacity="0.65" stroke-width="1" stroke-dasharray="3 3"/>
+           <text x="${tx}" y="${PLOT_TOP - 6}" font-size="9" fill="currentColor" fill-opacity="0.75" text-anchor="middle">τ=${threshold.toFixed(2)}</text>`
+        : '';
+    // X-axis ticks at 0/25/50/75/100% and a baseline rule.
+    const baselineY = PLOT_TOP + PLOT_H + 0.5;
+    const ticks = [0, 25, 50, 75, 100]
+        .map((p) => {
+            const x = (p / 100) * W;
+            return `<text x="${x}" y="${H - 6}" font-size="10" fill="currentColor" fill-opacity="0.6" text-anchor="${p === 0 ? 'start' : p === 100 ? 'end' : 'middle'}">${p}%</text>`;
         })
         .join('');
     svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
-    svgEl.innerHTML = `${bars}
-        <line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" stroke="currentColor" stroke-opacity="0.2" stroke-width="1"/>`;
+    svgEl.innerHTML = `${bands}${bars}${thresholdLine}
+        <line x1="0" y1="${baselineY}" x2="${W}" y2="${baselineY}" stroke="currentColor" stroke-opacity="0.25" stroke-width="1"/>
+        ${ticks}`;
 }
 
-function _renderRow(file) {
-    const score = Math.round((file.nsfw_score || 0) * 100);
-    const checked = file.nsfw_checked_at ? _formatRelTime(file.nsfw_checked_at) : '—';
-    const thumb = `/api/thumbs/${encodeURIComponent(file.id)}?w=120`;
-    // Already-whitelisted rows show a "Restore" action that flips the
-    // flag back so they re-enter the review queue. Other rows show
-    // Whitelist (mark-as-18+) instead.
-    const isWhitelisted = !!file.nsfw_whitelist;
-    const primaryBtn = isWhitelisted
-        ? `<button type="button" data-act="restore" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-blue hover:border-tg-blue" data-i18n="maintenance.nsfw.row.restore">Restore</button>`
-        : `<button type="button" data-act="whitelist" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-blue hover:border-tg-blue" data-i18n="maintenance.nsfw.row.whitelist">Whitelist</button>`;
-    const wlBadge = isWhitelisted
-        ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/15 text-tg-blue ml-1" data-i18n="maintenance.nsfw.row.whitelisted_badge">Whitelisted</span>`
+// Pick a tier for a score so the tile badge / bottom-border lands in
+// the right colour bucket. Identical bucketing logic to the SQL CASE in
+// db.js — the boundaries live in `view.tiersMeta`.
+function _tierForScore(score) {
+    const tiers = view.tiersMeta || [];
+    for (const t of tiers) {
+        if (score >= t.min && score < t.max) return t.id;
+    }
+    return null;
+}
+
+function _renderTile(file, index) {
+    const scorePct = Math.round((file.nsfw_score || 0) * 100);
+    const tid = _tierForScore(file.nsfw_score || 0);
+    const tierColor = TIER_COLOR[tid] || '#9E9E9E';
+    const thumb = `/api/thumbs/${encodeURIComponent(file.id)}?w=400`;
+    const isWl = !!file.nsfw_whitelist;
+    const wlPin = isWl
+        ? `<span class="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/85 text-white font-medium">WL</span>`
         : '';
     return `
-        <div class="flex items-center gap-2 p-2 rounded-md hover:bg-tg-hover" data-row-id="${file.id}">
+        <button type="button" data-tile-index="${index}" data-id="${file.id}"
+                class="nsfw-tile group relative aspect-square rounded-md overflow-hidden bg-tg-bg/40 focus:outline-none focus:ring-2 focus:ring-tg-blue">
             <img loading="lazy" decoding="async"
-                 class="w-14 h-14 object-cover rounded-md bg-tg-bg/40"
+                 class="absolute inset-0 w-full h-full object-cover"
                  src="${escapeHtml(thumb)}" alt=""
                  onerror="this.style.display='none'">
-            <div class="min-w-0 flex-1">
-                <div class="text-sm text-tg-text truncate">${escapeHtml(file.file_name || '')}${wlBadge}</div>
-                <div class="text-xs text-tg-textSecondary truncate">${escapeHtml(file.group_name || file.group_id || '')} · ${escapeHtml(checked)}</div>
-                <div class="text-[10px] text-tg-textSecondary mt-0.5">NSFW score: ${score}%</div>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-                ${primaryBtn}
-                <button type="button" data-act="reclassify" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-orange hover:border-tg-orange" data-i18n="maintenance.nsfw.row.reclassify">Re-classify</button>
-                <button type="button" data-act="delete" data-id="${file.id}" class="text-xs px-2 py-1 rounded-md border border-red-500/30 text-red-400 hover:bg-red-500/10" data-i18n="maintenance.nsfw.row.delete">Delete</button>
-            </div>
-        </div>`;
+            <span class="hidden sm:block absolute top-1 right-1 px-1.5 py-0.5 text-[10px] font-mono rounded text-white tabular-nums"
+                  style="background:${tierColor}cc">${scorePct}%</span>
+            <span class="block sm:hidden absolute inset-x-0 bottom-0 h-1" style="background:${tierColor}"></span>
+            ${wlPin}
+            <span class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition flex items-end p-2 pointer-events-none">
+                <span class="text-[11px] text-white truncate w-full text-left">${escapeHtml(file.file_name || '')}</span>
+            </span>
+        </button>`;
 }
 
-function _wireRowActions() {
-    const list = $('nsfw-list');
-    if (!list) return;
-    list.querySelectorAll('[data-act]').forEach((btn) => {
-        if (btn.dataset.wired) return;
-        btn.dataset.wired = '1';
-        btn.addEventListener('click', async () => {
-            const id = Number(btn.dataset.id);
-            const act = btn.dataset.act;
-            if (!id || !act) return;
-            btn.disabled = true;
-            try {
-                if (act === 'whitelist') {
-                    await api.post('/api/maintenance/nsfw/v2/bulk-whitelist', { ids: [id] });
-                    showToast(
-                        i18nT('maintenance.nsfw.marked_kept', 'Marked as 18+ (kept)'),
-                        'success',
-                    );
-                } else if (act === 'restore') {
-                    // Flips nsfw_whitelist back to 0 so the row re-enters the
-                    // review queue. Counterpart to whitelist for accidental
-                    // mark-as-18+ recovery.
-                    await api.post('/api/maintenance/nsfw/v2/unwhitelist', { ids: [id] });
-                    showToast(
-                        i18nT('maintenance.nsfw.row.restore_done', 'Restored to review'),
-                        'success',
-                    );
-                } else if (act === 'reclassify') {
+// The current page's row data — kept module-local so the lightbox can
+// render the same rows the grid is showing without re-querying. Updated
+// every _loadList() call.
+let _currentRows = [];
+
+// Map an NSFW DB row into the file shape the viewer expects.
+//   `fullPath` becomes the URL the modal loads (`/files/<encoded>?inline=1`)
+//   `type` swaps to the gallery's plural (photo→images, video→videos)
+function _rowToViewerFile(row) {
+    const type = row.file_type === 'photo' ? 'images' : row.file_type === 'video' ? 'videos' : 'images';
+    const sizeMb = row.file_size ? (row.file_size / (1024 * 1024)).toFixed(1) : '0';
+    return {
+        fullPath: row.file_path || '',
+        type,
+        name: row.file_name || '',
+        sizeFormatted: `${sizeMb} MB`,
+        modified: row.created_at || Date.now(),
+        // Stash the raw row so review handlers can pull score/id/whitelist
+        // directly off the file object the viewer hands them.
+        _nsfwRow: row,
+    };
+}
+
+// Build the action set passed to the lightbox. Each handler resolves
+// the underlying NSFW row id, hits the API, and returns a navigation
+// outcome string the viewer uses to drop / advance the file.
+function _reviewActionsFor() {
+    const onError = (e) => {
+        if (e?.data?.code === 'ALREADY_RUNNING') {
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
+            return;
+        }
+        showToast(e?.data?.error || e.message || 'Failed', 'error');
+    };
+    const removeFromGrid = (popped) => {
+        const id = popped?._nsfwRow?.id;
+        if (!id) return;
+        const tile = document.querySelector(`#nsfw-list [data-id="${id}"]`);
+        if (tile) tile.remove();
+        // Mutate the cached row array so subsequent grid renders match.
+        _currentRows = _currentRows.filter((r) => r.id !== id);
+        _refreshStats();
+    };
+    const whitelistAction = view.includeWhitelisted
+        ? {
+              key: 'w',
+              label: i18nT('maintenance.nsfw.row.restore', 'Restore'),
+              icon: 'ri-arrow-go-back-line',
+              handler: async (file) => {
+                  const id = file?._nsfwRow?.id;
+                  if (!id) return;
+                  try {
+                      await api.post('/api/maintenance/nsfw/v2/unwhitelist', { ids: [id] });
+                      showToast(
+                          i18nT('maintenance.nsfw.row.restore_done', 'Restored to review'),
+                          'success',
+                      );
+                      return 'remove-and-advance';
+                  } catch (e) {
+                      onError(e);
+                  }
+              },
+              afterRemove: removeFromGrid,
+          }
+        : {
+              key: 'w',
+              label: i18nT('maintenance.nsfw.row.whitelist', 'Whitelist'),
+              icon: 'ri-shield-check-line',
+              handler: async (file) => {
+                  const id = file?._nsfwRow?.id;
+                  if (!id) return;
+                  try {
+                      await api.post('/api/maintenance/nsfw/v2/bulk-whitelist', { ids: [id] });
+                      showToast(
+                          i18nT('maintenance.nsfw.marked_kept', 'Marked as 18+ (kept)'),
+                          'success',
+                      );
+                      return 'remove-and-advance';
+                  } catch (e) {
+                      onError(e);
+                  }
+              },
+              afterRemove: removeFromGrid,
+          };
+    return [
+        whitelistAction,
+        {
+            key: 'r',
+            label: i18nT('maintenance.nsfw.row.reclassify', 'Re-classify'),
+            icon: 'ri-refresh-line',
+            handler: async (file) => {
+                const id = file?._nsfwRow?.id;
+                if (!id) return;
+                try {
                     await api.post('/api/maintenance/nsfw/v2/reclassify', { ids: [id] });
                     showToast(
                         i18nT(
@@ -324,45 +432,86 @@ function _wireRowActions() {
                         ),
                         'success',
                     );
-                } else if (act === 'delete') {
-                    const ok = await confirmSheet({
-                        title: i18nT('maintenance.nsfw.confirm_title', 'Delete selected photos?'),
-                        message: i18nTf(
-                            'maintenance.nsfw.confirm_body',
-                            { n: 1 },
-                            'Permanently delete 1 photo from disk and database?',
-                        ),
-                        confirmLabel: i18nT('maintenance.nsfw.confirm_btn', 'Delete'),
-                        danger: true,
-                    });
-                    if (!ok) {
-                        btn.disabled = false;
-                        return;
-                    }
+                    return 'remove-and-advance';
+                } catch (e) {
+                    onError(e);
+                }
+            },
+            afterRemove: removeFromGrid,
+        },
+        {
+            key: 'd',
+            label: i18nT('maintenance.nsfw.row.delete', 'Delete'),
+            icon: 'ri-delete-bin-line',
+            danger: true,
+            handler: async (file) => {
+                const id = file?._nsfwRow?.id;
+                if (!id) return;
+                const ok = await confirmSheet({
+                    title: i18nT('maintenance.nsfw.confirm_title', 'Delete selected photos?'),
+                    message: i18nTf(
+                        'maintenance.nsfw.confirm_body',
+                        { n: 1 },
+                        'Permanently delete 1 photo from disk and database?',
+                    ),
+                    confirmLabel: i18nT('maintenance.nsfw.confirm_btn', 'Delete'),
+                    danger: true,
+                });
+                if (!ok) return;
+                try {
                     await api.post('/api/maintenance/nsfw/v2/bulk-delete', {
                         ids: [id],
                         confirm: true,
                     });
                     showToast(i18nT('maintenance.nsfw.row.delete_done', 'Deleted'), 'success');
+                    return 'remove-and-advance';
+                } catch (e) {
+                    onError(e);
                 }
-                const row = btn.closest('[data-row-id]');
-                if (row) row.remove();
-                _refreshStats();
-            } catch (e) {
-                btn.disabled = false;
-                if (e?.data?.code === 'ALREADY_RUNNING') {
-                    showToast(
-                        i18nT(
-                            'jobs.already_running',
-                            'Already running on another tab — waiting for it to finish.',
-                        ),
-                        'info',
-                    );
-                    return;
-                }
-                showToast(e?.data?.error || e.message || 'Failed', 'error');
-            }
+            },
+            afterRemove: removeFromGrid,
+        },
+    ];
+}
+
+function _reviewMetaFor(file) {
+    const row = file?._nsfwRow;
+    if (!row) return '';
+    const score = Math.round((row.nsfw_score || 0) * 100);
+    const tid = _tierForScore(row.nsfw_score || 0);
+    const color = TIER_COLOR[tid] || '#9E9E9E';
+    const tierLbl = tid ? _tierLabel(tid) : '';
+    const wl = row.nsfw_whitelist
+        ? `<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/30">${escapeHtml(i18nT('maintenance.nsfw.row.whitelisted_badge', 'Whitelisted'))}</span>`
+        : '';
+    return `
+        <span class="inline-flex items-center gap-2">
+            <span class="inline-block w-2.5 h-2.5 rounded-full" style="background:${color}"></span>
+            <span class="font-mono tabular-nums">${score}%</span>
+            <span class="opacity-80">${escapeHtml(tierLbl)}</span>
+            ${wl}
+        </span>`;
+}
+
+function _wireTileClicks() {
+    const list = $('nsfw-list');
+    if (!list) return;
+    list.querySelectorAll('[data-tile-index]').forEach((tile) => {
+        if (tile.dataset.wired) return;
+        tile.dataset.wired = '1';
+        tile.addEventListener('click', () => {
+            const idx = Number(tile.dataset.tileIndex);
+            if (Number.isFinite(idx)) _openLightbox(idx);
         });
+    });
+}
+
+function _openLightbox(startIndex) {
+    if (!_currentRows.length) return;
+    const files = _currentRows.map(_rowToViewerFile);
+    openMediaViewerForReview(files, startIndex, {
+        actions: _reviewActionsFor(),
+        metaRender: _reviewMetaFor,
     });
 }
 
@@ -426,13 +575,14 @@ async function _loadList() {
                 (view.tierCounts?.totalEligible ?? 0) === 0;
             banner.classList.toggle('hidden', !empty1);
         }
-        if (!r.rows?.length) {
+        _currentRows = r.rows || [];
+        if (!_currentRows.length) {
             list.innerHTML = '';
             _renderEmptyState(r.total || 0);
         } else {
             if (empty) empty.classList.add('hidden');
-            list.innerHTML = r.rows.map(_renderRow).join('');
-            _wireRowActions();
+            list.innerHTML = _currentRows.map((row, i) => _renderTile(row, i)).join('');
+            _wireTileClicks();
         }
         if (pageInfo) {
             pageInfo.textContent = i18nTf(
@@ -1028,6 +1178,63 @@ export function init() {
             _renderTiersPanel(view.tierCounts || { tiers: {} });
             _renderBulkBar();
             _loadList();
+        });
+        // Page-level keyboard shortcuts — only fire when this page is
+        // visible AND the lightbox modal is closed (modal owns its own
+        // keys). Skip while the user is typing in an input.
+        document.addEventListener('keydown', (e) => {
+            const page = $('page-maintenance-nsfw');
+            if (!page || page.classList.contains('hidden')) return;
+            const modal = document.getElementById('media-modal');
+            if (modal && !modal.classList.contains('hidden')) return;
+            const tag = (e.target?.tagName || '').toLowerCase();
+            if (
+                tag === 'input' ||
+                tag === 'textarea' ||
+                tag === 'select' ||
+                e.target?.isContentEditable
+            )
+                return;
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            // [ / ] — page nav
+            if (e.key === '[') {
+                e.preventDefault();
+                $('nsfw-prev-btn')?.click();
+                return;
+            }
+            if (e.key === ']') {
+                e.preventDefault();
+                $('nsfw-next-btn')?.click();
+                return;
+            }
+            // 1-5 selects a tier; 0 clears.
+            const tierByDigit = {
+                1: 'def_not',
+                2: 'maybe_not',
+                3: 'uncertain',
+                4: 'maybe',
+                5: 'def',
+            };
+            if (tierByDigit[e.key]) {
+                e.preventDefault();
+                view.tier = tierByDigit[e.key];
+                view.page = 1;
+                _writeHashState();
+                _renderTiersPanel(view.tierCounts || { tiers: {} });
+                _renderBulkBar();
+                _loadList();
+                return;
+            }
+            if (e.key === '0') {
+                e.preventDefault();
+                view.tier = null;
+                view.page = 1;
+                _writeHashState();
+                _renderTiersPanel(view.tierCounts || { tiers: {} });
+                _renderBulkBar();
+                _loadList();
+                return;
+            }
         });
         // Dismiss the review badge on the maintenance hub the moment the
         // operator lands here — they've now "seen" the candidates so the
