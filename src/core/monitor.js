@@ -338,7 +338,7 @@ export class RealtimeMonitor extends EventEmitter {
                     messages.reverse();
 
                     for (const msg of messages) {
-                        await this.handleEvent({ message: msg });
+                        await this.handleEvent({ message: msg, client: pollClient });
                         if (msg.id > lastId) {
                             this.lastIds.set(group.id, msg.id);
                         }
@@ -526,6 +526,18 @@ export class RealtimeMonitor extends EventEmitter {
                 const rescueMs = effectiveRescueMs(group, this.config);
                 const pendingUntil = rescueMs ? Date.now() + rescueMs : null;
 
+                // Pin the client that actually surfaced this message so the
+                // downloader fetches bytes through the same session. The poll
+                // path injects `event.client`; gramJS attaches `_client` to
+                // messages delivered through the event handler. Without this
+                // pin, every job went through the default account and any
+                // group only the 2nd/3rd account could read failed silently.
+                const sourceClient =
+                    event.client ||
+                    message._client ||
+                    message.client ||
+                    this.getClientForGroup(group);
+
                 const added = await this.downloader.enqueue(
                     {
                         message,
@@ -534,6 +546,7 @@ export class RealtimeMonitor extends EventEmitter {
                         mediaType,
                         ttlSeconds,
                         pendingUntil,
+                        client: sourceClient,
                     },
                     priority,
                 );
