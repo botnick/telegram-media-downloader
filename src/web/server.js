@@ -2636,6 +2636,13 @@ app.post('/api/stories/download', async (req, res) => {
             downloader.start();
         }
 
+        const storiesAccountId = am.getIdForClient(client);
+        const storiesMeta = storiesAccountId ? am.metadata?.get?.(storiesAccountId) : null;
+        const storiesAccountName =
+            storiesMeta?.name ||
+            storiesMeta?.username ||
+            storiesMeta?.phone ||
+            (storiesAccountId ? `#${storiesAccountId}` : null);
         let queued = 0;
         for (const story of matched) {
             const job = storyToJob({
@@ -2643,6 +2650,9 @@ app.post('/api/stories/download', async (req, res) => {
                 story,
                 peerLabel: entity.username || entity.firstName || username,
             });
+            job.client = client;
+            job.accountId = storiesAccountId || null;
+            job.accountName = storiesAccountName || null;
             if (await downloader.enqueue(job, 1)) queued++;
         }
         if (standalone) {
@@ -2815,16 +2825,28 @@ app.post('/api/download/url', async (req, res) => {
                     resolved.entity.username ||
                     resolved.entity.firstName ||
                     groupId;
-                // Switch the downloader's reference client for this enqueue if
-                // the runtime's client differs from the resolver's. The
-                // downloader's .client is used to actually fetch bytes.
-                downloader.client = workingClient;
+                // Pin the resolver's client to this job. We used to mutate
+                // `downloader.client` here, but that race-condition'd any
+                // concurrent download — every in-flight job suddenly tried
+                // to fetch bytes through the URL-resolver's session. Per-
+                // job `client` lets each download stick to the session that
+                // can actually read the message.
+                const accountId = am.getIdForClient(workingClient);
+                const meta = accountId ? am.metadata?.get?.(accountId) : null;
+                const accountName =
+                    meta?.name ||
+                    meta?.username ||
+                    meta?.phone ||
+                    (accountId ? `#${accountId}` : null);
                 const ok = await downloader.enqueue(
                     {
                         message: resolved.message,
                         groupId,
                         groupName,
                         mediaType,
+                        client: workingClient,
+                        accountId: accountId || null,
+                        accountName: accountName || null,
                     },
                     1,
                 ); // realtime priority
