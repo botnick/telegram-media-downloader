@@ -206,6 +206,11 @@ class Runtime extends EventEmitter {
             filePath: job.filePath,
             fileSize: job.fileSize,
             addedAt: job.addedAt || null,
+            // Which Telegram account actually pulled the bytes — surfaces
+            // on the Queue page as a chip so multi-account setups can tell
+            // at a glance which session served each download.
+            accountId: job.accountId || null,
+            accountName: job.accountName || null,
             // `deduped` is set by registerDownload() when the new file
             // matched an existing on-disk hash. Carries through to the
             // queue UI so the row shows a "Duplicate" tag.

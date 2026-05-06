@@ -468,6 +468,22 @@ export class AccountManager {
     }
 
     /**
+     * Reverse-lookup: given a TelegramClient instance, return the accountId
+     * it was loaded under. Used by callers that already hold the client (the
+     * downloader's poll path, the URL resolver) and want to attribute a
+     * job back to a specific account for the Queue page.
+     * @param {TelegramClient} client
+     * @returns {string|null}
+     */
+    getIdForClient(client) {
+        if (!client) return null;
+        for (const [id, c] of this.clients) {
+            if (c === client) return id;
+        }
+        return null;
+    }
+
+    /**
      * Get default account ID
      * @returns {string|null}
      */

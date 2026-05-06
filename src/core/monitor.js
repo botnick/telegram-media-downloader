@@ -61,6 +61,22 @@ export class RealtimeMonitor extends EventEmitter {
     }
 
     /**
+     * Reverse-lookup a client back to its accountId + a human label so
+     * the Queue page can render which session is pulling each job. Returns
+     * `{ accountId: null, accountName: null }` when the AccountManager
+     * hasn't been wired (CLI standalone) or the client predates loadAll().
+     */
+    _describeAccount(client) {
+        if (!this.accountManager || !client) return { accountId: null, accountName: null };
+        const accountId = this.accountManager.getIdForClient(client);
+        if (!accountId) return { accountId: null, accountName: null };
+        const meta = this.accountManager.metadata?.get?.(accountId) || {};
+        const accountName =
+            meta.name || meta.username || meta.phone || (accountId ? `#${accountId}` : null);
+        return { accountId, accountName };
+    }
+
+    /**
      * Try every available client to find one that can access a group
      * @returns {TelegramClient|null}
      */
@@ -537,6 +553,7 @@ export class RealtimeMonitor extends EventEmitter {
                     message._client ||
                     message.client ||
                     this.getClientForGroup(group);
+                const { accountId, accountName } = this._describeAccount(sourceClient);
 
                 const added = await this.downloader.enqueue(
                     {
@@ -547,6 +564,8 @@ export class RealtimeMonitor extends EventEmitter {
                         ttlSeconds,
                         pendingUntil,
                         client: sourceClient,
+                        accountId,
+                        accountName,
                     },
                     priority,
                 );

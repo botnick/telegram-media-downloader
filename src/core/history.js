@@ -25,6 +25,21 @@ export class HistoryDownloader extends EventEmitter {
     }
 
     /**
+     * Reverse-lookup a client back to its accountId + label. Mirrors
+     * RealtimeMonitor._describeAccount — when the AccountManager isn't
+     * wired (CLI tests) the Queue chip is simply suppressed.
+     */
+    _describeAccount(client) {
+        if (!this.accountManager || !client) return { accountId: null, accountName: null };
+        const accountId = this.accountManager.getIdForClient(client);
+        if (!accountId) return { accountId: null, accountName: null };
+        const meta = this.accountManager.metadata?.get?.(accountId) || {};
+        const accountName =
+            meta.name || meta.username || meta.phone || (accountId ? `#${accountId}` : null);
+        return { accountId, accountName };
+    }
+
+    /**
      * Try every available client to find one that can access a group
      * @returns {TelegramClient|null}
      */
@@ -371,6 +386,7 @@ export class HistoryDownloader extends EventEmitter {
             // pulls bytes through the same session — see monitor.handleEvent
             // for the same rationale.
             const sourceClient = workingClient || message._client || message.client || this.client;
+            const { accountId, accountName } = this._describeAccount(sourceClient);
 
             // Enqueue (Priority 2 for history, lower than realtime)
             const added = await this.downloader.enqueue(
@@ -380,6 +396,8 @@ export class HistoryDownloader extends EventEmitter {
                     groupName: group.name,
                     mediaType,
                     client: sourceClient,
+                    accountId,
+                    accountName,
                 },
                 2,
             );

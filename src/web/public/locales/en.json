@@ -967,6 +967,7 @@
     "queue.duplicate": "Duplicate",
     "queue.duplicate.tooltip": "Same file already exists on disk — no new bytes written, this row points at the existing copy.",
     "queue.chip.dupe": "Duplicate",
+    "queue.account.tooltip": "Pulled via account: {{name}}",
     "maintenance.ai.master.title": "Enable AI subsystem",
     "maintenance.ai.master.help": "Master start/stop. Has to be on before any individual capability runs. Models download lazily on first scan.",
     "maintenance.ai.master.state.on": "On",

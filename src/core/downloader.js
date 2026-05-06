@@ -476,6 +476,8 @@ export class DownloadManager extends EventEmitter {
             eta: null,
             status: this._paused.has(job.key) ? 'paused' : status,
             addedAt: job.addedAt || null,
+            accountId: job.accountId || null,
+            accountName: job.accountName || null,
         });
         const active = [];
         for (const [, st] of this.active) {
@@ -498,6 +500,8 @@ export class DownloadManager extends EventEmitter {
                 eta,
                 status: this._paused.has(st.key) ? 'paused' : 'active',
                 addedAt: st.addedAt || st.startedAt || null,
+                accountId: st.accountId || null,
+                accountName: st.accountName || null,
             });
         }
         const queued = [];
@@ -723,6 +727,8 @@ export class DownloadManager extends EventEmitter {
                             total: Number(totalN),
                             progress: pct,
                             bps,
+                            accountId: job.accountId || null,
+                            accountName: job.accountName || null,
                         });
                     },
                 });

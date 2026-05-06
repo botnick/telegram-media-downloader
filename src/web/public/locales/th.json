@@ -967,6 +967,7 @@
     "queue.duplicate": "ซ้ำ",
     "queue.duplicate.tooltip": "ไฟล์นี้มีอยู่แล้วในดิสก์ — ไม่ได้เขียนใหม่ ใช้ไฟล์เดิมร่วมกัน",
     "queue.chip.dupe": "ซ้ำ",
+    "queue.account.tooltip": "ดาวน์โหลดผ่านบัญชี: {{name}}",
     "maintenance.ai.master.title": "เปิดใช้ AI subsystem",
     "maintenance.ai.master.help": "ปุ่ม start/stop หลัก ต้องเปิดก่อน capability ย่อยจะเริ่มทำงานได้ โมเดลโหลดอัตโนมัติตอน scan ครั้งแรก",
     "maintenance.ai.master.state.on": "เปิด",
