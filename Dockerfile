@@ -33,6 +33,15 @@ ENV NODE_ENV=production \
 # ffmpeg  — used by src/core/thumbs.js for video first-frame thumbnails
 #           and audio cover-art extraction. ~30 MB — tiny next to libvips
 #           and node_modules.
+# intel-media-va-driver / i965-va-driver — VA-API userland drivers needed
+#           for `-hwaccel vaapi` (Intel iGPU + AMD via the same libva ABI).
+#           Without these the ffmpeg path in thumbs.js falls back to CPU
+#           decode even when the host exposes /dev/dri. iHD is Gen8+ and
+#           the Quick Sync runtime; i965 covers Gen4-Gen7 hardware.
+# vainfo  — `vainfo` from libva-utils. Not used by the app itself, but
+#           lets operators `docker exec <ctr> vainfo` to confirm the
+#           driver actually loaded inside the container without having
+#           to bake their own debug image.
 #
 # Base is bookworm-slim (glibc) rather than alpine (musl) because
 # `onnxruntime-node` (pulled in by @huggingface/transformers for the NSFW
@@ -40,7 +49,9 @@ ENV NODE_ENV=production \
 # crashes the whole process at boot with "ld-linux-x86-64.so.2: No such
 # file or directory". libstdc++ is part of the base image, no install needed.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini gosu ffmpeg procps \
+    && apt-get install -y --no-install-recommends \
+        tini gosu ffmpeg procps \
+        intel-media-va-driver i965-va-driver vainfo \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
