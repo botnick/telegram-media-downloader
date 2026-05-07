@@ -31,6 +31,7 @@
         "prod": "node runner.js",
         "dev": "node --watch src/web/server.js",
         "migrate": "node scripts/migrate_json_to_sqlite.js",
+        "recover": "node scripts/recover_groups.js",
         "lint": "biome lint .",
         "format": "biome format --write .",
         "check": "biome check --write .",

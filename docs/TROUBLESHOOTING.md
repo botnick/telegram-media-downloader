@@ -23,6 +23,29 @@ This was a deliberate change: earlier versions defaulted to **open access**, whi
 
 You haven't entered the Telegram API credentials yet. Settings → Telegram API → paste `apiId` + `apiHash` from <https://my.telegram.org>, save, then add an account under **Telegram Accounts → Add account**.
 
+## Settings → Groups is empty after an upgrade — but the media folders are still on disk
+
+A failed JSON→SQLite migration (or any other write that wiped `kv['config'].groups`) leaves the dashboard with an empty Groups list while `data/downloads/<group>/…` and the SQLite `downloads` table still hold every file you ever pulled. **Don't re-add groups through the dialogs picker** — Telegram may return a slightly different display name than the folder was sanitised against, and the next download lands in `Group A (2)/` while the old `Group A/` sits orphaned.
+
+Run the recovery script instead:
+
+```bash
+npm run recover                 # dry-run — print what would change
+npm run recover -- --apply      # commit to kv['config'] (still disabled by default)
+npm run recover -- --apply --enable   # commit AND flip enabled=true on every restored group
+
+# Inside Docker:
+docker exec <container> node scripts/recover_groups.js
+docker exec <container> node scripts/recover_groups.js --apply
+```
+
+The script tries two sources in order:
+
+1. **`data/config.json.migrated`** — the original config archived by the failed migration. Authoritative when present because it preserves filter settings, auto-forward destinations, monitor / forward account assignments, and forum-topic whitelists exactly as they were.
+2. **`SELECT DISTINCT group_id, group_name FROM downloads`** — every chat that ever produced a file. Used when the archive is missing / empty / has no `groups[]`. Restored entries get default filters; re-enter auto-forward etc. through Settings → Groups afterwards.
+
+Because the script restores the **exact `group_id` + `group_name`** the existing rows were stored under, `sanitizeName(group.name)` resolves to the same folder on the next download — no `Group A (2)` duplication. Restored groups land with `enabled: false` by default; flip them on individually in Settings → Groups (or use `--enable` to flip them all at once).
+
 ## Add-account wizard never advances past "Phone"
 
 - Make sure the phone number includes the country code (`+66...` not `0...`).
