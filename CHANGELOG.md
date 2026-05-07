@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.1] — 2026-05-08
+
+### Added
+- **`npm run recover`** (`scripts/recover_groups.js`) — rebuild `kv['config'].groups` after a botched JSON→SQLite migration without re-adding chats through the dialogs picker (which risks `Group A` / `Group A (2)` folder splits when Telegram returns a slightly different display name than the existing folder was sanitised against). Tries `data/config.json.migrated` first (preserves filters / auto-forward / monitor-account assignments / forum-topic whitelists), falls back to `SELECT DISTINCT group_id, group_name FROM downloads`. Dry-run by default; `--apply` writes via `saveConfig()`; `--enable` flips `enabled=true` on every restored group. Skips ids already in `kv['config']` — safe to re-run. Documented in `docs/TROUBLESHOOTING.md` ("Settings → Groups is empty after an upgrade").
+
+### Internal
+- SW bumped `v280` → `v281`.
+
 ## [2.8.0] — 2026-05-08
 
 ### Added — Auto-update reliability overhaul
