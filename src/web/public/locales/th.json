@@ -765,6 +765,11 @@
     "update.no_watchtower": "ยังไม่ได้ตั้งค่า watchtower sidecar กรุณาดูคำอธิบายใน docker-compose.yml เพื่อเปิดใช้งาน profile auto-update",
     "update.help_not_docker": "ระบบนี้ทำงานนอก Docker — กรุณา pull source ล่าสุดและ restart ด้วยตนเอง",
     "update.help_no_watchtower_html": "วิธีเปิดใช้งาน: <code>docker compose --profile auto-update up -d</code> หลังจากตั้งค่า <code>WATCHTOWER_HTTP_API_TOKEN</code> ในไฟล์ <code>.env</code> ดูรายละเอียดทั้งหมดได้ที่ <code>docker-compose.yml</code>",
+    "update.failed": "อัปเดตไม่สำเร็จ: {msg}",
+    "update.stalled_title": "อัปเดตค้าง",
+    "update.stalled_body": "Container ใหม่ยังไม่ขึ้นมาหลังจาก 2 นาที — watchtower อาจจะยังดึง image อยู่ หรือ container ใหม่ healthcheck ไม่ผ่าน ตรวจ `docker logs <watchtower>` และ `docker logs <main-container>` เพื่อหาสาเหตุ",
+    "update.stalled_retry": "ลองเชื่อมต่อใหม่",
+    "update.stalled_dismiss": "ปิด",
 
     "maintenance.shares.title": "ลิงก์แชร์ที่ใช้งานอยู่",
     "maintenance.shares.help": "ดู ค้นหา และเพิกถอนลิงก์แชร์ทุกลิงก์ที่ออกจาก dashboard นี้",

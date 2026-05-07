@@ -16,12 +16,11 @@ import fsSync from 'fs';
 import path from 'path';
 
 export class RealtimeMonitor extends EventEmitter {
-    constructor(client, downloader, config, configPath = null, accountManager = null) {
+    constructor(client, downloader, config, accountManager = null) {
         super();
         this.client = client;
         this.downloader = downloader;
         this.config = config;
-        this.configPath = configPath;
         this.accountManager = accountManager;
         this.running = false;
         this.handler = null;
@@ -35,10 +34,9 @@ export class RealtimeMonitor extends EventEmitter {
         };
         this.spamGuard = new SpamGuard(); // Active Defense System
 
-        // Live sync with Web UI: subscribe to the in-process config bus.
-        // The configPath argument is kept for callers that still pass it,
-        // but the actual signal comes from manager.js' EventEmitter — no
-        // filesystem watch is needed any more.
+        // Live sync with Web UI: config changes arrive on the in-process
+        // EventEmitter from src/config/manager.js — no filesystem watch
+        // needed since kv['config'] writes emit synchronously.
         this.watchConfig();
     }
 

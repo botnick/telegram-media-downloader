@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] — 2026-05-08
+
+### Added — Auto-update reliability overhaul
+- **Pre-flight ping** (5 s HEAD against `/v1/update`) before snapshotting — surfaces a misconfigured `WATCHTOWER_URL` or down sidecar instantly instead of after a wasted DB copy.
+- **Live-DB `PRAGMA quick_check`** before snapshot — refuses to back up a corrupt DB.
+- **Snapshot verification** — opens the freshly-written file read-only, confirms schema + clean `quick_check`. Bad snapshots are deleted so a torn backup can't sit in `data/backups/` masquerading as a recovery point.
+- **Structured error codes** on `/api/update` failures: `WATCHTOWER_UNREACHABLE` / `DB_CORRUPT` / `BACKUP_FAILED` / `BACKUP_VERIFY_FAILED` / `TRIGGER_FAILED`.
+- **Audit trail** — new `update_history` table; `GET /api/update/history` returns the last N attempts. The new container's boot path observes the version delta and stamps each `triggered` row to `success` (with `to_version`) or `stalled` (10-min timeout). Pre-flight failures are recorded too.
+- **Front-end stall guard** — overlay swaps to "Update appears stalled" with **Retry connect** / **Dismiss** buttons after 120 s instead of spinning forever.
+- **Bundled `sqlite-vec`** as an optional dep — fast vector search now installs by default; the in-memory fallback is reserved for `--no-optional` builds and >50k libraries.
+
+### Fixed — JSON-state migration completeness
+- **`POST /api/config` now writes to `kv['config']`** — the legacy file path was still being used by the settings endpoint, so saves silently drifted from the live row and got archived to `*.migrated` on next boot. (Symptom: "settings won't save on Docker.")
+- **`advanced.thumbs.hwaccel`** now sources from `loadConfig()` instead of reading the dead `data/config.json` file. Dashboard-set GPU acceleration was a no-op on every install since v2.7.0.
+- **Disk-usage cache** writes via `kvSet('disk_usage', …)` instead of the renamed `data/disk_usage.json`.
+- **`history-jobs.json` → `kv['history_jobs']`**, **`queue-history.json` → `kv['queue_history']`**, **`data/logs/queue_backlog.jsonl` → new `queue_backlog` SQLite table** (FIFO pops in one transaction — can't double-deliver after a crash mid-rehydrate). Legacy files are auto-imported on first boot and archived to `*.migrated`.
+
+### Fixed — Maintenance UI
+- **Log viewer:** SOURCES filter list synced with what the server actually emits (added `ai`, `backfill`, `backup`, `faststart`, `http`; dropped 5 never-emitted names). Fail-open for unknown sources so future server-side log channels can't silently drop.
+- **Find duplicate files:** `createdAt` sort comparator no longer string-subtracts (always returned `NaN`); "Keep oldest / newest" was riding on V8 stable-sort luck.
+- **Hardware probe** (`/api/maintenance/thumbs/hwaccel-probe`) dedupes the compile-in list and runs `ffmpeg -init_hw_device <name>=hw` against each candidate — only backends that actually init successfully end up in `available`. Compile-in list returned as `compiledIn` for debugging.
+- **Rescue Mode** sweeper now broadcasts `file_deleted` per row (existing gallery + stats listeners drop the tile / refresh footer for free) and a `rescue_sweep_done` aggregate (toast on the SPA, count > 0).
+- **Auto-update failure** now surfaces an error toast — pre-v2.8.0 the click silently fell through when `runAutoUpdate()` threw before the WS-disconnect handover.
+
+### Internal
+- Removed dead `CONFIG_PATH` constants + vestigial `configPath` constructor argument across `runtime.js` / `monitor.js` / `index.js`. Clean-up after the JSON→SQLite migration.
+- SW bumped `v279` → `v280`.
+
 ## [2.7.4] — 2026-05-07
 
 ### Added

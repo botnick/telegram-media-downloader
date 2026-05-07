@@ -15,8 +15,8 @@
 //
 // State is intentionally local — only the active-jobs map and the
 // preselected group survive between renders. Recent jobs come from the
-// server's JSON file (data/history-jobs.json) so a tab refresh always
-// shows the canonical list.
+// server's kv['history_jobs'] row (SQLite) via /api/history/jobs so a
+// tab refresh always shows the canonical list.
 
 import { state, getGroupName } from './store.js';
 import { api } from './api.js';

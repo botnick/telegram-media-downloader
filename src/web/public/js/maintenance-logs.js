@@ -14,7 +14,23 @@ import { t as i18nT } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
-const SOURCES = ['app', 'nsfw', 'thumbs', 'dedup', 'integrity', 'gramjs', 'downloader', 'monitor'];
+// Per-source colour palette — every source the server emits via log()
+// gets a stable hue so the eye can scan a chatty terminal and pick out
+// the line it cares about. Same pattern as `tail -f` colour wrappers
+// (lnav, multitail, etc.). SOURCES is derived from this map so the chip
+// group, default-on filter, and colour table can never drift apart again.
+const SOURCE_HUE = {
+    app: 'text-emerald-400',
+    ai: 'text-indigo-400',
+    backfill: 'text-yellow-400',
+    backup: 'text-teal-400',
+    dedup: 'text-amber-400',
+    faststart: 'text-lime-400',
+    http: 'text-rose-400',
+    nsfw: 'text-pink-400',
+    thumbs: 'text-cyan-400',
+};
+const SOURCES = Object.keys(SOURCE_HUE);
 const LEVEL_RANK = { info: 0, warn: 1, error: 2 };
 const MAX_LINES = 1000;
 
@@ -38,7 +54,12 @@ function _formatTime(ts) {
 }
 
 function _matchesFilter(entry) {
-    if (!_filter.sources.has(entry.source)) return false;
+    // Known sources respect the chip toggle. An unknown source means the
+    // server added a new log channel that this client doesn't have a chip
+    // for yet — fail open so the line is at least visible. Without this,
+    // the previous static SOURCES list silently dropped every ai/backup/
+    // backfill/faststart/http entry for ~a year of releases.
+    if (entry.source in SOURCE_HUE && !_filter.sources.has(entry.source)) return false;
     const rank = LEVEL_RANK[entry.level] ?? 0;
     if (rank < (LEVEL_RANK[_filter.minLevel] ?? 0)) return false;
     if (_filter.search) {
@@ -52,24 +73,6 @@ function _matchesFilter(entry) {
     }
     return true;
 }
-
-// Per-source colour palette — every source gets a stable hue so the eye
-// can scan a chatty terminal and pick out the line it cares about. Same
-// pattern as how `tail -f` colour wrappers (lnav, multitail, etc.) work.
-const SOURCE_HUE = {
-    app: 'text-emerald-400',
-    nsfw: 'text-pink-400',
-    thumbs: 'text-cyan-400',
-    dedup: 'text-amber-400',
-    integrity: 'text-violet-400',
-    gramjs: 'text-sky-400',
-    downloader: 'text-lime-400',
-    monitor: 'text-fuchsia-400',
-    backup: 'text-teal-400',
-    ai: 'text-indigo-400',
-    settings: 'text-orange-400',
-    backfill: 'text-yellow-400',
-};
 
 function _renderLine(entry) {
     // Terminal-style row: timestamp dimmed (so it doesn't fight the message),

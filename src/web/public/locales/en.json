@@ -765,6 +765,11 @@
     "update.no_watchtower": "Watchtower sidecar is not configured. See docker-compose.yml comments to enable the auto-update profile.",
     "update.help_not_docker": "You are running outside Docker — pull the latest source and restart manually.",
     "update.help_no_watchtower_html": "To enable: <code>docker compose --profile auto-update up -d</code> after setting <code>WATCHTOWER_HTTP_API_TOKEN</code> in <code>.env</code>. See <code>docker-compose.yml</code> for the full setup.",
+    "update.failed": "Update failed: {msg}",
+    "update.stalled_title": "Update appears stalled",
+    "update.stalled_body": "The new container has not come online after 2 minutes. Watchtower may still be pulling a slow image, or the new container may be failing its healthcheck. Check `docker logs <watchtower>` and `docker logs <main-container>` for clues.",
+    "update.stalled_retry": "Retry connect",
+    "update.stalled_dismiss": "Dismiss",
 
     "maintenance.shares.title": "Active Share Links",
     "maintenance.shares.help": "View, search, and revoke every share link issued from this dashboard.",

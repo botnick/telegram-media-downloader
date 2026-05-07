@@ -13,9 +13,7 @@
  * to reflect activity in the SPA.
  */
 
-import path from 'path';
 import { EventEmitter } from 'events';
-import { fileURLToPath } from 'url';
 
 import { DownloadManager } from './downloader.js';
 import { RealtimeMonitor } from './monitor.js';
@@ -23,9 +21,6 @@ import { RateLimiter } from './security.js';
 import { AutoForwarder } from './forwarder.js';
 import { migrateFolders } from './downloader.js';
 import { metrics } from './metrics.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, '../../data/config.json');
 
 class Runtime extends EventEmitter {
     constructor() {
@@ -73,13 +68,7 @@ class Runtime extends EventEmitter {
             this._rateLimiter = new RateLimiter(config.rateLimits);
             this._downloader = new DownloadManager(client, config, this._rateLimiter);
             this._forwarder = new AutoForwarder(client, config, accountManager);
-            this._monitor = new RealtimeMonitor(
-                client,
-                this._downloader,
-                config,
-                CONFIG_PATH,
-                accountManager,
-            );
+            this._monitor = new RealtimeMonitor(client, this._downloader, config, accountManager);
 
             // Bridge engine events → 'event' channel for WebSocket fan-out.
             this._wireEvents();

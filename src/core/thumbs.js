@@ -42,6 +42,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import sharp from 'sharp';
 import { getDb } from './db.js';
+import { loadConfig } from '../config/manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -84,6 +85,116 @@ function _resolveFfmpegBin() {
 // callable from outside the module (server.js hwaccel-probe endpoint).
 export function resolveFfmpegBin() {
     return _resolveFfmpegBin();
+}
+
+// hwaccel candidates the dropdown allows. Kept aligned with the
+// HWACCEL_ALLOW set in server.js POST /api/config so a probe result
+// always maps to a value the dropdown will accept.
+const HWACCEL_KNOWN = [
+    'vaapi',
+    'qsv',
+    'cuda',
+    'videotoolbox',
+    'd3d11va',
+    'dxva2',
+    'opencl',
+    'vulkan',
+];
+const HWACCEL_PROBE_TIMEOUT_MS = 5000;
+
+/**
+ * Probe ffmpeg for hardware-acceleration backends that are BOTH compiled
+ * into the local binary AND can actually initialise a device on this
+ * host. The compile-in list (`ffmpeg -hwaccels`) is misleading on its
+ * own — it lists every method the build was configured with, even when
+ * the driver is missing or `/dev/dri` isn't passed into Docker. Some
+ * Windows ffmpeg builds also print the same method twice. We dedupe,
+ * then run `-init_hw_device <name>=hw` against each candidate; only
+ * those whose init succeeds end up in `available`. A short timeout
+ * guards against a hung driver init on a misconfigured GPU.
+ *
+ * @returns {Promise<{compiledIn:string[], available:string[], ffmpegPath:string}>}
+ */
+export async function probeHwaccel() {
+    const bin = _resolveFfmpegBin();
+    const out = await new Promise((resolve) => {
+        const chunks = [];
+        try {
+            const p = spawn(bin, ['-hide_banner', '-hwaccels'], { windowsHide: true });
+            p.stdout.on('data', (c) => chunks.push(c));
+            p.stderr.on('data', () => {});
+            p.on('error', () => resolve(''));
+            p.on('close', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        } catch {
+            resolve('');
+        }
+    });
+    const compiledIn = [
+        ...new Set(
+            out
+                .split(/\r?\n/)
+                .map((s) => s.trim().toLowerCase())
+                .filter((s) => HWACCEL_KNOWN.includes(s)),
+        ),
+    ];
+
+    const probes = await Promise.all(
+        compiledIn.map(
+            (name) =>
+                new Promise((resolve) => {
+                    let settled = false;
+                    const finish = (ok) => {
+                        if (settled) return;
+                        settled = true;
+                        resolve({ name, ok });
+                    };
+                    let p;
+                    try {
+                        p = spawn(
+                            bin,
+                            [
+                                '-hide_banner',
+                                '-v',
+                                'error',
+                                '-init_hw_device',
+                                `${name}=hw`,
+                                '-f',
+                                'lavfi',
+                                '-i',
+                                'nullsrc=s=2x2:d=0.04',
+                                '-frames:v',
+                                '1',
+                                '-f',
+                                'null',
+                                '-',
+                            ],
+                            { windowsHide: true },
+                        );
+                    } catch {
+                        finish(false);
+                        return;
+                    }
+                    const timer = setTimeout(() => {
+                        try {
+                            p.kill('SIGKILL');
+                        } catch {}
+                        finish(false);
+                    }, HWACCEL_PROBE_TIMEOUT_MS);
+                    p.stdout.on('data', () => {});
+                    p.stderr.on('data', () => {});
+                    p.on('error', () => {
+                        clearTimeout(timer);
+                        finish(false);
+                    });
+                    p.on('close', (code) => {
+                        clearTimeout(timer);
+                        finish(code === 0);
+                    });
+                }),
+        ),
+    );
+    const available = probes.filter((p) => p.ok).map((p) => p.name);
+    return { compiledIn, available, ffmpegPath: bin };
 }
 
 // Returns true if a workable ffmpeg is on this host. The video / audio
@@ -330,20 +441,21 @@ const _HWACCEL_ALLOW = new Set(['vaapi', 'cuda', 'qsv', 'videotoolbox', 'd3d11va
 let _hwaccelConfigCache = { at: 0, value: '' };
 const _HWACCEL_CACHE_TTL_MS = 30 * 1000;
 
-async function _hwaccelFromConfig() {
+function _hwaccelFromConfig() {
     const now = Date.now();
     if (now - _hwaccelConfigCache.at < _HWACCEL_CACHE_TTL_MS) return _hwaccelConfigCache.value;
     let value = '';
     try {
-        const cfgPath = path.join(PROJECT_ROOT, 'data', 'config.json');
-        if (existsSync(cfgPath)) {
-            const raw = await fs.readFile(cfgPath, 'utf8');
-            const parsed = JSON.parse(raw);
-            const v = String(parsed?.advanced?.thumbs?.hwaccel || '')
-                .toLowerCase()
-                .trim();
-            if (_HWACCEL_ALLOW.has(v)) value = v;
-        }
+        // Pre-v2.7 read the legacy `data/config.json` file directly,
+        // which silently broke after the JSON→SQLite state migration
+        // archived the file to `*.migrated`. Source the value from the
+        // canonical kv['config'] row via loadConfig() instead so a
+        // dashboard-set `advanced.thumbs.hwaccel` actually takes effect.
+        const cfg = loadConfig();
+        const v = String(cfg?.advanced?.thumbs?.hwaccel || '')
+            .toLowerCase()
+            .trim();
+        if (_HWACCEL_ALLOW.has(v)) value = v;
     } catch {
         /* missing / corrupt config → CPU fallback, never throw */
     }

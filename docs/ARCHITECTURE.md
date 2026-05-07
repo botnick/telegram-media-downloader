@@ -5,7 +5,7 @@ Two top-level entry points share state through `data/`:
 1. **CLI** (`src/index.js`) — interactive menus, ad-hoc commands.
 2. **Web server** (`src/web/server.js`) — Express + WebSocket on `:3000`, serves the SPA from `src/web/public/`.
 
-Both share state through `data/db.sqlite` (WAL mode → safe shared reads, single writer). All runtime configuration (settings, account list, group filters, session tokens, disk-usage cache) lives in SQLite tables — there is no JSON state file in normal operation. Legacy installs that used `data/config.json` / `data/web-sessions.json` / `data/disk_usage.json` are auto-imported on first boot and the source files are renamed to `*.migrated`.
+Both share state through `data/db.sqlite` (WAL mode → safe shared reads, single writer). Every runtime state surface — settings, account list, group filters, session tokens, disk-usage cache, recent-backfills history, queue-history snapshots, the spillover queue, and the auto-update audit log — lives in SQLite tables. There is **no JSON state file in normal operation**. Legacy installs upgrading from pre-v2.8 carry `data/config.json` / `data/disk_usage.json` / `data/web-sessions.json` / `data/history-jobs.json` / `data/queue-history.json` / `data/logs/queue_backlog.jsonl` — all auto-imported on first boot and renamed to `*.migrated` as a reversible backup.
 
 ## Request flow
 
@@ -42,8 +42,11 @@ flowchart LR
 
 ```
 data/
-├── db.sqlite             # downloads, queue, share_links, kv, web_sessions — WAL mode
-│                          (kv holds config + disk_usage; deep-merged on load)
+├── db.sqlite             # downloads, queue, share_links, kv, web_sessions,
+│                          queue_backlog, update_history, image_embeddings,
+│                          backup_destinations / backup_jobs, etc. — WAL mode
+│                          (kv holds config + disk_usage + history_jobs +
+│                          queue_history; deep-merged on load)
 ├── secret.key            # AES key for sessions; back this up
 ├── sessions/<id>.enc     # per-account scrypt+AES-GCM encrypted sessions
 ├── photos/<id>.jpg       # cached chat profile photos
@@ -51,22 +54,26 @@ data/
 │   └── <sanitised-group-name>/
 │       ├── images/  videos/  documents/  audio/  stickers/
 ├── thumbs/<sha>.webp     # server-generated WebP thumbnails (cache)
-├── models/               # NSFW model cache (only when feature is enabled)
-├── backups/              # pre-update DB snapshots (last 5 kept)
+├── models/               # NSFW + AI model cache (only when feature is enabled)
+├── backups/              # pre-update DB snapshots (last 5 kept, verified)
 └── logs/
     ├── network.log       # noise-classified gramJS chatter
     └── protection_log.txt
 ```
 
-**State storage.** Runtime state lives in three SQLite surfaces:
+**State storage.** Every runtime surface is SQLite-backed:
 
 | Surface | Source of truth | Replaces |
 |---|---|---|
 | `kv['config']` | `src/config/manager.js` (`loadConfig` / `saveConfig`) | `data/config.json` |
-| `kv['disk_usage']` | `src/core/downloader.js` `getDiskUsage` / `saveDiskUsageCache` | `data/disk_usage.json` |
+| `kv['disk_usage']` | `src/core/downloader.js` + `src/web/server.js` (`writeDiskUsageCache`) | `data/disk_usage.json` |
+| `kv['history_jobs']` | `src/web/server.js` (`loadHistoryJobsFromStore` / `saveHistoryJobsToStore`) | `data/history-jobs.json` |
+| `kv['queue_history']` | `src/web/server.js` (`pushQueueHistory` / `flushQueueHistorySoon`) | `data/queue-history.json` |
 | `web_sessions` table | `src/core/web-auth.js` + `src/core/db.js` accessors | `data/web-sessions.json` |
+| `queue_backlog` table | `src/core/db.js` (`pushQueueBacklog` / `popQueueBacklog`) + `src/core/downloader.js` spillover | `data/logs/queue_backlog.jsonl` |
+| `update_history` table | `src/core/db.js` (`recordUpdateAttempt` / `recordUpdateFailure` / `finalisePendingUpdates`) | (new in v2.8) |
 
-`saveConfig()` emits a `change` event on an in-process `EventEmitter` after every commit — `monitor.js` subscribes via `watchConfig()` and reloads without any filesystem watcher. Migration from JSON files is one-shot, idempotent, and runs inside `getDb()`; source files are renamed to `*.migrated` and kept as a reversible backup.
+`saveConfig()` emits a `change` event on an in-process `EventEmitter` after every commit — `monitor.js` subscribes via `watchConfig()` and reloads without any filesystem watcher. Migration from JSON files is one-shot, idempotent, and runs inside `getDb()`; source files are renamed to `*.migrated` and kept as a reversible backup. The auto-update audit table is finalised on every container boot — any `triggered` row whose `from_version` differs from the running version is promoted to `success`, capturing the actual transition observed.
 
 ## Multi-account routing
 
@@ -81,7 +88,7 @@ When editing monitor / forwarder / history code, never assume `this.client` is t
 Auth is opaque sessions, not passwords:
 
 1. CLI or web setup hashes the password with **scrypt** (per-password random salt) and stores it as `config.web.passwordHash = {algo:'scrypt', salt, hash, …}`.
-2. Login posts the password, server tries the admin hash first then the optional `guestPasswordHash`, verifies via `crypto.timingSafeEqual`, and issues a 64-char hex token persisted to `data/web-sessions.json` along with the resolved role.
+2. Login posts the password, server tries the admin hash first then the optional `guestPasswordHash`, verifies via `crypto.timingSafeEqual`, and issues a 64-char hex token persisted to the `web_sessions` table along with the resolved role.
 3. The token is sent back as cookie `tg_dl_session` with `httpOnly`, `sameSite=strict`, and `secure` in production.
 4. Every API call (and the WebSocket upgrade) re-validates the token with `validateSession(token)` and sets `req.role` for downstream middleware.
 
@@ -104,9 +111,9 @@ All failure modes return 401 with a body `code` (`bad_sig` / `revoked` / `expire
 `Downloader` runs N workers (1–20, auto-scaled). The queue is split:
 
 - `_high[]` — realtime (priority 1) and TTL/self-destruct (priority 0, unshifted to the front).
-- `queue[]` — history backfill (priority 2). Spills to `data/logs/queue_backlog.jsonl` past 2000 entries.
+- `queue[]` — history backfill (priority 2). Spills to the `queue_backlog` SQLite table past 2000 entries (atomic appends, FIFO-by-id pops in one transaction — can't double-deliver after a crash mid-rehydrate).
 
-Workers always drain `_high` first, then `queue`, then rehydrate from disk. Realtime never starves behind backfill.
+Workers always drain `_high` first, then `queue`, then rehydrate from the backlog table. Realtime never starves behind backfill.
 
 ## Logger noise classifier
 
@@ -157,7 +164,7 @@ src/core/
 ├── thumbs.js         # WebP thumbnail generator (sharp + ffmpeg fallback)
 ├── nsfw.js           # NSFW classifier (WASM, Falconsai/nsfw_image_detection)
 ├── share.js          # HMAC-SHA256 share-link sign/verify + secret bootstrap
-├── updater.js        # Watchtower client + pre-update DB snapshot
+├── updater.js        # Watchtower client + pre-flight ping + DB integrity check + verified snapshot
 ├── web-auth.js       # scrypt password hashing + role-aware sessions
 ├── db.js             # SQLite schema + migrations + helpers
 ├── runtime.js        # Engine lifecycle (monitor + downloader + forwarder)

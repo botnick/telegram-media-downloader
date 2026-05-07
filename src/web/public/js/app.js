@@ -201,6 +201,19 @@ async function init() {
         if (state.currentPage === 'viewer') refreshCurrentPage();
         loadStats();
     });
+    // Rescue Mode aggregate — fires once after every sweep. The per-row
+    // `file_deleted` events above already kept the gallery + stats in
+    // sync; the aggregate is just a friendly toast so the operator sees
+    // the count without having to spot the size delta in the footer.
+    // Quiet on empty sweeps (most ticks find nothing).
+    ws.on('rescue_sweep_done', (m) => {
+        const count = Number(m?.count) || 0;
+        if (count <= 0) return;
+        showToast(
+            i18nTf('toast.rescue_swept', { count }, `Rescue: ${count} file(s) auto-pruned.`),
+            'info',
+        );
+    });
     ws.on('config_updated', () => {
         if (state.currentPage === 'settings') Settings.loadSettings();
     });

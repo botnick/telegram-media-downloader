@@ -14,7 +14,17 @@ set -e
 
 if [ "$(id -u)" = "0" ]; then
     if [ "${FAST_BOOT:-0}" != "1" ]; then
-        mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions
+        # Pre-create every directory the running app writes to. `backups`
+        # holds pre-update DB snapshots (data/backups/db-pre-update-*.sqlite)
+        # — pre-creating it here means the first /api/update click can't
+        # silently depend on /app/data having g+w during the on-demand
+        # mkdir inside the request handler.
+        mkdir -p \
+            /app/data \
+            /app/data/downloads \
+            /app/data/logs \
+            /app/data/sessions \
+            /app/data/backups
         chown -R node:node /app/data 2>/dev/null || true
         chmod -R u+rwX,g+rwX,o+rX /app/data 2>/dev/null || true
     fi

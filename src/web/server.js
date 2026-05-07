@@ -58,6 +58,11 @@ import {
     listPhotosForTag,
     listEmbeddingModels,
     clearStaleEmbeddings,
+    kvGet,
+    kvSet,
+    recordUpdateAttempt,
+    recordUpdateFailure,
+    listUpdateHistory,
 } from '../core/db.js';
 import * as ai from '../core/ai/index.js';
 import { sanitizeName } from '../core/downloader.js';
@@ -187,7 +192,6 @@ process.on('uncaughtException', (err) => {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data');
-const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const SESSION_PATH = path.join(DATA_DIR, 'session.enc');
@@ -240,15 +244,15 @@ async function scanDirectorySize(dir) {
     return total;
 }
 
-async function writeDiskUsageCache(size) {
+function writeDiskUsageCache(size) {
+    // The legacy `data/disk_usage.json` file was the cache before the
+    // JSON→SQLite migration; after first boot it's renamed to
+    // `disk_usage.json.migrated`, so writing to the old path silently
+    // dropped the cache. The downloader hot path already uses
+    // `kvSet('disk_usage', …)` (core/downloader.js); align this
+    // fallback writer with the same canonical store.
     try {
-        await fs.writeFile(
-            path.join(DATA_DIR, 'disk_usage.json'),
-            JSON.stringify({
-                size,
-                lastScan: Date.now(),
-            }),
-        );
+        kvSet('disk_usage', { size, lastScan: Date.now() });
     } catch {
         /* best-effort cache */
     }
@@ -1335,13 +1339,37 @@ app.get('/api/update/status', async (req, res) => {
 
 app.post('/api/update', async (req, res) => {
     const tracker = _jobTrackers.autoUpdate;
+    const fromVersion = _readCurrentVersion();
     const r = tracker.tryStart(async () => {
-        const result = await runAutoUpdate();
-        // Heads-up to every open tab — fires BEFORE watchtower kills us so
-        // the toast shows up while the WS is still alive. The SPA's
-        // existing reconnect logic handles the gap; the new container's
-        // healthcheck has to pass before it's reachable. Kept alongside
-        // the standard `update_done` event the JobTracker emits.
+        let result;
+        try {
+            result = await runAutoUpdate();
+        } catch (e) {
+            // Audit even pre-flight failures so the operator can see "we
+            // tried at 14:02, watchtower was unreachable" in the history
+            // panel rather than a silent dead-letter.
+            try {
+                recordUpdateFailure({
+                    fromVersion,
+                    errorCode: e?.code || 'UNKNOWN',
+                    errorMsg: e?.message || String(e),
+                });
+            } catch {}
+            throw e;
+        }
+        // Watchtower acknowledged. Stamp a `triggered` row — the new
+        // container's boot path will promote it to `success` when it
+        // observes a different version, or to `stalled` if the swap
+        // never landed (10 min timeout).
+        try {
+            recordUpdateAttempt({
+                fromVersion,
+                backupPath: result.backup?.path || null,
+                backupBytes: result.backup?.sizeBytes ?? null,
+            });
+        } catch {}
+        // Heads-up to every open tab — fires BEFORE watchtower kills us
+        // so the overlay shows up while the WS is still alive.
         try {
             broadcast({ type: 'update_started', backup: result.backup });
         } catch {}
@@ -1357,6 +1385,18 @@ app.post('/api/update', async (req, res) => {
 
 app.get('/api/auto-update/status', async (req, res) => {
     res.json(_jobTrackers.autoUpdate.getStatus());
+});
+
+// Audit log of every /api/update click, newest first. Powers the
+// "Recent updates" panel in the maintenance UI + lets operators spot
+// repeat failures (e.g. watchtower mis-token on every retry).
+app.get('/api/update/history', async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 25));
+        res.json({ history: listUpdateHistory({ limit }) });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || 'Failed to read update history' });
+    }
 });
 
 app.get('/api/auth_check', async (req, res) => {
@@ -1991,14 +2031,18 @@ app.post('/api/monitor/stop', async (req, res) => {
 // otherwise spins one up just for this request and tears it down on
 // completion.
 //
-// Persistence — past jobs (last 30 days) are written to data/history-jobs.json
-// so the new Backfill page can show a rolling history across server restarts.
-// JSON file is enough at this scale; if we ever cross ~10k rows we'll port to
-// SQLite. The map below holds active jobs (with the live HistoryDownloader
-// instance attached) plus a hot copy of recent finished ones; the file is
-// considered the source of truth for anything older.
+// Persistence — past jobs (last 30 days) live in kv['history_jobs'] in
+// SQLite so the Backfill page can show a rolling history across server
+// restarts. The map below holds active jobs (with the live HistoryDownloader
+// instance attached) plus a hot copy of recent finished ones; the kv row
+// is the source of truth for anything older.
 
-const HISTORY_JOBS_PATH = path.join(DATA_DIR, 'history-jobs.json');
+// History jobs persist to kv['history_jobs'] in SQLite — the JSON file
+// at data/history-jobs.json was migrated alongside config / disk_usage
+// in the v2.7 state migration. Legacy files on disk are still picked up
+// once on first boot by state-migration.js, then archived.
+const HISTORY_JOBS_KV = 'history_jobs';
+
 // Resolved from config.advanced.history.retentionDays at every call so a
 // `config_updated` save changes the prune cutoff without a restart.
 // Spec default = 30 days.
@@ -2014,28 +2058,24 @@ function historyRetentionMs() {
 
 // jobId → { id, state, processed, downloaded, error, group, groupId, limit,
 //           startedAt, finishedAt, cancelled, _runner }
-// `_runner` is stripped before serialising to disk (it's the live downloader).
+// `_runner` is stripped before serialising (it's the live downloader).
 const _historyJobs = new Map();
 
-async function loadHistoryJobsFromDisk() {
-    try {
-        const raw = await fs.readFile(HISTORY_JOBS_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        const cutoff = Date.now() - historyRetentionMs();
-        return parsed.filter((j) => j && (j.finishedAt || j.startedAt || 0) >= cutoff);
-    } catch {
-        return [];
-    }
+function loadHistoryJobsFromStore() {
+    const stored = kvGet(HISTORY_JOBS_KV);
+    if (!Array.isArray(stored)) return [];
+    const cutoff = Date.now() - historyRetentionMs();
+    return stored.filter((j) => j && (j.finishedAt || j.startedAt || 0) >= cutoff);
 }
 
-async function saveHistoryJobsToDisk() {
+function saveHistoryJobsToStore() {
     // Snapshot finished jobs (state !== running) without the _runner ref.
     const finished = Array.from(_historyJobs.values())
         .filter((j) => j.state !== 'running')
         .map(({ _runner, ...rest }) => rest);
-    // Merge with anything still on disk that isn't in memory (older history).
-    const onDisk = await loadHistoryJobsFromDisk();
+    // Merge with anything still in the store that isn't in memory
+    // (older history older than process start).
+    const onDisk = loadHistoryJobsFromStore();
     const byId = new Map();
     for (const j of onDisk) byId.set(j.id, j);
     for (const j of finished) byId.set(j.id, j);
@@ -2044,10 +2084,9 @@ async function saveHistoryJobsToDisk() {
         .filter((j) => (j.finishedAt || j.startedAt || 0) >= cutoff)
         .sort((a, b) => (b.finishedAt || b.startedAt || 0) - (a.finishedAt || a.startedAt || 0));
     try {
-        await fs.mkdir(DATA_DIR, { recursive: true });
-        await fs.writeFile(HISTORY_JOBS_PATH, JSON.stringify(all, null, 2), 'utf-8');
+        kvSet(HISTORY_JOBS_KV, all);
     } catch (e) {
-        console.error('history-jobs.json write failed:', e?.message || e);
+        console.error("kv['history_jobs'] write failed:", e?.message || e);
     }
 }
 
@@ -2155,7 +2194,7 @@ app.post('/api/history', async (req, res) => {
                 const evt = job.cancelled ? 'history_cancelled' : 'history_done';
                 broadcast({ type: evt, jobId, group: group.name, ...job });
                 if (standalone) downloader.stop().catch(() => {});
-                saveHistoryJobsToDisk().catch(() => {});
+                saveHistoryJobsToStore();
                 // Release the per-group lock so a new backfill can spawn.
                 if (_activeBackfillsByGroup.get(groupKey) === jobId) {
                     _activeBackfillsByGroup.delete(groupKey);
@@ -2193,7 +2232,7 @@ app.post('/api/history', async (req, res) => {
                     msg: `backfill failed for "${group.name}" (${group.id}): ${job.error}${hint}`,
                 });
                 if (standalone) downloader.stop().catch(() => {});
-                saveHistoryJobsToDisk().catch(() => {});
+                saveHistoryJobsToStore();
                 if (_activeBackfillsByGroup.get(groupKey) === jobId) {
                     _activeBackfillsByGroup.delete(groupKey);
                 }
@@ -2226,7 +2265,7 @@ app.post('/api/history', async (req, res) => {
 
 app.get('/api/history/jobs', async (req, res) => {
     try {
-        const onDisk = await loadHistoryJobsFromDisk();
+        const onDisk = loadHistoryJobsFromStore();
         const live = Array.from(_historyJobs.values()).map(({ _runner, ...rest }) => rest);
         const byId = new Map();
         for (const j of onDisk) byId.set(j.id, j);
@@ -2281,16 +2320,14 @@ app.delete('/api/history/:jobId', async (req, res) => {
         }
         if (inMem) _historyJobs.delete(id);
 
-        // Drop from on-disk store too. Atomic write via fs.writeFile (the
-        // existing saveHistoryJobsToDisk pattern handles concurrency by
-        // reading + filtering + writing in one tick).
-        const onDisk = await loadHistoryJobsFromDisk();
+        // Drop from the kv store too. kvSet runs the upsert in a SQLite
+        // transaction so a partial write can never land.
+        const onDisk = loadHistoryJobsFromStore();
         const filtered = onDisk.filter((j) => j.id !== id);
         try {
-            await fs.mkdir(DATA_DIR, { recursive: true });
-            await fs.writeFile(HISTORY_JOBS_PATH, JSON.stringify(filtered, null, 2), 'utf-8');
+            kvSet(HISTORY_JOBS_KV, filtered);
         } catch (e) {
-            console.error('history-jobs.json write failed:', e?.message || e);
+            console.error("kv['history_jobs'] write failed:", e?.message || e);
         }
 
         broadcast({ type: 'history_deleted', jobId: id });
@@ -2311,12 +2348,11 @@ app.delete('/api/history', async (req, res) => {
                 removed++;
             }
         }
-        // Wipe the on-disk store of finished jobs.
+        // Wipe the kv-backed store of finished jobs.
         try {
-            await fs.mkdir(DATA_DIR, { recursive: true });
-            await fs.writeFile(HISTORY_JOBS_PATH, JSON.stringify([], null, 2), 'utf-8');
+            kvSet(HISTORY_JOBS_KV, []);
         } catch (e) {
-            console.error('history-jobs.json wipe failed:', e?.message || e);
+            console.error("kv['history_jobs'] wipe failed:", e?.message || e);
         }
         broadcast({ type: 'history_cleared' });
         res.json({ success: true, removed });
@@ -2342,7 +2378,10 @@ app.get('/api/history', (req, res) => {
 // doesn't drop the tail. We keep it small (cap = 100) and fire-and-forget
 // the writes so this can never block the WS event loop.
 
-const QUEUE_HISTORY_PATH = path.join(DATA_DIR, 'queue-history.json');
+// Queue history persists to kv['queue_history']. Same migration story as
+// history_jobs above — the legacy `data/queue-history.json` file is
+// imported once on first boot and then archived.
+const QUEUE_HISTORY_KV = 'queue_history';
 const QUEUE_HISTORY_CAP = 100;
 let _queueHistory = []; // newest first
 let _queueHistoryDirty = false;
@@ -2351,32 +2390,29 @@ let _queueHistoryFlushTimer = null;
 // re-enqueue without the client having to round-trip the message ref.
 const _failedJobMeta = new Map();
 
-(async function loadQueueHistory() {
+(function loadQueueHistory() {
     try {
-        const raw = await fs.readFile(QUEUE_HISTORY_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) _queueHistory = parsed.slice(0, QUEUE_HISTORY_CAP);
+        const stored = kvGet(QUEUE_HISTORY_KV);
+        if (Array.isArray(stored)) _queueHistory = stored.slice(0, QUEUE_HISTORY_CAP);
     } catch {
-        /* first-run, no file yet */
+        /* first-run, no row yet */
     }
 })();
 
 function flushQueueHistorySoon() {
     _queueHistoryDirty = true;
     if (_queueHistoryFlushTimer) return;
-    _queueHistoryFlushTimer = setTimeout(async () => {
+    // 1.5 s debounce keeps a chatty download stream from hammering the kv
+    // upsert. Each kvSet is one short SQLite transaction; cheap, but the
+    // batching still saves a few dozen writes/min on a busy queue.
+    _queueHistoryFlushTimer = setTimeout(() => {
         _queueHistoryFlushTimer = null;
         if (!_queueHistoryDirty) return;
         _queueHistoryDirty = false;
         try {
-            await fs.mkdir(DATA_DIR, { recursive: true });
-            await fs.writeFile(
-                QUEUE_HISTORY_PATH,
-                JSON.stringify(_queueHistory.slice(0, QUEUE_HISTORY_CAP)),
-                'utf-8',
-            );
+            kvSet(QUEUE_HISTORY_KV, _queueHistory.slice(0, QUEUE_HISTORY_CAP));
         } catch (e) {
-            console.error('queue-history.json write failed:', e?.message || e);
+            console.error("kv['queue_history'] write failed:", e?.message || e);
         }
     }, 1500).unref?.();
 }
@@ -3013,7 +3049,7 @@ app.get('/api/stats', async (req, res) => {
         let diskUsage = Number(dbStats.totalSize) || 0;
         if (diskUsage <= 0) {
             diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
-            await writeDiskUsageCache(diskUsage);
+            writeDiskUsageCache(diskUsage);
         }
 
         // Account count: reflect the on-disk session files even when no
@@ -4889,44 +4925,17 @@ app.get('/api/maintenance/thumbs/build/status', async (req, res) => {
 // whether VAAPI/QSV/CUDA/etc. are available on the host's ffmpeg build.
 app.get('/api/maintenance/thumbs/hwaccel-probe', async (req, res) => {
     try {
-        const { spawn } = await import('child_process');
         const thumbs = await import('../core/thumbs.js');
-        const bin = thumbs.resolveFfmpegBin?.() || 'ffmpeg';
-        const out = await new Promise((resolve, reject) => {
-            const p = spawn(bin, ['-hide_banner', '-hwaccels'], { windowsHide: true });
-            const chunks = [];
-            p.stdout.on('data', (c) => chunks.push(c));
-            p.stderr.on('data', () => {});
-            p.on('error', reject);
-            p.on('close', () => resolve(Buffer.concat(chunks).toString('utf8')));
-        }).catch(() => '');
-        // Output shape (ffmpeg ≥4.x):
-        //   Hardware acceleration methods:\nvaapi\nqsv\ncuda\nvideotoolbox\n
-        const KNOWN = new Set([
-            'vaapi',
-            'qsv',
-            'cuda',
-            'videotoolbox',
-            'd3d11va',
-            'dxva2',
-            'opencl',
-            'vulkan',
-            'drm',
-        ]);
-        const available = out
-            .split(/\r?\n/)
-            .map((s) => s.trim().toLowerCase())
-            .filter((s) => KNOWN.has(s));
-        res.json({
-            available,
-            ffmpegPath: bin,
-            // The dropdown only exposes options we have UI rows for; the
-            // others come back so docs / debugging surface them.
-            recommended:
-                available.find((b) =>
-                    ['vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va'].includes(b),
-                ) || null,
-        });
+        const { compiledIn, available, ffmpegPath } = await thumbs.probeHwaccel();
+        // The dropdown only exposes options we have UI rows for; pick the
+        // first verified backend in that subset so "Recommended" matches
+        // something the user can actually select. Falls back to null when
+        // nothing on this host passed the device-init test.
+        const recommended =
+            available.find((b) =>
+                ['vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va'].includes(b),
+            ) || null;
+        res.json({ available, compiledIn, ffmpegPath, recommended });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e), available: [] });
     }
@@ -6871,7 +6880,7 @@ app.post('/api/config', async (req, res) => {
             h.shortBreakEveryN = clampInt(h.shortBreakEveryN, 0, 100000, 100);
             h.longBreakEveryN = clampInt(h.longBreakEveryN, 0, 1000000, 1000);
             // Recent-backfills retention. Anything older than this gets
-            // pruned at next read of `data/history-jobs.json`. 1-3650 days.
+            // pruned at next read of kv['history_jobs']. 1-3650 days.
             h.retentionDays = clampInt(h.retentionDays, 1, 3650, 30);
             // v2.3.34 — auto-backfill knobs
             h.autoFirstBackfill = h.autoFirstBackfill !== false; // default ON
@@ -6953,12 +6962,13 @@ app.post('/api/config', async (req, res) => {
             return res.status(400).json({ error: 'pollingInterval must be >= 1 (seconds)' });
         }
 
-        // Atomic write — write to a temp file then rename so a crash mid-write
-        // can't leave config.json half-flushed.
-        const tmpPath = CONFIG_PATH + '.tmp';
-        await fs.writeFile(tmpPath, JSON.stringify(newConfig, null, 4));
-        await fs.rename(tmpPath, CONFIG_PATH);
-        invalidateConfigCache();
+        // Persist to kv['config'] via the same writer every other endpoint
+        // uses. The legacy file-write here pre-dates the JSON→SQLite migration
+        // and bypassed loadConfig()'s storage backend, so saves silently drifted
+        // from the live row and got archived to config.json.migrated on the
+        // next boot's state-migration sweep — the symptom users reported as
+        // "settings don't save on Docker".
+        await writeConfigAtomic(newConfig);
         // Re-apply runtime knobs that depend on advanced.share / advanced.history
         // so a save takes effect immediately without a process restart.
         try {
@@ -7271,7 +7281,7 @@ async function _spawnInternalBackfill({
             const evt = job.cancelled ? 'history_cancelled' : 'history_done';
             broadcast({ type: evt, jobId, group: group.name, ...job });
             if (standalone) downloader.stop().catch(() => {});
-            saveHistoryJobsToDisk().catch(() => {});
+            saveHistoryJobsToStore();
             if (_activeBackfillsByGroup.get(groupKey) === jobId)
                 _activeBackfillsByGroup.delete(groupKey);
             setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
@@ -7300,7 +7310,7 @@ async function _spawnInternalBackfill({
                 msg: `auto-backfill failed for "${group.name}" (${groupKey}): ${job.error}${hint}`,
             });
             if (standalone) downloader.stop().catch(() => {});
-            saveHistoryJobsToDisk().catch(() => {});
+            saveHistoryJobsToStore();
             if (_activeBackfillsByGroup.get(groupKey) === jobId)
                 _activeBackfillsByGroup.delete(groupKey);
         });

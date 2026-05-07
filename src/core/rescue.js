@@ -46,7 +46,10 @@ export class RescueSweeper {
     /**
      * @param {object} opts
      * @param {() => object} opts.loadConfig fresh config getter (called per tick)
-     * @param {(msg: object) => void} [opts.broadcast] WS broadcast (rescue_swept)
+     * @param {(msg: object) => void} [opts.broadcast] WS broadcast — emits
+     *     `file_deleted` per row (so the existing gallery + stats listeners
+     *     drop the tile / refresh footer for free) and an aggregate
+     *     `rescue_sweep_done` once the pass settles.
      */
     constructor({ loadConfig, broadcast } = {}) {
         if (typeof loadConfig !== 'function') {
@@ -131,11 +134,18 @@ export class RescueSweeper {
                 if (removed > 0) {
                     swept += 1;
                     try {
+                        // `file_deleted` is the canonical "a row's file went
+                        // away" event — gallery, stats footer, and the
+                        // viewer all listen for it and drop the matching
+                        // tile in-place. Reusing it here means the same
+                        // surgical UI update path the disk-rotator and
+                        // bulk-delete already use.
                         this._broadcast({
-                            type: 'rescue_swept',
+                            type: 'file_deleted',
                             id: row.id,
                             groupId: row.group_id,
                             path: row.file_path || null,
+                            source: 'rescue',
                         });
                     } catch {}
                 }

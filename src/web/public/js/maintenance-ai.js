@@ -1003,6 +1003,10 @@ export async function init() {
             inp.type = inp.type === 'password' ? 'text' : 'password';
         });
         $('ai-hf-token-test')?.addEventListener('click', _testHfToken);
+        // HF token persistence — autosave only fires on the Settings page,
+        // so this page wires its own debounced PATCH. Saves on input
+        // (debounced 600 ms) and on blur for an immediate flush.
+        _wireHfTokenAutosave();
         // Master AI toggle — lives in static HTML (`#ai-master-card`) so
         // it's always visible. Same flip-and-PATCH handler the per-cap
         // toggles use; bound once at init.
@@ -1015,4 +1019,61 @@ export async function init() {
     await _refreshModels();
     await _hydrateFromStatus();
     _scheduleModelsRefresh();
+    // Pre-fill the HF token input from saved config — best-effort, so a
+    // GET failure doesn't keep the rest of the page from rendering. Run
+    // every mount (not just the first) so a fresh token saved elsewhere
+    // shows up when the operator returns to this page.
+    _hydrateHfToken().catch(() => {});
+}
+
+async function _hydrateHfToken() {
+    const inp = $('setting-adv-ai-hf-token');
+    if (!inp) return;
+    // Skip if the user has already typed something — never clobber an
+    // unsaved edit with the stored value.
+    if (inp.value && inp.value.trim() !== inp.dataset.hfTokenSnapshot) return;
+    try {
+        const cfg = await api.get('/api/config');
+        const saved = String(cfg?.advanced?.ai?.hfToken || '');
+        inp.value = saved;
+        inp.dataset.hfTokenSnapshot = saved;
+    } catch {
+        /* server may have rejected — operator will paste manually */
+    }
+}
+
+let _hfTokenTimer = null;
+function _wireHfTokenAutosave() {
+    const inp = $('setting-adv-ai-hf-token');
+    if (!inp || inp.dataset.hfWired === '1') return;
+    inp.dataset.hfWired = '1';
+    const flush = async () => {
+        clearTimeout(_hfTokenTimer);
+        _hfTokenTimer = null;
+        const next = String(inp.value || '').trim();
+        if (next === (inp.dataset.hfTokenSnapshot || '')) return;
+        try {
+            await api.post('/api/config', { advanced: { ai: { hfToken: next } } });
+            inp.dataset.hfTokenSnapshot = next;
+            // Quiet success — the inline result below the input already
+            // surfaces Test outcomes; double-toasting on every keystroke
+            // would be noisy.
+        } catch (e) {
+            showToast(
+                i18nTf(
+                    'maintenance.ai.hf_token.save_failed',
+                    { msg: e?.message || e },
+                    `Token save failed: ${e?.message || e}`,
+                ),
+                'error',
+            );
+        }
+    };
+    inp.addEventListener('input', () => {
+        clearTimeout(_hfTokenTimer);
+        _hfTokenTimer = setTimeout(flush, 600);
+    });
+    inp.addEventListener('blur', () => {
+        if (_hfTokenTimer) flush();
+    });
 }

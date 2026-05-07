@@ -63,14 +63,47 @@ export function getDb() {
                 listSessions,
                 listEmbeddingModels,
                 clearStaleEmbeddings,
+                pushQueueBacklog,
             });
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error('[state-migration] failed:', e.message);
         }
+
+        // Auto-update audit finalisation. Walks every `triggered` row
+        // and either promotes it to `success` (running a different
+        // version than the row's from_version → swap landed) or marks
+        // it `stalled` (same version + row older than 10 min →
+        // watchtower acked but the swap never completed). Idempotent;
+        // runs once per process boot.
+        try {
+            const cur = _readPackageVersion();
+            const r = finalisePendingUpdates(cur);
+            if (r.promoted > 0 || r.stalled > 0) {
+                // eslint-disable-next-line no-console
+                console.log(
+                    `[update-history] finalised ${r.promoted} → success, ${r.stalled} → stalled`,
+                );
+            }
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error('[update-history] finalisation failed:', e?.message || e);
+        }
     }
 
     return db;
+}
+
+// Resolve the running package version without pulling server.js (would be
+// a circular import). Mirrors `_readCurrentVersion` in server.js.
+function _readPackageVersion() {
+    if (process.env.npm_package_version) return process.env.npm_package_version;
+    try {
+        const pkgPath = path.join(__dirname, '..', '..', 'package.json');
+        return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version || null;
+    } catch {
+        return null;
+    }
 }
 
 function initSchema() {
@@ -367,6 +400,41 @@ function initSchema() {
         CREATE INDEX IF NOT EXISTS idx_web_sessions_role    ON web_sessions(role);
     `);
 
+    // Spilled-queue rows. Replaces data/logs/queue_backlog.jsonl so a hard
+    // crash mid-spill can't tear a JSON line, and rehydrate is an indexed
+    // SELECT + DELETE instead of a full-file rewrite. Worker pulls FIFO via
+    // `ORDER BY id ASC LIMIT N`, deletes the popped rows in the same tx.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS queue_backlog (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            job        TEXT    NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+    `);
+
+    // Auto-update audit log. One row per /api/update click. The row is
+    // INSERTed when the route hands off to watchtower (status='triggered')
+    // and finalised by the new container's boot path once the swap lands
+    // — `to_version` is whatever the new container reports as its package
+    // version, so the row records the actual transition observed, not
+    // just what was requested. Pre-flight failures land directly as
+    // status='failed' with the structured error code.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS update_history (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_version TEXT,
+            to_version   TEXT,
+            started_at   INTEGER NOT NULL,
+            finished_at  INTEGER,
+            status       TEXT    NOT NULL DEFAULT 'pending',
+            error_code   TEXT,
+            error_msg    TEXT,
+            backup_path  TEXT,
+            backup_bytes INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_update_history_status ON update_history(status, started_at);
+    `);
+
     // Smoke-test the new tables the same way we do for downloads: force a
     // SELECT against every column the rest of the code path depends on so
     // a failed CREATE TABLE surfaces at boot, not mid-request.
@@ -375,9 +443,13 @@ function initSchema() {
         db.prepare(
             'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions LIMIT 0',
         ).all();
+        db.prepare('SELECT id, job, created_at FROM queue_backlog LIMIT 0').all();
+        db.prepare(
+            'SELECT id, from_version, to_version, started_at, finished_at, status, error_code, error_msg, backup_path, backup_bytes FROM update_history LIMIT 0',
+        ).all();
     } catch (e) {
         throw new Error(
-            `DB schema migration incomplete — kv / web_sessions tables not ready: ${e.message}`,
+            `DB schema migration incomplete — kv / web_sessions / queue_backlog / update_history tables not ready: ${e.message}`,
         );
     }
 
@@ -1727,6 +1799,191 @@ export function kvList() {
         }
     }
     return out;
+}
+
+// ---- Spilled-queue backlog ------------------------------------------------
+//
+// Replaces data/logs/queue_backlog.jsonl. The downloader spills queued jobs
+// here when the in-memory lane size crosses `advanced.downloader.spilloverThreshold`,
+// and rehydrates from here when worker capacity frees up. SQLite gives us
+// atomic appends, indexed FIFO reads, and a clean DELETE-after-pop tx so a
+// crash mid-rehydrate can't lose or double-deliver a job.
+
+export function pushQueueBacklog(job) {
+    const stmt = _prep(`
+        INSERT INTO queue_backlog (job, created_at) VALUES (?, ?)
+    `);
+    stmt.run(JSON.stringify(job), Date.now());
+}
+
+/**
+ * Pop up to `limit` jobs FIFO. Returns the parsed job objects in insertion
+ * order. The SELECT + DELETE happen in one transaction so a concurrent
+ * worker (rare; we only have one downloader) couldn't take the same row
+ * twice.
+ */
+export function popQueueBacklog(limit = 1000) {
+    const lim = Math.max(1, Math.min(10000, Number(limit) || 1000));
+    const select = _prep('SELECT id, job FROM queue_backlog ORDER BY id ASC LIMIT ?');
+    const del = _prep('DELETE FROM queue_backlog WHERE id = ?');
+    const out = [];
+    getDb().transaction(() => {
+        const rows = select.all(lim);
+        for (const r of rows) {
+            try {
+                out.push(JSON.parse(r.job));
+            } catch {
+                /* corrupt row — drop it */
+            }
+            del.run(r.id);
+        }
+    })();
+    return out;
+}
+
+export function queueBacklogSize() {
+    const r = _prep('SELECT COUNT(1) AS n FROM queue_backlog').get();
+    return Number(r?.n) || 0;
+}
+
+export function clearQueueBacklog() {
+    return _prep('DELETE FROM queue_backlog').run().changes;
+}
+
+// ---- Auto-update audit ---------------------------------------------------
+//
+// Every /api/update click writes one row. Pre-flight failures land as
+// status='failed' immediately. Successful triggers land as 'triggered'
+// and get finalised to 'success' by the new container's boot path once
+// it observes a different `from_version`.
+
+const UPDATE_STATUS_PENDING = 'pending'; // reserved — not used by the active flow
+const UPDATE_STATUS_TRIGGERED = 'triggered';
+const UPDATE_STATUS_SUCCESS = 'success';
+const UPDATE_STATUS_FAILED = 'failed';
+const UPDATE_STATUS_STALLED = 'stalled';
+
+// `triggered` rows older than this on the new container's boot are
+// considered stalled. Watchtower's pull + recreate cycle is < 60 s in
+// every healthy install I've seen; 10 min is generous.
+const UPDATE_STALL_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * Record a fresh update attempt. Returns the row id so the caller can
+ * finalise it later. `fromVersion` should be the version the requesting
+ * dashboard is currently running.
+ */
+export function recordUpdateAttempt({ fromVersion, backupPath = null, backupBytes = null }) {
+    const r = _prep(`
+        INSERT INTO update_history
+          (from_version, started_at, status, backup_path, backup_bytes)
+        VALUES (?, ?, ?, ?, ?)
+    `).run(
+        fromVersion ? String(fromVersion) : null,
+        Date.now(),
+        UPDATE_STATUS_TRIGGERED,
+        backupPath,
+        backupBytes,
+    );
+    return Number(r.lastInsertRowid);
+}
+
+/**
+ * Mark a previously-recorded attempt as failed. Used for pre-flight
+ * failures that we caught on the way out (watchtower unreachable, DB
+ * corrupt, snapshot torn, etc).
+ */
+export function recordUpdateFailure({ id, fromVersion, errorCode, errorMsg }) {
+    if (id) {
+        _prep(`
+            UPDATE update_history
+               SET status = ?, finished_at = ?, error_code = ?, error_msg = ?
+             WHERE id = ?
+        `).run(UPDATE_STATUS_FAILED, Date.now(), errorCode || null, errorMsg || null, id);
+        return id;
+    }
+    // No row yet (failure before recordUpdateAttempt) — insert one.
+    const r = _prep(`
+        INSERT INTO update_history
+          (from_version, started_at, finished_at, status, error_code, error_msg)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+        fromVersion ? String(fromVersion) : null,
+        Date.now(),
+        Date.now(),
+        UPDATE_STATUS_FAILED,
+        errorCode || null,
+        errorMsg || null,
+    );
+    return Number(r.lastInsertRowid);
+}
+
+/**
+ * Boot-time pending-row finaliser. Called once by getDb() bootstrap on
+ * every container start. Walks every `triggered` row and:
+ *
+ *   - Stamps it `success` with `to_version = currentVersion` if the new
+ *     container is running a different version than the row's from_version
+ *     (= watchtower swapped us as expected).
+ *   - Stamps it `stalled` if the version matches AND the row is older
+ *     than UPDATE_STALL_AFTER_MS (= watchtower acked but never recreated
+ *     us, OR we crash-restarted with the same image).
+ *   - Leaves it alone otherwise (recently-triggered, may still complete).
+ *
+ * Returns `{ promoted, stalled }` for logging.
+ */
+export function finalisePendingUpdates(currentVersion) {
+    const now = Date.now();
+    const rows = _prep(
+        `SELECT id, from_version, started_at FROM update_history WHERE status = ?`,
+    ).all(UPDATE_STATUS_TRIGGERED);
+    let promoted = 0;
+    let stalled = 0;
+    const promoteStmt = _prep(`
+        UPDATE update_history
+           SET status = ?, finished_at = ?, to_version = ?
+         WHERE id = ?
+    `);
+    const stallStmt = _prep(`
+        UPDATE update_history
+           SET status = ?, finished_at = ?, error_code = ?, error_msg = ?
+         WHERE id = ?
+    `);
+    for (const r of rows) {
+        const movedVersion =
+            currentVersion && r.from_version && String(currentVersion) !== String(r.from_version);
+        if (movedVersion) {
+            promoteStmt.run(UPDATE_STATUS_SUCCESS, now, String(currentVersion), r.id);
+            promoted += 1;
+            continue;
+        }
+        if (now - Number(r.started_at) > UPDATE_STALL_AFTER_MS) {
+            stallStmt.run(
+                UPDATE_STATUS_STALLED,
+                now,
+                'NO_VERSION_CHANGE',
+                `Container restarted on the same version (${currentVersion || 'unknown'}); watchtower swap likely never completed.`,
+                r.id,
+            );
+            stalled += 1;
+        }
+    }
+    return { promoted, stalled };
+}
+
+/**
+ * Read the most recent N update-history rows (newest first). Used by
+ * /api/update/history.
+ */
+export function listUpdateHistory({ limit = 25 } = {}) {
+    const lim = Math.max(1, Math.min(200, Number(limit) || 25));
+    return _prep(`
+        SELECT id, from_version, to_version, started_at, finished_at,
+               status, error_code, error_msg, backup_path, backup_bytes
+          FROM update_history
+         ORDER BY id DESC
+         LIMIT ?
+    `).all(lim);
 }
 
 // ---- Dashboard sessions ---------------------------------------------------

@@ -1060,6 +1060,18 @@ async function _autoSaveFlush() {
         _autoSaveTimer = null;
     }
 
+    // _gatherSettingsPayload() reads every `setting-*` input in the DOM and
+    // builds the FULL config tree. On any other page (Maintenance → AI in
+    // particular, which surfaces a handful of `setting-adv-ai-*` inputs)
+    // most of those IDs aren't present, so unrelated sections collapse to
+    // their defaults and silently overwrite saved values. Bail unless the
+    // Settings page is the visible one — non-settings pages must save via
+    // their own scoped PATCH.
+    if (document.body?.dataset?.page !== 'settings') {
+        _setAutosaveStatus('idle', '');
+        return;
+    }
+
     let payload;
     try {
         payload = _gatherSettingsPayload();

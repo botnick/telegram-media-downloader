@@ -98,24 +98,38 @@ You can pre-seed the cache by copying `data/models/` between hosts.
 | Knob                | Default                  | Notes                                                  |
 | ------------------- | ------------------------ | ------------------------------------------------------ |
 | `AI_MODELS_DIR`     | `data/models/`           | Override with an absolute path or another relative one. |
-| In-memory vec cache | 50 000 vectors (~100 MB) | Hard cap; above that, install `sqlite-vec` for fast search. |
+| In-memory vec cache | 50 000 vectors (~100 MB) | Fallback only — used when `sqlite-vec` isn't installed or the host hits the cap. |
 | `indexConcurrency`  | 1                        | Higher values risk OOM on small hosts (each WASM heap is ~150 MB). |
 | `batchSize`         | 25                       | Rows per scan-loop iteration. Tune lower on slow disks. |
 
 The vector cache is a per-process structure; restarting the dashboard
 rebuilds it lazily from the SQLite `image_embeddings` table.
 
-## Optional: sqlite-vec
+## sqlite-vec (bundled by default since v2.8)
 
-If `sqlite-vec` is available on your host, the dashboard auto-detects it on
-first use of the AI status endpoint and uses it for search. The fallback
-in-memory cosine path is fine up to ~50k photos. Install with:
+`sqlite-vec` ships in `optionalDependencies`, so a default `npm install` /
+`docker compose up` pulls the platform binary automatically and the
+dashboard auto-detects it on first use of the AI status endpoint. Top-K
+cosine similarity then runs as a single SQL query against the embeddings
+table — fast and bounded regardless of library size.
+
+The in-memory cosine path is still there as a fallback for `--no-optional`
+installs and platforms with no prebuilt binary. It's fine up to ~50k
+photos; past that it's a hard cap and the operator is encouraged to
+install the extension. To force-skip the bundled binary:
+
+```bash
+npm install --no-optional
+# or, after install:
+npm uninstall sqlite-vec
+```
+
+To install the bundled extension manually on an old install that
+predates v2.8:
 
 ```bash
 npm install sqlite-vec
 ```
-
-This is **completely optional**; default installs work fine without it.
 
 ## Troubleshooting
 

@@ -1,6 +1,7 @@
 /**
  * One-shot import of legacy JSON state files (config.json, disk_usage.json,
- * web-sessions.json) into the SQLite-backed kv / web_sessions tables.
+ * web-sessions.json, history-jobs.json, queue-history.json) into the
+ * SQLite-backed kv / web_sessions tables.
  *
  * Auto-runs at the tail of getDb() once per process. Idempotent — every step
  * checks whether the destination row(s) already exist before importing, so a
@@ -24,6 +25,9 @@ const DATA_DIR = process.env.TGDL_DATA_DIR
 const CONFIG_JSON = path.join(DATA_DIR, 'config.json');
 const DISK_USAGE_JSON = path.join(DATA_DIR, 'disk_usage.json');
 const SESSIONS_JSON = path.join(DATA_DIR, 'web-sessions.json');
+const HISTORY_JOBS_JSON = path.join(DATA_DIR, 'history-jobs.json');
+const QUEUE_HISTORY_JSON = path.join(DATA_DIR, 'queue-history.json');
+const QUEUE_BACKLOG_JSONL = path.join(DATA_DIR, 'logs', 'queue_backlog.jsonl');
 
 function readJsonOrNull(filePath) {
     try {
@@ -63,6 +67,7 @@ export function runStateMigration({
     listSessions,
     listEmbeddingModels,
     clearStaleEmbeddings,
+    pushQueueBacklog,
 }) {
     const log = (msg) => {
         // Plain console.log — we're inside getDb() before logger.js may have
@@ -132,6 +137,63 @@ export function runStateMigration({
         } else {
             // Either rows already imported or file empty — archive + move on.
             archive(SESSIONS_JSON);
+        }
+    }
+
+    // --- history-jobs.json ---
+    if (fs.existsSync(HISTORY_JOBS_JSON) && kvGet('history_jobs') === null) {
+        const parsed = readJsonOrNull(HISTORY_JOBS_JSON);
+        if (Array.isArray(parsed)) {
+            kvSet('history_jobs', parsed);
+            archive(HISTORY_JOBS_JSON);
+            log(`history-jobs.json → kv['history_jobs'] (archived)`);
+            touched++;
+        }
+    } else if (fs.existsSync(HISTORY_JOBS_JSON)) {
+        archive(HISTORY_JOBS_JSON);
+    }
+
+    // --- queue-history.json ---
+    if (fs.existsSync(QUEUE_HISTORY_JSON) && kvGet('queue_history') === null) {
+        const parsed = readJsonOrNull(QUEUE_HISTORY_JSON);
+        if (Array.isArray(parsed)) {
+            kvSet('queue_history', parsed);
+            archive(QUEUE_HISTORY_JSON);
+            log(`queue-history.json → kv['queue_history'] (archived)`);
+            touched++;
+        }
+    } else if (fs.existsSync(QUEUE_HISTORY_JSON)) {
+        archive(QUEUE_HISTORY_JSON);
+    }
+
+    // --- queue_backlog.jsonl ---
+    // Pre-v2.7 the spillover queue was a JSONL append log. Replay any
+    // pending lines into the queue_backlog table so jobs that were
+    // mid-spill at upgrade time aren't silently lost. `pushQueueBacklog`
+    // is optional so older test fixtures without the table don't crash
+    // the loader.
+    if (typeof pushQueueBacklog === 'function' && fs.existsSync(QUEUE_BACKLOG_JSONL)) {
+        let imported = 0;
+        try {
+            const raw = fs.readFileSync(QUEUE_BACKLOG_JSONL, 'utf8');
+            for (const line of raw.split(/\r?\n/)) {
+                if (!line.trim()) continue;
+                try {
+                    pushQueueBacklog(JSON.parse(line));
+                    imported++;
+                } catch {
+                    /* malformed line — skip */
+                }
+            }
+        } catch {
+            /* unreadable — leave it alone */
+        }
+        archive(QUEUE_BACKLOG_JSONL);
+        if (imported > 0) {
+            log(`queue_backlog.jsonl → queue_backlog table (${imported} jobs, archived)`);
+            touched++;
+        } else {
+            log(`queue_backlog.jsonl archived (no replayable jobs)`);
         }
     }
 

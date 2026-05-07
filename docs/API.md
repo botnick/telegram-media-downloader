@@ -133,7 +133,9 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | Method | Path | Notes |
 |---|---|---|
 | `GET`  | `/api/update/status`             | Capability probe — `{available, inDocker, watchtowerConfigured, watchtowerUrl}`. |
-| `POST` | `/api/update`                    | Admin only. Snapshots the SQLite DB to `data/backups/`, then signals the watchtower sidecar to pull + recreate. Returns 503 with `code:'AUTO_UPDATE_UNAVAILABLE'` when the sidecar isn't reachable. |
+| `POST` | `/api/update`                    | Admin only. Runs a 5-step pipeline: ping watchtower (5 s HEAD) → live-DB `PRAGMA quick_check` → snapshot to `data/backups/db-pre-update-<UTC>.sqlite` → verify the snapshot is openable + clean (bad files are deleted) → POST watchtower's `/v1/update`. Returns 200 `{started:true}` on success or 4xx/5xx with a structured `code`: `AUTO_UPDATE_UNAVAILABLE`, `WATCHTOWER_UNREACHABLE`, `DB_CORRUPT`, `BACKUP_FAILED`, `BACKUP_VERIFY_FAILED`, `TRIGGER_FAILED`, or `ALREADY_RUNNING`. |
+| `GET`  | `/api/update/history`            | Admin only. Last N (default 25, max 200) update attempts from the `update_history` table — `{from_version, to_version, started_at, finished_at, status, error_code, error_msg, backup_path, backup_bytes}`. `status` is `triggered` (in-flight, not yet finalised), `success` (new container booted on a different version), `failed` (pre-flight or trigger threw), or `stalled` (watchtower acked but the swap never landed within 10 min). |
+| `GET`  | `/api/auto-update/status`        | Live `JobTracker` snapshot for the in-flight `/api/update` run (running flag, stage, durations, last error). |
 
 ## Config & proxy
 
@@ -178,5 +180,8 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `nsfw_done`            | `{scanned, candidates, keep, durationMs}` |
 | `nsfw_model_downloading` | `{percent}` (first-run only) |
 | `update_started`       | `{backup}` — fired right before watchtower kills the container. |
+| `update_done`          | `{durationMs, kind:'autoUpdate', error?}` — `error` is set when the `/api/update` pipeline threw (pre-flight or trigger). The SPA's stall-overlay handler reads this to surface a toast + tear down the spinner. |
+| `rescue_swept`         | (replaced by `file_deleted` in v2.8 — rescue sweeper now uses the canonical event so the gallery + footer drop the row in-place). |
+| `rescue_sweep_done`    | `{count}` aggregate after every Rescue Mode sweep. |
 | `config_updated`       | `{}` |
 | `sessions_revoked`     | `{}` |

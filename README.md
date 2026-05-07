@@ -236,7 +236,7 @@ The dashboard does almost everything. The CLI subcommands stay around for headle
 
 ## Configuration
 
-Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heals to defaults on load, edited via the dashboard. Legacy `data/config.json` is auto-imported on first boot and renamed to `*.migrated`.
+Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heals to defaults on load, edited via the dashboard. Legacy state files (`data/config.json`, `data/disk_usage.json`, `data/web-sessions.json`, `data/history-jobs.json`, `data/queue-history.json`, `data/logs/queue_backlog.jsonl`) are auto-imported on first boot and renamed to `*.migrated` as a reversible backup; v2.8 onward, every runtime surface is SQLite-backed in normal operation.
 
 ```jsonc
 {

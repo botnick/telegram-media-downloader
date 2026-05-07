@@ -31,6 +31,23 @@ function _formatBytes(bytes) {
     return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
+// Coerce createdAt (an ISO-like string from the SQLite DATETIME column
+// or a unix-epoch number when a caller already normalised it) to a
+// sortable numeric. The sort comparators below would otherwise compute
+// `'2026-05-07 15:30:05' - '2026-05-08 16:00:00'` → NaN; the spec then
+// leaves the order engine-defined, so "Keep oldest / newest" was riding
+// on V8's stable-sort happening to preserve the SQL `ORDER BY` order —
+// fragile, and nothing on the server side guarantees that order.
+function _createdAtMs(file) {
+    const v = file?.createdAt;
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+        const t = Date.parse(v);
+        return Number.isFinite(t) ? t : 0;
+    }
+    return 0;
+}
+
 function _renderRow(file, set) {
     const thumbUrl = `/api/thumbs/${encodeURIComponent(file.id)}?w=120`;
     const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1`;
@@ -244,7 +261,7 @@ function _applyDefaultSelection(setsSlice) {
     const list = $('dup-list');
     if (!list) return;
     for (const set of setsSlice) {
-        const sortedAsc = [...set.files].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        const sortedAsc = [...set.files].sort((a, b) => _createdAtMs(a) - _createdAtMs(b));
         const keepId = sortedAsc[0]?.id;
         for (const f of set.files) {
             // Default: keep the oldest, mark the rest for delete. Recorded
@@ -556,7 +573,7 @@ function _bulkKeep(keep) {
     if (!_sets.length) return;
     const list = $('dup-list');
     for (const set of _sets) {
-        const sortedAsc = [...set.files].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        const sortedAsc = [...set.files].sort((a, b) => _createdAtMs(a) - _createdAtMs(b));
         const keepId = (keep === 'newest' ? sortedAsc[sortedAsc.length - 1] : sortedAsc[0])?.id;
         for (const f of set.files) {
             // Update the in-memory marker so `_renderSet` paints the right
@@ -637,9 +654,7 @@ export function init() {
                 const keep = btn.dataset.keep;
                 const set = _sets.find((s) => s.hash === hash);
                 if (!set) return;
-                const sortedAsc = [...set.files].sort(
-                    (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
-                );
+                const sortedAsc = [...set.files].sort((a, b) => _createdAtMs(a) - _createdAtMs(b));
                 const keepId = (keep === 'newest' ? sortedAsc[sortedAsc.length - 1] : sortedAsc[0])
                     ?.id;
                 for (const f of set.files) {

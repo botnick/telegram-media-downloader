@@ -9,7 +9,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { Api } from 'telegram';
 import { DebugLogger } from './logger.js';
-import { getDb, insertDownload, isDownloaded as dbIsDownloaded, kvGet, kvSet } from './db.js';
+import {
+    getDb,
+    insertDownload,
+    isDownloaded as dbIsDownloaded,
+    kvGet,
+    kvSet,
+    pushQueueBacklog,
+    popQueueBacklog,
+    queueBacklogSize,
+} from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
@@ -518,41 +527,30 @@ export class DownloadManager extends EventEmitter {
     }
 
     // --- SPILLOVER LOGIC ---
+    // Backed by the queue_backlog SQLite table (was data/logs/queue_backlog.jsonl
+    // pre-v2.7). The kv-backed store gives us atomic appends, FIFO-by-id
+    // pops, and a transactional rehydrate that can't double-deliver a job
+    // if the process is killed mid-batch — none of which the JSONL file
+    // could guarantee. Methods stay async for caller compatibility.
     async spillToDisk(job) {
-        if (!this.BACKLOG_PATH) {
-            this.BACKLOG_PATH = path.join(this.LOG_DIR, 'queue_backlog.jsonl');
-        }
         try {
-            const line = JSON.stringify(job) + '\n';
-            await fs.appendFile(this.BACKLOG_PATH, line);
+            pushQueueBacklog(job);
         } catch (e) {
+            // SQLite write failed — fall back to keeping the job in memory
+            // so it isn't silently lost. This is the same posture the file
+            // path took for an EIO from the disk.
             this.queue.push(job);
         }
     }
 
     async rehydrateFromDisk() {
-        if (!this.BACKLOG_PATH || !existsSync(this.BACKLOG_PATH)) return false;
-
         try {
-            const content = await fs.readFile(this.BACKLOG_PATH, 'utf8');
-            if (!content.trim()) return false;
-
-            const lines = content.split('\n').filter((l) => l.trim());
-            const chunk = lines.splice(0, 1000); // Take 1000
-
-            for (const line of chunk) {
-                try {
-                    this.queue.push(JSON.parse(line));
-                } catch (e) {}
-            }
-
-            if (lines.length > 0) {
-                await fs.writeFile(this.BACKLOG_PATH, lines.join('\n') + '\n');
-            } else {
-                await fs.unlink(this.BACKLOG_PATH);
-            }
+            if (queueBacklogSize() === 0) return false;
+            const popped = popQueueBacklog(1000);
+            if (!popped.length) return false;
+            for (const job of popped) this.queue.push(job);
             return true;
-        } catch (e) {
+        } catch {
             return false;
         }
     }

@@ -64,7 +64,7 @@ COPY runner.js config.example.json package.json LICENSE README.md SECURITY.md ./
 # `chmod a+rX` guarantees files end up readable + dirs traversable even when
 # BuildKit lays down mode 0 (seen on Windows hosts and some gha-cache hits),
 # which previously surfaced as `Cannot find module '/app/src/web/server.js'`.
-RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions \
+RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions /app/data/backups \
     && chmod -R a+rX /app \
     && chmod +x /app/scripts/docker-entrypoint.sh \
     && chown -R node:node /app

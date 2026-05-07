@@ -274,6 +274,26 @@ export function initStatusBar() {
     // new image is up; on reconnect we sniff the version and reload to
     // pick up the new SPA bundle.
     ws.on('update_started', () => _showUpdateOverlay());
+    // The autoUpdate JobTracker emits `update_done` when its runFn settles.
+    // Success path: watchtower has already been pinged; the overlay was
+    // shown by `update_started` and the imminent WS disconnect + reload
+    // handler will tear it down. Error path: runAutoUpdate() threw before
+    // ever reaching watchtower (e.g. snapshot failed, watchtower not
+    // configured), so `update_started` was never broadcast — surface the
+    // error so the click doesn't appear to silently succeed. Hide any
+    // overlay that did sneak up before the failure.
+    ws.on('update_done', (m) => {
+        if (!m?.error) return;
+        // Pre-flight failure path — `update_started` was never sent so
+        // the overlay usually isn't up, but tear it down (and clear the
+        // stall timer) defensively in case a race put it there.
+        _hideUpdateOverlay();
+        showToast(
+            i18nTf('update.failed', { msg: m.error }, `Update failed: ${m.error}`),
+            'error',
+            6000,
+        );
+    });
     let _versionAtBoot = null;
     api.get('/api/version')
         .then((r) => {
@@ -413,6 +433,13 @@ export async function _openUpdateChooser(latest, releaseUrl) {
 // entire viewport so the operator doesn't poke at a stale UI mid-swap.
 // Auto-removed when the WS reconnects to the new container (the
 // reconnect handler above reloads the page if the version changed).
+// Watchtower's pull + recreate cycle is < 60 s in every healthy install.
+// 120 s is generous slack for a slow image pull on a thin home connection;
+// past that we render a "stalled" panel so the user can dismiss instead of
+// staring at an indefinite spinner.
+const UPDATE_OVERLAY_STALL_MS = 120_000;
+let _updateStallTimer = null;
+
 function _showUpdateOverlay() {
     if (document.getElementById('tgdl-update-overlay')) return;
     const div = document.createElement('div');
@@ -424,7 +451,7 @@ function _showUpdateOverlay() {
         backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
     `;
     div.innerHTML = `
-        <div style="text-align: center; color: #E2E8F0; max-width: 440px; padding: 32px;">
+        <div data-overlay-stage="updating" style="text-align: center; color: #E2E8F0; max-width: 440px; padding: 32px;">
             <div style="display: inline-block; width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.18); border-top-color: #2AABEE; border-radius: 50%; animation: tgdl-spin 1s linear infinite; margin-bottom: 20px;"></div>
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">${i18nT('update.overlay_title', 'Updating…')}</h2>
             <p style="font-size: 13px; opacity: 0.8; line-height: 1.5;">${i18nT(
@@ -434,4 +461,50 @@ function _showUpdateOverlay() {
         </div>
         <style>@keyframes tgdl-spin { to { transform: rotate(360deg); } }</style>`;
     document.body.appendChild(div);
+
+    if (_updateStallTimer) clearTimeout(_updateStallTimer);
+    _updateStallTimer = setTimeout(() => {
+        _renderUpdateOverlayStalled();
+    }, UPDATE_OVERLAY_STALL_MS);
+}
+
+function _hideUpdateOverlay() {
+    if (_updateStallTimer) {
+        clearTimeout(_updateStallTimer);
+        _updateStallTimer = null;
+    }
+    const overlay = document.getElementById('tgdl-update-overlay');
+    if (overlay) overlay.remove();
+}
+
+// The swap took longer than the stall window. Either watchtower failed
+// silently after the 200 OK, the new container is failing its
+// healthcheck, or the image pull is just slow on a constrained link.
+// Replace the spinner with a panel that surfaces the situation honestly
+// and gives the operator a way out instead of a forever-spinner.
+function _renderUpdateOverlayStalled() {
+    const overlay = document.getElementById('tgdl-update-overlay');
+    if (!overlay) return;
+    overlay.innerHTML = `
+        <div data-overlay-stage="stalled" style="text-align: center; color: #E2E8F0; max-width: 480px; padding: 32px;">
+            <div style="display: inline-block; width: 48px; height: 48px; border-radius: 50%; background: rgba(245, 158, 11, 0.18); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 24px;">⚠</div>
+            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">${i18nT('update.stalled_title', 'Update appears stalled')}</h2>
+            <p style="font-size: 13px; opacity: 0.85; line-height: 1.5; margin-bottom: 20px;">${i18nT(
+                'update.stalled_body',
+                'The new container has not come online after 2 minutes. Watchtower may be still pulling a slow image, or the new container may be failing its healthcheck. Check `docker logs <watchtower>` and `docker logs <main-container>` for clues.',
+            )}</p>
+            <div style="display: flex; gap: 8px; justify-content: center;">
+                <button id="tgdl-overlay-retry" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); color: inherit; cursor: pointer; font-size: 13px;">${i18nT('update.stalled_retry', 'Retry connect')}</button>
+                <button id="tgdl-overlay-dismiss" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: inherit; cursor: pointer; font-size: 13px;">${i18nT('update.stalled_dismiss', 'Dismiss')}</button>
+            </div>
+        </div>`;
+    document.getElementById('tgdl-overlay-retry')?.addEventListener('click', () => {
+        // Hard reload — same final step the version-change reconnect
+        // path takes. If the new container is genuinely up and just had
+        // a slow handshake, the reload will land on it.
+        window.location.reload();
+    });
+    document.getElementById('tgdl-overlay-dismiss')?.addEventListener('click', () => {
+        _hideUpdateOverlay();
+    });
 }

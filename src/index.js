@@ -32,7 +32,6 @@ import {
 import { sanitizeName, migrateFolders } from './core/downloader.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, '../data/config.json');
 
 // gramJS surfaces a steady trickle of recoverable internal errors during
 // reconnects (TIMEOUT, "Not connected", "Connection closed", etc). The
@@ -116,8 +115,8 @@ async function runDoctor() {
             level: hasTelegram && hasWeb ? 'ok' : 'fail',
             detail:
                 hasTelegram && hasWeb
-                    ? `loaded ${CONFIG_PATH}`
-                    : 'config.json missing telegram/web sections — run the dashboard once to bootstrap',
+                    ? `loaded kv['config'] from data/db.sqlite`
+                    : "kv['config'] missing telegram/web sections — run the dashboard once to bootstrap",
         });
     } catch (e) {
         checks.push({
@@ -1174,13 +1173,7 @@ async function startMonitor(accountManager, config) {
     const rateLimiter = new RateLimiter(config.rateLimits);
     const downloader = new DownloadManager(client, config, rateLimiter);
     const forwarder = new AutoForwarder(client, config, accountManager);
-    const monitor = new RealtimeMonitor(
-        client,
-        downloader,
-        config,
-        path.join(__dirname, '../data/config.json'),
-        accountManager,
-    );
+    const monitor = new RealtimeMonitor(client, downloader, config, accountManager);
 
     // --- Event Listeners ---
     rateLimiter.on('wait', (seconds) => {
