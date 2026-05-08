@@ -4617,6 +4617,28 @@ app.post('/api/maintenance/dedup/scan', async (req, res) => {
                 finishedAt: Date.now(),
                 result,
             };
+            // Persist a small summary so a server restart still surfaces
+            // "Last scan: 2 h ago — N duplicates" on the duplicates page,
+            // without having to recompute. The full duplicate-sets payload
+            // stays in `_dedupState` (process memory) — no point persisting
+            // megabytes of file rows that the next scan rebuilds.
+            try {
+                const sets = Array.isArray(result?.duplicateSets) ? result.duplicateSets : [];
+                const extras = sets.reduce((s, x) => s + Math.max(0, (x.count || 0) - 1), 0);
+                const reclaim = sets.reduce(
+                    (s, x) => s + Number(x.fileSize || 0) * Math.max(0, (x.count || 0) - 1),
+                    0,
+                );
+                kvSet('dedup_last_scan', {
+                    finishedAt: _dedupState.finishedAt,
+                    durationMs: Math.max(0, _dedupState.finishedAt - _dedupState.startedAt),
+                    scanned: result?.scanned || 0,
+                    hashed: result?.hashed || 0,
+                    duplicateSets: sets.length,
+                    extraCopies: extras,
+                    reclaimableBytes: reclaim,
+                });
+            } catch {}
             try {
                 broadcast({ type: 'dedup_done', ...result });
             } catch {}
@@ -4648,6 +4670,43 @@ app.post('/api/maintenance/dedup/scan', async (req, res) => {
 // render the duplicate-sets table without re-running the scan.
 app.get('/api/maintenance/dedup/status', async (req, res) => {
     res.json({ ..._dedupState, running: _dedupRunning });
+});
+
+// Library hash-coverage stats — total rows, how many already have a SHA-256
+// (cheap re-scans), how many are still awaiting a hash (the next scan's
+// O(bytes) cost), plus the persisted summary of the last completed scan.
+// The duplicates page uses this to render a "library status" panel above
+// the buttons so the operator can answer "what will Scan even do here?"
+// before clicking — and to show a "Last scan" line that survives a
+// server restart.
+app.get('/api/maintenance/dedup/stats', async (req, res) => {
+    try {
+        const db = getDb();
+        const totalFiles = db.prepare('SELECT COUNT(*) AS n FROM downloads').get().n || 0;
+        const hashed =
+            db.prepare('SELECT COUNT(*) AS n FROM downloads WHERE file_hash IS NOT NULL').get().n ||
+            0;
+        // Same predicate the dedup scanner uses to decide what to hash —
+        // mirrors src/core/dedup.js findDuplicates() so the "Awaiting hash"
+        // count matches what a Scan will actually walk.
+        const missing =
+            db
+                .prepare(`
+                SELECT COUNT(*) AS n FROM downloads
+                 WHERE file_hash IS NULL
+                   AND file_path IS NOT NULL
+                   AND COALESCE(file_size, 0) > 0
+            `)
+                .get().n || 0;
+        let lastScan = null;
+        try {
+            const stored = kvGet('dedup_last_scan');
+            if (stored && typeof stored === 'object') lastScan = stored;
+        } catch {}
+        res.json({ totalFiles, hashed, missing, lastScan });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
 });
 
 // Bulk-delete N files. Used by both the duplicate finder ("delete the

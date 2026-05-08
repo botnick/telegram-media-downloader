@@ -10,6 +10,10 @@
 //   - One-shot scan + render of duplicate sets.
 //   - Bulk-select shortcuts (keep oldest / keep newest / select-all).
 //   - Live dedup_progress + reindex_progress / reindex_done WS handlers.
+//   - Library status panel (total / hashed / awaiting hash / last scan)
+//     so a fresh visit can see at a glance what Scan will do.
+//   - Verify-files-on-disk button — surfaces the integrity sweep next to
+//     dedup so users don't have to hunt for it on the Settings page.
 
 import { ws } from './ws.js';
 import { api } from './api.js';
@@ -29,6 +33,84 @@ function _formatBytes(bytes) {
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
     if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
     return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+// Compact "2 hours ago" / "3 days ago" / "just now". Avoids importing a
+// date-fns-class dep — the page only needs one relative time string and
+// the buckets here are sufficient at the granularity users care about
+// for "when did the last scan run".
+function _formatRelative(unixMs) {
+    const t = Number(unixMs) || 0;
+    if (!t) return '';
+    const diff = Math.max(0, Date.now() - t);
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return i18nT('maintenance.duplicates.stats.just_now', 'just now');
+    const min = Math.floor(sec / 60);
+    if (min < 60)
+        return i18nTf('maintenance.duplicates.stats.minutes_ago', { n: min }, `${min} min ago`);
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return i18nTf('maintenance.duplicates.stats.hours_ago', { n: hr }, `${hr} h ago`);
+    const days = Math.floor(hr / 24);
+    return i18nTf('maintenance.duplicates.stats.days_ago', { n: days }, `${days} d ago`);
+}
+
+// Library status panel — top-of-page card with hash coverage + last scan
+// summary. Hits /api/maintenance/dedup/stats which is cheap (three
+// COUNT(*) and one kv read), so we refresh it after every scan / delete
+// / reindex / verify so the numbers stay honest.
+async function _refreshStats() {
+    try {
+        const s = await api.get('/api/maintenance/dedup/stats');
+        if (!s || typeof s !== 'object') return;
+        const totalEl = $('dup-stat-total');
+        const hashedEl = $('dup-stat-hashed');
+        const missingEl = $('dup-stat-missing');
+        const lastEl = $('dup-stat-last');
+        const summaryEl = $('dup-stat-summary');
+        if (totalEl) totalEl.textContent = (s.totalFiles || 0).toLocaleString();
+        if (hashedEl) hashedEl.textContent = (s.hashed || 0).toLocaleString();
+        if (missingEl) {
+            missingEl.textContent = (s.missing || 0).toLocaleString();
+            // Green when there's nothing left to hash, orange while
+            // there's still bytes-to-hash on the next scan. The colour
+            // alone is the at-a-glance "next scan will be expensive"
+            // hint without the user having to read the number.
+            missingEl.classList.toggle('text-tg-orange', (s.missing || 0) > 0);
+            missingEl.classList.toggle(
+                'text-tg-green',
+                (s.missing || 0) === 0 && (s.hashed || 0) > 0,
+            );
+        }
+        const last = s.lastScan;
+        if (lastEl) {
+            if (last && last.finishedAt) {
+                lastEl.textContent = _formatRelative(last.finishedAt);
+                lastEl.title = new Date(last.finishedAt).toLocaleString();
+            } else {
+                lastEl.textContent = i18nT('maintenance.duplicates.stats.last_scan_never', 'Never');
+                lastEl.title = '';
+            }
+        }
+        if (summaryEl) {
+            if (last && last.finishedAt) {
+                summaryEl.textContent = i18nTf(
+                    'maintenance.duplicates.stats.last_scan_result',
+                    {
+                        sets: (last.duplicateSets || 0).toLocaleString(),
+                        extras: (last.extraCopies || 0).toLocaleString(),
+                        reclaim: _formatBytes(last.reclaimableBytes || 0),
+                        scanned: (last.scanned || 0).toLocaleString(),
+                    },
+                    `Last scan found ${last.duplicateSets || 0} set(s) · ${last.extraCopies || 0} extra copies · ${_formatBytes(last.reclaimableBytes || 0)} reclaimable (scanned ${last.scanned || 0} files)`,
+                );
+                summaryEl.classList.remove('hidden');
+            } else {
+                summaryEl.classList.add('hidden');
+            }
+        }
+    } catch {
+        /* non-fatal — stats are informational */
+    }
 }
 
 // Coerce createdAt (an ISO-like string from the SQLite DATETIME column
@@ -283,14 +365,23 @@ function _setScanUi(running) {
     const btn = $('dup-scan-btn');
     const progress = $('dup-progress');
     const bar = $('dup-progress-bar');
+    const pct = $('dup-progress-pct');
     if (btn) {
+        // Preserve the icon — only swap the label span. textContent on
+        // the whole button blew away the <i class="ri-search-line">.
         btn.disabled = !!running;
-        btn.textContent = running
-            ? i18nT('maintenance.dedup.scanning', 'Scanning…')
-            : i18nT('maintenance.duplicates.scan', 'Scan');
+        const labelSpan = btn.querySelector('span[data-i18n]');
+        if (labelSpan) {
+            labelSpan.textContent = running
+                ? i18nT('maintenance.dedup.scanning', 'Scanning…')
+                : i18nT('maintenance.duplicates.scan', 'Scan');
+        }
     }
     if (progress) progress.classList.toggle('hidden', !running);
-    if (!running && bar) bar.style.width = '0%';
+    if (!running) {
+        if (bar) bar.style.width = '0%';
+        if (pct) pct.textContent = '';
+    }
 }
 
 // `POST /api/maintenance/dedup/scan` is fire-and-forget — returns 200
@@ -330,8 +421,8 @@ async function _runScan() {
 // Recover live state on (re-)entry — the scan keeps running on the
 // server even after a tab close, so we re-paint the running UI + the
 // last completed result if any. Also hydrates the bulk-delete + reindex
-// trackers so a job started on one client disables the buttons on this
-// tab until it finishes.
+// + verify trackers so a job started on one client disables the buttons
+// on this tab until it finishes.
 async function _recoverScanState() {
     try {
         const r = await api.get('/api/maintenance/dedup/status');
@@ -349,13 +440,64 @@ async function _recoverScanState() {
         if (r?.running) {
             const btn = $('dup-reindex-btn');
             const progress = $('dup-reindex-progress');
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = i18nT('maintenance.reindex.running', 'Re-indexing…');
+            const labelSpan = btn?.querySelector('span[data-i18n]');
+            if (btn) btn.disabled = true;
+            if (labelSpan) {
+                labelSpan.textContent = i18nT('maintenance.reindex.running', 'Re-indexing…');
             }
             if (progress) progress.classList.remove('hidden');
         }
     } catch {}
+    try {
+        const r = await api.get('/api/maintenance/files/verify/status');
+        if (r?.running) _setVerifyUi(true);
+    } catch {}
+    _refreshStats();
+}
+
+// Verify-files-on-disk — same fire-and-forget contract as the dedup
+// scan. The endpoint walks every catalogue row and drops the ones whose
+// file has gone missing on disk (manual deletes, rotated downloads,
+// bind-mount remount). Surfaces here on the duplicates page because
+// users intuit "checksum integrity" lives next to dedup, even though
+// the back-end has shipped this on the Settings page for a while.
+function _setVerifyUi(running) {
+    const btn = $('dup-verify-btn');
+    const progress = $('dup-verify-progress');
+    const bar = $('dup-verify-progress-bar');
+    if (btn) {
+        btn.disabled = !!running;
+        const labelSpan = btn.querySelector('span[data-i18n]');
+        if (labelSpan) {
+            labelSpan.textContent = running
+                ? i18nT('maintenance.duplicates.verify.running_short', 'Verifying…')
+                : i18nT('maintenance.duplicates.verify.button', 'Verify files');
+        }
+    }
+    if (progress) progress.classList.toggle('hidden', !running);
+    if (!running && bar) bar.style.width = '0%';
+}
+
+async function _runVerify() {
+    _setVerifyUi(true);
+    try {
+        const r = await api.post('/api/maintenance/files/verify', {});
+        if (r?.error && !r?.started) throw new Error(r.error);
+    } catch (e) {
+        if (e?.data?.code === 'ALREADY_RUNNING') {
+            _setVerifyUi(true);
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
+            return;
+        }
+        showToast(e?.data?.error || e.message || 'Failed', 'error');
+        _setVerifyUi(false);
+    }
 }
 
 function _setDeleteUi(running) {
@@ -411,9 +553,10 @@ async function _runReindex() {
     const status = $('dup-reindex-status');
     const progress = $('dup-reindex-progress');
     const bar = $('dup-reindex-progress-bar');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = i18nT('maintenance.reindex.running', 'Re-indexing…');
+    const labelSpan = btn?.querySelector('span[data-i18n]');
+    if (btn) btn.disabled = true;
+    if (labelSpan) {
+        labelSpan.textContent = i18nT('maintenance.reindex.running', 'Re-indexing…');
     }
     if (progress) progress.classList.remove('hidden');
     if (bar) bar.style.width = '0%';
@@ -424,9 +567,9 @@ async function _runReindex() {
     } catch (e) {
         const msg = e?.data?.error || e.message || 'Failed';
         showToast(msg, 'error');
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = i18nT('maintenance.reindex.button', 'Re-index from disk');
+        if (btn) btn.disabled = false;
+        if (labelSpan) {
+            labelSpan.textContent = i18nT('maintenance.reindex.button', 'Re-index from disk');
         }
         if (progress) progress.classList.add('hidden');
     }
@@ -442,16 +585,42 @@ function _wireWs() {
         _setScanUi(true);
         const bar = $('dup-progress-bar');
         const stage = $('dup-progress-stage');
+        const pctEl = $('dup-progress-pct');
         if (!bar) return;
         const total = Math.max(1, m.total || 1);
         const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
         bar.style.width = pct + '%';
+        // Stage-specific labels — generic "hashing · 12 / 5000" was too
+        // terse to convey what's happening on a multi-minute scan. Each
+        // backend stage gets its own friendly i18n string.
         if (stage) {
-            stage.textContent = i18nTf(
-                'maintenance.dedup.progress',
-                { stage: m.stage || '', processed: m.processed || 0, total: m.total || 0 },
-                `${m.stage || ''} · ${m.processed || 0} / ${m.total || 0}`,
-            );
+            const stageKey = String(m.stage || '').toLowerCase();
+            if (stageKey === 'hashing') {
+                stage.textContent = i18nTf(
+                    'maintenance.duplicates.progress.hashing',
+                    { processed: m.processed || 0, total: m.total || 0 },
+                    `Hashing files… ${m.processed || 0} / ${m.total || 0}`,
+                );
+            } else if (stageKey === 'grouping') {
+                stage.textContent = i18nT(
+                    'maintenance.duplicates.progress.grouping',
+                    'Grouping by hash…',
+                );
+            } else if (stageKey === 'starting' || !stageKey) {
+                stage.textContent = i18nT('maintenance.duplicates.progress.starting', 'Starting…');
+            } else {
+                stage.textContent = i18nTf(
+                    'maintenance.dedup.progress',
+                    { stage: m.stage || '', processed: m.processed || 0, total: m.total || 0 },
+                    `${m.stage || ''} · ${m.processed || 0} / ${m.total || 0}`,
+                );
+            }
+        }
+        if (pctEl) {
+            pctEl.textContent =
+                m.total > 0
+                    ? `${pct}% · ${(m.processed || 0).toLocaleString()} / ${(m.total || 0).toLocaleString()}`
+                    : '';
         }
     });
 
@@ -480,6 +649,9 @@ function _wireWs() {
                 'success',
             );
         }
+        // Persisted summary just got a new entry — re-pull stats so the
+        // panel shows "just now" + the new sets / reclaim numbers.
+        _refreshStats();
     });
 
     // dedup_delete_progress / _done — fired by the bulk-delete tracker.
@@ -510,9 +682,56 @@ function _wireWs() {
             ),
             'success',
         );
+        _refreshStats();
         try {
             await _runScan();
         } catch {}
+    });
+
+    // Verify-files-on-disk — same JobTracker contract as nsfw / thumbs.
+    // Progress events stream the bar; the done event re-enables the
+    // button and refreshes stats so a "Total files" delta is immediately
+    // visible.
+    ws.on('files_verify_progress', (m) => {
+        _setVerifyUi(true);
+        const bar = $('dup-verify-progress-bar');
+        const status = $('dup-verify-status');
+        if (!bar) return;
+        const total = Math.max(1, m.total || 1);
+        const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
+        bar.style.width = pct + '%';
+        if (status) {
+            status.textContent = i18nTf(
+                'maintenance.duplicates.verify.progress',
+                { processed: m.processed || 0, total: m.total || 0 },
+                `${m.processed || 0} / ${m.total || 0}`,
+            );
+        }
+    });
+
+    ws.on('files_verify_done', (m) => {
+        _setVerifyUi(false);
+        if (m?.error) {
+            showToast(
+                i18nTf(
+                    'maintenance.duplicates.verify.failed',
+                    { msg: m.error },
+                    `Verify failed: ${m.error}`,
+                ),
+                'error',
+            );
+            return;
+        }
+        const removed = m?.removed ?? m?.dropped ?? 0;
+        showToast(
+            i18nTf(
+                'maintenance.duplicates.verify.done',
+                { removed },
+                `Verified — removed ${removed} stale row(s).`,
+            ),
+            'success',
+        );
+        _refreshStats();
     });
 
     ws.on('reindex_progress', (m) => {
@@ -537,7 +756,10 @@ function _wireWs() {
         const status = $('dup-reindex-status');
         if (btn) {
             btn.disabled = false;
-            btn.textContent = i18nT('maintenance.reindex.button', 'Re-index from disk');
+            const labelSpan = btn.querySelector('span[data-i18n]');
+            if (labelSpan) {
+                labelSpan.textContent = i18nT('maintenance.reindex.button', 'Re-index from disk');
+            }
         }
         if (progress) progress.classList.add('hidden');
         if (m?.error) {
@@ -561,6 +783,10 @@ function _wireWs() {
         );
         showToast(msg, 'success');
         if (status) status.textContent = msg;
+        // Re-index can add hundreds of new rows that lack hashes — make
+        // the panel reflect that immediately so the operator sees the
+        // "Awaiting hash" number jump and knows the next Scan will work.
+        _refreshStats();
     });
 }
 
@@ -627,6 +853,7 @@ export function init() {
         $('dup-scan-btn')?.addEventListener('click', _runScan);
         $('dup-delete-btn')?.addEventListener('click', _deleteSelected);
         $('dup-reindex-btn')?.addEventListener('click', _runReindex);
+        $('dup-verify-btn')?.addEventListener('click', _runVerify);
         $('dup-bulk-oldest')?.addEventListener('click', () => _bulkKeep('oldest'));
         $('dup-bulk-newest')?.addEventListener('click', () => _bulkKeep('newest'));
         $('dup-bulk-clear')?.addEventListener('click', _bulkClearSelection);

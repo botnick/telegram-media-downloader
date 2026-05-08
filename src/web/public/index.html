@@ -2005,22 +2005,81 @@
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.duplicates.title">Find duplicate files</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.duplicates.subtitle">Hash every file and reclaim space from byte-identical copies. The first run is slow on large libraries; subsequent runs only hash newly-downloaded files.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <button id="dup-reindex-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.reindex.button">Re-index from disk</button>
-                                <button id="dup-scan-btn" class="tg-btn text-xs px-3 py-1.5" data-i18n="maintenance.duplicates.scan">Scan</button>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="dup-verify-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.duplicates.verify.tooltip"
+                                        title="Walk every catalogue row and drop entries whose file is missing on disk.">
+                                    <i class="ri-shield-check-line"></i><span data-i18n="maintenance.duplicates.verify.button">Verify files</span>
+                                </button>
+                                <button id="dup-reindex-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.duplicates.reindex.tooltip"
+                                        title="Walk data/downloads/ and add catalogue rows for files that aren't tracked yet.">
+                                    <i class="ri-refresh-line"></i><span data-i18n="maintenance.reindex.button">Re-index from disk</span>
+                                </button>
+                                <button id="dup-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.duplicates.scan.tooltip"
+                                        title="Hash every catalogued file and group byte-identical copies.">
+                                    <i class="ri-search-line"></i><span data-i18n="maintenance.duplicates.scan">Scan</span>
+                                </button>
                             </div>
                         </div>
+
+                        <!-- Library status — hash coverage + last scan summary.
+                             Surfaces "what does this page even do" before
+                             the user clicks any button, so a fresh visit
+                             can see at a glance: total files, % hashed,
+                             how many bytes the next Scan needs to read,
+                             and what the previous scan found. Survives
+                             server restart via kv['dedup_last_scan']. -->
+                        <div id="dup-stats" class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.duplicates.stats.total">Total files</div>
+                                <div id="dup-stat-total" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.duplicates.stats.hashed">Hashed</div>
+                                <div id="dup-stat-hashed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.duplicates.stats.missing">Awaiting hash</div>
+                                <div id="dup-stat-missing" class="text-xl font-semibold text-tg-orange tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.duplicates.stats.last_scan">Last scan</div>
+                                <div id="dup-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                        </div>
+                        <div id="dup-stat-summary" class="hidden mt-2 text-xs text-tg-textSecondary text-center"></div>
+
                         <div id="dup-reindex-progress" class="hidden mt-3">
-                            <div class="text-xs text-tg-textSecondary mb-1"><span data-i18n="maintenance.reindex.running">Re-indexing…</span> <span id="dup-reindex-status"></span></div>
-                            <div class="h-1.5 bg-tg-bg/60 rounded overflow-hidden">
+                            <div class="text-xs text-tg-textSecondary mb-1.5 flex items-center gap-1.5">
+                                <i class="ri-loader-4-line animate-spin text-tg-orange"></i>
+                                <span data-i18n="maintenance.reindex.running">Re-indexing…</span>
+                                <span id="dup-reindex-status" class="text-tg-text"></span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
                                 <div id="dup-reindex-progress-bar" class="h-full bg-tg-orange transition-all" style="width:0%"></div>
                             </div>
                         </div>
+                        <div id="dup-verify-progress" class="hidden mt-3">
+                            <div class="text-xs text-tg-textSecondary mb-1.5 flex items-center gap-1.5">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span data-i18n="maintenance.duplicates.verify.running">Verifying files on disk…</span>
+                                <span id="dup-verify-status" class="text-tg-text"></span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
+                                <div id="dup-verify-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
+                            </div>
+                        </div>
                         <div id="dup-progress" class="hidden mt-3">
-                            <div class="text-xs text-tg-textSecondary mb-1" id="dup-progress-stage"></div>
-                            <div class="h-1.5 bg-tg-bg/60 rounded overflow-hidden">
+                            <div class="text-sm text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span id="dup-progress-stage">Scanning…</span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
                                 <div id="dup-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
                             </div>
+                            <div id="dup-progress-pct" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
                         </div>
                     </section>
                     <section class="bg-tg-panel rounded-xl p-4">
