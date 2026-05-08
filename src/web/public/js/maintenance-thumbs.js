@@ -29,12 +29,73 @@ function _formatBytes(bytes) {
     return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
 }
 
+// Compact "2 hours ago" / "3 days ago" / "just now" — same buckets as
+// the duplicates page so users see consistent freshness language across
+// every maintenance tool. Pulled out of maintenance-duplicates.js to
+// avoid one-shot dependency.
+function _formatRelative(unixMs) {
+    const t = Number(unixMs) || 0;
+    if (!t) return '';
+    const diff = Math.max(0, Date.now() - t);
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return i18nT('maintenance.duplicates.stats.just_now', 'just now');
+    const min = Math.floor(sec / 60);
+    if (min < 60)
+        return i18nTf('maintenance.duplicates.stats.minutes_ago', { n: min }, `${min} min ago`);
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return i18nTf('maintenance.duplicates.stats.hours_ago', { n: hr }, `${hr} h ago`);
+    const days = Math.floor(hr / 24);
+    return i18nTf('maintenance.duplicates.stats.days_ago', { n: days }, `${days} d ago`);
+}
+
+// Pull the persisted "last build" summary from the new
+// /api/maintenance/thumbs/build/stats endpoint — survives server
+// restart, so the operator sees "Last build: 3 h ago — 1,240 built"
+// even after a deploy.
+async function _refreshLastBuild() {
+    const lastEl = $('thumbs-stat-last');
+    const summaryEl = $('thumbs-stat-summary');
+    try {
+        const r = await api.get('/api/maintenance/thumbs/build/stats');
+        const last = r?.lastRun;
+        if (lastEl) {
+            if (last && last.finishedAt) {
+                lastEl.textContent = _formatRelative(last.finishedAt);
+                lastEl.title = new Date(last.finishedAt).toLocaleString();
+            } else {
+                lastEl.textContent = i18nT('maintenance.duplicates.stats.last_scan_never', 'Never');
+                lastEl.title = '';
+            }
+        }
+        if (summaryEl) {
+            if (last && last.finishedAt) {
+                summaryEl.textContent = i18nTf(
+                    'maintenance.thumbs.last_build_result',
+                    {
+                        built: (last.built || 0).toLocaleString(),
+                        skipped: (last.skipped || 0).toLocaleString(),
+                        errored: (last.errored || 0).toLocaleString(),
+                        scanned: (last.scanned || 0).toLocaleString(),
+                    },
+                    `Last build: ${last.built || 0} built · ${last.skipped || 0} skipped · ${last.errored || 0} errored (scanned ${last.scanned || 0})`,
+                );
+                summaryEl.classList.remove('hidden');
+            } else {
+                summaryEl.classList.add('hidden');
+            }
+        }
+    } catch {
+        /* non-fatal — stats are informational */
+    }
+}
+
 async function _refreshStats() {
     const countEl = $('thumbs-stat-count');
     const bytesEl = $('thumbs-stat-bytes');
     const ffmpegChip = $('thumbs-no-ffmpeg');
     const widthsEl = $('thumbs-stat-widths');
     const breakdownEl = $('thumbs-breakdown');
+    _refreshLastBuild();
     try {
         const r = await api.get('/api/maintenance/thumbs/stats');
         if (countEl) countEl.textContent = String(r.count ?? 0);
@@ -82,14 +143,23 @@ function _setBuildUi(running) {
     const btn = $('thumbs-build-btn');
     const progress = $('thumbs-progress');
     const bar = $('thumbs-progress-bar');
+    const pct = $('thumbs-progress-pct');
     if (btn) {
         btn.disabled = !!running;
-        btn.textContent = running
-            ? i18nT('maintenance.thumbs.building', 'Building…')
-            : i18nT('maintenance.thumbs.build_all', 'Build all');
+        // Label-span swap pattern preserves the icon — `btn.textContent
+        // = …` would erase the <i ri-…> child along with the label.
+        const labelSpan = btn.querySelector('span[data-i18n]');
+        if (labelSpan) {
+            labelSpan.textContent = running
+                ? i18nT('maintenance.thumbs.building', 'Building…')
+                : i18nT('maintenance.thumbs.build_all', 'Build all');
+        }
     }
     if (progress) progress.classList.toggle('hidden', !running);
-    if (!running && bar) bar.style.width = '0%';
+    if (!running) {
+        if (bar) bar.style.width = '0%';
+        if (pct) pct.textContent = '';
+    }
 }
 
 // `POST /api/maintenance/thumbs/build-all` is fire-and-forget — it
@@ -161,6 +231,7 @@ function _wireWs() {
     ws.on('thumbs_progress', (m) => {
         const bar = $('thumbs-progress-bar');
         const status = $('thumbs-progress-status');
+        const pctEl = $('thumbs-progress-pct');
         // Make sure the progress UI is visible even if the user just
         // re-opened the page mid-build (init's `/build/status` recovery
         // path handles the cold case, but a WS-arriving-first race is
@@ -177,6 +248,12 @@ function _wireWs() {
                 { processed: m.processed || 0, total: m.total || 0, built: m.built || 0 },
                 `${m.processed || 0} / ${m.total || 0} · ${m.built || 0} built`,
             );
+        }
+        if (pctEl) {
+            pctEl.textContent =
+                m.total > 0
+                    ? `${pct}% · ${(m.processed || 0).toLocaleString()} / ${(m.total || 0).toLocaleString()}`
+                    : '';
         }
     });
     ws.on('thumbs_done', (m) => {

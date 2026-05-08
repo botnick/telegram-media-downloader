@@ -643,13 +643,26 @@ async function _refreshStats() {
                     bar.style.width = pct + '%';
                 }
                 if (scanBtn) {
-                    scanBtn.textContent = i18nT('maintenance.nsfw.cancel', 'Cancel');
+                    // Label-span swap pattern preserves the button's
+                    // icon — `textContent = …` would erase the
+                    // <i ri-search-line> child along with the label.
+                    const labelSpan = scanBtn.querySelector('span[data-i18n]');
+                    if (labelSpan) {
+                        labelSpan.textContent = i18nT('maintenance.nsfw.cancel', 'Cancel');
+                    } else {
+                        scanBtn.textContent = i18nT('maintenance.nsfw.cancel', 'Cancel');
+                    }
                     scanBtn.dataset.mode = 'cancel';
                 }
             } else {
                 if (progress) progress.classList.add('hidden');
                 if (scanBtn) {
-                    scanBtn.textContent = i18nT('maintenance.nsfw.action', 'Scan');
+                    const labelSpan = scanBtn.querySelector('span[data-i18n]');
+                    if (labelSpan) {
+                        labelSpan.textContent = i18nT('maintenance.nsfw.action', 'Scan');
+                    } else {
+                        scanBtn.textContent = i18nT('maintenance.nsfw.action', 'Scan');
+                    }
                     scanBtn.dataset.mode = 'scan';
                 }
             }
@@ -848,7 +861,12 @@ function _wireWs() {
                 bar.style.width = pct + '%';
             }
             if (scanBtn) {
-                scanBtn.textContent = i18nT('maintenance.nsfw.cancel', 'Cancel');
+                const labelSpan = scanBtn.querySelector('span[data-i18n]');
+                if (labelSpan) {
+                    labelSpan.textContent = i18nT('maintenance.nsfw.cancel', 'Cancel');
+                } else {
+                    scanBtn.textContent = i18nT('maintenance.nsfw.cancel', 'Cancel');
+                }
                 scanBtn.dataset.mode = 'cancel';
             }
         }

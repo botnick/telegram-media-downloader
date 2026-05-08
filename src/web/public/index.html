@@ -2125,20 +2125,40 @@
                                     <span data-i18n="maintenance.thumbs.no_ffmpeg_chip">Video / audio thumbs disabled — ffmpeg missing on PATH</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <button id="thumbs-wipe-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.thumbs.wipe_cache">Wipe cache</button>
-                                <button id="thumbs-build-btn" class="tg-btn text-xs px-3 py-1.5" data-i18n="maintenance.thumbs.build_all">Build all</button>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="thumbs-wipe-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.thumbs.wipe_tooltip"
+                                        title="Wipes every cached thumbnail; the next gallery scroll regenerates them on demand.">
+                                    <i class="ri-eraser-line"></i><span data-i18n="maintenance.thumbs.wipe_cache">Wipe cache</span>
+                                </button>
+                                <button id="thumbs-build-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.thumbs.build_tooltip"
+                                        title="Walks every catalogued file and generates a WebP thumb where one is missing.">
+                                    <i class="ri-image-2-line"></i><span data-i18n="maintenance.thumbs.build_all">Build all</span>
+                                </button>
                             </div>
                         </div>
-                        <div id="thumbs-progress" class="hidden mt-3">
-                            <div class="text-xs text-tg-textSecondary mb-1" id="thumbs-progress-status"></div>
-                            <div class="h-1.5 bg-tg-bg/60 rounded overflow-hidden">
+
+                        <!-- Last build summary line — populated from
+                             /api/maintenance/thumbs/build/stats so a
+                             fresh visit can see "Last build: 3 h ago —
+                             1,240 built" before clicking anything.
+                             Survives server restart via kv. -->
+                        <div id="thumbs-stat-summary" class="hidden mt-3 text-xs text-tg-textSecondary text-center"></div>
+
+                        <div id="thumbs-progress" class="hidden mt-3" role="status" aria-live="polite">
+                            <div class="text-sm text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span id="thumbs-progress-status" data-i18n="maintenance.thumbs.building">Building…</span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
                                 <div id="thumbs-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
                             </div>
+                            <div id="thumbs-progress-pct" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
                         </div>
                     </section>
                     <section class="bg-tg-panel rounded-xl p-4">
-                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                             <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
                                 <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.thumbs.cached">Cached</div>
                                 <div id="thumbs-stat-count" class="text-2xl font-semibold text-tg-text tabular-nums">—</div>
@@ -2146,6 +2166,10 @@
                             <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
                                 <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.thumbs.disk">Disk</div>
                                 <div id="thumbs-stat-bytes" class="text-2xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.thumbs.last_build">Last build</div>
+                                <div id="thumbs-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
                             </div>
                             <div class="bg-tg-bg/40 rounded-lg p-3 col-span-2 sm:col-span-1 flex flex-col items-center justify-center text-center">
                                 <div class="text-xs text-tg-textSecondary uppercase tracking-wide mb-1.5" data-i18n="maintenance.thumbs.widths">Widths</div>
@@ -2219,19 +2243,34 @@
                                     <span data-i18n="maintenance.video.no_ffmpeg_chip">Faststart unavailable — ffmpeg missing on PATH</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <button id="video-scan-btn" class="tg-btn text-xs px-3 py-1.5" data-i18n="maintenance.video.scan_all">Optimise all</button>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="video-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.video.scan_tooltip"
+                                        title="Walk every MP4 / MOV / M4V and rewrite ones whose moov atom isn't at the head with +faststart. Stream-copy, no re-encode.">
+                                    <i class="ri-film-line"></i><span data-i18n="maintenance.video.scan_all">Optimise all</span>
+                                </button>
                             </div>
                         </div>
-                        <div id="video-progress" class="hidden mt-3">
-                            <div class="text-xs text-tg-textSecondary mb-1" id="video-progress-status"></div>
-                            <div class="h-1.5 bg-tg-bg/60 rounded overflow-hidden">
+
+                        <!-- Last run summary — populated from
+                             /api/maintenance/faststart/stats's `lastRun`
+                             field (server merges in the persisted kv
+                             blob). Survives restart. -->
+                        <div id="video-stat-summary" class="hidden mt-3 text-xs text-tg-textSecondary text-center"></div>
+
+                        <div id="video-progress" class="hidden mt-3" role="status" aria-live="polite">
+                            <div class="text-sm text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span id="video-progress-status" data-i18n="maintenance.video.scanning">Optimising…</span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
                                 <div id="video-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
                             </div>
+                            <div id="video-progress-pct" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
                         </div>
                     </section>
                     <section class="bg-tg-panel rounded-xl p-4">
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-1">
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-1">
                             <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
                                 <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.video.total">Total</div>
                                 <div id="video-stat-total" class="text-2xl font-semibold text-tg-text tabular-nums">—</div>
@@ -2247,6 +2286,10 @@
                             <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
                                 <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.video.skipped">Skipped</div>
                                 <div id="video-stat-skipped" class="text-2xl font-semibold text-tg-textSecondary tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.video.last_run">Last run</div>
+                                <div id="video-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
                             </div>
                         </div>
                         <p class="text-[11px] text-tg-textSecondary mt-2 leading-relaxed" data-i18n="maintenance.video.stats_help">Pending = MP4s whose moov atom is at the end of the file. Skipped = files in containers that don't use moov (WebM, MKV) or that aren't on disk. New downloads are auto-optimised after they land.</p>
@@ -2391,9 +2434,13 @@
                                     <span><span data-i18n="maintenance.nsfw.concurrency_label">Concurrency:</span> <span id="nsfw-concurrency-value" class="text-tg-text tabular-nums">—</span></span>
                                 </div>
                             </div>
-                            <button id="nsfw-scan-btn" class="tg-btn text-xs px-3 py-1.5" data-mode="scan" data-i18n="maintenance.nsfw.action">Scan</button>
+                            <button id="nsfw-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" data-mode="scan"
+                                    data-i18n-title="maintenance.nsfw.scan_tooltip"
+                                    title="Run the NSFW classifier across every photo in the library. Local-only, no upload.">
+                                <i class="ri-search-line"></i><span data-i18n="maintenance.nsfw.action">Scan</span>
+                            </button>
                         </div>
-                        <div id="nsfw-scan-progress" class="hidden mt-3 h-1.5 bg-tg-bg/60 rounded overflow-hidden">
+                        <div id="nsfw-scan-progress" class="hidden mt-3 h-2 bg-tg-bg/60 rounded overflow-hidden" role="status" aria-live="polite">
                             <div id="nsfw-scan-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
                         </div>
                     </section>
@@ -2468,7 +2515,7 @@
                              viewport on landscape mobile (a 360 px-tall
                              screen made the previous calc()+min-height
                              pair drop the bottom rows below the nav bar). -->
-                        <pre id="logs-stream" class="bg-tg-bg/60 p-3 text-[11px] font-mono whitespace-pre overflow-auto leading-snug" style="height: clamp(240px, calc(100vh - 320px), 70vh);"></pre>
+                        <pre id="logs-stream" class="bg-tg-bg/60 p-3 text-[11px] font-mono whitespace-pre overflow-auto leading-snug" style="height: clamp(240px, calc(100vh - 320px), 70vh);" role="log" aria-live="polite" aria-atomic="false" aria-label="Realtime server log"></pre>
                     </section>
                 </div>
 

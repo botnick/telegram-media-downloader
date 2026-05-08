@@ -20,11 +20,30 @@ const $ = (id) => document.getElementById(id);
 let _wsWired = false;
 let _pageWired = false;
 
+// Compact relative-time formatter — same buckets as the duplicates page
+// for consistent freshness language across maintenance tools.
+function _formatRelative(unixMs) {
+    const t = Number(unixMs) || 0;
+    if (!t) return '';
+    const diff = Math.max(0, Date.now() - t);
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return i18nT('maintenance.duplicates.stats.just_now', 'just now');
+    const min = Math.floor(sec / 60);
+    if (min < 60)
+        return i18nTf('maintenance.duplicates.stats.minutes_ago', { n: min }, `${min} min ago`);
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return i18nTf('maintenance.duplicates.stats.hours_ago', { n: hr }, `${hr} h ago`);
+    const days = Math.floor(hr / 24);
+    return i18nTf('maintenance.duplicates.stats.days_ago', { n: days }, `${days} d ago`);
+}
+
 async function _refreshStats() {
     const elTotal = $('video-stat-total');
     const elOpt = $('video-stat-optimized');
     const elPend = $('video-stat-pending');
     const elSkip = $('video-stat-skipped');
+    const elLast = $('video-stat-last');
+    const elSummary = $('video-stat-summary');
     const ffmpegChip = $('video-no-ffmpeg');
     try {
         const r = await api.get('/api/maintenance/faststart/stats');
@@ -37,6 +56,36 @@ async function _refreshStats() {
         const skipped = (r.missing ?? 0) + (r.unknown ?? 0) + (r.ext_skip ?? 0);
         if (elSkip) elSkip.textContent = String(skipped);
         if (ffmpegChip) ffmpegChip.classList.toggle('hidden', r.ffmpegAvailable !== false);
+
+        // Persisted last-run summary — survives server restart, so a
+        // fresh dashboard visit can answer "did this even run before?".
+        const last = r?.lastRun;
+        if (elLast) {
+            if (last && last.finishedAt) {
+                elLast.textContent = _formatRelative(last.finishedAt);
+                elLast.title = new Date(last.finishedAt).toLocaleString();
+            } else {
+                elLast.textContent = i18nT('maintenance.duplicates.stats.last_scan_never', 'Never');
+                elLast.title = '';
+            }
+        }
+        if (elSummary) {
+            if (last && last.finishedAt) {
+                elSummary.textContent = i18nTf(
+                    'maintenance.video.last_run_result',
+                    {
+                        optimized: (last.optimized || 0).toLocaleString(),
+                        already: (last.already || 0).toLocaleString(),
+                        skipped: (last.skipped || 0).toLocaleString(),
+                        scanned: (last.scanned || 0).toLocaleString(),
+                    },
+                    `Last run: ${last.optimized || 0} optimised · ${last.already || 0} already faststart · ${last.skipped || 0} skipped (scanned ${last.scanned || 0})`,
+                );
+                elSummary.classList.remove('hidden');
+            } else {
+                elSummary.classList.add('hidden');
+            }
+        }
     } catch {
         /* leave stale values */
     }
@@ -46,14 +95,23 @@ function _setUi(running) {
     const btn = $('video-scan-btn');
     const progress = $('video-progress');
     const bar = $('video-progress-bar');
+    const pctEl = $('video-progress-pct');
     if (btn) {
         btn.disabled = !!running;
-        btn.textContent = running
-            ? i18nT('maintenance.video.scanning', 'Optimising…')
-            : i18nT('maintenance.video.scan_all', 'Optimise all');
+        // Label-span swap pattern preserves the icon — `btn.textContent
+        // = …` would erase the <i ri-…> child along with the label.
+        const labelSpan = btn.querySelector('span[data-i18n]');
+        if (labelSpan) {
+            labelSpan.textContent = running
+                ? i18nT('maintenance.video.scanning', 'Optimising…')
+                : i18nT('maintenance.video.scan_all', 'Optimise all');
+        }
     }
     if (progress) progress.classList.toggle('hidden', !running);
-    if (!running && bar) bar.style.width = '0%';
+    if (!running) {
+        if (bar) bar.style.width = '0%';
+        if (pctEl) pctEl.textContent = '';
+    }
 }
 
 async function _scanAll() {
@@ -90,6 +148,7 @@ function _wireWs() {
     ws.on('faststart_progress', (m) => {
         const bar = $('video-progress-bar');
         const status = $('video-progress-status');
+        const pctEl = $('video-progress-pct');
         const progress = $('video-progress');
         if (progress) progress.classList.remove('hidden');
         if (!bar) return;
@@ -106,6 +165,12 @@ function _wireWs() {
                 },
                 `${m.processed || 0} / ${m.total || 0} · ${m.optimized || 0} optimised`,
             );
+        }
+        if (pctEl) {
+            pctEl.textContent =
+                m.total > 0
+                    ? `${pct}% · ${(m.processed || 0).toLocaleString()} / ${(m.total || 0).toLocaleString()}`
+                    : '';
         }
     });
     ws.on('faststart_done', (m) => {
