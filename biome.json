@@ -62,7 +62,8 @@
                 "useIterableCallbackReturn": "off",
                 "useBiomeIgnoreFolder": "off",
                 "noShorthandPropertyOverrides": "off",
-                "noDuplicateProperties": "off"
+                "noDuplicateProperties": "off",
+                "noTemplateCurlyInString": "off"
             },
             "style": {
                 "useNodejsImportProtocol": "off",

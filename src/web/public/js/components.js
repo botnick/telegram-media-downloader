@@ -51,7 +51,19 @@ export function renderChatRow(opts) {
         data = {},
         cog = false,
         accountChips = null,
+        // Federated sidebar (Layer 1): when set, the row carries a
+        // `data-peer-id` attribute so the click handler can route to
+        // /api/downloads/:groupId?include=peers&peerId=<peer> instead of
+        // the local-only path. peerName is informational; we already
+        // bake "from {peer}" into `subtitle` upstream.
+        peerId = null,
+        peerName = null,
     } = opts;
+    // Merge peer fields into `data` (= becomes the dataset attrs below)
+    // when the row is foreign. Use a separate binding because `data` was
+    // destructured as a const above.
+    const datasetExtra = peerId ? { peerId, ...(peerName ? { peerName } : {}) } : null;
+    const dataMerged = datasetExtra ? { ...data, ...datasetExtra } : data;
 
     const avatar = createAvatar({
         id,
@@ -64,7 +76,7 @@ export function renderChatRow(opts) {
 
     const t = time || (lastDownloadAt ? formatRelativeTime(lastDownloadAt) : '');
 
-    const datasetAttrs = Object.entries({ id, ...data })
+    const datasetAttrs = Object.entries({ id, ...dataMerged })
         .filter(([, v]) => v !== undefined && v !== null)
         .map(([k, v]) => `data-${k}="${escapeHtml(String(v))}"`)
         .join(' ');

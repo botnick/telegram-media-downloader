@@ -6,6 +6,7 @@
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
 import { createAvatar, escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
+import { getThumbUrl, getMediaUrl, getDownloadUrl, isPeerRow } from './media-url.js';
 import * as Settings from './settings.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
@@ -228,6 +229,22 @@ async function init() {
         loadStats();
     };
     ws.on('file_deleted', dropFileFromView);
+    // Federated gallery live-refresh (Layer 1, v2.12+). Server broadcasts
+    // peer_catalog_update on every peer_downloads insert / update / delete
+    // (see src/core/cluster/ws-channel.js). When the operator's gallery
+    // scope is anything but 'local' AND they're on the viewer page, refetch
+    // the current page so peer changes appear without a manual reload.
+    // Sidebar peer-groups list also re-pulls so newly-added peer groups
+    // appear without waiting for the next /api/groups round-trip.
+    ws.on('peer_catalog_update', () => {
+        const scope = state.galleryScope;
+        if (scope && scope !== 'local' && state.currentPage === 'viewer') {
+            refreshCurrentPage();
+        }
+    });
+    ws.on('peer_groups_update', () => {
+        loadGroups();
+    });
     ws.on('bulk_delete', () => {
         if (state.currentPage === 'viewer') refreshCurrentPage();
         loadStats();
@@ -402,6 +419,19 @@ async function init() {
 
     await loadGroups();
     await loadStats();
+
+    // Federated gallery scope (Layer 1, v2.12+) — boot one-shot. Reads
+    // /api/cluster/peers, hides the chip if no peers paired, otherwise
+    // restores the operator's last-saved scope from localStorage and
+    // wires the chip click handler. Admin-only: the endpoint 401s for
+    // guests, the chip itself is `data-admin-only`.
+    if (isAdmin) {
+        try {
+            await initGalleryScope();
+        } catch (e) {
+            console.warn('gallery scope init failed', e);
+        }
+    }
 
     // First-load name resolve — admin-only because it POSTs and forces a
     // refresh side-effect. Guests see whatever names landed in the DB on
@@ -1043,18 +1073,30 @@ function renderGroupsList() {
             // refresh-info below.
             const stillUnresolved = isUnresolvedName(g.name, id) && !state.groupNameCache?.[id];
             if (stillUnresolved) needsResolve = true;
-            const subtitle = stillUnresolved
+            // Federated sidebar (Layer 1): foreign rows carry `peerId` + `peerName`.
+            // Subtitle becomes "from {peer}" instead of the file count, since
+            // we don't have peer-side counts cached locally; cog is suppressed
+            // (foreign groups can't be edited from this peer's dashboard —
+            // the click navigates to the per-group view filtered to that peer).
+            const isForeign = !!g.peerId;
+            const subtitle = isForeign
                 ? i18nTf(
-                      'groups.resolving',
-                      { count: g.totalFiles || 0 },
-                      `Resolving… · ${g.totalFiles || 0} files`,
+                      'sidebar.group.peer_badge',
+                      { peer: g.peerName || g.peerId.slice(0, 12) },
+                      `from ${g.peerName || g.peerId.slice(0, 12)}`,
                   )
-                : i18nTf(
-                      'groups.files_size',
-                      { count: g.totalFiles || 0, size: g.sizeFormatted || '0 B' },
-                      `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`,
-                  );
-            const ring = state.activeRings.has(id) ? 'downloading' : null;
+                : stillUnresolved
+                  ? i18nTf(
+                        'groups.resolving',
+                        { count: g.totalFiles || 0 },
+                        `Resolving… · ${g.totalFiles || 0} files`,
+                    )
+                  : i18nTf(
+                        'groups.files_size',
+                        { count: g.totalFiles || 0, size: g.sizeFormatted || '0 B' },
+                        `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`,
+                    );
+            const ring = !isForeign && state.activeRings.has(id) ? 'downloading' : null;
             return renderChatRow({
                 id,
                 name: canonical,
@@ -1064,7 +1106,9 @@ function renderGroupsList() {
                 avatarDot: ring ? 'monitor' : null,
                 time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
                 selected: state.currentGroupId === id,
-                cog: true, // cog button → opens Group Settings modal directly
+                cog: !isForeign, // foreign groups are read-only; hide the cog
+                peerId: g.peerId || null,
+                peerName: g.peerName || null,
                 // Don't ship the (possibly stale) raw name through the dataset —
                 // click handlers re-resolve from the canonical store.
             });
@@ -1102,9 +1146,23 @@ function renderGroupsList() {
     // cog button opens Group Settings instead. Names are re-resolved
     // at click time via getGroupName() so a refreshed name wins over
     // whatever the row was rendered with.
+    // Federated foreign rows carry data-peer-id; clicking one switches
+    // the gallery scope to that peer + opens the per-group view, so the
+    // user lands on a peer-filtered gallery without having to also
+    // toggle the scope chip manually.
     list.querySelectorAll('.chat-row[data-id]').forEach((el) => {
         const id = el.dataset.id;
-        const fire = () => openGroup(id, getGroupName(id));
+        const peerId = el.dataset.peerId || null;
+        const fire = () => {
+            if (peerId) {
+                state.galleryScope = peerId;
+                try {
+                    localStorage.setItem('tgdl-gallery-scope', peerId);
+                } catch {}
+                _renderGalleryScopeLabel?.();
+            }
+            openGroup(id, getGroupName(id));
+        };
         el.addEventListener('click', (ev) => {
             // Cog button takes precedence — short-circuit before the
             // row navigates to the gallery.
@@ -1293,6 +1351,152 @@ const _isMobileViewport = () => {
 };
 const FILES_PER_PAGE = _isMobileViewport() ? 50 : 100;
 
+// Build the federated-gallery query suffix (?include=&peerId=) from the
+// current state.galleryScope. Returns '' for local-only / non-cluster
+// installs so the existing local endpoints stay byte-identical for the
+// non-federated default. See media-url.js for the matching tile + viewer
+// URL routing.
+function _galleryScopeQs() {
+    const s = state.galleryScope;
+    if (!s || s === 'local') return '';
+    if (s === 'all') return '&include=peers';
+    return `&include=peers&peerId=${encodeURIComponent(s)}`;
+}
+
+// Federated gallery scope chip — opt-in toggle in the gallery header
+// row that lets the operator switch between local-only / all-peers /
+// per-peer views. State persists in localStorage so reload comes back
+// to the same scope. Hidden entirely when no peers are paired so
+// non-cluster operators see no UI clutter. See plan: Layer 1.
+async function initGalleryScope() {
+    const chip = document.getElementById('gallery-scope-chip');
+    const menu = document.getElementById('gallery-scope-menu');
+    if (!chip || !menu) return;
+    let peers = [];
+    try {
+        const r = await api.get('/api/cluster/peers');
+        peers = Array.isArray(r?.peers) ? r.peers : [];
+    } catch {
+        // Cluster module not initialised / 401 — leave the chip hidden.
+        peers = [];
+    }
+    state.clusterPeers = peers;
+    if (!peers.length) {
+        chip.classList.add('hidden');
+        return;
+    }
+    chip.classList.remove('hidden');
+    state.galleryScope = localStorage.getItem('tgdl-gallery-scope') || 'local';
+    _renderGalleryScopeLabel();
+    chip.addEventListener('click', () => {
+        const expanded = chip.getAttribute('aria-expanded') === 'true';
+        if (expanded) {
+            menu.classList.add('hidden');
+            chip.setAttribute('aria-expanded', 'false');
+            return;
+        }
+        _renderGalleryScopeMenu();
+        menu.classList.remove('hidden');
+        chip.setAttribute('aria-expanded', 'true');
+        // Click-outside dismisses. Use `once` so the listener auto-cleans.
+        setTimeout(() => {
+            const onDocClick = (e) => {
+                if (!menu.contains(e.target) && !chip.contains(e.target)) {
+                    menu.classList.add('hidden');
+                    chip.setAttribute('aria-expanded', 'false');
+                    document.removeEventListener('click', onDocClick);
+                }
+            };
+            document.addEventListener('click', onDocClick);
+        }, 0);
+    });
+}
+
+function _renderGalleryScopeLabel() {
+    const labelEl = document.getElementById('gallery-scope-label');
+    if (!labelEl) return;
+    const s = state.galleryScope;
+    if (s === 'all') {
+        labelEl.textContent = i18nT('gallery.scope.all_peers', 'All peers');
+    } else if (s === 'local' || !s) {
+        labelEl.textContent = i18nT('gallery.scope.this_peer', 'This peer');
+    } else {
+        const peer = (state.clusterPeers || []).find((p) => String(p.peerId) === String(s));
+        const name = peer?.name || (s.length > 12 ? s.slice(0, 12) + '…' : s);
+        labelEl.textContent = name;
+    }
+}
+
+function _renderGalleryScopeMenu() {
+    const menu = document.getElementById('gallery-scope-menu');
+    if (!menu) return;
+    const peers = state.clusterPeers || [];
+    const opts = [
+        {
+            value: 'local',
+            icon: 'ri-home-4-line',
+            label: i18nT('gallery.scope.this_peer', 'This peer'),
+        },
+        {
+            value: 'all',
+            icon: 'ri-broadcast-line',
+            label: i18nT('gallery.scope.all_peers', 'All peers'),
+        },
+        ...peers.map((p) => ({
+            value: p.peerId,
+            icon:
+                p.status === 'online'
+                    ? 'ri-circle-fill text-green-400 text-[8px]'
+                    : 'ri-circle-line text-tg-textSecondary text-[8px]',
+            label: p.name || p.peerId.slice(0, 12),
+            offline: p.status !== 'online',
+        })),
+    ];
+    const cur = state.galleryScope || 'local';
+    menu.innerHTML = opts
+        .map((o) => {
+            const active = String(o.value) === String(cur) ? 'data-active="1"' : '';
+            const offlineSuffix = o.offline
+                ? ` <span class="text-[10px] text-tg-textSecondary ml-1">${escapeHtml(i18nT('gallery.scope.offline', '(offline)'))}</span>`
+                : '';
+            return `<button type="button" class="gallery-scope-option w-full text-left px-3 py-1.5 text-sm hover:bg-tg-hover flex items-center gap-2"
+                            data-value="${escapeHtml(String(o.value))}" ${active}>
+                <i class="${o.icon}" aria-hidden="true"></i>
+                <span class="truncate flex-1">${escapeHtml(o.label)}${offlineSuffix}</span>
+                ${active ? '<i class="ri-check-line text-tg-blue" aria-hidden="true"></i>' : ''}
+            </button>`;
+        })
+        .join('');
+    menu.querySelectorAll('.gallery-scope-option').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const next = btn.dataset.value;
+            if (!next || next === state.galleryScope) {
+                menu.classList.add('hidden');
+                document
+                    .getElementById('gallery-scope-chip')
+                    ?.setAttribute('aria-expanded', 'false');
+                return;
+            }
+            state.galleryScope = next;
+            try {
+                localStorage.setItem('tgdl-gallery-scope', next);
+            } catch {}
+            _renderGalleryScopeLabel();
+            menu.classList.add('hidden');
+            document.getElementById('gallery-scope-chip')?.setAttribute('aria-expanded', 'false');
+            // Re-fetch the current view with the new scope. page resets
+            // because pagination is per-scope.
+            state.page = 1;
+            state.hasMore = true;
+            state.files = [];
+            if (state.currentPage === 'viewer') {
+                if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
+                else loadAllFiles();
+            }
+        });
+    });
+}
+
 async function loadAllFiles() {
     state.loading = true;
     const grid = document.getElementById('media-grid');
@@ -1304,8 +1508,9 @@ async function loadAllFiles() {
         const pinQs = state.pinnedFilter ? '&pinned=1' : '';
         const pinFirstQs =
             localStorage.getItem('tgdl-pinned-first') === '1' ? '&pinnedFirst=1' : '';
+        const scopeQs = _galleryScopeQs();
         const res = await api.get(
-            `/api/downloads/all?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}`,
+            `/api/downloads/all?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}${scopeQs}`,
         );
         const newFiles = res?.files || [];
 
@@ -1359,8 +1564,9 @@ async function loadGroupFiles(groupId) {
         const pinQs = state.pinnedFilter ? '&pinned=1' : '';
         const pinFirstQs =
             localStorage.getItem('tgdl-pinned-first') === '1' ? '&pinnedFirst=1' : '';
+        const scopeQs = _galleryScopeQs();
         const res = await api.get(
-            `/api/downloads/${encodeURIComponent(groupId)}?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}`,
+            `/api/downloads/${encodeURIComponent(groupId)}?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}${scopeQs}`,
         );
         const newFiles = res.files || [];
 
@@ -1511,11 +1717,10 @@ function renderMediaGrid(opts = {}) {
                     // caches the result so subsequent scrolls are pure HTTP-304s.
                     // Falls back to a typed-icon placeholder if the source isn't
                     // thumbnailable (audio / document / dead source).
+                    // Federated rows (file.peer_id !== 'self') route through
+                    // the cluster thumb proxy via getThumbUrl(); see media-url.js.
                     const thumbW = _isMobileViewport() ? 240 : 320;
-                    const thumbUrl =
-                        file.id != null
-                            ? `/api/thumbs/${encodeURIComponent(file.id)}?w=${thumbW}`
-                            : null;
+                    const thumbUrl = getThumbUrl(file, thumbW);
                     // Onerror falls back to displaying nothing (the panel
                     // background shows through), which is the desired graceful
                     // degradation for a missing/dead file.
@@ -1563,6 +1768,30 @@ function renderMediaGrid(opts = {}) {
                     // grid+compact (CSS), display:flex/grid in list. Group name +
                     // file extension in the sub line, full size + date in their
                     // own columns. Date format = locale short.
+                    // Federated rows (file.peer_id !== 'self') get a "from {peer}"
+                    // pill appended after the group name so the operator can
+                    // tell at a glance which dashboard owns the file. The pill
+                    // is also visible in grid mode via the `tile-peer-badge`
+                    // overlay positioned bottom-right.
+                    const isPeerTile = isPeerRow(file);
+                    const peerName = isPeerTile ? file.peer_name || '' : '';
+                    const peerBadgeOverlay = isPeerTile
+                        ? `<div class="tile-peer-badge" title="${escapeHtml(
+                              i18nTf('gallery.peer_badge', { peer: peerName }, `from ${peerName}`),
+                          )}"><i class="ri-broadcast-line"></i><span>${escapeHtml(
+                              peerName || i18nT('gallery.scope.this_peer', 'peer'),
+                          )}</span></div>`
+                        : '';
+                    const peerSubInline =
+                        isPeerTile && peerName
+                            ? ` · <span class="text-tg-blue">${escapeHtml(
+                                  i18nTf(
+                                      'gallery.peer_badge',
+                                      { peer: peerName },
+                                      `from ${peerName}`,
+                                  ),
+                              )}</span>`
+                            : '';
                     const groupLine = file.groupName || file.groupId || '';
                     const sizeLine =
                         file.sizeFormatted || (file.size ? formatBytes(file.size) : '');
@@ -1580,15 +1809,16 @@ function renderMediaGrid(opts = {}) {
                    </button>`
                             : '';
                     return `
-            <div class="media-item relative ${selectedCls} ${pinnedCls}" data-index="${originalIndex}" data-path="${escapeHtml(file.fullPath)}"${file.id != null ? ` data-id="${file.id}"` : ''} tabindex="0">
+            <div class="media-item relative ${selectedCls} ${pinnedCls}${isPeerTile ? ' is-peer-tile' : ''}" data-index="${originalIndex}" data-path="${escapeHtml(file.fullPath)}"${file.id != null ? ` data-id="${file.id}"` : ''}${isPeerTile ? ` data-peer-id="${escapeHtml(file.peer_id)}"` : ''} tabindex="0">
                 <div class="tile-thumb relative w-full h-full overflow-hidden">
                     ${thumbInner}
                     ${gridDocLabel}
+                    ${peerBadgeOverlay}
                 </div>
                 ${pinChip}
                 <div class="tile-text">
                     <div class="tile-name" title="${escapeHtml(file.name || '')}">${escapeHtml(file.name || '')}</div>
-                    <div class="tile-sub">${escapeHtml(groupLine)}</div>
+                    <div class="tile-sub">${escapeHtml(groupLine)}${peerSubInline}</div>
                 </div>
                 <div class="tile-size">${escapeHtml(sizeLine)}</div>
                 <div class="tile-date" title="${file.modified ? new Date(file.modified).toLocaleString() : ''}">${escapeHtml(dateLine)}</div>

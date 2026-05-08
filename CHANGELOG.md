@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.0] — 2026-05-08
+
+Layer 1 of the federated-gallery rollout. The main gallery surfaces (All Media / per-group view / search) now optionally include files from every paired peer; the sidebar Downloaded Groups list merges peer-owned groups with a "from {peer}" badge; peer-owned tiles route their thumbnails + media bytes through the existing cluster bridge. Default behaviour is unchanged — federation is opt-in via a new gallery scope chip, hidden entirely on non-cluster installs.
+
+### Added — Federated gallery surfaces
+- **Gallery scope chip** in the media-tabs row (admin-only, hidden when 0 peers paired). Options: This peer / All peers / per-peer entries with online status. State persists in `localStorage['tgdl-gallery-scope']`.
+- **Per-tile peer badge** — federated tiles render a "from {peer}" pill in grid mode and an inline subtitle suffix in list mode so the source dashboard is always visible at a glance.
+- **Sidebar Downloaded Groups merge** — peer-owned groups appear with the same "from {peer}" badge. Clicking a foreign group switches the gallery scope to that peer and opens the per-group view filtered to its files. Foreign groups are read-only (no settings cog).
+- **Live refresh** — `peer_catalog_update` and `peer_groups_update` WS events trigger gallery + sidebar reloads when scope ≠ local, so peer changes appear without manual refresh.
+
+### Added — Server endpoints
+- **`?include=local|peers|all`** on `/api/downloads/all`, `/api/downloads/:groupId`, `/api/downloads/search`. Default is `local` (backward-compatible). Guest sessions are forced back to `local` server-side; federation stays admin-only on every surface.
+- **`?peerId=<id>`** further narrows federated queries to a single peer.
+- **`/api/cluster/peer-thumbs/:remoteId`** — HMAC-only peer-to-peer thumbnail handler.
+- **`/api/cluster/thumbs/:peerId/:remoteId`** — cookie-authed browser proxy that signs a request to the peer's `peer-thumbs` route, streams the response, and falls back to a 1×1 placeholder PNG when the peer is offline (60 s cache to prevent the gallery from spamming the console with 404s).
+- **`/files/<path>?peer=<id>`** — extends the existing local file route with peer routing. When `?peer` is present, the request is served via `streamFromPeer()` (proxy) or `requestSignedShareUrl()` (direct stream mode). Guest sessions are 403'd.
+- **`/api/groups`** now appends every paired peer's groups (deduplicated by id; locally-owned groups gain a `mirroredOn: [peerId, ...]` field so a future "+N peers" badge can render without a server change). Guest sessions skip the merge.
+- **`/api/stats`** gains a `peerStats` array (`peerId`, `peerName`, `online`, `totalFiles`, `totalSize`, `totalSizeFormatted`). Empty on non-cluster installs and for guest sessions.
+
+### Internal
+- New `src/web/public/js/media-url.js` — central URL builder (`getThumbUrl`, `getMediaUrl`, `getDownloadUrl`, `isPeerRow`). Replaces inline `/api/thumbs/${id}` / `/files/${path}` constructions in `app.js`, `viewer.js`, `gallery-context.js`. Federation routing lives in one file.
+- New `src/core/db.js` helpers: `getAllDownloadsFederated`, `getDownloadsForGroupFederated`, `searchDownloadsFederated`, `getStatsFederated`. UNION ALL of `downloads` + `peer_downloads` with a normalised `sort_ts` column so `created_at` sorts correctly across the schema-mismatched columns (DATETIME string vs INTEGER unix-ms).
+- 13 new federated-gallery tests in `tests/db-federated-gallery.test.js` (1232 specs total now passing).
+- `POST /api/config` was already deep-merging the cluster namespace (v2.11.2 hardening).
+- 6 new i18n keys (`gallery.scope.*` / `gallery.peer_badge` / `sidebar.group.peer_badge`) — en + th lockstep, drift checker clean (1217 keys).
+- New CSS: `.tile-peer-badge`, `.gallery-scope-option[data-active]`, `#gallery-scope-menu` positioning.
+- SW bumped `v2112` → `v2120`.
+- **Cluster contract preservation** — every `$('cluster-…')` id intact; 5 `ws.on('peer_*' / 'cluster_*')` listeners preserved + 2 new ones added (`peer_catalog_update`, `peer_groups_update`); existing endpoints unchanged in their default behaviour.
+
 ## [2.11.2] — 2026-05-08
 
 ### Fixed

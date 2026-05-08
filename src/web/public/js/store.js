@@ -37,6 +37,15 @@ export const state = {
     imageObserver: null,
     viewMode: 'grid',
     searchQuery: '',
+    // Federated-gallery scope (Layer 1, v2.12+). 'local' (default) shows
+    // only this peer's files; 'all' UNIONs in every paired peer; a peer-id
+    // string narrows to one peer's files. Persisted in localStorage as
+    // `tgdl-gallery-scope`. Hidden entirely when no peers are paired.
+    galleryScope: 'local',
+    // Cached `/api/cluster/peers` snapshot (id + name + status). Used by
+    // the gallery-scope chip to render the per-peer entries; also lets the
+    // tile peer badge render without a second round-trip per row.
+    clusterPeers: [],
     // Canonical name cache — fed by /api/groups/refresh-info responses and
     // the WS `groups_refreshed` broadcast. Keyed by stringified id.
     groupNameCache: {},

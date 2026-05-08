@@ -21,6 +21,7 @@ import { state } from './store.js';
 import { api } from './api.js';
 import { showToast } from './utils.js';
 import { t as i18nT } from './i18n.js';
+import { getMediaUrl, getDownloadUrl, isPeerRow } from './media-url.js';
 
 const MENU_ID = 'tgdl-gallery-context';
 let _wired = false;
@@ -172,7 +173,9 @@ async function _handle(action, file, idx) {
     }
     if (action === 'download') {
         const a = document.createElement('a');
-        a.href = `/files/${encodeURIComponent(file.fullPath)}`;
+        // Federated rows route through /files/?peer=<id>; getDownloadUrl
+        // handles both the own and peer cases.
+        a.href = getDownloadUrl(file);
         a.download = file.name || '';
         document.body.appendChild(a);
         a.click();
@@ -180,10 +183,7 @@ async function _handle(action, file, idx) {
         return;
     }
     if (action === 'copy') {
-        const url = new URL(
-            `/files/${encodeURIComponent(file.fullPath)}?inline=1`,
-            window.location.origin,
-        ).toString();
+        const url = new URL(getMediaUrl(file), window.location.origin).toString();
         try {
             await navigator.clipboard.writeText(url);
             showToast(i18nT('gallery.context.copied', 'Link copied'), 'success');

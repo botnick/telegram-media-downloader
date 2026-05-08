@@ -29,6 +29,10 @@ import {
     getDb,
     getDownloads,
     getAllDownloads,
+    getAllDownloadsFederated,
+    getDownloadsForGroupFederated,
+    searchDownloadsFederated,
+    getStatsFederated,
     getStats as getDbStats,
     deleteGroupDownloads,
     deleteAllDownloads,
@@ -894,7 +898,12 @@ const PUBLIC_API_PATHS = new Set([
 // Cluster file-bridge prefix — /api/cluster/files/<encoded path> is variable
 // so it has to live in PUBLIC_PATH_PREFIXES (exact-string set above won't
 // prefix-match). The handler still verifies HMAC.
-const CLUSTER_PREFIX_HMAC_ONLY = ['/api/cluster/files/'];
+//
+// `peer-thumbs` is a separate prefix from `thumbs/<peerId>/<remoteId>`
+// (which is cookie-authed for the browser proxy). Using distinct
+// segments keeps the prefix-match here from accidentally exempting the
+// admin route.
+const CLUSTER_PREFIX_HMAC_ONLY = ['/api/cluster/files/', '/api/cluster/peer-thumbs/'];
 
 // Treat connections from the local machine as "trusted enough" to bootstrap
 // the very first password without prior auth. Any other origin still has to
@@ -3263,6 +3272,41 @@ app.get('/api/stats', async (req, res) => {
             }
         }
 
+        // Federation totals — per-peer file count + total size from the
+        // peer_downloads catalog cache. Stamps `peerName` from the live
+        // peers table so the SPA footer can render "Files: 1234 + 5678
+        // peers" with a tooltip listing each peer. Backward-compatible —
+        // existing local-only callers ignore the new field.
+        // Guest sessions get an empty array — federation visibility is
+        // admin-only.
+        let peerStats = [];
+        if (req.role !== 'guest') {
+            try {
+                const fed = getStatsFederated();
+                const peerNameMap = new Map();
+                try {
+                    for (const p of listPeers()) {
+                        peerNameMap.set(String(p.peerId), {
+                            name: p.name || p.peerId,
+                            online: p.status === 'online',
+                        });
+                    }
+                } catch {
+                    /* listPeers can throw before cluster init — leave names blank */
+                }
+                peerStats = (fed.peerStats || []).map((row) => ({
+                    peerId: row.peerId,
+                    peerName: peerNameMap.get(String(row.peerId))?.name || row.peerId,
+                    online: !!peerNameMap.get(String(row.peerId))?.online,
+                    totalFiles: row.totalFiles,
+                    totalSize: row.totalSize,
+                    totalSizeFormatted: formatBytes(row.totalSize),
+                }));
+            } catch {
+                /* federated stats failed — keep local-only response */
+            }
+        }
+
         res.json({
             // DB Stats
             totalFiles: dbStats.totalFiles,
@@ -3279,6 +3323,9 @@ app.get('/api/stats', async (req, res) => {
             accounts: accountCount,
             apiConfigured: !!(config.telegram?.apiId && config.telegram?.apiHash),
             telegramConnected: isConnected || runtime.state === 'running',
+
+            // Federation surface — empty array on non-cluster installs.
+            peerStats,
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -3635,9 +3682,86 @@ app.get('/api/groups', async (req, res) => {
                     // supergroup as a channel.
                     type: group.type || dialogsTypeFor(group.id),
                     photoUrl: hasPhoto ? `/photos/${group.id}.jpg` : null,
+                    // Federation surface — own groups carry peerId: null
+                    // so the sidebar can distinguish them from peer rows
+                    // appended below.
+                    peerId: null,
+                    peerName: null,
                 };
             }),
         );
+
+        // Federation merge — append every paired peer's groups to the list,
+        // deduplicated by id (own row wins; peer rows that share an id are
+        // attached to the local row's `mirroredOn` array). Default off /
+        // empty when no peers are paired so non-cluster operators see no
+        // change. Each foreign group carries `peerId` + `peerName` so the
+        // SPA can render a "from {peer}" badge and route per-group clicks
+        // to /api/downloads/:id?include=peers&peerId=<id>.
+        //
+        // Guest sessions skip the merge — federation is admin-gated, so a
+        // guest's sidebar stays local-only.
+        if (req.role !== 'guest') {
+            try {
+                const ownIdSet = new Set(groupsWithPhotos.map((g) => String(g.id)));
+                const peerGroupRows = getDb()
+                    .prepare('SELECT peer_id, payload FROM peer_groups')
+                    .all();
+                const peerNameMap = new Map();
+                try {
+                    for (const p of listPeers())
+                        peerNameMap.set(String(p.peerId), p.name || p.peerId);
+                } catch {
+                    /* cluster not initialised — peer name stays null */
+                }
+                for (const r of peerGroupRows) {
+                    let payload = null;
+                    try {
+                        payload = JSON.parse(r.payload);
+                    } catch {
+                        continue;
+                    }
+                    const peerGroups = Array.isArray(payload?.groups) ? payload.groups : [];
+                    const peerName = peerNameMap.get(String(r.peer_id)) || null;
+                    for (const pg of peerGroups) {
+                        const idStr = String(pg.id);
+                        if (ownIdSet.has(idStr)) {
+                            // Local row already has this group — attach the
+                            // peer to its mirroredOn list so the SPA can show
+                            // a "+N peers also have this" badge later.
+                            const localRow = groupsWithPhotos.find((g) => String(g.id) === idStr);
+                            if (localRow) {
+                                localRow.mirroredOn = Array.isArray(localRow.mirroredOn)
+                                    ? localRow.mirroredOn
+                                    : [];
+                                if (!localRow.mirroredOn.includes(r.peer_id)) {
+                                    localRow.mirroredOn.push(r.peer_id);
+                                }
+                            }
+                            continue;
+                        }
+                        // Truly foreign group — append. Photo URL stays null
+                        // (no cross-peer photo proxy in M1); the SPA falls
+                        // back to a default avatar for these rows.
+                        groupsWithPhotos.push({
+                            ...pg,
+                            peerId: r.peer_id,
+                            peerName,
+                            type: pg.type || dialogsTypeFor(pg.id),
+                            photoUrl: null,
+                        });
+                        // Mark in the local set so two peers sharing the same
+                        // foreign group don't surface twice.
+                        ownIdSet.add(idStr);
+                    }
+                }
+            } catch (e) {
+                // Federation merge is purely additive — log and continue if it
+                // explodes, so a bad peer payload can't take down the sidebar.
+                console.warn('GET /api/groups federation merge failed:', e?.message || e);
+            }
+        }
+
         res.json(groupsWithPhotos);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -3725,7 +3849,31 @@ app.get('/api/downloads/all', async (req, res) => {
         // existing callers behave identically.
         const pinnedOnly = req.query.pinned === '1' || req.query.pinned === 'true';
         const pinnedFirst = req.query.pinnedFirst === '1' || req.query.pinnedFirst === 'true';
-        const result = getAllDownloads(limit, offset, type, { pinnedOnly, pinnedFirst });
+        // Federation scope (Layer 1, v2.12+):
+        //   ?include=local  — own files only (default; backward-compatible)
+        //   ?include=peers  — own + every paired peer
+        //   ?include=all    — alias for peers (kept for symmetry with the
+        //                     /api/cluster/downloads contract)
+        // Optional ?peerId=<id> further filters to a single peer's files —
+        // sidebar foreign-group click hands the peer's id along.
+        // Guest sessions are forced back to `local`: federation is admin-
+        // only on the management surface (/maintenance/cluster, Settings →
+        // Federation), so gallery scope follows the same rule. Without
+        // this guard a guest hitting /api/downloads/all?include=peers
+        // would expose every paired peer's catalog.
+        const reqInclude =
+            req.query.include === 'peers' || req.query.include === 'all'
+                ? req.query.include
+                : 'local';
+        const include = req.role === 'guest' ? 'local' : reqInclude;
+        const peerIdFilter =
+            req.role !== 'guest' && req.query.peerId ? String(req.query.peerId) : null;
+        const result = getAllDownloadsFederated(limit, offset, type, {
+            pinnedOnly,
+            pinnedFirst,
+            include,
+            ...(peerIdFilter ? { peerId: peerIdFilter } : {}),
+        });
 
         // Same row → tile shape as `/api/downloads/:groupId` so the SPA
         // renderer is unchanged. Per-row group_name + group_id are
@@ -3737,6 +3885,16 @@ app.get('/api/downloads/all', async (req, res) => {
             /* ok — fall back to row.group_name */
         }
         const configGroups = new Map((config.groups || []).map((g) => [String(g.id), g]));
+        // Build a peer-id → name lookup so federated rows can render a
+        // human-readable "from {peer}" label without an extra round-trip.
+        const peerNameMap = new Map();
+        if (include !== 'local') {
+            try {
+                for (const p of listPeers()) peerNameMap.set(String(p.peerId), p.name || p.peerId);
+            } catch {
+                /* listPeers can throw if cluster module hasn't initialised — fall through */
+            }
+        }
         const files = result.files.map((row) => {
             const typeFolder =
                 row.file_type === 'photo'
@@ -3758,6 +3916,7 @@ app.get('/api/downloads/all', async (req, res) => {
                 stored && stored.includes('/')
                     ? stored
                     : `${fallbackFolder}/${typeFolder}/${row.file_name}`;
+            const isPeerRow = row.peer_id && row.peer_id !== 'self';
             return {
                 id: row.id,
                 name: row.file_name,
@@ -3773,6 +3932,13 @@ app.get('/api/downloads/all', async (req, res) => {
                 pendingUntil: row.pending_until || null,
                 rescuedAt: row.rescued_at || null,
                 pinned: !!row.pinned,
+                // Federation surface — peer_id is 'self' for own rows,
+                // peer's id otherwise. peer_name is null for own; for
+                // peer rows it carries the human-readable display name
+                // (Cluster page → display name) so the SPA can render
+                // a "from {peer}" badge without /api/cluster/peers.
+                peer_id: row.peer_id || 'self',
+                peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
             };
         });
 
@@ -3809,7 +3975,33 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
 
         const pinnedOnly = req.query.pinned === '1' || req.query.pinned === 'true';
         const pinnedFirst = req.query.pinnedFirst === '1' || req.query.pinnedFirst === 'true';
-        const result = getDownloads(groupId, limit, offset, type, { pinnedOnly, pinnedFirst });
+        // Federation scope — same contract as /api/downloads/all. Guest
+        // sessions are forced back to `local` so cluster-only data stays
+        // admin-gated.
+        const reqInclude =
+            req.query.include === 'peers' || req.query.include === 'all'
+                ? req.query.include
+                : 'local';
+        const include = req.role === 'guest' ? 'local' : reqInclude;
+        const peerIdFilter =
+            req.role !== 'guest' && req.query.peerId ? String(req.query.peerId) : null;
+        const result = getDownloadsForGroupFederated(groupId, limit, offset, type, {
+            pinnedOnly,
+            pinnedFirst,
+            include,
+            ...(peerIdFilter ? { peerId: peerIdFilter } : {}),
+        });
+
+        // Build a peer-id → name lookup so federated rows can render a
+        // human-readable "from {peer}" label.
+        const peerNameMap = new Map();
+        if (include !== 'local') {
+            try {
+                for (const p of listPeers()) peerNameMap.set(String(p.peerId), p.name || p.peerId);
+            } catch {
+                /* cluster not initialised — peer name stays null */
+            }
+        }
 
         // DB `file_path` stores the path RELATIVE to data/downloads (set
         // by downloader.js via path.relative(DOWNLOADS_DIR, …)). USE that
@@ -3839,6 +4031,7 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
                     ? stored
                     : `${groupFolder}/${typeFolder}/${row.file_name}`;
 
+            const isPeerRow = row.peer_id && row.peer_id !== 'self';
             return {
                 id: row.id,
                 name: row.file_name,
@@ -3853,6 +4046,8 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
                 pendingUntil: row.pending_until || null,
                 rescuedAt: row.rescued_at || null,
                 pinned: !!row.pinned,
+                peer_id: row.peer_id || 'self',
+                peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
             };
         });
 
@@ -3912,7 +4107,10 @@ async function safeResolveDownload(userPath) {
     return { ok: true, real };
 }
 
-// Search across all downloads (filename + group name).
+// Search across all downloads (filename + group name). Federated when the
+// caller passes ?include=peers — UNIONs filename / group_name LIKE matches
+// from peer_downloads on top of the local rows. Default is local-only so
+// non-cluster callers see no behaviour change.
 app.get('/api/downloads/search', async (req, res) => {
     try {
         const q = String(req.query.q || '').trim();
@@ -3920,12 +4118,33 @@ app.get('/api/downloads/search', async (req, res) => {
         const page = Math.max(1, parseInt(req.query.page, 10) || 1);
         const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 50));
         const groupId = req.query.groupId ? String(req.query.groupId) : undefined;
-        const r = searchDownloads(q, { limit, offset: (page - 1) * limit, groupId });
+        const reqInclude =
+            req.query.include === 'peers' || req.query.include === 'all'
+                ? req.query.include
+                : 'local';
+        // Guest sessions stay local-only — federation is admin-gated.
+        const include = req.role === 'guest' ? 'local' : reqInclude;
+        const r = searchDownloadsFederated(q, {
+            limit,
+            offset: (page - 1) * limit,
+            groupId,
+            include,
+        });
 
         const config = loadConfig();
         const groupFolderById = new Map();
         for (const g of config.groups || [])
             groupFolderById.set(String(g.id), sanitizeName(g.name));
+
+        // Peer name lookup for federated rows.
+        const peerNameMap = new Map();
+        if (include !== 'local') {
+            try {
+                for (const p of listPeers()) peerNameMap.set(String(p.peerId), p.name || p.peerId);
+            } catch {
+                /* cluster module not loaded — peer name stays null */
+            }
+        }
 
         const files = r.files.map((row) => {
             const folder =
@@ -3948,6 +4167,7 @@ app.get('/api/downloads/search', async (req, res) => {
                 stored && stored.includes('/')
                     ? stored
                     : `${folder}/${typeFolder}/${row.file_name}`;
+            const isPeerRow = row.peer_id && row.peer_id !== 'self';
             return {
                 id: row.id,
                 groupId: row.group_id,
@@ -3960,6 +4180,8 @@ app.get('/api/downloads/search', async (req, res) => {
                 modified: row.created_at,
                 pendingUntil: row.pending_until || null,
                 rescuedAt: row.rescued_at || null,
+                peer_id: row.peer_id || 'self',
+                peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
             };
         });
         res.json({ files, total: r.total, page, totalPages: Math.ceil(r.total / limit), q });
@@ -6275,6 +6497,110 @@ app.get('/api/cluster/files/:path(*)', async (req, res, next) => {
     res.sendFile(r.real);
 });
 
+// ---- Federated gallery thumbnails (Layer 1) ----------------------------
+//
+// Two endpoints, mirroring the /api/cluster/files split:
+//
+// 1. P2P HMAC-only (called by another peer when proxying a thumb to its
+//    own browser): GET /api/cluster/thumbs/:remoteId?w=<N>
+//    Re-resolves to the local /api/thumbs path via getOrCreateThumb so
+//    every code path (resize, hwaccel, miss-tracking) stays in one place.
+//
+// 2. Cookie-auth proxy (called by THIS peer's browser when rendering a
+//    federated tile): GET /api/cluster/thumbs/:peerId/:remoteId?w=<N>
+//    Looks up the peer, HMAC-signs a fetch to its endpoint above, streams
+//    the response back. On peer-offline / non-2xx, returns a 1×1
+//    transparent PNG with a short Cache-Control so the gallery doesn't
+//    spam the console with 404s while a peer is briefly unreachable.
+
+// Peer-to-peer side. Sits under a different prefix (`peer-thumbs`) than
+// the cookie-auth proxy (`thumbs`) so the public-path auth middleware
+// can prefix-match the HMAC bucket without accidentally exempting the
+// cookie route. See PUBLIC_PATH_PREFIXES wiring elsewhere.
+app.get('/api/cluster/peer-thumbs/:remoteId', async (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    try {
+        const id = parseInt(req.params.remoteId, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).type('text/plain').send('Bad id');
+        }
+        const thumb = await getOrCreateThumb(id, req.query.w);
+        if (!thumb) return res.status(404).type('text/plain').send('No thumb');
+        res.setHeader('Content-Type', 'image/webp');
+        res.setHeader('Cache-Control', 'private, no-store');
+        if (Buffer.isBuffer(thumb)) return res.send(thumb);
+        if (typeof thumb === 'string') return res.sendFile(thumb);
+        return res.send(thumb);
+    } catch (e) {
+        recordClusterAudit({
+            kind: 'thumb',
+            ok: false,
+            peerId: v.peerId || null,
+            detail: `peer-thumb ${req.params.remoteId}: ${e?.message || String(e)}`,
+        });
+        res.status(500).type('text/plain').send('Internal error');
+    }
+});
+
+// 1×1 transparent PNG — placeholder when a peer is offline / errored. The
+// alternative would be a 502 which the SPA <img> would render as a broken
+// glyph; this keeps the gallery layout stable and adds a short cache so
+// we don't hammer the offline peer.
+const _PEER_THUMB_PLACEHOLDER = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64',
+);
+
+function _sendPeerThumbPlaceholder(res) {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.send(_PEER_THUMB_PLACEHOLDER);
+}
+
+// Browser-side (cookie auth — admin only). Two-param form.
+app.get('/api/cluster/thumbs/:peerId/:remoteId', async (req, res) => {
+    try {
+        const peer = getPeer(req.params.peerId);
+        if (!peer) return _sendPeerThumbPlaceholder(res);
+        const id = parseInt(req.params.remoteId, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).type('text/plain').send('Bad id');
+        }
+        const w = req.query.w ? `?w=${encodeURIComponent(req.query.w)}` : '';
+        const path0 = `/api/cluster/peer-thumbs/${id}${w}`;
+        const headers = (await import('../core/cluster/hmac.js')).signRequest({
+            method: 'GET',
+            path: path0,
+            targetPeerId: peer.peerId,
+        });
+        let upstream;
+        try {
+            upstream = await fetch(peer.url + path0, { method: 'GET', headers });
+        } catch {
+            return _sendPeerThumbPlaceholder(res);
+        }
+        if (!upstream.ok) {
+            return _sendPeerThumbPlaceholder(res);
+        }
+        const ct = upstream.headers.get('content-type') || 'image/webp';
+        res.setHeader('Content-Type', ct);
+        // Browser HTTP cache only — content-addressed by (peer, remoteId, w),
+        // so a stale cache hit is impossible during the URL's lifetime.
+        res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.send(buf);
+    } catch (e) {
+        recordClusterAudit({
+            kind: 'thumb',
+            ok: false,
+            peerId: req.params.peerId,
+            detail: `proxy ${req.params.remoteId}: ${e?.message || String(e)}`,
+        });
+        _sendPeerThumbPlaceholder(res);
+    }
+});
+
 // ---- Phase 4: direct stream mode (sign-url minting) -------------------
 
 app.post('/api/cluster/sign-url', async (req, res, next) => {
@@ -7854,6 +8180,35 @@ app.use('/files', async (req, res, next) => {
                 }
             }
             return streamFromPeer(req, res, ref.peerId, ownerRow.file_path);
+        }
+
+        // Federated gallery direct-peer path: SPA constructs
+        //   `/files/${peerSidePath}?inline=1&peer=${peerId}`
+        // for tiles whose source row lives in `peer_downloads`. There's no
+        // `_clusterref/` ghost row to dispatch on — the SPA tells us which
+        // peer to proxy to via the query param. Same direct vs proxy fork
+        // as the _clusterref branch above. Defence: only honour ?peer when
+        // the id matches a paired peer (revoked/unknown ids 410 / 502).
+        // Guest sessions are NOT allowed to fetch peer files — federation
+        // is admin-gated; without this guard a guest could exfiltrate any
+        // peer's catalog by guessing peer ids + paths.
+        if (req.query.peer) {
+            if (req.role === 'guest') return res.status(403).send('Forbidden');
+            const peerIdParam = String(req.query.peer);
+            const peer = getPeer(peerIdParam);
+            if (!peer) return res.status(410).send('Peer revoked');
+            const peerSidePath = reqPath; // the SPA already encoded peer-side fullPath
+            if (peer.streamMode === 'direct') {
+                try {
+                    const url = await requestSignedShareUrl(peerIdParam, peerSidePath);
+                    return res.redirect(302, url);
+                } catch (e) {
+                    return res
+                        .status(502)
+                        .json({ error: 'storage_offline', message: e?.message || String(e) });
+                }
+            }
+            return streamFromPeer(req, res, peerIdParam, peerSidePath);
         }
 
         const r = await safeResolveDownload(reqPath);

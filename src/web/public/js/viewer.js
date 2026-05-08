@@ -2,6 +2,7 @@ import { state } from './store.js';
 import { formatDate, showToast } from './utils.js';
 import { attachSwipe, attachDragDismiss } from './gestures.js';
 import { tf as i18nTf, t as i18nT } from './i18n.js';
+import { getMediaUrl } from './media-url.js';
 
 // ============================================================================
 // Media Viewer
@@ -150,7 +151,9 @@ export function openMediaViewer(index) {
     const imageContainer = document.getElementById('image-container');
     const image = document.getElementById('modal-image');
     const videoContainer = document.getElementById('video-container');
-    const url = `/files/${encodeURIComponent(file.fullPath)}?inline=1`;
+    // Federated rows (file.peer_id !== 'self') get the cluster-proxy
+    // form `/files/<peerSidePath>?inline=1&peer=<peerId>`; see media-url.js.
+    const url = getMediaUrl(file);
 
     // Reset views.
     imageContainer.classList.add('hidden');
@@ -201,7 +204,9 @@ function prefetchNeighbor(nextIndex) {
         }
         return;
     }
-    const href = `/files/${encodeURIComponent(next.fullPath)}?inline=1`;
+    // Same federated routing as the active-file URL. Prefetch link
+    // tag's `.href` may be absolute, so endsWith() is the right comparator.
+    const href = getMediaUrl(next);
     if (_prefetchLink && _prefetchLink.href.endsWith(href)) return;
     if (!_prefetchLink) {
         _prefetchLink = document.createElement('link');

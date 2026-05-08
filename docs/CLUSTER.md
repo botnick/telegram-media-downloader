@@ -101,6 +101,43 @@ Replication writes to `config.cluster.replicate.<key>`; the existing
 `config_changed` events to peers, so toggling the segmented control
 takes effect immediately without a restart.
 
+## Federated gallery (Layer 1, v2.12+)
+
+The main dashboard gallery is **opt-in federated**. By default each peer's
+"All Media" / per-group view / search shows only that peer's files. A
+small **scope chip** in the gallery header (admin-only, hidden when no
+peers are paired) flips it to:
+
+- **This peer** — local-only (default).
+- **All peers** — UNIONs every paired peer's `peer_downloads`.
+- **Per-peer** — narrows to a single peer's files.
+
+State persists in `localStorage['tgdl-gallery-scope']`. Federated tiles
+carry a "from {peer}" badge in grid mode (and a subtitle suffix in list
+mode). The sidebar Downloaded Groups list also merges peer-owned groups
+with the same badge; clicking a foreign group switches the scope to that
+peer and opens the per-group view filtered to its files.
+
+### Peer media routing
+
+Peer-owned tiles route through the existing cluster bridge:
+
+- **Thumbnails** → `/api/cluster/thumbs/:peerId/:remoteId?w=<N>` (cookie-
+  authed browser proxy) → server signs an HMAC request to the peer's
+  `/api/cluster/peer-thumbs/:remoteId` endpoint and streams the response.
+  Offline peers return a 1×1 placeholder PNG with a 60 s cache so the
+  console isn't spammed with 404s.
+- **Full media** → `/files/<peerSidePath>?inline=1&peer=<peerId>`. The
+  same `streamFromPeer` proxy + `requestSignedShareUrl` direct-mode fork
+  the existing `_clusterref/` ghost rows already use.
+
+### Backward compatibility
+
+Every existing endpoint stays byte-identical for the local-only default —
+the federation params (`?include=peers|all` and `?peer=<id>`) are opt-in.
+Guest sessions are forced back to `local` server-side; federation is
+admin-only on every surface.
+
 ## How it actually works
 
 ### Catalog sync

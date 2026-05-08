@@ -1018,6 +1018,279 @@ export function searchDownloads(query, opts = {}) {
     return { files: rows, total };
 }
 
+// ---------------------------------------------------------------------------
+// Federated gallery helpers — same pagination + filter contract as the
+// local-only versions above, but UNION ALL with `peer_downloads`. Each row
+// carries a `peer_id` column (`'self'` for local, peer's id for federated)
+// + a `peer_name` column (always NULL — server.js stamps it after the
+// query by joining the in-memory peers map). Used by /api/downloads/all,
+// /api/downloads/:groupId, /api/downloads/search when the caller passes
+// ?include=peers or ?include=all. The local-only entry points still call
+// the original helpers so non-cluster installs see no behaviour change.
+//
+// Column alignment notes:
+//   - peer_downloads.remote_id is aliased to `id` so client-side row
+//     handling can stay column-symmetric. Note: peer-side ids COLLIDE
+//     with local ids (both autoincrement) — the SPA must check `peer_id`
+//     before treating `id` as a local-row reference.
+//   - peer_downloads has no `pinned` column → aliased to `0`. Federated
+//     rows therefore never satisfy `pinnedOnly`, which is intentional —
+//     peer files belong to the peer, this peer can't pin them locally.
+//   - downloads.created_at is a DATETIME string ('YYYY-MM-DD HH:MM:SS');
+//     peer_downloads.created_at is INTEGER unix-ms. Both are coerced to
+//     unix-ms via a `sort_ts` column in the UNION so ORDER BY works
+//     across both sides without parsing in JS.
+// ---------------------------------------------------------------------------
+
+const _FEDERATED_TYPE_MAP = {
+    images: 'photo',
+    videos: 'video',
+    documents: 'document',
+    audio: 'audio',
+};
+
+// Column lists shared by every federated SELECT. Kept in module scope so
+// the four helpers below stay small and readable.
+const _FED_COLS_LOCAL = `
+    'self' AS peer_id,
+    id, group_id, group_name, message_id, file_name, file_size, file_type,
+    file_path, file_hash, status, created_at, nsfw_score, phash,
+    COALESCE(pinned, 0) AS pinned,
+    CAST(strftime('%s', created_at) AS INTEGER) * 1000 AS sort_ts
+`;
+const _FED_COLS_PEER = `
+    peer_id,
+    remote_id AS id, group_id, group_name, message_id, file_name, file_size, file_type,
+    file_path, file_hash, status, created_at, nsfw_score, phash,
+    0 AS pinned,
+    CAST(created_at AS INTEGER) AS sort_ts
+`;
+
+function _stripSortTs(rows) {
+    // Drop the sort_ts column we used only for the cross-side ORDER BY.
+    // Mutates in place — callers already consume the row objects directly.
+    for (const r of rows) delete r.sort_ts;
+    return rows;
+}
+
+/**
+ * Federated equivalent of getAllDownloads — All Media gallery, optionally
+ * widened to include peer_downloads.
+ *
+ * @param {number} limit
+ * @param {number} offset
+ * @param {string} type   'all' | 'images' | 'videos' | 'documents' | 'audio'
+ * @param {object} [opts]
+ * @param {boolean} [opts.pinnedOnly]
+ * @param {boolean} [opts.pinnedFirst]
+ * @param {'local'|'peers'|'all'} [opts.include='local']  scope toggle
+ * @returns {{ files: Array, total: number }}
+ */
+export function getAllDownloadsFederated(limit = 50, offset = 0, type = 'all', opts = {}) {
+    const include = opts.include === 'peers' || opts.include === 'all' ? opts.include : 'local';
+    if (include === 'local') {
+        return getAllDownloads(limit, offset, type, opts);
+    }
+    const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 50));
+    const off = Math.max(0, parseInt(offset, 10) || 0);
+    const typeFilter =
+        type !== 'all' && _FEDERATED_TYPE_MAP[type] ? _FEDERATED_TYPE_MAP[type] : null;
+
+    // Build the WHERE clause for both sides. Pinned filter only applies
+    // to the local side because peer rows are always pinned=0.
+    const localWhereParts = [];
+    const peerWhereParts = [];
+    const localParams = [];
+    const peerParams = [];
+    if (typeFilter) {
+        localWhereParts.push('file_type = ?');
+        peerWhereParts.push('file_type = ?');
+        localParams.push(typeFilter);
+        peerParams.push(typeFilter);
+    }
+    if (opts.pinnedOnly) {
+        localWhereParts.push('COALESCE(pinned, 0) = 1');
+        // Peer side excluded entirely under pinnedOnly — peer files can't
+        // be locally pinned. Drop a never-true predicate to short-circuit.
+        peerWhereParts.push('0 = 1');
+    }
+    const localWhere = localWhereParts.length ? ' WHERE ' + localWhereParts.join(' AND ') : '';
+    const peerWhere = peerWhereParts.length ? ' WHERE ' + peerWhereParts.join(' AND ') : '';
+
+    // pinnedFirst: COALESCE on the local side, peer side always 0 — net
+    // effect is that local pinned float to the top of the merged page.
+    const orderBy = opts.pinnedFirst
+        ? 'pinned DESC, sort_ts DESC, id DESC'
+        : 'sort_ts DESC, id DESC';
+
+    const sql = `
+        SELECT * FROM (
+            SELECT ${_FED_COLS_LOCAL} FROM downloads${localWhere}
+            UNION ALL
+            SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
+        ) ORDER BY ${orderBy} LIMIT ? OFFSET ?
+    `;
+    const countSql = `
+        SELECT
+            (SELECT COUNT(*) FROM downloads${localWhere}) +
+            (SELECT COUNT(*) FROM peer_downloads${peerWhere}) AS total
+    `;
+    const rows = getDb()
+        .prepare(sql)
+        .all(...localParams, ...peerParams, lim, off);
+    const total = getDb()
+        .prepare(countSql)
+        .get(...localParams, ...peerParams).total;
+    return { files: _stripSortTs(rows), total };
+}
+
+/**
+ * Federated per-group view — same contract as getDownloads, plus include.
+ */
+export function getDownloadsForGroupFederated(
+    groupId,
+    limit = 50,
+    offset = 0,
+    type = 'all',
+    opts = {},
+) {
+    const include = opts.include === 'peers' || opts.include === 'all' ? opts.include : 'local';
+    if (include === 'local') {
+        return getDownloads(groupId, limit, offset, type, opts);
+    }
+    const lim = Math.max(1, Math.min(500, parseInt(limit, 10) || 50));
+    const off = Math.max(0, parseInt(offset, 10) || 0);
+    const typeFilter =
+        type !== 'all' && _FEDERATED_TYPE_MAP[type] ? _FEDERATED_TYPE_MAP[type] : null;
+    const gid = String(groupId);
+
+    const localWhereParts = ['group_id = ?'];
+    const peerWhereParts = ['group_id = ?'];
+    const localParams = [gid];
+    const peerParams = [gid];
+    if (typeFilter) {
+        localWhereParts.push('file_type = ?');
+        peerWhereParts.push('file_type = ?');
+        localParams.push(typeFilter);
+        peerParams.push(typeFilter);
+    }
+    if (opts.pinnedOnly) {
+        localWhereParts.push('COALESCE(pinned, 0) = 1');
+        peerWhereParts.push('0 = 1');
+    }
+    // Optional peerId filter — when caller wants only one peer's files for
+    // the group (sidebar foreign-group click).
+    if (opts.peerId) {
+        peerWhereParts.push('peer_id = ?');
+        peerParams.push(String(opts.peerId));
+        // Also drop the local side entirely — caller wants only that peer.
+        localWhereParts.push('0 = 1');
+    }
+    const localWhere = ' WHERE ' + localWhereParts.join(' AND ');
+    const peerWhere = ' WHERE ' + peerWhereParts.join(' AND ');
+    const orderBy = opts.pinnedFirst
+        ? 'pinned DESC, sort_ts DESC, id DESC'
+        : 'sort_ts DESC, id DESC';
+
+    const sql = `
+        SELECT * FROM (
+            SELECT ${_FED_COLS_LOCAL} FROM downloads${localWhere}
+            UNION ALL
+            SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
+        ) ORDER BY ${orderBy} LIMIT ? OFFSET ?
+    `;
+    const countSql = `
+        SELECT
+            (SELECT COUNT(*) FROM downloads${localWhere}) +
+            (SELECT COUNT(*) FROM peer_downloads${peerWhere}) AS total
+    `;
+    const rows = getDb()
+        .prepare(sql)
+        .all(...localParams, ...peerParams, lim, off);
+    const total = getDb()
+        .prepare(countSql)
+        .get(...localParams, ...peerParams).total;
+    return { files: _stripSortTs(rows), total };
+}
+
+/**
+ * Federated full-text-ish search — same LIKE pattern as searchDownloads,
+ * UNIONed with peer_downloads.
+ */
+export function searchDownloadsFederated(query, opts = {}) {
+    const include = opts.include === 'peers' || opts.include === 'all' ? opts.include : 'local';
+    if (include === 'local') {
+        return searchDownloads(query, opts);
+    }
+    const lim = Math.max(1, Math.min(500, parseInt(opts.limit, 10) || 50));
+    const off = Math.max(0, parseInt(opts.offset, 10) || 0);
+    const q = `%${String(query || '').trim()}%`;
+
+    const localWhereParts = ['(file_name LIKE ? OR group_name LIKE ?)'];
+    const peerWhereParts = ['(file_name LIKE ? OR group_name LIKE ?)'];
+    const localParams = [q, q];
+    const peerParams = [q, q];
+    if (opts.groupId) {
+        const gid = String(opts.groupId);
+        localWhereParts.push('group_id = ?');
+        peerWhereParts.push('group_id = ?');
+        localParams.push(gid);
+        peerParams.push(gid);
+    }
+    const localWhere = ' WHERE ' + localWhereParts.join(' AND ');
+    const peerWhere = ' WHERE ' + peerWhereParts.join(' AND ');
+
+    const sql = `
+        SELECT * FROM (
+            SELECT ${_FED_COLS_LOCAL} FROM downloads${localWhere}
+            UNION ALL
+            SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
+        ) ORDER BY sort_ts DESC, id DESC LIMIT ? OFFSET ?
+    `;
+    const countSql = `
+        SELECT
+            (SELECT COUNT(*) FROM downloads${localWhere}) +
+            (SELECT COUNT(*) FROM peer_downloads${peerWhere}) AS total
+    `;
+    const rows = getDb()
+        .prepare(sql)
+        .all(...localParams, ...peerParams, lim, off);
+    const total = getDb()
+        .prepare(countSql)
+        .get(...localParams, ...peerParams).total;
+    return { files: _stripSortTs(rows), total };
+}
+
+/**
+ * Federated stats — local totals plus per-peer file counts + total size.
+ * Used by /api/stats so the footer can render "Files: 1234 + 5678 peers"
+ * when the gallery scope chip is set to "All peers".
+ *
+ * @returns {{
+ *   totalFiles: number,
+ *   totalSize: number,
+ *   peerStats: Array<{peerId: string, totalFiles: number, totalSize: number}>
+ * }}
+ */
+export function getStatsFederated() {
+    const local = getStats();
+    const peerRows = getDb()
+        .prepare(
+            `SELECT peer_id, COUNT(*) AS total_files, COALESCE(SUM(file_size), 0) AS total_size
+               FROM peer_downloads
+              GROUP BY peer_id`,
+        )
+        .all();
+    return {
+        ...local,
+        peerStats: peerRows.map((r) => ({
+            peerId: r.peer_id,
+            totalFiles: Number(r.total_files) || 0,
+            totalSize: Number(r.total_size) || 0,
+        })),
+    };
+}
+
 /**
  * Toggle / set the `pinned` flag on a download row. Pinned rows are
  * protected from auto-rotation sweeps (see disk-rotator.js) AND surface

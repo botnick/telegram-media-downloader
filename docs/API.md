@@ -51,7 +51,7 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET`  | `/api/stats`                  | `{totalFiles, totalSize, diskUsage, telegramConnected,…}`. Also broadcast over WS as `stats_push` every 30 s. |
+| `GET`  | `/api/stats`                  | `{totalFiles, totalSize, diskUsage, telegramConnected, peerStats:[{peerId, peerName, online, totalFiles, totalSize, totalSizeFormatted}], …}`. Also broadcast over WS as `stats_push` every 30 s. `peerStats` is `[]` for non-cluster installs and for guest sessions. |
 | `GET`  | `/api/dialogs`                | Active + archived chats; DMs gated by `config.allowDmDownloads`. |
 | `GET`  | `/api/groups`                 | Configured groups with photo URLs. |
 | `PUT`  | `/api/groups/:id`             | Update group config (filters, autoForward, topics, accounts, **cluster routing** — `ownerPeerId` / `backupPeerId`). Auto-spawns a first-add backfill when the group is newly enabled and has no rows yet. |
@@ -65,9 +65,9 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | Method | Path | Notes |
 |---|---|---|
 | `GET`    | `/api/downloads`                    | Aggregate per group. |
-| `GET`    | `/api/downloads/all`                | Cross-group All-Media list, paginated. `?page=&limit=&type=`. |
-| `GET`    | `/api/downloads/:groupId`           | Paginated rows for one group. `?type=images\|videos\|documents\|audio`. |
-| `GET`    | `/api/downloads/search`             | `?q=…&page=&limit=&groupId=`. |
+| `GET`    | `/api/downloads/all`                | Cross-group All-Media list, paginated. `?page=&limit=&type=`. **`?include=local\|peers\|all`** (admin-only) UNIONs `peer_downloads` into the result; **`?peerId=<id>`** narrows to one peer. Each row carries `peer_id` (`'self'` or peer's id) + `peer_name`. Default `local` is backward-compatible. |
+| `GET`    | `/api/downloads/:groupId`           | Paginated rows for one group. `?type=images\|videos\|documents\|audio`. Same `?include=` / `?peerId=` federation params as `/all`. |
+| `GET`    | `/api/downloads/search`             | `?q=…&page=&limit=&groupId=`. Same `?include=` federation param. |
 | `POST`   | `/api/downloads/bulk-delete`        | `{ids?, paths?}`. Also purges thumbnail cache for every removed id. |
 | `DELETE` | `/api/file?path=…`                  | Single file. |
 | `DELETE` | `/api/purge/all`                    | Factory reset. |
@@ -92,6 +92,8 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/api/thumbs/:id`           | `?w=120\|200\|240\|320\|480` — server-generated WebP. Image source → sharp; video source → ffmpeg first-frame. `Cache-Control: public, max-age=86400, immutable`. Allowed for guest sessions. |
+| `GET` | `/api/cluster/peer-thumbs/:remoteId`        | HMAC-only peer-to-peer thumb handler. Sibling of `/api/thumbs/:id` for federation. |
+| `GET` | `/api/cluster/thumbs/:peerId/:remoteId`     | Cookie-authed browser proxy that signs a request to peer's `peer-thumbs` and streams the response. Returns a 1×1 placeholder PNG with `Cache-Control: public, max-age=60` when the peer is offline. |
 
 ## Share links
 
@@ -161,7 +163,7 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET` | `/files/<path>`     | Serves files under `data/downloads/`. Default `Content-Disposition: attachment`; pass `?inline=1` for inline media (used by the SPA viewer). Tolerates the legacy `data/downloads/` prefix. |
+| `GET` | `/files/<path>`     | Serves files under `data/downloads/`. Default `Content-Disposition: attachment`; pass `?inline=1` for inline media (used by the SPA viewer). Tolerates the legacy `data/downloads/` prefix. **`?peer=<id>`** (admin-only) routes through `streamFromPeer()` to fetch the file from a paired peer (proxy mode) or 302-redirects to a signed share URL (direct stream mode). Guest sessions are 403'd when `?peer` is present. |
 | `GET` | `/photos/<id>.jpg`  | Cached profile photos. |
 | `GET` | `/share/<linkId>`   | Public share-link route — see Share links above. |
 
