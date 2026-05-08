@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.1] — 2026-05-08
+
+Maintenance hub UI polish — the Cluster page now follows the same layout standard as Duplicates / Thumbnails, the sidebar reads as one tight column instead of an oversized stack, and the standalone account-pairing screen finally matches the dashboard theme.
+
+### Fixed
+- **Maintenance tab strip hidden on Cluster + Updates pages.** `body[data-page="maintenance-cluster"]` and `maintenance-updates` were missing from the CSS selector that displays `#maintenance-tabs`, so the strip silently disappeared on those two routes. Both selectors added; tabs now render across every per-feature maintenance subpage.
+
+### Changed — Cluster page
+- Header restructured to the standard maintenance pattern: title + subtitle on the left, primary actions (`Run sweep`, `Add peer`) on the right, **stats grid** below (Peers / Online / Conflicts / Last sweep) populated from `_peers` + `/api/cluster/conflicts`.
+- **Identity card redesigned** as a profile block — avatar + display name + "This peer" pill, inline edit (pencil → editor row → Save / Cancel), dedicated Peer ID block with Copy, dedicated Cluster token block with Show / Copy / Pairing code / Use cluster's token / Rotate. Every existing element ID preserved so the existing JS wiring keeps working unchanged.
+
+### Changed — Sidebar
+- Nav rows compacted (`px-3 py-1.5` + `text-base` icons + `text-sm` labels, was `p-3` + `text-xl`); the column reads tighter without losing tap targets.
+- "All Media" tile shrunk to a 9×9 avatar + `text-sm` / `text-[11px]` lines so it sits in proportion with the new nav rows.
+- Internal dividers softened (`border-tg-border` → `border-tg-border/40`); the bordered chrome no longer competes with content.
+- Footer disk + files line tightened (`text-[11px]` + `tabular-nums`); Sign-out button switched from solid red to a quiet red text on hover-only red bg.
+
+### Changed — add-account.html
+- Replaced the generic `bg-gray-800` / `border-gray-600` Tailwind utilities with the same `--tg-*` token system + `tailwind.config.tg` palette `login.html` already uses. Adds the radial-glow background, brand mark, IBM Plex Sans typography, theme-aware light/dark variants, and a numbered step indicator with active / done states. Pairing flow logic untouched.
+
+### Internal
+- New i18n keys: `cluster.stats.{peers,online,conflicts,last_sweep}`, `cluster.sweep.never`, `cluster.identity.{this_peer,subtitle,name.placeholder,name.edit,id.copied}`, plus the previously-missing `common.copy`. Both `en.json` and `th.json` updated; drift checker clean.
+- SW bumped `v210` → `v2101` so the new shell + asset caches roll over on first load after the update.
+
 ## [2.10.0] — 2026-05-08
 
 A foundation release. The headline is **cluster mode** — federate two or more dashboard instances into a single library with real-time sync, automatic failover, and LAN auto-discovery — but the v2.10 ship list also covers an auto-update overhaul, an AI subsystem that survives broken native deps, a re-auth modal so session expiry no longer kicks you out of the SPA, and a maintenance hub polish across every fire-and-forget tool.

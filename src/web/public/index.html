@@ -156,7 +156,7 @@
             class="fixed md:relative w-[min(85vw,18rem)] sm:w-80 bg-tg-sidebar border-r border-tg-border flex flex-col h-full z-50 sidebar-mobile md:transform-none">
 
             <!-- Header -->
-            <div class="p-3 flex items-center gap-3 border-b border-tg-border">
+            <div class="p-3 flex items-center gap-3 border-b border-tg-border/40">
                 <button id="sidebar-close"
                     class="md:hidden w-10 h-10 flex items-center justify-center rounded-full hover:bg-tg-hover">
                     <i class="ri-arrow-left-line text-xl text-tg-textSecondary"></i>
@@ -172,26 +172,26 @@
                  redundant entry-point to the same #/viewer page (the
                  "All Media" card below + the bottom-nav "Library" item
                  already cover it). -->
-            <nav class="border-b border-tg-border">
-                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="groups" data-admin-only
+            <nav class="border-b border-tg-border/40 py-1">
+                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="groups" data-admin-only
                     onclick="navigateTo('groups')">
-                    <i class="ri-group-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text" data-i18n="nav.groups">Groups</span>
+                    <i class="ri-group-line text-base text-tg-textSecondary"></i>
+                    <span class="text-tg-text text-sm" data-i18n="nav.groups">Groups</span>
                 </div>
-                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="backfill" data-admin-only
+                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="backfill" data-admin-only
                     onclick="navigateTo('backfill')">
-                    <i class="ri-history-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text" data-i18n="nav.backfill">Backfill</span>
+                    <i class="ri-history-line text-base text-tg-textSecondary"></i>
+                    <span class="text-tg-text text-sm" data-i18n="nav.backfill">Backfill</span>
                 </div>
-                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="queue" data-admin-only
+                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="queue" data-admin-only
                     onclick="navigateTo('queue')">
-                    <i class="ri-download-cloud-2-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text" data-i18n="nav.queue">Queue</span>
+                    <i class="ri-download-cloud-2-line text-base text-tg-textSecondary"></i>
+                    <span class="text-tg-text text-sm" data-i18n="nav.queue">Queue</span>
                 </div>
-                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="settings"
+                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="settings"
                     onclick="navigateTo('settings')">
-                    <i class="ri-settings-3-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text" data-i18n="nav.settings">Settings</span>
+                    <i class="ri-settings-3-line text-base text-tg-textSecondary"></i>
+                    <span class="text-tg-text text-sm" data-i18n="nav.settings">Settings</span>
                 </div>
                 <!-- Maintenance — single sidebar row that opens a hub
                      page with a card grid for every tool. v2.6
@@ -199,10 +199,10 @@
                      mobile + desktop, so they collapse into one entry.
                      Power users keep the deep links —
                      /maintenance/duplicates etc. still resolve directly. -->
-                <div class="nav-item flex items-center gap-3 p-3 cursor-pointer hover:bg-tg-hover" data-page="maintenance" data-admin-only
+                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="maintenance" data-admin-only
                     onclick="navigateTo('maintenance')">
-                    <i class="ri-tools-line text-xl text-tg-textSecondary"></i>
-                    <span class="text-tg-text" data-i18n="nav.maintenance.section">Maintenance</span>
+                    <i class="ri-tools-line text-base text-tg-textSecondary"></i>
+                    <span class="text-tg-text text-sm" data-i18n="nav.maintenance.section">Maintenance</span>
                 </div>
                 <!-- Hidden anchors so existing inline-onclick deep-links
                      (settings.js maint cards) keep working without code
@@ -223,15 +223,15 @@
             </nav>
 
             <!-- All Media Button -->
-            <div class="p-2 border-b border-tg-border">
-                <div class="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-tg-hover transition-colors"
+            <div class="p-1.5 border-b border-tg-border/40">
+                <div class="flex items-center gap-2.5 px-2 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors"
                     onclick="showAllMedia()">
-                    <div class="tg-avatar tg-avatar-4 w-12 h-12 text-xl flex-shrink-0">
+                    <div class="tg-avatar tg-avatar-4 w-9 h-9 text-base flex-shrink-0 rounded-lg">
                         <i class="ri-gallery-fill"></i>
                     </div>
                     <div class="min-w-0 flex-1">
-                        <h3 class="font-medium text-tg-text text-[15px]" data-i18n="sidebar.all_media">All Media</h3>
-                        <p id="all-media-count" class="text-[13px] text-tg-textSecondary" data-i18n="sidebar.all_media_sub">View all files</p>
+                        <h3 class="font-medium text-tg-text text-sm" data-i18n="sidebar.all_media">All Media</h3>
+                        <p id="all-media-count" class="text-[11px] text-tg-textSecondary" data-i18n="sidebar.all_media_sub">View all files</p>
                     </div>
                 </div>
             </div>
@@ -269,24 +269,24 @@
                  guard against fat-finger taps; same endpoint as the deeper
                  "Settings → Privacy & Net → Security" button so both surfaces
                  drop the same session token. -->
-            <div class="border-t border-tg-border bg-tg-bg">
-                <div class="px-3 pt-3 pb-2 flex items-center justify-between text-sm gap-3">
-                    <span class="flex items-center gap-1.5 min-w-0">
-                        <i class="ri-hard-drive-2-line text-tg-textSecondary" aria-hidden="true"></i>
+            <div class="border-t border-tg-border/40 bg-tg-bg">
+                <div class="px-3 py-2 flex items-center justify-between text-[11px] gap-2">
+                    <span class="flex items-center gap-1 min-w-0">
+                        <i class="ri-hard-drive-2-line text-tg-textSecondary text-sm" aria-hidden="true"></i>
                         <span class="text-tg-textSecondary" data-i18n="sidebar.disk">Disk</span>
-                        <span id="disk-usage" class="text-tg-text truncate">--</span>
+                        <span id="disk-usage" class="text-tg-text tabular-nums truncate">--</span>
                     </span>
-                    <span class="flex items-center gap-1.5 min-w-0">
-                        <i class="ri-file-list-2-line text-tg-textSecondary" aria-hidden="true"></i>
+                    <span class="flex items-center gap-1 min-w-0">
+                        <i class="ri-file-list-2-line text-tg-textSecondary text-sm" aria-hidden="true"></i>
                         <span class="text-tg-textSecondary" data-i18n="sidebar.files">Files</span>
-                        <span id="total-files" class="text-tg-text truncate">--</span>
+                        <span id="total-files" class="text-tg-text tabular-nums truncate">--</span>
                     </span>
                 </div>
                 <button id="sidebar-logout-btn" type="button"
-                    class="w-full px-3 py-2.5 flex items-center justify-center gap-2 text-sm font-semibold text-white bg-tg-red/90 hover:bg-tg-red transition-colors border-t border-tg-red/30"
+                    class="w-full px-3 py-1.5 flex items-center justify-center gap-1.5 text-xs font-medium text-tg-red hover:text-white hover:bg-tg-red/80 transition-colors border-t border-tg-border/30"
                     data-i18n-aria-label="sidebar.signout" aria-label="Sign out of dashboard"
                     data-i18n-title="sidebar.signout" title="Sign out of dashboard">
-                    <i class="ri-logout-box-line text-base" aria-hidden="true"></i>
+                    <i class="ri-logout-box-line text-sm" aria-hidden="true"></i>
                     <span data-i18n="sidebar.signout">Sign out</span>
                 </button>
             </div>
@@ -2405,73 +2405,168 @@
                 <div id="page-maintenance-cluster" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.cluster.page_title"
                      data-page-subtitle-key="maintenance.cluster.subtitle">
-                    <header class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <h2 class="text-tg-text text-base font-semibold" data-i18n="cluster.tab.title">Cluster</h2>
-                        <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="cluster.tab.subtitle">Federate multiple instances. Files, downloads, and dedup span every paired peer.</p>
-                    </header>
+                    <!-- Header card — matches duplicates/thumbs pattern: title + subtitle on the left,
+                         primary actions (Add peer / Run sweep) on the right, stats strip below. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="cluster.tab.title">Cluster</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="cluster.tab.subtitle">Federate multiple instances. Files, downloads, and dedup span every paired peer.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="cluster-sweep-run" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="cluster.sweep.subtitle"
+                                        title="Finds files duplicated across peers (same hash + size).">
+                                    <i class="ri-search-line"></i><span data-i18n="cluster.sweep.run">Run sweep</span>
+                                </button>
+                                <button id="cluster-add-peer-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-add-line"></i><span data-i18n="cluster.peer.add">Add peer</span>
+                                </button>
+                            </div>
+                        </div>
 
-                    <!-- Identity card -->
+                        <!-- Stats strip — peer count, online count, conflicts pending, library size.
+                             Populated by maintenance-cluster.js after _loadPeers / _loadConflicts. -->
+                        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.stats.peers">Peers</div>
+                                <div id="cluster-stat-peers" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.stats.online">Online</div>
+                                <div id="cluster-stat-online" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.stats.conflicts">Conflicts</div>
+                                <div id="cluster-stat-conflicts" class="text-xl font-semibold text-tg-orange tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.stats.last_sweep">Last sweep</div>
+                                <div id="cluster-stat-sweep" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                        </div>
+                        <div id="cluster-sweep-state" class="hidden mt-2 text-[11px] text-tg-textSecondary text-center"></div>
+                    </section>
+
+                    <!-- This peer — identity card. Layout: stacked rows with a fixed-width
+                         label gutter so values + buttons align across rows. -->
+                    <!-- This-peer identity. Card built around a profile header
+                         (avatar + display name + status pill) with the technical
+                         bits (peer ID + cluster token) tucked into compact rows
+                         underneath so non-technical operators can read the page
+                         top-down: who am I → what's my secret. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3" id="cluster-identity-card">
-                        <h3 class="text-tg-text text-sm font-semibold mb-2" data-i18n="cluster.identity.title">This peer</h3>
-                        <div class="space-y-2 text-sm">
-                            <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-                                <label class="text-xs text-tg-textSecondary w-32 shrink-0" data-i18n="cluster.identity.id">Peer ID</label>
-                                <code id="cluster-self-id" class="text-xs bg-tg-bg/50 px-2 py-1 rounded select-all break-all">—</code>
+                        <!-- Profile header -->
+                        <div class="flex items-start gap-3 mb-4">
+                            <div class="tg-avatar tg-avatar-3 w-12 h-12 text-2xl flex-shrink-0 rounded-xl flex items-center justify-center">
+                                <i class="ri-server-line"></i>
                             </div>
-                            <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-                                <label class="text-xs text-tg-textSecondary w-32 shrink-0" data-i18n="cluster.identity.name">Display name</label>
-                                <input id="cluster-self-name" type="text" maxlength="64" class="bg-tg-bg/50 px-2 py-1 rounded text-sm flex-1 min-w-0" />
-                                <button id="cluster-self-name-save" class="tg-btn text-xs px-3 py-1.5" data-i18n="cluster.identity.name.save">Save</button>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span id="cluster-self-name-display" class="text-tg-text text-base font-semibold truncate">—</span>
+                                    <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-300">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                                        <span data-i18n="cluster.identity.this_peer">This peer</span>
+                                    </span>
+                                </div>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="cluster.identity.subtitle">Your local instance — visible to paired peers under this name.</p>
                             </div>
-                            <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
-                                <label class="text-xs text-tg-textSecondary w-32 shrink-0 pt-1.5" data-i18n="cluster.identity.token">Cluster token</label>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 flex-wrap">
-                                        <code id="cluster-self-token" class="text-xs bg-tg-bg/50 px-2 py-1 rounded select-all break-all flex-1 min-w-0">••••••••••••••••</code>
-                                        <button id="cluster-token-toggle" class="tg-btn-ghost text-xs px-2 py-1" data-i18n="cluster.identity.token.reveal">Show token</button>
-                                        <button id="cluster-token-copy" class="tg-btn-ghost text-xs px-2 py-1" data-i18n="cluster.identity.token.copy">Copy</button>
-                                        <button id="cluster-token-rotate" class="tg-btn-ghost text-xs px-2 py-1 text-red-300" data-i18n="cluster.identity.token.rotate">Rotate token</button>
-                                        <button id="cluster-token-set" class="tg-btn-ghost text-xs px-2 py-1" data-i18n="cluster.identity.token.set">Use cluster's token</button>
-                                        <button id="cluster-pairing-code-btn" class="tg-btn-ghost text-xs px-2 py-1 text-tg-blue" data-i18n="cluster.pairing_code.issue">Issue pairing code</button>
-                                    </div>
-                                    <p class="text-[11px] text-tg-textSecondary mt-1" data-i18n="cluster.identity.token.help">Both sides of a pairing must hold the same token. Treat it like a password.</p>
+                            <button id="cluster-self-name-edit" type="button"
+                                    class="tg-btn-ghost text-xs px-2 py-1 inline-flex items-center gap-1 shrink-0"
+                                    data-i18n-aria-label="cluster.identity.name.edit" aria-label="Edit display name">
+                                <i class="ri-pencil-line"></i><span data-i18n="cluster.identity.name.edit">Edit</span>
+                            </button>
+                        </div>
+
+                        <!-- Inline name editor — hidden until the Edit button is clicked.
+                             Save commits via PUT /api/cluster/identity, Cancel restores
+                             the previous header view. -->
+                        <div id="cluster-self-name-editor" class="hidden mb-3 flex items-center gap-2">
+                            <input id="cluster-self-name" type="text" maxlength="64"
+                                   class="tg-input text-sm flex-1 min-w-0 py-1.5"
+                                   data-i18n-placeholder="cluster.identity.name.placeholder"
+                                   placeholder="e.g. main, na-east, garage-pi" />
+                            <button id="cluster-self-name-save" class="tg-btn text-xs px-3 py-1.5" data-i18n="cluster.identity.name.save">Save</button>
+                            <button id="cluster-self-name-cancel" class="tg-btn-ghost text-xs px-3 py-1.5" data-i18n="common.cancel">Cancel</button>
+                        </div>
+
+                        <!-- Peer ID row — short label + copyable code chip. -->
+                        <div class="bg-tg-bg/40 rounded-lg p-3 mb-2">
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <span class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.identity.id">Peer ID</span>
+                                <button id="cluster-self-id-copy" type="button"
+                                        class="tg-btn-ghost text-[11px] px-2 py-0.5 inline-flex items-center gap-1"
+                                        data-i18n-title="common.copy" title="Copy">
+                                    <i class="ri-file-copy-line"></i><span data-i18n="common.copy">Copy</span>
+                                </button>
+                            </div>
+                            <code id="cluster-self-id" class="text-xs text-tg-text font-mono break-all select-all">—</code>
+                        </div>
+
+                        <!-- Cluster token row — hidden by default, revealable. The
+                             actions row collapses on small screens so it never
+                             pushes the secret off-card. -->
+                        <div class="bg-tg-bg/40 rounded-lg p-3">
+                            <div class="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                                <span class="text-[10px] uppercase tracking-wide text-tg-textSecondary inline-flex items-center gap-1">
+                                    <i class="ri-key-2-line"></i>
+                                    <span data-i18n="cluster.identity.token">Cluster token</span>
+                                </span>
+                                <div class="flex items-center gap-1 flex-wrap">
+                                    <button id="cluster-token-toggle" class="tg-btn-ghost text-[11px] px-2 py-0.5 inline-flex items-center gap-1">
+                                        <i class="ri-eye-line"></i><span data-i18n="cluster.identity.token.reveal">Show</span>
+                                    </button>
+                                    <button id="cluster-token-copy" class="tg-btn-ghost text-[11px] px-2 py-0.5 inline-flex items-center gap-1">
+                                        <i class="ri-file-copy-line"></i><span data-i18n="cluster.identity.token.copy">Copy</span>
+                                    </button>
                                 </div>
                             </div>
+                            <code id="cluster-self-token" class="block text-xs text-tg-text font-mono break-all select-all py-1">••••••••••••••••••••••••••••••••</code>
+                            <div class="mt-2 pt-2 border-t border-tg-border/30 flex items-center gap-1.5 flex-wrap">
+                                <button id="cluster-pairing-code-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-qr-code-line"></i><span data-i18n="cluster.pairing_code.issue">Issue pairing code</span>
+                                </button>
+                                <button id="cluster-token-set" class="tg-btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5" data-i18n="cluster.identity.token.set">Use cluster's token</button>
+                                <button id="cluster-token-rotate" class="tg-btn-ghost text-xs px-3 py-1.5 inline-flex items-center gap-1.5 text-red-300 ml-auto">
+                                    <i class="ri-refresh-line"></i><span data-i18n="cluster.identity.token.rotate">Rotate</span>
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-tg-textSecondary mt-2" data-i18n="cluster.identity.token.help">Both sides of a pairing must hold the same token. Treat it like a password.</p>
                         </div>
                     </section>
 
-                    <!-- Peers list + add wizard -->
+                    <!-- Paired peers list. The "Add peer" action moved to the header,
+                         so this section only owns the list + empty state. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <div class="flex items-center justify-between mb-2">
-                            <h3 class="text-tg-text text-sm font-semibold" data-i18n="cluster.peers.title">Paired peers</h3>
-                            <button id="cluster-add-peer-btn" class="tg-btn text-xs px-3 py-1.5">
-                                <i class="ri-add-line mr-1"></i><span data-i18n="cluster.peer.add">Add peer</span>
-                            </button>
-                        </div>
-                        <div id="cluster-peers-empty" class="hidden text-center py-6 text-sm text-tg-textSecondary" data-i18n="cluster.peers.empty">No peers yet. Add one to begin federating.</div>
+                        <h3 class="text-tg-text text-sm font-semibold mb-2 flex items-center gap-2">
+                            <i class="ri-links-line text-tg-textSecondary"></i>
+                            <span data-i18n="cluster.peers.title">Paired peers</span>
+                        </h3>
+                        <div id="cluster-peers-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary" data-i18n="cluster.peers.empty">No peers yet. Add one to begin federating.</div>
                         <div id="cluster-peers-list" class="space-y-2"></div>
                     </section>
 
-                    <!-- Sweep + conflicts -->
+                    <!-- Cross-peer dedup conflicts. Sweep button moved to header,
+                         this section shows the result list + summary. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
-                            <h3 class="text-tg-text text-sm font-semibold" data-i18n="cluster.sweep.title">Cross-peer dedup</h3>
-                            <div class="flex gap-2">
-                                <button id="cluster-sweep-run" class="tg-btn-ghost text-xs px-3 py-1.5"><i class="ri-search-line mr-1"></i><span data-i18n="cluster.sweep.run">Run sweep</span></button>
-                                <span id="cluster-sweep-state" class="text-[11px] text-tg-textSecondary self-center"></span>
-                            </div>
-                        </div>
-                        <p class="text-xs text-tg-textSecondary mb-2" data-i18n="cluster.sweep.subtitle">Finds files duplicated across peers (same hash + size). Resolve by picking which copy to keep.</p>
+                        <h3 class="text-tg-text text-sm font-semibold mb-1 flex items-center gap-2">
+                            <i class="ri-file-copy-2-line text-tg-textSecondary"></i>
+                            <span data-i18n="cluster.sweep.title">Cross-peer dedup</span>
+                        </h3>
+                        <p class="text-xs text-tg-textSecondary mb-3" data-i18n="cluster.sweep.subtitle">Finds files duplicated across peers (same hash + size). Resolve by picking which copy to keep.</p>
                         <div id="cluster-sweep-stats" class="text-[11px] text-tg-textSecondary mb-2"></div>
-                        <div id="cluster-conflicts-empty" class="hidden text-center py-4 text-xs text-tg-textSecondary" data-i18n="cluster.sweep.empty">No conflicts found.</div>
+                        <div id="cluster-conflicts-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary" data-i18n="cluster.sweep.empty">No conflicts found.</div>
                         <div id="cluster-conflicts-list" class="space-y-2"></div>
                     </section>
 
                     <!-- Audit log -->
-                    <section class="bg-tg-panel rounded-xl p-3">
-                        <h3 class="text-xs uppercase tracking-wide text-tg-textSecondary mb-2" data-i18n="cluster.audit.title">Recent cluster events</h3>
+                    <section class="bg-tg-panel rounded-xl p-4">
+                        <h3 class="text-tg-text text-sm font-semibold mb-2 flex items-center gap-2">
+                            <i class="ri-history-line text-tg-textSecondary"></i>
+                            <span data-i18n="cluster.audit.title">Recent cluster events</span>
+                        </h3>
                         <div id="cluster-audit-list" class="space-y-1 max-h-[40vh] overflow-y-auto pr-1"></div>
-                        <div id="cluster-audit-empty" class="hidden text-center py-6 text-xs text-tg-textSecondary" data-i18n="cluster.audit.empty">No cluster events yet.</div>
+                        <div id="cluster-audit-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary" data-i18n="cluster.audit.empty">No cluster events yet.</div>
                     </section>
                 </div>
 

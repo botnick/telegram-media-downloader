@@ -23,6 +23,7 @@ let _pageWired = false;
 let _peers = [];
 let _identity = null;
 let _tokenShown = false;
+let _lastSweepStats = null;
 
 // ---- Helpers --------------------------------------------------------------
 
@@ -81,29 +82,75 @@ function _renderPeers() {
     if (!_peers.length) {
         list.innerHTML = '';
         empty.classList.remove('hidden');
-        return;
+    } else {
+        empty.classList.add('hidden');
+        list.innerHTML = _peers.map(_renderPeerRow).join('');
+        list.querySelectorAll('[data-peer-id]').forEach((row) => {
+            row.querySelector('[data-act="test"]')?.addEventListener('click', () =>
+                _testPeer(row.dataset.peerId),
+            );
+            row.querySelector('[data-act="edit"]')?.addEventListener('click', () =>
+                _editPeer(row.dataset.peerId),
+            );
+            row.querySelector('[data-act="revoke"]')?.addEventListener('click', () =>
+                _revokePeer(row.dataset.peerId),
+            );
+        });
     }
-    empty.classList.add('hidden');
-    list.innerHTML = _peers.map(_renderPeerRow).join('');
-    list.querySelectorAll('[data-peer-id]').forEach((row) => {
-        row.querySelector('[data-act="test"]')?.addEventListener('click', () =>
-            _testPeer(row.dataset.peerId),
-        );
-        row.querySelector('[data-act="edit"]')?.addEventListener('click', () =>
-            _editPeer(row.dataset.peerId),
-        );
-        row.querySelector('[data-act="revoke"]')?.addEventListener('click', () =>
-            _revokePeer(row.dataset.peerId),
-        );
-    });
+    _renderStats();
+}
+
+function _renderStats() {
+    const peersEl = $('cluster-stat-peers');
+    const onlineEl = $('cluster-stat-online');
+    const conflictsEl = $('cluster-stat-conflicts');
+    const sweepEl = $('cluster-stat-sweep');
+    if (peersEl) peersEl.textContent = String(_peers.length);
+    if (onlineEl) {
+        const online = _peers.filter((p) => p.status === 'online').length;
+        onlineEl.textContent = _peers.length ? `${online} / ${_peers.length}` : '0';
+    }
+    if (conflictsEl) {
+        const n = _lastSweepStats?.conflicts ?? 0;
+        conflictsEl.textContent = String(n);
+        conflictsEl.classList.toggle('text-tg-orange', n > 0);
+        conflictsEl.classList.toggle('text-tg-text', n === 0);
+    }
+    if (sweepEl) {
+        sweepEl.textContent = _lastSweepStats?.lastRunAt
+            ? formatRelativeTime(_lastSweepStats.lastRunAt)
+            : i18nT('cluster.sweep.never', 'Never');
+    }
 }
 
 function _renderIdentity() {
     if (!_identity) return;
     const idEl = $('cluster-self-id');
     const nameEl = $('cluster-self-name');
+    const nameDisplayEl = $('cluster-self-name-display');
     if (idEl) idEl.textContent = _identity.peerId;
-    if (nameEl && document.activeElement !== nameEl) nameEl.value = _identity.name;
+    if (nameEl && document.activeElement !== nameEl) nameEl.value = _identity.name || '';
+    if (nameDisplayEl)
+        nameDisplayEl.textContent = _identity.name || _identity.peerId.slice(0, 12) || '—';
+}
+
+function _showNameEditor(show) {
+    const editor = $('cluster-self-name-editor');
+    const editBtn = $('cluster-self-name-edit');
+    if (!editor) return;
+    editor.classList.toggle('hidden', !show);
+    editBtn?.classList.toggle('hidden', show);
+    if (show) $('cluster-self-name')?.focus();
+}
+
+async function _copySelfId() {
+    if (!_identity?.peerId) return;
+    try {
+        await navigator.clipboard.writeText(_identity.peerId);
+        showToast(i18nT('cluster.identity.id.copied', 'Peer ID copied'));
+    } catch (e) {
+        showToast(e?.message || String(e));
+    }
 }
 
 async function _renderAudit() {
@@ -503,7 +550,17 @@ async function _revokePeer(peerId) {
 function _wirePage() {
     if (_pageWired) return;
     _pageWired = true;
-    $('cluster-self-name-save')?.addEventListener('click', _saveName);
+    $('cluster-self-name-edit')?.addEventListener('click', () => _showNameEditor(true));
+    $('cluster-self-name-cancel')?.addEventListener('click', () => {
+        _showNameEditor(false);
+        _renderIdentity();
+    });
+    $('cluster-self-name-save')?.addEventListener('click', async () => {
+        await _saveName();
+        _showNameEditor(false);
+        _renderIdentity();
+    });
+    $('cluster-self-id-copy')?.addEventListener('click', _copySelfId);
     $('cluster-token-toggle')?.addEventListener('click', _toggleToken);
     $('cluster-token-copy')?.addEventListener('click', _copyToken);
     $('cluster-token-rotate')?.addEventListener('click', _rotateToken);
@@ -547,6 +604,7 @@ async function _loadConflicts() {
         const r = await api.get('/api/cluster/conflicts');
         const conflicts = r?.conflicts || [];
         const stats = r?.stats || {};
+        _lastSweepStats = stats;
         const empty = $('cluster-conflicts-empty');
         const list = $('cluster-conflicts-list');
         const statsEl = $('cluster-sweep-stats');
@@ -558,7 +616,11 @@ async function _loadConflicts() {
                 wasted: _formatBytes(stats.wastedBytes || 0),
             });
         }
-        if (stateEl) stateEl.textContent = '';
+        if (stateEl) {
+            stateEl.textContent = '';
+            stateEl.classList.add('hidden');
+        }
+        _renderStats();
         if (!conflicts.length) {
             empty?.classList.remove('hidden');
             if (list) list.innerHTML = '';
@@ -624,7 +686,10 @@ async function _runSweep() {
     try {
         await api.post('/api/cluster/sweep/run');
         const stateEl = $('cluster-sweep-state');
-        if (stateEl) stateEl.textContent = i18nT('cluster.sweep.starting', 'Sweep started…');
+        if (stateEl) {
+            stateEl.textContent = i18nT('cluster.sweep.starting', 'Sweep started…');
+            stateEl.classList.remove('hidden');
+        }
     } catch (e) {
         showToast(e?.message || String(e));
     } finally {

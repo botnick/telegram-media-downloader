@@ -1,10 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="dark light">
     <title>Add Telegram account</title>
+
+    <!-- Theme bootstrap (mirrors login.html / index.html so the standalone
+         add-account screen reads the same saved choice and the very first
+         paint is the right theme — no flash). -->
     <script>
         (() => {
             const t = localStorage.getItem('tgdl-theme') || 'auto';
@@ -12,75 +17,364 @@
             document.documentElement.classList.add(dark ? 'theme-dark' : 'theme-light');
         })();
     </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Same Telegram colour tokens as login.html / index.html so the
+        // add-account screen matches the dashboard end-to-end.
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        tg: {
+                            blue: '#2AABEE',
+                            darkBlue: '#229ED9',
+                            bg: '#17212B',
+                            sidebar: '#0E1621',
+                            panel: '#242F3D',
+                            hover: '#2B5278',
+                            border: '#0D1117',
+                            text: '#F5F5F5',
+                            textSecondary: '#8B9BAA',
+                            green: '#4FAE4E',
+                            red: '#E53935',
+                            orange: '#FF9800',
+                            lightBg: '#182533'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.0.0/fonts/remixicon.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
-        html.theme-dark body { background-color: #0F172A; color: #E2E8F0; }
-        html.theme-light body { background-color: #F4F4F5; color: #1F2937; }
-        html.theme-light .bg-gray-800 { background-color: #FFFFFF !important; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-        html.theme-light .bg-gray-700 { background-color: #F0F4F7 !important; }
-        html.theme-light .text-white { color: #1F2937 !important; }
-        html.theme-light .text-gray-400, html.theme-light .text-gray-500 { color: #65737E !important; }
-        html.theme-light .border-gray-600 { border-color: #E1E5EA !important; }
-        .step { transition: opacity 0.15s; }
+        :root {
+            --tgdl-font-family: 'IBM Plex Sans', 'IBM Plex Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --tg-blue: #2AABEE;
+            --tg-darkBlue: #229ED9;
+            --tg-bg: #17212B;
+            --tg-sidebar: #0E1621;
+            --tg-panel: #242F3D;
+            --tg-hover: #2B5278;
+            --tg-border: #0D1117;
+            --tg-text: #F5F5F5;
+            --tg-textSecondary: #8B9BAA;
+            --tg-red: #E53935;
+            --tg-green: #4FAE4E;
+        }
+        html.theme-light {
+            --tg-blue: #0E78C2;
+            --tg-darkBlue: #0E5A86;
+            --tg-bg: #FFFFFF;
+            --tg-sidebar: #F4F4F5;
+            --tg-panel: #F0F4F7;
+            --tg-hover: #DCEDFF;
+            --tg-border: #D1D5DB;
+            --tg-text: #1F2937;
+            --tg-textSecondary: #4B5563;
+            --tg-red: #B91C1C;
+            --tg-green: #008A6E;
+        }
+
+        * { font-family: var(--tgdl-font-family); box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            background: var(--tg-bg);
+            color: var(--tg-text);
+            min-height: 100dvh;
+            min-height: 100vh;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        code { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+        /* Same soft Telegram-blue radial glow as login.html so the two
+           standalone screens read as one design. */
+        .login-bg {
+            position: fixed; inset: 0; z-index: 0;
+            background:
+                radial-gradient(ellipse 60% 50% at 50% 0%, rgba(42,171,238,0.18), transparent 70%),
+                radial-gradient(ellipse 80% 60% at 50% 100%, rgba(42,171,238,0.10), transparent 70%);
+            pointer-events: none;
+        }
+        html.theme-light .login-bg {
+            background:
+                radial-gradient(ellipse 60% 50% at 50% 0%, rgba(14,120,194,0.10), transparent 70%),
+                radial-gradient(ellipse 80% 60% at 50% 100%, rgba(14,120,194,0.05), transparent 70%);
+        }
+
+        .login-card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 26rem;
+            background: var(--tg-panel);
+            border: 1px solid var(--tg-border);
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 12px 40px -12px rgba(0,0,0,0.45), 0 4px 12px -4px rgba(0,0,0,0.25);
+        }
+        html.theme-light .login-card {
+            box-shadow: 0 12px 36px -12px rgba(15,23,42,0.18), 0 4px 12px -4px rgba(15,23,42,0.10);
+        }
+
+        .login-brand {
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #2AABEE 0%, #229ED9 100%);
+            color: #FFFFFF;
+            font-size: 26px;
+            box-shadow: 0 8px 20px -6px rgba(42,171,238,0.55);
+        }
+        .login-brand i { line-height: 1; }
+        html.theme-light .login-brand {
+            background: linear-gradient(135deg, #0E78C2 0%, #0A5E96 100%);
+            box-shadow: 0 8px 20px -6px rgba(14,120,194,0.45);
+        }
+
+        .tg-input {
+            width: 100%;
+            padding: 11px 14px;
+            background: var(--tg-bg);
+            border: 1px solid var(--tg-border);
+            border-radius: 10px;
+            color: var(--tg-text);
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        html.theme-light .tg-input { background: #FFFFFF; }
+        .tg-input::placeholder { color: var(--tg-textSecondary); opacity: 0.85; }
+        .tg-input:focus {
+            border-color: var(--tg-blue);
+            box-shadow: 0 0 0 3px rgba(42,171,238,0.18);
+        }
+        html.theme-light .tg-input:focus { box-shadow: 0 0 0 3px rgba(14,120,194,0.18); }
+
+        .tg-btn-primary {
+            width: 100%;
+            padding: 11px 14px;
+            background: var(--tg-blue);
+            color: #FFFFFF;
+            border: 0;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.15s ease, transform 0.05s ease;
+        }
+        .tg-btn-primary:hover { background: var(--tg-darkBlue); }
+        .tg-btn-primary:active { transform: scale(0.99); }
+        .tg-btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            filter: saturate(0.55);
+        }
+
+        .tg-link {
+            color: var(--tg-textSecondary);
+            font-size: 13px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.15s ease;
+        }
+        .tg-link:hover { color: var(--tg-blue); }
+
+        /* Step indicator — small chips above the form. The active step
+           gets the brand colour; completed steps are muted. The dot is
+           filled for active/completed and outlined for upcoming. */
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            margin: 0 0 22px 0;
+        }
+        .step-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--tg-textSecondary);
+            transition: color 0.15s ease;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .step-pill .step-dot {
+            width: 18px; height: 18px;
+            border-radius: 50%;
+            border: 1px solid var(--tg-border);
+            background: var(--tg-bg);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 600;
+            transition: all 0.15s ease;
+        }
+        html.theme-light .step-pill .step-dot { background: #FFFFFF; }
+        .step-pill.is-active { color: var(--tg-text); }
+        .step-pill.is-active .step-dot {
+            background: var(--tg-blue);
+            border-color: var(--tg-blue);
+            color: #FFFFFF;
+        }
+        .step-pill.is-done { color: var(--tg-textSecondary); }
+        .step-pill.is-done .step-dot {
+            background: rgba(42,171,238,0.18);
+            border-color: var(--tg-blue);
+            color: var(--tg-blue);
+        }
+        html.theme-light .step-pill.is-done .step-dot {
+            background: rgba(14,120,194,0.12);
+        }
+        .step-connector {
+            flex: 1;
+            height: 1px;
+            background: var(--tg-border);
+            min-width: 4px;
+        }
+
+        .step { transition: opacity 0.15s ease; }
+        .step.hidden { display: none; }
+
+        /* Inline help block under the step (e.g. "tip: open Telegram…"). */
+        .step-help {
+            background: var(--tg-bg);
+            border: 1px solid var(--tg-border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: var(--tg-textSecondary);
+            line-height: 1.5;
+        }
+        html.theme-light .step-help { background: rgba(0,0,0,0.02); }
+        .step-help code {
+            background: var(--tg-panel);
+            padding: 1px 6px;
+            border-radius: 4px;
+            color: var(--tg-text);
+            font-size: 11px;
+        }
+
+        .error-banner {
+            color: var(--tg-red);
+            background: rgba(229,57,53,0.10);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--tg-blue);
+            outline-offset: 2px;
+            border-radius: 6px;
+        }
+        button:focus:not(:focus-visible),
+        input:focus:not(:focus-visible) { outline: none; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .tg-input, .tg-btn-primary, .tg-link, .step-pill, .step-pill .step-dot { transition: none; }
+            .tg-btn-primary:active { transform: none; }
+        }
     </style>
 </head>
-<body class="flex items-center justify-center min-h-screen p-6">
-    <div class="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
-        <div class="flex items-center justify-between mb-6">
-            <h1 class="text-xl font-bold text-blue-400">Add Telegram account</h1>
-            <a href="/" class="text-gray-400 text-sm hover:text-white">← Back</a>
+
+<body class="flex items-center justify-center px-4">
+    <div class="login-bg" aria-hidden="true"></div>
+
+    <main class="login-card">
+        <!-- Brand block -->
+        <div class="text-center mb-6">
+            <span class="login-brand mb-3" aria-hidden="true">
+                <i class="ri-user-add-line"></i>
+            </span>
+            <div class="flex items-center justify-between mt-3">
+                <h1 class="text-lg font-semibold" style="color: var(--tg-text)">Add Telegram account</h1>
+                <a href="/" class="tg-link inline-flex items-center gap-1">
+                    <i class="ri-arrow-left-line"></i>Back
+                </a>
+            </div>
+            <p class="text-xs mt-1 text-left" style="color: var(--tg-textSecondary)">Pair a Telegram account with this dashboard to monitor and download from it.</p>
         </div>
 
-        <ol class="flex justify-between mb-6 text-xs text-gray-400">
-            <li id="dot-label" class="flex-1 text-center">1. Label</li>
-            <li id="dot-phone" class="flex-1 text-center">2. Phone</li>
-            <li id="dot-code" class="flex-1 text-center">3. Code</li>
-            <li id="dot-2fa" class="flex-1 text-center">4. 2FA</li>
+        <!-- Step indicator -->
+        <ol class="step-indicator" aria-label="Add account progress">
+            <li id="dot-label" class="step-pill is-active">
+                <span class="step-dot">1</span><span>Label</span>
+            </li>
+            <span class="step-connector" aria-hidden="true"></span>
+            <li id="dot-phone" class="step-pill">
+                <span class="step-dot">2</span><span>Phone</span>
+            </li>
+            <span class="step-connector" aria-hidden="true"></span>
+            <li id="dot-code" class="step-pill">
+                <span class="step-dot">3</span><span>Code</span>
+            </li>
+            <span class="step-connector" aria-hidden="true"></span>
+            <li id="dot-2fa" class="step-pill">
+                <span class="step-dot">4</span><span>2FA</span>
+            </li>
         </ol>
 
         <!-- Step 1: label -->
-        <form id="form-label" class="step space-y-4">
-            <p class="text-sm text-gray-400">Give this account a short label (optional). Examples: <code>main</code>, <code>bot2</code>, <code>viewer</code>.</p>
-            <input id="label" placeholder="Leave blank to auto-name from username" autocomplete="off"
-                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500">
-            <button type="submit" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">Continue</button>
+        <form id="form-label" class="step space-y-3">
+            <p class="step-help">Give this account a short label (optional). Examples: <code>main</code>, <code>bot2</code>, <code>viewer</code>.</p>
+            <input id="label" placeholder="Leave blank to auto-name from username" autocomplete="off" class="tg-input">
+            <button type="submit" class="tg-btn-primary">
+                <i class="ri-arrow-right-line align-middle mr-1.5"></i><span>Continue</span>
+            </button>
         </form>
 
         <!-- Step 2: phone -->
-        <form id="form-phone" class="step space-y-4 hidden">
-            <p class="text-sm text-gray-400">Enter your phone number with the country code, e.g. <code>+66812345678</code>.</p>
-            <input id="phone" type="tel" placeholder="+66812345678" autocomplete="off" required
-                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500">
-            <button type="submit" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">Send code</button>
+        <form id="form-phone" class="step hidden space-y-3">
+            <p class="step-help">Enter your phone number with the country code, e.g. <code>+66812345678</code>.</p>
+            <input id="phone" type="tel" placeholder="+66812345678" autocomplete="off" required class="tg-input">
+            <button type="submit" class="tg-btn-primary">
+                <i class="ri-mail-send-line align-middle mr-1.5"></i><span>Send code</span>
+            </button>
         </form>
 
         <!-- Step 3: OTP -->
-        <form id="form-code" class="step space-y-4 hidden">
-            <p class="text-sm text-gray-400">Telegram has sent you a login code in the app. Enter it below.</p>
+        <form id="form-code" class="step hidden space-y-3">
+            <p class="step-help">Telegram has sent you a login code in the app. Open Telegram → look for the message from the official Telegram account.</p>
             <input id="code" inputmode="numeric" pattern="[0-9]*" placeholder="12345" autocomplete="one-time-code" required
-                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500 tracking-[0.4em] text-center text-lg">
-            <button type="submit" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">Verify</button>
+                class="tg-input"
+                style="letter-spacing: 0.4em; text-align: center; font-size: 18px; font-family: 'IBM Plex Mono', ui-monospace, monospace;">
+            <button type="submit" class="tg-btn-primary">
+                <i class="ri-check-line align-middle mr-1.5"></i><span>Verify</span>
+            </button>
         </form>
 
         <!-- Step 4: 2FA -->
-        <form id="form-2fa" class="step space-y-4 hidden">
-            <p class="text-sm text-gray-400">Two-factor authentication is enabled on this account. Enter your cloud password.</p>
-            <input id="twofa" type="password" placeholder="Cloud password" autocomplete="current-password" required
-                class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded focus:outline-none focus:border-blue-500 text-white placeholder-gray-500">
-            <button type="submit" class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">Sign in</button>
+        <form id="form-2fa" class="step hidden space-y-3">
+            <p class="step-help">Two-factor authentication is enabled on this account. Enter your cloud password to finish.</p>
+            <input id="twofa" type="password" placeholder="Cloud password" autocomplete="current-password" required class="tg-input">
+            <button type="submit" class="tg-btn-primary">
+                <i class="ri-shield-check-line align-middle mr-1.5"></i><span>Sign in</span>
+            </button>
         </form>
 
         <!-- Done -->
-        <div id="done-panel" class="step hidden text-center space-y-4">
-            <div class="text-5xl">✅</div>
-            <p class="text-lg font-semibold text-green-400">Account added</p>
-            <p id="done-id" class="text-gray-400 text-sm"></p>
-            <a href="/" class="inline-block py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded transition">Open dashboard</a>
+        <div id="done-panel" class="step hidden text-center space-y-3">
+            <div style="width:64px;height:64px;border-radius:50%;background:rgba(79,174,78,0.15);display:inline-flex;align-items:center;justify-content:center;">
+                <i class="ri-check-line" style="color: var(--tg-green); font-size: 32px;"></i>
+            </div>
+            <p class="text-base font-semibold" style="color: var(--tg-green)">Account added</p>
+            <p id="done-id" class="text-sm" style="color: var(--tg-textSecondary)"></p>
+            <a href="/" class="tg-btn-primary inline-flex items-center justify-center" style="text-decoration:none;">
+                <i class="ri-arrow-right-line align-middle mr-1.5"></i><span>Open dashboard</span>
+            </a>
         </div>
 
-        <p id="error" class="text-red-400 text-sm text-center mt-4 hidden"></p>
-        <p id="hint" class="text-gray-500 text-xs text-center mt-3"></p>
-    </div>
+        <p id="error" class="hidden error-banner mt-4"></p>
+        <p id="hint" class="text-xs text-center mt-3" style="color: var(--tg-textSecondary)"></p>
+    </main>
 
     <script>
     (() => {
@@ -105,10 +399,18 @@
         function show(step) {
             for (const k of steps) forms[k].classList.add('hidden');
             forms[step].classList.remove('hidden');
-            for (const k of Object.keys(dots)) {
-                dots[k].classList.remove('text-blue-400', 'font-semibold');
+            // Active / done state on the step indicator. The chosen step
+            // is `is-active`; everything before it is `is-done`; the rest
+            // is the default (upcoming) state.
+            const order = ['label', 'phone', 'code', '2fa'];
+            const activeIdx = order.indexOf(step);
+            for (const [i, k] of order.entries()) {
+                if (!dots[k]) continue;
+                dots[k].classList.remove('is-active', 'is-done');
+                if (step === 'done') dots[k].classList.add('is-done');
+                else if (i < activeIdx) dots[k].classList.add('is-done');
+                else if (i === activeIdx) dots[k].classList.add('is-active');
             }
-            if (dots[step]) dots[step].classList.add('text-blue-400', 'font-semibold');
         }
 
         function showError(msg) {
@@ -138,7 +440,7 @@
             if (state === 'phone') show('phone');
             else if (state === 'code') {
                 show('code');
-                setHint('Tip: open Telegram → look for the message from the official Telegram account.');
+                setHint('');
             } else if (state === 'password') {
                 show('2fa');
                 setHint('You enabled 2FA earlier — enter your cloud password to finish.');
@@ -198,7 +500,7 @@
             } catch (err) { showError(err.message); }
         });
 
-        // Cancel on tab close — best-effort
+        // Cancel on tab close — best-effort.
         window.addEventListener('beforeunload', () => {
             if (!sessionId) return;
             navigator.sendBeacon('/api/accounts/auth/cancel',
