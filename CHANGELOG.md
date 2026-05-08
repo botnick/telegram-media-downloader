@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.1] — 2026-05-08
+
+### Fixed
+- **Group save would erase `ownerPeerId` / `backupPeerId` when no peers were paired.** v2.11.0 always included these fields in the `PUT /api/groups/:id` payload; if the cluster routing wrapper was hidden (no peers paired), both dropdowns held the empty default value, which the server's `if (req.body.ownerPeerId !== undefined)` guard treated as "delete". Operators with a previously-set owner peer would lose the assignment the first time they saved an unrelated group setting after a peer revocation. Fixed by tracking the wrapper's hidden state at save time — cluster routing fields are now omitted from the payload entirely when the wrapper is hidden, leaving any existing config untouched.
+
+### Internal
+- SW bumped `v2110` → `v2111`.
+
 ## [2.11.0] — 2026-05-08
 
 Cluster federation gets a real operator UI. Settings → Federation now exposes the replication-policy editor (which config keys mirror across paired peers) and the failover grace tunable; the Group settings modal grows owner-peer / backup-peer dropdowns so per-group routing is finally editable from the dashboard. Every Maintenance subpage was passed through the standard layout template — NSFW / Logs / Backup / Updates now match Duplicates / Thumbs / Video / Cluster — and the long-standing CSS bug that hid the maintenance tab strip on the Cluster + Updates routes is fixed.

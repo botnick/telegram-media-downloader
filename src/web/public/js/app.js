@@ -2714,11 +2714,22 @@ async function saveGroupSettings() {
     const monitorAccount = document.getElementById('monitor-account')?.value || '';
     const forwardAccount = document.getElementById('forward-account')?.value || '';
 
-    // Cluster routing — only honoured when the cluster is paired (the
-    // wrapper stays hidden otherwise so the dropdowns return empty
-    // strings and we send null, leaving the existing config untouched).
-    const ownerPeerId = document.getElementById('group-owner-peer')?.value || '';
-    const backupPeerId = document.getElementById('group-backup-peer')?.value || '';
+    // Cluster routing — only honoured when the cluster routing wrapper
+    // is actually visible (i.e., at least one peer is paired and the
+    // dropdowns were populated). If hidden, the dropdowns hold the
+    // empty default value, and including them in the payload would
+    // erase any existing ownerPeerId/backupPeerId that the operator
+    // set previously (e.g., before a peer was revoked). Tracking the
+    // wrapper's hidden state at save time guarantees we only push
+    // these fields when the user actually saw + chose them.
+    const clusterWrapper = document.getElementById('group-cluster-routing');
+    const clusterRoutingEditable = clusterWrapper && !clusterWrapper.classList.contains('hidden');
+    const ownerPeerId = clusterRoutingEditable
+        ? document.getElementById('group-owner-peer')?.value || ''
+        : null;
+    const backupPeerId = clusterRoutingEditable
+        ? document.getElementById('group-backup-peer')?.value || ''
+        : null;
 
     // Topics
     const topicsEnabled =
@@ -2759,11 +2770,20 @@ async function saveGroupSettings() {
         },
         monitorAccount: monitorAccount || null,
         forwardAccount: forwardAccount || null,
-        ownerPeerId: ownerPeerId || null,
-        backupPeerId: backupPeerId || null,
         rescueMode,
         rescueRetentionHours,
     };
+
+    // Cluster routing fields are only included in the payload when the
+    // cluster wrapper is visible — see clusterRoutingEditable above. If
+    // hidden (no peers paired), we do NOT send these keys so the server
+    // leaves any existing value untouched. The PUT handler already treats
+    // an empty string as "delete the field", which is the desired UX
+    // for explicit user clearing.
+    if (clusterRoutingEditable) {
+        data.ownerPeerId = ownerPeerId || null;
+        data.backupPeerId = backupPeerId || null;
+    }
 
     try {
         await api.put(`/api/groups/${currentEditGroup.id}`, data);
