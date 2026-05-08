@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Maintenance hub polish
+
+### Added
+- **Find duplicates page** — top stats panel (Total / Hashed / Awaiting hash / Last scan) hydrates from `GET /api/maintenance/dedup/stats`; persists across server restart via `kv['dedup_last_scan']`.
+- **Verify files button** surfaced on the duplicates page (was buried in Settings).
+- **Stage-specific progress labels** (Hashing X / Y · Grouping by hash…) on the duplicates page.
+- **Persisted last-run summaries** for thumbs/build, faststart, reindex, files-verify — a fresh dashboard visit can answer "did this even run before?" without rerunning.
+- **`/api/maintenance/<feature>/stats` endpoints** for verify, reindex, thumbs/build, dedup; existing `/faststart/stats` extended with `lastRun`.
+- **Stats panel + "Last build / Last run" cards** on thumbs and video pages mirroring the duplicates pattern.
+- **`scripts/check_i18n_drift.js`** — catches missing translation keys before a release ships with `[missing key]` chrome.
+
+### Fixed
+- **Race condition** in `thumbs/build-all`, `faststart/scan`, `dedup/scan`, `reindex` — the catch block broadcast `${prefix}_done` before the `finally` reset the running flag, so a retry after error got a spurious 409 ALREADY_RUNNING. All four migrated to JobTracker; the running-flag reset and broadcast now happen atomically.
+- **Dual-state `/api/maintenance/reindex/status`** — was OR-ing `_reindexBgRunning` with `integrity.isReindexRunning()`, masking which subsystem actually owned the job. Single source of truth now.
+- **`btn.textContent = …` wipes icons** — every action button on thumbs / video / nsfw pages migrated to the icon + `<span data-i18n>` pattern; JS swaps only the label span.
+- **Filled 26 missing i18n keys** uncovered by the new drift script: `reauth.*` modal, `nsfw.bulk.*` / `nsfw.row.*` / `nsfw.empty.*`, `settings.maintenance_link.*`, `common.saved`, `maintenance.tabs.back`, `maintenance.ai.hf_token.save_failed`. Both en + th.
+
+### Accessibility
+- `aria-live="polite"` + `role="status"` on every maintenance progress region.
+- `role="log"` + `aria-live="polite"` on the realtime log stream so screen readers announce new entries.
+- `data-i18n-title` tooltips on every maintenance action button.
+
+### Internal
+- Frontend label-span swap pattern documented inline in `maintenance-duplicates.js` as the reference for other modules.
+- New tests: `tests/maintenance.race.test.js` (single-flight + recovery contract), `tests/maintenance.dedup-jobtracker.test.js` (kv persistence).
+- SW VERSION bumps `v281` → `v281n`.
+
 ## [2.8.1] — 2026-05-08
 
 ### Added

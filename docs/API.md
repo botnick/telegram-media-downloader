@@ -107,15 +107,27 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | Method | Path | Notes |
 |---|---|---|
 | `POST` | `/api/maintenance/files/verify`  | Re-stat every cataloged download; prune rows whose file is missing on disk. |
+| `GET`  | `/api/maintenance/files/verify/status` | JobTracker snapshot — `{running, stage, progress, result}`. |
+| `GET`  | `/api/maintenance/files/verify/stats`  | `{lastRun: {finishedAt, removed, scanned}}` — survives restart. |
+| `POST` | `/api/maintenance/reindex`       | Walk `data/downloads/` and `INSERT OR IGNORE` rows for files the catalog doesn't have yet. |
+| `GET`  | `/api/maintenance/reindex/status`| JobTracker snapshot. |
+| `GET`  | `/api/maintenance/reindex/stats` | `{lastRun: {finishedAt, added, scanned}}`. |
 | `POST` | `/api/maintenance/resync-dialogs`| Re-resolve every group's name + profile photo. |
 | `POST` | `/api/maintenance/restart-monitor`| Stop + start the in-process monitor. |
 | `POST` | `/api/maintenance/db/integrity`  | `PRAGMA integrity_check`. |
 | `POST` | `/api/maintenance/db/vacuum`     | `VACUUM`. |
 | `POST` | `/api/maintenance/dedup/scan`    | SHA-256 catch-up + groups duplicate sets. Single in-flight guard; broadcasts `dedup_progress` over WS. |
+| `GET`  | `/api/maintenance/dedup/status`  | JobTracker snapshot — `{running, stage, processed, total, result}`. |
+| `GET`  | `/api/maintenance/dedup/stats`   | `{totalFiles, hashed, missing, lastScan: {finishedAt, scanned, hashed, duplicateSets, extraCopies, reclaimableBytes}}`. Survives restart. |
 | `POST` | `/api/maintenance/dedup/delete`  | `{ids:[…]}` — delete from disk + DB + thumbs cache. |
 | `POST` | `/api/maintenance/thumbs/build-all`| Generate default-width thumbs for every row that doesn't have one. Broadcasts `thumbs_progress`. |
+| `GET`  | `/api/maintenance/thumbs/build/status` | JobTracker snapshot. |
+| `GET`  | `/api/maintenance/thumbs/build/stats`  | `{lastRun: {finishedAt, built, skipped, errored, scanned}}`. |
 | `POST` | `/api/maintenance/thumbs/rebuild`| Wipe cache; re-generation happens lazily on next access. |
 | `GET`  | `/api/maintenance/thumbs/stats`  | `{count, bytes, ffmpegAvailable, allowedWidths}`. |
+| `POST` | `/api/maintenance/faststart/scan`| Sweep MP4s and rewrite ones whose moov atom isn't at the head. Broadcasts `faststart_progress`. |
+| `GET`  | `/api/maintenance/faststart/status` | JobTracker snapshot. |
+| `GET`  | `/api/maintenance/faststart/stats`  | `{total, optimized, pending, missing, unknown, ext_skip, ffmpegAvailable, lastRun}`. |
 | `GET`  | `/api/maintenance/nsfw/status`   | `{enabled, running, scanned, total, candidates, keep, whitelisted, model, threshold, fileTypes}`. |
 | `POST` | `/api/maintenance/nsfw/scan`     | Start a background scan (returns 503 when feature is disabled, 409 when one is already running). |
 | `POST` | `/api/maintenance/nsfw/scan/cancel` | Abort the active scan; partial results kept. |
