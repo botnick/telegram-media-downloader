@@ -7074,6 +7074,26 @@ app.post('/api/config', async (req, res) => {
             newConfig.web = safeWeb;
         }
 
+        // Cluster namespace — match the deep-merge convention used for every
+        // other top-level config section. Settings → Federation patches
+        // `cluster.replicate.<key>` and `cluster.failover_grace_minutes`
+        // independently; the panel currently reads full current cluster
+        // before each save (client-side read-modify-write), but the server
+        // contract should be defensive so a future caller that PATCHes just
+        // one field doesn't accidentally erase the rest. Two-level merge:
+        // top-level cluster keys are merged with current; `replicate` is
+        // merged one level deeper so a single-key toggle preserves the rest
+        // of the policy map.
+        if (req.body.cluster && typeof req.body.cluster === 'object') {
+            const curCluster = currentConfig.cluster || {};
+            const incCluster = req.body.cluster;
+            const merged = { ...curCluster, ...incCluster };
+            if (incCluster.replicate && typeof incCluster.replicate === 'object') {
+                merged.replicate = { ...(curCluster.replicate || {}), ...incCluster.replicate };
+            }
+            newConfig.cluster = merged;
+        }
+
         // Advanced runtime tuning — two-level deep-merge so a PATCH that
         // touches one sub-namespace (e.g. only advanced.downloader) keeps the
         // others intact. Per-field clamping below; out-of-range values are

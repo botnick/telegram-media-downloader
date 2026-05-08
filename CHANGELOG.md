@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.2] — 2026-05-08
+
+### Fixed
+- **`POST /api/config` now deep-merges the `cluster` namespace** with the same convention used for `telegram`, `download`, `web`, `advanced`, etc. Previously the server's shallow merge meant a future caller that PATCHed only `cluster.replicate` (without first reading + cloning the rest of the cluster object) would silently erase `cluster.failover_grace_minutes`. The Settings → Federation panel was already safe (read-modify-write), but the server contract is now defensive — and `cluster.replicate` is merged one level deeper so a single-key policy toggle can never overwrite the rest of the policy map.
+
+### Internal
+- SW bumped `v2111` → `v2112`.
+- Independent post-release audit confirmed: cluster element-IDs, WS event listeners, config key paths, and i18n keys are all intact across v2.10.0 → v2.11.2. Media-display path (gallery / lightbox / viewer / SW cache-bypass) untouched by the recent UI work.
+
 ## [2.11.1] — 2026-05-08
 
 ### Fixed
