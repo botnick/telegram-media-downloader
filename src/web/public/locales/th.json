@@ -1480,5 +1480,30 @@
     "maintenance.ai.model.swap.wipe_title": "ลบไฟล์โมเดลที่แคชไว้ ครั้งหน้าจะดาวน์โหลดใหม่",
     "maintenance.ai.model.swap.wipe_confirm": "ลบไฟล์โมเดลของ {id}? ครั้งหน้าจะดาวน์โหลดใหม่",
     "maintenance.ai.model.swap.wiped": "ล้าง {id} แล้ว",
-    "maintenance.ai.model.swap.wipe_failed": "ล้างไม่ได้: {msg}"
+    "maintenance.ai.model.swap.wipe_failed": "ล้างไม่ได้: {msg}",
+
+    "common.saved": "บันทึกแล้ว",
+    "maintenance.ai.hf_token.save_failed": "บันทึก Hugging Face token ไม่สำเร็จ: {msg}",
+    "maintenance.nsfw.bulk.confirm_restore_title": "กู้คืนรูปที่ตรวจแล้ว?",
+    "maintenance.nsfw.bulk.confirm_restore_body": "ย้าย {n} รูปกลับ gallery และล้างสถานะการตรวจ?",
+    "maintenance.nsfw.bulk.restore_confirm": "กู้คืน",
+    "maintenance.nsfw.bulk.progress": "กำลังประมวลผล {processed} / {total}…",
+    "maintenance.nsfw.empty.never_scanned": "ยังไม่ได้สแกน NSFW — กดสแกนเพื่อเริ่ม",
+    "maintenance.nsfw.empty.tier": "ไม่มีรูปในระดับนี้",
+    "maintenance.nsfw.empty.tier_with_suggestion": "ไม่มีรูปในระดับนี้ — ลองปรับ threshold ให้กว้างขึ้นหรือสแกนใหม่",
+    "maintenance.nsfw.row.restore": "กู้คืน",
+    "maintenance.nsfw.row.restore_done": "กู้คืนแล้ว",
+    "maintenance.nsfw.row.whitelisted_badge": "Whitelist",
+    "maintenance.nsfw.show_whitelisted": "แสดงรายการ whitelist",
+    "maintenance.tabs.back": "กลับ",
+
+    "reauth.title": "เข้าสู่ระบบใหม่",
+    "reauth.body": "เซสชันหมดอายุ — ใส่รหัสผ่านเพื่อใช้งานต่อ",
+    "reauth.placeholder": "รหัสผ่าน",
+    "reauth.submit": "เข้าสู่ระบบ",
+    "reauth.submitting": "กำลังเข้าสู่ระบบ…",
+    "reauth.cancel": "ยกเลิก",
+    "reauth.success": "เข้าสู่ระบบแล้ว",
+    "reauth.failed": "รหัสผ่านไม่ถูกต้อง",
+    "reauth.network": "เครือข่ายผิดพลาด — ลองใหม่"
 }

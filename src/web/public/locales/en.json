@@ -1480,5 +1480,30 @@
     "maintenance.ai.model.swap.wipe_title": "Delete the cached weights so the next load redownloads.",
     "maintenance.ai.model.swap.wipe_confirm": "Delete cached weights for {id}? The next load will redownload.",
     "maintenance.ai.model.swap.wiped": "Wiped {id}",
-    "maintenance.ai.model.swap.wipe_failed": "Wipe failed: {msg}"
+    "maintenance.ai.model.swap.wipe_failed": "Wipe failed: {msg}",
+
+    "common.saved": "Saved",
+    "maintenance.ai.hf_token.save_failed": "Couldn't save the Hugging Face token: {msg}",
+    "maintenance.nsfw.bulk.confirm_restore_title": "Restore reviewed photos?",
+    "maintenance.nsfw.bulk.confirm_restore_body": "Move {n} photo(s) back into the gallery and clear their review state?",
+    "maintenance.nsfw.bulk.restore_confirm": "Restore",
+    "maintenance.nsfw.bulk.progress": "Processing {processed} / {total}…",
+    "maintenance.nsfw.empty.never_scanned": "No NSFW scan run yet — click Scan to populate this list.",
+    "maintenance.nsfw.empty.tier": "No photos in this tier.",
+    "maintenance.nsfw.empty.tier_with_suggestion": "No photos in this tier — try a wider threshold or rescan.",
+    "maintenance.nsfw.row.restore": "Restore",
+    "maintenance.nsfw.row.restore_done": "Restored",
+    "maintenance.nsfw.row.whitelisted_badge": "Whitelisted",
+    "maintenance.nsfw.show_whitelisted": "Show whitelisted",
+    "maintenance.tabs.back": "Back",
+
+    "reauth.title": "Sign in again",
+    "reauth.body": "Your session expired. Enter the dashboard password to continue.",
+    "reauth.placeholder": "Password",
+    "reauth.submit": "Sign in",
+    "reauth.submitting": "Signing in…",
+    "reauth.cancel": "Cancel",
+    "reauth.success": "Signed in.",
+    "reauth.failed": "Wrong password.",
+    "reauth.network": "Network error — try again."
 }
