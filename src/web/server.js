@@ -4469,38 +4469,31 @@ app.get('/api/maintenance/files/verify/status', async (req, res) => {
 // from Telegram. Background-driven; progress broadcast via WS
 // `reindex_progress` and final `reindex_done` so the page can render a
 // determinate bar without polling.
-let _reindexBgRunning = false;
+// Migrated from a hand-rolled `_reindexBgRunning` flag that OR'd with
+// `integrity.isReindexRunning()` to determine the running state. The
+// dual-source-of-truth meant a status snapshot could report `running:
+// true` while neither subsystem was actually progressing — masking
+// which component owned the job. Now there's one tracker. Prefix
+// 'reindex' is preserved so the duplicates page's listeners need no
+// change.
 app.post('/api/maintenance/reindex', async (req, res) => {
-    if (_reindexBgRunning || integrity.isReindexRunning()) {
-        return res.status(409).json({ error: 'already_running' });
+    const tracker = _jobTrackers.reindex;
+    const r = tracker.tryStart(async ({ onProgress }) => {
+        const cfg = await readConfigSafe();
+        const groups = Array.isArray(cfg?.groups) ? cfg.groups : [];
+        return await integrity.reindexFromDisk(groups, (p) => onProgress(p));
+    });
+    if (!r.started) {
+        return res
+            .status(409)
+            .json({ error: 'already_running', code: r.code || 'ALREADY_RUNNING' });
     }
-    _reindexBgRunning = true;
     res.json({ ok: true, started: true });
-    // Fire-and-forget — the result lands over WS. Caller already got 200.
-    (async () => {
-        try {
-            const cfg = await readConfigSafe();
-            const groups = Array.isArray(cfg?.groups) ? cfg.groups : [];
-            const result = await integrity.reindexFromDisk(groups, (p) => {
-                try {
-                    broadcast({ type: 'reindex_progress', ...p });
-                } catch {}
-            });
-            try {
-                broadcast({ type: 'reindex_done', ...result });
-            } catch {}
-        } catch (e) {
-            try {
-                broadcast({ type: 'reindex_done', error: e?.message || String(e) });
-            } catch {}
-        } finally {
-            _reindexBgRunning = false;
-        }
-    })();
 });
 
 app.get('/api/maintenance/reindex/status', async (req, res) => {
-    res.json({ running: _reindexBgRunning || integrity.isReindexRunning() });
+    const snap = _jobTrackers.reindex.getStatus();
+    res.json({ ...snap, ...(snap.progress || {}) });
 });
 
 // VACUUM the SQLite database. Reclaims space after lots of deletions.
@@ -4562,114 +4555,60 @@ app.get('/api/maintenance/db/vacuum/status', async (req, res) => {
 // scan now runs in the background; clients learn about progress and the
 // final duplicate sets via WS (`dedup_progress`, `dedup_done`) and can
 // recover the in-flight state via GET `/dedup/status` after a tab close.
-let _dedupRunning = false;
-let _dedupState = {
-    running: false,
-    stage: 'idle',
-    processed: 0,
-    total: 0,
-    hashed: 0,
-    groups: 0,
-    startedAt: 0,
-    finishedAt: 0,
-    result: null,
-    error: null,
-};
+// Migrated from a hand-rolled `_dedupRunning` flag to the shared
+// JobTracker for free single-flight, abort, attempt counters, and
+// duration tracking. WS event prefix stays 'dedup' — the duplicates
+// page's existing `dedup_progress` / `dedup_done` listeners are
+// unaffected.
 app.post('/api/maintenance/dedup/scan', async (req, res) => {
-    if (_dedupRunning) {
+    const tracker = _jobTrackers.dedupScan;
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        const result = await dedupFindDuplicates({
+            onProgress: (p) => onProgress({ ...p, running: true }),
+            signal,
+        });
+        // Persist a small summary so a server restart still surfaces
+        // "Last scan: 2 h ago — N duplicates" on the duplicates page
+        // without having to recompute. The full duplicate-sets payload
+        // stays in tracker memory — no point persisting megabytes of
+        // file rows that the next scan rebuilds.
+        try {
+            const sets = Array.isArray(result?.duplicateSets) ? result.duplicateSets : [];
+            const extras = sets.reduce((s, x) => s + Math.max(0, (x.count || 0) - 1), 0);
+            const reclaim = sets.reduce(
+                (s, x) => s + Number(x.fileSize || 0) * Math.max(0, (x.count || 0) - 1),
+                0,
+            );
+            kvSet('dedup_last_scan', {
+                finishedAt: Date.now(),
+                scanned: result?.scanned || 0,
+                hashed: result?.hashed || 0,
+                duplicateSets: sets.length,
+                extraCopies: extras,
+                reclaimableBytes: reclaim,
+            });
+        } catch {}
+        return result;
+    });
+    if (!r.started) {
         return res
             .status(409)
-            .json({ error: 'A dedup scan is already running', code: 'ALREADY_RUNNING' });
+            .json({ error: 'A dedup scan is already running', code: r.code || 'ALREADY_RUNNING' });
     }
-    _dedupRunning = true;
-    _dedupState = {
-        running: true,
-        stage: 'starting',
-        processed: 0,
-        total: 0,
-        hashed: 0,
-        groups: 0,
-        startedAt: Date.now(),
-        finishedAt: 0,
-        result: null,
-        error: null,
-    };
     res.json({ success: true, started: true });
-    try {
-        broadcast({ type: 'dedup_progress', ..._dedupState });
-    } catch {}
-    log({ source: 'dedup', level: 'info', msg: 'dedup scan starting' });
-    (async () => {
-        try {
-            const result = await dedupFindDuplicates({
-                onProgress: (p) => {
-                    Object.assign(_dedupState, p, { running: true });
-                    try {
-                        broadcast({ type: 'dedup_progress', ...p, running: true });
-                    } catch {}
-                },
-            });
-            _dedupState = {
-                ..._dedupState,
-                ...result,
-                running: false,
-                stage: 'done',
-                finishedAt: Date.now(),
-                result,
-            };
-            // Persist a small summary so a server restart still surfaces
-            // "Last scan: 2 h ago — N duplicates" on the duplicates page,
-            // without having to recompute. The full duplicate-sets payload
-            // stays in `_dedupState` (process memory) — no point persisting
-            // megabytes of file rows that the next scan rebuilds.
-            try {
-                const sets = Array.isArray(result?.duplicateSets) ? result.duplicateSets : [];
-                const extras = sets.reduce((s, x) => s + Math.max(0, (x.count || 0) - 1), 0);
-                const reclaim = sets.reduce(
-                    (s, x) => s + Number(x.fileSize || 0) * Math.max(0, (x.count || 0) - 1),
-                    0,
-                );
-                kvSet('dedup_last_scan', {
-                    finishedAt: _dedupState.finishedAt,
-                    durationMs: Math.max(0, _dedupState.finishedAt - _dedupState.startedAt),
-                    scanned: result?.scanned || 0,
-                    hashed: result?.hashed || 0,
-                    duplicateSets: sets.length,
-                    extraCopies: extras,
-                    reclaimableBytes: reclaim,
-                });
-            } catch {}
-            try {
-                broadcast({ type: 'dedup_done', ...result });
-            } catch {}
-            log({
-                source: 'dedup',
-                level: 'info',
-                msg: `dedup scan done — groups=${result?.groups?.length ?? 0} duplicates=${result?.totalDuplicates ?? 0}`,
-            });
-        } catch (e) {
-            _dedupState = {
-                ..._dedupState,
-                running: false,
-                stage: 'error',
-                error: e?.message || String(e),
-                finishedAt: Date.now(),
-            };
-            try {
-                broadcast({ type: 'dedup_done', error: e?.message || String(e) });
-            } catch {}
-            log({ source: 'dedup', level: 'error', msg: `dedup scan failed: ${e?.message || e}` });
-        } finally {
-            _dedupRunning = false;
-        }
-    })();
 });
 
 // Status endpoint — returns the latest scan state including the result
 // payload from the most recent completed run, so a re-opened page can
-// render the duplicate-sets table without re-running the scan.
+// render the duplicate-sets table without re-running the scan. The
+// tracker stores the last result on the snapshot's `.result` field, so
+// the duplicates page reads `r.result.duplicateSets`.
 app.get('/api/maintenance/dedup/status', async (req, res) => {
-    res.json({ ..._dedupState, running: _dedupRunning });
+    const snap = _jobTrackers.dedupScan.getStatus();
+    // Flatten progress into top-level fields for the existing front-end
+    // contract (it reads `.processed`, `.total`, `.stage` directly off
+    // the response). The tracker keeps progress under `progress.*`.
+    res.json({ ...snap, ...(snap.progress || {}) });
 });
 
 // Library hash-coverage stats — total rows, how many already have a SHA-256
@@ -4889,92 +4828,32 @@ app.get('/api/maintenance/thumbs/rebuild/status', async (req, res) => {
 // Renamed from `done/errors` (the original placeholders) so the status
 // JSON, the WS frames, and the log line all agree — previously the log
 // printed `done=undefined errors=undefined`.
-let _thumbBuildRunning = false;
-let _thumbBuildState = {
-    running: false,
-    stage: 'idle',
-    processed: 0,
-    total: 0,
-    built: 0,
-    skipped: 0,
-    errored: 0,
-    scanned: 0,
-    startedAt: 0,
-    finishedAt: 0,
-    error: null,
-};
+// Migrated from a hand-rolled `_thumbBuildRunning` flag. The previous
+// implementation broadcast `thumbs_done` on caught errors BEFORE the
+// `finally` block reset the flag — a double-click after a failed build
+// landed in the race window and got a spurious 409 ALREADY_RUNNING.
+// JobTracker resets `running` and broadcasts `_done` atomically, so the
+// retry succeeds. Prefix 'thumbs' preserved.
 app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
-    if (_thumbBuildRunning) {
-        return res.status(409).json({ error: 'A thumbnail build is already running' });
+    const tracker = _jobTrackers.thumbsBuild;
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        return await buildAllThumbnails({
+            onProgress: (p) => onProgress(p),
+            signal,
+        });
+    });
+    if (!r.started) {
+        return res.status(409).json({
+            error: 'A thumbnail build is already running',
+            code: r.code || 'ALREADY_RUNNING',
+        });
     }
-    _thumbBuildRunning = true;
-    _thumbBuildState = {
-        running: true,
-        stage: 'starting',
-        processed: 0,
-        total: 0,
-        built: 0,
-        skipped: 0,
-        errored: 0,
-        scanned: 0,
-        startedAt: Date.now(),
-        finishedAt: 0,
-        error: null,
-    };
     res.json({ success: true, started: true });
-    log({ source: 'thumbs', level: 'info', msg: 'thumbs build-all starting' });
-    (async () => {
-        try {
-            const r = await buildAllThumbnails({
-                onProgress: (p) => {
-                    // Server-side state stays the source of truth for the
-                    // /build/status endpoint; broadcast forwards the same
-                    // shape to WS subscribers.
-                    Object.assign(_thumbBuildState, p, { running: true });
-                    try {
-                        broadcast({ type: 'thumbs_progress', ...p });
-                    } catch {}
-                },
-            });
-            _thumbBuildState = {
-                ..._thumbBuildState,
-                ...r,
-                running: false,
-                stage: 'done',
-                finishedAt: Date.now(),
-            };
-            try {
-                broadcast({ type: 'thumbs_done', ...r });
-            } catch {}
-            log({
-                source: 'thumbs',
-                level: 'info',
-                msg: `thumbs build-all done — scanned=${r?.scanned ?? 0} built=${r?.built ?? 0} skipped=${r?.skipped ?? 0} errored=${r?.errored ?? 0}`,
-            });
-        } catch (e) {
-            _thumbBuildState = {
-                ..._thumbBuildState,
-                running: false,
-                stage: 'error',
-                error: e?.message || String(e),
-                finishedAt: Date.now(),
-            };
-            try {
-                broadcast({ type: 'thumbs_done', error: e?.message || String(e) });
-            } catch {}
-            log({
-                source: 'thumbs',
-                level: 'error',
-                msg: `thumbs build-all failed: ${e?.message || e}`,
-            });
-        } finally {
-            _thumbBuildRunning = false;
-        }
-    })();
 });
 
 app.get('/api/maintenance/thumbs/build/status', async (req, res) => {
-    res.json({ ..._thumbBuildState, running: _thumbBuildRunning });
+    const snap = _jobTrackers.thumbsBuild.getStatus();
+    res.json({ ...snap, ...(snap.progress || {}) });
 });
 
 // Probe which ffmpeg hardware-acceleration backends actually work on
@@ -5034,94 +4913,30 @@ app.get('/api/maintenance/thumbs/stats', async (req, res) => {
 //
 // Auto-fixed inline by the downloader (see faststartInBackground in
 // downloader.js); the sweep is for the existing library.
-let _faststartRunning = false;
-let _faststartState = {
-    running: false,
-    stage: 'idle',
-    processed: 0,
-    total: 0,
-    optimized: 0,
-    already: 0,
-    skipped: 0,
-    errored: 0,
-    scanned: 0,
-    startedAt: 0,
-    finishedAt: 0,
-    error: null,
-};
+// Migrated from a hand-rolled `_faststartRunning` flag with the same
+// broadcast-before-flag-reset race as thumbs/build-all. JobTracker
+// closes the window. Prefix 'faststart' preserved.
 app.post('/api/maintenance/faststart/scan', async (req, res) => {
-    if (_faststartRunning) {
-        return res
-            .status(409)
-            .json({ error: 'A faststart sweep is already running', code: 'ALREADY_RUNNING' });
+    const tracker = _jobTrackers.faststart;
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        const { optimizeAll } = await import('../core/faststart.js');
+        return await optimizeAll({
+            onProgress: (p) => onProgress(p),
+            signal,
+        });
+    });
+    if (!r.started) {
+        return res.status(409).json({
+            error: 'A faststart sweep is already running',
+            code: r.code || 'ALREADY_RUNNING',
+        });
     }
-    _faststartRunning = true;
-    _faststartState = {
-        running: true,
-        stage: 'starting',
-        processed: 0,
-        total: 0,
-        optimized: 0,
-        already: 0,
-        skipped: 0,
-        errored: 0,
-        scanned: 0,
-        startedAt: Date.now(),
-        finishedAt: 0,
-        error: null,
-    };
     res.json({ success: true, started: true });
-    log({ source: 'faststart', level: 'info', msg: 'faststart sweep starting' });
-    (async () => {
-        try {
-            const { optimizeAll } = await import('../core/faststart.js');
-            const r = await optimizeAll({
-                onProgress: (p) => {
-                    Object.assign(_faststartState, p, { running: true });
-                    try {
-                        broadcast({ type: 'faststart_progress', ...p });
-                    } catch {}
-                },
-            });
-            _faststartState = {
-                ..._faststartState,
-                ...r,
-                running: false,
-                stage: 'done',
-                finishedAt: Date.now(),
-            };
-            try {
-                broadcast({ type: 'faststart_done', ...r });
-            } catch {}
-            log({
-                source: 'faststart',
-                level: 'info',
-                msg: `faststart sweep done — scanned=${r?.scanned ?? 0} optimized=${r?.optimized ?? 0} already=${r?.already ?? 0} skipped=${r?.skipped ?? 0} errored=${r?.errored ?? 0}`,
-            });
-        } catch (e) {
-            _faststartState = {
-                ..._faststartState,
-                running: false,
-                stage: 'error',
-                error: e?.message || String(e),
-                finishedAt: Date.now(),
-            };
-            try {
-                broadcast({ type: 'faststart_done', error: e?.message || String(e) });
-            } catch {}
-            log({
-                source: 'faststart',
-                level: 'error',
-                msg: `faststart sweep failed: ${e?.message || e}`,
-            });
-        } finally {
-            _faststartRunning = false;
-        }
-    })();
 });
 
 app.get('/api/maintenance/faststart/status', async (req, res) => {
-    res.json({ ..._faststartState, running: _faststartRunning });
+    const snap = _jobTrackers.faststart.getStatus();
+    res.json({ ...snap, ...(snap.progress || {}) });
 });
 
 app.get('/api/maintenance/faststart/stats', async (req, res) => {
@@ -7848,6 +7663,14 @@ const _jobTrackers = {
         log,
         eventPrefix: 'dedup_delete',
     }),
+    // Migrated from hand-rolled `let _dedupRunning` flag — prefix kept as
+    // 'dedup' so the existing dedup_progress / dedup_done WS listeners on
+    // the duplicates page need no change.
+    dedupScan: createJobTracker({ kind: 'dedupScan', broadcast, log, eventPrefix: 'dedup' }),
+    // Migrated from hand-rolled `let _reindexBgRunning` (which OR'd with
+    // integrity.isReindexRunning() — that dual-state snapshot would mask
+    // which subsystem owned the job). Prefix 'reindex' preserved.
+    reindex: createJobTracker({ kind: 'reindex', broadcast, log, eventPrefix: 'reindex' }),
     nsfwBulk: createJobTracker({ kind: 'nsfwBulk', broadcast, log, eventPrefix: 'nsfw_bulk' }),
     thumbsRebuild: createJobTracker({
         kind: 'thumbsRebuild',
@@ -7855,6 +7678,15 @@ const _jobTrackers = {
         log,
         eventPrefix: 'thumbs_rebuild',
     }),
+    // Migrated from hand-rolled `let _thumbBuildRunning` — fixed the
+    // double-click race where the catch block broadcast `thumbs_done`
+    // BEFORE the finally block reset the flag, so a retry after error
+    // got a spurious 409 ALREADY_RUNNING. Prefix 'thumbs' preserved.
+    thumbsBuild: createJobTracker({ kind: 'thumbsBuild', broadcast, log, eventPrefix: 'thumbs' }),
+    // Same race fix as thumbsBuild — `let _faststartRunning` had the
+    // identical broadcast-before-flag-reset window. Prefix 'faststart'
+    // preserved so the video page's WS listeners don't change.
+    faststart: createJobTracker({ kind: 'faststart', broadcast, log, eventPrefix: 'faststart' }),
     autoUpdate: createJobTracker({ kind: 'autoUpdate', broadcast, log, eventPrefix: 'update' }),
     groupsRefreshInfo: createJobTracker({
         kind: 'groupsRefreshInfo',
