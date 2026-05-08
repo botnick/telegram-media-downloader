@@ -56,14 +56,37 @@ const _localRequire = createRequire(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+// Honour TGDL_DATA_DIR so tests + non-default deployments snapshot the
+// right db.sqlite. Mirrors the resolution rule in src/core/db.js.
+const DATA_DIR = process.env.TGDL_DATA_DIR
+    ? path.resolve(process.env.TGDL_DATA_DIR)
+    : path.resolve(PROJECT_ROOT, 'data');
 const DB_PATH = path.resolve(DATA_DIR, 'db.sqlite');
 const BACKUPS_DIR = path.resolve(DATA_DIR, 'backups');
+
+function _envInt(name, fallback) {
+    const raw = Number(process.env[name]);
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
 
 // Number of pre-update DB snapshots to keep. The N+1th oldest is pruned
 // after each successful checkpoint. Each snapshot is the full DB so on
 // a 100 MB SQLite the cap means ~500 MB ceiling for backups — fine.
-const KEEP_BACKUPS = 5;
+// Tunable via UPDATE_BACKUP_KEEP for operators with smaller / larger
+// disks.
+const KEEP_BACKUPS = _envInt('UPDATE_BACKUP_KEEP', 5);
+
+// Hard cap on the online db.backup() call. Snapshotting a 1 GB DB on a
+// thin home connection or a slow HDD can take minutes; without a
+// timeout an /api/update click could hang the JobTracker indefinitely.
+// Tunable via UPDATE_SNAPSHOT_TIMEOUT_MS.
+const SNAPSHOT_TIMEOUT_MS = _envInt('UPDATE_SNAPSHOT_TIMEOUT_MS', 60_000);
+
+// How long the SPA overlay waits before swapping to the "stalled"
+// panel. Surfaced in autoUpdateStatus() so the SPA reads it dynamically
+// instead of hard-coding a value that might not match the operator's
+// link speed. Tunable via UPDATE_OVERLAY_STALL_MS.
+const OVERLAY_STALL_MS = _envInt('UPDATE_OVERLAY_STALL_MS', 120_000);
 
 // Watchtower endpoint defaults match docker-compose.yml's service name.
 function _watchtowerEndpoint() {
@@ -91,6 +114,11 @@ export function isAutoUpdateAvailable() {
 /**
  * Reasons the auto-update endpoint can decline to run, surfaced to the
  * UI so the operator gets actionable text instead of a silent failure.
+ *
+ * `overlayStallMs` is the configured client-side overlay stall window;
+ * the SPA reads this once at boot so a deployment with a slow link can
+ * tune the overlay's "Update appears stalled" trigger via env var
+ * without code changes.
  */
 export function autoUpdateStatus() {
     const inDocker = existsSync('/.dockerenv');
@@ -100,6 +128,7 @@ export function autoUpdateStatus() {
         inDocker,
         watchtowerConfigured: !!ep,
         watchtowerUrl: ep ? ep.url : null,
+        overlayStallMs: OVERLAY_STALL_MS,
     };
 }
 
@@ -118,7 +147,9 @@ const TRIGGER_TIMEOUT_MS = 15_000;
  */
 async function _pingWatchtower() {
     const ep = _watchtowerEndpoint();
-    if (!ep) return { ok: false, msg: 'endpoint not configured' };
+    if (!ep) {
+        return { ok: false, code: 'WATCHTOWER_UNREACHABLE', msg: 'endpoint not configured' };
+    }
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), PING_TIMEOUT_MS);
     try {
@@ -127,17 +158,39 @@ async function _pingWatchtower() {
             headers: { Authorization: `Bearer ${ep.token}` },
             signal: ctrl.signal,
         });
+        // 401/403 means the sidecar is up and rejecting our token —
+        // distinct from "unreachable" because the fix is "regenerate
+        // WATCHTOWER_HTTP_API_TOKEN" not "start the sidecar".
+        if (res.status === 401 || res.status === 403) {
+            return {
+                ok: false,
+                code: 'WATCHTOWER_UNAUTHENTICATED',
+                msg: `watchtower returned HTTP ${res.status} — token rejected`,
+            };
+        }
         // A 5xx means the sidecar is up but unhealthy — still a fail
         // because the subsequent POST will likely 5xx too.
         if (res.status >= 500) {
-            return { ok: false, msg: `watchtower returned HTTP ${res.status}` };
+            return {
+                ok: false,
+                code: 'WATCHTOWER_UNREACHABLE',
+                msg: `watchtower returned HTTP ${res.status}`,
+            };
         }
         return { ok: true, status: res.status };
     } catch (e) {
         if (e?.name === 'AbortError') {
-            return { ok: false, msg: `ping timed out after ${PING_TIMEOUT_MS}ms` };
+            return {
+                ok: false,
+                code: 'WATCHTOWER_UNREACHABLE',
+                msg: `ping timed out after ${PING_TIMEOUT_MS}ms`,
+            };
         }
-        return { ok: false, msg: `unreachable: ${e?.message || String(e)}` };
+        return {
+            ok: false,
+            code: 'WATCHTOWER_UNREACHABLE',
+            msg: `unreachable: ${e?.message || String(e)}`,
+        };
     } finally {
         clearTimeout(t);
     }
@@ -239,6 +292,26 @@ function _timestampSlug() {
  *
  * Returns `{ path, sizeBytes }` on success, throws on failure.
  */
+// Wrap an awaitable in a hard timeout — rejects with the supplied
+// message if the inner promise hasn't settled by then. Used to bound
+// db.backup() so a wedged copy can't hang the JobTracker indefinitely.
+function _withTimeout(promise, ms, label) {
+    let timer;
+    const timeoutP = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    return Promise.race([promise, timeoutP]).finally(() => clearTimeout(timer));
+}
+
+// Filenames look like `db-pre-update-YYYYMMDD-HHMMSS.sqlite`. Sorting by
+// the embedded slug instead of mtime survives archive restores (where a
+// restored backup gets a fresh mtime and would otherwise displace older
+// real backups in the keep-N window).
+function _parseBackupSlug(name) {
+    const m = name.match(/^db-pre-update-(\d{8}-\d{6})\.sqlite$/);
+    return m ? m[1] : null;
+}
+
 async function _snapshotDb() {
     if (!existsSync(DB_PATH)) {
         return { path: null, sizeBytes: 0, skipped: 'no-db' };
@@ -256,36 +329,43 @@ async function _snapshotDb() {
     try {
         // better-sqlite3's backup() is the safe online backup — it copies
         // the DB at page granularity and never trips on a concurrent
-        // writer. Newer versions return a Promise; older ones a sync API.
+        // writer. Wrapped in a hard timeout so a slow disk + huge DB
+        // can't wedge the request.
         if (typeof db.backup === 'function') {
-            await db.backup(dst);
+            await _withTimeout(Promise.resolve(db.backup(dst)), SNAPSHOT_TIMEOUT_MS, 'db.backup()');
         } else {
-            await fs.copyFile(DB_PATH, dst);
+            await _withTimeout(fs.copyFile(DB_PATH, dst), SNAPSHOT_TIMEOUT_MS, 'fs.copyFile()');
         }
     } catch (e) {
-        // Fall back to a plain copy if the online backup is unavailable.
-        // The wal_checkpoint above + WAL mode means this is still a
-        // consistent snapshot for our single-writer workload.
-        await fs.copyFile(DB_PATH, dst);
+        // Fall back to a plain copy if the online backup is unavailable
+        // (NOT for timeout — re-throw timeouts so the operator sees the
+        // real cause). The wal_checkpoint above + WAL mode means this
+        // fallback is still a consistent snapshot for our single-writer
+        // workload.
+        if (/timed out/.test(e?.message || '')) {
+            // Clean up the partial file before re-throwing so a torn
+            // snapshot can't survive into pruning.
+            try {
+                await fs.unlink(dst);
+            } catch {
+                /* nothing to clean */
+            }
+            throw e;
+        }
+        await _withTimeout(fs.copyFile(DB_PATH, dst), SNAPSHOT_TIMEOUT_MS, 'fs.copyFile()');
     }
     const stat = await fs.stat(dst);
 
-    // Prune older backups, keep the most-recent KEEP_BACKUPS files.
+    // Prune older backups by parsing the timestamp slug from the
+    // filename — survives archive restores where mtime would lie.
     try {
-        const files = (await fs.readdir(BACKUPS_DIR)).filter(
-            (n) => n.startsWith('db-pre-update-') && n.endsWith('.sqlite'),
-        );
-        const stats = await Promise.all(
-            files.map(async (n) => {
-                const full = path.join(BACKUPS_DIR, n);
-                const s = await fs.stat(full).catch(() => null);
-                return s ? { full, mtime: s.mtimeMs } : null;
-            }),
-        );
-        const sorted = stats.filter(Boolean).sort((a, b) => b.mtime - a.mtime);
-        for (const old of sorted.slice(KEEP_BACKUPS)) {
+        const files = (await fs.readdir(BACKUPS_DIR))
+            .map((n) => ({ name: n, slug: _parseBackupSlug(n) }))
+            .filter((f) => f.slug);
+        files.sort((a, b) => (a.slug < b.slug ? 1 : a.slug > b.slug ? -1 : 0));
+        for (const old of files.slice(KEEP_BACKUPS)) {
             try {
-                await fs.unlink(old.full);
+                await fs.unlink(path.join(BACKUPS_DIR, old.name));
             } catch {
                 /* best-effort */
             }
@@ -339,24 +419,29 @@ async function _triggerWatchtower() {
  * happens out-of-band moments later.
  *
  * The caller (a route handler) is expected to broadcast `update_started`
- * over WebSocket immediately after this resolves so every open tab can
- * render an "Updating, will reconnect…" overlay.
+ * over WebSocket immediately after recording the audit row, so every
+ * open tab can render an "Updating, will reconnect…" overlay during the
+ * snapshot phase.
  *
  * Each error carries a stable `code` field the route handler surfaces
  * to the SPA so the operator gets actionable text, not a generic
  * "update failed":
  *
- *   AUTO_UPDATE_UNAVAILABLE  — not in Docker / sidecar not configured
- *   WATCHTOWER_UNREACHABLE   — pre-flight ping failed (sidecar down)
- *   DB_CORRUPT               — quick_check on the live DB failed
- *   BACKUP_FAILED            — snapshot copy threw
- *   BACKUP_VERIFY_FAILED     — snapshot wrote but is unreadable / torn
- *   TRIGGER_FAILED           — watchtower POST returned non-2xx
+ *   AUTO_UPDATE_UNAVAILABLE   — not in Docker / sidecar not configured
+ *   WATCHTOWER_UNREACHABLE    — pre-flight ping failed (sidecar down)
+ *   WATCHTOWER_UNAUTHENTICATED — sidecar up, token rejected (401/403)
+ *   DB_CORRUPT                — quick_check on the live DB failed
+ *   BACKUP_FAILED             — snapshot copy threw or timed out
+ *   BACKUP_VERIFY_FAILED      — snapshot wrote but is unreadable / torn
+ *   TRIGGER_FAILED            — watchtower POST returned non-2xx
  *
+ * @param {object} [opts]
+ * @param {boolean} [opts.force=false]  Bypass any pre-flight short-circuits.
  * @returns {Promise<{ success: true, backup: { path: string|null, sizeBytes: number },
  *                     ping: object, integrity: object, verify: object }>}
  */
-export async function runAutoUpdate() {
+export async function runAutoUpdate(opts = {}) {
+    void opts.force; // reserved for future "skip pre-flights" power-user path
     const status = autoUpdateStatus();
     if (!status.available) {
         const why = !status.inDocker
@@ -368,13 +453,18 @@ export async function runAutoUpdate() {
     }
 
     // 1. Pre-flight ping — fail fast on a misconfigured WATCHTOWER_URL or
-    //    a sidecar that crashed. Cheaper than a wasted DB snapshot.
+    //    a sidecar that crashed. Cheaper than a wasted DB snapshot. Auth
+    //    failures (401/403) surface as their own code so the operator
+    //    knows it's a token problem, not a connectivity problem.
     const ping = await _pingWatchtower();
     if (!ping.ok) {
-        const err = new Error(
-            `Watchtower preflight failed — ${ping.msg}. The sidecar may be down or the WATCHTOWER_URL / token is wrong.`,
-        );
-        err.code = 'WATCHTOWER_UNREACHABLE';
+        const code = ping.code || 'WATCHTOWER_UNREACHABLE';
+        const hint =
+            code === 'WATCHTOWER_UNAUTHENTICATED'
+                ? 'Re-generate WATCHTOWER_HTTP_API_TOKEN in .env (it must match the watchtower sidecar) and restart the auto-update profile.'
+                : 'The sidecar may be down or the WATCHTOWER_URL / token is wrong.';
+        const err = new Error(`Watchtower preflight failed — ${ping.msg}. ${hint}`);
+        err.code = code;
         throw err;
     }
 
@@ -415,6 +505,10 @@ export async function runAutoUpdate() {
             `Pre-update snapshot verification failed: ${verify.msg}. The bad snapshot has been deleted; please retry once you've inspected disk health.`,
         );
         err.code = 'BACKUP_VERIFY_FAILED';
+        // Surface the (now-deleted) backup path on the error so the
+        // route handler can record it on the failed audit row even
+        // though the file itself is gone.
+        err.backup = backup;
         throw err;
     }
 
@@ -424,6 +518,10 @@ export async function runAutoUpdate() {
     } catch (e) {
         const err = new Error(`Watchtower trigger failed: ${e.message}`);
         err.code = 'TRIGGER_FAILED';
+        // Surface the snapshot we DID take so the route handler can
+        // stamp it onto the failed row — the operator can still recover
+        // from the verified backup even if watchtower itself failed.
+        err.backup = backup;
         throw err;
     }
     return { success: true, backup, ping, integrity, verify };
@@ -435,4 +533,9 @@ export const _internals = {
     _pingWatchtower,
     _verifyDbIntegrity,
     _verifySnapshot,
+    _withTimeout,
+    _parseBackupSlug,
+    OVERLAY_STALL_MS,
+    SNAPSHOT_TIMEOUT_MS,
+    KEEP_BACKUPS,
 };

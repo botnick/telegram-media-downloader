@@ -2,21 +2,68 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Maintenance hub polish
+## [2.10.0] — 2026-05-08
 
-### Added
-- **Find duplicates page** — top stats panel (Total / Hashed / Awaiting hash / Last scan) hydrates from `GET /api/maintenance/dedup/stats`; persists across server restart via `kv['dedup_last_scan']`.
+A foundation release. The headline is **cluster mode** — federate two or more dashboard instances into a single library with real-time sync, automatic failover, and LAN auto-discovery — but the v2.10 ship list also covers an auto-update overhaul, an AI subsystem that survives broken native deps, a re-auth modal so session expiry no longer kicks you out of the SPA, and a maintenance hub polish across every fire-and-forget tool.
+
+### Added — Cluster mode (the headline)
+- **Per-peer tokens.** Each pairing exchanges a fresh per-pair secret during handshake. Revoking one peer no longer invalidates the rest of the cluster.
+- **Pairing codes.** Short 8-character single-use codes (5-min TTL) replace the v2.9 "paste the cluster token in both peers" wizard.
+- **Real-time WS sync** over a persistent `/ws/cluster` channel. Catalog updates propagate in <1 second; the 5-minute polling fallback only kicks in if the link drops.
+- **LAN auto-discovery** via UDP broadcast on port 28910. The Cluster page shows discovered peers and one-click pairs them with a fresh code.
+- **Owner-peer routing** — `groups[i].ownerPeerId` designates a single peer as the downloader for that group; other peers see the catalog but stay silent on Telegram.
+- **Backup peer + automatic failover** — `groups[i].backupPeerId` + `cluster.failover_grace_minutes` (default 5). When the owner is silent past the grace window, the backup atomically takes over and broadcasts `failover_completed`.
+- **Relay-through-peer** — if peer A can't reach peer C but peer B can reach both, A's signed calls forward through B end-to-end (B never sees the inner payload).
+- **Live config replication** — mark settings as `cluster.replicate.<key> = "cluster"` (or `"cluster_excl"`); changes propagate to every peer with last-writer-wins (timestamp + peer-id tiebreak).
+- **Cross-peer file delete** with persistent retry queue — sweep's "keep this copy" decision actually deletes the losers on remote peers (was queue-only in v2.9).
+- **Cluster-wide search** — `/api/cluster/search` fans out to every online peer, merges, dedups by `file_hash`.
+- **Cluster stats** — disk-usage / dedup / egress aggregated per peer.
+- **35 new `/api/cluster/*` endpoints** (admin-cookie + HMAC-signed peer-to-peer). **WebSocket events** for `peer_status`, `peer_catalog_update`, `peer_groups_update`, `cluster_config_changed`, `cluster_failover`, `cluster_sweep_progress` / `_done`, `peer_added` / `_removed`, `download_added` / `_deleted` / `group_changed`, `config_changed`. **10 new tables** (`peers`, `peer_downloads`, `peer_groups`, `peer_accounts`, `peer_history`, `peer_failover_log`, `peer_delete_jobs`, `peer_discoveries`, `cluster_egress_log`, `cluster_audit`).
+- See [`docs/CLUSTER.md`](docs/CLUSTER.md). v2.9 → v2.10 re-pair instructions in [`docs/MIGRATION-v2.9-to-v2.10.md`](docs/MIGRATION-v2.9-to-v2.10.md).
+
+### Added — Auto-update overhaul
+- **`update_history` audit table** — every `/api/update` click writes one row (`triggered` → `success` / `failed` / `stalled`); the dashboard's new **Updates** page (`/maintenance/updates`) renders the trail with version transitions, durations, error codes, backup paths.
+- **Pre-flight integrity gate** — watchtower reachability ping (5 s HEAD), live `PRAGMA quick_check`, snapshot write + verify-by-reopen, **then** trigger watchtower. Bad snapshots are deleted so a torn backup can't masquerade as a recovery point.
+- **Boot instance ID** rotated on every container start; the new container's finaliser stamps the `triggered` row to `success` even when the image's semver is rebuilt under the same `:latest` tag (instance_id always differs).
+- **Structured `error_code`** on every failure path (`WATCHTOWER_UNREACHABLE` / `DB_CORRUPT` / `BACKUP_FAILED` / `BACKUP_VERIFY_FAILED` / `TRIGGER_FAILED`); the SPA looks up an i18n message keyed on the code rather than relaying raw strings.
+- **Server-configurable overlay stall timeout** — broadcast at boot via `UPDATE_OVERLAY_STALL_MS`; the SPA respects the value without redeployment.
+- **Backup pruning** — keep `UPDATE_BACKUP_KEEP` (default 5) most-recent snapshots in `data/backups/`.
+
+### Added — AI subsystem hardening
+- **AI Doctor card** (`/api/ai/health`) — single payload covering sharp (libvips), `@huggingface/transformers` (ONNX/WASM runtime), `sqlite-vec` (optional vector ext), models cache directory. Each check returns platform-aware remediation text (musl vs glibc, sharp rebuild after Node upgrade, libvips install on Linux, etc.).
+- **Graceful module loading** (`src/core/ai/safe-load.js`) — a missing libvips / wrong libc / stale Node ABI no longer crashes the AI subsystem at boot. Capabilities fail cleanly and independently; the rest keep working.
+- **Lazy sharp** in `faces.js` + `phash.js` — `import sharp` deferred to first scan call, so the server boots even when sharp can't be required.
+- **`maintenance-ai.js` rewrite** — federated architecture across 12 sub-modules in `src/web/public/js/ai/*` (capabilities, doctor, models, hf_token, people, tags, phash, search, stale-embeddings, etc.); each sub-module owns one card on the AI page.
+- **AI router extracted** to `src/web/routes/ai.js` (factory pattern, deps injected) + every handler wrapped in `src/web/lib/safe-route.js` so a buggy AI endpoint can't trigger a process-level uncaught exception.
+- Every `/api/ai/*` response carries both `ok: true` and `success: true` so legacy SPA caches and the new envelope co-exist.
+
+### Added — Re-auth modal
+- **In-SPA session re-auth** — when an admin endpoint returns 401, a password modal opens instead of a hard redirect to `/login.html`. The retried request resumes when the user signs in successfully.
+- **Single-flight queueing** — three admin endpoints firing on page mount produce one prompt + three retries.
+- **Graceful fallback** — if the modal fails or the user cancels, falls back to the legacy redirect so the operator always has an escape hatch.
+- Fires `tgdl:reauth-success` so `app.js` can re-fetch `/api/auth_check` and update `body[data-role]` without a page reload.
+
+### Added — Maintenance hub polish
+- **Find duplicates page** — top stats panel (Total / Hashed / Awaiting hash / Last scan) hydrates from `GET /api/maintenance/dedup/stats` and persists across server restart via `kv['dedup_last_scan']`.
 - **Verify files button** surfaced on the duplicates page (was buried in Settings).
-- **Stage-specific progress labels** (Hashing X / Y · Grouping by hash…) on the duplicates page.
-- **Persisted last-run summaries** for thumbs/build, faststart, reindex, files-verify — a fresh dashboard visit can answer "did this even run before?" without rerunning.
-- **`/api/maintenance/<feature>/stats` endpoints** for verify, reindex, thumbs/build, dedup; existing `/faststart/stats` extended with `lastRun`.
-- **Stats panel + "Last build / Last run" cards** on thumbs and video pages mirroring the duplicates pattern.
-- **`scripts/check_i18n_drift.js`** — catches missing translation keys before a release ships with `[missing key]` chrome.
+- **Stage-specific progress labels** ("Hashing X / Y", "Grouping by hash…") with bigger spinner, h-2 bar, and right-aligned percentage.
+- **Persisted last-run summaries** for thumbs build, faststart, reindex, files-verify — a fresh dashboard visit answers "did this even run before?" without re-running.
+- **`/api/maintenance/<feature>/stats` endpoints** — verify, reindex, thumbs/build, dedup get new `/stats` endpoints; the existing `/faststart/stats` is extended with `lastRun`.
+- **Stats panel + last-run cards** on thumbs and video pages mirroring the duplicates pattern.
+- **`scripts/check_i18n_drift.js`** — zero-dep CI script that walks `data-i18n` attributes + `i18nT(…)` calls and diffs the union against `en.json` + `th.json`. Missing keys exit non-zero with a list.
+
+### Added — Infrastructure
+- **`autoheal` Docker sidecar** in the bundled `docker-compose.yml` — restarts containers whose healthcheck fails (catches event-loop hangs that `restart: unless-stopped` misses).
+- **Memory ceilings** — `TGDL_MEM_LIMIT` (default `2g`) on the dashboard service so a runaway embeddings cache can't OOM the host.
+- **Log rotation** baked into the compose file (10 MB × 5 files / container).
+- **PM2 ecosystem.config.cjs** retargeted from `src/index.js` to `src/web/server.js`; `max_memory_restart: 1500M` + `listen_timeout: 30_000` for boot grace.
+- **Settings → Advanced** is now a collapsible `<details>` element with a styled disclosure marker.
 
 ### Fixed
-- **Race condition** in `thumbs/build-all`, `faststart/scan`, `dedup/scan`, `reindex` — the catch block broadcast `${prefix}_done` before the `finally` reset the running flag, so a retry after error got a spurious 409 ALREADY_RUNNING. All four migrated to JobTracker; the running-flag reset and broadcast now happen atomically.
-- **Dual-state `/api/maintenance/reindex/status`** — was OR-ing `_reindexBgRunning` with `integrity.isReindexRunning()`, masking which subsystem actually owned the job. Single source of truth now.
-- **`btn.textContent = …` wipes icons** — every action button on thumbs / video / nsfw pages migrated to the icon + `<span data-i18n>` pattern; JS swaps only the label span.
+- **Race condition** in `thumbs/build-all`, `faststart/scan`, `dedup/scan`, `reindex` — the catch block broadcast `${prefix}_done` before the `finally` reset the running flag, so a retry after error got a spurious 409 ALREADY_RUNNING. All four routes migrated to `JobTracker`; the running-flag reset and broadcast happen atomically inside one tracker boundary.
+- **Dual-state `/api/maintenance/reindex/status`** — used to OR `_reindexBgRunning` with `integrity.isReindexRunning()`, masking which subsystem actually owned the job. Single source of truth now.
+- **`btn.textContent = …` wipes icons** — every action button on the thumbs / video / nsfw / duplicates pages migrated to the icon + `<span data-i18n>` pattern; JS swaps only the label span.
+- **Chunked SQL `IN (?,…)`** in `dedup.deleteByIds` — `SQL_IN_CHUNK = 500` keeps each prepared statement well under SQLite's `SQLITE_MAX_VARIABLE_NUMBER` (32766 modern, 999 old). Bulk dedup-delete on libraries with thousands of duplicate sets works correctly on every SQLite build.
 - **Filled 26 missing i18n keys** uncovered by the new drift script: `reauth.*` modal, `nsfw.bulk.*` / `nsfw.row.*` / `nsfw.empty.*`, `settings.maintenance_link.*`, `common.saved`, `maintenance.tabs.back`, `maintenance.ai.hf_token.save_failed`. Both en + th.
 
 ### Accessibility
@@ -25,9 +72,20 @@ All notable changes to this project are documented here. The format is based on 
 - `data-i18n-title` tooltips on every maintenance action button.
 
 ### Internal
-- Frontend label-span swap pattern documented inline in `maintenance-duplicates.js` as the reference for other modules.
-- New tests: `tests/maintenance.race.test.js` (single-flight + recovery contract), `tests/maintenance.dedup-jobtracker.test.js` (kv persistence).
-- SW VERSION bumps `v281` → `v281n`.
+- **40+ new DB helpers** (`upsertPeer`, `listOwnDownloadsSince`, `findClusterByHash`, `findCrossClusterDuplicates`, `recordFailover`, `enqueuePeerDeleteJob`, `claimNextPeerDeleteJob`, `upsertPeerDiscovery`, `recordEgress`, `aggregateEgress`, etc.) and a `from_instance_id` column on `update_history`.
+- **Cluster WS upgrade handler** with HMAC auth at the upgrade handshake; cluster broadcast is wired via `global.__tgdlBroadcast` so download events propagate to paired peers without import cycles.
+- **Cluster-aware monitor** — `setupRealtimeSync()` and `poll()` import `isLocalGroup` from `cluster/router.js` and skip groups owned by another peer (no duplicate Telegram traffic in a federated setup).
+- **Cluster-aware downloader** — when a freshly hashed file matches a peer's hash, the local copy is replaced by a synthetic `_clusterref/<peerId>/<remoteId>` path; the bridge resolves it on read. Zero duplicate bytes across the cluster.
+- **Express middleware** — new `src/web/lib/safe-route.js` wraps every AI handler (sync + async throws caught + JSON-enveloped); guards a buggy handler from triggering `process.on('uncaughtException')`.
+- **Frontend label-span swap pattern** documented inline in `maintenance-duplicates.js` as the reference for other maintenance modules.
+- **Tests added** — 14 cluster (`tests/cluster.*.test.js` covers identity, hmac, handshake, peers, sync, dedup, sweep, config-sync, discovery, failover, proxy, relay, tokens, e2e), 4 AI (`tests/ai.health.test.js`, `tests/ai.lazy-sharp.test.js`, `tests/ai.routes.test.js`, `tests/ai.safe-route.test.js`), 3 update (`tests/updater.test.js`, `tests/update-history.test.js`, `tests/update-routes.test.js`), 1 reauth-modal, 2 maintenance race + persistence (`tests/maintenance.race.test.js`, `tests/maintenance.dedup-jobtracker.test.js`). 1219 specs passing across 154 files (1 file + 2 specs skipped intentionally).
+- **Route registration debug aid** — `router.js` logs unmatched paths to the console (devtools-only) and replaces them with `/viewer` so a typo doesn't sit in history.
+- **SW VERSION** bumped `v281` → `v210` so installed dashboards pick up the new shell + asset caches on next visit.
+
+### Migration notes
+- v2.9 cluster pairings keep working until you re-pair (legacy global cluster_token is still accepted as an HMAC fallback during the v2.10 cycle). The Cluster page flags v2.9-paired peers `migrationRequired: true` — re-pair via the new Issue pairing code workflow to upgrade. Full instructions in [`docs/MIGRATION-v2.9-to-v2.10.md`](docs/MIGRATION-v2.9-to-v2.10.md).
+- v2.11 will remove the legacy global-token fallback. Plan re-pairs before that release.
+- **No config / DB migrations are required for non-cluster operators** — every cluster table + column is additive.
 
 ## [2.8.1] — 2026-05-08
 

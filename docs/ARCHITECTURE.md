@@ -71,9 +71,11 @@ data/
 | `kv['queue_history']` | `src/web/server.js` (`pushQueueHistory` / `flushQueueHistorySoon`) | `data/queue-history.json` |
 | `web_sessions` table | `src/core/web-auth.js` + `src/core/db.js` accessors | `data/web-sessions.json` |
 | `queue_backlog` table | `src/core/db.js` (`pushQueueBacklog` / `popQueueBacklog`) + `src/core/downloader.js` spillover | `data/logs/queue_backlog.jsonl` |
-| `update_history` table | `src/core/db.js` (`recordUpdateAttempt` / `recordUpdateFailure` / `finalisePendingUpdates`) | (new in v2.8) |
+| `update_history` table | `src/core/db.js` (`recordUpdateAttempt` / `recordUpdateFailure` / `finaliseSuccessfulTrigger` / `finalisePendingUpdates`) | (new in v2.8, hardened in v2.10) |
+| `peers` + `peer_*` tables | `src/core/cluster/peers.js` + `src/core/cluster/sync.js` | (new in v2.10) |
+| `cluster_audit` table | `src/core/cluster/audit.js` | (new in v2.10) |
 
-`saveConfig()` emits a `change` event on an in-process `EventEmitter` after every commit — `monitor.js` subscribes via `watchConfig()` and reloads without any filesystem watcher. Migration from JSON files is one-shot, idempotent, and runs inside `getDb()`; source files are renamed to `*.migrated` and kept as a reversible backup. The auto-update audit table is finalised on every container boot — any `triggered` row whose `from_version` differs from the running version is promoted to `success`, capturing the actual transition observed.
+`saveConfig()` emits a `change` event on an in-process `EventEmitter` after every commit — `monitor.js` subscribes via `watchConfig()` and reloads without any filesystem watcher. Migration from JSON files is one-shot, idempotent, and runs inside `getDb()`; source files are renamed to `*.migrated` and kept as a reversible backup. The auto-update audit table is finalised on every container boot — any `triggered` row whose `from_version` *or* `from_instance_id` differs from the running container is promoted to `success`, capturing the actual transition observed (the `from_instance_id` column was added in v2.10 to handle `:latest`-tag rebuilds where semver is unchanged).
 
 ## Multi-account routing
 
@@ -176,5 +178,72 @@ src/core/
 ├── security.js       # RateLimiter + SecureSession (AES-256-GCM)
 ├── secret.js         # data/secret.key bootstrap
 ├── metrics.js        # OpenMetrics text format for Prometheus
+├── job-tracker.js    # Single-flight + WS broadcast lifecycle for fire-and-forget admin jobs
+├── ai/
+│   ├── index.js      # AI capability registry (federated)
+│   ├── safe-load.js  # Lazy + retry-on-error loader for native deps (sharp, etc.)
+│   ├── health.js     # AI Doctor checks (sharp / Transformers / sqlite-vec / models dir)
+│   ├── faces.js      # Face detection + clustering (lazy sharp)
+│   ├── phash.js      # Perceptual hash (lazy sharp)
+│   ├── tags.js       # ImageNet auto-tagging
+│   └── search.js     # CLIP semantic search
+├── cluster/          # v2.10 federation layer
+│   ├── identity.js   # peer_id, peer_name, cluster_token, pairing codes
+│   ├── peers.js      # CRUD + status tracking
+│   ├── handshake.js  # Pair initiator + acceptor
+│   ├── hmac.js       # Per-pair-secret HMAC sign/verify
+│   ├── sync.js       # Delta-sync paired catalogs over HTTP + WS push
+│   ├── ws.js         # Persistent /ws/cluster channel
+│   ├── dedup.js      # Cross-cluster hash lookup
+│   ├── sweep.js      # Cross-peer dedup conflict resolver
+│   ├── relay.js      # Forward signed calls through a relay peer
+│   ├── failover.js   # Backup-peer takeover after grace period
+│   ├── discovery.js  # UDP LAN auto-discovery (port 28910)
+│   ├── config-sync.js # Per-key replication policy
+│   ├── search.js     # Cluster-wide gallery search
+│   ├── audit.js      # cluster_audit log
+│   └── router.js     # isLocalGroup() — owner-peer routing helpers
 └── logger.js         # noise classifier + WAL'd network log
 ```
+
+## Fire-and-forget admin jobs (`JobTracker`)
+
+Every long-running admin action (verify files, db vacuum, dedup scan, thumbnail build, faststart sweep, NSFW scan, AI index, cluster sweep, etc.) follows one shared lifecycle in v2.10+:
+
+- `POST` returns 200 in <500 ms with `{started:true}`.
+- Work runs in the background via `JobTracker.tryStart(runFn)`.
+- Progress streams over WebSocket as `${prefix}_progress`.
+- Final result lands as `${prefix}_done` (with `result` merged in, or `error` on failure).
+- A sibling `GET …/status` lets a re-mounted page recover live state.
+- Concurrent calls return 409 with `code: 'ALREADY_RUNNING'` + the running snapshot.
+- `kvSet('<feature>_last_run', summary)` inside the runFn persists a small last-run blob so dashboards survive server restart.
+
+The race-condition family the v2.8.x routes had — broadcast `${prefix}_done` with the error inside the catch, then reset `_running = false` in finally — is structurally impossible in `JobTracker` because both happen inside the same `finally`. v2.10 migrated `dedup/scan`, `thumbs/build-all`, `faststart/scan`, and `reindex` over.
+
+## Cluster mode (v2.10)
+
+Optional federation across two or more dashboards. Each peer keeps its own DB and `data/downloads/` tree; the dashboard merges every paired peer's catalog into one gallery, with a small peer-source badge per row. Off by default; pairing is manual via short-lived **pairing codes**.
+
+- **Identity** — every install rolls a UUIDv4 `peer_id` on first boot (persisted in `kv['peer_id']`). The cluster's HMAC key starts as a 32-byte hex `cluster_token` (legacy v2.9 fallback); pairing codes derive **per-pair secrets** that v2.10 prefers for cross-peer auth.
+- **Pairing** — `POST /api/cluster/identity/pairing-code` mints an 8-char single-use code with a 5-min TTL on the receiver. The initiator pastes the receiver's URL + the code; both sides install a fresh per-pair secret.
+- **WS channel** — paired peers maintain a persistent `/ws/cluster` link with HMAC-signed frames. Catalog adds, deletes, and config replications propagate in <1 second; HTTP polling is the 5-minute fallback if the link drops.
+- **Owner-peer routing** — `groups[i].ownerPeerId` pins a single peer as the downloader; other peers see the catalog but stay silent on Telegram. `isLocalGroup(g)` from `cluster/router.js` is the gate inside `monitor.js`.
+- **Backup peer + failover** — `groups[i].backupPeerId` + `cluster.failover_grace_minutes` (default 5) lets the backup atomically take over when the owner is silent. Recorded in `peer_failover_log`; broadcast as `failover_completed`.
+- **Cross-peer dedup** — `findClusterByHash(hash, size)` runs at download time. If a peer already holds the file, the local copy is replaced by a synthetic `_clusterref/<peerId>/<remoteId>` path; the bridge resolves it on read. Zero duplicate bytes across the cluster.
+- **Bridge** — opening a file owned by peer B from peer A's dashboard streams through A (proxy mode, default — works behind any NAT) or 302-redirects to B (direct mode — faster, requires browser-reachable peer).
+- **Relay** — if A can't reach C but B can reach both, A's signed calls forward through B end-to-end (B never sees the inner payload).
+- **LAN auto-discovery** — UDP broadcast on port 28910 with the cluster's identity + token fingerprint; peers that match auto-surface in the Cluster page's "Discovered" section for one-click pair.
+
+See `docs/CLUSTER.md` for operator setup, troubleshooting, and the per-pair-secret migration story.
+
+## AI subsystem hardening (v2.10)
+
+The AI router is extracted to `src/web/routes/ai.js` with a factory pattern (`createAiRouter({deps})`); every handler is wrapped in `src/web/lib/safe-route.js` (`makeSafe`) which catches sync + async throws and returns a structured `{ ok:false, code, message, where, detail }` JSON envelope. A buggy AI handler can no longer trigger `process.on('uncaughtException')` and tear the server down.
+
+Native deps are loaded lazily and gracefully:
+
+- `src/core/ai/safe-load.js` exposes `lazy(loader, name)` which caches the module, reports failures as structured errors, and resets the cache on error so a fix can land without restart.
+- `faces.js` and `phash.js` defer `import sharp` to first use; the server boots even when libvips is missing.
+- `src/core/ai/health.js` powers the AI Doctor card via `GET /api/ai/health` — single payload covering sharp / Transformers / sqlite-vec / models cache, with platform-aware remediation text.
+
+See `docs/AI.md`.

@@ -89,6 +89,30 @@ const TOOLS = [
         wsEvents: ['backup_progress', 'backup_done', 'backup_error'],
     },
     {
+        slug: 'cluster',
+        i18nTitle: 'maintenance.hub.cluster.title',
+        defaultTitle: 'Cluster mode',
+        i18nBody: 'maintenance.hub.cluster.body',
+        defaultBody:
+            'Pair multiple instances so they federate downloads, gallery, and dedup. Each peer keeps its own data; the dashboard sees them as one library.',
+        icon: 'ri-broadcast-line',
+        accent: 'blue',
+        statusUrl: null, // peer list — hub card just opens the page
+        wsEvents: ['peer_added', 'peer_removed', 'peer_status'],
+    },
+    {
+        slug: 'updates',
+        i18nTitle: 'maintenance.hub.updates.title',
+        defaultTitle: 'Updates',
+        i18nBody: 'maintenance.hub.updates.body',
+        defaultBody:
+            'Install the latest release in one click and audit every past attempt — what failed, when, and why.',
+        icon: 'ri-download-cloud-2-line',
+        accent: 'blue',
+        statusUrl: '/api/auto-update/status',
+        wsEvents: ['update_progress', 'update_done', 'update_started'],
+    },
+    {
         slug: 'ai',
         i18nTitle: 'maintenance.hub.ai.title',
         defaultTitle: 'AI search & people',

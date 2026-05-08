@@ -182,15 +182,25 @@ export async function findDuplicates(opts = {}) {
  * @param {number[]} ids
  * @returns {{ removed: number, freedBytes: number, missingFiles: number }}
  */
+// Chunk size for `IN (?,?,…)` clauses. SQLite caps bound parameters at
+// SQLITE_MAX_VARIABLE_NUMBER (32766 in modern builds, 999 in older ones);
+// 500 stays well clear of both and keeps each prepared statement small.
+const SQL_IN_CHUNK = 500;
+
 export function deleteByIds(ids) {
     if (!Array.isArray(ids) || ids.length === 0) {
         return { removed: 0, freedBytes: 0, missingFiles: 0 };
     }
     const db = getDb();
-    const placeholders = ids.map(() => '?').join(',');
-    const rows = db
-        .prepare(`SELECT id, file_path, file_size FROM downloads WHERE id IN (${placeholders})`)
-        .all(...ids);
+    const rows = [];
+    for (let i = 0; i < ids.length; i += SQL_IN_CHUNK) {
+        const slice = ids.slice(i, i + SQL_IN_CHUNK);
+        const ph = slice.map(() => '?').join(',');
+        const part = db
+            .prepare(`SELECT id, file_path, file_size FROM downloads WHERE id IN (${ph})`)
+            .all(...slice);
+        for (const r of part) rows.push(r);
+    }
 
     let freed = 0;
     let missing = 0;
@@ -225,9 +235,12 @@ export function deleteByIds(ids) {
     }
     let removed = 0;
     if (idsToDrop.length) {
-        const ph = idsToDrop.map(() => '?').join(',');
-        const r = db.prepare(`DELETE FROM downloads WHERE id IN (${ph})`).run(...idsToDrop);
-        removed = r.changes;
+        for (let i = 0; i < idsToDrop.length; i += SQL_IN_CHUNK) {
+            const slice = idsToDrop.slice(i, i + SQL_IN_CHUNK);
+            const ph = slice.map(() => '?').join(',');
+            const r = db.prepare(`DELETE FROM downloads WHERE id IN (${ph})`).run(...slice);
+            removed += r.changes;
+        }
     }
     return { removed, freedBytes: freed, missingFiles: missing };
 }

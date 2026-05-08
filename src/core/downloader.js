@@ -918,6 +918,44 @@ export class DownloadManager extends EventEmitter {
                     bytesAddedToDisk = 0; // no new bytes written
                     storedSize = dup.file_size; // exactly equal to `size` here
                 }
+            } else {
+                // No local match — try the cluster catalog. If a paired peer
+                // already holds this hash, drop the local bytes and store a
+                // synthetic `_clusterref/<peerId>/<remoteId>` path. The
+                // /files bridge resolves it transparently to a remote stream.
+                try {
+                    const { findHashAcrossCluster, clusterRefPath, recordDedupHit } = await import(
+                        './cluster/dedup.js'
+                    ).catch(() => ({}));
+                    if (typeof findHashAcrossCluster === 'function') {
+                        const hits = findHashAcrossCluster(fileHash, size);
+                        const winner = hits.find((h) => h.peerStatus !== 'offline') || hits[0];
+                        if (winner) {
+                            try {
+                                await fs.unlink(filePath);
+                            } catch {
+                                /* leave stale; integrity sweep handles it */
+                            }
+                            // Encode the synthetic path. `path.relative` later
+                            // would break it, so override storedPath to a marker
+                            // and let the insert receive the synthetic value.
+                            storedPath = path.join(
+                                DOWNLOADS_DIR,
+                                clusterRefPath(winner.peerId, winner.remoteId),
+                            );
+                            bytesAddedToDisk = 0;
+                            storedSize = winner.fileSize || size;
+                            recordDedupHit({
+                                peerId: winner.peerId,
+                                fileHash,
+                                fileSize: storedSize,
+                                remoteId: winner.remoteId,
+                            });
+                        }
+                    }
+                } catch {
+                    /* cluster module not loaded — single-peer mode, no-op */
+                }
             }
         } catch (e) {
             // Hash failed (very rare — file disappeared between rename and

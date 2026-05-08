@@ -127,3 +127,52 @@ Per-group lock — only one backfill per group at a time. Either wait for the ac
 ## Auto-update finished but the version chip didn't bump
 
 Hard-refresh the browser (Ctrl/Cmd+Shift+R) — the SPA cache may be holding the previous bundle. The status-bar reconnect logic auto-reloads the page when it detects a version change, but if reconnect happened during a brief WS disconnect the heuristic can miss the version flip.
+
+## "Maintenance → … 409 ALREADY_RUNNING" sticks after a failed run (pre-v2.10)
+
+Pre-v2.10 builds had a race in `thumbs/build-all`, `faststart/scan`, `dedup/scan`, and `reindex` where the `${prefix}_done` broadcast fired before the running flag was reset, so a retry after error landed a spurious 409 even though no job was actually in flight. Fixed in v2.10 by migrating all four routes to `JobTracker` (running-flag reset + WS broadcast happen atomically). If you're stuck on a v2.8.x build, restart the dashboard process — the in-memory flag is process-local so a restart unblocks the next click.
+
+## Cluster — pairing fails with "Token rejected"
+
+Two reasons:
+
+1. The two peers don't share the same cluster token. Open `Maintenance → Cluster → Show token` on the founder, copy, paste into "Use cluster's token" on the joiner. v2.10 prefers the per-pair-secret pairing-code workflow — issue a code on the receiver and paste URL + code on the initiator instead of token-shuffling.
+2. v2.9-paired peers connecting to v2.10 with stale state. The Cluster page flags them `migrationRequired`. Re-pair via `Issue pairing code` — both sides install fresh per-pair secrets and the flag clears within seconds. See [`docs/MIGRATION-v2.9-to-v2.10.md`](MIGRATION-v2.9-to-v2.10.md).
+
+## Cluster — peer shows "Online" but the gallery is empty / out of date
+
+Sync runs over `/ws/cluster` (live) with a 5-min HTTP polling fallback. To force-refresh:
+
+- Click the peer's row → **Test** to confirm the HMAC handshake.
+- `POST /api/cluster/sync/run` (or refresh the Cluster page — it triggers the same fan-out).
+- Watch `data/logs/network.log` for `cluster_auth_failed` audit entries — a clock skew >60 s between peers will reject every signed call (sync NTP).
+
+## Cluster — backup peer didn't take over after the owner went silent
+
+The grace window defaults to 5 minutes (`cluster.failover_grace_minutes`). Inside the grace, the system assumes the owner is just briefly disconnected. If you want a tighter window (e.g. 60 s) for fast-failover setups, edit the value in `Maintenance → Cluster → Settings`. Manual failover for one group is `POST /api/cluster/failover/run {groupId,toPeerId}`. Check `peer_failover_log` (or `GET /api/cluster/failover-log`) for the audit trail.
+
+## Cluster — LAN auto-discovery shows nothing on a hairpinned router
+
+Some consumer routers block intra-LAN UDP broadcasts (so-called "AP isolation" / "client isolation"). Disable that toggle on the router admin page, or pair manually via URL + pairing code (the LAN feature is a convenience only — every cluster operation works fine without it).
+
+## AI page shows "AI Doctor: sharp not loadable"
+
+The AI subsystem's lazy loader couldn't `require('sharp')`. Common causes + fixes (the Doctor card surfaces the matching one):
+
+- **Linux without libvips** — `apt-get install libvips42` (Debian/Ubuntu) or `apk add vips-dev` (Alpine; expect to set `npm config set sharp_libvips_local_prebuilds true` first).
+- **Node ABI mismatch after upgrade** — `npm rebuild sharp`.
+- **Alpine / musl** — sharp ships musl prebuilds; if you got the glibc tarball, rebuild explicitly via `npm install --include=optional sharp`.
+- **Apple Silicon under Rosetta** — install Node 20+ natively; Rosetta-emulated Node ships a binding that segfaults on first call.
+
+After fixing, click **Re-run checks** on the Doctor card — `safe-load.js` resets its cache on error so a fix lands without restart.
+
+## Re-auth modal didn't appear after my session expired
+
+Two paths:
+
+1. **The 401 came from a route the modal can't intercept** (`/api/auth_check`, `/api/login`, the share-link gate). Those bypass the modal by design and fall through to the legacy `/login.html` redirect.
+2. **The SPA never initialised the modal.** Hard-refresh the browser (Ctrl/Cmd+Shift+R) — `app.js` installs `window.__tgdlReauth` early in boot; if it didn't load, `api.js` falls back to the redirect.
+
+## "Update appears stalled" overlay sticks past the timeout
+
+The watchtower swap took longer than `UPDATE_OVERLAY_STALL_MS` (default 120 s). On slow disks or large DBs the snapshot phase alone can run minutes — bump the env var on both the dashboard service and the watchtower sidecar (the dashboard broadcasts the value to the SPA at boot). Check `Maintenance → Updates` for the audit row's `error_code`; `STALLED` rows include the elapsed time so you can pick a sane new value.

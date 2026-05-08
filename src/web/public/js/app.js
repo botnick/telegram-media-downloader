@@ -14,6 +14,7 @@ import { initTheme, getTheme, setTheme } from './theme.js';
 import { initStatusBar } from './statusbar.js';
 import * as Notifications from './notifications.js';
 import { initOnboarding, refreshOnboarding } from './onboarding.js';
+import { initReauthModal } from './reauth-modal.js';
 import { initShortcuts } from './shortcuts.js';
 import * as router from './router.js';
 import { openSheet, confirmSheet } from './sheet.js';
@@ -85,16 +86,46 @@ function scheduleRender(fn) {
 
 // ============ Initialization ============
 async function init() {
+    // Install the in-SPA reauth modal BEFORE the first network call so
+    // a 401 on /api/auth_check (or any subsequent admin endpoint) shows
+    // a modal instead of a hard window.location redirect — the latter
+    // wiped the SPA state and reloaded into /viewer regardless of where
+    // the user was. The modal exposes window.__tgdlReauth which api.js
+    // checks on every 401.
+    try {
+        initReauthModal();
+    } catch (e) {
+        console.warn('reauth-modal init failed', e);
+    }
+
     // Resolve the session role BEFORE the SPA registers any UI — it drives
     // the body[data-role] CSS gate (admin-only DOM) and the router redirect
     // for guest sessions trying to deep-link into admin routes. Falls back
     // to admin on any failure so a transient network blip never accidentally
-    // hides UI for a real admin.
+    // hides UI for a real admin (a guest fallback would block their own
+    // dashboard until next reload).
     try {
         const ac = await api.get('/api/auth_check');
-        state.role = ac?.role || null;
+        state.role = ac?.role || 'admin';
     } catch {
-        state.role = null;
+        state.role = 'admin';
+    }
+    // Successful re-auth from the modal: refresh state.role + body
+    // attribute so admin-only items become visible again WITHOUT a
+    // page reload.
+    try {
+        window.addEventListener('tgdl:reauth-success', async () => {
+            try {
+                const ac = await api.get('/api/auth_check');
+                state.role = ac?.role || 'admin';
+                document.body.dataset.role = state.role;
+                window.__tgdlRole = state.role;
+            } catch {
+                /* keep the fallback role */
+            }
+        });
+    } catch {
+        /* ignore */
     }
     document.body.dataset.role = state.role || '';
     // Mirror to a window global for router.js (which can't import store
@@ -789,6 +820,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-backup.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-backup', e));
+    } else if (page === 'maintenance-cluster') {
+        document.getElementById('page-title').textContent = i18nT(
+            'maintenance.cluster.page_title',
+            'Cluster',
+        );
+        document.getElementById('page-subtitle').textContent = i18nT(
+            'maintenance.cluster.subtitle',
+            'Federate multiple instances. Files, downloads, and dedup span every paired peer.',
+        );
+        import('./maintenance-cluster.js')
+            .then((m) => m.init())
+            .catch((e) => console.error('maintenance-cluster', e));
     } else if (page === 'maintenance-ai') {
         document.getElementById('page-title').textContent = i18nT(
             'maintenance.ai.title',
@@ -801,6 +844,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-ai.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-ai', e));
+    } else if (page === 'maintenance-updates') {
+        document.getElementById('page-title').textContent = i18nT(
+            'update.history.title',
+            'Update history',
+        );
+        document.getElementById('page-subtitle').textContent = i18nT(
+            'update.history.help',
+            'Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.',
+        );
+        import('./maintenance-updates.js')
+            .then((m) => m.init())
+            .catch((e) => console.error('maintenance-updates', e));
     }
 }
 
@@ -859,8 +914,23 @@ function registerRoutes() {
     router.route('/queue', () => renderPage('queue'));
     router.route('/queue/:status', ({ params }) => renderPage('queue', { status: params.status }));
     router.route('/stories', () => {
+        // /stories is a one-shot trigger that opens the Stories sheet
+        // ON TOP of the Viewer. The actual page is the gallery; the
+        // sheet handles its own lifecycle. Use replace: true so the
+        // hash doesn't sit in the back-stack (otherwise the back button
+        // re-fires this handler and re-opens the sheet long after the
+        // user moved on).
         renderPage('viewer');
-        document.getElementById('stories-btn')?.click();
+        const btn = document.getElementById('stories-btn');
+        if (btn) {
+            btn.click();
+        }
+        // Drop the /stories hash so back-button doesn't re-trigger.
+        try {
+            history.replaceState(null, '', '#/viewer');
+        } catch {
+            /* ignore */
+        }
     });
     router.route('/account/add', () => {
         window.location.href = '/add-account.html';
@@ -872,7 +942,9 @@ function registerRoutes() {
     router.route('/maintenance/nsfw', () => renderPage('maintenance-nsfw'));
     router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
     router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
+    router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
     router.route('/maintenance/ai', () => renderPage('maintenance-ai'));
+    router.route('/maintenance/updates', () => renderPage('maintenance-updates'));
 }
 
 function closeSidebar() {
@@ -1106,7 +1178,9 @@ const PAGE_HEADER_ICON = {
     'maintenance-nsfw': 'ri-shield-check-line',
     'maintenance-logs': 'ri-terminal-box-line',
     'maintenance-backup': 'ri-cloud-line',
+    'maintenance-cluster': 'ri-broadcast-line',
     'maintenance-ai': 'ri-sparkling-2-line',
+    'maintenance-updates': 'ri-download-cloud-2-line',
 };
 
 // Repaint the active state on the maintenance tab strip. CSS hides the

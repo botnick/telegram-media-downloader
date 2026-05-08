@@ -22,10 +22,16 @@
  */
 
 import { existsSync } from 'fs';
-import sharp from 'sharp';
+import { lazy } from './safe-load.js';
 import { getPipeline, AI_MODEL_DEFAULTS } from './models.js';
 import { embedImage } from './embeddings.js';
 import { l2Normalize, cosine, vectorToBlob } from './vector-store.js';
+
+// Lazy `sharp` loader — moved off the module top-level so a missing libvips
+// no longer crashes the entire AI subsystem at server boot. Failure surfaces
+// as `code: 'NATIVE_LOAD_FAIL'` to the scan job, which becomes a clean
+// per-row error instead of a process exit.
+const _sharp = lazy('sharp');
 
 let _detectorPromise = null;
 
@@ -92,6 +98,7 @@ export async function embedFace(absPath, bbox, cfg, onLog) {
     if (!absPath || !existsSync(absPath)) return null;
     let cropPath;
     try {
+        const sharp = await _sharp();
         // Sharp can read+resize+crop in one pipeline; we extract to PNG in
         // memory then pass the buffer to the embedding pipeline.
         const meta = await sharp(absPath, { failOn: 'none' }).metadata();

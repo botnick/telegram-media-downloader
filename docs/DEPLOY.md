@@ -45,6 +45,7 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `THUMBS_VID_CONCURRENCY`        | `3`                 | Parallel video-thumb jobs (ffmpeg pins a CPU core). |
 | `WATCHTOWER_HTTP_API_TOKEN`     | unset               | Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this + booting with the `auto-update` compose profile lights up the **Install update** button. |
 | `WATCHTOWER_URL`                | `http://watchtower:8080` | Internal address of the watchtower sidecar. |
+| `TGDL_MEM_LIMIT`                | `2g`                | Hard memory ceiling for the dashboard container (`deploy.resources.limits.memory`). Bigger libraries with lots of in-memory embeddings can override to `4g` / `6g` in `.env`. |
 | `BACKUP_WORKERS_PER_DEST`       | `3`                 | Per-destination concurrent uploads for the backup subsystem. Keep modest — backups share the host's outbound bandwidth with everything else (including the realtime monitor). |
 | `AI_MODELS_DIR`                 | `<repo>/data/models`| Override the on-disk cache directory for AI model weights. Accepts an absolute path or a path relative to the repo root. Default lives inside `data/` so it survives a `docker compose down` and can be pre-seeded by copying the directory between hosts. |
 | `AI_INDEX_CONCURRENCY`          | `1`                 | (Reserved) Per-process worker count for the AI scan loop. Higher values risk OOM on small hosts because each WASM heap occupies ~150 MB. Currently honoured via `config.advanced.ai.indexConcurrency`. |
@@ -205,10 +206,7 @@ pm2 logs telegram-media-downloader
 pm2 save && pm2 startup                      # persist across reboots
 ```
 
-The bundled config caps restarts at 10 with a 2-second backoff (so a
-crash-loop surfaces instead of pinning the CPU), tags log lines with
-timestamps, and writes both streams to `data/logs/pm2-{out,err}.log` so
-the existing backup/rotation paths cover them.
+The bundled config launches `src/web/server.js` (the dashboard + WebSocket bus), caps restarts at 10 with a 2-second backoff (so a crash-loop surfaces instead of pinning the CPU), restarts the worker if RSS exceeds 1.5 GB (`max_memory_restart: 1500M`), tags log lines with timestamps, and writes both streams to `data/logs/pm2-{out,err}.log` so the existing backup/rotation paths cover them. PM2 itself doesn't rotate logs — pair with `pm2 install pm2-logrotate` if you want bounded log files.
 
 ## Backups
 
@@ -225,3 +223,19 @@ For long-running headless monitor:
 - **Linux/macOS:** `TGDL_RUN=monitor ./runner.sh`
 - **Windows:** `pwsh ./watchdog.ps1` (defaults to `monitor`)
 - **Docker:** the included compose file restarts the container on crash; the in-process runtime keeps the engine alive within it.
+
+### Auto-restart on crash AND on hangs (Docker)
+
+`docker-compose.yml` ships two layers of protection:
+
+1. **`restart: unless-stopped`** — Docker restarts the container whenever the process exits with a non-zero status. Covers crashes, OOM kills, and clean `process.exit(1)` calls.
+2. **`autoheal` sidecar** (`willfarrell/autoheal:1.2.0`) — polls the docker socket every 30 s, finds containers whose healthcheck is `unhealthy` AND that carry `autoheal=true`, and restarts them. Covers the case where the process is wedged but hasn't actually exited (deadlocked event loop, stuck DB handle, runaway AI worker).
+
+The dashboard container is labeled `autoheal=true` out of the box. If you'd rather rely on an external supervisor (systemd, Kubernetes liveness probes, NAS health monitor), comment out the `autoheal` service block in `docker-compose.yml`. The label is harmless without the sidecar.
+
+Memory cap, log rotation, and healthcheck timing all live in the same compose file:
+- `deploy.resources.limits.memory: ${TGDL_MEM_LIMIT:-2g}` — override per host via `.env`.
+- `logging.options.max-size: 10m` × `max-file: 5` — 50 MB ceiling per container, prevents log-fill-disk incidents.
+- `healthcheck.start_period: 30s` — gives the cold-start path room for state-migration + first WAL checkpoint on slow disks.
+
+Bare-metal users get equivalent coverage from `ecosystem.config.cjs`: `max_memory_restart: 1500M`, `max_restarts: 10` with a `restart_delay: 2000` ms backoff, `min_uptime: 10s` to surface crash-loops as a stopped process instead of a CPU-pinning restart storm.

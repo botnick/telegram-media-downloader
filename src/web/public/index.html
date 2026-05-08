@@ -216,7 +216,9 @@
                     <div data-page="maintenance-nsfw"></div>
                     <div data-page="maintenance-logs"></div>
                     <div data-page="maintenance-backup"></div>
+                    <div data-page="maintenance-cluster"></div>
                     <div data-page="maintenance-ai"></div>
+                    <div data-page="maintenance-updates"></div>
                 </div>
             </nav>
 
@@ -701,6 +703,9 @@
                         <a class="maintenance-tab" data-mt-page="maintenance-backup" href="#/maintenance/backup" role="tab">
                             <i class="ri-cloud-line"></i><span data-i18n="nav.maintenance.backup">Backup</span>
                         </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab">
+                            <i class="ri-broadcast-line"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
+                        </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-logs" href="#/maintenance/logs" role="tab">
                             <i class="ri-terminal-box-line"></i><span data-i18n="nav.maintenance.logs">Logs</span>
                         </a>
@@ -778,22 +783,15 @@
                          bottom of the page mirrors active section back
                          to the chip via [aria-selected]. -->
                     <nav class="settings-chip-nav" role="tablist" aria-label="Settings sections">
-                        <!-- Per-card chips, trimmed to the essentials.
-                             Sub-cards (Telegram API, Quick Presets, Rescue,
-                             Privacy, Proxy) are reachable by scrolling to
-                             their parent section; chip-nav surfaces the
-                             top-level cards only. -->
-                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-engine" aria-selected="true">
-                            <i class="ri-broadcast-line" aria-hidden="true"></i>
-                            <span data-i18n="settings.engine">Engine</span>
-                        </button>
-                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-maintenance" aria-selected="false">
-                            <i class="ri-tools-line" aria-hidden="true"></i>
-                            <span data-i18n="maintenance.title">Maintenance</span>
-                        </button>
-                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-advanced" aria-selected="false">
-                            <i class="ri-tools-fill" aria-hidden="true"></i>
-                            <span data-i18n="settings.advanced.title">Advanced</span>
+                        <!-- Trimmed in v2.9: 10 chips → 5. Engine card +
+                             Maintenance card moved to a header Session menu /
+                             the /maintenance hub respectively; Quick Presets
+                             retired; Advanced collapsed behind a footer
+                             <details>. The chip-nav now mirrors only the
+                             top-level configuration sections. -->
+                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-tg-api" aria-selected="true">
+                            <i class="ri-key-2-line" aria-hidden="true"></i>
+                            <span data-i18n="settings.tg_api">Telegram API</span>
                         </button>
                         <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-accounts" aria-selected="false">
                             <i class="ri-user-line" aria-hidden="true"></i>
@@ -803,21 +801,9 @@
                             <i class="ri-download-line" aria-hidden="true"></i>
                             <span data-i18n="settings.download">Download</span>
                         </button>
-                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-rate" aria-selected="false">
-                            <i class="ri-speed-line" aria-hidden="true"></i>
-                            <span data-i18n="settings.rate.title">Rate Limits</span>
-                        </button>
-                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-size" aria-selected="false">
-                            <i class="ri-hard-drive-2-line" aria-hidden="true"></i>
-                            <span data-i18n="settings.size.title">Size Limits</span>
-                        </button>
                         <button type="button" role="tab" class="settings-chip" data-chip="card-appearance" aria-selected="false">
                             <i class="ri-palette-line" aria-hidden="true"></i>
                             <span data-i18n="settings.appearance">Appearance</span>
-                        </button>
-                        <button type="button" role="tab" class="settings-chip" data-chip="card-video" aria-selected="false">
-                            <i class="ri-film-line" aria-hidden="true"></i>
-                            <span data-i18n="settings.video_player.title">Video Player</span>
                         </button>
                         <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-security" aria-selected="false">
                             <i class="ri-lock-2-line" aria-hidden="true"></i>
@@ -840,184 +826,68 @@
                     </button>
 
                     <section id="settings-system" role="tabpanel" data-admin-only class="settings-section space-y-4 mb-6">
-                    <!-- Engine / monitor -->
-                    <div id="settings-card-engine" data-settings-section="card-engine" class="bg-tg-panel rounded-xl p-4 mb-4 scroll-mt-24">
-                        <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
-                            <i class="ri-broadcast-line text-tg-green"></i> <span data-i18n="settings.engine">Engine</span>
-                            <span id="engine-pill" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300" data-i18n="settings.engine.stopped">Stopped</span>
-                        </h3>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-sm mb-3">
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.queue">Queue</div><div id="engine-queue" class="text-tg-text font-medium">0</div></div>
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.active">Active</div><div id="engine-active" class="text-tg-text font-medium">0</div></div>
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.downloaded">Downloaded</div><div id="engine-downloaded" class="text-tg-text font-medium">0</div></div>
-                            <div class="bg-tg-bg/40 rounded p-2"><div class="text-tg-textSecondary text-xs" data-i18n="settings.engine.uptime">Uptime</div><div id="engine-uptime" class="text-tg-text font-medium">—</div></div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button id="engine-start" class="tg-btn flex-1"><i class="ri-play-line mr-2"></i><span data-i18n="settings.engine.start">Start monitor</span></button>
-                            <button id="engine-stop" class="tg-btn-secondary flex-1 hidden"><i class="ri-stop-line mr-2"></i><span data-i18n="settings.engine.stop">Stop</span></button>
-                        </div>
-                        <p id="engine-error" class="text-red-400 text-xs mt-2 hidden"></p>
-                        <!-- Per-row live download list lived here pre-v2.3.31; the
-                             Queue page covers it (sortable, filterable, paged) so
-                             the live list was redundant. The Engine card stays
-                             focused on monitor lifecycle + headline counters. -->
-                        <a href="#/queue" class="mt-3 inline-flex items-center gap-1 text-xs text-tg-blue hover:underline">
-                            <i class="ri-download-cloud-2-line"></i>
-                            <span data-i18n="settings.engine.view_queue">View full queue</span>
-                            <i class="ri-arrow-right-s-line"></i>
-                        </a>
-                    </div>
-
-                    <!-- Maintenance -->
-                    <div id="settings-card-maintenance" data-settings-section="card-maintenance" class="mt-6 bg-tg-panel rounded-xl p-4 scroll-mt-24" data-admin-only>
-                        <h3 class="text-tg-text font-medium mb-1 flex items-center gap-2">
-                            <i class="ri-tools-line text-tg-blue"></i> <span data-i18n="maintenance.title">Maintenance</span>
-                        </h3>
-                        <p class="text-xs text-tg-textSecondary mb-4" data-i18n="maintenance.subtitle">Operational tasks that used to need a CLI session. Everything below is safe to run from the browser.</p>
-
-                        <div class="space-y-2">
-                            <div class="flex items-start justify-between gap-3 py-1">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.resync.title">Resync Telegram dialogs</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.resync.help">Re-resolve every group's name + profile photo against Telegram. Use when an "Unknown chat" lingers in the list.</p>
-                                </div>
-                                <button id="maint-resync-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.resync.action">Resync</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.restart.title">Restart monitor</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.restart.help">Stops and re-starts the realtime monitor in-process. Picks up settings / proxy / account changes without bouncing the container.</p>
-                                </div>
-                                <button id="maint-restart-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.restart.action">Restart</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.db_check.title">Database integrity check</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.db_check.help">Runs <code>PRAGMA integrity_check</code> against the SQLite catalogue. Read-only.</p>
-                                </div>
-                                <button id="maint-db-check-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.db_check.action">Run check</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.db_vacuum.title">VACUUM database</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.db_vacuum.help">Reclaims disk space after lots of deletions. Briefly locks the DB — avoid during a heavy backfill.</p>
-                                </div>
-                                <button id="maint-db-vacuum-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.db_vacuum.action">Vacuum</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.verify.title">Verify files on disk</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.verify.help">Walk every catalogued download, drop the rows whose file went missing on disk. The same sweep runs hourly in the background — this button forces it now.</p>
-                                </div>
-                                <button id="maint-verify-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.verify.action">Verify</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.dedup.title">Find duplicate files</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.dedup.help">Computes SHA-256 for every file and groups byte-identical copies. First scan is slow on large libraries; subsequent scans only hash newly-downloaded files. You review the duplicates and pick which copies to keep before anything is deleted.</p>
-                                </div>
-                                <button id="maint-dedup-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.dedup.action">Scan</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.shares.title">Active share links</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.shares.help">View, search, and revoke every shareable media link issued from this dashboard. Share links let a friend stream or download a file without logging in.</p>
-                                </div>
-                                <button id="maint-shares-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.shares.action">Manage</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.thumbs.title">Build thumbnails for older files</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5"><span data-i18n="maintenance.thumbs.help">Generates compact WebP previews for every file in the library. New downloads are thumbnailed automatically; this sweep covers anything that landed before the feature shipped.</span> <span id="maint-thumbs-stats" class="text-tg-textSecondary"></span></p>
-                                </div>
-                                <div class="flex items-center gap-1 shrink-0">
-                                    <button id="maint-thumbs-build-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.thumbs.action">Build</button>
-                                    <button id="maint-thumbs-rebuild-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n-title="maintenance.thumbs.rebuild_title" title="Wipe the thumbnail cache and let it regenerate on demand">
-                                        <i class="ri-refresh-line"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.update.title">Install update</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5"><span data-i18n="maintenance.update.help">Pulls the latest container image and recreates the container in place. The data volume and config are preserved; the SQLite database is snapshotted to data/backups/ first. The dashboard reconnects automatically once the new container is healthy.</span> <span id="maint-update-status" class="text-tg-textSecondary"></span></p>
-                                </div>
-                                <button id="maint-update-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.update.action">Check / install</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm flex items-center gap-2">
-                                        <span data-i18n="maintenance.nsfw.title">Scan images for NSFW (18+)</span>
-                                        <span id="maint-nsfw-badge" class="hidden text-[11px] px-1.5 py-0.5 rounded-full bg-tg-orange/20 text-tg-orange tabular-nums"></span>
-                                    </div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5"><span data-i18n="maintenance.nsfw.help">Scans every photo in the library and flags ones the classifier thinks are NOT 18+ — likely false matches that need to be purged. Runs locally (no upload). The model downloads once on first use (~80 MB).</span> <span id="maint-nsfw-status" class="text-tg-textSecondary"></span></p>
-                                    <div id="maint-nsfw-progress" class="hidden mt-1.5 h-1 bg-tg-bg/60 rounded overflow-hidden">
-                                        <div id="maint-nsfw-progress-bar" class="h-full bg-tg-blue transition-all" style="width: 0%"></div>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-1 shrink-0">
-                                    <button id="maint-nsfw-review-btn" class="hidden tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.nsfw.review">Review</button>
-                                    <button id="maint-nsfw-scan-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.nsfw.action">Scan</button>
-                                </div>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.logs.title">Download log file</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.logs.help">Grab the tail of any logfile under <code>data/logs/</code> as a plain-text download. Useful when filing bug reports.</p>
-                                </div>
-                                <button id="maint-logs-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.logs.action">Browse</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.config.title">View raw config.json</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.config.help">Open the on-disk config (with secrets redacted) in a viewer sheet. For audit / sanity-check.</p>
-                                </div>
-                                <button id="maint-config-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.config.action">Open</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.export.title">Export Telegram session</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.export.help">Decrypts a saved <code>data/sessions/&lt;id&gt;.enc</code> and shows the gramJS string so you can migrate the account to another instance. <strong>Sensitive — anyone with this string can act as the account.</strong></p>
-                                </div>
-                                <button id="maint-export-btn" class="tg-btn-secondary text-xs px-3 py-1.5 shrink-0" data-i18n="maintenance.export.action">Export</button>
-                            </div>
-
-                            <div class="flex items-start justify-between gap-3 py-1 border-t border-tg-border/50 pt-2">
-                                <div class="min-w-0">
-                                    <div class="text-tg-text text-sm" data-i18n="maintenance.signout_all.title">Sign out everywhere</div>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.signout_all.help">Revokes every dashboard session token. You'll be sent back to the login page. Use this after rotating the password or if you suspect a compromise.</p>
-                                </div>
-                                <button id="maint-signout-all-btn"
-                                    class="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 transition-colors shrink-0"
-                                    data-i18n="maintenance.signout_all.action">Sign out all</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Advanced (runtime tunables) -->
                     <!--
-                        Power-user settings — every value here was a hardcoded
-                        constant pre-2.x and the defaults still match the
-                        original behaviour exactly. Changes are saved by the
-                        main "Save Settings" button above. Server clamps every
-                        value, so a typo can't brick the install.
+                      v2.9 declutter:
+                        - Engine card removed. Monitor state + start/stop live
+                          in the page-header Session menu and the status bar
+                          pill (always visible across pages, no need to land
+                          on Settings to peek at queue / uptime).
+                        - Maintenance card removed. All 14 admin actions
+                          (Dedup, Thumbs, NSFW, Logs, Update, Vacuum, Verify,
+                          Resync, Restart, DB Check, Shares, Config, Export,
+                          Sign-out-everywhere) live on the /maintenance hub.
+                          Three orphans (Restart / Resync / Sign out) also
+                          surface in the Session menu so they're one tap away.
+                      Result: ~165 lines of HTML retired, ~30 i18n keys
+                      retired, two duplicate-feature surfaces collapsed into
+                      one canonical entry point each.
                     -->
-                    <div id="settings-card-advanced" data-settings-section="card-advanced" class="mt-6 bg-tg-panel rounded-xl p-4 scroll-mt-24" data-admin-only>
-                        <h3 class="text-tg-text font-medium mb-1 flex items-center gap-2">
-                            <i class="ri-tools-fill text-tg-orange"></i> <span data-i18n="settings.advanced.title">Advanced</span>
-                        </h3>
+
+                    <!-- Hidden in v2.9 — kept as legacy IDs so engine.js's
+                         applyStatus() and any external link to #engine-pill
+                         from older bookmarks doesn't throw. The header
+                         Session menu mirrors these into visible chrome. -->
+                    <div id="settings-card-engine-legacy" class="hidden">
+                        <span id="engine-pill"></span>
+                        <span id="engine-queue"></span>
+                        <span id="engine-active"></span>
+                        <span id="engine-downloaded"></span>
+                        <span id="engine-uptime"></span>
+                        <button type="button" id="engine-start" class="hidden"></button>
+                        <button type="button" id="engine-stop" class="hidden"></button>
+                        <p id="engine-error" class="hidden"></p>
+                    </div>
+
+                    <!-- Discovery pointer to the Maintenance hub. Replaces
+                         the 14-button card retired in v2.9 — keeps the
+                         affordance discoverable from Settings without
+                         duplicating every action button across two pages. -->
+                    <a href="#/maintenance" class="block bg-tg-panel hover:bg-tg-hover transition-colors rounded-xl p-4 mb-6 flex items-start gap-3 group" data-admin-only>
+                        <div class="w-10 h-10 rounded-xl bg-tg-blue/15 text-tg-blue flex items-center justify-center text-xl shrink-0">
+                            <i class="ri-tools-line"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-tg-text text-sm font-semibold mb-1" data-i18n="settings.maintenance_link.title">Maintenance &amp; admin tools</h3>
+                            <p class="text-xs text-tg-textSecondary leading-relaxed" data-i18n="settings.maintenance_link.body">Dedup, thumbnails, NSFW review, logs, updates, DB integrity, share links — every operational tool moved to the Maintenance hub.</p>
+                        </div>
+                        <i class="ri-arrow-right-s-line text-tg-textSecondary self-center group-hover:translate-x-0.5 transition-transform" aria-hidden="true"></i>
+                    </a>
+
+                    <!-- Advanced (runtime tunables) — collapsed by default in v2.9.
+                         Power-user settings — every value here was a hardcoded
+                         constant pre-2.x and the defaults still match the
+                         original behaviour exactly. Auto-saved like every other
+                         field on this page; server clamps every value, so a
+                         typo can't brick the install.
+                    -->
+                    <details id="settings-card-advanced-details" class="mt-6 bg-tg-panel rounded-xl scroll-mt-24" data-admin-only>
+                        <summary class="cursor-pointer p-4 list-none flex items-center gap-2">
+                            <i class="ri-tools-fill text-tg-orange"></i>
+                            <span class="text-tg-text font-medium" data-i18n="settings.advanced.title">Advanced</span>
+                            <span class="ml-2 text-xs text-tg-textSecondary" data-i18n="settings.advanced.collapsed_hint">Power-user tunables — click to expand</span>
+                            <i class="ri-arrow-down-s-line text-tg-textSecondary ml-auto details-marker"></i>
+                        </summary>
+                        <div id="settings-card-advanced" data-settings-section="card-advanced" class="px-4 pb-4 pt-0">
                         <p class="text-xs text-tg-textSecondary mb-4" data-i18n="settings.advanced.subtitle">Hot-path tunables. Defaults match the original hardcoded values — only change these if you know what you are doing.</p>
 
                         <div class="space-y-4">
@@ -1154,6 +1024,7 @@
 
                         </div>
                     </div>
+                    </details>
                     </section>
 
                     <section id="settings-accounts" role="tabpanel" data-admin-only class="settings-section space-y-4 mb-6">
@@ -1223,16 +1094,14 @@
                                     value="5"
                                     oninput="document.getElementById('retries-value').textContent = this.value">
                             </div>
-                            <div>
-                                <label class="text-tg-text text-sm block mb-2" data-i18n="settings.download.folder">Download Folder</label>
-                                <div class="flex gap-2">
-                                    <input type="text" id="setting-path" class="tg-input flex-1 text-sm" readonly>
-                                    <button id="setting-path-btn" class="tg-btn-secondary px-3">
-                                        <i class="ri-folder-line"></i>
-                                    </button>
-                                </div>
-                                <p class="text-xs text-tg-textSecondary mt-1" data-i18n="settings.download.folder_help">Change via CLI: Edit config.json</p>
-                            </div>
+                            <!-- Download folder field retired in v2.9: it
+                                 was read-only and changing it required CLI
+                                 anyway, so it leaked information without
+                                 offering an action. The path is still
+                                 visible via /api/config diag. Hidden input
+                                 preserved so settings.js form-binding still
+                                 sees the field on POST/save. -->
+                            <input type="hidden" id="setting-path" />
                             <div>
                                 <div class="flex items-center justify-between mb-2">
                                     <label class="text-tg-text text-sm" data-i18n="settings.download.max_speed">Max Download Speed</label>
@@ -1374,27 +1243,12 @@
                         <p id="rescue-stats-line" class="text-xs text-tg-textSecondary mt-3" data-i18n="settings.rescue.stats_loading">Loading rescue stats…</p>
                     </div>
 
-                    <!-- Quick Presets -->
-                    <div id="settings-card-presets" data-settings-section="card-presets" class="bg-tg-panel rounded-xl p-4 mb-4 scroll-mt-24" data-admin-only>
-                        <h3 class="text-tg-text font-medium mb-3" data-i18n="settings.preset.title">Quick Presets</h3>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button onclick="applyPreset('safe')"
-                                class="py-2 px-3 rounded-lg bg-tg-green/10 text-tg-green text-sm border border-tg-green/30 hover:bg-tg-green/20 transition-colors">
-                                <i class="ri-shield-check-line block text-lg mb-1"></i>
-                                <span data-i18n="settings.preset.safe">Safe</span>
-                            </button>
-                            <button onclick="applyPreset('balanced')"
-                                class="py-2 px-3 rounded-lg bg-tg-blue/10 text-tg-blue text-sm border border-tg-blue/30 hover:bg-tg-blue/20 transition-colors">
-                                <i class="ri-scales-3-line block text-lg mb-1"></i>
-                                <span data-i18n="settings.preset.balanced">Balanced</span>
-                            </button>
-                            <button onclick="applyPreset('fast')"
-                                class="py-2 px-3 rounded-lg bg-tg-orange/10 text-tg-orange text-sm border border-tg-orange/30 hover:bg-tg-orange/20 transition-colors">
-                                <i class="ri-rocket-line block text-lg mb-1"></i>
-                                <span data-i18n="settings.preset.fast">Fast</span>
-                            </button>
-                        </div>
-                    </div>
+                    <!-- Quick Presets card retired in v2.9. The 3 buttons
+                         (Safe / Balanced / Fast) bulk-set rate-limit + size
+                         + concurrency knobs and were useful exactly once at
+                         first-run; rare revisitors never used them. The
+                         applyPreset(slug) function remains in settings.js for
+                         programmatic callers, but no UI surface invokes it. -->
                     </section>
 
                     <section id="settings-appearance" role="tabpanel" class="settings-section space-y-4 mb-6">
@@ -2547,6 +2401,107 @@
                     </section>
                 </div>
 
+                <!-- Maintenance / Cluster (admin-only) -->
+                <div id="page-maintenance-cluster" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="maintenance.cluster.page_title"
+                     data-page-subtitle-key="maintenance.cluster.subtitle">
+                    <header class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h2 class="text-tg-text text-base font-semibold" data-i18n="cluster.tab.title">Cluster</h2>
+                        <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="cluster.tab.subtitle">Federate multiple instances. Files, downloads, and dedup span every paired peer.</p>
+                    </header>
+
+                    <!-- Identity card -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3" id="cluster-identity-card">
+                        <h3 class="text-tg-text text-sm font-semibold mb-2" data-i18n="cluster.identity.title">This peer</h3>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                                <label class="text-xs text-tg-textSecondary w-32 shrink-0" data-i18n="cluster.identity.id">Peer ID</label>
+                                <code id="cluster-self-id" class="text-xs bg-tg-bg/50 px-2 py-1 rounded select-all break-all">—</code>
+                            </div>
+                            <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                                <label class="text-xs text-tg-textSecondary w-32 shrink-0" data-i18n="cluster.identity.name">Display name</label>
+                                <input id="cluster-self-name" type="text" maxlength="64" class="bg-tg-bg/50 px-2 py-1 rounded text-sm flex-1 min-w-0" />
+                                <button id="cluster-self-name-save" class="tg-btn text-xs px-3 py-1.5" data-i18n="cluster.identity.name.save">Save</button>
+                            </div>
+                            <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                                <label class="text-xs text-tg-textSecondary w-32 shrink-0 pt-1.5" data-i18n="cluster.identity.token">Cluster token</label>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <code id="cluster-self-token" class="text-xs bg-tg-bg/50 px-2 py-1 rounded select-all break-all flex-1 min-w-0">••••••••••••••••</code>
+                                        <button id="cluster-token-toggle" class="tg-btn-ghost text-xs px-2 py-1" data-i18n="cluster.identity.token.reveal">Show token</button>
+                                        <button id="cluster-token-copy" class="tg-btn-ghost text-xs px-2 py-1" data-i18n="cluster.identity.token.copy">Copy</button>
+                                        <button id="cluster-token-rotate" class="tg-btn-ghost text-xs px-2 py-1 text-red-300" data-i18n="cluster.identity.token.rotate">Rotate token</button>
+                                        <button id="cluster-token-set" class="tg-btn-ghost text-xs px-2 py-1" data-i18n="cluster.identity.token.set">Use cluster's token</button>
+                                        <button id="cluster-pairing-code-btn" class="tg-btn-ghost text-xs px-2 py-1 text-tg-blue" data-i18n="cluster.pairing_code.issue">Issue pairing code</button>
+                                    </div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-1" data-i18n="cluster.identity.token.help">Both sides of a pairing must hold the same token. Treat it like a password.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Peers list + add wizard -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-tg-text text-sm font-semibold" data-i18n="cluster.peers.title">Paired peers</h3>
+                            <button id="cluster-add-peer-btn" class="tg-btn text-xs px-3 py-1.5">
+                                <i class="ri-add-line mr-1"></i><span data-i18n="cluster.peer.add">Add peer</span>
+                            </button>
+                        </div>
+                        <div id="cluster-peers-empty" class="hidden text-center py-6 text-sm text-tg-textSecondary" data-i18n="cluster.peers.empty">No peers yet. Add one to begin federating.</div>
+                        <div id="cluster-peers-list" class="space-y-2"></div>
+                    </section>
+
+                    <!-- Sweep + conflicts -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                            <h3 class="text-tg-text text-sm font-semibold" data-i18n="cluster.sweep.title">Cross-peer dedup</h3>
+                            <div class="flex gap-2">
+                                <button id="cluster-sweep-run" class="tg-btn-ghost text-xs px-3 py-1.5"><i class="ri-search-line mr-1"></i><span data-i18n="cluster.sweep.run">Run sweep</span></button>
+                                <span id="cluster-sweep-state" class="text-[11px] text-tg-textSecondary self-center"></span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-tg-textSecondary mb-2" data-i18n="cluster.sweep.subtitle">Finds files duplicated across peers (same hash + size). Resolve by picking which copy to keep.</p>
+                        <div id="cluster-sweep-stats" class="text-[11px] text-tg-textSecondary mb-2"></div>
+                        <div id="cluster-conflicts-empty" class="hidden text-center py-4 text-xs text-tg-textSecondary" data-i18n="cluster.sweep.empty">No conflicts found.</div>
+                        <div id="cluster-conflicts-list" class="space-y-2"></div>
+                    </section>
+
+                    <!-- Audit log -->
+                    <section class="bg-tg-panel rounded-xl p-3">
+                        <h3 class="text-xs uppercase tracking-wide text-tg-textSecondary mb-2" data-i18n="cluster.audit.title">Recent cluster events</h3>
+                        <div id="cluster-audit-list" class="space-y-1 max-h-[40vh] overflow-y-auto pr-1"></div>
+                        <div id="cluster-audit-empty" class="hidden text-center py-6 text-xs text-tg-textSecondary" data-i18n="cluster.audit.empty">No cluster events yet.</div>
+                    </section>
+                </div>
+
+                <!-- Maintenance / Updates (admin-only) -->
+                <div id="page-maintenance-updates" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="update.history.title"
+                     data-page-subtitle-key="update.history.help">
+                    <header class="bg-tg-panel rounded-xl p-4 mb-3 flex items-start justify-between gap-3 flex-wrap">
+                        <div class="min-w-0 flex-1">
+                            <h2 class="text-tg-text text-base font-semibold" data-i18n="update.history.title">Update history</h2>
+                            <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="update.history.help">Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button id="updates-refresh-btn" class="tg-btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
+                                <i class="ri-refresh-line"></i>
+                                <span data-i18n="update.history.refresh">Refresh</span>
+                            </button>
+                            <button id="updates-trigger-btn" class="tg-btn text-xs px-3 py-1.5 flex items-center gap-1" disabled>
+                                <i class="ri-download-cloud-2-line"></i>
+                                <span data-i18n="update.install_disabled">Install (unavailable)</span>
+                            </button>
+                        </div>
+                    </header>
+                    <section id="updates-status-card" class="bg-tg-panel rounded-xl p-3 mb-3">
+                        <div id="updates-history-list" class="overflow-x-auto">
+                            <div class="text-center py-8 text-sm text-tg-textSecondary" data-i18n="update.history.empty">No updates have been triggered from this dashboard yet.</div>
+                        </div>
+                    </section>
+                </div>
+
                 <!-- Maintenance / AI search & people (admin-only) -->
                 <div id="page-maintenance-ai" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.ai.title"
@@ -2630,6 +2585,20 @@
                         <div id="ai-embedding-presets" class="ai-presets-row mb-2.5"></div>
 
                         <div id="ai-models-list" class="ai-models-list" aria-live="polite"></div>
+                    </section>
+
+                    <!-- Doctor card. Calls /api/ai/health on mount and shows
+                         the result inline. Failures render with the
+                         platform-specific recommendation so the operator can
+                         fix native-dep issues (sharp/transformers/sqlite-vec)
+                         without digging through logs. -->
+                    <section id="ai-doctor-card"
+                             class="bg-tg-panel rounded-xl p-3 mb-3"
+                             aria-live="polite">
+                        <div class="text-tg-textSecondary text-xs">
+                            <i class="ri-loader-4-line animate-spin" aria-hidden="true"></i>
+                            <span data-i18n="maintenance.ai.doctor.loading">Running diagnostics…</span>
+                        </div>
                     </section>
 
                     <!-- Gated-model warning. Hidden by default; maintenance-ai.js
@@ -2734,8 +2703,8 @@
                             <h3 class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.settings_heading">Capabilities</h3>
                             <span id="ai-vec-status" class="text-[11px] text-tg-textSecondary"></span>
                         </div>
-                        <div id="ai-settings-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <!-- Capability toggles + scan buttons rendered by maintenance-ai.js -->
+                        <div id="ai-capabilities-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <!-- Capability toggles + scan buttons rendered by js/ai/capabilities.js -->
                         </div>
                     </section>
 

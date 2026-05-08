@@ -46,12 +46,84 @@ services:
       # containers carrying this label can be touched — so the sidecar
       # can never accidentally recreate an unrelated app on the same host.
       - "com.centurylinklabs.watchtower.enable=true"
+      # Tells the autoheal sidecar (below) to restart this container if its
+      # healthcheck flips to "unhealthy" — covers the case where the process
+      # is wedged but hasn't actually exited (Docker's `restart: unless-
+      # stopped` only fires on a non-zero exit, not on a hang).
+      - "autoheal=true"
     healthcheck:
       test: ["CMD", "node", "scripts/healthcheck.js"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      # 30 s gives the cold-start path room for state-migration + first
+      # WAL checkpoint on slow disks. Healthcheck failures during this
+      # window don't count toward the retry budget.
+      start_period: 30s
+    # Resource ceiling — kicks in only on `docker compose up` (the `deploy`
+    # key is honoured by Compose v2 even outside Swarm). 2 GiB is plenty for
+    # the dashboard + two scan workers; bigger libraries can override via
+    # `.env` (TGDL_MEM_LIMIT=4g) without forking this file.
+    deploy:
+      resources:
+        limits:
+          memory: ${TGDL_MEM_LIMIT:-2g}
+        reservations:
+          memory: 256m
+    # Log rotation — without this, json-file logs grow forever and the host
+    # disk fills up after a few weeks of debug output. 5 × 10 MB = 50 MB
+    # ceiling per container, which is plenty to debug the most recent crash.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
+  # Auto-restart on hangs. Docker's `restart: unless-stopped` policy only
+  # fires when the process *exits*; a wedged event loop, deadlocked DB
+  # handle, or AI worker that hangs but doesn't crash leaves the container
+  # running with healthcheck stuck on "unhealthy" indefinitely.
+  #
+  # `willfarrell/autoheal` polls the docker socket every AUTOHEAL_INTERVAL
+  # seconds, finds containers whose health is "unhealthy" AND that carry
+  # the AUTOHEAL_CONTAINER_LABEL ("autoheal=true"), and `docker restart`s
+  # them. The label scoping means the sidecar can NEVER touch an unrelated
+  # container on the same host even if it wanted to.
+  #
+  # Disabled-by-default: comment out this service if you'd rather rely on
+  # an external supervisor (systemd, k8s, NAS health monitors, etc.).
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: telegram-downloader-autoheal
+    restart: unless-stopped
+    # autoheal only needs the docker socket — no inbound network. `none`
+    # makes a hypothetical RCE in autoheal unable to phone home.
+    network_mode: none
+    environment:
+      # Only restart containers explicitly opted-in via label. The main
+      # service above carries `autoheal=true`.
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      # Poll cadence — matches the dashboard healthcheck interval.
+      - AUTOHEAL_INTERVAL=30
+      # Don't act during the container's own start_period — gives boot
+      # time without the sidecar racing the first healthcheck. Compose
+      # already passes `start_period: 30s`; this is the upper bound.
+      - AUTOHEAL_START_PERIOD=60
+      # Graceful stop timeout before SIGKILL during a restart attempt.
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+      - TZ=${TZ:-UTC}
+    volumes:
+      # Read+write because autoheal calls `POST /containers/<id>/restart`.
+      # If you need defence-in-depth against a compromised sidecar, swap
+      # this for a docker-socket-proxy (tecnativa/docker-socket-proxy)
+      # configured with CONTAINERS=1 + POST=1 and nothing else.
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "3"
 
   # Optional one-click updater. ENABLE WITH:
   #   docker compose --profile auto-update up -d

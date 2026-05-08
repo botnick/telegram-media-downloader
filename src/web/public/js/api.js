@@ -1,7 +1,12 @@
 // API wrapper.
 // - Surfaces server-side error messages (response body) instead of "HTTP 4xx".
-// - Redirects to /login.html on 401 so an expired session never leaves the
-//   SPA stuck on a generic error toast.
+// - On 401, prompts the user to re-authenticate IN-PLACE via the
+//   reauth-modal (window.__tgdlReauth). On success the original request
+//   is retried; on cancel we fall back to the legacy /login.html redirect
+//   so an expired session never leaves the SPA stuck on a generic toast.
+//   The previous unconditional `window.location.href = '/login.html'`
+//   yanked the user out of whatever page they were on (Settings, Queue,
+//   etc.) — visible flicker back to /viewer after the implicit re-login.
 // - Treats 503 with setupRequired:true as a redirect to /setup-needed.html.
 // - On 403 `{adminRequired:true}` (a guest hitting an admin route — should
 //   never originate from the UI since admin-only buttons are hidden, but
@@ -41,7 +46,8 @@ function _toastAdminOnly(msg) {
 // `opts.timeoutMs` for endpoints that genuinely need longer.
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-async function request(method, url, body, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+async function request(method, url, body, opts = {}) {
+    const { timeoutMs = DEFAULT_TIMEOUT_MS, _skipReauth = false } = opts;
     const init = { method };
     if (body !== undefined) {
         init.headers = { 'Content-Type': 'application/json' };
@@ -67,9 +73,34 @@ async function request(method, url, body, { timeoutMs = DEFAULT_TIMEOUT_MS } = {
     }
 
     if (res.status === 401) {
-        // Skip the redirect for the auth-check itself so login.html doesn't loop.
-        if (!url.startsWith('/api/auth_check') && !url.startsWith('/api/login')) {
-            window.location.href = '/login.html';
+        // /api/auth_check + /api/login are themselves part of the auth
+        // dance — never re-prompt or redirect from those, or the modal +
+        // /login.html land in a loop.
+        const isAuthEndpoint = url.startsWith('/api/auth_check') || url.startsWith('/api/login');
+        if (!isAuthEndpoint && !_skipReauth) {
+            // Hand off to the in-SPA reauth modal if it has registered a
+            // handler. Returns 'retry' on successful re-login (we replay
+            // the request once with `_skipReauth` so a second 401 doesn't
+            // recurse), or 'cancel' / unset → fall through to the legacy
+            // hard redirect so the user always has a way out.
+            const handler = typeof window !== 'undefined' ? window.__tgdlReauth : null;
+            if (typeof handler === 'function') {
+                let outcome = 'cancel';
+                try {
+                    outcome = await handler({ method, url });
+                } catch {
+                    outcome = 'cancel';
+                }
+                if (outcome === 'retry') {
+                    return request(method, url, body, { ...opts, _skipReauth: true });
+                }
+            }
+            // No modal handler installed OR user cancelled → preserve the
+            // pre-v2.9 behaviour rather than leaving them on a half-rendered
+            // page with no way to re-auth.
+            if (typeof window !== 'undefined') {
+                window.location.href = '/login.html';
+            }
         }
         const data = await parseJsonSafe(res);
         const err = new Error(data.error || 'Unauthorized');

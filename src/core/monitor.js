@@ -166,7 +166,25 @@ export class RealtimeMonitor extends EventEmitter {
         this.lastIds = new Map();
         console.log(colorize('🔄 Syncing state for Active Polling...', 'cyan'));
 
-        const enabledGroups = this.config.groups.filter((g) => g.enabled);
+        // Cluster: skip groups whose ownerPeerId is set to another peer.
+        // The owner peer downloads them; we'll see their files via the
+        // sync engine + bridge instead of duplicating Telegram traffic.
+        const { isLocalGroup } = await import('./cluster/router.js').catch(() => ({
+            isLocalGroup: () => true,
+        }));
+        const enabledGroups = this.config.groups.filter((g) => {
+            if (!g.enabled) return false;
+            if (!isLocalGroup(g)) {
+                console.log(
+                    colorize(
+                        `⏭  Skipping "${g.name}" — owned by another peer in the cluster`,
+                        'cyan',
+                    ),
+                );
+                return false;
+            }
+            return true;
+        });
         if (enabledGroups.length === 0) {
             console.log('⚠️  Warning: No groups enabled in config. Monitor will be idle.');
         }
@@ -332,7 +350,10 @@ export class RealtimeMonitor extends EventEmitter {
     async poll() {
         if (!this.running) return;
 
-        const enabledGroups = this.config.groups.filter((g) => g.enabled);
+        const { isLocalGroup } = await import('./cluster/router.js').catch(() => ({
+            isLocalGroup: () => true,
+        }));
+        const enabledGroups = this.config.groups.filter((g) => g.enabled && isLocalGroup(g));
 
         for (const group of enabledGroups) {
             // Tiny delay between groups to prevent flood (Rate Limit Protection)

@@ -117,8 +117,15 @@ function dispatch() {
         }
         return;
     }
-    // No match → fall back to /viewer
-    if (path !== '/viewer') navigate('#/viewer');
+    // No match → fall back to /viewer. Surface a console.warn so a
+    // future regression that quietly stomps a real route (e.g. someone
+    // sets location.hash to a typoed pattern) shows up in devtools
+    // instead of a silent flicker.
+    if (path !== '/viewer') {
+        // eslint-disable-next-line no-console
+        console.warn(`[router] no match for "${path}" — falling back to /viewer`);
+        navigate('#/viewer', { replace: true });
+    }
 }
 
 export function navigate(hash, { replace = false } = {}) {

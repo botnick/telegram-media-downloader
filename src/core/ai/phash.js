@@ -18,7 +18,11 @@
  */
 
 import { existsSync } from 'fs';
-import sharp from 'sharp';
+import { lazy } from './safe-load.js';
+
+// Lazy `sharp` loader — see faces.js for the rationale. Top-level import
+// would crash the entire AI module on a host without libvips.
+const _sharp = lazy('sharp');
 
 const SIZE = 32; // pixel grid for the DCT input
 const HASH = 8; // top-left HASHxHASH coefficients become the bit signature
@@ -99,6 +103,7 @@ export async function computePhash(absPath) {
     if (!absPath || !existsSync(absPath)) return null;
     let raw;
     try {
+        const sharp = await _sharp();
         raw = await sharp(absPath, { failOn: 'none' })
             .resize(SIZE, SIZE, { fit: 'fill' })
             .greyscale()

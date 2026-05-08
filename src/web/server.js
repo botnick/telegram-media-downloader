@@ -127,6 +127,58 @@ import {
 } from '../core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from '../core/logger.js';
 import { createJobTracker } from '../core/job-tracker.js';
+import { createAiRouter } from './routes/ai.js';
+import {
+    getSelfPeerId,
+    getSelfPeerName,
+    setSelfPeerName,
+    getClusterToken,
+    rotateClusterToken,
+    setClusterToken,
+    getSelfIdentity,
+    issuePairingCode,
+} from '../core/cluster/identity.js';
+import { verifyRequest as verifyPeerHmac } from '../core/cluster/hmac.js';
+import {
+    listPeers,
+    getPeer,
+    upsertPeer,
+    updatePeer,
+    removePeer,
+    markOnline,
+    markOffline,
+} from '../core/cluster/peers.js';
+import { initiateHandshake, acceptHandshake, testPeerHealth } from '../core/cluster/handshake.js';
+import {
+    startSyncEngine,
+    stopSyncEngine,
+    syncAllOnce,
+    getSyncState,
+} from '../core/cluster/sync.js';
+import { findHashAcrossCluster, parseClusterRefPath } from '../core/cluster/dedup.js';
+import {
+    tryStartSweep,
+    abortSweep,
+    getSweepStatus,
+    listConflicts,
+    resolveConflict,
+} from '../core/cluster/sweep.js';
+import { streamFromPeer, openPeerStream, requestSignedShareUrl } from '../core/cluster/proxy.js';
+import * as clusterWs from '../core/cluster/ws-channel.js';
+import * as clusterDiscovery from '../core/cluster/discovery.js';
+import { startFailoverWatcher, runFailoverPass } from '../core/cluster/failover.js';
+import { publishConfigChange } from '../core/cluster/config-sync.js';
+import { listDiscoveredPeers } from '../core/db.js';
+import WebSocketLib from 'ws';
+import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
+import {
+    recordClusterAudit,
+    listClusterAudit,
+    listOwnDownloadsSince,
+    listPeerDownloads,
+    setPeerCatalogBlob,
+    getPeerCatalogBlob,
+} from '../core/db.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
 // gramJS opens a fresh DC connection per file download (different DCs host
@@ -273,6 +325,32 @@ function parseCookieHeader(header) {
 
 server.on('upgrade', async (req, socket, head) => {
     try {
+        // Cluster WS channel — peer-to-peer, HMAC-authenticated via
+        // signed query-string. Skip the cookie/session check entirely.
+        if (req.url && req.url.startsWith('/ws/cluster')) {
+            try {
+                const url = new URL(req.url, 'http://x');
+                const params = Object.fromEntries(url.searchParams.entries());
+                const verifiedPeer = clusterWs.verifyConnectAuth(params);
+                if (!verifiedPeer) {
+                    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+                    socket.destroy();
+                    return;
+                }
+                wss.handleUpgrade(req, socket, head, (ws) => {
+                    ws._clusterPeer = verifiedPeer;
+                    clusterWs.registerInboundWs(verifiedPeer, ws);
+                });
+            } catch {
+                try {
+                    socket.destroy();
+                } catch {
+                    /* nothing */
+                }
+            }
+            return;
+        }
+
         const config = await readConfigSafe();
         const enabled = config.web?.enabled !== false;
         const configured = isAuthConfigured(config.web);
@@ -570,8 +648,19 @@ const apiLimiter = rateLimit({
 app.use(apiLimiter);
 
 // Body parsing middleware — small, JSON only. Bigger payloads (e.g., bulk
-// imports) should get their own dedicated route with a larger limit.
-app.use(express.json({ limit: '256kb' }));
+// imports) should get their own dedicated route with a larger limit. The
+// `verify` hook captures the raw bytes onto req.rawBody so cluster-mode
+// HMAC verification (src/core/cluster/hmac.js) can hash exactly what the
+// remote peer signed — re-stringifying the parsed object would change
+// whitespace and break the signature.
+app.use(
+    express.json({
+        limit: '256kb',
+        verify: (req, _res, buf) => {
+            req.rawBody = buf;
+        },
+    }),
+);
 
 // CSRF defence-in-depth on top of `sameSite=strict` cookies. Reject any
 // state-changing request whose Origin or Referer header points at a
@@ -639,6 +728,44 @@ let _configCache = { at: 0, value: null };
     }
 })();
 
+// Bootstrap cluster identity at boot — generates peer_id + cluster_token
+// on first launch, no-op afterwards. Ensures the kv['peer_id'] /
+// kv['cluster_token'] rows are present before the operator opens
+// Maintenance → Cluster (and before any signed inbound request needs to
+// answer with our identity).
+try {
+    getSelfPeerId();
+    getClusterToken();
+} catch (e) {
+    console.warn('[cluster] identity bootstrap deferred:', e?.message || e);
+}
+
+// v2.10 — bring up the WS cluster channel. `broadcast` is defined later
+// in this file; `__tgdlBroadcast` is wired below the cluster routes
+// section. Defer the actual init to the first cluster route hit so all
+// dependencies are in scope.
+let _clusterWsInitialised = false;
+function _ensureClusterWsInit() {
+    if (_clusterWsInitialised) return;
+    _clusterWsInitialised = true;
+    try {
+        clusterWs.initClusterWs({
+            broadcast: (m) => {
+                try {
+                    if (typeof global.__tgdlBroadcast === 'function') {
+                        global.__tgdlBroadcast(m);
+                    }
+                } catch {
+                    /* nothing */
+                }
+            },
+            WebSocket: WebSocketLib,
+        });
+    } catch (e) {
+        console.warn('[cluster] ws init deferred:', e?.message || e);
+    }
+}
+
 // ============ AUTHENTICATION ============
 
 // Simple cookie parser middleware
@@ -688,8 +815,33 @@ function invalidateConfigCache() {
 // added benefit that other readers see the new tree the instant the
 // transaction commits.
 async function writeConfigAtomic(config) {
+    // Diff against the previous snapshot so we only push *changed*
+    // top-level keys to peers instead of replicating the whole config.
+    let prev = null;
+    try {
+        prev = _configCache?.value || loadConfig();
+    } catch {
+        prev = null;
+    }
     saveConfig(config);
     invalidateConfigCache();
+    // v2.10: replicate per top-level key. publishConfigChange itself
+    // checks the per-key cluster.replicate.<key> policy and skips the
+    // 'local' default — wrap in try so a peer-WS hiccup never blocks
+    // the local save.
+    try {
+        const keys = new Set([...Object.keys(config || {}), ...Object.keys(prev || {})]);
+        for (const k of keys) {
+            if (k === 'cluster') continue; // cluster.replicate map is meta — never propagate
+            const before = JSON.stringify(prev?.[k] ?? null);
+            const after = JSON.stringify(config?.[k] ?? null);
+            if (before !== after) {
+                publishConfigChange(k, config[k]);
+            }
+        }
+    } catch {
+        /* nothing */
+    }
 }
 
 // Paths that may be reached without an authenticated session.
@@ -719,7 +871,30 @@ const PUBLIC_API_PATHS = new Set([
     '/api/auth/setup', // first-run only — guarded inside the handler
     '/api/auth/reset/request', // logs token to stdout — no body returned
     '/api/auth/reset/confirm', // requires the stdout token + new password
+    // Cluster peer-to-peer endpoints. These are NOT cookie-authed — they
+    // verify a HMAC signature inside the handler against the cluster
+    // token. Adding them here just bypasses the dashboard session check;
+    // the handler still rejects unsigned / mis-signed / replayed requests
+    // with 401 + an audit row.
+    '/api/cluster/handshake',
+    '/api/cluster/health',
+    // Phase 2 P2P sync — paged delta + full snapshots, HMAC-only.
+    '/api/cluster/downloads/since',
+    '/api/cluster/groups/snapshot',
+    '/api/cluster/accounts/snapshot',
+    // Phase 4 — short-lived signed URL minting for direct stream mode.
+    '/api/cluster/sign-url',
+    // Phase D (v2.10) — relay-through-peer envelope delivery.
+    '/api/cluster/relay/proxy',
+    // Phase G (v2.10) — cross-peer file delete.
+    '/api/cluster/files/delete',
+    // Phase I (v2.10) — federated search.
+    '/api/cluster/search/peer',
 ]);
+// Cluster file-bridge prefix — /api/cluster/files/<encoded path> is variable
+// so it has to live in PUBLIC_PATH_PREFIXES (exact-string set above won't
+// prefix-match). The handler still verifies HMAC.
+const CLUSTER_PREFIX_HMAC_ONLY = ['/api/cluster/files/'];
 
 // Treat connections from the local machine as "trusted enough" to bootstrap
 // the very first password without prior auth. Any other origin still has to
@@ -731,6 +906,7 @@ function isLocalRequest(req) {
 
 function isPublicPath(p) {
     if (PUBLIC_API_PATHS.has(p)) return true;
+    if (CLUSTER_PREFIX_HMAC_ONLY.some((pre) => p.startsWith(pre))) return true;
     return PUBLIC_PATH_PREFIXES.some((pre) => p === pre || p.startsWith(pre));
 }
 
@@ -2496,6 +2672,24 @@ runtime.on('event', (e) => {
             error: null,
         });
         _failedJobMeta.delete(p.key);
+
+        // v2.10 — push the new row to every paired peer over /ws/cluster
+        // so their cached `peer_downloads` table updates in real time.
+        // Lookup the canonical row by (group_id, message_id) so receivers
+        // get the same shape as the polling /downloads/since endpoint.
+        try {
+            const row = getDb()
+                .prepare(
+                    `SELECT id, group_id, group_name, message_id, file_name, file_size,
+                            file_type, file_path, file_hash, status, created_at, nsfw_score, phash
+                       FROM downloads WHERE group_id = ? AND message_id = ?
+                       ORDER BY id DESC LIMIT 1`,
+                )
+                .get(String(p.groupId || ''), Number(p.messageId || 0));
+            if (row) clusterWs.broadcastClusterEvent('download_added', row);
+        } catch {
+            /* never fail a download because of a cluster broadcast */
+        }
     } else if (e.type === 'download_error' && e.payload?.job) {
         const p = e.payload.job;
         const errMsg = e.payload.error || 'Download failed';
@@ -5720,624 +5914,787 @@ app.post('/api/backup/jobs/:id/retry', async (req, res) => {
     }
 });
 
-// ====== AI subsystem (v2.6.0) =============================================
+// ============ CLUSTER MODE (v2.9 — Phase 1) ===============================
+//
+// Multi-instance peer federation. See docs/CLUSTER.md and CLAUDE.md for the
+// full mental model. Phase 1 covers identity bootstrap + manual pairing +
+// audit log; later phases add catalog sync, streaming bridge, dedup, sweep.
+//
+// Two auth shapes:
+//   - Admin routes (cookie-session, admin role): manage own identity, list
+//     peers, add/edit/remove peers, rotate token, view audit log.
+//   - Peer-to-peer routes (HMAC-signed, no cookie): handshake + health
+//     probe. Allow-listed in PUBLIC_API_PATHS so the cookie middleware
+//     lets them through; the handlers verify the HMAC themselves.
+//
+// Adding a new admin mutation route here gets admin-gating "for free" via
+// the /api chokepoint default-deny pattern. Adding a new peer-to-peer
+// route needs both an entry in PUBLIC_API_PATHS *and* a verifyPeerHmac
+// call in the handler — never one without the other.
+
+function _peerHmacGate(req, res) {
+    const v = verifyPeerHmac(req);
+    if (!v.ok) {
+        recordClusterAudit({
+            kind: 'request',
+            ok: false,
+            peerId: req.headers['x-peer-id'] || null,
+            detail: `${req.method} ${req.originalUrl || req.url}: ${v.reason}`,
+        });
+        res.status(401).json({ error: 'cluster auth failed', code: v.reason });
+        return null;
+    }
+    return v;
+}
+
+// --- Peer-to-peer (HMAC-signed) -----------------------------------------
+
+app.post('/api/cluster/handshake', async (req, res) => {
+    // The very first signed call from a new remote peer — no peer row
+    // exists yet, so we verify against our local cluster token directly.
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    try {
+        const body = req.body || {};
+        // The remote sends `body.url` empty — derive from headers so the
+        // pairing url is whatever the remote can actually reach us at.
+        const inferredUrl = (() => {
+            try {
+                const proto =
+                    req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
+                const host = req.headers['x-forwarded-host'] || req.headers.host;
+                if (!host) return body.url || '';
+                return `${proto}://${host}`;
+            } catch {
+                return body.url || '';
+            }
+        })();
+        const peer = acceptHandshake({
+            peerId: body.peer_id,
+            name: body.name,
+            url: body.url || inferredUrl || 'unknown',
+            version: body.version || null,
+            sharedSecret: body.shared_secret || null,
+            pairingCode: body.pairing_code || null,
+        });
+        // peer is the inbound caller's peer record on US (i.e. the data we
+        // just stored about them). The response carries OUR identity for
+        // the caller to record symmetrically.
+        res.json(peer);
+    } catch (e) {
+        const status = e?.status || 500;
+        res.status(status).json({ error: e?.message || String(e), code: e?.code || 'error' });
+    }
+});
+
+app.get('/api/cluster/health', (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    // Bump last_seen so the dashboard's status pill flips green on the
+    // remote peer's next refresh.
+    try {
+        markOnline(v.peerId);
+    } catch {
+        /* peer might not be paired yet (handshake races health) */
+    }
+    res.json({
+        peer_id: getSelfPeerId(),
+        name: getSelfPeerName(),
+        version: process.env.npm_package_version || null,
+        ts: Date.now(),
+        ok: true,
+    });
+});
+
+// --- Admin (cookie-authed; admin role required by the chokepoint) -------
+
+app.get('/api/cluster/identity', (_req, res) => {
+    res.json(getSelfIdentity());
+});
+
+app.put('/api/cluster/identity', (req, res) => {
+    const name = req.body?.name;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    try {
+        const clean = setSelfPeerName(name);
+        res.json({ peerId: getSelfPeerId(), name: clean });
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+app.get('/api/cluster/identity/token', (_req, res) => {
+    // Sensitive: only admins reach here (chokepoint default-deny). Token
+    // is returned in the response body and never logged.
+    res.set('Cache-Control', 'no-store').json({ token: getClusterToken() });
+});
+
+app.post('/api/cluster/identity/rotate-token', (_req, res) => {
+    const token = rotateClusterToken();
+    recordClusterAudit({ kind: 'rotate_token', ok: true, detail: 'admin rotated cluster token' });
+    res.set('Cache-Control', 'no-store').json({ token });
+});
+
+app.post('/api/cluster/identity/set-token', (req, res) => {
+    const token = req.body?.token;
+    if (!token) return res.status(400).json({ error: 'token required' });
+    try {
+        const clean = setClusterToken(token);
+        recordClusterAudit({
+            kind: 'set_token',
+            ok: true,
+            detail: 'admin set cluster token to externally-supplied value',
+        });
+        res.set('Cache-Control', 'no-store').json({ token: clean });
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// v2.10 — pairing code workflow. Operator on the receiving peer clicks
+// "Issue pairing code" → shows the 8-char code to dictate to whoever is
+// pairing the other peer. Code is consumable once + expires in 5 min.
+app.post('/api/cluster/identity/pairing-code', (_req, res) => {
+    const { code, expiresAt } = issuePairingCode();
+    recordClusterAudit({ kind: 'pairing_code', ok: true, detail: 'admin issued pairing code' });
+    res.set('Cache-Control', 'no-store').json({ code, expiresAt });
+});
+
+app.get('/api/cluster/peers', (_req, res) => {
+    res.json({ peers: listPeers() });
+});
+
+app.post('/api/cluster/peers', async (req, res) => {
+    const { url, token = null, pairingCode = null } = req.body || {};
+    if (!url || (!token && !pairingCode)) {
+        return res.status(400).json({ error: 'url + (token or pairingCode) are required' });
+    }
+    try {
+        const r = await initiateHandshake({ url, token, pairingCode });
+        if (!r.ok) {
+            return res.status(400).json({ error: r.message, code: r.code });
+        }
+        res.json({ peer: r.peer });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.put('/api/cluster/peers/:peerId', (req, res) => {
+    const { peerId } = req.params;
+    try {
+        const peer = updatePeer(peerId, req.body || {});
+        if (!peer) return res.status(404).json({ error: 'peer not found' });
+        res.json({ peer });
+    } catch (e) {
+        res.status(400).json({ error: e?.message || String(e) });
+    }
+});
+
+app.delete('/api/cluster/peers/:peerId', (req, res) => {
+    const { peerId } = req.params;
+    const ok = removePeer(peerId);
+    if (!ok) return res.status(404).json({ error: 'peer not found' });
+    recordClusterAudit({ kind: 'revoke', peerId, ok: true });
+    res.json({ success: true });
+});
+
+app.post('/api/cluster/peers/:peerId/test', async (req, res) => {
+    const peer = getPeer(req.params.peerId);
+    if (!peer) return res.status(404).json({ error: 'peer not found' });
+    try {
+        const r = await testPeerHealth(peer);
+        if (r.ok) {
+            markOnline(peer.peerId);
+            recordClusterAudit({ kind: 'test', ok: true, peerId: peer.peerId });
+        } else {
+            markOffline(peer.peerId);
+            recordClusterAudit({
+                kind: 'test',
+                ok: false,
+                peerId: peer.peerId,
+                detail: r.code || 'unreachable',
+            });
+        }
+        res.json(r);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/cluster/discovered', (_req, res) => {
+    res.json({ peers: listDiscoveredPeers({}) });
+});
+
+app.get('/api/cluster/audit', (req, res) => {
+    const peerId = req.query.peerId || null;
+    const kind = req.query.kind || null;
+    const limit = Number(req.query.limit) || 200;
+    res.json({ entries: listClusterAudit({ peerId, kind, limit }) });
+});
+
+// ---- Phase 2: catalog sync (P2P + admin) -------------------------------
+
+// Delta-pull endpoint: P2P, HMAC-required. Caller passes the highest id
+// it's already cached so we only return new rows.
+app.get('/api/cluster/downloads/since', (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    const sinceId = Number(req.query.sinceId) || 0;
+    const limit = Number(req.query.limit) || 500;
+    const rows = listOwnDownloadsSince({ sinceId, limit });
+    res.json({ rows, peerId: getSelfPeerId(), now: Date.now() });
+});
+
+// Full snapshots — small, infrequent, no delta scheme.
+app.get('/api/cluster/groups/snapshot', async (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    try {
+        const cfg = await readConfigSafe();
+        // Strip any per-group secret-ish fields. Currently `groups` only
+        // holds public metadata (name, monitorAccount, ttl, tags, etc.),
+        // but defence-in-depth.
+        const groups = (cfg.groups || []).map((g) => {
+            const { ...clean } = g;
+            return clean;
+        });
+        res.json({ groups, peerId: getSelfPeerId(), now: Date.now() });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/cluster/accounts/snapshot', async (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    try {
+        const cfg = await readConfigSafe();
+        // Redact the StringSession blob — peers shouldn't impersonate
+        // each other's Telegram clients.
+        const accounts = (cfg.accounts || []).map((a) => ({
+            id: a.id,
+            label: a.label,
+            phone: a.phone,
+            disabled: !!a.disabled,
+            // session: redacted
+        }));
+        res.json({ accounts, peerId: getSelfPeerId(), now: Date.now() });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Admin — manual sync trigger (e.g. after pairing a new peer).
+app.post('/api/cluster/sync/run', async (_req, res) => {
+    try {
+        const r = await syncAllOnce();
+        res.json(r);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/cluster/sync/state', (_req, res) => {
+    res.json(getSyncState());
+});
+
+// Admin — merged downloads view (self + every peer's catalog). Powers
+// the unified gallery + downloads list. ?peerId=<self|<id>|all> filters.
+app.get('/api/cluster/downloads', (req, res) => {
+    try {
+        const filter = req.query.peerId || 'all';
+        const limit = Math.max(1, Math.min(2000, Number(req.query.limit) || 200));
+        const offset = Math.max(0, Number(req.query.offset) || 0);
+        const ownPid = getSelfPeerId();
+        const rows = [];
+        if (filter === 'all' || filter === 'self' || filter === ownPid) {
+            const own = getDb()
+                .prepare(
+                    `SELECT id, group_id, group_name, message_id, file_name, file_size,
+                            file_type, file_path, file_hash, status, created_at, nsfw_score, phash
+                       FROM downloads
+                      ORDER BY id DESC LIMIT ? OFFSET ?`,
+                )
+                .all(limit, offset);
+            for (const r of own) rows.push({ ...r, peer_id: ownPid, peer_name: getSelfPeerName() });
+        }
+        if (filter === 'all' || (filter !== 'self' && filter !== ownPid)) {
+            const peerFilter = filter === 'all' ? null : String(filter);
+            const peers = listPeers().filter((p) => !peerFilter || p.peerId === peerFilter);
+            for (const p of peers) {
+                const r = getDb()
+                    .prepare(
+                        `SELECT * FROM peer_downloads WHERE peer_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+                    )
+                    .all(p.peerId, limit, offset);
+                for (const row of r) rows.push({ ...row, peer_name: p.name });
+            }
+        }
+        rows.sort((a, b) => {
+            const ta =
+                typeof a.created_at === 'string'
+                    ? Date.parse(a.created_at)
+                    : Number(a.created_at) || 0;
+            const tb =
+                typeof b.created_at === 'string'
+                    ? Date.parse(b.created_at)
+                    : Number(b.created_at) || 0;
+            return tb - ta;
+        });
+        res.json({ rows, total: rows.length });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Phase 3: streaming bridge (P2P file proxy) ------------------------
+
+// P2P bridge endpoint — when peer A's /files resolves a row that lives on
+// peer B, A signs a GET to B at this path. We respond with the same
+// bytes the local /files would serve.
+app.get('/api/cluster/files/:path(*)', async (req, res, next) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    let reqPath;
+    try {
+        reqPath = decodeURIComponent(req.params.path || '').replace(/^\/+/, '');
+    } catch {
+        return res.status(400).send('Bad request');
+    }
+    if (!reqPath || reqPath.includes('\0')) return res.status(400).send('Bad request');
+    const r = await safeResolveDownload(reqPath);
+    if (!r.ok) {
+        const status = r.reason === 'missing' ? 404 : 403;
+        return res.status(status).send(r.reason === 'missing' ? 'File not found' : 'Forbidden');
+    }
+    // Re-use Express's static-stream path so Range works identically to
+    // the cookie-authed /files route. No HEIC inline transcode here —
+    // the bridge serves raw bytes; the requesting peer decides framing.
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.sendFile(r.real);
+});
+
+// ---- Phase 4: direct stream mode (sign-url minting) -------------------
+
+app.post('/api/cluster/sign-url', async (req, res, next) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    const { path: filePath, ttlSec = 60 } = req.body || {};
+    if (!filePath) return res.status(400).json({ error: 'path required' });
+    try {
+        const row = getDb()
+            .prepare('SELECT id FROM downloads WHERE file_path = ? LIMIT 1')
+            .get(String(filePath));
+        if (!row) return res.status(404).json({ error: 'file not catalogued' });
+        // Mint an unauthenticated share-link (HMAC-signed url) — the
+        // requesting peer's browser will fetch this directly. Reuse the
+        // existing share infra so revocation + access counters stay one
+        // unified source of truth.
+        const expiresAt = Date.now() + Math.max(10, Math.min(3600, Number(ttlSec) || 60)) * 1000;
+        const linkRow = createShareLink({
+            downloadId: Number(row.id),
+            expiresAt,
+            label: `cluster:${v.peerId.slice(0, 8)}`,
+        });
+        const expSec = Math.floor(expiresAt / 1000);
+        const baseUrl = (() => {
+            const proto =
+                req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
+            const host = req.headers['x-forwarded-host'] || req.headers.host;
+            return `${proto}://${host}`;
+        })();
+        res.set('Cache-Control', 'no-store').json({
+            url: baseUrl + buildShareUrlPath(linkRow.id, expSec),
+            expiresAt,
+        });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Phase 7: dedup sweep --------------------------------------------
+
+app.post('/api/cluster/sweep/run', (req, res) => {
+    const minSize = Number(req.body?.minSize) || 1024;
+    const r = tryStartSweep({ minSize });
+    if (!r.started) {
+        return res.status(409).json({
+            started: false,
+            code: 'ALREADY_RUNNING',
+            snapshot: r.snapshot,
+        });
+    }
+    res.json({ started: true });
+});
+
+app.get('/api/cluster/sweep/status', (_req, res) => {
+    res.json(getSweepStatus());
+});
+
+app.post('/api/cluster/sweep/cancel', (_req, res) => {
+    const ok = abortSweep();
+    res.json({ ok });
+});
+
+app.get('/api/cluster/conflicts', (_req, res) => {
+    res.json({ conflicts: listConflicts(), stats: getSweepStatus().stats });
+});
+
+app.post('/api/cluster/conflicts/:id/resolve', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const keep = req.body?.keep;
+        const r = await resolveConflict(id, keep);
+        res.json(r);
+    } catch (e) {
+        res.status(e?.status || 500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Phase D (v2.10): relay-through-peer ------------------------------
+
+app.post('/api/cluster/relay/proxy', async (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    try {
+        const { handleRelay } = await import('../core/cluster/relay.js');
+        const upstream = await handleRelay({
+            envelope: req.body || {},
+            sourcePeerId: v.peerId,
+        });
+        // Pipe response status + body back. Headers we forward are limited
+        // to the standard set — anything sensitive (Set-Cookie etc.) is
+        // dropped at the relay boundary.
+        res.status(upstream.status);
+        for (const [k, val] of upstream.headers) {
+            const lk = k.toLowerCase();
+            if (
+                lk === 'content-type' ||
+                lk === 'content-length' ||
+                lk === 'cache-control' ||
+                lk === 'etag'
+            ) {
+                res.setHeader(k, val);
+            }
+        }
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        res.end(buf);
+    } catch (e) {
+        res.status(e?.status || 500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Phase G (v2.10): cross-peer file delete --------------------------
+
+app.post('/api/cluster/files/delete', async (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    const { file_path: filePath, remote_id: remoteId, reason = null } = req.body || {};
+    try {
+        let row;
+        if (remoteId != null) {
+            row = getDb()
+                .prepare('SELECT id, file_path, file_size FROM downloads WHERE id = ?')
+                .get(Number(remoteId));
+        } else if (filePath) {
+            row = getDb()
+                .prepare(
+                    'SELECT id, file_path, file_size FROM downloads WHERE file_path = ? LIMIT 1',
+                )
+                .get(String(filePath));
+        }
+        if (!row) {
+            return res.status(404).json({ error: 'file not catalogued' });
+        }
+        const r = await safeResolveDownload(row.file_path);
+        let freedBytes = 0;
+        if (r.ok) {
+            try {
+                await fs.unlink(r.real);
+                freedBytes = Number(row.file_size) || 0;
+            } catch {
+                /* best effort */
+            }
+        }
+        getDb().prepare('DELETE FROM downloads WHERE id = ?').run(Number(row.id));
+        recordClusterAudit({
+            kind: 'cross_delete',
+            ok: true,
+            peerId: v.peerId,
+            detail: `${row.file_path} (reason=${reason || '-'})`,
+        });
+        // Tell paired peers the row is gone so their cache catches up.
+        try {
+            clusterWs.broadcastClusterEvent('download_deleted', { remote_id: row.id });
+        } catch {
+            /* nothing */
+        }
+        res.json({ deleted: true, freedBytes });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Phase I (v2.10): federated search ------------------------------
+
+// HMAC peer-to-peer search. Returns matching local download rows.
+app.get('/api/cluster/search/peer', (req, res) => {
+    const v = _peerHmacGate(req, res);
+    if (!v) return;
+    const q = String(req.query.q || '').trim();
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
+    if (!q) return res.json({ rows: [] });
+    try {
+        const like = `%${q.replace(/[%_]/g, '\\$&')}%`;
+        const rows = getDb()
+            .prepare(
+                `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
+                        file_path, file_hash, status, created_at, nsfw_score
+                   FROM downloads
+                  WHERE file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\'
+                  ORDER BY created_at DESC
+                  LIMIT ?`,
+            )
+            .all(like, like, limit);
+        res.json({ rows, peerId: getSelfPeerId(), q });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Admin cookie-authed cluster-wide search — fan-out, merge, dedup by hash.
+app.get('/api/cluster/search', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
+    if (!q) return res.json({ rows: [] });
+    try {
+        const like = `%${q.replace(/[%_]/g, '\\$&')}%`;
+        const ownPid = getSelfPeerId();
+        const local = getDb()
+            .prepare(
+                `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
+                        file_path, file_hash, status, created_at, nsfw_score
+                   FROM downloads
+                  WHERE file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\'
+                  ORDER BY created_at DESC LIMIT ?`,
+            )
+            .all(like, like, limit);
+        const merged = local.map((r) => ({ ...r, peer_id: ownPid, peer_name: getSelfPeerName() }));
+
+        // Fan-out to paired peers (online only).
+        const peers = listPeers().filter((p) => p.status === 'online' && !!p.peerId);
+        await Promise.allSettled(
+            peers.map(async (p) => {
+                try {
+                    const path0 = `/api/cluster/search/peer?q=${encodeURIComponent(q)}&limit=${limit}`;
+                    const headers = {
+                        ...(await import('../core/cluster/hmac.js')).signRequest({
+                            method: 'GET',
+                            path: path0,
+                            targetPeerId: p.peerId,
+                        }),
+                    };
+                    const r = await fetch(p.url + path0, { method: 'GET', headers });
+                    if (!r.ok) return;
+                    const j = await r.json();
+                    for (const row of j.rows || []) {
+                        merged.push({ ...row, peer_id: p.peerId, peer_name: p.name });
+                    }
+                } catch {
+                    /* peer offline / refused */
+                }
+            }),
+        );
+        // Dedup by file_hash (when present), keep first hit per hash.
+        const seen = new Set();
+        const dedup = [];
+        for (const r of merged) {
+            const k = r.file_hash || `${r.peer_id}:${r.id}`;
+            if (seen.has(k)) continue;
+            seen.add(k);
+            dedup.push(r);
+        }
+        dedup.sort((a, b) => {
+            const ta =
+                typeof a.created_at === 'string' ? Date.parse(a.created_at) : Number(a.created_at);
+            const tb =
+                typeof b.created_at === 'string' ? Date.parse(b.created_at) : Number(b.created_at);
+            return (tb || 0) - (ta || 0);
+        });
+        res.json({ rows: dedup, total: dedup.length });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Phase E (v2.10): failover audit + manual reassign ----------------
+
+app.get('/api/cluster/failover-log', (req, res) => {
+    try {
+        const limit = Number(req.query.limit) || 100;
+        const { listFailoverLog } = require('../core/db.js');
+        res.json({ entries: listFailoverLog({ limit }) });
+    } catch {
+        try {
+            // ESM dynamic import fallback
+            import('../core/db.js').then((m) => {
+                res.json({ entries: m.listFailoverLog({ limit: Number(req.query.limit) || 100 }) });
+            });
+        } catch (e) {
+            res.status(500).json({ error: 'failover log unavailable' });
+        }
+    }
+});
+
+// ---- Phase K (v2.10): cluster stats ---------------------------------
+
+app.get('/api/cluster/stats', async (_req, res) => {
+    try {
+        const { aggregateEgress } = await import('../core/db.js');
+        const ownPid = getSelfPeerId();
+        const peers = listPeers();
+        const localBytes = (() => {
+            try {
+                return getDb()
+                    .prepare('SELECT COALESCE(SUM(file_size),0) AS n FROM downloads')
+                    .get().n;
+            } catch {
+                return 0;
+            }
+        })();
+        const cachedBytes = peers.map((p) => {
+            const n = getDb()
+                .prepare(
+                    'SELECT COALESCE(SUM(file_size),0) AS n FROM peer_downloads WHERE peer_id = ?',
+                )
+                .get(p.peerId).n;
+            return { peerId: p.peerId, name: p.name, status: p.status, totalBytes: n };
+        });
+        const egress = aggregateEgress({ days: 30 });
+        res.json({
+            self: {
+                peerId: ownPid,
+                name: getSelfPeerName(),
+                totalBytes: localBytes,
+            },
+            peers: cachedBytes,
+            egress30d: egress,
+        });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Start the sync engine on first cluster route hit. It will poll every
+// 30s; idempotent if already running.
+let _clusterSyncStarted = false;
+function _ensureSyncEngineStarted() {
+    if (_clusterSyncStarted) return;
+    _clusterSyncStarted = true;
+    try {
+        startSyncEngine({ intervalMs: 30_000 });
+    } catch (e) {
+        console.warn('[cluster] sync engine start failed:', e?.message || e);
+    }
+}
+let _clusterDiscoveryStarted = false;
+function _ensureClusterDiscoveryStarted() {
+    if (_clusterDiscoveryStarted) return;
+    _clusterDiscoveryStarted = true;
+    try {
+        const port = Number(process.env.PORT) || 3000;
+        const proto = process.env.PUBLIC_PROTO || 'http';
+        const host = process.env.PUBLIC_HOST || `localhost:${port}`;
+        const selfUrl = process.env.PUBLIC_URL || `${proto}://${host}`;
+        clusterDiscovery.startDiscovery({ selfUrl });
+    } catch (e) {
+        console.warn('[cluster] discovery start failed:', e?.message || e);
+    }
+}
+
+let _clusterFailoverStarted = false;
+function _ensureClusterFailoverStarted() {
+    if (_clusterFailoverStarted) return;
+    _clusterFailoverStarted = true;
+    try {
+        startFailoverWatcher();
+    } catch (e) {
+        console.warn('[cluster] failover watcher start failed:', e?.message || e);
+    }
+}
+
+app.use('/api/cluster', (_req, _res, next) => {
+    _ensureSyncEngineStarted();
+    _ensureClusterWsInit();
+    _ensureClusterDiscoveryStarted();
+    _ensureClusterFailoverStarted();
+    next();
+});
+
+// Manual failover sweep (admin) — useful when an operator wants to
+// trigger reassignment immediately rather than wait for the 60s tick.
+app.post('/api/cluster/failover/run', (_req, res) => {
+    try {
+        const applied = runFailoverPass();
+        res.json({ applied });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Expose broadcast() globally for sweep.js (which can't import directly
+// without creating a circular dep). One-line bridge.
+global.__tgdlBroadcast =
+    global.__tgdlBroadcast ||
+    ((m) => {
+        try {
+            broadcast(m);
+        } catch {
+            /* nothing */
+        }
+    });
+
+// ====== AI subsystem (v2.6+) ============================================
 //
 // Local-only image embeddings, face clustering, perceptual dedup, and auto-
 // tagging. Default-OFF; every capability is opt-in via `config.advanced.ai`.
 // All long-running scans go through the JobTracker pattern so they return
 // 200 immediately and stream progress over WebSocket.
 //
-// Models live in `data/models/` (override via AI_MODELS_DIR env var) and
-// downloads only happen when the operator enables a capability. The
-// classifier path inherits the WASM execution provider trick from NSFW so
-// it works identically on Windows / macOS / glibc / musl / Docker / ARM.
-//
-// Admin-only by virtue of the chokepoint (none of these paths live on the
-// guest allowlist).
-
-function _aiCfg() {
+// Every route inside the router is wrapped in safe-route so an unhandled
+// throw turns into a JSON error envelope instead of bringing down the
+// dashboard via process.on('uncaughtException').
+// AI router mount is deferred — `_jobTrackers` is declared further down
+// the file and would TDZ-throw at module load if we mounted here. Wrap
+// in a queueMicrotask so the mount happens AFTER the rest of the module
+// has finished evaluating + `_jobTrackers` is initialised.
+queueMicrotask(() => {
     try {
-        const live = loadConfig();
-        const cfg = live.advanced?.ai || {};
-        return {
-            enabled: cfg.enabled === true,
-            embeddings: {
-                enabled: cfg.embeddings?.enabled === true,
-                model: cfg.embeddings?.model || ai.AI_DEFAULTS.embeddings.model,
-            },
-            faces: {
-                enabled: cfg.faces?.enabled === true,
-                model: cfg.faces?.model || ai.AI_DEFAULTS.faces.model,
-                epsilon: Number.isFinite(cfg.faces?.epsilon)
-                    ? cfg.faces.epsilon
-                    : ai.AI_DEFAULTS.faces.epsilon,
-                minPoints: Number.isFinite(cfg.faces?.minPoints)
-                    ? cfg.faces.minPoints
-                    : ai.AI_DEFAULTS.faces.minPoints,
-            },
-            tags: {
-                enabled: cfg.tags?.enabled === true,
-                model: cfg.tags?.model || ai.AI_DEFAULTS.tags.model,
-                topK: Number.isFinite(cfg.tags?.topK) ? cfg.tags.topK : ai.AI_DEFAULTS.tags.topK,
-            },
-            phash: { enabled: cfg.phash?.enabled === true },
-            indexConcurrency: Number.isFinite(cfg.indexConcurrency)
-                ? cfg.indexConcurrency
-                : ai.AI_DEFAULTS.indexConcurrency,
-            batchSize: Number.isFinite(cfg.batchSize) ? cfg.batchSize : ai.AI_DEFAULTS.batchSize,
-            fileTypes:
-                Array.isArray(cfg.fileTypes) && cfg.fileTypes.length
-                    ? cfg.fileTypes
-                    : ai.AI_DEFAULTS.fileTypes,
-        };
-    } catch {
-        return { ...ai.AI_DEFAULTS };
-    }
-}
-
-// Probe sqlite-vec lazily on the first AI status hit. Result is cached so
-// we don't re-probe on every poll.
-let _aiVecProbed = false;
-async function _maybeProbeVec() {
-    if (_aiVecProbed) return;
-    _aiVecProbed = true;
-    try {
-        await ai.loadVecExtension(getDb, log);
-    } catch {}
-}
-
-// Wire Transformers.js progress callbacks into the WS bus so the model
-// status panel can show live download bytes without polling. Idempotent —
-// the hook is registered once at module evaluation; subsequent reloads
-// (e.g. test re-imports) overwrite the same slot.
-try {
-    ai.setModelProgressHook?.(({ kind, modelId, progress }) => {
-        try {
-            broadcast({
-                type: 'ai_model_progress',
-                kind,
-                modelId,
-                progress: progress || null,
-                ts: Date.now(),
-            });
-        } catch {
-            /* swallow — never crash the loader */
-        }
-    });
-} catch {
-    /* setModelProgressHook is optional */
-}
-
-// Per-capability descriptors used by the model-status endpoint. Mirrors
-// the names the dashboard already uses. The kind is the Transformers.js
-// pipeline kind — needed because the same model id can be loaded under
-// two kinds (CLIP image vs text).
-const _MODEL_CAPS = [
-    { cap: 'embeddings', cfgKey: 'embeddings', defaultKind: 'image-feature-extraction' },
-    { cap: 'faces', cfgKey: 'faces', defaultKind: 'object-detection' },
-    { cap: 'tags', cfgKey: 'tags', defaultKind: 'image-classification' },
-];
-
-// Probe a HuggingFace token. POST `{ token? }` — when `token` is present
-// we use that value directly, otherwise we fall back to the saved
-// `advanced.ai.hfToken` (lets the operator click "Test" before the
-// autosave round-trip lands). Hits `/api/whoami-v2` which returns the
-// user object on a valid token + 401 on a bad one. We never echo the
-// token back, only `{ ok: true, name, type }` or `{ ok: false, status,
-// message }`. Rate-limit caps it to once every 2 s per session via the
-// shared `loginLimiter` family — the app loop is in JS so a single
-// admin spamming the button can't choke the box.
-app.post('/api/ai/hf/test', async (req, res) => {
-    try {
-        let token = req.body && typeof req.body.token === 'string' ? req.body.token.trim() : '';
-        if (!token) {
-            try {
-                const cfg = loadConfig();
-                token = String(cfg?.advanced?.ai?.hfToken || '').trim();
-            } catch {
-                /* config not ready */
-            }
-        }
-        if (!token) {
-            return res.status(400).json({
-                ok: false,
-                status: 0,
-                message: 'No token to test. Paste one above first.',
-            });
-        }
-        // 5-second timeout — HF whoami is fast and the operator is
-        // staring at a button waiting.
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 5000);
-        let r;
-        try {
-            r = await fetch('https://huggingface.co/api/whoami-v2', {
-                headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-                signal: ac.signal,
-            });
-        } catch (e) {
-            return res.json({
-                ok: false,
-                status: 0,
-                message:
-                    e?.name === 'AbortError'
-                        ? 'Timed out talking to huggingface.co.'
-                        : `Network error: ${e?.message || e}`,
-            });
-        } finally {
-            clearTimeout(timer);
-        }
-        if (r.status === 401 || r.status === 403) {
-            return res.json({
-                ok: false,
-                status: r.status,
-                message: 'Token rejected by HuggingFace (401). Re-create the token with Read role.',
-            });
-        }
-        if (!r.ok) {
-            return res.json({
-                ok: false,
-                status: r.status,
-                message: `HuggingFace returned HTTP ${r.status}.`,
-            });
-        }
-        let body = null;
-        try {
-            body = await r.json();
-        } catch {
-            /* ignore */
-        }
-        const name = body?.name || body?.fullname || '(unknown)';
-        const type = body?.type || 'user';
-        return res.json({ ok: true, status: r.status, name, type });
+        app.use(
+            '/api/ai',
+            createAiRouter({
+                ai,
+                db: {
+                    getAiCounts,
+                    listPeople,
+                    listPhotosForPerson,
+                    renamePerson,
+                    deletePerson,
+                    listAllTags,
+                    listPhotosForTag,
+                    listEmbeddingModels,
+                    clearStaleEmbeddings,
+                },
+                jobTrackers: _jobTrackers,
+                getDb,
+                loadConfig,
+                log,
+                broadcast,
+            }),
+        );
     } catch (e) {
-        res.status(500).json({ ok: false, status: 0, message: e.message });
-    }
-});
-
-app.get('/api/ai/status', async (_req, res) => {
-    try {
-        await _maybeProbeVec();
-        const cfg = _aiCfg();
-        const counts = getAiCounts({ fileTypes: cfg.fileTypes });
-        // Surface gated-model warnings so the dashboard can render an
-        // "Apply public default" banner. Mirrors the startup state-migration
-        // sweep — that one rewrites stored config in place; this one catches
-        // the case where the operator manually pasted a gated id at runtime
-        // (or a legacy install hasn't restarted since the migration shipped).
-        const gatedWarnings = [];
-        for (const cap of ['embeddings', 'faces', 'tags']) {
-            const cur = cfg[cap]?.model;
-            const repl = ai.suggestPublicReplacement(cur);
-            if (repl) gatedWarnings.push({ cap, currentId: cur, suggested: repl.suggested });
-        }
-        // Surface stale-embedding rows so the dashboard can render a
-        // "Re-index needed" pill on the Models panel. The state-migration
-        // wipes mismatched rows at boot, but a runtime model swap leaves
-        // them around until the operator clicks Re-index.
-        const currentEmbeddingModel = cfg.embeddings.model;
-        let staleEmbeddings = { count: 0, distinctModels: [] };
-        try {
-            const rows = listEmbeddingModels();
-            const stale = rows.filter((r) => r.model !== currentEmbeddingModel);
-            staleEmbeddings = {
-                count: stale.reduce((n, r) => n + (Number(r.count) || 0), 0),
-                distinctModels: stale.map((r) => r.model || ''),
-            };
-        } catch {
-            /* table missing on fresh installs — leave the zero default */
-        }
-        res.json({
-            success: true,
-            enabled: cfg.enabled,
-            capabilities: {
-                master: cfg.enabled,
-                embeddings: cfg.embeddings.enabled,
-                faces: cfg.faces.enabled,
-                tags: cfg.tags.enabled,
-                phash: cfg.phash.enabled,
-            },
-            models: {
-                embeddings: cfg.embeddings.model,
-                faces: cfg.faces.model,
-                tags: cfg.tags.model,
-            },
-            counts,
-            loadedPipelines: ai.loadedPipelines(),
-            gatedWarnings,
-            embeddingPresets: ai.EMBEDDING_PRESETS,
-            currentEmbeddingModel,
-            staleEmbeddings,
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/ai/index/scan', async (_req, res) => {
-    const cfg = _aiCfg();
-    if (!cfg.enabled) {
-        return res.status(503).json({
-            error: 'AI subsystem disabled. Toggle "Enable AI subsystem" in Maintenance → AI search.',
-            code: 'AI_DISABLED',
-        });
-    }
-    const tracker = _jobTrackers.aiIndex;
-    const r = tracker.tryStart(async ({ onProgress, signal }) => {
-        return ai.runIndexScan(cfg, { onProgress, signal, onLog: log });
-    });
-    if (!r.started)
-        return res
-            .status(409)
-            .json({ error: 'AI index scan already running', code: 'ALREADY_RUNNING' });
-    res.json({ success: true, started: true });
-});
-
-// Wipe every embedding row whose `model` differs from the active embeddings
-// model and queue the affected downloads for re-scan, then immediately kick
-// the regular index scan. Used when the operator picks a different model
-// preset on the Models panel — the model id has already been PATCHed onto
-// `advanced.ai.embeddings.model` by the time this fires.
-app.post('/api/ai/index/reembed', async (_req, res) => {
-    const cfg = _aiCfg();
-    if (!cfg.enabled) {
-        return res.status(503).json({ error: 'AI subsystem disabled', code: 'AI_DISABLED' });
-    }
-    if (!cfg.embeddings.enabled) {
-        return res
-            .status(503)
-            .json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
-    }
-    const tracker = _jobTrackers.aiIndex;
-    // Bundle the wipe + scan kick inside a single tryStart so an
-    // already-running scan can't race with the destructive DELETE.
-    const r = tracker.tryStart(async ({ onProgress, signal }) => {
-        let cleared = { dropped: 0, requeued: 0 };
-        try {
-            cleared = clearStaleEmbeddings(cfg.embeddings.model);
-        } catch (e) {
-            log({ source: 'ai', level: 'error', msg: `reembed wipe failed: ${e?.message || e}` });
-            throw e;
-        }
-        try {
-            ai.clearVectorCache?.();
-        } catch {
-            /* cache helper not loaded — fine, it'll rebuild lazily */
-        }
-        log({
-            source: 'ai',
-            level: 'info',
-            msg: `reembed: dropped ${cleared.dropped} stale row(s), requeued ${cleared.requeued} download(s) for ${cfg.embeddings.model}`,
-        });
-        return ai.runIndexScan(cfg, { onProgress, signal, onLog: log });
-    });
-    if (!r.started) {
-        return res
-            .status(409)
-            .json({ error: 'AI index scan already running', code: 'ALREADY_RUNNING' });
-    }
-    res.json({ success: true, started: true });
-});
-
-app.get('/api/ai/index/scan/status', async (_req, res) => {
-    res.json(_jobTrackers.aiIndex.getStatus());
-});
-
-app.post('/api/ai/index/cancel', async (_req, res) => {
-    const ok = _jobTrackers.aiIndex.cancel();
-    res.json({ success: true, cancelled: ok });
-});
-
-app.post('/api/ai/search', async (req, res) => {
-    try {
-        const { query, limit, fileTypes } = req.body || {};
-        if (typeof query !== 'string' || !query.trim()) {
-            return res.status(400).json({ error: 'query required' });
-        }
-        const cfg = _aiCfg();
-        if (!cfg.enabled || !cfg.embeddings.enabled) {
-            return res
-                .status(503)
-                .json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
-        }
-        const r = await ai.searchByText(query.trim(), cfg, {
-            limit: Number(limit) || 20,
-            fileTypes: Array.isArray(fileTypes) && fileTypes.length ? fileTypes : null,
-            onLog: log,
-        });
-        res.json({ success: true, ...r });
-    } catch (e) {
-        log({ source: 'ai', level: 'error', msg: `search failed: ${e?.message || e}` });
-        res.status(500).json({ error: e.message, code: e.code || 'UNKNOWN' });
-    }
-});
-
-app.post('/api/ai/people/scan', async (_req, res) => {
-    const cfg = _aiCfg();
-    if (!cfg.enabled || !cfg.faces.enabled) {
-        return res
-            .status(503)
-            .json({ error: 'Face clustering is disabled', code: 'FACES_DISABLED' });
-    }
-    const tracker = _jobTrackers.aiPeople;
-    const r = tracker.tryStart(async ({ onProgress, signal }) => {
-        return ai.runFaceClustering(cfg, { onProgress, signal, onLog: log });
-    });
-    if (!r.started)
-        return res
-            .status(409)
-            .json({ error: 'Face clustering already running', code: 'ALREADY_RUNNING' });
-    res.json({ success: true, started: true });
-});
-
-app.get('/api/ai/people/scan/status', async (_req, res) => {
-    res.json(_jobTrackers.aiPeople.getStatus());
-});
-
-app.get('/api/ai/people', async (req, res) => {
-    try {
-        const limit = Number(req.query.limit) || 200;
-        const offset = Number(req.query.offset) || 0;
-        res.json({ success: true, ...listPeople({ limit, offset }) });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.put('/api/ai/people/:id', async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
-    try {
-        const label = req.body?.label;
-        const updated = renamePerson(id, label == null ? null : String(label).slice(0, 80));
-        log({ source: 'ai', level: 'info', msg: `person #${id} renamed to "${label}"` });
-        res.json({ success: true, updated });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.delete('/api/ai/people/:id', async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
-    try {
-        const deleted = deletePerson(id);
-        log({ source: 'ai', level: 'info', msg: `person #${id} deleted (faces unclustered)` });
-        res.json({ success: true, deleted });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/api/ai/people/:id/photos', async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
-    try {
-        const limit = Number(req.query.limit) || 50;
-        const offset = Number(req.query.offset) || 0;
-        res.json({ success: true, ...listPhotosForPerson(id, { limit, offset }) });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/ai/perceptual-dedup/scan', async (_req, res) => {
-    const cfg = _aiCfg();
-    if (!cfg.enabled || !cfg.phash.enabled) {
-        return res
-            .status(503)
-            .json({ error: 'Perceptual dedup is disabled', code: 'PHASH_DISABLED' });
-    }
-    const tracker = _jobTrackers.aiPhash;
-    const r = tracker.tryStart(async ({ onProgress, signal }) => {
-        return ai.runPhashScan({ onProgress, signal, onLog: log, fileTypes: cfg.fileTypes });
-    });
-    if (!r.started)
-        return res
-            .status(409)
-            .json({ error: 'phash scan already running', code: 'ALREADY_RUNNING' });
-    res.json({ success: true, started: true });
-});
-
-app.get('/api/ai/perceptual-dedup/scan/status', async (_req, res) => {
-    res.json(_jobTrackers.aiPhash.getStatus());
-});
-
-app.get('/api/ai/perceptual-dedup/groups', async (req, res) => {
-    try {
-        const threshold = Math.max(0, Math.min(20, Number(req.query.threshold) || 6));
-        const cfg = _aiCfg();
-        const r = ai.findPhashGroups({ threshold, fileTypes: cfg.fileTypes });
-        res.json({ success: true, ...r });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/ai/tags/scan', async (_req, res) => {
-    const cfg = _aiCfg();
-    if (!cfg.enabled || !cfg.tags.enabled) {
-        return res.status(503).json({ error: 'Auto-tagging is disabled', code: 'TAGS_DISABLED' });
-    }
-    const tracker = _jobTrackers.aiTags;
-    // Reuse the full index scan with only tags enabled — keeps the backfill
-    // logic centralised. Other capabilities are tri-state (cap.* missing
-    // = skip) so this only computes tags for the rows it visits.
-    const onlyTags = {
-        ...cfg,
-        embeddings: { ...cfg.embeddings, enabled: false },
-        faces: { ...cfg.faces, enabled: false },
-        phash: { enabled: false },
-    };
-    const r = tracker.tryStart(async ({ onProgress, signal }) => {
-        return ai.runIndexScan(onlyTags, { onProgress, signal, onLog: log });
-    });
-    if (!r.started)
-        return res
-            .status(409)
-            .json({ error: 'tags scan already running', code: 'ALREADY_RUNNING' });
-    res.json({ success: true, started: true });
-});
-
-app.get('/api/ai/tags/scan/status', async (_req, res) => {
-    res.json(_jobTrackers.aiTags.getStatus());
-});
-
-app.get('/api/ai/tags', async (req, res) => {
-    try {
-        const minCount = Math.max(1, Number(req.query.min_count) || 1);
-        res.json({ success: true, tags: listAllTags({ minCount }) });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/api/ai/tags/:tag/photos', async (req, res) => {
-    try {
-        const tag = String(req.params.tag || '').trim();
-        if (!tag) return res.status(400).json({ error: 'tag required' });
-        const limit = Number(req.query.limit) || 50;
-        const offset = Number(req.query.offset) || 0;
-        res.json({ success: true, ...listPhotosForTag(tag, { limit, offset }) });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// ---- Model status + swap (v2.6 - operator visibility) -------------------
-//
-// The dashboard's "Models" panel asks: which AI models are loaded, how
-// big are their on-disk caches, and what's the most recent download
-// progress event? Single endpoint per page render — live progress arrives
-// via the `ai_model_progress` WS event wired above.
-app.get('/api/ai/models/status', async (_req, res) => {
-    try {
-        const cfg = _aiCfg();
-        const meta = ai.pipelineMetaSnapshot();
-        const errors = ai.pipelineErrorsSnapshot();
-        const metaByKey = new Map(meta.map((m) => [m.key, m]));
-        const errsByKey = new Map(errors.map((e) => [e.key, e]));
-
-        const out = {};
-        for (const desc of _MODEL_CAPS) {
-            const capCfg = cfg[desc.cfgKey] || {};
-            const modelId = capCfg.model || ai.AI_MODEL_DEFAULTS[desc.cfgKey]?.modelId || '';
-            const kind = ai.AI_MODEL_DEFAULTS[desc.cfgKey]?.kind || desc.defaultKind;
-            const key = `${kind}::${modelId}`;
-            const m = metaByKey.get(key);
-            const err = errsByKey.get(key);
-            const cache = await ai.inspectModelCache(modelId, cfg.cacheDir);
-            out[desc.cap] = {
-                modelId,
-                kind,
-                enabled: capCfg.enabled === true,
-                loaded: !!(m && m.loadedAt),
-                loading: !!(m && !m.loadedAt),
-                lastLoadedAt: m?.loadedAt || null,
-                startedAt: m?.startedAt || null,
-                lastProgress: m?.lastProgress || null,
-                error: err ? err.message : null,
-                cacheBytes: cache.bytes,
-                cacheFiles: cache.files,
-                cacheDir: cache.dir,
-            };
-        }
-        res.json({
-            success: true,
-            cacheRoot: ai.resolveCacheDir(cfg.cacheDir),
-            models: out,
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Wipe the cached weights for a single model id. The next scan / search
-// will redownload from huggingface.co. Confirm-gated on the client.
-app.delete('/api/ai/models/cache', async (req, res) => {
-    try {
-        const modelId = String(req.query.model || req.body?.model || '').trim();
-        if (!modelId) return res.status(400).json({ error: 'model id required' });
-        const cfg = _aiCfg();
-        // Drop the in-process pipeline first so the on-disk wipe doesn't
-        // leave a stale handle wired to deleted weights.
-        try {
-            await ai.clearPipelineForModel(modelId);
-        } catch {
-            /* ignore */
-        }
-        const r = await ai.deleteModelCache(modelId, cfg.cacheDir);
-        log({
-            source: 'ai',
-            level: 'info',
-            msg: `model cache wiped: ${modelId} (${r.bytes} bytes)`,
-        });
-        res.json({ success: true, ...r });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// "More like this" — top-K rows by cosine similarity against the source
-// row's embedding. Reuses the in-memory vector cache from vector-store.js
-// so a second similar-search after a text search is essentially free
-// (same cache hit).
-app.post('/api/ai/search/similar', async (req, res) => {
-    try {
-        const downloadId = Number(req.body?.downloadId);
-        if (!Number.isInteger(downloadId) || downloadId <= 0) {
-            return res.status(400).json({ error: 'downloadId required' });
-        }
-        const cfg = _aiCfg();
-        if (!cfg.enabled || !cfg.embeddings.enabled) {
-            return res
-                .status(503)
-                .json({ error: 'AI embeddings are disabled', code: 'EMBEDDINGS_DISABLED' });
-        }
-        const limit = Math.max(1, Math.min(200, Number(req.body?.limit) || 24));
-        // Pull every embedding (cache-friendly via vector-store.topK
-        // re-using the same listing) so we can grab the source row's
-        // vector without a new SELECT path.
-        const { listAllImageEmbeddings } = await import('../core/db.js');
-        const rows = listAllImageEmbeddings({ fileTypes: cfg.fileTypes });
-        const src = rows.find((r) => r.download_id === downloadId);
-        if (!src || !src.embedding) {
-            return res.status(404).json({ error: 'no embedding for that download' });
-        }
-        const { blobToVector } = await import('../core/ai/vector-store.js');
-        const vec = blobToVector(src.embedding);
-        if (!vec) return res.status(500).json({ error: 'embedding decode failed' });
-        // Run topK; remove the source row itself from the result list.
-        const { topK } = await import('../core/ai/vector-store.js');
-        const top = topK(vec, { limit: limit + 1, fileTypes: cfg.fileTypes });
-        const results = top
-            .filter((r) => r.download_id !== downloadId)
-            .slice(0, limit)
-            .map((r) => ({
-                download_id: r.download_id,
-                score: r.score,
-                file_name: r.row.file_name,
-                file_path: r.row.file_path,
-                file_type: r.row.file_type,
-                file_size: r.row.file_size,
-                group_id: r.row.group_id,
-                group_name: r.row.group_name,
-                created_at: r.row.created_at,
-            }));
-        res.json({
-            success: true,
-            source: {
-                download_id: src.download_id,
-                file_name: src.file_name,
-                group_id: src.group_id,
-                group_name: src.group_name,
-            },
-            results,
-            total: results.length,
-        });
-    } catch (e) {
-        log({ source: 'ai', level: 'error', msg: `similar search failed: ${e?.message || e}` });
-        res.status(500).json({ error: e.message });
+        console.error('[ai] router mount failed:', e?.message || e);
     }
 });
 
@@ -7437,6 +7794,33 @@ app.use('/files', async (req, res, next) => {
         }
         if (!reqPath) return next();
         if (reqPath.includes('\0')) return res.status(400).send('Bad request');
+
+        // Cluster-ref path: a row whose file_path is `_clusterref/<peerId>/<remoteId>`.
+        // Either the dedup layer (Phase 6) inserted it during download, or the
+        // operator opened a peer-owned file from the merged gallery. Fork to the
+        // streaming bridge before the local-disk resolver complains.
+        const ref = parseClusterRefPath(reqPath);
+        if (ref) {
+            const ownerRow = getDb()
+                .prepare('SELECT file_path FROM peer_downloads WHERE peer_id = ? AND remote_id = ?')
+                .get(ref.peerId, Number(ref.remoteId));
+            if (!ownerRow) {
+                return res.status(404).send('Cluster file not found in catalog cache');
+            }
+            const peer = getPeer(ref.peerId);
+            if (!peer) return res.status(410).send('Peer revoked');
+            if (peer.streamMode === 'direct') {
+                try {
+                    const url = await requestSignedShareUrl(ref.peerId, ownerRow.file_path);
+                    return res.redirect(302, url);
+                } catch (e) {
+                    return res
+                        .status(502)
+                        .json({ error: 'storage_offline', message: e?.message || String(e) });
+                }
+            }
+            return streamFromPeer(req, res, ref.peerId, ownerRow.file_path);
+        }
 
         const r = await safeResolveDownload(reqPath);
         if (!r.ok) {

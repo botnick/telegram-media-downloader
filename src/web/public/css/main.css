@@ -2407,6 +2407,26 @@ body[data-page="maintenance-ai"] {
    content column (no full-width breakout) so it doesn't read
    as a foreign banner pasted on top of the cards.
    ============================================================ */
+/* Advanced collapsible (v2.9 declutter). The Settings page wraps its
+   30+ power-user tunables in a <details> so they're hidden by default.
+   Suppress the browser's default disclosure marker and rotate our own
+   chevron when open. */
+#settings-card-advanced-details > summary {
+    list-style: none;
+}
+#settings-card-advanced-details > summary::-webkit-details-marker {
+    display: none;
+}
+#settings-card-advanced-details > summary::marker {
+    content: "";
+}
+#settings-card-advanced-details[open] > summary .details-marker {
+    transform: rotate(180deg);
+}
+#settings-card-advanced-details > summary .details-marker {
+    transition: transform 150ms ease;
+}
+
 .settings-chip-nav {
     position: sticky;
     top: 0;

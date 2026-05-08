@@ -275,23 +275,28 @@ export function initStatusBar() {
     // pick up the new SPA bundle.
     ws.on('update_started', () => _showUpdateOverlay());
     // The autoUpdate JobTracker emits `update_done` when its runFn settles.
-    // Success path: watchtower has already been pinged; the overlay was
-    // shown by `update_started` and the imminent WS disconnect + reload
-    // handler will tear it down. Error path: runAutoUpdate() threw before
-    // ever reaching watchtower (e.g. snapshot failed, watchtower not
-    // configured), so `update_started` was never broadcast — surface the
-    // error so the click doesn't appear to silently succeed. Hide any
-    // overlay that did sneak up before the failure.
+    // Success path: the route already broadcast `update_started`, the
+    // overlay is up, and the imminent WS disconnect + reload handler
+    // will tear it down. Error path: runAutoUpdate() threw mid-pipeline
+    // (snapshot failed, watchtower auth rejected, etc.) — surface the
+    // structured error code via the dedicated translation key so the
+    // operator gets a concrete fix instead of the raw exception text.
     ws.on('update_done', (m) => {
         if (!m?.error) return;
-        // Pre-flight failure path — `update_started` was never sent so
-        // the overlay usually isn't up, but tear it down (and clear the
-        // stall timer) defensively in case a race put it there.
+        // Pre-flight failure path — the overlay may already be up
+        // (broadcast happens before the work). Tear it down + clear the
+        // stall timer defensively.
         _hideUpdateOverlay();
+        const code = m.error_code || m.code || null;
+        // Dedicated translation per error code; falls back to the raw
+        // server message when the code is unknown / new.
+        const codeKey = code ? `update.error.${code}` : null;
+        const translated = codeKey ? i18nT(codeKey, '') : '';
+        const detail = translated && translated !== codeKey ? translated : m.error;
         showToast(
-            i18nTf('update.failed', { msg: m.error }, `Update failed: ${m.error}`),
+            i18nTf('update.failed', { msg: detail }, `Update failed: ${detail}`),
             'error',
-            6000,
+            8000,
         );
     });
     let _versionAtBoot = null;
@@ -433,12 +438,30 @@ export async function _openUpdateChooser(latest, releaseUrl) {
 // entire viewport so the operator doesn't poke at a stale UI mid-swap.
 // Auto-removed when the WS reconnects to the new container (the
 // reconnect handler above reloads the page if the version changed).
-// Watchtower's pull + recreate cycle is < 60 s in every healthy install.
-// 120 s is generous slack for a slow image pull on a thin home connection;
-// past that we render a "stalled" panel so the user can dismiss instead of
-// staring at an indefinite spinner.
-const UPDATE_OVERLAY_STALL_MS = 120_000;
+// Past the stall window we render a "stalled" panel so the user can
+// dismiss instead of staring at an indefinite spinner.
+//
+// Window defaults to 120 s (covers slow image pulls on thin home
+// connections) and is overridable via UPDATE_OVERLAY_STALL_MS on the
+// server, which surfaces the value via /api/update/status. The SPA
+// fetches it lazily on first overlay show.
+const UPDATE_OVERLAY_STALL_DEFAULT_MS = 120_000;
 let _updateStallTimer = null;
+let _overlayStallMs = UPDATE_OVERLAY_STALL_DEFAULT_MS;
+let _overlayStallFetched = false;
+async function _ensureOverlayStallMs() {
+    if (_overlayStallFetched) return _overlayStallMs;
+    _overlayStallFetched = true;
+    try {
+        const s = await api.get('/api/update/status').catch(() => null);
+        if (s && Number.isFinite(s.overlayStallMs) && s.overlayStallMs > 0) {
+            _overlayStallMs = s.overlayStallMs;
+        }
+    } catch {
+        /* keep default */
+    }
+    return _overlayStallMs;
+}
 
 function _showUpdateOverlay() {
     if (document.getElementById('tgdl-update-overlay')) return;
@@ -463,9 +486,18 @@ function _showUpdateOverlay() {
     document.body.appendChild(div);
 
     if (_updateStallTimer) clearTimeout(_updateStallTimer);
+    // Fire the stall timer using whatever value we already have; if the
+    // server's value differs and arrives mid-flight, reset.
     _updateStallTimer = setTimeout(() => {
         _renderUpdateOverlayStalled();
-    }, UPDATE_OVERLAY_STALL_MS);
+    }, _overlayStallMs);
+    _ensureOverlayStallMs().then((ms) => {
+        if (ms === _overlayStallMs) return;
+        if (_updateStallTimer) clearTimeout(_updateStallTimer);
+        _updateStallTimer = setTimeout(() => {
+            _renderUpdateOverlayStalled();
+        }, ms);
+    });
 }
 
 function _hideUpdateOverlay() {
