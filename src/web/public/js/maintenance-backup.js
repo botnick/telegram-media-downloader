@@ -205,10 +205,41 @@ function _renderAll() {
     if (!_destinations.length) {
         empty?.classList.remove('hidden');
         cards.innerHTML = '';
-        return;
+    } else {
+        empty?.classList.add('hidden');
+        cards.innerHTML = _destinations.map(_renderCard).join('');
     }
-    empty?.classList.add('hidden');
-    cards.innerHTML = _destinations.map(_renderCard).join('');
+    _renderStats();
+}
+
+function _renderStats() {
+    const destinationsEl = $('backup-stat-destinations');
+    const syncedEl = $('backup-stat-synced');
+    const queuedEl = $('backup-stat-queued');
+    const lastEl = $('backup-stat-last');
+    if (destinationsEl) destinationsEl.textContent = String(_destinations.length);
+    let synced = 0;
+    let queued = 0;
+    let lastTs = 0;
+    for (const d of _destinations) {
+        const s = _statuses.get(d.id);
+        if (!s) continue;
+        synced += Number(s.completed || s.uploaded || 0);
+        queued += Number(s.queued || 0);
+        const t = Number(s.lastSuccessAt || s.lastJobAt || 0);
+        if (t > lastTs) lastTs = t;
+    }
+    if (syncedEl) syncedEl.textContent = String(synced);
+    if (queuedEl) {
+        queuedEl.textContent = String(queued);
+        queuedEl.classList.toggle('text-tg-orange', queued > 0);
+        queuedEl.classList.toggle('text-tg-text', queued === 0);
+    }
+    if (lastEl) {
+        lastEl.textContent = lastTs
+            ? formatRelativeTime(lastTs)
+            : i18nT('maintenance.backup.never', 'Never');
+    }
 }
 
 async function _refreshStatuses() {

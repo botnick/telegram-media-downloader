@@ -2545,6 +2545,57 @@ async function openGroupSettings(groupId, groupName) {
         /* accounts API not available */
     }
 
+    // Cluster routing — populate owner / backup peer dropdowns from
+    // /api/cluster/peers. The wrapper stays hidden when no peers are
+    // paired so non-cluster operators see no change.
+    try {
+        const r = await api.get('/api/cluster/peers');
+        const peers = Array.isArray(r?.peers) ? r.peers : [];
+        const wrapper = document.getElementById('group-cluster-routing');
+        const ownerSel = document.getElementById('group-owner-peer');
+        const backupSel = document.getElementById('group-backup-peer');
+        if (wrapper) {
+            if (!peers.length) {
+                wrapper.classList.add('hidden');
+            } else {
+                wrapper.classList.remove('hidden');
+                const peerLabel = (p) => {
+                    const name = p.name || p.peerId.slice(0, 12);
+                    const status = p.status === 'online' ? '🟢' : '⚪';
+                    return `${status} ${name}`;
+                };
+                const anyOpt = i18nT('group.cluster.any_peer', '(Any peer — first online wins)');
+                const noneOpt = i18nT('group.cluster.no_backup', '(No automatic failover)');
+                if (ownerSel) {
+                    ownerSel.innerHTML =
+                        `<option value="">${escapeHtml(anyOpt)}</option>` +
+                        peers
+                            .map(
+                                (p) =>
+                                    `<option value="${escapeHtml(p.peerId)}" ${
+                                        group?.ownerPeerId === p.peerId ? 'selected' : ''
+                                    }>${escapeHtml(peerLabel(p))}</option>`,
+                            )
+                            .join('');
+                }
+                if (backupSel) {
+                    backupSel.innerHTML =
+                        `<option value="">${escapeHtml(noneOpt)}</option>` +
+                        peers
+                            .map(
+                                (p) =>
+                                    `<option value="${escapeHtml(p.peerId)}" ${
+                                        group?.backupPeerId === p.peerId ? 'selected' : ''
+                                    }>${escapeHtml(peerLabel(p))}</option>`,
+                            )
+                            .join('');
+                }
+            }
+        }
+    } catch (e) {
+        /* cluster route 401 / 404 → no peers context — leave hidden */
+    }
+
     // Populate filter checkboxes
     const filterOptions = document.getElementById('filter-options');
     if (filterOptions) {
@@ -2663,6 +2714,12 @@ async function saveGroupSettings() {
     const monitorAccount = document.getElementById('monitor-account')?.value || '';
     const forwardAccount = document.getElementById('forward-account')?.value || '';
 
+    // Cluster routing — only honoured when the cluster is paired (the
+    // wrapper stays hidden otherwise so the dropdowns return empty
+    // strings and we send null, leaving the existing config untouched).
+    const ownerPeerId = document.getElementById('group-owner-peer')?.value || '';
+    const backupPeerId = document.getElementById('group-backup-peer')?.value || '';
+
     // Topics
     const topicsEnabled =
         document.getElementById('topics-enable-toggle')?.classList.contains('active') ?? false;
@@ -2702,6 +2759,8 @@ async function saveGroupSettings() {
         },
         monitorAccount: monitorAccount || null,
         forwardAccount: forwardAccount || null,
+        ownerPeerId: ownerPeerId || null,
+        backupPeerId: backupPeerId || null,
         rescueMode,
         rescueRetentionHours,
     };

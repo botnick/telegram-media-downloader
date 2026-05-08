@@ -20,7 +20,7 @@
 
 import { ws } from './ws.js';
 import { api } from './api.js';
-import { showToast } from './utils.js';
+import { showToast, formatRelativeTime } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { _openUpdateChooser } from './statusbar.js';
 
@@ -29,6 +29,36 @@ const $ = (id) => document.getElementById(id);
 let _wired = false;
 let _wsWired = false;
 let _state = { available: false, latest: null };
+
+function _renderStats(history) {
+    const versionEl = $('updates-stat-version');
+    const lastEl = $('updates-stat-last');
+    const pendingEl = $('updates-stat-pending');
+    if (versionEl) {
+        // Prefer the live /api/version response we get from refreshStatus
+        // (cached on _state.current); fall back to the package-time const
+        // already on window if the status call hasn't returned.
+        const v = _state.current || (window.APP_VERSION ?? null);
+        versionEl.textContent = v ? `v${v}` : '—';
+    }
+    if (lastEl) {
+        const top = (history || [])[0];
+        lastEl.textContent = top?.created_at
+            ? formatRelativeTime(top.created_at)
+            : i18nT('update.stats.never', 'Never');
+    }
+    if (pendingEl) {
+        if (_state.available && _state.latest) {
+            pendingEl.textContent = `v${_state.latest}`;
+            pendingEl.classList.add('text-tg-orange');
+            pendingEl.classList.remove('text-tg-text');
+        } else {
+            pendingEl.textContent = i18nT('update.stats.up_to_date', 'Up to date');
+            pendingEl.classList.remove('text-tg-orange');
+            pendingEl.classList.add('text-tg-text');
+        }
+    }
+}
 
 function _formatBytes(bytes) {
     const n = Number(bytes) || 0;
@@ -128,15 +158,25 @@ async function _refresh() {
     try {
         const r = await api.get('/api/update/history?limit=25');
         list.innerHTML = _renderRows(r?.history || []);
+        _renderStats(r?.history || []);
     } catch (e) {
         list.innerHTML = `<div class="text-center py-8 text-sm text-tg-red">${e?.message || 'Failed to load update history'}</div>`;
+        _renderStats([]);
     }
 }
 
 async function _refreshStatus() {
     try {
         const s = await api.get('/api/update/status');
-        _state = { ...s };
+        _state = { ..._state, ...s };
+        // Pull the running version so the stats tile can show it. Cheap;
+        // the handler reads from process.env / package.json once per call.
+        try {
+            const cur = await api.get('/api/version');
+            _state.current = cur?.version || null;
+        } catch {
+            /* keep last */
+        }
         const card = $('updates-status-card');
         if (!card) return;
         const triggerBtn = $('updates-trigger-btn');

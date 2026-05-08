@@ -612,11 +612,19 @@ async function _refreshStats() {
         // Stats cards
         const scannedEl = $('nsfw-stat-scanned');
         const whitelistedEl = $('nsfw-stat-whitelisted');
+        const borderlineEl = $('nsfw-stat-borderline');
         const lastEl = $('nsfw-stat-last');
         const thresholdEl = $('nsfw-threshold-value');
         if (scannedEl)
             scannedEl.textContent = `${counts.scanned ?? 0} / ${counts.totalEligible ?? 0}`;
         if (whitelistedEl) whitelistedEl.textContent = String(counts.whitelisted ?? 0);
+        if (borderlineEl) {
+            // Borderline = the three middle tiers (maybe_not + uncertain + maybe).
+            // def_not + def are the confident ends; the middle is what needs eyeballs.
+            const t = counts.tiers || {};
+            const n = (t.maybe_not || 0) + (t.uncertain || 0) + (t.maybe || 0);
+            borderlineEl.textContent = String(n);
+        }
         if (thresholdEl) thresholdEl.textContent = (Number(counts.threshold) || 0).toFixed(2);
 
         // Pull last-scan from the legacy status endpoint (it has the timestamp).

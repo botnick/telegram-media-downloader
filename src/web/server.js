@@ -7439,6 +7439,20 @@ app.put('/api/groups/:id', async (req, res) => {
             else group.forwardAccount = req.body.forwardAccount;
         }
 
+        // Cluster routing — per-group owner / backup peer. Read by
+        // src/core/cluster/router.js + failover.js. Empty string clears.
+        // Server doesn't validate that the peer exists; an unknown id
+        // simply means failover.js logs "owner offline" forever, which
+        // matches the existing behaviour for a peer that's been revoked.
+        if (req.body.ownerPeerId !== undefined) {
+            if (!req.body.ownerPeerId) delete group.ownerPeerId;
+            else group.ownerPeerId = String(req.body.ownerPeerId);
+        }
+        if (req.body.backupPeerId !== undefined) {
+            if (!req.body.backupPeerId) delete group.backupPeerId;
+            else group.backupPeerId = String(req.body.backupPeerId);
+        }
+
         // Rescue Mode (per-group). 'auto' = follow global cfg.rescue.enabled,
         // 'on' / 'off' override. Empty / null falls back to default ('auto').
         if (req.body.rescueMode !== undefined) {

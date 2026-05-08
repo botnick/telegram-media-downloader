@@ -514,9 +514,164 @@ export async function loadSettings() {
 
             // Guest password sub-block (lives inside Dashboard Security).
             wireGuestPassword();
+
+            // Federation (cluster) — replication policy editor + failover slider
+            // + this-peer summary. Reads /api/cluster/identity + /api/cluster/peers
+            // independently so a non-cluster install (cluster never paired) gets
+            // the empty-hint banner without errors. Idempotent.
+            _initFederation(config).catch(() => {});
         }
     } catch (e) {
         console.error('Failed to load settings', e);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Federation (cluster) sub-panel — replication policy + failover grace.
+// ---------------------------------------------------------------------------
+//
+// Replication keys covered: a curated set that matches what most operators
+// want to share across peers. The list is the canonical surface; if a power
+// user has set `cluster.replicate.<other-key>` outside the UI it still works
+// at runtime, this panel just doesn't expose it. config-sync.js reads
+// `cluster.replicate` server-side; we only PATCH that map plus the failover
+// grace tunable. No new server endpoint is needed.
+const _FEDERATION_KEYS = [
+    { key: 'groups', icon: 'ri-group-line', i18nKey: 'settings.federation.replicate.key.groups' },
+    {
+        key: 'accounts',
+        icon: 'ri-user-line',
+        i18nKey: 'settings.federation.replicate.key.accounts',
+    },
+    {
+        key: 'web',
+        icon: 'ri-shield-keyhole-line',
+        i18nKey: 'settings.federation.replicate.key.web',
+    },
+    {
+        key: 'download',
+        icon: 'ri-download-line',
+        i18nKey: 'settings.federation.replicate.key.download',
+    },
+    {
+        key: 'rescue',
+        icon: 'ri-lifebuoy-line',
+        i18nKey: 'settings.federation.replicate.key.rescue',
+    },
+];
+const _FEDERATION_POLICIES = ['local', 'cluster', 'cluster_excl'];
+let _federationWired = false;
+
+async function _initFederation(config) {
+    const card = document.getElementById('settings-card-federation');
+    if (!card) return;
+    const replicate = config?.cluster?.replicate ?? {};
+    const failoverGrace = Math.max(
+        1,
+        Math.min(60, Number(config?.cluster?.failover_grace_minutes) || 5),
+    );
+
+    // Render the replication editor as one row per curated key. Segmented
+    // control = 3 small buttons; clicking one updates the in-memory map and
+    // PATCHes /api/config (which routes through saveConfig → config-sync).
+    const list = document.getElementById('federation-replicate-list');
+    if (list) {
+        list.innerHTML = _FEDERATION_KEYS
+            .map((entry) => {
+                const current = replicate[entry.key] || 'local';
+                const segs = _FEDERATION_POLICIES
+                    .map((p) => {
+                        const active = p === current ? 'data-active="1"' : '';
+                        const label = i18nT(`settings.federation.policy.${p}`, p);
+                        return `<button type="button" class="federation-policy-btn text-[11px] px-2 py-1 rounded" data-key="${entry.key}" data-policy="${p}" ${active}>${escapeHtml(label)}</button>`;
+                    })
+                    .join('');
+                const label = i18nT(entry.i18nKey, entry.key);
+                return `
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <div class="text-xs text-tg-text inline-flex items-center gap-1.5 min-w-0">
+                        <i class="${entry.icon} text-tg-textSecondary"></i>
+                        <span class="truncate"><code class="text-[11px] text-tg-textSecondary mr-1">${entry.key}</code>${escapeHtml(label)}</span>
+                    </div>
+                    <div class="federation-segmented inline-flex bg-tg-bg/60 rounded-md p-0.5 gap-0.5">${segs}</div>
+                </div>`;
+            })
+            .join('');
+
+        if (!_federationWired) {
+            _federationWired = true;
+            // One delegated handler — every policy click PATCHes /api/config
+            // with the new map, then re-renders the active state.
+            list.addEventListener('click', async (e) => {
+                const btn = e.target.closest('.federation-policy-btn');
+                if (!btn) return;
+                const key = btn.dataset.key;
+                const policy = btn.dataset.policy;
+                if (!key || !_FEDERATION_POLICIES.includes(policy)) return;
+                try {
+                    const cfg = await api.get('/api/config');
+                    const next = { ...(cfg?.cluster ?? {}) };
+                    next.replicate = { ...(cfg?.cluster?.replicate ?? {}) };
+                    if (policy === 'local') delete next.replicate[key];
+                    else next.replicate[key] = policy;
+                    await api.post('/api/config', { cluster: next });
+                    // Repaint just the row — every sibling button drops active.
+                    const row = btn.closest('.federation-segmented');
+                    row?.querySelectorAll('.federation-policy-btn').forEach((b) => {
+                        if (b.dataset.policy === policy) b.dataset.active = '1';
+                        else b.removeAttribute('data-active');
+                    });
+                } catch (err) {
+                    console.error('federation: replicate save failed', err);
+                }
+            });
+        }
+    }
+
+    // Failover grace slider. Save on `change` (release-only) so we don't
+    // hammer the API with a PATCH per pixel.
+    const slider = document.getElementById('federation-failover-grace');
+    const valueEl = document.getElementById('federation-failover-grace-value');
+    if (slider) {
+        slider.value = String(failoverGrace);
+        if (valueEl) valueEl.textContent = `${failoverGrace} min`;
+        if (!slider.dataset.wired) {
+            slider.dataset.wired = '1';
+            slider.addEventListener('input', () => {
+                if (valueEl) valueEl.textContent = `${slider.value} min`;
+            });
+            slider.addEventListener('change', async () => {
+                try {
+                    const n = Math.max(1, Math.min(60, Number(slider.value) || 5));
+                    const cfg = await api.get('/api/config');
+                    const next = { ...(cfg?.cluster ?? {}), failover_grace_minutes: n };
+                    await api.post('/api/config', { cluster: next });
+                } catch (err) {
+                    console.error('federation: failover-grace save failed', err);
+                }
+            });
+        }
+    }
+
+    // Self-identity summary + empty-hint when no peers paired. Both endpoints
+    // are admin-only (this whole card is data-admin-only) so 401 = no cluster
+    // configured — show the empty hint and bail.
+    try {
+        const ident = await api.get('/api/cluster/identity');
+        const nameEl = document.getElementById('federation-self-name');
+        const idEl = document.getElementById('federation-self-id');
+        if (nameEl) nameEl.textContent = ident?.name || '—';
+        if (idEl) idEl.textContent = ident?.peerId || '—';
+    } catch {
+        /* leave defaults */
+    }
+    try {
+        const r = await api.get('/api/cluster/peers');
+        const peers = Array.isArray(r?.peers) ? r.peers : [];
+        const hint = document.getElementById('federation-empty-hint');
+        if (hint) hint.classList.toggle('hidden', peers.length > 0);
+    } catch {
+        /* leave hint hidden */
     }
 }
 

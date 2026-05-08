@@ -2494,6 +2494,33 @@ body[data-page="maintenance-ai"] {
     scroll-margin-top: 60px;
 }
 
+/* Federation — replication-policy segmented control. Each row is one config
+   key, each cell is one of three policies (local / cluster / cluster_excl).
+   Active cell renders with the brand colour; hover gives subtle feedback so
+   the next click feels obvious. */
+.federation-policy-btn {
+    color: var(--tg-textSecondary, #8b9baa);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition:
+        color 0.15s ease,
+        background-color 0.15s ease;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.federation-policy-btn:hover {
+    color: var(--tg-text, #f5f5f5);
+    background: rgba(255, 255, 255, 0.04);
+}
+.federation-policy-btn[data-active="1"] {
+    color: #ffffff;
+    background: var(--tg-blue, #2aabee);
+}
+.federation-policy-btn[data-active="1"]:hover {
+    background: var(--tg-darkBlue, #229ed9);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .settings-chip,
     .settings-chip i {

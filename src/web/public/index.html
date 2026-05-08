@@ -426,6 +426,42 @@
                                 <span data-i18n="group.accounts.manage_hint">Manage accounts under Settings → Telegram Accounts.</span>
                             </p>
                         </div>
+
+                        <!-- Cluster routing — hidden when no peers paired so
+                             non-cluster operators see no change. app.js
+                             populates the dropdowns from /api/cluster/peers
+                             when opening the modal; if the response is empty
+                             the wrapper stays hidden. The two dropdowns map
+                             1:1 to groups[i].ownerPeerId / backupPeerId,
+                             which the failover.js + router.js subsystem
+                             already reads — no server-side change needed. -->
+                        <div id="group-cluster-routing" class="hidden p-4 bg-tg-panel rounded-lg border border-tg-border/50 space-y-4">
+                            <div>
+                                <h4 class="text-white font-medium mb-1 flex items-center gap-2">
+                                    <i class="ri-broadcast-line text-tg-blue"></i>
+                                    <span data-i18n="group.cluster.title">Cluster routing</span>
+                                </h4>
+                                <p class="text-xs text-tg-textSecondary" data-i18n="group.cluster.subtitle">Route this group's downloads to a specific peer. Other peers see the catalogue via the bridge but stay silent on Telegram.</p>
+                            </div>
+                            <div>
+                                <label class="block text-tg-textSecondary text-sm mb-2">
+                                    <i class="ri-server-line mr-1"></i> <span data-i18n="group.cluster.owner_peer">Owner peer</span>
+                                </label>
+                                <select id="group-owner-peer" class="tg-input w-full">
+                                    <option value="" data-i18n="group.cluster.any_peer">(Any peer — first online wins)</option>
+                                </select>
+                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.cluster.owner_help">Designates which peer downloads this group. Empty = any peer with the matching account.</p>
+                            </div>
+                            <div>
+                                <label class="block text-tg-textSecondary text-sm mb-2">
+                                    <i class="ri-shield-flash-line mr-1"></i> <span data-i18n="group.cluster.backup_peer">Backup peer</span>
+                                </label>
+                                <select id="group-backup-peer" class="tg-input w-full">
+                                    <option value="" data-i18n="group.cluster.no_backup">(No automatic failover)</option>
+                                </select>
+                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.cluster.backup_help">If the owner is silent past the cluster grace window, the backup takes over downloading.</p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Topics Tab -->
@@ -797,6 +833,10 @@
                             <i class="ri-user-line" aria-hidden="true"></i>
                             <span data-i18n="settings.accounts">Accounts</span>
                         </button>
+                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-federation" aria-selected="false">
+                            <i class="ri-broadcast-line" aria-hidden="true"></i>
+                            <span data-i18n="settings.federation">Federation</span>
+                        </button>
                         <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-download" aria-selected="false">
                             <i class="ri-download-line" aria-hidden="true"></i>
                             <span data-i18n="settings.download">Download</span>
@@ -1060,6 +1100,64 @@
                             <button id="save-api-credentials" class="tg-btn-secondary w-full text-sm">
                                 <i class="ri-save-line mr-2"></i><span data-i18n="settings.tg_api.save">Save credentials</span>
                             </button>
+                        </div>
+                    </div>
+                    </section>
+
+                    <!-- Federation (cluster) — three sub-cards:
+                         (1) This-peer summary (read-only, deep-link to /maintenance/cluster
+                             where the operational management actually lives).
+                         (2) Replication policy editor — list of curated config keys, each
+                             with a 3-state segmented control (Local / Cluster / Cluster-excl)
+                             that writes to config.cluster.replicate.<key>. config-sync.js
+                             already reads this map, so toggling the segmented control
+                             enables peer-to-peer mirroring of that key automatically.
+                         (3) Failover grace window — slider for cluster.failover_grace_minutes.
+                         The whole section is hidden when the cluster has no paired peers
+                         (settings.js _initFederation reads /api/cluster/peers and adds
+                         `data-cluster-empty` to the card; CSS hides it). -->
+                    <section id="settings-federation" role="tabpanel" data-admin-only class="settings-section space-y-4 mb-6">
+                    <div id="settings-card-federation" data-settings-section="card-federation" class="bg-tg-panel rounded-xl p-4 mb-4 scroll-mt-24" data-admin-only>
+                        <h3 class="text-tg-text font-medium mb-1 flex items-center gap-2">
+                            <i class="ri-broadcast-line text-tg-blue"></i>
+                            <span data-i18n="settings.federation">Federation</span>
+                        </h3>
+                        <p class="text-xs text-tg-textSecondary mb-4" data-i18n="settings.federation.subtitle">Settings that span every paired peer in your cluster. Pair peers and manage tokens under Maintenance → Cluster.</p>
+
+                        <!-- This-peer summary -->
+                        <div class="bg-tg-bg/40 rounded-lg p-3 mb-3">
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.federation.this_peer">This peer</div>
+                                    <div class="text-sm text-tg-text font-medium" id="federation-self-name">—</div>
+                                    <code id="federation-self-id" class="text-[10px] text-tg-textSecondary font-mono break-all">—</code>
+                                </div>
+                                <a href="#/maintenance/cluster" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0">
+                                    <i class="ri-settings-3-line"></i><span data-i18n="settings.federation.manage">Manage cluster</span>
+                                </a>
+                            </div>
+                            <div id="federation-empty-hint" class="hidden mt-2 text-[11px] text-tg-textSecondary leading-relaxed" data-i18n="settings.federation.empty_hint">No peers paired yet. Replication settings below take effect once at least one peer is paired.</div>
+                        </div>
+
+                        <!-- Replication policy editor -->
+                        <div class="bg-tg-bg/40 rounded-lg p-3 mb-3">
+                            <div class="flex items-start justify-between gap-2 mb-2 flex-wrap">
+                                <div class="min-w-0">
+                                    <div class="text-sm text-tg-text font-medium" data-i18n="settings.federation.replicate.title">Replication policy</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="settings.federation.replicate.help">Pick which config keys mirror across the cluster. Local stays on this peer. Cluster mirrors edits to every paired peer (last-writer-wins). Cluster-excl mirrors but lets receivers override locally.</p>
+                                </div>
+                            </div>
+                            <div id="federation-replicate-list" class="space-y-1.5"></div>
+                        </div>
+
+                        <!-- Failover grace -->
+                        <div class="bg-tg-bg/40 rounded-lg p-3">
+                            <label for="federation-failover-grace" class="text-sm text-tg-text font-medium block" data-i18n="settings.federation.failover.title">Failover grace window</label>
+                            <p class="text-[11px] text-tg-textSecondary mt-0.5 mb-3" data-i18n="settings.federation.failover.help">Minutes the backup peer waits after the owner goes silent before taking over downloading. Lower = faster recovery, higher = fewer false failovers from a slow peer.</p>
+                            <div class="flex items-center gap-3">
+                                <input id="federation-failover-grace" type="range" min="1" max="60" step="1" value="5" class="flex-1 accent-tg-blue">
+                                <span id="federation-failover-grace-value" class="text-sm text-tg-text tabular-nums w-16 text-right">5 min</span>
+                            </div>
                         </div>
                     </div>
                     </section>
@@ -2150,14 +2248,63 @@
                     </section>
                 </div>
 
-                <!-- Maintenance / NSFW review page (admin-only) -->
+                <!-- Maintenance / NSFW review page (admin-only).
+                     Header card matches the duplicates/thumbs/cluster template:
+                     title + subtitle on the left, primary Scan action on the
+                     right, stats grid below (Scanned / Whitelisted / Borderline
+                     / Last scan), progress bar inside the same card. The tier
+                     panel + histogram + bulk + photo grid stay as separate
+                     sub-cards below. Every existing nsfw-* id is preserved so
+                     maintenance-nsfw.js wiring doesn't change. -->
                 <div id="page-maintenance-nsfw" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.nsfw.page_title"
                      data-page-subtitle-key="maintenance.nsfw.subtitle">
-                    <header class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.nsfw.page_title">Scan images for NSFW (18+)</h2>
-                        <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.nsfw.subtitle">Five-tier classifier review — keep what's confidently 18+, delete what's confidently not, eyeball the borderline cases.</p>
-                    </header>
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.nsfw.page_title">Scan images for NSFW (18+)</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.nsfw.subtitle">Five-tier classifier review — keep what's confidently 18+, delete what's confidently not, eyeball the borderline cases.</p>
+                                <div class="mt-2 flex items-center gap-3 text-[11px] text-tg-textSecondary flex-wrap">
+                                    <span><span data-i18n="maintenance.nsfw.threshold_label">Threshold:</span> <span id="nsfw-threshold-value" class="text-tg-text tabular-nums">—</span></span>
+                                    <span><span data-i18n="maintenance.nsfw.concurrency_label">Concurrency:</span> <span id="nsfw-concurrency-value" class="text-tg-text tabular-nums">—</span></span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="nsfw-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" data-mode="scan"
+                                        data-i18n-title="maintenance.nsfw.scan_tooltip"
+                                        title="Run the NSFW classifier across every photo in the library. Local-only, no upload.">
+                                    <i class="ri-search-line"></i><span data-i18n="maintenance.nsfw.action">Scan</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Stats strip — 4-up. Scanned + Whitelisted + Borderline
+                             + Last scan. Borderline = sum of maybe_not + uncertain
+                             + maybe (the middle three tiers); maintenance-nsfw.js
+                             populates it from `tierCounts.tiers` on every refresh. -->
+                        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.stat_scanned">Scanned</div>
+                                <div id="nsfw-stat-scanned" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.stat_whitelisted">Whitelisted</div>
+                                <div id="nsfw-stat-whitelisted" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.stat_borderline">Borderline</div>
+                                <div id="nsfw-stat-borderline" class="text-xl font-semibold text-tg-orange tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.stat_last">Last scan</div>
+                                <div id="nsfw-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                        </div>
+
+                        <div id="nsfw-scan-progress" class="hidden mt-3 h-2 bg-tg-bg/60 rounded overflow-hidden" role="status" aria-live="polite">
+                            <div id="nsfw-scan-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
+                        </div>
+                    </section>
 
                     <div id="nsfw-empty-db-banner" class="hidden bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-3 text-xs text-yellow-300" data-i18n="maintenance.nsfw.empty_db_hint">
                         Library has no scannable photos — try Maintenance → Re-index from disk first if files exist on disk but the catalogue is empty.
@@ -2244,24 +2391,8 @@
                         </div>
                     </details>
 
-                    <!-- Stats cards -->
-                    <section class="grid grid-cols-3 gap-2 mb-3">
-                        <div class="bg-tg-panel rounded-xl p-3 text-center">
-                            <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.nsfw.stat_scanned">Scanned</div>
-                            <div id="nsfw-stat-scanned" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
-                        </div>
-                        <div class="bg-tg-panel rounded-xl p-3 text-center">
-                            <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.nsfw.stat_whitelisted">Whitelisted</div>
-                            <div id="nsfw-stat-whitelisted" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
-                        </div>
-                        <div class="bg-tg-panel rounded-xl p-3 text-center">
-                            <div class="text-xs text-tg-textSecondary uppercase tracking-wide" data-i18n="maintenance.nsfw.stat_last">Last scan</div>
-                            <div id="nsfw-stat-last" class="text-sm font-semibold text-tg-text">—</div>
-                        </div>
-                    </section>
-
                     <!-- Tier panel -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
                             <div class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.tiers_heading">Tiers</div>
                             <label class="inline-flex items-center gap-1.5 text-xs text-tg-textSecondary cursor-pointer select-none">
@@ -2273,30 +2404,9 @@
                     </section>
 
                     <!-- Histogram -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <div class="text-xs uppercase tracking-wide text-tg-textSecondary mb-2" data-i18n="maintenance.nsfw.histogram_heading">Score distribution</div>
                         <svg id="nsfw-histogram" class="w-full h-32 text-tg-textSecondary" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
-                    </section>
-
-                    <!-- Scan controls -->
-                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <div class="flex items-start justify-between gap-3 flex-wrap">
-                            <div class="min-w-0">
-                                <div class="text-tg-text text-sm font-medium" data-i18n="maintenance.nsfw.scan_heading">Scan</div>
-                                <div class="mt-2 flex items-center gap-4 text-xs text-tg-textSecondary flex-wrap">
-                                    <span><span data-i18n="maintenance.nsfw.threshold_label">Threshold:</span> <span id="nsfw-threshold-value" class="text-tg-text tabular-nums">—</span></span>
-                                    <span><span data-i18n="maintenance.nsfw.concurrency_label">Concurrency:</span> <span id="nsfw-concurrency-value" class="text-tg-text tabular-nums">—</span></span>
-                                </div>
-                            </div>
-                            <button id="nsfw-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" data-mode="scan"
-                                    data-i18n-title="maintenance.nsfw.scan_tooltip"
-                                    title="Run the NSFW classifier across every photo in the library. Local-only, no upload.">
-                                <i class="ri-search-line"></i><span data-i18n="maintenance.nsfw.action">Scan</span>
-                            </button>
-                        </div>
-                        <div id="nsfw-scan-progress" class="hidden mt-3 h-2 bg-tg-bg/60 rounded overflow-hidden" role="status" aria-live="polite">
-                            <div id="nsfw-scan-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
-                        </div>
                     </section>
 
                     <!-- Bulk actions toolbar (only when a tier is selected) -->
@@ -2329,23 +2439,52 @@
                 </div>
 
                 <!-- Maintenance / Logs page (admin-only) -->
+                <!-- Maintenance / Logs subpage (admin-only).
+                     Header card matches the standard pattern: title + subtitle
+                     on the left, log-stream actions (Pause / Clear / Download)
+                     on the right. Filter chips + source picker live in their
+                     own sub-card so the header stays scannable. Log stream
+                     stays in its own panel below. -->
                 <div id="page-maintenance-logs" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.logs.page_title"
                      data-page-subtitle-key="maintenance.logs.subtitle">
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.logs.page_title">Server logs</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.logs.subtitle">Realtime stream of every event the engine emits — filter by source, level, or text. Useful when something feels off and you want to see what the server is actually doing.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <label class="inline-flex items-center gap-1 text-xs text-tg-textSecondary cursor-pointer select-none">
+                                    <input id="logs-autoscroll" type="checkbox" checked class="accent-tg-blue">
+                                    <span data-i18n="maintenance.logs.autoscroll">Auto-scroll</span>
+                                </label>
+                                <button id="logs-pause-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" data-paused="0">
+                                    <i class="ri-pause-line"></i><span data-i18n="maintenance.logs.pause">Pause</span>
+                                </button>
+                                <button id="logs-clear-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-eraser-line"></i><span data-i18n="maintenance.logs.clear">Clear</span>
+                                </button>
+                                <button id="logs-download-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-download-line"></i><span data-i18n="maintenance.logs.download">Download .log</span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Filters sub-card — source chips + level radios + search box. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <div class="flex flex-col gap-3">
-                            <!-- Source filter chips -->
                             <div>
-                                <div class="text-xs uppercase tracking-wide text-tg-textSecondary mb-1" data-i18n="maintenance.logs.filter.source">Source</div>
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary mb-1.5" data-i18n="maintenance.logs.filter.source">Source</div>
                                 <div id="logs-filter-sources" class="flex flex-wrap gap-1"></div>
                             </div>
-                            <!-- Level radios + search + actions -->
                             <div class="flex items-center gap-3 flex-wrap">
                                 <div id="logs-filter-level" class="flex items-center gap-2">
-                                    <span class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.logs.filter.level">Level</span>
-                                    <label class="inline-flex items-center gap-1 text-xs"><input type="radio" name="logs-level" value="info" checked> info</label>
-                                    <label class="inline-flex items-center gap-1 text-xs"><input type="radio" name="logs-level" value="warn"> warn</label>
-                                    <label class="inline-flex items-center gap-1 text-xs"><input type="radio" name="logs-level" value="error"> error</label>
+                                    <span class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.logs.filter.level">Level</span>
+                                    <label class="inline-flex items-center gap-1 text-xs"><input type="radio" name="logs-level" value="info" checked class="accent-tg-blue"> info</label>
+                                    <label class="inline-flex items-center gap-1 text-xs"><input type="radio" name="logs-level" value="warn" class="accent-tg-blue"> warn</label>
+                                    <label class="inline-flex items-center gap-1 text-xs"><input type="radio" name="logs-level" value="error" class="accent-tg-blue"> error</label>
                                 </div>
                                 <div class="relative flex-1 min-w-[160px]">
                                     <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
@@ -2354,16 +2493,10 @@
                                         data-i18n-placeholder="maintenance.logs.search"
                                         placeholder="Search messages…">
                                 </div>
-                                <label class="inline-flex items-center gap-1 text-xs text-tg-textSecondary">
-                                    <input id="logs-autoscroll" type="checkbox" checked>
-                                    <span data-i18n="maintenance.logs.autoscroll">Auto-scroll</span>
-                                </label>
-                                <button id="logs-pause-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-paused="0" data-i18n="maintenance.logs.pause">Pause</button>
-                                <button id="logs-clear-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.logs.clear">Clear</button>
-                                <button id="logs-download-btn" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="maintenance.logs.download">Download .log</button>
                             </div>
                         </div>
                     </section>
+
                     <section class="bg-tg-panel rounded-xl overflow-hidden">
                         <!-- Height clamps so the log pane never overflows the
                              viewport on landscape mobile (a 360 px-tall
@@ -2374,18 +2507,49 @@
                 </div>
 
                 <!-- Maintenance / Backup page (admin-only) -->
+                <!-- Maintenance / Backup destinations (admin-only).
+                     Stats grid surfaces destination + sync state at a glance.
+                     Populated by maintenance-backup.js after _loadDestinations
+                     + _loadRecent (existing endpoints, no API change). Every
+                     backup-* id preserved. -->
                 <div id="page-maintenance-backup" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.backup.page_title"
                      data-page-subtitle-key="maintenance.backup.subtitle">
-                    <header class="bg-tg-panel rounded-xl p-4 mb-3 flex items-start justify-between gap-3 flex-wrap">
-                        <div class="min-w-0">
-                            <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.backup.page_title">Backup destinations</h2>
-                            <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.backup.subtitle">Mirror new downloads to S3-compatible storage, an SFTP NAS, or a local mount. Optional client-side encryption + scheduled snapshots.</p>
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.backup.page_title">Backup destinations</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.backup.subtitle">Mirror new downloads to S3-compatible storage, an SFTP NAS, or a local mount. Optional client-side encryption + scheduled snapshots.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="backup-add-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-add-line"></i><span data-i18n="maintenance.backup.add">Add destination</span>
+                                </button>
+                            </div>
                         </div>
-                        <button id="backup-add-btn" class="tg-btn text-xs px-3 py-1.5">
-                            <i class="ri-add-line mr-1"></i><span data-i18n="maintenance.backup.add">Add destination</span>
-                        </button>
-                    </header>
+
+                        <!-- Stats strip — destinations / synced / queued / last-mirror.
+                             maintenance-backup.js fills these from the existing
+                             /api/maintenance/backup/destinations + /recent payloads. -->
+                        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.backup.stat_destinations">Destinations</div>
+                                <div id="backup-stat-destinations" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.backup.stat_synced">Synced</div>
+                                <div id="backup-stat-synced" class="text-xl font-semibold text-tg-green tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.backup.stat_queued">Queued</div>
+                                <div id="backup-stat-queued" class="text-xl font-semibold text-tg-orange tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.backup.stat_last_mirror">Last mirror</div>
+                                <div id="backup-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                        </div>
+                    </section>
 
                     <div id="backup-empty" class="hidden bg-tg-panel rounded-xl p-8 text-center text-sm text-tg-textSecondary mb-3">
                         <i class="ri-cloud-off-line text-3xl block mb-2 text-tg-textSecondary/60"></i>
@@ -2394,10 +2558,13 @@
 
                     <div id="backup-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3"></div>
 
-                    <section class="bg-tg-panel rounded-xl p-3">
-                        <h3 class="text-xs uppercase tracking-wide text-tg-textSecondary mb-2" data-i18n="maintenance.backup.recent">Recent activity</h3>
+                    <section class="bg-tg-panel rounded-xl p-4">
+                        <h3 class="text-tg-text text-sm font-semibold mb-2 flex items-center gap-2">
+                            <i class="ri-history-line text-tg-textSecondary"></i>
+                            <span data-i18n="maintenance.backup.recent">Recent activity</span>
+                        </h3>
                         <div id="backup-recent" class="space-y-1 max-h-[40vh] overflow-y-auto pr-1"></div>
-                        <div id="backup-recent-empty" class="hidden text-center py-6 text-xs text-tg-textSecondary" data-i18n="maintenance.backup.recent_empty">No backup jobs yet.</div>
+                        <div id="backup-recent-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary" data-i18n="maintenance.backup.recent_empty">No backup jobs yet.</div>
                     </section>
                 </div>
 
@@ -2571,26 +2738,51 @@
                 </div>
 
                 <!-- Maintenance / Updates (admin-only) -->
+                <!-- Maintenance / Updates subpage (admin-only).
+                     Stats strip surfaces current version + last attempt + pending
+                     state at a glance. updates.js fills the tiles on page load
+                     from /api/version + /api/version/check + the existing
+                     update-history rows. Every updates-* id preserved. -->
                 <div id="page-maintenance-updates" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="update.history.title"
                      data-page-subtitle-key="update.history.help">
-                    <header class="bg-tg-panel rounded-xl p-4 mb-3 flex items-start justify-between gap-3 flex-wrap">
-                        <div class="min-w-0 flex-1">
-                            <h2 class="text-tg-text text-base font-semibold" data-i18n="update.history.title">Update history</h2>
-                            <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="update.history.help">Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.</p>
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0 flex-1">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="update.history.title">Update history</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="update.history.help">Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="updates-refresh-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-refresh-line"></i><span data-i18n="update.history.refresh">Refresh</span>
+                                </button>
+                                <button id="updates-trigger-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled>
+                                    <i class="ri-download-cloud-2-line"></i><span data-i18n="update.install_disabled">Install (unavailable)</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2 shrink-0">
-                            <button id="updates-refresh-btn" class="tg-btn-secondary text-xs px-3 py-1.5 flex items-center gap-1">
-                                <i class="ri-refresh-line"></i>
-                                <span data-i18n="update.history.refresh">Refresh</span>
-                            </button>
-                            <button id="updates-trigger-btn" class="tg-btn text-xs px-3 py-1.5 flex items-center gap-1" disabled>
-                                <i class="ri-download-cloud-2-line"></i>
-                                <span data-i18n="update.install_disabled">Install (unavailable)</span>
-                            </button>
+
+                        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="update.stats.current_version">Current version</div>
+                                <div id="updates-stat-version" class="text-base font-semibold text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="update.stats.last_attempt">Last attempt</div>
+                                <div id="updates-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="update.stats.pending">Pending</div>
+                                <div id="updates-stat-pending" class="text-xs text-tg-text leading-tight pt-1">—</div>
+                            </div>
                         </div>
-                    </header>
-                    <section id="updates-status-card" class="bg-tg-panel rounded-xl p-3 mb-3">
+                    </section>
+
+                    <section id="updates-status-card" class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h3 class="text-tg-text text-sm font-semibold mb-2 flex items-center gap-2">
+                            <i class="ri-history-line text-tg-textSecondary"></i>
+                            <span data-i18n="update.history.list_heading">Recent attempts</span>
+                        </h3>
                         <div id="updates-history-list" class="overflow-x-auto">
                             <div class="text-center py-8 text-sm text-tg-textSecondary" data-i18n="update.history.empty">No updates have been triggered from this dashboard yet.</div>
                         </div>

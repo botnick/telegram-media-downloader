@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.0] — 2026-05-08
+
+Cluster federation gets a real operator UI. Settings → Federation now exposes the replication-policy editor (which config keys mirror across paired peers) and the failover grace tunable; the Group settings modal grows owner-peer / backup-peer dropdowns so per-group routing is finally editable from the dashboard. Every Maintenance subpage was passed through the standard layout template — NSFW / Logs / Backup / Updates now match Duplicates / Thumbs / Video / Cluster — and the long-standing CSS bug that hid the maintenance tab strip on the Cluster + Updates routes is fixed.
+
+### Added — Settings → Federation
+- **New chip + section** between Accounts and Download. Hidden for guest sessions and for non-cluster installs (the empty-hint banner shows when no peer is paired so the section is discoverable but inert).
+- **Replication policy editor** — segmented control (Local / Cluster / Cluster-excl) per curated config key (`groups`, `accounts`, `web`, `download`, `rescue`). Writes to `config.cluster.replicate.<key>`, which `src/core/cluster/config-sync.js` already reads — no new server endpoint, mirroring kicks in immediately on the next save.
+- **Failover grace slider** — `cluster.failover_grace_minutes` (1–60). `src/core/cluster/failover.js` reads the value at every 60-second tick.
+- **This-peer summary card** — read-only peer name + ID with a deep-link to `/maintenance/cluster` for token / pairing / peer management. Avoids duplicating the cluster page's actions in two places.
+
+### Added — Group settings modal cluster routing
+- **Owner peer / Backup peer dropdowns** in the Accounts tab (auto-hidden when no peers paired). Saves to `groups[i].ownerPeerId` / `groups[i].backupPeerId`, which `src/core/cluster/router.js` and `failover.js` already read for download routing and automatic owner takeover.
+- **Server-side**: `PUT /api/groups/:id` now accepts the two new fields with the same convention as `monitorAccount` (empty string → delete the key, falsy → leave existing).
+
+### Changed — Maintenance subpages standardised
+- **NSFW** restructured to the header + actions + 4-up stats grid template. Stats: Scanned / Whitelisted / **Borderline** (sum of the three middle classifier tiers) / Last scan. Every `nsfw-*` element id preserved.
+- **Logs** wrapped in a header card with action buttons (Auto-scroll toggle, Pause, Clear, Download .log) on the right; filter chips moved into their own sub-card so the header stays scannable.
+- **Backup** gained a 4-up stats strip (Destinations / Synced / Queued / Last mirror) populated from existing destination-status rows.
+- **Updates** gained a 3-up stats strip (Current version / Last attempt / Pending) populated from `/api/version` + the existing update-history rows.
+
+### Fixed
+- **Maintenance tab strip hidden on Cluster + Updates pages** — `body[data-page="maintenance-cluster"]` and `maintenance-updates` were missing from the CSS selector at `main.css:2349`. Both selectors added; tabs now render across every per-feature maintenance subpage.
+
+### Internal
+- 8 new `settings.federation.*` i18n keys + `group.cluster.*` (9 keys) + `maintenance.{nsfw,backup}.stat_*` + `update.stats.*`. `en.json` and `th.json` lockstep; drift checker clean (1211 keys, all present in both).
+- New `_initFederation()` in `src/web/public/js/settings.js` — reads `/api/cluster/identity` + `/api/cluster/peers` independently so non-cluster installs render the empty hint instead of failing. Idempotent (`_federationWired` flag).
+- New `.federation-policy-btn[data-active="1"]` CSS rule for the segmented control. Brand colour active state, subtle hover.
+- SW bumped `v2101` → `v2110`.
+- **Cluster contract preservation** — every `$('cluster-…')` id in `maintenance-cluster.js` cross-checked against `index.html`; every server `broadcast({type: 'peer_*' / 'cluster_*'})` cross-checked against `ws.on(...)` listeners. No drift.
+
 ## [2.10.1] — 2026-05-08
 
 Maintenance hub UI polish — the Cluster page now follows the same layout standard as Duplicates / Thumbnails, the sidebar reads as one tight column instead of an oversized stack, and the standalone account-pairing screen finally matches the dashboard theme.

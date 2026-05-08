@@ -75,6 +75,32 @@ cluster catalog + bridge.
 If `Owner peer` is left blank, every peer that has the group enabled
 will download it (with cross-peer dedup catching duplicates by hash).
 
+The Group Settings modal → **Accounts** tab exposes both
+`ownerPeerId` and `backupPeerId` as dropdowns whenever at least one
+peer is paired. Pick a backup peer to enable automatic failover —
+the backup takes over downloading if the owner stays silent past
+`cluster.failover_grace_minutes` (default 5).
+
+### 5. (Optional) Tune federation in Settings → Federation
+
+Settings → Federation surfaces three cluster-wide knobs:
+
+- **Replication policy** — segmented control per config key (`groups`,
+  `accounts`, `web`, `download`, `rescue`). Picking **Cluster** mirrors
+  every edit of that key to every paired peer (last-writer-wins).
+  **Cluster (exclusive)** mirrors but lets receivers override locally.
+  **Local** keeps the key on this peer only (default).
+- **Failover grace window** — slider for `cluster.failover_grace_minutes`.
+- **This peer summary** — read-only view of own peer ID + display name,
+  with a deep-link to **Maintenance → Cluster** for token / pairing
+  management (Settings is for cluster-wide config; the cluster page
+  owns peer/identity actions).
+
+Replication writes to `config.cluster.replicate.<key>`; the existing
+`src/core/cluster/config-sync.js` already reads this map and broadcasts
+`config_changed` events to peers, so toggling the segmented control
+takes effect immediately without a restart.
+
 ## How it actually works
 
 ### Catalog sync
