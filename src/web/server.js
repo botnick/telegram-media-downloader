@@ -4447,7 +4447,19 @@ app.get('/api/maintenance/db/integrity/status', async (req, res) => {
 app.post('/api/maintenance/files/verify', async (req, res) => {
     const t = _jobTrackers.filesVerify;
     const r = t.tryStart(async ({ onProgress }) => {
-        return await integrity.sweep(onProgress);
+        const result = await integrity.sweep(onProgress);
+        // Persist a small summary for the duplicates page's "Last run"
+        // chip — the JobTracker holds the running state in process
+        // memory, so without this kv blob a server restart erases the
+        // last-completed snapshot.
+        try {
+            kvSet('files_verify_last_run', {
+                finishedAt: Date.now(),
+                removed: result?.removed ?? result?.dropped ?? 0,
+                scanned: result?.scanned ?? result?.total ?? 0,
+            });
+        } catch {}
+        return result;
     });
     if (!r.started) {
         return res
@@ -4459,6 +4471,15 @@ app.post('/api/maintenance/files/verify', async (req, res) => {
 
 app.get('/api/maintenance/files/verify/status', async (req, res) => {
     res.json(_jobTrackers.filesVerify.getStatus());
+});
+
+app.get('/api/maintenance/files/verify/stats', async (req, res) => {
+    try {
+        const lastRun = kvGet('files_verify_last_run') || null;
+        res.json({ lastRun });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
 });
 
 // Re-index from disk — the inverse of /files/verify. Walks
@@ -4481,7 +4502,15 @@ app.post('/api/maintenance/reindex', async (req, res) => {
     const r = tracker.tryStart(async ({ onProgress }) => {
         const cfg = await readConfigSafe();
         const groups = Array.isArray(cfg?.groups) ? cfg.groups : [];
-        return await integrity.reindexFromDisk(groups, (p) => onProgress(p));
+        const result = await integrity.reindexFromDisk(groups, (p) => onProgress(p));
+        try {
+            kvSet('reindex_last_run', {
+                finishedAt: Date.now(),
+                added: result?.added ?? result?.indexed ?? 0,
+                scanned: result?.scanned ?? result?.total ?? 0,
+            });
+        } catch {}
+        return result;
     });
     if (!r.started) {
         return res
@@ -4494,6 +4523,15 @@ app.post('/api/maintenance/reindex', async (req, res) => {
 app.get('/api/maintenance/reindex/status', async (req, res) => {
     const snap = _jobTrackers.reindex.getStatus();
     res.json({ ...snap, ...(snap.progress || {}) });
+});
+
+app.get('/api/maintenance/reindex/stats', async (req, res) => {
+    try {
+        const lastRun = kvGet('reindex_last_run') || null;
+        res.json({ lastRun });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
 });
 
 // VACUUM the SQLite database. Reclaims space after lots of deletions.
@@ -4837,10 +4875,20 @@ app.get('/api/maintenance/thumbs/rebuild/status', async (req, res) => {
 app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
     const tracker = _jobTrackers.thumbsBuild;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
-        return await buildAllThumbnails({
+        const result = await buildAllThumbnails({
             onProgress: (p) => onProgress(p),
             signal,
         });
+        try {
+            kvSet('thumbs_last_build', {
+                finishedAt: Date.now(),
+                built: result?.built ?? 0,
+                skipped: result?.skipped ?? 0,
+                errored: result?.errored ?? 0,
+                scanned: result?.scanned ?? 0,
+            });
+        } catch {}
+        return result;
     });
     if (!r.started) {
         return res.status(409).json({
@@ -4854,6 +4902,15 @@ app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
 app.get('/api/maintenance/thumbs/build/status', async (req, res) => {
     const snap = _jobTrackers.thumbsBuild.getStatus();
     res.json({ ...snap, ...(snap.progress || {}) });
+});
+
+app.get('/api/maintenance/thumbs/build/stats', async (req, res) => {
+    try {
+        const lastRun = kvGet('thumbs_last_build') || null;
+        res.json({ lastRun });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
 });
 
 // Probe which ffmpeg hardware-acceleration backends actually work on
@@ -4920,10 +4977,21 @@ app.post('/api/maintenance/faststart/scan', async (req, res) => {
     const tracker = _jobTrackers.faststart;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         const { optimizeAll } = await import('../core/faststart.js');
-        return await optimizeAll({
+        const result = await optimizeAll({
             onProgress: (p) => onProgress(p),
             signal,
         });
+        try {
+            kvSet('faststart_last_run', {
+                finishedAt: Date.now(),
+                optimized: result?.optimized ?? 0,
+                already: result?.already ?? 0,
+                skipped: result?.skipped ?? 0,
+                errored: result?.errored ?? 0,
+                scanned: result?.scanned ?? 0,
+            });
+        } catch {}
+        return result;
     });
     if (!r.started) {
         return res.status(409).json({
@@ -4943,7 +5011,14 @@ app.get('/api/maintenance/faststart/stats', async (req, res) => {
     try {
         const { getStats } = await import('../core/faststart.js');
         const r = await getStats();
-        res.json({ success: true, ffmpegAvailable: hasFfmpeg(), ...r });
+        // Merge in the persisted last-run summary alongside the live
+        // library stats. The video page already reads {optimized,
+        // pending, ...} from this endpoint; lastRun is additive.
+        let lastRun = null;
+        try {
+            lastRun = kvGet('faststart_last_run') || null;
+        } catch {}
+        res.json({ success: true, ffmpegAvailable: hasFfmpeg(), ...r, lastRun });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
