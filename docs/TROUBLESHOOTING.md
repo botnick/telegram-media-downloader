@@ -166,6 +166,18 @@ The AI subsystem's lazy loader couldn't `require('sharp')`. Common causes + fixe
 
 After fixing, click **Re-run checks** on the Doctor card — `safe-load.js` resets its cache on error so a fix lands without restart.
 
+## AI Doctor card shows "/api/ai/health endpoint failed"
+
+The Doctor card couldn't decode a useful payload from the server within its 15 s client timeout. Since v2.12.1 the server side is hardened against the original cause (a hung native probe blocking the request); if you still see this, the most useful next step is the docker log — every health probe now emits structured lines under `source: "ai-health"`, framed with `summary: begin` and `summary: done`, plus `probe <name>: start/done/TIMEOUT` for each individual check. Look for the last `start` without a matching `done` to identify which native dep is jammed.
+
+Common causes:
+
+- **`probe sharp: TIMEOUT`** — libvips binding loaded but stalls. Run `npm rebuild sharp`.
+- **`probe transformers: TIMEOUT`** — `@huggingface/transformers` is loading onnxruntime-node and the host is OOM'ing or out of file descriptors. Bump container memory or move to a glibc base image (Debian/bookworm-slim).
+- **`probe sqlite-vec: TIMEOUT`** — corrupt extension binary; reinstall: `npm uninstall sqlite-vec && npm install sqlite-vec`.
+
+The endpoint also caches its result for 30 s, so once a probe stabilises the dashboard recovers without manual restart.
+
 ## Re-auth modal didn't appear after my session expired
 
 Two paths:

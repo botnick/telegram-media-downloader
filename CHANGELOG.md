@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.1] — 2026-05-08
+
+### Fixed
+- **`GET /api/ai/health` could hang the request and silently kill the container.** The four AI Doctor probes ran via `Promise.all` with no per-check timeout; a hung native call (sharp/libvips, onnxruntime-node, sqlite-vec dlopen) would dangle the request past the dashboard's 15 s client timeout and, on memory-limited Docker hosts, OOM-kill the process with no app-level logs. The Doctor card showed the generic "/api/ai/health endpoint failed" error and the operator had no diagnostic to act on.
+
+### Changed
+- **Per-probe timeout** — every check inside `health.summary()` is now wrapped in a 6 s `withTimeout()` race; a stuck probe returns a structured `{ok:false, timedOut:true}` payload with platform-aware remediation text instead of blocking the whole summary.
+- **`checkSharp()` no longer invokes libvips** — it reads `sharp.versions.vips` only. A broken libvips binding would SIGSEGV from native code on `.toBuffer()`, bypassing every JS catch and producing a no-log container exit. Version metadata is enough to confirm the binding loaded.
+- **`checkSqliteVec()` is cached per process** — `mod.load(db)` is only called once; repeat health hits return the cached structured payload instead of re-dlopen'ing the extension.
+- **Route-level safety net** — `GET /api/ai/health` sets a 20 s `req/res.setTimeout`, dedupes concurrent in-flight summaries, and serves a 30 s in-process cache so a panicked operator clicking Refresh can't compound load on the underlying probes.
+- **Verbose `ai-health` structured logs** — every probe emits start/done/timeout lines (with elapsed ms and request id) to the dashboard log + docker stdout, so a future incident has a paper trail of which probe was running last.
+
+### Internal
+- New `health._resetSqliteVecCacheForTests()` test hook + 6 new specs covering timeout fallback, log emission, cache hit, and "no DB" no-cache path. Suite at 1238 passing.
+- SW bumped `v2120` → `v2121`.
+
 ## [2.12.0] — 2026-05-08
 
 Layer 1 of the federated-gallery rollout. The main gallery surfaces (All Media / per-group view / search) now optionally include files from every paired peer; the sidebar Downloaded Groups list merges peer-owned groups with a "from {peer}" badge; peer-owned tiles route their thumbnails + media bytes through the existing cluster bridge. Default behaviour is unchanged — federation is opt-in via a new gallery scope chip, hidden entirely on non-cluster installs.

@@ -169,13 +169,138 @@ export function createAiRouter(deps) {
     }
 
     // ---- Diagnostics ------------------------------------------------------
+    //
+    // Two layers of crash-resistance live here:
+    //   1. A 30 s in-process cache so repeated dashboard reloads (or panicked
+    //      operators clicking Refresh) don't compound load on the underlying
+    //      probes. Probes themselves are individually timeout-bounded inside
+    //      `health.summary()`.
+    //   2. A 20 s request socket timeout — if `summary()` ever managed to
+    //      hang past every internal guard, the response socket still closes
+    //      so the client doesn't dangle.
+    //
+    // Reason this exists: prior to v2.12.1, `health.summary()` ran four
+    // probes in parallel via `Promise.all` with no per-check timeout. A
+    // single hung native call (sharp's libvips, onnxruntime-node load,
+    // sqlite-vec dlopen) could take the request offline; on memory-limited
+    // hosts the OOM-kill produced "no logs" container restarts.
+
+    const HEALTH_CACHE_TTL_MS = 30_000;
+    let _healthCache = null; // { payload, ts }
+    let _healthInflight = null; // dedupe concurrent requests
+
+    async function _runHealthSummary(reqId) {
+        log({
+            source: 'ai-health',
+            level: 'info',
+            msg: `[${reqId}] cache miss — running summary()`,
+        });
+        const cfg = aiCfg();
+        const t0 = Date.now();
+        let payload;
+        try {
+            payload = await health.summary({ getDb, cacheDir: cfg.cacheDir, log });
+        } catch (err) {
+            log({
+                source: 'ai-health',
+                level: 'error',
+                msg: `[${reqId}] summary() threw — ${err?.message || err}`,
+                stack: err?.stack || null,
+            });
+            // Hand the caller a structured failure rather than letting the
+            // safe-route wrapper turn this into a 500 with no diagnostic
+            // detail. Operators want to see WHICH probe died.
+            payload = {
+                ok: false,
+                checks: [
+                    {
+                        name: 'summary',
+                        ok: false,
+                        error: String(err?.message || err).slice(0, 240),
+                        recommendation:
+                            'Health summary aggregator crashed. Check server logs for the stack trace.',
+                    },
+                ],
+                recommendations: [],
+                platform: process.platform,
+                nodeVersion: process.version,
+                arch: process.arch,
+                cpus: 1,
+                ts: Date.now(),
+                elapsedMs: Date.now() - t0,
+                aggregatorError: true,
+            };
+        }
+        log({
+            source: 'ai-health',
+            level: payload.ok ? 'info' : 'warn',
+            msg: `[${reqId}] summary() returned ok=${payload.ok} in ${Date.now() - t0}ms`,
+        });
+        return payload;
+    }
 
     router.get(
         '/health',
-        safe(async (_req, res) => {
-            const cfg = aiCfg();
-            const summary = await health.summary({ getDb, cacheDir: cfg.cacheDir });
-            res.json({ ok: true, success: true, ...summary });
+        safe(async (req, res) => {
+            const reqId = `aih-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+            log({
+                source: 'ai-health',
+                level: 'info',
+                msg: `[${reqId}] GET /api/ai/health from ${req.ip || 'unknown'} ua="${(req.get('user-agent') || '').slice(0, 80)}"`,
+            });
+
+            // Defence in depth: even with per-probe timeouts inside
+            // summary(), set a hard request-level timeout so the socket
+            // can't dangle if the aggregator itself is somehow stuck.
+            try {
+                req.setTimeout?.(20_000);
+                res.setTimeout?.(20_000);
+            } catch {
+                /* setTimeout is optional on some test transports */
+            }
+
+            // Serve cached payload if recent enough — keeps the dashboard
+            // responsive when an operator is hammering Refresh.
+            const now = Date.now();
+            if (_healthCache && now - _healthCache.ts < HEALTH_CACHE_TTL_MS) {
+                const ageMs = now - _healthCache.ts;
+                log({
+                    source: 'ai-health',
+                    level: 'info',
+                    msg: `[${reqId}] serving cached payload (age=${ageMs}ms)`,
+                });
+                res.json({
+                    ok: true,
+                    success: true,
+                    ..._healthCache.payload,
+                    cached: true,
+                    cacheAgeMs: ageMs,
+                });
+                return;
+            }
+
+            // Dedupe concurrent first-hits — the in-flight promise is
+            // shared so we don't run summary() twice in parallel.
+            if (!_healthInflight) {
+                _healthInflight = _runHealthSummary(reqId).finally(() => {
+                    _healthInflight = null;
+                });
+            } else {
+                log({
+                    source: 'ai-health',
+                    level: 'info',
+                    msg: `[${reqId}] joining in-flight summary()`,
+                });
+            }
+
+            const payload = await _healthInflight;
+            _healthCache = { payload, ts: Date.now() };
+            log({
+                source: 'ai-health',
+                level: 'info',
+                msg: `[${reqId}] cache stored, responding`,
+            });
+            res.json({ ok: true, success: true, ...payload, cached: false });
         }),
     );
 

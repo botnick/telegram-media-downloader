@@ -146,6 +146,28 @@ describe('GET /api/ai/health', () => {
         expect(r.body.ok).toBeDefined();
         expect(Array.isArray(r.body.checks)).toBe(true);
         expect(r.body.checks.length).toBe(4);
+        // First call is a cache miss; payload reports cached=false.
+        expect(r.body.cached).toBe(false);
+        expect(typeof r.body.elapsedMs).toBe('number');
+    });
+
+    it('serves a cached payload on a second hit within 30s', async () => {
+        const a = await get('/api/ai/health');
+        const b = await get('/api/ai/health');
+        expect(b.status).toBe(200);
+        expect(b.body.cached).toBe(true);
+        expect(typeof b.body.cacheAgeMs).toBe('number');
+        // Same shape — caching never alters the check list.
+        expect(b.body.checks.length).toBe(a.body.checks.length);
+    });
+
+    it('emits structured ai-health log entries', async () => {
+        log.mockClear();
+        await get('/api/ai/health');
+        const aiHealthLogs = log.mock.calls
+            .map((c) => c[0])
+            .filter((e) => e?.source === 'ai-health');
+        expect(aiHealthLogs.length).toBeGreaterThan(0);
     });
 });
 
