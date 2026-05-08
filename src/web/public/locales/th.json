@@ -29,6 +29,7 @@
     "sidebar.downloaded_groups_collapse": "ย่อรายการกลุ่ม",
     "sidebar.groups_search": "ค้นหากลุ่ม…",
     "sidebar.disk": "ดิสก์",
+    "footer.files.merged": "{local} + {peers} จาก peer",
     "sidebar.files": "ไฟล์",
     "sidebar.signout": "ออกจากระบบ",
     "sidebar.signout.confirm_title": "ออกจากระบบหรือไม่?",

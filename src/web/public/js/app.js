@@ -1146,21 +1146,23 @@ function renderGroupsList() {
     // cog button opens Group Settings instead. Names are re-resolved
     // at click time via getGroupName() so a refreshed name wins over
     // whatever the row was rendered with.
-    // Federated foreign rows carry data-peer-id; clicking one switches
-    // the gallery scope to that peer + opens the per-group view, so the
-    // user lands on a peer-filtered gallery without having to also
-    // toggle the scope chip manually.
+    // Federated foreign rows carry data-peer-id; clicking one opens the
+    // per-group view filtered to that peer's files via the one-shot
+    // `state.transientPeerScope` field. We DO NOT overwrite the chip's
+    // scope (state.galleryScope) — otherwise, navigating back to All
+    // Media after viewing a peer-owned group would persist the per-peer
+    // narrowing and the merged view would be silently broken.
     list.querySelectorAll('.chat-row[data-id]').forEach((el) => {
         const id = el.dataset.id;
         const peerId = el.dataset.peerId || null;
         const fire = () => {
-            if (peerId) {
-                state.galleryScope = peerId;
-                try {
-                    localStorage.setItem('tgdl-gallery-scope', peerId);
-                } catch {}
-                _renderGalleryScopeLabel?.();
-            }
+            // Foreign-group click → narrow the per-group view to this
+            // peer for the duration of the view. `state.viewerPeerScope`
+            // is read by _galleryScopeQs on every page fetch (page 1, 2,
+            // 3 …) so pagination doesn't drop the filter mid-scroll.
+            // Own group click → null, so the per-group view honours
+            // the chip's scope (e.g., scope=all loads merged content).
+            state.viewerPeerScope = peerId || null;
             openGroup(id, getGroupName(id));
         };
         el.addEventListener('click', (ev) => {
@@ -1298,6 +1300,10 @@ function showAllMedia() {
     state.page = 1;
     state.hasMore = true;
     state.files = [];
+    // Clear any per-view peer narrowing left over from a sidebar
+    // foreign-group click. Without this, "All Media" after viewing a
+    // peer-owned group would still be filtered to that peer.
+    state.viewerPeerScope = null;
     resetGalleryFilter();
 
     document.getElementById('page-title').textContent = i18nT(
@@ -1351,12 +1357,22 @@ const _isMobileViewport = () => {
 };
 const FILES_PER_PAGE = _isMobileViewport() ? 50 : 100;
 
-// Build the federated-gallery query suffix (?include=&peerId=) from the
-// current state.galleryScope. Returns '' for local-only / non-cluster
-// installs so the existing local endpoints stay byte-identical for the
-// non-federated default. See media-url.js for the matching tile + viewer
-// URL routing.
+// Build the federated-gallery query suffix (?include=&peerId=) for the
+// next gallery fetch. Returns '' for local-only / non-cluster installs
+// so the existing local endpoints stay byte-identical for the non-
+// federated default. Logic order:
+//   1. If `state.viewerPeerScope` is set (sidebar foreign-group click
+//      narrows the per-group view to that peer), use it. Persists
+//      across pagination so page 2+ keep the same peerId. Cleared
+//      when leaving the per-group view (showAllMedia / new group click
+//      that isn't a foreign row).
+//   2. Otherwise honour `state.galleryScope` (the chip selection).
+// See media-url.js for the matching tile + viewer URL routing.
 function _galleryScopeQs() {
+    const viewerScope = state.viewerPeerScope;
+    if (viewerScope) {
+        return `&include=peers&peerId=${encodeURIComponent(viewerScope)}`;
+    }
     const s = state.galleryScope;
     if (!s || s === 'local') return '';
     if (s === 'all') return '&include=peers';
@@ -1478,6 +1494,10 @@ function _renderGalleryScopeMenu() {
                 return;
             }
             state.galleryScope = next;
+            // Manually picking a chip option overrides any per-view
+            // peer narrowing left over from a sidebar foreign-group
+            // click — otherwise the chip change would be invisible.
+            state.viewerPeerScope = null;
             try {
                 localStorage.setItem('tgdl-gallery-scope', next);
             } catch {}
@@ -1489,6 +1509,8 @@ function _renderGalleryScopeMenu() {
             state.page = 1;
             state.hasMore = true;
             state.files = [];
+            // Refresh the footer so peer counts pick up the new scope.
+            loadStats();
             if (state.currentPage === 'viewer') {
                 if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
                 else loadAllFiles();
@@ -3570,7 +3592,38 @@ async function loadStats() {
         const filesEl = document.getElementById('total-files');
         if (diskEl)
             diskEl.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
-        if (filesEl) filesEl.textContent = stats.totalFiles || '0';
+        // Federated footer total. When the gallery scope is 'all' or a
+        // specific peer, the footer file count should reflect what the
+        // user is currently looking at — otherwise "1234 files" + a
+        // gallery showing 5,000 tiles read as a contradiction.
+        // peerStats is empty on non-cluster installs and for guest
+        // sessions, so the local-only path stays unchanged.
+        if (filesEl) {
+            const local = Number(stats.totalFiles) || 0;
+            const peers = Array.isArray(stats.peerStats) ? stats.peerStats : [];
+            const peerTotal = peers.reduce((s, p) => s + (Number(p.totalFiles) || 0), 0);
+            const scope = state.galleryScope || 'local';
+            if (scope === 'all' && peerTotal > 0) {
+                filesEl.textContent = i18nTf(
+                    'footer.files.merged',
+                    { local, peers: peerTotal },
+                    `${local} + ${peerTotal} peers`,
+                );
+                filesEl.title = peers
+                    .map(
+                        (p) =>
+                            `${p.peerName}: ${p.totalFiles} ${p.totalSizeFormatted ? `(${p.totalSizeFormatted})` : ''}${p.online ? '' : ' (offline)'}`,
+                    )
+                    .join('\n');
+            } else if (scope !== 'local' && scope !== 'all') {
+                const p = peers.find((x) => String(x.peerId) === String(scope));
+                filesEl.textContent = String(p?.totalFiles ?? 0);
+                filesEl.title = p ? `${p.peerName}${p.online ? '' : ' (offline)'}` : '';
+            } else {
+                filesEl.textContent = String(local);
+                filesEl.title = '';
+            }
+        }
     } catch (e) {}
 }
 

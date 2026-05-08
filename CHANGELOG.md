@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.2] — 2026-05-08
+
+Multi-peer audit pass on the federated gallery surfaces shipped in v2.12.0. Four real bugs that affected operators with more than one paired peer; one UX cleanup on the footer.
+
+### Fixed
+- **First-load race lost the saved scope.** `state.galleryScope` was initialised to `'local'` in store.js, then overwritten by `initGalleryScope()` reading `localStorage` later in the boot sequence. The very first `/api/downloads/all` call therefore went out as `?include=local` even when the operator had previously selected "All peers". Fixed by reading `localStorage['tgdl-gallery-scope']` at module-load time, before the first gallery fetch.
+- **Foreign-group click leaked into All Media.** Clicking a peer-owned group in the sidebar overwrote `state.galleryScope = peerId`. Navigating back to All Media after that kept the per-peer narrowing — the merged "All peers" view became silently broken until the user manually toggled the chip back. Fixed by introducing `state.viewerPeerScope` (per-view binding) that consumes the foreign-peer narrow without touching the chip's persistent state. Cleared on `showAllMedia()` and on chip change.
+- **Pagination dropped the peer filter mid-scroll.** A previous one-shot scope binding cleared after the first page request, so page 2+ of a peer-narrowed per-group view re-broadened to the chip's scope and silently mixed in extra peers. The new `viewerPeerScope` persists across pagination and only clears on view exit.
+- **Footer file count never reflected the scope.** v2.12.0 added `peerStats` to `/api/stats` but the SPA footer still rendered local `totalFiles` only. With scope = all, the footer now reads `{local} + {peers} peers` and tooltips per-peer breakdown; with scope = a specific peer, the footer reads that peer's count; scope = local renders unchanged.
+
+### Internal
+- Footer reload on chip change so per-scope totals stay in sync.
+- New i18n key `footer.files.merged` (en + th lockstep).
+- SW bumped `v2121` → `v2122`.
+- 1238 specs passing.
+
 ## [2.12.1] — 2026-05-08
 
 ### Fixed

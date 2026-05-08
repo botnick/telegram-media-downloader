@@ -41,7 +41,20 @@ export const state = {
     // only this peer's files; 'all' UNIONs in every paired peer; a peer-id
     // string narrows to one peer's files. Persisted in localStorage as
     // `tgdl-gallery-scope`. Hidden entirely when no peers are paired.
-    galleryScope: 'local',
+    //
+    // Read at module load (NOT lazily inside initGalleryScope) so the
+    // very first /api/downloads/all request honours the saved scope.
+    // Without this, a user who'd previously selected "All peers" would
+    // see local-only content for one second on every reload while the
+    // chip init catches up.
+    galleryScope: (() => {
+        try {
+            const v = localStorage.getItem('tgdl-gallery-scope');
+            return v && v.length > 0 ? v : 'local';
+        } catch {
+            return 'local';
+        }
+    })(),
     // Cached `/api/cluster/peers` snapshot (id + name + status). Used by
     // the gallery-scope chip to render the per-peer entries; also lets the
     // tile peer badge render without a second round-trip per row.

@@ -29,6 +29,7 @@
     "sidebar.downloaded_groups_collapse": "Collapse downloaded groups",
     "sidebar.groups_search": "Filter groups…",
     "sidebar.disk": "Disk",
+    "footer.files.merged": "{local} + {peers} peers",
     "sidebar.files": "Files",
     "sidebar.signout": "Sign out",
     "sidebar.signout.confirm_title": "Sign out of the dashboard?",
