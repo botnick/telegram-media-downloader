@@ -101,6 +101,22 @@ const TOOLS = [
         wsEvents: ['peer_added', 'peer_removed', 'peer_status'],
     },
     {
+        slug: 'recovery',
+        i18nTitle: 'maintenance.hub.recovery.title',
+        defaultTitle: 'Recovery cleanup',
+        i18nBody: 'maintenance.hub.recovery.body',
+        defaultBody:
+            'Resolve, disable, or delete groups that no loaded Telegram account can access — typically residue from npm run recover.',
+        icon: 'ri-first-aid-kit-line',
+        accent: 'pink',
+        // Special status URL with countOnly=1 so the hub paints a red badge
+        // with the unresolved count + auto-hides the tile when clean.
+        statusUrl: '/api/maintenance/recovery/list?countOnly=1',
+        statusIsCount: true,
+        hideWhenZero: true,
+        wsEvents: ['recovery_bulk_progress', 'recovery_bulk_done'],
+    },
+    {
         slug: 'updates',
         i18nTitle: 'maintenance.hub.updates.title',
         defaultTitle: 'Updates',
@@ -112,26 +128,6 @@ const TOOLS = [
         statusUrl: '/api/auto-update/status',
         wsEvents: ['update_progress', 'update_done', 'update_started'],
     },
-    {
-        slug: 'ai',
-        i18nTitle: 'maintenance.hub.ai.title',
-        defaultTitle: 'AI search & people',
-        i18nBody: 'maintenance.hub.ai.body',
-        defaultBody: 'Local-only semantic search, face clustering, perceptual dedup, auto-tags.',
-        icon: 'ri-sparkling-2-line',
-        accent: 'violet',
-        statusUrl: '/api/ai/index/scan/status',
-        wsEvents: [
-            'ai_index_progress',
-            'ai_index_done',
-            'ai_people_progress',
-            'ai_people_done',
-            'ai_phash_progress',
-            'ai_phash_done',
-            'ai_tags_progress',
-            'ai_tags_done',
-        ],
-    },
 ];
 
 const ACCENT_BG = {
@@ -141,20 +137,33 @@ const ACCENT_BG = {
     purple: 'bg-purple-500/15 text-purple-300',
     green: 'bg-green-500/15 text-green-300',
     violet: 'bg-violet-500/15 text-violet-300',
+    pink: 'bg-pink-500/15 text-pink-300',
 };
 
 function _renderCard(tool) {
     const live = _live.get(tool.slug);
+    // Tools that use a count-based status (Recovery cleanup) hide the
+    // tile entirely when the count is zero — keeps the maintenance hub
+    // clean for the common case where there's nothing to clean up.
+    if (tool.hideWhenZero && live && (live.count || 0) === 0) return '';
     const running = !!live?.running;
     const accent = ACCENT_BG[tool.accent] || ACCENT_BG.blue;
-    const pill = running
-        ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-tg-blue/15 text-tg-blue">
+    let pill;
+    if (tool.statusIsCount && live && live.count > 0) {
+        pill = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-red-500/15 text-red-300 font-medium tabular-nums">
+                <i class="ri-error-warning-line"></i>
+                ${escapeHtml(String(live.count))}
+            </span>`;
+    } else if (running) {
+        pill = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-tg-blue/15 text-tg-blue">
                 <span class="w-1.5 h-1.5 rounded-full bg-tg-blue animate-pulse"></span>
                 ${escapeHtml(i18nT('maintenance.hub.state.running', 'Running'))}
-            </span>`
-        : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-tg-bg/40 text-tg-textSecondary">
+            </span>`;
+    } else {
+        pill = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-tg-bg/40 text-tg-textSecondary">
                 ${escapeHtml(i18nT('maintenance.hub.state.idle', 'Idle'))}
             </span>`;
+    }
     return `
         <a href="#/maintenance/${tool.slug}" class="hub-card group bg-tg-panel rounded-xl p-4 border border-tg-border/40 hover:border-tg-blue/40 transition-colors flex flex-col gap-3" data-tool="${tool.slug}">
             <div class="flex items-center justify-between gap-2">
@@ -185,7 +194,16 @@ async function _refreshLive() {
         TOOLS.filter((t) => t.statusUrl).map(async (t) => {
             try {
                 const r = await api.get(t.statusUrl);
-                _live.set(t.slug, { running: !!(r && r.running) });
+                if (t.statusIsCount) {
+                    // The recovery tile uses the response's `total` as a
+                    // count badge instead of a running flag.
+                    _live.set(t.slug, {
+                        running: false,
+                        count: Number(r?.total) || 0,
+                    });
+                } else {
+                    _live.set(t.slug, { running: !!(r && r.running) });
+                }
             } catch {
                 /* status endpoint failures are non-fatal */
             }

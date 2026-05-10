@@ -754,14 +754,24 @@ export async function purgeAllThumbs() {
  */
 export async function buildAllThumbnails(opts = {}) {
     const { onProgress, signal } = opts;
-    const rows = getDb()
+    // Stream — `.all()` over a 1M-row downloads table allocates the entire
+    // result set in JS heap before the loop body sees its first row, which
+    // OOMs the process inside `Statement::JS_all`. `.iterate()` reuses one
+    // row buffer through the iteration so heap pressure stays flat.
+    const db = getDb();
+    const total = db
+        .prepare(`
+        SELECT COUNT(*) AS n FROM downloads
+         WHERE file_path IS NOT NULL
+    `)
+        .get().n;
+    const iter = db
         .prepare(`
         SELECT id FROM downloads
          WHERE file_path IS NOT NULL
          ORDER BY created_at DESC
     `)
-        .all();
-    const total = rows.length;
+        .iterate();
     let processed = 0,
         built = 0,
         skipped = 0,
@@ -773,7 +783,7 @@ export async function buildAllThumbnails(opts = {}) {
     };
     tick();
 
-    for (const r of rows) {
+    for (const r of iter) {
         if (signal?.aborted) break;
         processed++;
         const cacheAbs = _cachePath(r.id, DEFAULT_WIDTH);

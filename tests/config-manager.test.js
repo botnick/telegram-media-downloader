@@ -116,4 +116,26 @@ describe('config manager (kv-backed)', () => {
         manager.saveConfig(cfg);
         expect(fired).toEqual(['before']);
     });
+
+    it('loadConfig dedupes groups that share the same id', () => {
+        // Plant a stored tree with two entries for the same Telegram id but
+        // different display names — what the dashboard sees when the same
+        // group was added twice through different code paths (CLI add +
+        // dashboard add, or sanitised vs raw name).
+        dbApi.kvSet('config', {
+            groups: [
+                { id: '-100123', name: 'orig name' },
+                { id: '-100456', name: 'unique' },
+                { id: '-100123', name: 'renamed', enabled: true },
+            ],
+        });
+        const cfg = manager.loadConfig();
+        expect(cfg.groups).toHaveLength(2);
+        const merged = cfg.groups.find((g) => String(g.id) === '-100123');
+        // Last-writer-wins on the colliding fields (name, enabled), order of
+        // first appearance preserved.
+        expect(merged.name).toBe('renamed');
+        expect(merged.enabled).toBe(true);
+        expect(cfg.groups[0].id).toBe('-100123');
+    });
 });

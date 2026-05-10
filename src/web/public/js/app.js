@@ -332,7 +332,7 @@ async function init() {
     ws.on('download_complete', (m) => {
         const id = m?.payload?.groupId;
         if (id == null) return;
-        const cached = state.groupNameCache?.[String(id)];
+        const cached = state.groupNameCache?.get?.(String(id));
         const cfg = (state.groups || []).find((g) => String(g.id) === String(id));
         const known = cached || (cfg && !isUnresolvedName(cfg.name, id));
         if (!known && !state._resolvingGroups) {
@@ -862,18 +862,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-cluster.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-cluster', e));
-    } else if (page === 'maintenance-ai') {
+    } else if (page === 'maintenance-recovery') {
         document.getElementById('page-title').textContent = i18nT(
-            'maintenance.ai.title',
-            'AI Search & Smart Organisation',
+            'maintenance.recovery.page_title',
+            'Recovery cleanup',
         );
         document.getElementById('page-subtitle').textContent = i18nT(
-            'maintenance.ai.subtitle',
-            'Local-only image embeddings, face clustering, perceptual dedup, and auto-tagging.',
+            'maintenance.recovery.subtitle',
+            'Resolve, disable, or delete groups that no loaded account can access.',
         );
-        import('./maintenance-ai.js')
+        import('./maintenance-recovery.js')
             .then((m) => m.init())
-            .catch((e) => console.error('maintenance-ai', e));
+            .catch((e) => console.error('maintenance-recovery', e));
     } else if (page === 'maintenance-updates') {
         document.getElementById('page-title').textContent = i18nT(
             'update.history.title',
@@ -973,7 +973,7 @@ function registerRoutes() {
     router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
     router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
     router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
-    router.route('/maintenance/ai', () => renderPage('maintenance-ai'));
+    router.route('/maintenance/recovery', () => renderPage('maintenance-recovery'));
     router.route('/maintenance/updates', () => renderPage('maintenance-updates'));
 }
 
@@ -1071,7 +1071,8 @@ function renderGroupsList() {
             // Did the canonical lookup fall through to the placeholder? If so,
             // surface the friendly "Resolving…" subtitle and trigger a one-shot
             // refresh-info below.
-            const stillUnresolved = isUnresolvedName(g.name, id) && !state.groupNameCache?.[id];
+            const stillUnresolved =
+                isUnresolvedName(g.name, id) && !state.groupNameCache?.get?.(id);
             if (stillUnresolved) needsResolve = true;
             // Federated sidebar (Layer 1): foreign rows carry `peerId` + `peerName`.
             // Subtitle becomes "from {peer}" instead of the file count, since
@@ -1097,6 +1098,13 @@ function renderGroupsList() {
                         `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`,
                     );
             const ring = !isForeign && state.activeRings.has(id) ? 'downloading' : null;
+            // Monitor toggle — only meaningful for own (non-foreign) groups
+            // that are actually in `state.groups` (config-defined). Folder-
+            // only rows have no monitor state to toggle.
+            const cfgGroup = isForeign
+                ? null
+                : (state.groups || []).find((cg) => String(cg.id) === id);
+            const monitorEnabled = cfgGroup ? cfgGroup.enabled !== false : null;
             return renderChatRow({
                 id,
                 name: canonical,
@@ -1107,6 +1115,7 @@ function renderGroupsList() {
                 time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
                 selected: state.currentGroupId === id,
                 cog: !isForeign, // foreign groups are read-only; hide the cog
+                monitorEnabled, // 1-click ▶/⏸ toggle when this is a config group
                 peerId: g.peerId || null,
                 peerName: g.peerName || null,
                 // Don't ship the (possibly stale) raw name through the dataset —
@@ -1165,7 +1174,47 @@ function renderGroupsList() {
             state.viewerPeerScope = peerId || null;
             openGroup(id, getGroupName(id));
         };
-        el.addEventListener('click', (ev) => {
+        el.addEventListener('click', async (ev) => {
+            // Monitor toggle (▶/⏸) — short-circuit before the row navigates.
+            // PUTs `{enabled: !current}` to the existing /api/groups/:id
+            // endpoint; the WS `config_updated` broadcast triggers
+            // renderGroupsList() so the icon swaps live.
+            const monTarget = ev.target.closest?.('[data-action="monitor-toggle"]');
+            if (monTarget) {
+                ev.stopPropagation();
+                ev.preventDefault();
+                const current = monTarget.dataset.current === '1';
+                const next = !current;
+                // Optimistic UI — flip the icon + dataset before the PUT
+                // returns so the click feels instant.
+                monTarget.dataset.current = next ? '1' : '0';
+                const ic = monTarget.querySelector('i');
+                if (ic) {
+                    ic.className = `${next ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base`;
+                }
+                monTarget.classList.toggle('text-tg-green', next);
+                monTarget.classList.toggle('text-tg-textSecondary', !next);
+                try {
+                    const { api } = await import('./api.js');
+                    await api.put(`/api/groups/${encodeURIComponent(id)}`, { enabled: next });
+                    // Update the in-memory `state.groups` so the next
+                    // renderGroupsList() pass paints the right state
+                    // even before the WS reply lands.
+                    const cfg = (state.groups || []).find((g) => String(g.id) === id);
+                    if (cfg) cfg.enabled = next;
+                } catch (err) {
+                    // Roll back the optimistic flip on failure.
+                    monTarget.dataset.current = current ? '1' : '0';
+                    if (ic) {
+                        ic.className = `${current ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base`;
+                    }
+                    monTarget.classList.toggle('text-tg-green', current);
+                    monTarget.classList.toggle('text-tg-textSecondary', !current);
+                    const { showToast } = await import('./utils.js');
+                    showToast(err?.data?.error || err?.message || 'Failed', 'error');
+                }
+                return;
+            }
             // Cog button takes precedence — short-circuit before the
             // row navigates to the gallery.
             const cogTarget = ev.target.closest?.('[data-action="settings"]');
@@ -1239,7 +1288,7 @@ const PAGE_HEADER_ICON = {
     'maintenance-logs': 'ri-terminal-box-line',
     'maintenance-backup': 'ri-cloud-line',
     'maintenance-cluster': 'ri-broadcast-line',
-    'maintenance-ai': 'ri-sparkling-2-line',
+    'maintenance-recovery': 'ri-first-aid-kit-line',
     'maintenance-updates': 'ri-download-cloud-2-line',
 };
 
@@ -2934,7 +2983,88 @@ async function openGroupSettings(groupId, groupName) {
 
     // Show media tab by default
     switchSettingsTab('media');
+    // Wire the Data tab's action buttons once per modal open. The buttons
+    // live inside the modal so re-binding on every open is harmless.
+    _wireGroupDataActions(groupId);
     modal.classList.remove('hidden');
+}
+
+// Idempotent — replaces handlers via .onclick so re-opening the modal
+// for a different group always re-targets the right id.
+function _wireGroupDataActions(groupId) {
+    const delBtn = document.getElementById('group-data-delete-files-btn');
+    const purgeBtn = document.getElementById('group-data-purge-btn');
+    const more = document.getElementById('group-data-loadmore');
+    if (delBtn) {
+        delBtn.onclick = async () => {
+            const { api } = await import('./api.js');
+            const { confirmSheet } = await import('./sheet.js');
+            const ok = await confirmSheet({
+                title: i18nT('group.data.delete_files', 'Delete files only'),
+                message: i18nT(
+                    'group.data.delete_files_confirm',
+                    'Drop every download row + on-disk file for this group. Group config (filters, monitor, accounts) is kept so the next pass can re-download fresh.',
+                ),
+                confirmLabel: i18nT('group.data.delete_files', 'Delete files only'),
+                danger: true,
+            });
+            if (!ok) return;
+            try {
+                await api.post(`/api/groups/${encodeURIComponent(groupId)}/delete-files`, {});
+                const { showToast } = await import('./utils.js');
+                showToast(i18nT('group.data.delete_files_started', 'Deleting files…'), 'info');
+            } catch (e) {
+                const { showToast } = await import('./utils.js');
+                showToast(e?.data?.error || e.message || 'Failed', 'error');
+            }
+        };
+    }
+    if (purgeBtn) {
+        purgeBtn.onclick = async () => {
+            const { api } = await import('./api.js');
+            const { confirmSheet } = await import('./sheet.js');
+            const ok = await confirmSheet({
+                title: i18nT('group.data.wipe_all', 'Wipe all data'),
+                message: i18nT(
+                    'group.data.wipe_all_confirm',
+                    'Removes the group from your monitor list, drops every download row, and deletes the on-disk folder. This is destructive.',
+                ),
+                confirmLabel: i18nT('group.data.wipe_all', 'Wipe all data'),
+                danger: true,
+            });
+            if (!ok) return;
+            try {
+                await api.delete(`/api/groups/${encodeURIComponent(groupId)}/purge`);
+                const { showToast } = await import('./utils.js');
+                showToast(i18nT('group.data.wipe_started', 'Wiping group…'), 'info');
+                closeGroupSettings();
+            } catch (e) {
+                const { showToast } = await import('./utils.js');
+                showToast(e?.data?.error || e.message || 'Failed', 'error');
+            }
+        };
+    }
+    if (more) {
+        more.onclick = async () => {
+            if (!_groupDataState.hasMore || _groupDataState.groupId !== groupId) return;
+            const { api } = await import('./api.js');
+            try {
+                const r = await api.get(
+                    `/api/groups/${encodeURIComponent(groupId)}/files?limit=20&offset=${_groupDataState.offset}`,
+                );
+                const filesHost = document.getElementById('group-data-files');
+                if (filesHost && r.rows && r.rows.length) {
+                    filesHost.insertAdjacentHTML('beforeend', _renderGroupFiles(r.rows));
+                    _groupDataState.offset += r.rows.length;
+                    _groupDataState.hasMore = !!r.hasMore;
+                    if (!r.hasMore) more.classList.add('hidden');
+                }
+            } catch (e) {
+                const { showToast } = await import('./utils.js');
+                showToast(e?.data?.error || e.message || 'Failed', 'error');
+            }
+        };
+    }
 }
 
 function closeGroupSettings() {
@@ -3056,11 +3186,109 @@ function switchSettingsTab(tab) {
     document.getElementById('content-forward')?.classList.toggle('hidden', tab !== 'forward');
     document.getElementById('content-accounts')?.classList.toggle('hidden', tab !== 'accounts');
     document.getElementById('content-topics')?.classList.toggle('hidden', tab !== 'topics');
+    document.getElementById('content-data')?.classList.toggle('hidden', tab !== 'data');
 
     document.getElementById('tab-media')?.classList.toggle('active', tab === 'media');
     document.getElementById('tab-forward')?.classList.toggle('active', tab === 'forward');
     document.getElementById('tab-accounts')?.classList.toggle('active', tab === 'accounts');
     document.getElementById('tab-topics')?.classList.toggle('active', tab === 'topics');
+    document.getElementById('tab-data')?.classList.toggle('active', tab === 'data');
+
+    // Lazy-load the Data tab — only fetch stats + files when the operator
+    // clicks into it, so the modal stays cheap to open for groups they
+    // never look at.
+    if (tab === 'data') {
+        _loadGroupDataTab(state.currentGroupId).catch(() => {});
+    }
+}
+
+// State for the Data tab — limited per-modal-open scope.
+let _groupDataState = { groupId: null, offset: 0, hasMore: false };
+async function _loadGroupDataTab(groupId) {
+    if (!groupId) return;
+    _groupDataState = { groupId, offset: 0, hasMore: false };
+    const { api } = await import('./api.js');
+    const statsHost = document.getElementById('group-data-stats');
+    const filesHost = document.getElementById('group-data-files');
+    const more = document.getElementById('group-data-loadmore');
+    if (statsHost) {
+        statsHost.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-3"><i class="ri-loader-4-line animate-spin"></i> ${_escape(i18nT('common.loading', 'Loading…'))}</div>`;
+    }
+    if (filesHost) filesHost.innerHTML = '';
+    if (more) more.classList.add('hidden');
+    try {
+        const stats = await api.get(`/api/groups/${encodeURIComponent(groupId)}/stats`);
+        if (statsHost) statsHost.innerHTML = _renderGroupStats(stats);
+        const files = await api.get(`/api/groups/${encodeURIComponent(groupId)}/files?limit=20`);
+        if (filesHost) filesHost.innerHTML = _renderGroupFiles(files.rows || []);
+        _groupDataState.offset = (files.rows || []).length;
+        _groupDataState.hasMore = !!files.hasMore;
+        if (more) more.classList.toggle('hidden', !files.hasMore);
+    } catch (e) {
+        if (statsHost) {
+            statsHost.innerHTML = `<div class="col-span-full text-center text-xs text-red-300 py-3">${_escape(e?.data?.error || e.message || 'Failed')}</div>`;
+        }
+    }
+}
+function _escape(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+function _formatBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+function _renderGroupStats(s) {
+    const totalFiles = (s.totalFiles || 0).toLocaleString();
+    const size = _formatBytes(s.totalBytes);
+    const last = s.lastDownloadAt
+        ? new Date(s.lastDownloadAt).toLocaleString()
+        : i18nT('common.never', 'Never');
+    const types = s.byType || {};
+    return `
+        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.total">Files</div>
+            <div class="text-xl font-semibold text-tg-text tabular-nums">${totalFiles}</div>
+        </div>
+        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.size">Size</div>
+            <div class="text-xl font-semibold text-tg-text tabular-nums">${_escape(size)}</div>
+        </div>
+        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.types">Types</div>
+            <div class="text-xs text-tg-text tabular-nums">${_escape(
+                ['photo', 'video', 'audio', 'document']
+                    .map((k) => `${k[0]}:${types[k] || 0}`)
+                    .join(' · '),
+            )}</div>
+        </div>
+        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.last">Last download</div>
+            <div class="text-[11px] text-tg-text tabular-nums">${_escape(last)}</div>
+        </div>`;
+}
+function _renderGroupFiles(rows) {
+    if (!rows || !rows.length) {
+        return `<div class="text-center text-xs text-tg-textSecondary py-3">${_escape(i18nT('group.data.empty', 'No files yet.'))}</div>`;
+    }
+    return rows
+        .map((r) => {
+            const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+            return `
+                <div class="flex items-center gap-2 p-1.5 hover:bg-tg-hover/40 rounded text-xs">
+                    <i class="ri-file-line text-tg-textSecondary shrink-0"></i>
+                    <span class="text-tg-text truncate flex-1" title="${_escape(r.file_name || '')}">${_escape(r.file_name || '(unnamed)')}</span>
+                    <span class="text-tg-textSecondary tabular-nums shrink-0">${_escape(_formatBytes(r.file_size))}</span>
+                    <span class="text-tg-textSecondary/70 tabular-nums shrink-0 hidden sm:inline">${_escape(when)}</span>
+                </div>`;
+        })
+        .join('');
 }
 
 function toggleGroupEnabled(event) {

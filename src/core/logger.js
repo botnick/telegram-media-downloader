@@ -130,11 +130,40 @@ export function suppressNoise(msg, label = 'gramjs') {
  * Used by AccountManager's per-client logger and the global guard in
  * src/index.js. The underlying method is preserved (and called for non-noise
  * messages) so genuine errors still reach stderr / stdout.
+ *
+ * Optional `tee` callback fires for every non-suppressed line BEFORE the
+ * underlying console method runs, so the dashboard's `/maintenance/logs`
+ * page can capture every backend write — not just lines that explicitly
+ * call the structured `log()`. The tee receives `(args, joined)`; throws
+ * inside it are swallowed so a buggy hook can never break console output.
  */
-export function wrapConsoleMethod(originalFn, label = 'gramjs') {
+export function wrapConsoleMethod(originalFn, label = 'gramjs', tee = null) {
     return function wrapped(...args) {
-        const joined = args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ');
+        const joined = args
+            .map((a) =>
+                a instanceof Error
+                    ? a.stack || a.message
+                    : typeof a === 'object'
+                      ? safeStringify(a)
+                      : String(a),
+            )
+            .join(' ');
         if (suppressNoise(joined, label)) return;
+        if (tee) {
+            try {
+                tee(args, joined);
+            } catch {
+                /* never break the underlying console method */
+            }
+        }
         return originalFn.apply(console, args);
     };
+}
+
+function safeStringify(v) {
+    try {
+        return JSON.stringify(v);
+    } catch {
+        return String(v);
+    }
 }

@@ -139,6 +139,26 @@ export function initEngine() {
             $('engine-stop').disabled = false;
         }
     });
+    $('engine-restart')?.addEventListener('click', async () => {
+        const btn = $('engine-restart');
+        btn.disabled = true;
+        try {
+            const r = await api.post('/api/monitor/restart');
+            applyStatus(r.status);
+            showToast(i18nT('toast.monitor_restarted', 'Monitor restarted'), 'success');
+        } catch (e) {
+            showToast(
+                i18nTf(
+                    'toast.monitor_restart_failed',
+                    { msg: e.message },
+                    `Restart failed: ${e.message}`,
+                ),
+                'error',
+            );
+        } finally {
+            btn.disabled = false;
+        }
+    });
 
     // Subscribe to the shared monitor-status poller — same data the
     // statusbar and onboarding modules consume, but only one HTTP request.

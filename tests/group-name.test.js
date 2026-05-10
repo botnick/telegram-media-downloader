@@ -17,8 +17,9 @@ import {
 
 beforeEach(() => {
     // Reset every slice we touch — store.js is a singleton, so leaks across
-    // tests would shadow real bugs.
-    state.groupNameCache = {};
+    // tests would shadow real bugs. groupNameCache is a Map (LRU-capped at
+    // 1 000 entries) so we wipe via clear(), not reassignment.
+    state.groupNameCache = new Map();
     state.groups = [];
     state.allDialogs = [];
     state.downloads = [];
@@ -27,7 +28,7 @@ beforeEach(() => {
 
 describe('getGroupName resolution order', () => {
     it('prefers the explicit cache over every other source', () => {
-        state.groupNameCache['-100123'] = 'Telegram Tips';
+        state.groupNameCache.set('-100123', 'Telegram Tips');
         state.groups = [{ id: -100123, name: 'Stale Config Name' }];
         state.allDialogs = [{ id: -100123, name: 'Stale Dialog Name' }];
         expect(getGroupName('-100123')).toBe('Telegram Tips');
@@ -61,12 +62,12 @@ describe('getGroupName resolution order', () => {
 
     it('rejects placeholder labels at every layer', () => {
         // Cache → "Unknown" should NOT shadow a good config name.
-        state.groupNameCache['-100123'] = 'Unknown';
+        state.groupNameCache.set('-100123', 'Unknown');
         state.groups = [{ id: -100123, name: 'Real Name' }];
         expect(getGroupName('-100123')).toBe('Real Name');
 
         // Config "Group -100…" placeholder → fall through.
-        state.groupNameCache = {};
+        state.groupNameCache = new Map();
         state.groups = [{ id: -100222, name: 'Group -100222' }];
         state.downloads = [{ id: -100222, name: 'Real DB Name' }];
         expect(getGroupName('-100222')).toBe('Real DB Name');

@@ -26,6 +26,14 @@ services:
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
       - TGDL_DEBUG=${TGDL_DEBUG:-}
+      # V8 heap ceiling. Default 8 GiB so a 1M-row library doesn't trip
+      # `FATAL ERROR: Reached heap limit Allocation failed` inside
+      # better-sqlite3's `JS_all` on a fresh dedup / integrity sweep.
+      # Override with `TGDL_HEAP_MB=2048` in .env for boxes with less
+      # RAM (Pi 4, small Synology) — must stay strictly below the
+      # container memory limit (`TGDL_MEM_LIMIT`) so the kernel doesn't
+      # OOM-kill the process before V8 can recover.
+      - NODE_OPTIONS=--max-old-space-size=${TGDL_HEAP_MB:-8192}
       # Default to trusting one hop of `X-Forwarded-For` because most
       # Docker deployments sit behind a reverse proxy (Caddy / Traefik /
       # nginx). Without this, express-rate-limit floods stderr with
@@ -40,6 +48,38 @@ services:
       # sidecar below. Tokens read from .env (see .env.example).
       - WATCHTOWER_URL=${WATCHTOWER_URL:-http://watchtower:8080}
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      # Hardware-accelerated video thumbnails. Empty / unset = CPU only.
+      # Set to `vaapi` (Intel iGPU + AMD on Linux), `qsv` (Intel Quick
+      # Sync), `cuda` (NVIDIA), `videotoolbox` (macOS), or `d3d11va`
+      # (Windows under WSL2) when the host has the matching driver AND
+      # /dev/dri (Intel/AMD) or the nvidia runtime is wired up below. The
+      # entrypoint detects the actual device GID at boot and aligns the
+      # in-container `node` user with it — no manual group_add needed
+      # even on Synology, where the GID drifts between DSM versions.
+      - FFMPEG_HWACCEL=${FFMPEG_HWACCEL:-}
+      # Set ENTRYPOINT_DEBUG_GPU=1 to log every detection step from the
+      # entrypoint's GPU passthrough block (which device, which GID,
+      # which group it joined). Quiet by default.
+      - ENTRYPOINT_DEBUG_GPU=${ENTRYPOINT_DEBUG_GPU:-0}
+    # GPU passthrough — uncomment the matching block for your host.
+    #
+    # Synology (DSM 6 / 7 with Intel iGPU): the device is at /dev/dri/renderD128
+    # but its GID varies by DSM version (DSM 6 = 937, DSM 7 = 100, etc.).
+    # The entrypoint auto-aligns the in-container `node` user with whatever
+    # GID it sees, so you only need to mount the device — no group_add
+    # required. Make sure SSH user has access (`sudo synogroup --add
+    # videodriver $(whoami)`) so `docker compose up` can read it before
+    # passthrough.
+    #
+    # Generic Linux (Intel iGPU / AMD): same — just mount /dev/dri.
+    # NVIDIA: install nvidia-container-toolkit on the host and use
+    # `runtime: nvidia` instead of `devices`.
+    #
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "video"
+    #   - "render"
     labels:
       # Marks this container as eligible for watchtower management. With
       # WATCHTOWER_LABEL_ENABLE=true on the watchtower service, ONLY
@@ -61,13 +101,16 @@ services:
       # window don't count toward the retry budget.
       start_period: 30s
     # Resource ceiling — kicks in only on `docker compose up` (the `deploy`
-    # key is honoured by Compose v2 even outside Swarm). 2 GiB is plenty for
-    # the dashboard + two scan workers; bigger libraries can override via
-    # `.env` (TGDL_MEM_LIMIT=4g) without forking this file.
+    # key is honoured by Compose v2 even outside Swarm). 8 GiB matches the
+    # default `NODE_OPTIONS=--max-old-space-size=8192` above so V8 hits
+    # its heap limit gracefully (and recovers via GC) instead of getting
+    # OOM-killed by the kernel mid-allocation. Smaller hosts: set
+    # `TGDL_MEM_LIMIT=2g` AND `TGDL_HEAP_MB=1536` in .env so the heap
+    # ceiling stays comfortably below the container limit.
     deploy:
       resources:
         limits:
-          memory: ${TGDL_MEM_LIMIT:-2g}
+          memory: ${TGDL_MEM_LIMIT:-8g}
         reservations:
           memory: 256m
     # Log rotation — without this, json-file logs grow forever and the host

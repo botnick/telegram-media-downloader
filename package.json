@@ -1,6 +1,6 @@
 {
     "name": "telegram-media-downloader",
-    "version": "2.12.2",
+    "version": "2.14.0",
     "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
     "type": "module",
     "main": "src/index.js",
@@ -34,7 +34,8 @@
         "recover": "node scripts/recover_groups.js",
         "lint": "biome lint .",
         "format": "biome format --write .",
-        "check": "biome check --write .",
+        "check": "biome check --write . && npm run check:oom",
+        "check:oom": "sh scripts/check-oom-patterns.sh",
         "test": "vitest run",
         "test:watch": "vitest",
         "prepare": "lefthook install || true"
@@ -79,8 +80,7 @@
         "@huggingface/transformers": "^4.2.0",
         "basic-ftp": "^5.0.5",
         "dropbox": "^10.34.0",
-        "googleapis": "^144.0.0",
-        "sqlite-vec": "^0.1.9"
+        "googleapis": "^144.0.0"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.14",

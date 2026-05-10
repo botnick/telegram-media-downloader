@@ -354,10 +354,33 @@ export async function openShareSheet({ downloadId, fileName }) {
 // ─────────────────────────────────────────────────────────────────────
 
 export async function openAllSharesSheet() {
+    // Paginated load — `/api/share/links` caps each response at 500 rows
+    // (server-side hard cap, see CLAUDE.md → Big-data patterns). On a
+    // library with thousands of active links the operator scrolls more
+    // pages via the "Load more" button below; the server-side `?q=`
+    // filter narrows the set before the wire round-trip.
     let links = [];
+    let totalAcrossServer = 0;
+    let hasMoreOnServer = false;
+    let serverSearch = '';
+    const PAGE_SIZE = 500;
+    const _fetchPage = async ({ append = false, q = '' } = {}) => {
+        const offset = append ? links.length : 0;
+        const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
+        if (q) params.set('q', q);
+        const r = await api.get(`/api/share/links?${params.toString()}`);
+        const next = r?.links || [];
+        if (append) {
+            links = links.concat(next);
+        } else {
+            links = next;
+        }
+        totalAcrossServer = Number(r?.total) || links.length;
+        hasMoreOnServer = !!r?.hasMore;
+        serverSearch = q;
+    };
     try {
-        const r = await api.get('/api/share/links');
-        links = r?.links || [];
+        await _fetchPage();
     } catch (e) {
         showToast(e?.data?.error || e.message || 'Failed', 'error');
         return;
@@ -465,6 +488,14 @@ export async function openAllSharesSheet() {
             </div>
 
             <div id="share-maint-list" class="space-y-2 mt-3"></div>
+            <div id="share-maint-loadmore-row" class="flex items-center justify-center mt-3 hidden">
+                <button id="share-maint-loadmore" type="button"
+                        class="text-xs px-3 h-9 rounded-md border border-tg-border text-tg-textSecondary hover:text-tg-text hover:bg-tg-hover transition-colors inline-flex items-center gap-1.5">
+                    <i class="ri-add-line"></i>
+                    <span data-i18n="share.maint.load_more">Load more</span>
+                </button>
+                <span id="share-maint-loadmore-hint" class="text-[11px] text-tg-textSecondary/70 ml-2 tabular-nums"></span>
+            </div>
         </div>`;
 
     const sheet = openSheet({
@@ -480,9 +511,11 @@ export async function openAllSharesSheet() {
     const filtersEl = root.querySelector('#share-maint-filters');
     const statsEl = root.querySelector('#share-maint-stats');
     const cleanupBtn = root.querySelector('#share-maint-revoke-expired');
+    const loadMoreRow = root.querySelector('#share-maint-loadmore-row');
+    const loadMoreBtn = root.querySelector('#share-maint-loadmore');
+    const loadMoreHint = root.querySelector('#share-maint-loadmore-hint');
 
     const apply = () => {
-        const q = (searchEl?.value || '').trim().toLowerCase();
         const now = Date.now();
         const t = tally();
         if (statsEl) statsEl.innerHTML = renderStats(t);
@@ -493,16 +526,17 @@ export async function openAllSharesSheet() {
             cleanupBtn.classList.toggle('cursor-not-allowed', !has);
             cleanupBtn.disabled = !has;
         }
+        // Status filter still runs client-side over the loaded page; the
+        // free-text search has already been applied server-side via `?q=`
+        // so we don't double-filter substrings here. Status (active /
+        // expired / revoked) is a cheap O(n) on the loaded set.
         const filtered = links.filter((l) => {
             const isRevoked = !!l.revokedAt;
             const isExpired = !isRevoked && l.expiresAt !== 0 && l.expiresAt * 1000 <= now;
             if (activeFilter === 'active' && (isRevoked || isExpired)) return false;
             if (activeFilter === 'expired' && !isExpired) return false;
             if (activeFilter === 'revoked' && !isRevoked) return false;
-            if (!q) return true;
-            return [l.fileName, l.groupName, l.label]
-                .filter(Boolean)
-                .some((s) => String(s).toLowerCase().includes(q));
+            return true;
         });
         list.innerHTML = renderList(filtered);
         _wireRowActions(list, {
@@ -513,9 +547,46 @@ export async function openAllSharesSheet() {
                 apply();
             },
         });
+        // Load-more affordance — only when the server says there are more
+        // rows past the current page.
+        if (loadMoreRow) loadMoreRow.classList.toggle('hidden', !hasMoreOnServer);
+        if (loadMoreHint) {
+            loadMoreHint.textContent = hasMoreOnServer
+                ? `${links.length.toLocaleString()} / ${totalAcrossServer.toLocaleString()}`
+                : '';
+        }
     };
     apply();
-    searchEl?.addEventListener('input', apply);
+    // Server-side search — debounced so a fast typist doesn't fire a
+    // request per keystroke. Re-fetches from offset 0 with the new query.
+    let _searchTimer = null;
+    searchEl?.addEventListener('input', () => {
+        if (_searchTimer) clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(async () => {
+            const q = (searchEl.value || '').trim();
+            try {
+                await _fetchPage({ append: false, q });
+            } catch (e) {
+                showToast(e?.data?.error || e.message || 'Failed', 'error');
+                return;
+            }
+            apply();
+        }, 250);
+    });
+    loadMoreBtn?.addEventListener('click', async () => {
+        loadMoreBtn.disabled = true;
+        const orig = loadMoreBtn.innerHTML;
+        loadMoreBtn.innerHTML = `<i class="ri-loader-4-line animate-spin"></i><span>${escapeHtml(i18nT('common.loading', 'Loading…'))}</span>`;
+        try {
+            await _fetchPage({ append: true, q: serverSearch });
+        } catch (e) {
+            showToast(e?.data?.error || e.message || 'Failed', 'error');
+        } finally {
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.innerHTML = orig;
+        }
+        apply();
+    });
     // Filter chip clicks — delegated from the wrapper so re-rendering on
     // tally change doesn't drop bindings.
     filtersEl?.addEventListener('click', (e) => {

@@ -2,6 +2,88 @@
 
 All notable changes to this project are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.0] — 2026-05-11
+
+Recovery cleanup tooling — closes the "no account has access" log spam loop and adds the per-group data + 1-click monitor toggle the operator has been asking for.
+
+### Added
+- **Maintenance → Recovery cleanup** page. Surfaces every group whose id is `unknown:<folder>` (residue from `npm run recover` against a downloads table from a different Telegram account) or whose previous resolution failed. Bulk operations: re-resolve, disable, delete, pin to a specific account. Hub tile shows a red badge with the count and auto-hides when there's nothing to clean up.
+- **Sidebar 1-click monitor toggle** (▶/⏸ icon next to the cog on every config-defined group row). Optimistic UI — flips immediately, rolls back on failure.
+- **Group modal "Data" tab** — stats card (file count / size / type breakdown / last download) + paginated recent-files strip + per-group `Delete files only` (keep config) + `Wipe all data` (purge config + DB + folder). Lazy-loads on tab click so opening the modal stays fast.
+- **`/api/groups/:id/stats`** and **`/api/groups/:id/files`** endpoints (paginated). New **`POST /api/groups/:id/delete-files`** drops downloads + files but keeps the group monitored.
+- **`/api/maintenance/recovery/{list,resolve,disable,delete,reassign}`** endpoints with a shared `recoveryBulk` JobTracker.
+
+### Fixed
+- **Resolver auto-disables on first miss + logs ONE summary line** instead of N "Skipping … — no account has access" warnings. Subsequent restarts are silent because the failed groups carry `enabled:false` + `_resolveFailedAt` in `kv['config']`.
+- **Per-group diagnostic reasons** replace the generic skip line: `index_miss` (folder not in any loaded account's dialogs), `banned:CHANNEL_PRIVATE`, `probe_failed:<code>`, `empty_folder`. Surfaced in the Recovery cleanup page so the operator knows what to fix.
+- **`reloadConfig` re-runs the resolver** for newly-added `unknown:` groups so adding via the dashboard doesn't require a monitor restart.
+- **`recover_groups.js`** prints a clear warning when restored rows carry synthetic ids and forces them to `enabled:false` even with `--enable` so the very first monitor start doesn't log-spam.
+
+### Internal
+- SW bumped `v2138` → `v2140`.
+- `_describeLoadedAccounts()` helper renders the active account label in the resolver summary.
+- 19 new i18n keys per locale (en + th lockstep).
+
+## [2.13.3] — 2026-05-10
+
+### Fixed
+- **Recovery `unknown:foo` resolver actually works for accounts with > 500 joined chats.** v2.13.1's resolver fetched `getDialogs({limit: 500})` per `unknown:` group; users with hundreds of channels saw less-active chats fall outside the top-500 and the resolver still logged `Skipping … — no account has access` even though they're members. Rewritten to build a single dialogs index (`_buildDialogsIndex`) once per `start()` with `limit: 3000` for active + `limit: 500` for archived across every loaded client, then resolve every `unknown:` group via O(1) Map lookup. Also added a `getEntity(folderName)` fallback so a folder name that's a public Telegram username — but never appeared in the user's dialog list — still resolves.
+- The resolver also indexes by `entity.username`, not just by sanitized title, so `unknown:bbbbbn5`-style folders pulled from CLI archives match without falling back to the slower probe.
+
+### Internal
+- SW bumped `v2137` → `v2138`.
+
+## [2.13.2] — 2026-05-10
+
+Final OOM-safety pass — closes the one remaining stack-overflow risk in cluster sync and adds a CI-style regression guard so v2.13.1's streaming patterns can't silently come back.
+
+### Fixed
+- **Cluster sync `sinceId` advance no longer spreads a row array into `Math.max`.** `Math.max(sinceId, ...rows.map(…))` in `src/core/cluster/sync.js` would throw `RangeError: Maximum call stack size exceeded` if a future page bump or a malicious peer pushed > ~65 535 rows in one frame. Replaced with a bounded for-loop accumulator (also marginally faster). Same family fix applied to `Math.max(1, ...counts)` in the NSFW histogram render.
+
+### Added
+- **`scripts/check-oom-patterns.sh`** — POSIX shell guard that exits non-zero on (a) any `.prepare(…)…all()` over a high-cardinality table without an explicit `LIMIT` or natural `WHERE id = ?` bound, and (b) any `Math.max/min(...spread)` outside comments. Wired into `npm run check`, which lefthook already runs on pre-commit. Comments describing the antipattern don't trip the guard.
+
+### Internal
+- SW bumped `v2136` → `v2137`.
+- Audit log: every category audited in v2.13.1 is now confirmed safe (paginated HTTP, capped caches, streamed SQL sweeps, sliding-window DOM, debounced localStorage). The plan file documents the full coverage matrix.
+
+## [2.13.1] — 2026-05-10
+
+OOM-safety sweep across every SQL / HTTP / render path that handles "lots of data". Triggered by a `FATAL ERROR: Reached heap limit Allocation failed` inside `Statement::JS_all` on a 1M-row library. Every affected surface now streams or paginates; CLAUDE.md documents the rule for future feature work.
+
+### Fixed
+- **`monitor.js` resolves synthetic `unknown:foo` group ids before probing.** Recovery groups (created by `reindexFromDisk` when files exist on disk but the DB was empty) were getting "Skipping … — no account has access" on every config reload because `getMessages('unknown:…')` always throws. The resolver now walks each loaded client's dialogs, matches `sanitizeName(title) === folderName`, rewrites `group.id` to the canonical numeric id in memory + kv['config'] + downloads.group_id, and probes with the real id.
+- **Share-links sheet paginates.** `GET /api/share/links` accepts `?limit=500&offset=N&q=substring` and returns `{links, total, limit, offset, hasMore}`. The maintenance modal does server-side search + a "Load more" affordance instead of fetching everything.
+- **Backend big-table sweeps stream.** `kvList`, `getNsfwIdsByTier` use `.iterate()` instead of `.all()`; `listSessions`, `listPeers`, `listDestinations`, `/api/resync-dialogs`, `/api/groups/refresh-info`, `peer_groups` lookup all carry a defence-in-depth `LIMIT`.
+- **Backend caches LRU-capped.** `_failedJobMeta` (5 000 entries), `_dialogsNameCache.byId` (50 000), `state.groupNameCache` (1 000 in the SPA).
+- **`scanDiskDeep` yields to the event loop every 100 entries** so a 1M-file tree walk doesn't starve WS broadcasts.
+- **Queue page sliding window.** DOM caps at 500 rendered rows; older rows fall off the top as the bottom appends.
+- **Maintenance logs view** caps at 500 lines on mobile (was 1 000) for old-phone smoothness.
+- **Notification bell `localStorage` writes are debounced** (100 ms coalesce window) so a 100-event/sec error burst doesn't burn main-thread time on `JSON.stringify`.
+
+### Added
+- `src/core/util/streaming.js` — `streamRows` (the canonical iterator-batched-drain helper), `lruCap`, `paginate`. Mirrored in `src/web/public/js/utils.js` (`lruSet`, `lruCap`).
+- `CLAUDE.md → "Big-data patterns"` section — four invariants every new feature must respect (LIMIT/iterate, yield-every-N, capped caches, virtualised lists). Code review enforces them; CI does not.
+
+### Internal
+- SW bumped `v2135` → `v2136`.
+- 1 141 specs passing. New behaviour covered by existing share-links + group-name tests; updated test fixtures to use `Map` for `groupNameCache`.
+
+## [2.13.0] — 2026-05-10
+
+### Removed
+- **AI Search & Smart Organisation subsystem.** Semantic text→image search, face clustering (People view), perceptual near-duplicate dedup, and ImageNet auto-tagging are gone. `Maintenance → AI search` page, `/api/ai/*` routes, `src/core/ai/`, and the four `aiIndex / aiPeople / aiPhash / aiTags` JobTrackers all removed.
+- DB tables `image_embeddings`, `image_tags`, `faces`, `people` and columns `downloads.phash` / `downloads.ai_indexed_at` / `peer_downloads.phash` are dropped on first boot via an idempotent migration. **Back up `data/db.sqlite` before upgrading** if you want to preserve the AI-derived data.
+- `sqlite-vec` optional dependency, `AI_MODELS_DIR` / `AI_INDEX_CONCURRENCY` env vars, and 141 `maintenance.ai.*` / `maintenance.hub.ai.*` / `nav.maintenance.ai` i18n keys (en + th lockstep).
+
+### Unchanged
+- **NSFW classifier stays.** Separate page (`Maintenance → NSFW`), separate module (`src/core/nsfw.js`), separate config namespace (`config.advanced.nsfw`). `nsfw_score` column and the `@huggingface/transformers` + `sharp` dependencies remain.
+
+### Internal
+- SW bumped `v2122` → `v2130`.
+- `state-migration.js` now strips the dead `advanced.ai` config namespace from `kv['config']` on first boot.
+- ~5,600 LOC removed across backend, frontend, tests, and docs. `docs/AI.md` deleted.
+
 ## [2.12.2] — 2026-05-08
 
 Multi-peer audit pass on the federated gallery surfaces shipped in v2.12.0. Four real bugs that affected operators with more than one paired peer; one UX cleanup on the footer.

@@ -212,3 +212,52 @@ export function showToast(message, type = 'info', durationMs = 3000) {
         setTimeout(() => toast.remove(), 300);
     }, durationMs);
 }
+
+// ---- Big-data helpers (mirrors src/core/util/streaming.js) ---------------
+//
+// `lruSet` + `lruCap` keep client-side caches bounded so a heavy library
+// (50 k+ groups, 1 M+ files) doesn't pile up Map entries until the tab
+// runs out of heap. See `CLAUDE.md` section "Big-data patterns".
+
+/**
+ * Set `key=value` into a Map and evict the oldest entries until the Map
+ * is at or below `max`. Map iteration order is insertion-order, so old
+ * entries fall off the front. Re-setting an existing key bumps it to
+ * the back of the queue (true LRU behaviour).
+ *
+ * @param {Map<any, any>} map
+ * @param {any} key
+ * @param {any} value
+ * @param {number} max
+ */
+export function lruSet(map, key, value, max) {
+    if (!(map instanceof Map)) return;
+    if (map.has(key)) map.delete(key);
+    map.set(key, value);
+    while (map.size > max) {
+        const first = map.keys().next().value;
+        if (first === undefined) break;
+        map.delete(first);
+    }
+}
+
+/**
+ * Drop the oldest entries from a Map until its size is at or below `max`.
+ * Use after a bulk insert when you don't want to call `lruSet` per row.
+ *
+ * @param {Map<any, any>} map
+ * @param {number} max
+ * @returns {number} number of entries evicted
+ */
+export function lruCap(map, max) {
+    if (!(map instanceof Map) || map.size <= max) return 0;
+    let evicted = 0;
+    const it = map.keys();
+    while (map.size > max) {
+        const { value, done } = it.next();
+        if (done) break;
+        map.delete(value);
+        evicted += 1;
+    }
+    return evicted;
+}

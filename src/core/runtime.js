@@ -96,6 +96,18 @@ class Runtime extends EventEmitter {
         }
     }
 
+    /**
+     * Stop then start with the same accountManager + a freshly reloaded
+     * config. Used by `POST /api/monitor/restart` so operators can pick up
+     * config changes (rate limits, group toggles, account swaps) without
+     * shelling into the container. No-op when already stopped — caller
+     * should invoke start() directly in that case.
+     */
+    async restart(opts) {
+        if (this.state !== 'stopped') await this.stop();
+        await this.start(opts);
+    }
+
     async _cleanup() {
         try {
             if (this._monitor) await this._monitor.stop();

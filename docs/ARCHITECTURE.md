@@ -179,14 +179,6 @@ src/core/
 ├── secret.js         # data/secret.key bootstrap
 ├── metrics.js        # OpenMetrics text format for Prometheus
 ├── job-tracker.js    # Single-flight + WS broadcast lifecycle for fire-and-forget admin jobs
-├── ai/
-│   ├── index.js      # AI capability registry (federated)
-│   ├── safe-load.js  # Lazy + retry-on-error loader for native deps (sharp, etc.)
-│   ├── health.js     # AI Doctor checks (sharp / Transformers / sqlite-vec / models dir)
-│   ├── faces.js      # Face detection + clustering (lazy sharp)
-│   ├── phash.js      # Perceptual hash (lazy sharp)
-│   ├── tags.js       # ImageNet auto-tagging
-│   └── search.js     # CLIP semantic search
 ├── cluster/          # v2.10 federation layer
 │   ├── identity.js   # peer_id, peer_name, cluster_token, pairing codes
 │   ├── peers.js      # CRUD + status tracking
@@ -208,7 +200,7 @@ src/core/
 
 ## Fire-and-forget admin jobs (`JobTracker`)
 
-Every long-running admin action (verify files, db vacuum, dedup scan, thumbnail build, faststart sweep, NSFW scan, AI index, cluster sweep, etc.) follows one shared lifecycle in v2.10+:
+Every long-running admin action (verify files, db vacuum, dedup scan, thumbnail build, faststart sweep, NSFW scan, cluster sweep, etc.) follows one shared lifecycle in v2.10+:
 
 - `POST` returns 200 in <500 ms with `{started:true}`.
 - Work runs in the background via `JobTracker.tryStart(runFn)`.
@@ -235,15 +227,3 @@ Optional federation across two or more dashboards. Each peer keeps its own DB an
 - **LAN auto-discovery** — UDP broadcast on port 28910 with the cluster's identity + token fingerprint; peers that match auto-surface in the Cluster page's "Discovered" section for one-click pair.
 
 See `docs/CLUSTER.md` for operator setup, troubleshooting, and the per-pair-secret migration story.
-
-## AI subsystem hardening (v2.10)
-
-The AI router is extracted to `src/web/routes/ai.js` with a factory pattern (`createAiRouter({deps})`); every handler is wrapped in `src/web/lib/safe-route.js` (`makeSafe`) which catches sync + async throws and returns a structured `{ ok:false, code, message, where, detail }` JSON envelope. A buggy AI handler can no longer trigger `process.on('uncaughtException')` and tear the server down.
-
-Native deps are loaded lazily and gracefully:
-
-- `src/core/ai/safe-load.js` exposes `lazy(loader, name)` which caches the module, reports failures as structured errors, and resets the cache on error so a fix can land without restart.
-- `faces.js` and `phash.js` defer `import sharp` to first use; the server boots even when libvips is missing.
-- `src/core/ai/health.js` powers the AI Doctor card via `GET /api/ai/health` — single payload covering sharp / Transformers / sqlite-vec / models cache, with platform-aware remediation text.
-
-See `docs/AI.md`.

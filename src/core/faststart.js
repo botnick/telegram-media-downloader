@@ -285,14 +285,22 @@ export function optimizeDownloadInBackground(id) {
  */
 export async function optimizeAll(opts = {}) {
     const { onProgress, signal } = opts;
-    const rows = getDb()
+    // Stream — `.all()` over the full video list runs the box out of heap
+    // on libraries with 100k+ video rows.
+    const db = getDb();
+    const total = db
+        .prepare(`
+        SELECT COUNT(*) AS n FROM downloads
+         WHERE file_type = 'video' AND file_path IS NOT NULL
+    `)
+        .get().n;
+    const iter = db
         .prepare(`
         SELECT id FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
          ORDER BY id DESC
     `)
-        .all();
-    const total = rows.length;
+        .iterate();
     let processed = 0,
         optimized = 0,
         already = 0,
@@ -313,7 +321,7 @@ export async function optimizeAll(opts = {}) {
     };
     tick();
 
-    for (const r of rows) {
+    for (const r of iter) {
         if (signal?.aborted) break;
         processed++;
         try {
@@ -348,18 +356,19 @@ export async function optimizeAll(opts = {}) {
  * second on SSD. Errors are silently coerced into the "unknown" bucket.
  */
 export async function getStats() {
-    const rows = getDb()
+    // Stream — same OOM risk as optimizeAll on very large libraries.
+    const iter = getDb()
         .prepare(`
         SELECT id, file_path FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
     `)
-        .all();
+        .iterate();
     let total = 0,
         optimized = 0,
         pending = 0,
         missing = 0,
         unknown = 0;
-    for (const r of rows) {
+    for (const r of iter) {
         total++;
         const abs = _resolveAbs(r.file_path);
         if (!abs) {

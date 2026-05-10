@@ -48,17 +48,23 @@ export async function sweep(onProgress) {
         } catch {}
     };
     try {
-        // Pull file_size too so we can repair NULL / 0 sizes from old
-        // downloader versions that didn't always stat the file before
-        // INSERT — that's the source of the "Disk: 1 MB for 8000 files"
-        // status-bar nonsense the user kept seeing.
-        const rows = getDb()
+        // Stream rows via `.iterate()` instead of materialising the full
+        // result set with `.all()`. On a 1M-row library `.all()` allocates
+        // ~250 MB of JS objects up-front, which on a Synology / small VM
+        // crashes the process with `FATAL ERROR: Reached heap limit
+        // Allocation failed - JavaScript heap out of memory` inside
+        // better-sqlite3's `JS_all`. Iterator mode reuses one row buffer.
+        const db = getDb();
+        const total = db
+            .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_path IS NOT NULL`)
+            .get().n;
+        const iter = db
             .prepare(
                 `SELECT id, file_path, file_name, group_id, file_size FROM downloads WHERE file_path IS NOT NULL`,
             )
-            .all();
-        result.scanned = rows.length;
-        _emit({ processed: 0, total: rows.length, stage: 'scanning' });
+            .iterate();
+        result.scanned = total;
+        _emit({ processed: 0, total, stage: 'scanning' });
 
         // Limit concurrency so a 100k-row DB doesn't fork 100k stat() calls.
         // Tunable via config.advanced.integrity.batchSize (read at start()).
@@ -69,8 +75,10 @@ export async function sweep(onProgress) {
         // in one transaction at the end.
         const sizeFixes = [];
         let processed = 0;
-        for (let i = 0; i < rows.length; i += BATCH) {
-            const slice = rows.slice(i, i + BATCH);
+        let buf = [];
+        const drain = async () => {
+            const slice = buf;
+            buf = [];
             const checks = await Promise.all(
                 slice.map(async (r) => {
                     let rel = String(r.file_path || '').replace(/\\/g, '/');
@@ -100,11 +108,16 @@ export async function sweep(onProgress) {
             );
             for (const id of checks) if (id) deleteIds.push(id);
             processed += slice.length;
-            _emit({ processed, total: rows.length, stage: 'scanning' });
+            _emit({ processed, total, stage: 'scanning' });
+        };
+        for (const r of iter) {
+            buf.push(r);
+            if (buf.length >= BATCH) await drain();
         }
+        if (buf.length) await drain();
 
         if (sizeFixes.length) {
-            _emit({ processed, total: rows.length, stage: 'fixing_sizes' });
+            _emit({ processed, total, stage: 'fixing_sizes' });
             const upd = getDb().prepare('UPDATE downloads SET file_size = ? WHERE id = ?');
             const tx = getDb().transaction((items) => {
                 for (const it of items) upd.run(it.size, it.id);
@@ -114,12 +127,23 @@ export async function sweep(onProgress) {
         }
 
         if (deleteIds.length) {
-            _emit({ processed, total: rows.length, stage: 'pruning' });
-            const stmt = getDb().prepare(
-                `DELETE FROM downloads WHERE id IN (${deleteIds.map(() => '?').join(',')})`,
-            );
-            const r = stmt.run(...deleteIds);
-            result.pruned = r.changes;
+            _emit({ processed, total, stage: 'pruning' });
+            // Chunk to stay under SQLite's SQLITE_LIMIT_VARIABLE_NUMBER cap
+            // (default 999 on older builds, 32766 on newer). 500 is well
+            // below both and keeps each statement's prepare/bind cost cheap.
+            const DELETE_CHUNK = 500;
+            const tx = getDb().transaction((ids) => {
+                let changed = 0;
+                for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
+                    const slice = ids.slice(i, i + DELETE_CHUNK);
+                    const stmt = getDb().prepare(
+                        `DELETE FROM downloads WHERE id IN (${slice.map(() => '?').join(',')})`,
+                    );
+                    changed += stmt.run(...slice).changes;
+                }
+                return changed;
+            });
+            result.pruned = tx(deleteIds);
             try {
                 _broadcast({
                     type: 'integrity_swept',
@@ -128,7 +152,7 @@ export async function sweep(onProgress) {
                 });
             } catch {}
         }
-        _emit({ processed: rows.length, total: rows.length, stage: 'done' });
+        _emit({ processed: total, total, stage: 'done' });
     } finally {
         _running = false;
     }

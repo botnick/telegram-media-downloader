@@ -103,7 +103,16 @@ export async function syncPeerOnce(peer, { fetcher = _fetcher, limit = 500 } = {
     const rows = Array.isArray(payload?.rows) ? payload.rows : [];
     if (rows.length) {
         upsertPeerDownloadsBatch(peer.peerId, rows);
-        ps.sinceId = Math.max(sinceId, ...rows.map((r) => Number(r.id || r.remoteId) || 0));
+        // Bounded loop instead of `Math.max(sinceId, ...rows.map(…))` —
+        // V8 caps function-arg count at ~65 535, so a spread over a
+        // future larger sync page (or a malicious peer payload) would
+        // throw RangeError mid-tick. See CLAUDE.md → Big-data patterns.
+        let maxId = sinceId;
+        for (const r of rows) {
+            const id = Number(r.id || r.remoteId) || 0;
+            if (id > maxId) maxId = id;
+        }
+        ps.sinceId = maxId;
     }
     ps.lastSuccessAt = Date.now();
     ps.lastError = null;

@@ -946,12 +946,6 @@ export function loadAdvanced(config) {
     set('setting-adv-nsfw-threshold', Number.isFinite(ns.threshold) ? ns.threshold : 0.6);
     set('setting-adv-nsfw-concurrency', Number.isFinite(ns.concurrency) ? ns.concurrency : 1);
 
-    // AI subsystem — HuggingFace access token. Optional; surfaces on
-    // /maintenance/ai. We bind through the same autosave pipeline so
-    // changes round-trip via PATCH /api/config.
-    const aiCfg = adv.ai || {};
-    set('setting-adv-ai-hf-token', typeof aiCfg.hfToken === 'string' ? aiCfg.hfToken : '');
-
     // ffmpeg hardware acceleration — written to `advanced.thumbs.hwaccel`.
     // Empty string = off (default); `vaapi` / `qsv` / `cuda` / etc.
     // are passed straight to ffmpeg's `-hwaccel` flag in core/thumbs.js.
@@ -1097,10 +1091,6 @@ function gatherAdvanced() {
                     .getElementById('setting-adv-thumbs-warn-misses')
                     ?.classList.contains('active') !== false,
         },
-        ai: {
-            // HuggingFace access token. Trimmed; empty = unset.
-            hfToken: String(get('setting-adv-ai-hf-token') || '').trim(),
-        },
     };
 }
 
@@ -1216,20 +1206,18 @@ async function _autoSaveFlush() {
     }
 
     // _gatherSettingsPayload() reads every `setting-*` input in the DOM and
-    // builds the FULL config tree. On any other page (Maintenance → AI in
-    // particular, which surfaces a handful of `setting-adv-ai-*` inputs)
-    // most of those IDs aren't present, so unrelated sections collapse to
-    // their defaults and silently overwrite saved values. Bail unless the
-    // Settings page is the visible one — non-settings pages must save via
-    // their own scoped PATCH.
-    if (document.body?.dataset?.page !== 'settings') {
-        _setAutosaveStatus('idle', '');
-        return;
-    }
-
+    // builds the FULL config tree. On a maintenance page only a handful of
+    // those IDs exist, so the unrelated sections would collapse to defaults
+    // and silently overwrite saved values. Pick a scoped payload per page so
+    // each tool's "auto-save" stays narrow to the keys it actually owns.
     let payload;
     try {
-        payload = _gatherSettingsPayload();
+        const page = document.body?.dataset?.page || '';
+        payload = _gatherScopedPayload(page);
+        if (!payload) {
+            _setAutosaveStatus('idle', '');
+            return;
+        }
     } catch (e) {
         _setAutosaveStatus(
             'error',
@@ -1285,6 +1273,56 @@ function _scheduleAutoSave() {
     if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
     _setAutosaveStatus('dirty', i18nT('settings.autosave.dirty', 'Editing…'));
     _autoSaveTimer = setTimeout(_autoSaveFlush, AUTOSAVE_DEBOUNCE_MS);
+}
+
+// Per-page scoped autosave. Maintenance pages render only their tool's
+// settings card (e.g. ffmpeg hwaccel + warnMisses on /maintenance/thumbs);
+// gathering the full Settings payload there would read NaN/empty for every
+// missing input and erase the rest of the user's config on save. Returns
+// null when the page has no settings to autosave (so the flush is a no-op).
+function _gatherScopedPayload(page) {
+    const get = (id) => document.getElementById(id)?.value;
+    if (page === 'settings') return _gatherSettingsPayload();
+    if (page === 'maintenance-thumbs') {
+        return {
+            advanced: {
+                thumbs: {
+                    hwaccel: String(get('setting-adv-ffmpeg-hwaccel') || ''),
+                    warnMisses:
+                        document
+                            .getElementById('setting-adv-thumbs-warn-misses')
+                            ?.classList.contains('active') !== false,
+                },
+            },
+        };
+    }
+    if (page === 'maintenance-nsfw') {
+        const num = (id, def) => {
+            const v = parseInt(get(id), 10);
+            return Number.isFinite(v) ? v : def;
+        };
+        return {
+            advanced: {
+                nsfw: {
+                    enabled:
+                        document
+                            .getElementById('setting-adv-nsfw-enabled')
+                            ?.classList.contains('active') === true,
+                    preload:
+                        document
+                            .getElementById('setting-adv-nsfw-preload')
+                            ?.classList.contains('active') === true,
+                    model:
+                        String(get('setting-adv-nsfw-model') || '').trim() ||
+                        'AdamCodd/vit-base-nsfw-detector',
+                    dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
+                    threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
+                    concurrency: num('setting-adv-nsfw-concurrency', 1),
+                },
+            },
+        };
+    }
+    return null;
 }
 
 // Single source of truth for the saved JSON shape. Both the manual Save

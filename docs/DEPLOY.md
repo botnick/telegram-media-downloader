@@ -45,10 +45,9 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `THUMBS_VID_CONCURRENCY`        | `3`                 | Parallel video-thumb jobs (ffmpeg pins a CPU core). |
 | `WATCHTOWER_HTTP_API_TOKEN`     | unset               | Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this + booting with the `auto-update` compose profile lights up the **Install update** button. |
 | `WATCHTOWER_URL`                | `http://watchtower:8080` | Internal address of the watchtower sidecar. |
-| `TGDL_MEM_LIMIT`                | `2g`                | Hard memory ceiling for the dashboard container (`deploy.resources.limits.memory`). Bigger libraries with lots of in-memory embeddings can override to `4g` / `6g` in `.env`. |
+| `TGDL_MEM_LIMIT`                | `8g`                | Hard cgroup memory ceiling for the dashboard container (`deploy.resources.limits.memory`). Pair with `TGDL_HEAP_MB` so the V8 heap stays comfortably under the container limit. Drop to `2g` / `4g` on small hosts. |
+| `TGDL_HEAP_MB`                  | `8192`              | V8 `--max-old-space-size` in MB. 8 GiB lets a one-shot SELECT over a 1M-row dedup / integrity sweep complete without hitting the heap limit. Must stay strictly below `TGDL_MEM_LIMIT` (rule of thumb: leave ≥ 256 MiB for native allocations from better-sqlite3 / sharp / ffmpeg / libvips). |
 | `BACKUP_WORKERS_PER_DEST`       | `3`                 | Per-destination concurrent uploads for the backup subsystem. Keep modest — backups share the host's outbound bandwidth with everything else (including the realtime monitor). |
-| `AI_MODELS_DIR`                 | `<repo>/data/models`| Override the on-disk cache directory for AI model weights. Accepts an absolute path or a path relative to the repo root. Default lives inside `data/` so it survives a `docker compose down` and can be pre-seeded by copying the directory between hosts. |
-| `AI_INDEX_CONCURRENCY`          | `1`                 | (Reserved) Per-process worker count for the AI scan loop. Higher values risk OOM on small hosts because each WASM heap occupies ~150 MB. Currently honoured via `config.advanced.ai.indexConcurrency`. |
 | `HASH_WORKER_POOL_SIZE`         | `min(8, ⌊cpus/2⌋)`  | Worker-thread pool used for SHA-256 streaming over multi-GB files (post-write hash + dedup catch-up). Keeps the main event loop free for HTTP / WebSocket traffic. Set higher on a beefy host with many parallel downloads, lower on a Pi 4 / NAS. |
 | `HASH_WORKER_DISABLE`           | unset               | Set to `1` to skip the worker pool entirely and hash on the main thread — useful for sandboxed runtimes that block `worker_threads`. |
 | `COMPRESSION_LEVEL`             | `6`                 | gzip / brotli compression level (1-9) used by the optional `compression` middleware on text payloads. Lower the level on slow CPUs (Pi Zero, embedded NAS) so requests don't queue up behind compression; raise it on hosts with spare CPU + slow uplink. Set the env to `0` to disable explicitly even when the package is installed. |
@@ -85,24 +84,50 @@ That's it — `pull_policy: always` in `docker-compose.yml` plus the published `
 
 ## Hardware-accelerated video thumbnails (optional, advanced)
 
-If the host has an **Intel iGPU** (Iris Xe / UHD / Arc) and you generate a lot of video thumbnails, `ffmpeg` can decode + scale via VAAPI on the GPU instead of the CPU — typically 5-10× faster on H.264/H.265 input.
+If the host has an **Intel iGPU** (Iris Xe / UHD / Arc), an **AMD GPU** with VA-API support, or an **NVIDIA card**, `ffmpeg` can decode + scale on the GPU instead of the CPU — typically 5-10× faster on H.264 / H.265 input. Bookworm-slim ships the Intel media drivers and `vainfo` already, so the only host-side moving part is **device permissions**.
 
-Two pieces are required:
+### Quick start (Linux / Synology / generic)
 
-1. **Container access to the render device.** Add to `docker-compose.yml`:
+1. Uncomment the GPU passthrough block in `docker-compose.yml`:
    ```yaml
    devices:
      - /dev/dri:/dev/dri
    group_add:
      - "video"
-     - "render"   # `getent group render | cut -d: -f3` on the host if numeric
+     - "render"
    ```
+2. Set `FFMPEG_HWACCEL=vaapi` (Intel/AMD) or `=cuda` (NVIDIA) in `.env`.
+3. `docker compose up -d`.
+4. Verify with `docker exec telegram-downloader vainfo` — the output lists every codec the iGPU exposes. Empty list = the device passed through but the in-container `node` user can't open it; check the entrypoint log for the `[entrypoint] node added to group …` line. Missing line = host hasn't passed `/dev/dri` through.
 
-2. **Intel media driver inside the image.** The default `node:24.15.0-bookworm-slim` Dockerfile doesn't ship it; either add `RUN apt-get install -y intel-media-va-driver-non-free` to a fork of the Dockerfile, or pass through the host's driver via `/usr/lib/x86_64-linux-gnu/dri:/usr/lib/x86_64-linux-gnu/dri:ro` if your host already has it.
+The entrypoint resolves the device's GID at boot and adds the `node` user to a matching group automatically — **no manual group_add tweaks are needed** even when the host's render group has a non-standard GID. Set `ENTRYPOINT_DEBUG_GPU=1` to log every detection step.
 
-There is **no code change** required — `core/thumbs.js` already shells out to `ffmpeg`. To opt the thumb generator into hardware decode, set `FFMPEG_HWACCEL=vaapi` in the container env and the bundled args become `-hwaccel vaapi -hwaccel_output_format vaapi`. Keep it unset (default) on hosts without an iGPU and the CPU path runs unchanged.
+### Synology (DSM 6 / DSM 7)
 
-NVIDIA / AMD GPUs follow the same pattern with `FFMPEG_HWACCEL=cuda` or `=opencl` respectively, but require their own driver containers — out of scope for this doc.
+Synology's render group GID drifts between DSM versions (DSM 6 ≈ 937, DSM 7 ≈ 100, sometimes 939 on early DSM 7.0 builds), and the SSH user that runs `docker compose up` may not be a member of `videodriver` out of the box. Two host-side prep steps:
+
+1. **Add your shell user to `videodriver`** so the docker socket can read the device:
+   ```sh
+   sudo synogroup --member videodriver "$USER"
+   ```
+   Reboot or `newgrp videodriver` to pick up the change.
+
+2. **Verify the device is visible:**
+   ```sh
+   ls -l /dev/dri/renderD128
+   # crw-rw---- 1 root videodriver 226, 128 …  /dev/dri/renderD128
+   ```
+   If the file doesn't exist, the model has no iGPU; skip this section. (J / DS series ARM boxes don't have one. Plus / Value series Intel boxes do.)
+
+3. **Container Manager (Synology's Docker UI) doesn't honour compose `devices` directly** — install Docker via SSH (`sudo synopkg install_from_server Docker`) and run `docker compose` from a shell, or hand-edit the JSON under Container Manager → Project → ⚙️ → Settings to add the device. The compose snippet above works as-is once the JSON is saved.
+
+The dynamic GID detection in the entrypoint means the same image works on DSM 6 and DSM 7 without rebuilding. If you suspect GPU access isn't wired, set `ENTRYPOINT_DEBUG_GPU=1` in `.env` and read the boot transcript — every detected device + the chosen group is logged.
+
+### Why dynamic GID alignment matters
+
+A hardcoded `group_add: "render"` only works when `render` exists on the host AND its GID matches what's baked into the container's `/etc/group`. Synology, RHEL, and bare Debian all use different GIDs (937, 39, 104), so a one-size compose breaks on at least two of them. The entrypoint's `stat /dev/dri/renderD128 → groupadd -g $GID hostgpu_$GID → usermod -a -G hostgpu_$GID node` chain is portable: whatever GID the host uses, the container picks it up at boot.
+
+Set `ENTRYPOINT_DEBUG_GPU=1` to verify which device + GID landed in which group, and check `[entrypoint] node added to group …` in the boot log.
 
 ## Reverse proxy
 
@@ -229,12 +254,12 @@ For long-running headless monitor:
 `docker-compose.yml` ships two layers of protection:
 
 1. **`restart: unless-stopped`** — Docker restarts the container whenever the process exits with a non-zero status. Covers crashes, OOM kills, and clean `process.exit(1)` calls.
-2. **`autoheal` sidecar** (`willfarrell/autoheal:1.2.0`) — polls the docker socket every 30 s, finds containers whose healthcheck is `unhealthy` AND that carry `autoheal=true`, and restarts them. Covers the case where the process is wedged but hasn't actually exited (deadlocked event loop, stuck DB handle, runaway AI worker).
+2. **`autoheal` sidecar** (`willfarrell/autoheal:1.2.0`) — polls the docker socket every 30 s, finds containers whose healthcheck is `unhealthy` AND that carry `autoheal=true`, and restarts them. Covers the case where the process is wedged but hasn't actually exited (deadlocked event loop, stuck DB handle, runaway worker).
 
 The dashboard container is labeled `autoheal=true` out of the box. If you'd rather rely on an external supervisor (systemd, Kubernetes liveness probes, NAS health monitor), comment out the `autoheal` service block in `docker-compose.yml`. The label is harmless without the sidecar.
 
 Memory cap, log rotation, and healthcheck timing all live in the same compose file:
-- `deploy.resources.limits.memory: ${TGDL_MEM_LIMIT:-2g}` — override per host via `.env`.
+- `deploy.resources.limits.memory: ${TGDL_MEM_LIMIT:-8g}` — override per host via `.env`.
 - `logging.options.max-size: 10m` × `max-file: 5` — 50 MB ceiling per container, prevents log-fill-disk incidents.
 - `healthcheck.start_period: 30s` — gives the cold-start path room for state-migration + first WAL checkpoint on slow disks.
 

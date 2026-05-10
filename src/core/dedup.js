@@ -80,7 +80,28 @@ export async function findDuplicates(opts = {}) {
     // First pass: hash every row that doesn't have one. We hash files of
     // size > 0 only — zero-byte files would all collide on the empty hash
     // and aren't meaningful duplicates.
-    const missing = db
+    //
+    // Stream rows via `.iterate()` so a 1M-row library doesn't allocate
+    // the full result set up-front. better-sqlite3 reuses one row buffer
+    // through the loop, capping JS heap pressure at a few KB regardless
+    // of table size — fixes the OOM crash inside `Statement::JS_all`.
+    const total = db
+        .prepare(`
+        SELECT COUNT(*) AS n FROM downloads
+         WHERE file_hash IS NULL
+           AND file_path IS NOT NULL
+           AND COALESCE(file_size, 0) > 0
+    `)
+        .get().n;
+
+    const update = db.prepare('UPDATE downloads SET file_hash = ? WHERE id = ?');
+    let processed = 0,
+        hashed = 0,
+        errored = 0;
+
+    if (onProgress) onProgress({ stage: 'hashing', processed, total, hashed, errored });
+
+    const iter = db
         .prepare(`
         SELECT id, file_path, file_size FROM downloads
          WHERE file_hash IS NULL
@@ -88,17 +109,8 @@ export async function findDuplicates(opts = {}) {
            AND COALESCE(file_size, 0) > 0
          ORDER BY file_size DESC
     `)
-        .all();
-
-    const update = db.prepare('UPDATE downloads SET file_hash = ? WHERE id = ?');
-    const total = missing.length;
-    let processed = 0,
-        hashed = 0,
-        errored = 0;
-
-    if (onProgress) onProgress({ stage: 'hashing', processed, total, hashed, errored });
-
-    for (const row of missing) {
+        .iterate();
+    for (const row of iter) {
         if (signal?.aborted) break;
         processed++;
         const abs = resolveStoredPath(row.file_path);

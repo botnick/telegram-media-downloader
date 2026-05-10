@@ -217,7 +217,7 @@
                     <div data-page="maintenance-logs"></div>
                     <div data-page="maintenance-backup"></div>
                     <div data-page="maintenance-cluster"></div>
-                    <div data-page="maintenance-ai"></div>
+                    <div data-page="maintenance-recovery"></div>
                     <div data-page="maintenance-updates"></div>
                 </div>
             </nav>
@@ -306,7 +306,7 @@
                 </div>
 
                 <!-- Tabs -->
-                <div class="flex border-b border-tg-border">
+                <div class="flex border-b border-tg-border overflow-x-auto">
                     <div class="tab-item active flex-1 text-center" onclick="switchSettingsTab('media')" id="tab-media" data-i18n="group.modal.tab.media">
                         Media Filters
                     </div>
@@ -318,6 +318,9 @@
                     </div>
                     <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('topics')" id="tab-topics" data-i18n="group.modal.tab.topics">
                         Topics
+                    </div>
+                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('data')" id="tab-data" data-i18n="group.modal.tab.data">
+                        Data
                     </div>
                 </div>
 
@@ -465,6 +468,35 @@
                     </div>
 
                     <!-- Topics Tab -->
+                    <!-- Data tab — surfaces what's actually downloaded for
+                         this group. Stats card pulls /api/groups/:id/stats;
+                         recent-files strip uses /api/groups/:id/files
+                         (paginated). Action row covers "Delete files only"
+                         (keep config) and "Wipe all data" (purge config + DB
+                         + on-disk folder). -->
+                    <div id="content-data" class="hidden space-y-4">
+                        <div id="group-data-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
+                        <div class="bg-tg-panel rounded-xl p-4 border border-tg-border/50">
+                            <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="group.data.recent">Recent files</h4>
+                            <div id="group-data-files" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
+                            <button id="group-data-loadmore" type="button" class="text-xs text-tg-blue hover:underline mt-2 hidden" data-i18n="group.data.loadmore">Load more</button>
+                        </div>
+                        <div class="bg-tg-panel rounded-xl p-4 border border-tg-border/50">
+                            <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="group.data.actions">Actions</h4>
+                            <div class="space-y-2">
+                                <button id="group-data-delete-files-btn" type="button" class="w-full px-3 py-2 rounded-lg bg-tg-orange/15 hover:bg-tg-orange/25 text-tg-orange text-sm font-medium inline-flex items-center justify-between gap-2 transition-colors">
+                                    <span class="inline-flex items-center gap-2"><i class="ri-eraser-line"></i><span data-i18n="group.data.delete_files">Delete files only</span></span>
+                                    <span class="text-[11px] opacity-70" data-i18n="group.data.keeps_config">keeps config</span>
+                                </button>
+                                <button id="group-data-purge-btn" type="button" class="w-full px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-medium inline-flex items-center justify-between gap-2 transition-colors">
+                                    <span class="inline-flex items-center gap-2"><i class="ri-delete-bin-line"></i><span data-i18n="group.data.wipe_all">Wipe all data</span></span>
+                                    <span class="text-[11px] opacity-70" data-i18n="group.data.removes_group">removes group</span>
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-tg-textSecondary mt-3" data-i18n="group.data.actions_help">"Delete files only" clears the gallery + on-disk files but keeps the group monitored — useful for re-downloading fresh. "Wipe all data" also removes the group from your monitor list.</p>
+                        </div>
+                    </div>
+
                     <div id="content-topics" class="hidden space-y-4">
                         <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
                             <label class="flex items-center justify-between mb-3">
@@ -747,14 +779,14 @@
                         <a class="maintenance-tab" data-mt-page="maintenance-nsfw" href="#/maintenance/nsfw" role="tab">
                             <i class="ri-alarm-warning-line"></i><span data-i18n="nav.maintenance.nsfw">NSFW</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-ai" href="#/maintenance/ai" role="tab">
-                            <i class="ri-sparkling-2-line"></i><span data-i18n="nav.maintenance.ai">AI search</span>
-                        </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-backup" href="#/maintenance/backup" role="tab">
                             <i class="ri-cloud-line"></i><span data-i18n="nav.maintenance.backup">Backup</span>
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab">
                             <i class="ri-broadcast-line"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
+                        </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-recovery" href="#/maintenance/recovery" role="tab">
+                            <i class="ri-first-aid-kit-line"></i><span data-i18n="nav.maintenance.recovery">Recovery</span>
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-logs" href="#/maintenance/logs" role="tab">
                             <i class="ri-terminal-box-line"></i><span data-i18n="nav.maintenance.logs">Logs</span>
@@ -880,36 +912,49 @@
                     </button>
 
                     <section id="settings-system" role="tabpanel" data-admin-only class="settings-section space-y-4 mb-6">
-                    <!--
-                      v2.9 declutter:
-                        - Engine card removed. Monitor state + start/stop live
-                          in the page-header Session menu and the status bar
-                          pill (always visible across pages, no need to land
-                          on Settings to peek at queue / uptime).
-                        - Maintenance card removed. All 14 admin actions
-                          (Dedup, Thumbs, NSFW, Logs, Update, Vacuum, Verify,
-                          Resync, Restart, DB Check, Shares, Config, Export,
-                          Sign-out-everywhere) live on the /maintenance hub.
-                          Three orphans (Restart / Resync / Sign out) also
-                          surface in the Session menu so they're one tap away.
-                      Result: ~165 lines of HTML retired, ~30 i18n keys
-                      retired, two duplicate-feature surfaces collapsed into
-                      one canonical entry point each.
-                    -->
 
-                    <!-- Hidden in v2.9 — kept as legacy IDs so engine.js's
-                         applyStatus() and any external link to #engine-pill
-                         from older bookmarks doesn't throw. The header
-                         Session menu mirrors these into visible chrome. -->
-                    <div id="settings-card-engine-legacy" class="hidden">
-                        <span id="engine-pill"></span>
-                        <span id="engine-queue"></span>
-                        <span id="engine-active"></span>
-                        <span id="engine-downloaded"></span>
-                        <span id="engine-uptime"></span>
-                        <button type="button" id="engine-start" class="hidden"></button>
-                        <button type="button" id="engine-stop" class="hidden"></button>
-                        <p id="engine-error" class="hidden"></p>
+                    <!-- Engine card. Drives the realtime monitor lifecycle
+                         (start/stop/restart) and surfaces queue + active +
+                         downloaded counters for the running session. The
+                         topbar pill mirrors the same state for at-a-glance
+                         visibility on every page. -->
+                    <div id="settings-card-engine" class="bg-tg-panel rounded-xl p-4 mb-6">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i class="ri-pulse-line text-tg-blue text-xl" aria-hidden="true"></i>
+                            <h3 class="text-tg-text text-base font-semibold" data-i18n="settings.engine.title">Realtime monitor</h3>
+                            <span id="engine-pill" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300" data-i18n="settings.engine.stopped">Stopped</span>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.queue">Queue</div>
+                                <div id="engine-queue" class="text-lg font-semibold text-tg-text tabular-nums">0</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.active">Active</div>
+                                <div id="engine-active" class="text-lg font-semibold text-tg-text tabular-nums">0</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.downloaded">Downloaded</div>
+                                <div id="engine-downloaded" class="text-lg font-semibold text-tg-text tabular-nums">0</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.uptime">Uptime</div>
+                                <div id="engine-uptime" class="text-lg font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <button type="button" id="engine-start" class="tg-btn-primary text-sm px-4 py-2 inline-flex items-center gap-1.5">
+                                <i class="ri-play-fill"></i><span data-i18n="settings.engine.start">Start monitor</span>
+                            </button>
+                            <button type="button" id="engine-stop" class="tg-btn-secondary text-sm px-4 py-2 inline-flex items-center gap-1.5 hidden">
+                                <i class="ri-stop-fill"></i><span data-i18n="settings.engine.stop">Stop monitor</span>
+                            </button>
+                            <button type="button" id="engine-restart" class="tg-btn-secondary text-sm px-4 py-2 inline-flex items-center gap-1.5">
+                                <i class="ri-restart-line"></i><span data-i18n="settings.engine.restart">Restart</span>
+                            </button>
+                            <a href="#/queue" class="text-xs text-tg-blue hover:underline ml-auto inline-flex items-center gap-1" data-i18n="settings.engine.view_queue">View full queue →</a>
+                        </div>
+                        <p id="engine-error" class="hidden mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-2"></p>
                     </div>
 
                     <!-- Discovery pointer to the Maintenance hub. Replaces
@@ -2751,6 +2796,57 @@
                     </section>
                 </div>
 
+                <!-- Maintenance / Recovery cleanup (admin-only) -->
+                <!-- Surfaces every group whose id starts with `unknown:` OR whose
+                     `_resolveFailedAt` is set — the residue of `npm run recover`
+                     against a downloads table from a different Telegram account.
+                     Bulk operations: re-resolve, disable, delete, pin to account. -->
+                <div id="page-maintenance-recovery" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="maintenance.recovery.page_title"
+                     data-page-subtitle-key="maintenance.recovery.subtitle">
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0 flex-1">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.recovery.page_title">Recovery cleanup</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.recovery.subtitle">Resolve, disable, or delete groups that no loaded account can access.</p>
+                            </div>
+                        </div>
+                        <div id="recovery-empty" class="hidden text-center py-10">
+                            <i class="ri-checkbox-circle-line text-4xl text-tg-green/60"></i>
+                            <p class="text-sm text-tg-text font-medium mt-2" data-i18n="maintenance.recovery.empty.title">Nothing to clean up</p>
+                            <p class="text-xs text-tg-textSecondary mt-1" data-i18n="maintenance.recovery.empty.body">Every monitored group has a working Telegram account attached.</p>
+                        </div>
+                        <div id="recovery-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3"></div>
+                        <div id="recovery-toolbar" class="bg-tg-bg/30 rounded-xl p-3 mb-3 hidden">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <label class="inline-flex items-center gap-1.5 text-xs text-tg-text cursor-pointer">
+                                    <input id="recovery-select-all" type="checkbox" class="rounded border-tg-border bg-tg-bg accent-tg-blue">
+                                    <span data-i18n="maintenance.recovery.select_all">Select all</span>
+                                </label>
+                                <span id="recovery-selected-count" class="text-[11px] text-tg-textSecondary tabular-nums"></span>
+                                <div class="flex-1"></div>
+                                <button id="recovery-resolve-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-refresh-line"></i><span data-i18n="maintenance.recovery.resolve">Re-resolve</span>
+                                </button>
+                                <button id="recovery-disable-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-pause-circle-line"></i><span data-i18n="maintenance.recovery.disable">Disable</span>
+                                </button>
+                                <select id="recovery-reassign-select" class="tg-input text-xs px-2 py-1 hidden">
+                                    <option value="" data-i18n="maintenance.recovery.reassign_placeholder">Pin to account…</option>
+                                </select>
+                                <button id="recovery-delete-btn" type="button" class="px-3 py-1.5 rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs font-medium inline-flex items-center gap-1.5">
+                                    <i class="ri-delete-bin-line"></i><span data-i18n="maintenance.recovery.delete">Delete</span>
+                                </button>
+                            </div>
+                            <div id="recovery-progress" class="hidden mt-3 h-2 bg-tg-bg/60 rounded overflow-hidden">
+                                <div id="recovery-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
+                            </div>
+                            <div id="recovery-progress-text" class="hidden text-[11px] text-tg-textSecondary mt-1"></div>
+                        </div>
+                        <div id="recovery-list" class="space-y-2"></div>
+                    </section>
+                </div>
+
                 <!-- Maintenance / Updates (admin-only) -->
                 <!-- Maintenance / Updates subpage (admin-only).
                      Stats strip surfaces current version + last attempt + pending
@@ -2800,259 +2896,6 @@
                         <div id="updates-history-list" class="overflow-x-auto">
                             <div class="text-center py-8 text-sm text-tg-textSecondary" data-i18n="update.history.empty">No updates have been triggered from this dashboard yet.</div>
                         </div>
-                    </section>
-                </div>
-
-                <!-- Maintenance / AI search & people (admin-only) -->
-                <div id="page-maintenance-ai" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
-                     data-page-title-key="maintenance.ai.title"
-                     data-page-subtitle-key="maintenance.ai.subtitle">
-                    <header class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.ai.title">AI Search &amp; Smart Organisation</h2>
-                        <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.subtitle">Local-only image embeddings, face clustering, perceptual dedup, and auto-tagging.</p>
-                        <p class="text-[11px] text-tg-textSecondary/80 mt-2" data-i18n="maintenance.ai.privacy_note">All processing happens on this server. Nothing is uploaded to any third-party API.</p>
-                    </header>
-
-                    <!-- Hero search -->
-                    <section class="ai-hero" role="search" aria-labelledby="ai-search-heading">
-                        <h3 id="ai-search-heading" class="sr-only" data-i18n="maintenance.ai.search.heading">Search</h3>
-                        <label class="ai-hero-input-wrap">
-                            <i class="ri-search-2-line ai-hero-icon-left" aria-hidden="true"></i>
-                            <input id="ai-search-input" type="search" autocomplete="off" spellcheck="false"
-                                   class="ai-hero-input"
-                                   data-i18n-placeholder="maintenance.ai.search.placeholder_hero"
-                                   placeholder="Search your library — try &quot;beach&quot;, &quot;invoice&quot;, &quot;birthday cake&quot;…"
-                                   aria-label="Search your library"/>
-                            <button id="ai-search-clear" type="button" class="ai-hero-icon-right hidden"
-                                    data-i18n-aria-label="maintenance.ai.search.clear" aria-label="Clear search">
-                                <i class="ri-close-circle-fill" aria-hidden="true"></i>
-                            </button>
-                            <button id="ai-search-btn" type="button" class="sr-only" data-i18n="maintenance.ai.search.go">Search</button>
-                        </label>
-                        <div id="ai-search-similar-bar" class="ai-similar-bar hidden" role="status" aria-live="polite">
-                            <span class="ai-similar-text">
-                                <i class="ri-magic-line"></i>
-                                <span data-i18n="maintenance.ai.search.similar_to">Similar to</span>
-                                <span id="ai-similar-name" class="ai-similar-name"></span>
-                            </span>
-                            <button id="ai-similar-clear" type="button" class="ai-similar-clear"
-                                    data-i18n-aria-label="maintenance.ai.search.similar_clear" aria-label="Clear similar search">
-                                <i class="ri-close-line"></i>
-                                <span data-i18n="common.clear">Clear</span>
-                            </button>
-                        </div>
-
-                        <!-- Suggestion chip rows. Labels sit ABOVE each row
-                             instead of in a left-side column — looks cleaner
-                             at every breakpoint and stops the chip list from
-                             being squeezed by a 60-px label gutter. -->
-                        <div id="ai-chips-wrap" class="ai-chips-wrap">
-                            <div id="ai-chips-recent" class="ai-chip-row hidden">
-                                <span class="ai-chip-row-label" data-i18n="maintenance.ai.search.chips.recent">Recent</span>
-                                <div class="ai-chip-list" role="list"></div>
-                            </div>
-                            <div id="ai-chips-try" class="ai-chip-row">
-                                <span class="ai-chip-row-label" data-i18n="maintenance.ai.search.chips.try">Try</span>
-                                <div class="ai-chip-list" role="list"></div>
-                            </div>
-                            <div id="ai-chips-tags" class="ai-chip-row hidden">
-                                <span class="ai-chip-row-label" data-i18n="maintenance.ai.search.chips.top_tags">Top tags</span>
-                                <div class="ai-chip-list" role="list"></div>
-                            </div>
-                            <div id="ai-chips-people" class="ai-chip-row hidden">
-                                <span class="ai-chip-row-label" data-i18n="maintenance.ai.search.chips.people">People</span>
-                                <div class="ai-chip-list ai-chip-list-people" role="list"></div>
-                            </div>
-                        </div>
-                    </section>
-
-                    <!-- Models panel + swap UI -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                            <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
-                                <i class="ri-cpu-line text-tg-textSecondary"></i>
-                                <span data-i18n="maintenance.ai.model.heading">Models</span>
-                            </h3>
-                            <button id="ai-models-refresh" type="button" class="tg-btn-secondary text-[11px] px-2 py-1"
-                                    data-i18n-title="maintenance.ai.model.refresh" title="Refresh model status">
-                                <i class="ri-refresh-line"></i>
-                            </button>
-                        </div>
-
-                        <!-- Embedding-model presets. Populated by maintenance-ai.js
-                             from /api/ai/status.embeddingPresets. Click an inactive
-                             preset → confirmation sheet (download size + row count)
-                             → PATCH config + POST /api/ai/index/reembed. -->
-                        <div id="ai-embedding-presets" class="ai-presets-row mb-2.5"></div>
-
-                        <div id="ai-models-list" class="ai-models-list" aria-live="polite"></div>
-                    </section>
-
-                    <!-- Doctor card. Calls /api/ai/health on mount and shows
-                         the result inline. Failures render with the
-                         platform-specific recommendation so the operator can
-                         fix native-dep issues (sharp/transformers/sqlite-vec)
-                         without digging through logs. -->
-                    <section id="ai-doctor-card"
-                             class="bg-tg-panel rounded-xl p-3 mb-3"
-                             aria-live="polite">
-                        <div class="text-tg-textSecondary text-xs">
-                            <i class="ri-loader-4-line animate-spin" aria-hidden="true"></i>
-                            <span data-i18n="maintenance.ai.doctor.loading">Running diagnostics…</span>
-                        </div>
-                    </section>
-
-                    <!-- Gated-model warning. Hidden by default; maintenance-ai.js
-                         shows it when /api/ai/status reports `gatedWarnings`
-                         (= operator's saved config still references a HF
-                         model id that has become 401-gated). One click on
-                         "Apply public default" PATCHes config to the matching
-                         public model and the banner disappears. -->
-                    <section id="ai-gated-warning"
-                             class="hidden bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 mb-3"
-                             role="alert" aria-live="polite">
-                        <div class="flex items-start gap-2.5">
-                            <i class="ri-error-warning-line text-amber-400 text-xl shrink-0 mt-0.5" aria-hidden="true"></i>
-                            <div class="min-w-0 flex-1">
-                                <div class="text-tg-text font-medium text-sm" data-i18n="maintenance.ai.gated_warning.title">
-                                    Some AI models are no longer reachable
-                                </div>
-                                <p id="ai-gated-warning-body"
-                                   class="text-xs text-tg-textSecondary mt-0.5 leading-snug"
-                                   data-i18n="maintenance.ai.gated_warning.body">
-                                    Your saved config points at HuggingFace models that now require special access. Replace them with the public defaults to fix the 401 errors in scan logs.
-                                </p>
-                                <div id="ai-gated-warning-list"
-                                     class="mt-1.5 text-[11px] text-tg-textSecondary font-mono space-y-0.5"></div>
-                            </div>
-                            <button id="ai-gated-warning-apply" type="button"
-                                    class="tg-btn-primary text-xs px-3 py-1 shrink-0"
-                                    data-i18n="maintenance.ai.gated_warning.apply_btn">
-                                Apply public default
-                            </button>
-                        </div>
-                    </section>
-
-                    <!-- AI subsystem master switch. Static so it ALWAYS
-                         renders even if `_renderSettings` hasn't fired
-                         yet (or fails). The toggle's `active` class is
-                         synced by maintenance-ai.js from /api/ai/status. -->
-                    <section id="ai-master-card" class="bg-tg-panel rounded-xl p-4 mb-3 flex items-center justify-between gap-3 flex-wrap">
-                        <div class="flex items-start gap-3 min-w-0 flex-1">
-                            <i class="ri-sparkling-2-line text-tg-blue text-2xl shrink-0 mt-0.5"></i>
-                            <div class="min-w-0">
-                                <div class="text-tg-text text-base font-semibold flex items-center gap-2 flex-wrap">
-                                    <span data-i18n="maintenance.ai.master.title">Enable AI subsystem</span>
-                                    <span id="ai-master-state-pill" class="text-[11px] px-2 py-0.5 rounded-full bg-tg-bg/60 text-tg-textSecondary">
-                                        <span data-i18n="maintenance.ai.master.state.off">Off</span>
-                                    </span>
-                                </div>
-                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.master.help">Master start/stop. Has to be on before any individual capability runs. Models download lazily on first scan.</p>
-                            </div>
-                        </div>
-                        <div id="setting-adv-ai-enabled" class="tg-toggle shrink-0" data-cap-toggle="master" role="switch" aria-label="Enable AI subsystem"></div>
-                    </section>
-
-                    <!-- HuggingFace access token. Optional — only set this
-                         when the realtime log shows 401 / "Unauthorized
-                         access to file" while loading a model. The token
-                         is sent as `Authorization: Bearer …` on every
-                         transformers.js fetch, which both bypasses
-                         anonymous rate limits and unlocks gated repos. -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                            <h3 class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.hf_token.heading">HuggingFace access</h3>
-                            <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer"
-                               class="text-[11px] text-tg-blue hover:underline inline-flex items-center gap-1">
-                                <i class="ri-external-link-line"></i>
-                                <span data-i18n="maintenance.ai.hf_token.create_link">Get a token →</span>
-                            </a>
-                        </div>
-                        <label for="setting-adv-ai-hf-token" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.ai.hf_token.label">Access token</label>
-                        <div class="flex items-stretch gap-1.5">
-                            <input id="setting-adv-ai-hf-token" type="password" autocomplete="off" spellcheck="false"
-                                   class="tg-input flex-1 text-sm font-mono"
-                                   placeholder="hf_xxx (optional)">
-                            <button id="ai-hf-token-reveal" type="button"
-                                    class="tg-btn-secondary text-xs px-2 inline-flex items-center justify-center"
-                                    data-i18n-title="maintenance.ai.hf_token.show" title="Show token">
-                                <i class="ri-eye-line"></i>
-                            </button>
-                            <button id="ai-hf-token-test" type="button"
-                                    class="tg-btn-primary text-xs px-3 inline-flex items-center gap-1.5">
-                                <i class="ri-flashlight-line"></i>
-                                <span data-i18n="maintenance.ai.hf_token.test">Test</span>
-                            </button>
-                        </div>
-                        <div id="ai-hf-token-result"
-                             class="text-[11px] mt-2 min-h-[16px] leading-relaxed flex flex-wrap gap-1 items-center"
-                             role="status" aria-live="polite"></div>
-                        <details class="mt-2">
-                            <summary class="text-[11px] text-tg-textSecondary cursor-pointer hover:text-tg-text" data-i18n="maintenance.ai.hf_token.howto_summary">How do I get a token?</summary>
-                            <ol class="text-[10px] text-tg-textSecondary mt-1 ml-4 list-decimal space-y-0.5 leading-relaxed">
-                                <li data-i18n="maintenance.ai.hf_token.howto_1">Sign in at huggingface.co (free account is enough).</li>
-                                <li data-i18n="maintenance.ai.hf_token.howto_2">Open <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" class="text-tg-blue hover:underline">Settings → Access Tokens</a>.</li>
-                                <li data-i18n="maintenance.ai.hf_token.howto_3">Click "Create new token" → choose <code>Read</code> role → give it any name.</li>
-                                <li data-i18n="maintenance.ai.hf_token.howto_4">Copy the <code>hf_xxx</code> string and paste it above. Click Test.</li>
-                            </ol>
-                        </details>
-                    </section>
-
-                    <!-- Settings strip (capabilities) -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                            <h3 class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.settings_heading">Capabilities</h3>
-                            <span id="ai-vec-status" class="text-[11px] text-tg-textSecondary"></span>
-                        </div>
-                        <div id="ai-capabilities-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <!-- Capability toggles + scan buttons rendered by js/ai/capabilities.js -->
-                        </div>
-                    </section>
-
-                    <!-- Search results -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                            <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.search.results_heading">Results</h3>
-                            <span id="ai-search-meta" class="text-[11px] text-tg-textSecondary tabular-nums"></span>
-                        </div>
-                        <div id="ai-search-results" class="ai-results-grid" role="grid" aria-label="Search results"></div>
-                        <div id="ai-search-empty" class="hidden text-center py-8 text-xs text-tg-textSecondary" data-i18n="maintenance.ai.search.no_results">Nothing matches. Try a different phrase or run an index scan first.</div>
-                        <div id="ai-search-cta" class="hidden text-center py-10">
-                            <p class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.search.index_cta_title">Index your library to enable search</p>
-                            <p class="text-tg-textSecondary text-xs mt-1" data-i18n="maintenance.ai.search.index_cta_hint">Builds a small embedding per photo so you can search by what's in the picture.</p>
-                            <button id="ai-search-cta-btn" type="button" class="tg-btn-primary mt-3 text-xs px-3 py-1.5"
-                                    data-i18n="maintenance.ai.search.index_cta_btn">Run an index scan</button>
-                        </div>
-                    </section>
-
-                    <!-- Card 2: People -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                            <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.people.title">People</h3>
-                            <span id="ai-people-count" class="text-[11px] text-tg-textSecondary tabular-nums"></span>
-                        </div>
-                        <div id="ai-people-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2"></div>
-                        <div id="ai-people-empty" class="hidden text-center py-8 text-xs text-tg-textSecondary" data-i18n="maintenance.ai.people.empty">No people detected yet — enable face clustering in Settings → AI and run a scan.</div>
-                    </section>
-
-                    <!-- Card 3: Auto-tags -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                            <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.tags.title">Auto-tags</h3>
-                            <span id="ai-tags-count" class="text-[11px] text-tg-textSecondary tabular-nums"></span>
-                        </div>
-                        <div id="ai-tags-cloud" class="flex flex-wrap gap-1.5"></div>
-                        <div id="ai-tags-empty" class="hidden text-center py-8 text-xs text-tg-textSecondary" data-i18n="maintenance.ai.tags.empty">No tags yet — enable auto-tagging in Settings → AI.</div>
-                    </section>
-
-                    <!-- Card 4: Near-duplicates -->
-                    <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div class="flex items-center justify-between gap-2 mb-2">
-                            <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.phash.title">Near-duplicate photos</h3>
-                            <span id="ai-phash-count" class="text-[11px] text-tg-textSecondary tabular-nums"></span>
-                        </div>
-                        <div id="ai-phash-groups" class="space-y-3"></div>
-                        <div id="ai-phash-empty" class="hidden text-center py-8 text-xs text-tg-textSecondary" data-i18n="maintenance.ai.phash.empty">No near-duplicates found.</div>
                     </section>
                 </div>
 

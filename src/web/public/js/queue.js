@@ -835,6 +835,14 @@ function renderRows() {
 // Append the next batch of rows to the current rendered window. Does NOT
 // re-paint the existing rows — just extends. Called by the
 // IntersectionObserver when the load-more sentinel scrolls into view.
+//
+// Sliding-window cap — past `MAX_DOM_ROWS` we drop the topmost rows that
+// have scrolled past the viewport so the DOM doesn't grow with infinite
+// scroll. A 10 k-job queue otherwise piles up 10 k <div> nodes in the
+// DOM, each with progress-bar listeners + WS-patched data hooks; the
+// browser tab eventually OOMs on heavy mobile devices.
+// See CLAUDE.md → Big-data patterns rule 4.
+const MAX_DOM_ROWS = 500;
 function appendNextPage() {
     const rowsHost = document.getElementById('queue-rows');
     if (!rowsHost) return;
@@ -855,6 +863,16 @@ function appendNextPage() {
     rowsHost.insertAdjacentHTML('beforeend', slice.map((j) => renderRow(j)).join(''));
     for (const j of slice) _renderedKeys.add(j.key);
     view.rendered += slice.length;
+    // Sliding window — drop the topmost N rows that have scrolled out of
+    // the viewport so the DOM stays bounded. Keeps the IntersectionObserver
+    // sentinel intact at the bottom because it lives outside `queue-rows`.
+    while (rowsHost.children.length > MAX_DOM_ROWS) {
+        const first = rowsHost.firstElementChild;
+        if (!first) break;
+        const k = first.dataset?.key;
+        if (k) _renderedKeys.delete(k);
+        first.remove();
+    }
     _toggleSentinel(view.rendered < rows.length);
 }
 
@@ -1125,7 +1143,24 @@ function renderRow(j) {
             ${thumb}
             <div class="min-w-0">
                 <div class="text-sm text-tg-text truncate" title="${escapeHtml(name)}">${escapeHtml(name)}${accountChip}</div>
-                <div class="text-[11px] text-tg-textSecondary truncate">${escapeHtml(groupName)}${j.error ? ' · ' + escapeHtml(j.error) : ''}</div>
+                <div class="text-[11px] text-tg-textSecondary truncate flex items-center gap-1.5 flex-wrap">
+                    <span class="truncate">${escapeHtml(groupName)}</span>
+                    ${
+                        j.addedAt
+                            ? `<span class="text-tg-textSecondary/40">·</span><span class="inline-flex items-center gap-0.5 tabular-nums" title="${escapeHtml(i18nT('queue.row.added_tooltip', 'Added to queue'))}"><i class="ri-add-circle-line"></i>${escapeHtml(_fmtClock(j.addedAt))}</span>`
+                            : ''
+                    }
+                    ${
+                        j.finishedAt
+                            ? `<span class="text-tg-textSecondary/40">·</span><span class="inline-flex items-center gap-0.5 tabular-nums ${j.status === 'failed' ? 'text-red-400/80' : 'text-tg-green/80'}" title="${escapeHtml(i18nT(j.status === 'failed' ? 'queue.row.failed_tooltip' : 'queue.row.finished_tooltip', j.status === 'failed' ? 'Failed at' : 'Finished at'))}"><i class="${j.status === 'failed' ? 'ri-close-circle-line' : 'ri-check-line'}"></i>${escapeHtml(_fmtClock(j.finishedAt))}</span>${
+                                  j.addedAt && j.finishedAt > j.addedAt
+                                      ? `<span class="text-tg-textSecondary/40">·</span><span class="tabular-nums" title="${escapeHtml(i18nT('queue.row.duration_tooltip', 'Time taken'))}">${escapeHtml(_fmtDuration(j.finishedAt - j.addedAt))}</span>`
+                                      : ''
+                              }`
+                            : ''
+                    }
+                    ${j.error ? `<span class="text-tg-textSecondary/40">·</span><span class="text-red-400/80 truncate">${escapeHtml(j.error)}</span>` : ''}
+                </div>
             </div>
             <div class="text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(sizeStr)}</div>
             <div class="min-w-0">
@@ -1152,6 +1187,38 @@ function formatEta(seconds) {
     if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
     if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
     return `${Math.round(seconds / 3600)}h`;
+}
+
+// IDM-style "10:23:45" if today, "11/12 10:23" if this year, "2025-11-12"
+// otherwise. Compact enough for the secondary metadata line. Returns ''
+// when t is missing or invalid so the caller can skip rendering.
+function _fmtClock(t) {
+    if (!t || !Number.isFinite(Number(t))) return '';
+    const d = new Date(Number(t));
+    if (Number.isNaN(d.getTime())) return '';
+    const now = new Date();
+    const sameDay =
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    if (sameDay) return `${hh}:${mm}:${ss}`;
+    if (d.getFullYear() === now.getFullYear()) {
+        return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${hh}:${mm}`;
+    }
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${hh}:${mm}`;
+}
+
+function _fmtDuration(ms) {
+    if (!ms || !Number.isFinite(ms) || ms < 0) return '';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
 }
 
 // Toolbar state — currently just enables / disables the "Retry all"

@@ -23,7 +23,6 @@ import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
 import { pregenerateNsfw } from './nsfw.js';
-import { pregenerateAi } from './ai/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -1011,9 +1010,6 @@ export class DownloadManager extends EventEmitter {
                 try {
                     pregenerateNsfw(newId);
                 } catch {}
-                try {
-                    pregenerateAi(newId);
-                } catch {}
                 // Faststart-optimise newly-downloaded MP4s so the
                 // gallery's HTML5 player can seek + start audio
                 // without waiting for the entire mdat to stream
@@ -1110,7 +1106,13 @@ export class DownloadManager extends EventEmitter {
 
     async scanDiskDeep() {
         let total = 0;
+        let visited = 0;
         const basePath = this.config.download?.path || './data/downloads';
+        // Yield to the event loop every YIELD_EVERY entries so a tree with
+        // hundreds of thousands of files doesn't starve WS broadcasts /
+        // health probes / queue progress for the duration of the walk.
+        // See CLAUDE.md → Big-data patterns rule 2.
+        const YIELD_EVERY = 100;
         const calculateSize = async (dir) => {
             try {
                 const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -1121,6 +1123,10 @@ export class DownloadManager extends EventEmitter {
                     } else {
                         const stats = await fs.stat(fullPath);
                         total += stats.size;
+                    }
+                    visited += 1;
+                    if (visited % YIELD_EVERY === 0) {
+                        await new Promise((r) => setImmediate(r));
                     }
                 }
             } catch (e) {}

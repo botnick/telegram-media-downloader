@@ -133,10 +133,7 @@ describe('AutoForwarder.resolveDestination — storage channel discovery', () =>
     it('caches the dialog match when one already exists', async () => {
         const found = { title: 'Telegram Downloader Storage', entity: { _: 'Channel', id: 5n } };
         const client = fakeClient({
-            getDialogs: vi.fn().mockResolvedValue([
-                { title: 'Other channel', entity: {} },
-                found,
-            ]),
+            getDialogs: vi.fn().mockResolvedValue([{ title: 'Other channel', entity: {} }, found]),
         });
         const fwd = new AutoForwarder(client, { groups: [] });
         const first = await fwd.resolveDestination('storage', client);

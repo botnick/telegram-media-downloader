@@ -60,8 +60,12 @@ export const state = {
     // tile peer badge render without a second round-trip per row.
     clusterPeers: [],
     // Canonical name cache — fed by /api/groups/refresh-info responses and
-    // the WS `groups_refreshed` broadcast. Keyed by stringified id.
-    groupNameCache: {},
+    // the WS `groups_refreshed` broadcast. Keyed by stringified id. Map
+    // (not plain object) so we can LRU-cap it via `lruSet` — see
+    // CLAUDE.md → Big-data patterns rule 3. The `lookup` / `set` helpers
+    // below are the canonical accessors; legacy callsites that read
+    // `state.groupNameCache?.[key]` are tolerated via the proxy below.
+    groupNameCache: new Map(),
     // 'admin' | 'guest' | null — populated from /api/auth_check on boot.
     // Drives both router.js (admin-only routes redirect guests) and the
     // body[data-role] CSS gate that hides admin-only UI elements.
@@ -90,7 +94,7 @@ export function getGroupName(id, opts = {}) {
     const key = String(id);
 
     // 1. Explicit cache (refresh-info / WS groups_refreshed).
-    const cached = state.groupNameCache?.[key];
+    const cached = state.groupNameCache?.get?.(key);
     if (cached && !looksUnresolved(cached, key)) return cached;
 
     // 2. Config-defined groups (state.groups).
@@ -127,21 +131,39 @@ export function getGroupName(id, opts = {}) {
  * `groups_refreshed` broadcast) into the cache. Accepts an array of
  * `{id, name}` pairs OR a `{id: name}` map.
  */
+// LRU cap for `state.groupNameCache`. 1 000 entries × ~50 bytes ≈ 50 KB
+// in memory, plenty for any reasonable account, and the eviction is O(1)
+// (Map iteration order is insertion order, so the oldest key is at the
+// front). Tunable here only — every writer goes through `updateGroupNameCache`.
+const GROUP_NAME_CACHE_CAP = 1000;
+function _setGroupName(key, value) {
+    const m = state.groupNameCache;
+    if (!(m instanceof Map)) return;
+    // Re-set bumps insertion order to the back → real LRU on touch.
+    if (m.has(key)) m.delete(key);
+    m.set(key, value);
+    while (m.size > GROUP_NAME_CACHE_CAP) {
+        const first = m.keys().next().value;
+        if (first === undefined) break;
+        m.delete(first);
+    }
+}
+
 export function updateGroupNameCache(updates) {
     if (!updates) return 0;
-    if (!state.groupNameCache) state.groupNameCache = {};
+    if (!(state.groupNameCache instanceof Map)) state.groupNameCache = new Map();
     let n = 0;
     if (Array.isArray(updates)) {
         for (const u of updates) {
             if (!u || u.id == null || !u.name) continue;
             if (looksUnresolved(u.name, u.id)) continue;
-            state.groupNameCache[String(u.id)] = String(u.name);
+            _setGroupName(String(u.id), String(u.name));
             n++;
         }
     } else if (typeof updates === 'object') {
         for (const [id, name] of Object.entries(updates)) {
             if (!name || looksUnresolved(name, id)) continue;
-            state.groupNameCache[String(id)] = String(name);
+            _setGroupName(String(id), String(name));
             n++;
         }
     }

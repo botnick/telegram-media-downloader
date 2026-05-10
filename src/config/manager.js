@@ -165,12 +165,32 @@ function mergeConfig(userConfig) {
             },
             web: { ...DEFAULT_CONFIG.advanced.web, ...(userAdvanced.web || {}) },
         },
-        // Heal Groups: Ensure every group has latest filter keys
-        groups: (userConfig.groups || []).map((group) => ({
+        // Heal Groups: Ensure every group has latest filter keys, and drop
+        // duplicate entries that share the same Telegram id. Dupes can sneak
+        // in when a group is renamed in Telegram and re-added through a
+        // different code path (CLI add + dashboard add, or sanitised vs raw
+        // name); the second copy used to silently shadow the first and
+        // double every monitor pass.
+        groups: dedupeGroups(userConfig.groups || []).map((group) => ({
             ...group,
             filters: { ...DEFAULT_FILTERS, ...(group.filters || {}) },
         })),
     };
+}
+
+function dedupeGroups(groups) {
+    const seen = new Map();
+    for (const g of groups) {
+        const key = String(g?.id ?? '');
+        if (!key) continue;
+        // Last-writer-wins on id collision: a fresh entry overrides an old
+        // one with the same id. Preserves order of first appearance so the
+        // sidebar layout stays stable across reloads.
+        const prev = seen.get(key);
+        if (prev) seen.set(key, { ...prev, ...g });
+        else seen.set(key, g);
+    }
+    return Array.from(seen.values());
 }
 
 export function loadConfig() {

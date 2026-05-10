@@ -58,6 +58,11 @@ export function renderChatRow(opts) {
         // bake "from {peer}" into `subtitle` upstream.
         peerId = null,
         peerName = null,
+        // 1-click monitor toggle. Pass `true` / `false` to render a
+        // pause/play icon button next to the cog; `null` (default) hides
+        // the button. The click handler lives in app.js (delegated on
+        // `[data-action="monitor-toggle"]`).
+        monitorEnabled = null,
     } = opts;
     // Merge peer fields into `data` (= becomes the dataset attrs below)
     // when the row is foreign. Use a separate binding because `data` was
@@ -91,6 +96,16 @@ export function renderChatRow(opts) {
         const muted = unreadMuted ? ' muted' : '';
         meta.push(`<span class="unread-pill${muted}">${escapeHtml(String(unread))}</span>`);
     }
+
+    const monitorBtn =
+        typeof monitorEnabled === 'boolean'
+            ? `<button class="chat-row-monitor ml-1 w-8 h-8 inline-flex items-center justify-center rounded-full ${monitorEnabled ? 'text-tg-green' : 'text-tg-textSecondary'} hover:bg-tg-hover hover:text-tg-text transition shrink-0"
+                      data-action="monitor-toggle" data-current="${monitorEnabled ? '1' : '0'}"
+                      aria-label="${monitorEnabled ? 'Pause monitor' : 'Start monitor'}" title="${monitorEnabled ? 'Pause monitor' : 'Start monitor'}"
+                      type="button">
+                  <i class="${monitorEnabled ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base" aria-hidden="true"></i>
+              </button>`
+            : '';
 
     const cogBtn = cog
         ? `<button class="chat-row-cog ml-2 w-8 h-8 inline-flex items-center justify-center rounded-full text-tg-textSecondary hover:bg-tg-hover hover:text-tg-text transition shrink-0"
@@ -130,6 +145,7 @@ export function renderChatRow(opts) {
                 ${chipsHtml}
             </div>
             ${meta.length ? `<div class="row-meta">${meta.join('')}</div>` : ''}
+            ${monitorBtn}
             ${cogBtn}
         </div>`;
 }

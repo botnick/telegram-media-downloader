@@ -228,7 +228,12 @@ function _renderHistogram(hist) {
         svgEl.innerHTML = '';
         return;
     }
-    const maxN = Math.max(1, ...counts);
+    // Bounded loop instead of `Math.max(1, ...counts)` — counts is
+    // 20 bins today (safe to spread), but the OOM guard in
+    // scripts/check-oom-patterns.sh flags every Math.max(...spread) so
+    // we keep a uniform "no spread on dynamic arrays" rule everywhere.
+    let maxN = 1;
+    for (const n of counts) if (n > maxN) maxN = n;
     const W = 600;
     const H = 140;
     const PLOT_TOP = 8; // breathing room above the tallest bar

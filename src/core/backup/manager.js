@@ -243,9 +243,13 @@ export function removeDestination(id) {
  * ship to the dashboard.
  */
 export function listDestinations({ scrubbed = true } = {}) {
+    // Backup destinations are typically <10 rows in practice, but the
+    // table is unbounded by design — defence-in-depth cap keeps a
+    // hand-edited DB from blowing the heap. See CLAUDE.md "Big-data
+    // patterns".
     const rows = getDb()
         .prepare(`
-        SELECT * FROM backup_destinations ORDER BY id DESC
+        SELECT * FROM backup_destinations ORDER BY id DESC LIMIT 1000
     `)
         .all();
     return scrubbed ? rows.map(_scrubDest) : rows;
@@ -288,16 +292,18 @@ export async function runBackup(id) {
         return { started: true, mode: dest.mode };
     }
     // Mirror catch-up: enqueue every DB download whose backup hasn't
-    // been done yet.
+    // been done yet. Stream the rows — `.all()` over a million-row library
+    // would push the in-process JS heap past the V8 limit on small VMs
+    // (Synology, single-vCPU droplets) and crash inside `Statement::JS_all`.
     let enqueued = 0;
-    const rows = getDb()
+    const iter = getDb()
         .prepare(`
         SELECT id, file_name, file_path, file_size FROM downloads
          WHERE file_path IS NOT NULL
          ORDER BY id ASC
     `)
-        .all();
-    for (const row of rows) {
+        .iterate();
+    for (const row of iter) {
         if (queue.hasJobForDownload(id, row.id)) continue;
         queue.enqueue({
             destinationId: id,

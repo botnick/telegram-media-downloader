@@ -209,27 +209,56 @@ function setupNotifyBell() {
     });
 }
 
+// Coalesce localStorage writes — without this, a 100-log/sec error burst
+// triggers 100 read+stringify+write cycles per second on the main thread.
+// The buffer + unread counter still update in memory immediately so the
+// badge and the open menu reflect the latest state; the actual disk
+// flush is debounced. See CLAUDE.md → Big-data patterns rule 2.
+let _pendingBuf = null;
+let _pendingUnreadDelta = 0;
+let _flushTimer = null;
+function _scheduleFlush() {
+    if (_flushTimer) return;
+    _flushTimer = setTimeout(() => {
+        try {
+            if (_pendingBuf) {
+                _writeBuffer(_pendingBuf);
+                _pendingBuf = null;
+            }
+            if (_pendingUnreadDelta) {
+                _writeUnread(_readUnread() + _pendingUnreadDelta);
+                _pendingUnreadDelta = 0;
+            }
+        } catch {}
+        _flushTimer = null;
+    }, 100);
+}
+
 // Wired by app.js's WS dispatcher — every `log` event with level >= warn
 // gets pushed into the bell buffer + badge increments + tab title flashes.
 export function pushLogToNotify(entry) {
     if (!entry) return;
     const level = entry.level || 'info';
     if (level !== 'warn' && level !== 'error') return;
-    const buf = _readBuffer();
+    const buf = _pendingBuf || _readBuffer();
     buf.push({
         ts: entry.ts || Date.now(),
         source: entry.source || 'app',
         level,
         msg: String(entry.msg || '').slice(0, 400),
     });
-    _writeBuffer(buf);
+    // Cap in memory before we ever serialise — keeps a runaway burst
+    // from blowing the heap during the debounce window.
+    while (buf.length > NOTIFY_MAX) buf.shift();
+    _pendingBuf = buf;
     const open = document.getElementById('notify-bell-menu')?.classList.contains('open');
     if (!open) {
-        _writeUnread(_readUnread() + 1);
-        _setBadge(_readUnread());
+        _pendingUnreadDelta += 1;
+        _setBadge(_readUnread() + _pendingUnreadDelta);
         _flashTabTitle(entry.msg || i18nT('header.notifications', 'Notification'));
     }
     if (open) _renderNotifyList();
+    _scheduleFlush();
 }
 
 export function initHeaderMobile() {

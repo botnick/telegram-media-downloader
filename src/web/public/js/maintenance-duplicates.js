@@ -166,32 +166,29 @@ function _renderRow(file, set) {
 }
 
 function _renderSet(set, idx) {
-    // Reclaim per set = (count - 1) × fileSize. We show this prominently
-    // because it's the actual win — the "X copies" number alone doesn't
-    // tell you whether deleting them is worth a click.
     const reclaim = Math.max(0, set.count - 1) * (Number(set.fileSize) || 0);
     const previewThumb =
         set.files?.[0]?.id != null
             ? `<img loading="lazy" decoding="async"
-                 class="w-10 h-10 object-cover rounded-md bg-tg-bg/40 shrink-0 ring-1 ring-tg-border/40"
-                 src="/api/thumbs/${encodeURIComponent(set.files[0].id)}?w=120" alt="" onerror="this.style.display='none'">`
-            : '';
+                 class="w-14 h-14 object-cover rounded-lg bg-tg-bg/40 shrink-0 ring-1 ring-tg-border/40"
+                 src="/api/thumbs/${encodeURIComponent(set.files[0].id)}?w=160" alt="" onerror="this.style.display='none'">`
+            : '<div class="w-14 h-14 rounded-lg bg-tg-bg/40 shrink-0 ring-1 ring-tg-border/40 flex items-center justify-center text-tg-textSecondary"><i class="ri-file-copy-2-line text-lg"></i></div>';
+    const shortHash = String(set.hash || '').slice(0, 12);
     return `
-        <div class="bg-tg-bg/30 rounded-xl p-3 mb-2 border border-tg-border/30 hover:border-tg-blue/30 transition-colors" data-set="${escapeHtml(set.hash)}" data-set-idx="${idx}">
+        <div class="bg-tg-panel rounded-xl p-3 mb-2 border border-tg-border/30 hover:border-tg-blue/40 hover:shadow-lg hover:shadow-tg-blue/5 transition-all" data-set="${escapeHtml(set.hash)}" data-set-idx="${idx}">
             <div class="flex items-center gap-3 mb-2">
                 ${previewThumb}
                 <div class="min-w-0 flex-1">
-                    <div class="text-sm text-tg-text font-medium tabular-nums">
-                        ${escapeHtml(
-                            i18nTf(
-                                'maintenance.dedup.set_header_v2',
-                                { count: set.count, size: _formatBytes(set.fileSize) },
-                                `${set.count} copies · ${_formatBytes(set.fileSize)} each`,
-                            ),
-                        )}
+                    <div class="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue font-medium">
+                            <i class="ri-stack-line"></i>${set.count}
+                        </span>
+                        <span class="text-sm text-tg-text font-medium tabular-nums">${escapeHtml(_formatBytes(set.fileSize))}</span>
+                        <span class="text-[10px] text-tg-textSecondary/60 font-mono">${escapeHtml(shortHash)}…</span>
                     </div>
-                    <div class="text-[11px] text-tg-green tabular-nums">
-                        <i class="ri-coins-line"></i> ${escapeHtml(
+                    <div class="text-[11px] text-tg-green tabular-nums inline-flex items-center gap-1">
+                        <i class="ri-coins-line"></i>
+                        ${escapeHtml(
                             i18nTf(
                                 'maintenance.dedup.set_reclaim',
                                 { size: _formatBytes(reclaim) },
@@ -209,7 +206,7 @@ function _renderSet(set, idx) {
                             data-i18n="maintenance.duplicates.keep_newest">Keep newest</button>
                 </div>
             </div>
-            <div class="space-y-0.5 pl-1">${set.files.map((f) => _renderRow(f, set)).join('')}</div>
+            <div class="space-y-1 pl-1">${set.files.map((f) => _renderRow(f, set)).join('')}</div>
         </div>`;
 }
 

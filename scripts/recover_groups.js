@@ -226,9 +226,36 @@ function summary(label, groups) {
         );
     }
 
+    // Synthetic-id warning — `unknown:<folderName>` rows came from
+    // reindexFromDisk and have no Telegram entity attached. The monitor
+    // resolves them on next start by matching the folder name against
+    // each loaded account's joined dialogs; if none of the loaded
+    // accounts is a member of the chat, the resolver auto-disables
+    // them and surfaces the list on Maintenance → Recovery cleanup.
+    const syntheticIds = restored.filter((g) => String(g.id).startsWith('unknown:'));
+    if (syntheticIds.length) {
+        console.log(`\n⚠️  ${syntheticIds.length} restored group(s) carry "unknown:<folder>" ids.`);
+        console.log('    These came from a CLI reindex of files on disk and have no Telegram');
+        console.log('    entity attached. The monitor will try to resolve them against your');
+        console.log("    loaded accounts on next start; rows it can't match will be auto-");
+        console.log('    disabled and listed on Maintenance → Recovery cleanup.');
+        console.log('');
+        console.log('    Tip: if these channels were originally downloaded by a DIFFERENT');
+        console.log('    Telegram account, add that account in Settings → Telegram Accounts');
+        console.log('    BEFORE the next monitor restart so the resolver has a chance to match.');
+        // Force enabled:false for synthetic ids regardless of --enable so
+        // the user doesn't get a 24-line "no account has access" log spam
+        // on the very first monitor start. They can flip them back on
+        // from the dashboard once an account is wired up.
+        if (ENABLE) {
+            for (const g of syntheticIds) g.enabled = false;
+            console.log('    --enable was passed but synthetic ids stay disabled until resolved.');
+        }
+    }
+
     const enabledCount = restored.filter((g) => g.enabled).length;
     console.log(
-        `\nDefault: enabled=${ENABLE ? 'true (per --enable)' : 'false (safe — flip on the dashboard)'}.`,
+        `\nDefault: enabled=${ENABLE ? 'true (per --enable, except synthetic)' : 'false (safe — flip on the dashboard)'}.`,
     );
     console.log(`Will write ${enabledCount}/${restored.length} as enabled.\n`);
 

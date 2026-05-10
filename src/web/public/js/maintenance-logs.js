@@ -32,7 +32,10 @@ const SOURCE_HUE = {
 };
 const SOURCES = Object.keys(SOURCE_HUE);
 const LEVEL_RANK = { info: 0, warn: 1, error: 2 };
-const MAX_LINES = 1000;
+// Per-viewport cap — 500 on mobile (each row carries listeners + DOM
+// children so 1 000 rows on an old phone gets jank-y), 1 000 on desktop.
+const MAX_LINES =
+    typeof window !== 'undefined' && window.innerWidth && window.innerWidth < 640 ? 500 : 1000;
 
 let _wsWired = false;
 let _pageWired = false;

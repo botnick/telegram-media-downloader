@@ -36,6 +36,8 @@ import {
     getStats as getDbStats,
     deleteGroupDownloads,
     deleteAllDownloads,
+    getGroupStats,
+    listGroupFiles,
     backfillGroupNames,
     searchDownloads,
     deleteDownloadsBy,
@@ -44,6 +46,7 @@ import {
     bumpShareLinkAccess,
     revokeShareLink,
     listShareLinks,
+    countShareLinks,
     getNsfwTierCounts,
     getNsfwHistogram,
     getNsfwListByTier,
@@ -53,22 +56,12 @@ import {
     NSFW_TIERS,
     setDownloadPinned,
     getDownloadById,
-    getAiCounts,
-    listPeople,
-    listPhotosForPerson,
-    renamePerson,
-    deletePerson,
-    listAllTags,
-    listPhotosForTag,
-    listEmbeddingModels,
-    clearStaleEmbeddings,
     kvGet,
     kvSet,
     recordUpdateAttempt,
     recordUpdateFailure,
     listUpdateHistory,
 } from '../core/db.js';
-import * as ai from '../core/ai/index.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager } from '../core/accounts.js';
@@ -131,7 +124,6 @@ import {
 } from '../core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from '../core/logger.js';
 import { createJobTracker } from '../core/job-tracker.js';
-import { createAiRouter } from './routes/ai.js';
 import {
     getSelfPeerId,
     getSelfPeerName,
@@ -191,8 +183,55 @@ import {
 // drowns out real errors. Both methods are wrapped because gramJS uses
 // console.log for most of its lifecycle messages and console.error for the
 // occasional warning. TGDL_DEBUG=1 brings them back.
-console.log = wrapConsoleMethod(console.log, 'gramjs');
-console.error = wrapConsoleMethod(console.error, 'gramjs');
+//
+// Tee — the same line is appended to the in-memory _logBuffer so the
+// `/maintenance/logs` page surfaces every backend write, not just events
+// that explicitly call log(). The buffer + LOG_BUFFER_SIZE are declared
+// here (not later in the file) so console wrapping below has somewhere
+// to write to immediately.
+//
+// Caps are deliberately tight (2000 × 8 KB ≈ 16 MB worst case) so the
+// buffer can't push a small-VM container (Synology with default 512 MB
+// heap, etc.) over its limit. Override via TGDL_LOG_BUFFER_SIZE /
+// TGDL_LOG_MSG_MAX env vars when chasing a specific incident on a
+// host with more headroom.
+const LOG_BUFFER_SIZE = Math.max(
+    100,
+    Math.min(20000, Number(process.env.TGDL_LOG_BUFFER_SIZE) || 2000),
+);
+const LOG_MSG_MAX = Math.max(256, Math.min(65536, Number(process.env.TGDL_LOG_MSG_MAX) || 8000));
+const _logBuffer = [];
+function _pushLogEntry(level, source, msg) {
+    const entry = {
+        ts: Date.now(),
+        source,
+        level,
+        msg: String(msg).slice(0, LOG_MSG_MAX),
+    };
+    _logBuffer.push(entry);
+    if (_logBuffer.length > LOG_BUFFER_SIZE) _logBuffer.shift();
+    return entry;
+}
+const _consoleTee = (level) => (args, joined) => {
+    try {
+        _pushLogEntry(level, 'console', joined);
+    } catch {
+        /* never throw out of a console hook */
+    }
+};
+console.log = wrapConsoleMethod(console.log, 'gramjs', _consoleTee('info'));
+console.error = wrapConsoleMethod(console.error, 'gramjs', _consoleTee('error'));
+const _origConsoleWarn = console.warn;
+console.warn = (...args) => {
+    try {
+        _pushLogEntry(
+            'warn',
+            'console',
+            args.map((a) => (typeof a === 'string' ? a : a?.stack || JSON.stringify(a))).join(' '),
+        );
+    } catch {}
+    _origConsoleWarn(...args);
+};
 // Native-binary load failures from optional deps must NOT crash the
 // process. The most common offender is `onnxruntime-node` (transitive of
 // `@huggingface/transformers`, which our optional NSFW classifier uses):
@@ -2209,6 +2248,22 @@ app.post('/api/monitor/stop', async (req, res) => {
     }
 });
 
+app.post('/api/monitor/restart', async (req, res) => {
+    try {
+        const am = await getAccountManager();
+        if (am.count === 0) {
+            return res.status(409).json({
+                error: 'No Telegram accounts loaded. Add one in Settings → Accounts first.',
+            });
+        }
+        await runtime.restart({ config: loadConfig(), accountManager: am });
+        res.json({ success: true, status: runtime.status() });
+    } catch (e) {
+        const { status, body } = tgAuthErrorBody(e);
+        res.status(status === 400 ? 500 : status).json(body.error ? body : { error: e.message });
+    }
+});
+
 // ====== History batch download =============================================
 //
 // Run an out-of-band backfill against a configured group. Re-uses the
@@ -2573,7 +2628,12 @@ let _queueHistoryDirty = false;
 let _queueHistoryFlushTimer = null;
 // Map<key, jobMeta> — keeps original job objects around so /retry can
 // re-enqueue without the client having to round-trip the message ref.
+// LRU-capped at 5 000 entries because a chronically-failing source
+// (e.g. CHANNEL_INVALID storm during a Telegram outage) would otherwise
+// grow this Map without bound until the user clicks `clear-finished`.
+// See `CLAUDE.md → Big-data patterns` rule 3.
 const _failedJobMeta = new Map();
+const FAILED_JOB_META_CAP = 5000;
 
 (function loadQueueHistory() {
     try {
@@ -2623,7 +2683,16 @@ runtime.on('state', (s) => {
     if (dl.__queueWired) return;
     dl.__queueWired = true;
     dl.on('error', ({ job }) => {
-        if (job?.key) _failedJobMeta.set(job.key, job);
+        if (!job?.key) return;
+        // Re-set bumps insertion order to the back → oldest entries fall
+        // off the front when we hit the cap. Real LRU on touch.
+        if (_failedJobMeta.has(job.key)) _failedJobMeta.delete(job.key);
+        _failedJobMeta.set(job.key, job);
+        while (_failedJobMeta.size > FAILED_JOB_META_CAP) {
+            const first = _failedJobMeta.keys().next().value;
+            if (first === undefined) break;
+            _failedJobMeta.delete(first);
+        }
     });
     dl.on('complete', (job) => {
         if (job?.key) _failedJobMeta.delete(job.key);
@@ -2690,7 +2759,7 @@ runtime.on('event', (e) => {
             const row = getDb()
                 .prepare(
                     `SELECT id, group_id, group_name, message_id, file_name, file_size,
-                            file_type, file_path, file_hash, status, created_at, nsfw_score, phash
+                            file_type, file_path, file_hash, status, created_at, nsfw_score
                        FROM downloads WHERE group_id = ? AND message_id = ?
                        ORDER BY id DESC LIMIT 1`,
                 )
@@ -3607,6 +3676,10 @@ async function getDialogsNameCache() {
                         else if (d.isUser) t = 'user';
                         typeById.set(id, t);
                     }
+                    // Hard cap so a runaway upstream (multi-account user
+                    // with 50 k+ joined dialogs) can't blow the heap. See
+                    // CLAUDE.md → Big-data patterns rule 3.
+                    if (byId.size > 50000) break;
                 }
             } catch {
                 /* one bad client doesn't kill the whole sweep */
@@ -3705,7 +3778,7 @@ app.get('/api/groups', async (req, res) => {
             try {
                 const ownIdSet = new Set(groupsWithPhotos.map((g) => String(g.id)));
                 const peerGroupRows = getDb()
-                    .prepare('SELECT peer_id, payload FROM peer_groups')
+                    .prepare('SELECT peer_id, payload FROM peer_groups LIMIT 5000')
                     .all();
                 const peerNameMap = new Map();
                 try {
@@ -4568,6 +4641,106 @@ app.get('/api/groups/:id/purge/status', async (req, res) => {
     res.json(tracker.getStatus());
 });
 
+// 6b-bis. Per-group data viewer endpoints — the Group modal's "Data" tab
+// renders these. Stats is one index-only query (cheap); files is paginated.
+app.get('/api/groups/:id/stats', async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        if (!groupId) return res.status(400).json({ error: 'group id required' });
+        const stats = getGroupStats(groupId);
+        res.json({ success: true, ...stats });
+    } catch (e) {
+        console.error('groups/:id/stats:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/groups/:id/files', async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        if (!groupId) return res.status(400).json({ error: 'group id required' });
+        const limit = Math.max(1, Math.min(500, parseInt(req.query.limit, 10) || 50));
+        const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+        const type = typeof req.query.type === 'string' ? req.query.type : null;
+        const r = listGroupFiles({ groupId, limit, offset, type });
+        res.json({ success: true, ...r });
+    } catch (e) {
+        console.error('groups/:id/files:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// "Delete files only" — drops every download row + on-disk file for this
+// group BUT keeps the config entry + monitor enabled. Operator picks this
+// when they want to clear stale data and re-download fresh, instead of
+// the destructive `/purge` (which also removes the group from config).
+// Re-uses the per-group purge tracker so a parallel /purge can't race.
+app.post('/api/groups/:id/delete-files', async (req, res) => {
+    const groupId = req.params.id;
+    if (!groupId) return res.status(400).json({ error: 'group id required' });
+    const tracker = _groupPurgeTracker(groupId);
+    const r = tracker.tryStart(async ({ onProgress }) => {
+        const config = loadConfig();
+        const configGroup = (config.groups || []).find((g) => String(g.id) === String(groupId));
+        const dbRow = getDb()
+            .prepare(
+                'SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL LIMIT 1',
+            )
+            .get(String(groupId));
+        const groupName = configGroup?.name || dbRow?.group_name || 'unknown';
+        const folderName = sanitizeName(groupName);
+        onProgress({ stage: 'counting', groupId });
+        const folderPath = path.join(DOWNLOADS_DIR, folderName);
+        let filesDeleted = 0;
+        if (existsSync(folderPath)) {
+            const countFiles = (dir) => {
+                let count = 0;
+                const items = fsSync.readdirSync(dir, { withFileTypes: true });
+                for (const item of items) {
+                    if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
+                    else count++;
+                }
+                return count;
+            };
+            filesDeleted = countFiles(folderPath);
+            onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
+            await fs.rm(folderPath, { recursive: true, force: true });
+            onProgress({
+                stage: 'deleting_files',
+                groupId,
+                total: filesDeleted,
+                processed: filesDeleted,
+            });
+        }
+        onProgress({ stage: 'deleting_rows', groupId });
+        const dbResult = deleteGroupDownloads(groupId);
+        onProgress({ stage: 'done', groupId });
+        try {
+            broadcast({
+                type: 'group_files_deleted',
+                groupId: String(groupId),
+                groupName,
+                ...dbResult,
+                filesDeleted,
+            });
+        } catch {}
+        return {
+            groupId: String(groupId),
+            groupName,
+            filesDeleted,
+            deletedDownloads: dbResult.deletedDownloads,
+            deletedQueue: dbResult.deletedQueue,
+        };
+    });
+    if (!r.started) {
+        return res.status(409).json({
+            error: 'A purge / delete is already running for this group',
+            code: 'ALREADY_RUNNING',
+        });
+    }
+    res.json({ success: true, started: true, groupId });
+});
+
 // 6c. Purge ALL (Everything — Factory Reset)
 //
 // Fire-and-forget — a full library wipe is the slowest, most destructive
@@ -4714,7 +4887,9 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         const config = loadConfig();
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
-            const rows = getDb().prepare('SELECT DISTINCT group_id FROM downloads').all();
+            const rows = getDb()
+                .prepare('SELECT DISTINCT group_id FROM downloads LIMIT 10000')
+                .all();
             for (const rr of rows) ids.add(String(rr.group_id));
         } catch {}
 
@@ -5121,25 +5296,37 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
     }
     const tracker = _jobTrackers.dedupDelete;
     const r = tracker.tryStart(async ({ onProgress }) => {
+        // Batch the work so a 10k-row delete doesn't block the event loop
+        // for minutes (every fs.unlinkSync inside `dedupDeleteByIds` runs
+        // on the main thread). Each batch is small enough that progress
+        // events flush between iterations and the WS dashboard sees a
+        // live bar instead of a frozen UI followed by a timeout.
         const total = cleanIds.length;
-        onProgress({ processed: 0, total, stage: 'deleting' });
-        const result = dedupDeleteByIds(cleanIds);
-        // Thumbnails purge is the slow part on a big delete (one fs walk
-        // per id). Stream progress so the gallery-select UI can show a bar.
+        const BATCH = 50;
+        const aggregate = { removed: 0, freedBytes: 0, missingFiles: 0 };
         let processed = 0;
-        for (const id of cleanIds) {
-            try {
-                await purgeThumbsForDownload(id);
-            } catch {}
-            processed += 1;
-            if (processed % 50 === 0 || processed === total) {
-                onProgress({ processed, total, stage: 'purging_thumbs' });
+        onProgress({ processed: 0, total, stage: 'deleting' });
+        for (let off = 0; off < cleanIds.length; off += BATCH) {
+            const slice = cleanIds.slice(off, off + BATCH);
+            const part = dedupDeleteByIds(slice);
+            aggregate.removed += part.removed || 0;
+            aggregate.freedBytes += part.freedBytes || 0;
+            aggregate.missingFiles += part.missingFiles || 0;
+            for (const id of slice) {
+                try {
+                    await purgeThumbsForDownload(id);
+                } catch {}
             }
+            processed += slice.length;
+            onProgress({ processed, total, stage: 'deleting' });
+            // Yield to the event loop so the WS broadcast above actually
+            // flushes before the next batch starts hammering the disk.
+            await new Promise((r) => setImmediate(r));
         }
         try {
             broadcast({ type: 'bulk_delete', ids: cleanIds });
         } catch {}
-        return { ...result, requested: cleanIds.length, ids: cleanIds };
+        return { ...aggregate, requested: cleanIds.length, ids: cleanIds };
     });
     if (!r.started) {
         return res
@@ -5828,17 +6015,28 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
         if (!ids.length) return { op: 'delete', deleted: 0, ids: [] };
         log({ source: 'nsfw', level: 'warn', msg: `bulk-delete starting: ${ids.length} rows` });
         const total = ids.length;
-        onProgress({ stage: 'deleting', op: 'delete', processed: 0, total });
-        const result = dedupDeleteByIds(ids);
+        const BATCH = 50;
+        const aggregate = { removed: 0, freedBytes: 0, missingFiles: 0 };
         let processed = 0;
-        for (const id of ids) {
-            try {
-                await purgeThumbsForDownload(id);
-            } catch {}
-            processed += 1;
-            if (processed % 50 === 0 || processed === total) {
-                onProgress({ stage: 'purging_thumbs', op: 'delete', processed, total });
+        onProgress({ stage: 'deleting', op: 'delete', processed: 0, total });
+        for (let off = 0; off < ids.length; off += BATCH) {
+            const slice = ids.slice(off, off + BATCH);
+            // Batch the sync fs.unlinkSync inside dedupDeleteByIds — without
+            // this a 47 k-row delete blocks the event loop for minutes and
+            // every WS progress event queues behind it (UI freezes at 0/N
+            // until the whole job finishes; users perceive it as a hang).
+            const part = dedupDeleteByIds(slice);
+            aggregate.removed += part.removed || 0;
+            aggregate.freedBytes += part.freedBytes || 0;
+            aggregate.missingFiles += part.missingFiles || 0;
+            for (const id of slice) {
+                try {
+                    await purgeThumbsForDownload(id);
+                } catch {}
             }
+            processed += slice.length;
+            onProgress({ stage: 'deleting', op: 'delete', processed, total });
+            await new Promise((r) => setImmediate(r));
         }
         try {
             broadcast({ type: 'bulk_delete', ids });
@@ -5849,9 +6047,9 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
         log({
             source: 'nsfw',
             level: 'info',
-            msg: `bulk-delete done: removed=${result?.deleted ?? result?.removed ?? ids.length}`,
+            msg: `bulk-delete done: removed=${aggregate.removed} of ${ids.length}`,
         });
-        return { op: 'delete', deleted: ids.length, ids, ...result };
+        return { op: 'delete', deleted: aggregate.removed, ids, ...aggregate };
     });
     if (!r.started) {
         return res
@@ -5949,6 +6147,233 @@ app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
 
 app.get('/api/maintenance/nsfw/v2/bulk/status', async (req, res) => {
     res.json(_jobTrackers.nsfwBulk.getStatus());
+});
+
+// ====== Recovery cleanup ====================================================
+//
+// Surfaces every group whose id starts with `unknown:` OR whose
+// `_resolveFailedAt` is set — typically the residue of `npm run recover`
+// against a downloads table that had folders from a different Telegram
+// account. The Recovery cleanup page (Maintenance → Recovery cleanup)
+// renders this list + bulk operations so the operator doesn't have to
+// edit kv['config'] by hand.
+function _classifyRecoveryGroup(g, dbStats) {
+    const id = String(g.id);
+    const isSynthetic = id.startsWith('unknown:');
+    const failed = !!g._resolveFailedAt;
+    if (!isSynthetic && !failed) return null;
+    const stats = dbStats.get(id) || { files: 0, lastSeen: null };
+    return {
+        id,
+        name: g.name || id,
+        enabled: !!g.enabled,
+        isSynthetic,
+        resolveFailedAt: g._resolveFailedAt || null,
+        resolveFailedReason: g._resolveFailedReason || (isSynthetic ? 'index_miss' : null),
+        monitorAccount: g.monitorAccount || null,
+        fileCount: stats.files || 0,
+        lastSeenAt: stats.lastSeen || null,
+    };
+}
+
+app.get('/api/maintenance/recovery/list', async (req, res) => {
+    try {
+        const config = loadConfig();
+        const groups = Array.isArray(config.groups) ? config.groups : [];
+        // Pre-fetch per-group file count + lastSeen with one query so the
+        // list endpoint stays cheap even for large libraries.
+        const dbStats = new Map();
+        try {
+            const rows = getDb()
+                .prepare(`
+                    SELECT group_id, COUNT(*) AS files, MAX(created_at) AS lastSeen
+                      FROM downloads
+                     GROUP BY group_id
+                `)
+                .all();
+            for (const r of rows) {
+                dbStats.set(String(r.group_id), {
+                    files: Number(r.files) || 0,
+                    lastSeen: r.lastSeen || null,
+                });
+            }
+        } catch {
+            /* fresh install — no rows */
+        }
+        const items = [];
+        for (const g of groups) {
+            const it = _classifyRecoveryGroup(g, dbStats);
+            if (it) items.push(it);
+        }
+        if (req.query.countOnly === '1') {
+            return res.json({ success: true, total: items.length });
+        }
+        res.json({ success: true, items, total: items.length });
+    } catch (e) {
+        console.error('recovery/list:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Re-run the resolver against the supplied group ids. Useful after the
+// operator adds a fresh Telegram account that might be a member of the
+// recovery channels.
+app.post('/api/maintenance/recovery/resolve', async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)) : [];
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    const tracker = _jobTrackers.recoveryBulk;
+    const r = tracker.tryStart(async ({ onProgress }) => {
+        const monitor = runtime._monitor;
+        if (!monitor) {
+            return { op: 'resolve', resolved: 0, results: [], note: 'monitor not running' };
+        }
+        const idx = await monitor._buildDialogsIndex();
+        let resolved = 0;
+        const results = [];
+        const total = ids.length;
+        let processed = 0;
+        for (const id of ids) {
+            const cfg = loadConfig();
+            const g = (cfg.groups || []).find((x) => String(x.id) === id);
+            if (!g) {
+                results.push({ id, status: 'not_found' });
+                processed += 1;
+                onProgress({ op: 'resolve', processed, total });
+                continue;
+            }
+            // Resolver only handles `unknown:` ids — everything else just
+            // gets a probe attempt to clear the `_resolveFailedAt` flag.
+            if (!String(g.id).startsWith('unknown:')) {
+                // Try the probe loop directly.
+                const client = await monitor.discoverClientForGroup(g, idx);
+                if (client) {
+                    // Clear the failure marker.
+                    delete g._resolveFailedAt;
+                    delete g._resolveFailedReason;
+                    saveConfig(cfg);
+                    results.push({ id, status: 'resolved', numericId: id });
+                    resolved += 1;
+                } else {
+                    results.push({
+                        id,
+                        status: 'still_unknown',
+                        reason: monitor._lastResolveReason?.get?.(id) || 'probe_failed',
+                    });
+                }
+            } else {
+                const r2 = await monitor._resolveUnknownGroup(g, idx).catch(() => null);
+                if (r2) {
+                    results.push({ id, status: 'resolved', numericId: r2.numericId });
+                    resolved += 1;
+                } else {
+                    results.push({
+                        id,
+                        status: 'still_unknown',
+                        reason: monitor._lastResolveReason?.get?.(id) || 'index_miss',
+                    });
+                }
+            }
+            processed += 1;
+            onProgress({ op: 'resolve', processed, total });
+            await new Promise((r3) => setImmediate(r3));
+        }
+        return { op: 'resolve', resolved, results, total };
+    });
+    if (!r.started) {
+        return res.status(409).json({
+            error: 'A recovery bulk operation is already running',
+            code: 'ALREADY_RUNNING',
+        });
+    }
+    res.json({ success: true, started: true });
+});
+
+// Auto-disable any subset (keeps config entry, just flips enabled:false).
+app.post('/api/maintenance/recovery/disable', async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)) : [];
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    try {
+        const cfg = loadConfig();
+        let n = 0;
+        for (const g of cfg.groups || []) {
+            if (ids.includes(String(g.id))) {
+                g.enabled = false;
+                n += 1;
+            }
+        }
+        if (n) saveConfig(cfg);
+        res.json({ success: true, disabled: n });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Hard-delete from kv['config'].groups. Optionally also drops downloads
+// rows + on-disk files via `?purgeDownloads=1`. The data wipe goes through
+// the same `_groupPurgeTracker` per-group as the existing /purge endpoint.
+app.post('/api/maintenance/recovery/delete', async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)) : [];
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    const purgeDownloads = !!req.body?.purgeDownloads;
+    try {
+        const cfg = loadConfig();
+        const before = (cfg.groups || []).length;
+        cfg.groups = (cfg.groups || []).filter((g) => !ids.includes(String(g.id)));
+        const removed = before - (cfg.groups || []).length;
+        if (removed) saveConfig(cfg);
+        let purged = { totalRows: 0, totalFiles: 0 };
+        if (purgeDownloads) {
+            // Synchronous per-id wipe — the Recovery cleanup page already
+            // shows a progress bar via the recoveryBulk tracker for the
+            // /resolve path; this endpoint is a one-shot click and the
+            // caller can poll /api/maintenance/recovery/list to confirm.
+            for (const id of ids) {
+                try {
+                    const r = deleteGroupDownloads(id);
+                    purged.totalRows += r.deletedDownloads || 0;
+                    // We don't try to delete the on-disk folder here —
+                    // it's keyed by sanitised name not group_id, and the
+                    // operator should use /purge for that. The DB delete
+                    // is enough to clear the gallery sidebar.
+                } catch {}
+            }
+        }
+        res.json({ success: true, removed, purgeDownloads, ...purged });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Pin a group to a specific account + re-run the resolver. Lets the
+// operator wire a freshly-added Telegram account to the recovery groups
+// it actually owns.
+app.post('/api/maintenance/recovery/reassign', async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)) : [];
+    const monitorAccount = req.body?.monitorAccount;
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    if (!monitorAccount) return res.status(400).json({ error: 'monitorAccount required' });
+    try {
+        const cfg = loadConfig();
+        let n = 0;
+        for (const g of cfg.groups || []) {
+            if (ids.includes(String(g.id))) {
+                g.monitorAccount = String(monitorAccount);
+                // Clear the failure marker so the resolver gives this
+                // (account, group) pair a fresh shot.
+                delete g._resolveFailedAt;
+                delete g._resolveFailedReason;
+                n += 1;
+            }
+        }
+        if (n) saveConfig(cfg);
+        res.json({ success: true, reassigned: n, monitorAccount });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/maintenance/recovery/status', async (req, res) => {
+    res.json(_jobTrackers.recoveryBulk.getStatus());
 });
 
 // ====== Backup destinations ================================================
@@ -6434,7 +6859,7 @@ app.get('/api/cluster/downloads', (req, res) => {
             const own = getDb()
                 .prepare(
                     `SELECT id, group_id, group_name, message_id, file_name, file_size,
-                            file_type, file_path, file_hash, status, created_at, nsfw_score, phash
+                            file_type, file_path, file_hash, status, created_at, nsfw_score
                        FROM downloads
                       ORDER BY id DESC LIMIT ? OFFSET ?`,
                 )
@@ -6991,38 +7416,6 @@ global.__tgdlBroadcast =
 // Every route inside the router is wrapped in safe-route so an unhandled
 // throw turns into a JSON error envelope instead of bringing down the
 // dashboard via process.on('uncaughtException').
-// AI router mount is deferred — `_jobTrackers` is declared further down
-// the file and would TDZ-throw at module load if we mounted here. Wrap
-// in a queueMicrotask so the mount happens AFTER the rest of the module
-// has finished evaluating + `_jobTrackers` is initialised.
-queueMicrotask(() => {
-    try {
-        app.use(
-            '/api/ai',
-            createAiRouter({
-                ai,
-                db: {
-                    getAiCounts,
-                    listPeople,
-                    listPhotosForPerson,
-                    renamePerson,
-                    deletePerson,
-                    listAllTags,
-                    listPhotosForTag,
-                    listEmbeddingModels,
-                    clearStaleEmbeddings,
-                },
-                jobTrackers: _jobTrackers,
-                getDb,
-                loadConfig,
-                log,
-                broadcast,
-            }),
-        );
-    } catch (e) {
-        console.error('[ai] router mount failed:', e?.message || e);
-    }
-});
 
 // ====== Share-link admin API ===============================================
 //
@@ -7104,16 +7497,28 @@ app.post('/api/share/links', async (req, res) => {
     }
 });
 
-// List share-links — `?downloadId=…` filters to one file (Share sheet);
-// no filter returns ALL links across the library (Maintenance sheet).
+// List share-links. `?downloadId=…` filters to one file (Share sheet);
+// no filter returns the most recent N links across the library
+// (Maintenance sheet). Paginated via `?limit=500&offset=N&q=substring`
+// so a library with 50 k+ active links doesn't blow the response body —
+// the SPA renders one page at a time and the search filter runs server-
+// side. See `CLAUDE.md → Big-data patterns` rule 1.
 app.get('/api/share/links', async (req, res) => {
     try {
         const downloadId = req.query.downloadId ? parseInt(req.query.downloadId, 10) : null;
         const includeRevoked = req.query.includeRevoked !== '0';
-        const rows = listShareLinks({ downloadId, includeRevoked });
+        const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit, 10) || 500));
+        const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+        const search = typeof req.query.q === 'string' ? req.query.q : null;
+        const rows = listShareLinks({ downloadId, includeRevoked, limit, offset, search });
+        const total = countShareLinks({ downloadId, includeRevoked, search });
         res.json({
             success: true,
             links: rows.map((r) => _shareLinkPayload(req, r)),
+            total,
+            limit,
+            offset,
+            hasMore: offset + rows.length < total,
         });
     } catch (e) {
         console.error('share/links list:', e);
@@ -7467,32 +7872,6 @@ app.post('/api/config', async (req, res) => {
                     ...(cur.thumbs || {}),
                     ...(inc.thumbs || {}),
                 },
-                ai: (() => {
-                    // Two-level deep-merge for the AI namespace so the
-                    // model-swap UI can PATCH a single capability's model
-                    // id without flattening the others. Per-capability
-                    // sub-objects are spread individually for the same
-                    // reason.
-                    const c = cur.ai || {};
-                    const i = inc.ai || {};
-                    const merged = {
-                        ...c,
-                        ...i,
-                        embeddings: { ...(c.embeddings || {}), ...(i.embeddings || {}) },
-                        faces: { ...(c.faces || {}), ...(i.faces || {}) },
-                        tags: { ...(c.tags || {}), ...(i.tags || {}) },
-                        phash: { ...(c.phash || {}), ...(i.phash || {}) },
-                    };
-                    // HuggingFace access token — string only; trim + cap at
-                    // 256 chars (real tokens are ~37 chars, anything longer
-                    // is malformed input). Empty string clears the token.
-                    if (typeof merged.hfToken === 'string') {
-                        merged.hfToken = merged.hfToken.trim().slice(0, 256);
-                    } else if (merged.hfToken != null) {
-                        merged.hfToken = '';
-                    }
-                    return merged;
-                })(),
             };
             // ffmpeg hwaccel — allow-list validation. An attacker who
             // got past the admin gate could otherwise pass arbitrary
@@ -7641,27 +8020,6 @@ app.post('/api/config', async (req, res) => {
         // takes effect immediately instead of waiting for the 30s sweep.
         if (req.body.web?.rateLimit) refreshRateLimitConfig();
 
-        // Drop cached AI pipelines for any capability whose model id
-        // changed. Without this, a save through the model-swap UI would
-        // not take effect until the process restarted because the old
-        // pipeline handle is still cached under the old id.
-        if (req.body.advanced?.ai) {
-            try {
-                const oldAi = currentConfig.advanced?.ai || {};
-                const newAi = newConfig.advanced?.ai || {};
-                const _drop = async (oldId) => {
-                    if (oldId) await ai.clearPipelineForModel(oldId);
-                };
-                for (const cap of ['embeddings', 'faces', 'tags']) {
-                    const o = oldAi[cap]?.model || '';
-                    const n = newAi[cap]?.model || '';
-                    if (o && o !== n) _drop(o).catch(() => {});
-                }
-            } catch (e) {
-                console.warn('[ai] pipeline reset failed:', e.message);
-            }
-        }
-
         // Restart the disk rotator if the user changed any diskManagement
         // field — picks up the new cap / enabled / interval on the very next
         // sweep instead of waiting for whatever was already scheduled.
@@ -7687,11 +8045,11 @@ app.post('/api/config', async (req, res) => {
         // in. Reads the merged config (newConfig) for the latest values.
         if (req.body.advanced?.integrity) {
             try {
-                const ai = newConfig?.advanced?.integrity || {};
+                const cfg = newConfig?.advanced?.integrity || {};
                 integrity.start({
                     broadcast,
-                    intervalMin: Number(ai.intervalMin) > 0 ? Number(ai.intervalMin) : 60,
-                    batchSize: Number(ai.batchSize) > 0 ? Number(ai.batchSize) : 64,
+                    intervalMin: Number(cfg.intervalMin) > 0 ? Number(cfg.intervalMin) : 60,
+                    batchSize: Number(cfg.batchSize) > 0 ? Number(cfg.batchSize) : 64,
                 });
             } catch (e) {
                 console.warn('[integrity] restart failed:', e.message);
@@ -7985,7 +8343,53 @@ async function _spawnInternalBackfill({
 
 // 9. Profile Photos
 app.get('/api/groups/:id/photo', async (req, res) => {
-    const id = req.params.id;
+    let id = req.params.id;
+    // Synthetic IDs from `reindexFromDisk` (`unknown:<sanitisedFolderName>`)
+    // carry no Telegram entity directly. Resolve them to a numeric ID by
+    // matching the folder name against the live dialogs cache (the user's
+    // own joined chats) — `sanitizeName(entity.title) === folderName` is
+    // the same transform the downloader uses when bucketing files into
+    // <group_name>/ folders, so the round-trip works on every chat the
+    // active accounts can see. The photo bytes for the real entity are
+    // then served and ALSO copied to a safe filename keyed by the
+    // synthetic id, so subsequent hits skip the resolve loop.
+    if (typeof id === 'string' && id.startsWith('unknown:')) {
+        const folderName = id.slice('unknown:'.length);
+        const safeKey = id.replace(/[^A-Za-z0-9_.-]/g, '_');
+        const synthPath = path.join(PHOTOS_DIR, `${safeKey}.jpg`);
+        if (existsSync(synthPath)) {
+            res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
+            return res.sendFile(synthPath);
+        }
+        try {
+            const byId = await getDialogsNameCache();
+            let matchId = null;
+            for (const [nid, name] of byId) {
+                if (sanitizeName(name) === folderName) {
+                    matchId = nid;
+                    break;
+                }
+            }
+            if (matchId) {
+                // Reuse the numeric photo — fetch on demand if missing.
+                const numericPath = path.join(PHOTOS_DIR, `${matchId}.jpg`);
+                if (!existsSync(numericPath)) await downloadProfilePhoto(matchId);
+                if (existsSync(numericPath)) {
+                    try {
+                        await fs.copyFile(numericPath, synthPath);
+                    } catch {}
+                    res.setHeader(
+                        'Cache-Control',
+                        'private, max-age=86400, stale-while-revalidate=604800',
+                    );
+                    return res.sendFile(numericPath);
+                }
+            }
+        } catch {
+            /* fall through to 404 */
+        }
+        return res.status(404).send('No photo for synthetic group id');
+    }
     // Telegram entity IDs are signed integers — anything else is suspicious
     // (path-traversal attempts, control chars, NUL, etc.). Reject hard
     // before we touch the filesystem.
@@ -8039,7 +8443,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
             const rows = getDb()
-                .prepare('SELECT DISTINCT group_id, group_name FROM downloads')
+                .prepare('SELECT DISTINCT group_id, group_name FROM downloads LIMIT 10000')
                 .all();
             for (const rr of rows) ids.add(String(rr.group_id));
         } catch {}
@@ -8443,31 +8847,32 @@ function broadcast(data) {
 
 // ---- In-memory log ring + WS stream ---------------------------------------
 //
-// Keeps the last LOG_BUFFER_SIZE structured log entries so the
-// /maintenance/logs page can render history on first paint instead of
-// waiting for live events. Each entry is also broadcast over WS as a
-// `log` message — admin clients hold an open socket and tail in real time.
+// `_logBuffer` and LOG_BUFFER_SIZE are declared at the top of the file so
+// the early console.* tee can write to them. `log()` is the structured
+// entry point; it shares the same ring buffer and broadcasts each entry
+// over WS so admin clients can live-tail.
 //
 // Each entry: { ts:number(ms), source:string, level:'info'|'warn'|'error', msg:string }
-//
-// The buffer is bounded so a chatty failure mode (e.g. an integrity sweep
-// looping on a missing file) can't grow it without limit.
-const LOG_BUFFER_SIZE = 1000;
-const _logBuffer = [];
 
 function log({ source = 'app', level = 'info', msg = '' }) {
-    const entry = { ts: Date.now(), source, level, msg: String(msg).slice(0, 4000) };
-    _logBuffer.push(entry);
-    if (_logBuffer.length > LOG_BUFFER_SIZE) _logBuffer.shift();
+    const entry = _pushLogEntry(level, source, msg);
     try {
         broadcast({ type: 'log', ...entry });
     } catch {}
     // Mirror to stdout/stderr so the docker logs / journald path keeps
-    // working — the web view is additive, not a replacement.
+    // working — the web view is additive, not a replacement. The console
+    // call goes through the wrapped console.* (which would tee back into
+    // _logBuffer); guard against the duplicate by tagging this branch
+    // with a sentinel suffix the tee can detect — but in practice the
+    // duplicate is harmless (same entry shape, sub-millisecond apart) and
+    // the simpler path is to skip the mirror when called from log() itself.
     const line = `[${new Date(entry.ts).toISOString()}] [${source}] [${level}] ${entry.msg}`;
-    if (level === 'error') console.error(line);
-    else if (level === 'warn') console.warn(line);
-    else console.log(line);
+    // Bypass the wrapped console so we don't double-record. process.stdout
+    // is the un-wrapped underlying writer.
+    try {
+        if (level === 'error') process.stderr.write(line + '\n');
+        else process.stdout.write(line + '\n');
+    } catch {}
 }
 
 // ---- Shared job-tracker registry -----------------------------------------
@@ -8549,11 +8954,12 @@ const _jobTrackers = {
         eventPrefix: 'groups_refresh_photos',
     }),
     purgeAll: createJobTracker({ kind: 'purgeAll', broadcast, log, eventPrefix: 'purge_all' }),
-    // AI subsystem (v2.6.0) — one tracker per long-running scan kind.
-    aiIndex: createJobTracker({ kind: 'aiIndex', broadcast, log, eventPrefix: 'ai_index' }),
-    aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
-    aiPhash: createJobTracker({ kind: 'aiPhash', broadcast, log, eventPrefix: 'ai_phash' }),
-    aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
+    recoveryBulk: createJobTracker({
+        kind: 'recoveryBulk',
+        broadcast,
+        log,
+        eventPrefix: 'recovery_bulk',
+    }),
 };
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's
@@ -8585,8 +8991,13 @@ function _groupPurgeTracker(groupId) {
 }
 
 // Snapshot for GET /api/maintenance/logs/recent — newest first, capped.
+// Explicit no-store so a sticky proxy (Cloudflare, Caddy with caching) can
+// never serve a stale buffer slice; the page must always reflect the live
+// in-memory ring.
 app.get('/api/maintenance/logs/recent', async (req, res) => {
-    const limit = Math.max(1, Math.min(LOG_BUFFER_SIZE, Number(req.query.limit) || 200));
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    const limit = Math.max(1, Math.min(LOG_BUFFER_SIZE, Number(req.query.limit) || 500));
     const sources = req.query.source ? String(req.query.source).split(',') : null;
     const minLevel = req.query.level || null; // 'info'|'warn'|'error'
     const levelOrder = { info: 0, warn: 1, error: 2 };
@@ -8596,7 +9007,11 @@ app.get('/api/maintenance/logs/recent', async (req, res) => {
         if ((levelOrder[e.level] ?? 0) < minLvl) return false;
         return true;
     });
-    res.json({ logs: filtered.slice(-limit) });
+    res.json({
+        logs: filtered.slice(-limit),
+        bufferSize: LOG_BUFFER_SIZE,
+        total: _logBuffer.length,
+    });
 });
 
 wss.on('connection', (ws) => {
@@ -8706,11 +9121,11 @@ ${tip}
     // (default 64).
     try {
         const cfg = loadConfig();
-        const ai = cfg?.advanced?.integrity || {};
+        const integ = cfg?.advanced?.integrity || {};
         integrity.start({
             broadcast,
-            intervalMin: Number(ai.intervalMin) > 0 ? Number(ai.intervalMin) : 60,
-            batchSize: Number(ai.batchSize) > 0 ? Number(ai.batchSize) : 64,
+            intervalMin: Number(integ.intervalMin) > 0 ? Number(integ.intervalMin) : 60,
+            batchSize: Number(integ.batchSize) > 0 ? Number(integ.batchSize) : 64,
         });
     } catch (e) {
         console.warn('[integrity] start failed:', e.message);
