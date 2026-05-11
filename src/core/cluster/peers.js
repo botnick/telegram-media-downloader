@@ -38,11 +38,19 @@ function assertPeerId(peerId) {
 }
 
 /**
- * List every paired remote peer. Self is NOT included — the caller can
+ * List every paired remote peer. Self is excluded — the caller can
  * splice in identity if it wants a "this+others" view.
+ *
+ * The filter here is a belt-and-suspenders guard. The upsertPeer() call
+ * already throws if peerId === getSelfPeerId(), but an older migration
+ * or a DB edit could leave a stale self-row. Filtering here ensures
+ * self never surfaces via the API regardless of what's in the table.
  */
 export function listPeers() {
-    return dbListPeers().map(toPublic);
+    const selfId = getSelfPeerId();
+    return dbListPeers()
+        .filter((r) => r.peer_id !== selfId)
+        .map(toPublic);
 }
 
 export function getPeer(peerId) {

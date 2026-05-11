@@ -1616,7 +1616,7 @@
     "cluster.pairing_code.title": "Pairing code",
     "cluster.pairing_code.help": "บอกรหัสนี้ให้ผู้ใช้บน peer อีกฝั่ง — ใช้ได้ 5 นาที ใช้ได้ครั้งเดียว",
     "cluster.pairing_code.expires": "หมดอายุใน 5 นาที",
-    "cluster.peers.title": "Peer ที่ pair ไว้",
+    "cluster.peers.title": "Peer ที่เชื่อมต่ออยู่",
     "cluster.peers.empty": "ยังไม่มี peer — เพิ่มเครื่องแรกเพื่อเริ่ม federate",
     "cluster.peer.add": "เพิ่ม peer",
     "cluster.peer.add.title": "Pair peer ใหม่",

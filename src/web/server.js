@@ -8601,23 +8601,16 @@ app.post('/api/cluster/handshake', async (req, res) => {
     if (!v) return;
     try {
         const body = req.body || {};
-        // The remote sends `body.url` empty — derive from headers so the
-        // pairing url is whatever the remote can actually reach us at.
-        const inferredUrl = (() => {
-            try {
-                const proto =
-                    req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
-                const host = req.headers['x-forwarded-host'] || req.headers.host;
-                if (!host) return body.url || '';
-                return `${proto}://${host}`;
-            } catch {
-                return body.url || '';
-            }
-        })();
+        // body.url is the initiator's own reachable URL (sent since v2.17).
+        // Older peers send '' — store 'unknown' in that case and let the
+        // operator correct it via Edit. The Host header is the target's
+        // hostname (this server), NOT the caller's URL, so we never use it
+        // as a fallback here to avoid recording the wrong address.
+        const callerUrl = String(body.url || '').trim() || 'unknown';
         const peer = acceptHandshake({
             peerId: body.peer_id,
             name: body.name,
-            url: body.url || inferredUrl || 'unknown',
+            url: callerUrl,
             version: body.version || null,
             sharedSecret: body.shared_secret || null,
             pairingCode: body.pairing_code || null,
@@ -8715,7 +8708,21 @@ app.post('/api/cluster/peers', async (req, res) => {
         return res.status(400).json({ error: 'url + (token or pairingCode) are required' });
     }
     try {
-        const r = await initiateHandshake({ url, token, pairingCode });
+        // Derive this server's own reachable URL so the receiving peer can
+        // store it as the callback URL. PUBLIC_URL is the authoritative
+        // source; fall back to inferring from the incoming request headers.
+        const selfUrl = (() => {
+            if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, '');
+            try {
+                const proto =
+                    req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
+                const host = req.headers['x-forwarded-host'] || req.headers.host;
+                return host ? `${proto}://${host}` : '';
+            } catch {
+                return '';
+            }
+        })();
+        const r = await initiateHandshake({ url, token, pairingCode, selfUrl });
         if (!r.ok) {
             return res.status(400).json({ error: r.message, code: r.code });
         }
