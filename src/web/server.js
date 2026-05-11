@@ -5737,16 +5737,33 @@ app.post('/api/maintenance/dedup/scan', async (req, res) => {
                 (s, x) => s + Number(x.fileSize || 0) * Math.max(0, (x.count || 0) - 1),
                 0,
             );
-            kvSet('dedup_last_scan', {
-                finishedAt: Date.now(),
-                scanned: result?.scanned || 0,
-                hashed: result?.hashed || 0,
-                duplicateSets: sets.length,
-                extraCopies: extras,
-                reclaimableBytes: reclaim,
-            });
+            // When aborted mid-run the scan returns partial results
+            // (signal.aborted set). Persist that state so the stats panel
+            // can show "resume" affordance after a server restart.
+            const wasAborted = signal?.aborted;
+            if (wasAborted) {
+                kvSet('dedup_scan_progress', {
+                    stoppedAt: Date.now(),
+                    scanned: result?.scanned || 0,
+                    hashed: result?.hashed || 0,
+                    partial: true,
+                });
+            } else {
+                // Completed scan clears any lingering partial-progress entry.
+                try {
+                    kvSet('dedup_scan_progress', null);
+                } catch {}
+                kvSet('dedup_last_scan', {
+                    finishedAt: Date.now(),
+                    scanned: result?.scanned || 0,
+                    hashed: result?.hashed || 0,
+                    duplicateSets: sets.length,
+                    extraCopies: extras,
+                    reclaimableBytes: reclaim,
+                });
+            }
         } catch {}
-        return result;
+        return { ...result, aborted: signal?.aborted || false };
     });
     if (!r.started) {
         return res
@@ -5761,6 +5778,16 @@ app.post('/api/maintenance/dedup/scan', async (req, res) => {
 // render the duplicate-sets table without re-running the scan. The
 // tracker stores the last result on the snapshot's `.result` field, so
 // the duplicates page reads `r.result.duplicateSets`.
+// Stop a running dedup scan — signals the AbortController inside the
+// JobTracker. The scan loop checks signal.aborted after each file and
+// breaks cleanly, then dedup_done fires with whatever partial result was
+// accumulated. Returns instantly; the caller doesn't need to wait for the
+// scan to wind down (it's typically one-file-latency, i.e. milliseconds).
+app.post('/api/maintenance/dedup/scan/stop', (req, res) => {
+    const wasRunning = _jobTrackers.dedupScan.cancel();
+    res.json({ stopped: true, wasRunning });
+});
+
 app.get('/api/maintenance/dedup/status', async (req, res) => {
     const snap = _jobTrackers.dedupScan.getStatus();
     // Flatten progress into top-level fields for the existing front-end
@@ -5800,7 +5827,12 @@ app.get('/api/maintenance/dedup/stats', async (req, res) => {
             const stored = kvGet('dedup_last_scan');
             if (stored && typeof stored === 'object') lastScan = stored;
         } catch {}
-        res.json({ totalFiles, hashed, missing, lastScan });
+        let partialProgress = null;
+        try {
+            const stored = kvGet('dedup_scan_progress');
+            if (stored && typeof stored === 'object' && stored.partial) partialProgress = stored;
+        } catch {}
+        res.json({ totalFiles, hashed, missing, lastScan, partialProgress });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
