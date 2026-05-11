@@ -3,8 +3,10 @@
  *
  * Returns a tiny WebP for any download row whose source can be turned
  * into a still image:
- *   - Image source (jpg/png/webp/gif/avif/heic/heif/bmp) →
+ *   - Image source (jpg/png/gif/avif/heic/heif/bmp) →
  *       sharp resize → WebP. Fast. Honors EXIF orientation.
+ *   - WebP source → skipped (already web-native; gallery falls back to
+ *       the original file URL so no re-encode or ffmpeg involvement).
  *   - Video source (mp4/mov/m4v/webm/mkv/...) →
  *       ffmpeg seeks 1 s in, scales + encodes to WebP in a single
  *       pass (no intermediate JPEG → sharp transcode), reading nothing
@@ -675,6 +677,13 @@ export async function getOrCreateThumb(downloadId, widthHint) {
     const srcAbs = _resolveDownloadAbs(row.file_path);
     if (!srcAbs) return null;
 
+    // WebP source files are already web-native images — no thumbnail
+    // generation needed. sharp can technically re-encode them but some
+    // WebPs (animated, unusual EXIF, stripped ICC) cause ffmpeg/sharp
+    // errors. Returning null here lets the gallery fall back to the
+    // original file URL, which is already the right format for the browser.
+    if (path.extname(srcAbs).toLowerCase() === '.webp') return null;
+
     const kind = _kindFromPath(srcAbs, row.file_type);
     if (!kind) return null;
 
@@ -922,16 +931,21 @@ export async function buildAllThumbnails(opts = {}) {
     const typeFilter =
         types && types.length ? `AND file_type IN (${types.map(() => '?').join(',')})` : '';
     const args = types && types.length ? types : [];
+    // Exclude WebP source files at the SQL level — they are already web-native
+    // images and getOrCreateThumb returns null for them (no-op). Filtering here
+    // keeps the scanned count accurate (WebPs are not counted) and avoids a
+    // redundant DB round-trip + cache-key stat per WebP row.
+    const webpFilter = "AND (file_path IS NULL OR LOWER(file_path) NOT LIKE '%.webp')";
     const total = db
         .prepare(`
         SELECT COUNT(*) AS n FROM downloads
-         WHERE file_path IS NOT NULL ${typeFilter}
+         WHERE file_path IS NOT NULL ${typeFilter} ${webpFilter}
     `)
         .get(...args).n;
     const iter = db
         .prepare(`
         SELECT id FROM downloads
-         WHERE file_path IS NOT NULL ${typeFilter}
+         WHERE file_path IS NOT NULL ${typeFilter} ${webpFilter}
          ORDER BY created_at DESC
     `)
         .iterate(...args);
