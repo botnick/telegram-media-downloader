@@ -46,8 +46,10 @@ RUN apt-get update \
 WORKDIR /build
 
 # Install Python deps first (separate from the source copy) so layer
-# caching kicks in when only tgdl_faces/*.py changes.
-COPY pyproject.toml ./
+# caching kicks in when only tgdl_faces/*.py changes. README.md must
+# come along because pyproject.toml's `readme = "README.md"` is
+# validated by hatchling at metadata-prep time.
+COPY pyproject.toml README.md ./
 COPY tgdl_faces ./tgdl_faces
 
 # `--user` lays everything under /root/.local — the runtime stage just
