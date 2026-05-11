@@ -41,10 +41,17 @@ function _saveState(s) {
     kvSet(SYNC_KEY, s || {});
 }
 
-async function _signedFetch(url, { method = 'GET', body = null, signal } = {}) {
+async function _signedFetch(
+    url,
+    { method = 'GET', body = null, signal, targetPeerId = null } = {},
+) {
     const u = new URL(url);
     const path = u.pathname + (u.search || '');
-    const headers = signRequest({ method, path, body });
+    // Use per-pair shared_secret when caller knows the target peer.
+    // Same reasoning as testPeerHealth / proxy.js: the legacy global
+    // cluster_token gets rotated after pairing so signing with it
+    // produces a 401 even on a healthy paired link.
+    const headers = signRequest({ method, path, body, targetPeerId });
     if (body && typeof body !== 'string') {
         body = JSON.stringify(body);
         headers['Content-Type'] = 'application/json';
@@ -75,7 +82,7 @@ export async function syncPeerOnce(peer, { fetcher = _fetcher, limit = 500 } = {
     const url = `${peer.url}/api/cluster/downloads/since?sinceId=${sinceId}&limit=${limit}`;
     let res;
     try {
-        res = await _signedFetch(url, { method: 'GET' });
+        res = await _signedFetch(url, { method: 'GET', targetPeerId: peer.peerId });
     } catch (e) {
         markOffline(peer.peerId);
         const detail = `sync ${peer.peerId}: ${e?.message || String(e)}`;

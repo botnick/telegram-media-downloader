@@ -188,21 +188,11 @@ export function runStateMigration({
         }
     }
 
-    // --- v2.13 AI subsystem removal ---
-    // Strip the now-defunct `advanced.ai` namespace from kv['config'] so
-    // dead keys don't accumulate forever. Idempotent: subsequent boots see
-    // no `ai` field and short-circuit.
-    try {
-        const cfg = kvGet('config');
-        if (cfg?.advanced && Object.prototype.hasOwnProperty.call(cfg.advanced, 'ai')) {
-            delete cfg.advanced.ai;
-            kvSet('config', cfg);
-            log('removed advanced.ai from kv[config]');
-            touched += 1;
-        }
-    } catch (e) {
-        log(`advanced.ai cleanup failed: ${e?.message || e}`);
-    }
+    // (Note: v2.13 once stripped the `advanced.ai` namespace because the
+    // subsystem had been removed. v2.15 brings it back with a richer
+    // schema, so the strip block was deleted. Existing installs that ran
+    // a v2.13 boot will simply re-acquire the namespace from defaults
+    // when they next save config.)
 
     if (touched > 0) {
         log(`migration complete (${touched} item${touched === 1 ? '' : 's'} imported)`);

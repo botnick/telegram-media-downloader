@@ -142,6 +142,52 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `POST` | `/api/maintenance/session/export`| Password-gated session-string export. |
 | `POST` | `/api/maintenance/sessions/revoke-all` | Sign out every dashboard session. |
 
+## Seekbar previews (v2.17)
+
+Opt-in feature — generates WebP sprite-sheet timeline thumbnails for video hover previews. Off by default; flip `config.advanced.seekbar.enabled` (Maintenance → Seekbar previews) to turn on. Backed by a standalone Go sidecar (`seekbar-service/`) that the dashboard auto-spawns on first use.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/seekbar/sprite/:id` | Serves the WebP (or JPEG fallback) sprite-sheet for the given `downloads.id`. Allowed for guest sessions. `Cache-Control: public, max-age=86400, immutable`. 404 when the sprite is still pregenerating or the feature is disabled. |
+| `GET` | `/api/seekbar/meta/:id` | Returns the JSON sidecar (`{ cols, rows, frames, tile_w, tile_h, interval_sec, duration_sec, format, … }`). Guest-readable. Same 404 semantics. |
+| `POST` | `/api/maintenance/seekbar/build-all` | Admin only. Starts the JobTracker backfill — paginates `downloads WHERE file_type='video' AND id NOT IN (SELECT download_id FROM seekbar_sprites)`. Broadcasts `seekbar_progress`. |
+| `POST` | `/api/maintenance/seekbar/build/cancel` | Cancel the in-flight scan. |
+| `GET`  | `/api/maintenance/seekbar/build/status` | JobTracker snapshot. |
+| `GET`  | `/api/maintenance/seekbar/build/stats` | `{lastRun: {finishedAt, processed, generated, skipped, errored, durationMs}}`. Survives restart. |
+| `POST` | `/api/maintenance/seekbar/rebuild` | Wipe every sprite + the table; broadcasts `seekbar_rebuild_progress`. |
+| `GET`  | `/api/maintenance/seekbar/rebuild/status` | JobTracker snapshot. |
+| `POST` | `/api/maintenance/seekbar/regen/:id` | Force-regenerate one row regardless of overwrite policy. |
+| `GET`  | `/api/maintenance/seekbar/stats` | `{count, bytes, ffmpegAvailable, lastRun}`. |
+| `GET`  | `/api/maintenance/seekbar/list` | Cursor-paginated row list. `?beforeId=&limit=`. |
+| `GET`  | `/api/maintenance/seekbar/health` | `{sidecar:{ok, url, mode, version, pid?}, ffmpegAvailable}` — drives the page's status pill. |
+| `GET`  | `/api/maintenance/seekbar/hwaccel-probe` | Proxies the sidecar's hardware probe — `{candidates[], available[], recommended}`. |
+| `POST` | `/api/maintenance/seekbar/sidecar/restart` | Tear down + respawn the Go sidecar. Use after changing hwaccel / concurrency / port range. Broadcasts `seekbar_sidecar_status`. |
+
+## AI / Face clustering (v2.16+)
+
+Opt-in face detection + clustering, backed by the Python sidecar in `faces-service/`. Off by default; flip `config.advanced.ai.enabled` + `config.advanced.ai.faceClustering`. All endpoints are admin-only. See [docs/AI.md](AI.md) for the deep dive.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET`    | `/api/ai/status`                    | `{enabled, faceClustering, sidecar:{ok, url, mode, version, providers_resolved, det_size, …}, scan, peopleCount, facesCount}`. |
+| `POST`   | `/api/ai/scan/start`                | `{feature:'faces'}` — kicks off Phase A (detect+embed) and Phase B (DBSCAN). Auto-flips `enabled=true` so a fresh install doesn't need a separate save round-trip. |
+| `POST`   | `/api/ai/scan/cancel`               | Cancels the active scan; partial detections are kept. |
+| `GET`    | `/api/ai/scan/status?feature=faces` | JobTracker snapshot for the re-mounted page. |
+| `GET`    | `/api/ai/faces/provider-probe`      | Sidecar provider probe — `{candidates[], available[], details[], recommended, current}`. |
+| `POST`   | `/api/ai/faces/restart`             | Restart the faces sidecar (after switching detector model / providers / det_size). Broadcasts `ai_faces_status`. |
+| `POST`   | `/api/ai/faces/install-deps`        | Stream `python -m tgdl_faces.install` over `ai_faces_install_progress` / `ai_faces_install_done`. Accepts `{force?:'cpu'\|'gpu'\|'directml'\|'openvino', dryRun?:bool, noUninstall?:bool}`. |
+| `POST`   | `/api/ai/faces/recluster`           | Re-run DBSCAN over the existing `faces` table without re-detecting (cheap; preserves labels via centroid match). |
+| `POST`   | `/api/ai/faces/reindex`             | Confirm-sheet gated — wipes every detection + cluster and re-scans every photo. Use after switching detector model. Broadcasts `ai_faces_reindexed`. |
+| `GET`    | `/api/ai/people`                    | Cluster list with cover-face + face count. `?page=&limit=`. |
+| `GET`    | `/api/ai/people/:id/photos`         | Paginated photos in this cluster. |
+| `PATCH`  | `/api/ai/people/:id`                | `{label}` — rename. |
+| `DELETE` | `/api/ai/people/:id`                | Drop cluster; faces become unassigned. |
+| `POST`   | `/api/ai/people/:id/merge`          | `{otherId}` — fold one cluster into another. |
+| `POST`   | `/api/ai/people/:id/split`          | `{faceIds, newLabel?}` — create a new cluster from selected faces. |
+| `POST`   | `/api/ai/faces/:id/reassign`        | `{personId}` — move a single face to another cluster. |
+| `GET`    | `/api/ai/faces/by-download/:id`     | Face boxes for the gallery viewer overlay. |
+| `GET`    | `/api/ai/group-by-person`           | Maintenance grid grouped by cluster — drives the People tab. |
+
 ## Auto-update
 
 | Method | Path | Notes |
@@ -193,6 +239,18 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `nsfw_progress`        | `{scanned, total, candidates, keep, running}` |
 | `nsfw_done`            | `{scanned, candidates, keep, durationMs}` |
 | `nsfw_model_downloading` | `{percent}` (first-run only) |
+| `seekbar_progress`     | `{stage, processed, total, generated, skipped, errored}` — backfill scan. |
+| `seekbar_done`         | `{processed, generated, skipped, errored, durationMs}`. |
+| `seekbar_rebuild_progress` / `seekbar_rebuild_done` | Same shape as the build pair, fired by `/api/maintenance/seekbar/rebuild`. |
+| `seekbar_sprite_ready` | `{download_id}` — fires after a per-row pregenerate succeeds (post-download hook or `/regen/:id`); the viewer's hover preview subscribes and flips from `pending` → `ready` in place. |
+| `seekbar_sidecar_status` | `{ok, url?, mode?, version?, error?}` — emitted on sidecar boot / respawn / disable. |
+| `seekbar_config_changed` | `{}` — broadcast after `POST /api/config` touches `advanced.seekbar.*`; the viewer drops its `enabled` cache and the maintenance page reloads its KPI strip. |
+| `ai_faces_status`      | `{ok, url?, mode?, state?, error?}` — sidecar lifecycle (downloading / starting / ready / relaunching / disabled). |
+| `ai_faces_install_progress` | `{state, line}` — line-by-line output of `POST /api/ai/faces/install-deps`. |
+| `ai_faces_install_done` | `{ok, reason?, exitCode?}`. |
+| `ai_faces_dim_change`  | `{from, to}` — broadcast once after the embedding-dim guard purges stale rows on model upgrade. |
+| `ai_faces_reindexed`   | `{ts}` — fired after `/api/ai/faces/reindex` finishes. |
+| `ai_reindex`           | `{processed, indexed, durationMs}` — fired by `/api/ai/reindex`. |
 | `update_started`       | `{backup}` — fired right before watchtower kills the container. |
 | `update_done`          | `{durationMs, kind:'autoUpdate', error?}` — `error` is set when the `/api/update` pipeline threw (pre-flight or trigger). The SPA's stall-overlay handler reads this to surface a toast + tear down the spinner. |
 | `rescue_swept`         | (replaced by `file_deleted` in v2.8 — rescue sweeper now uses the canonical event so the gallery + footer drop the row in-place). |

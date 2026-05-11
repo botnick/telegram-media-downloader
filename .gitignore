@@ -69,3 +69,22 @@ SKILL.md
 CLAUDE.md
 AGENTS.md
 GEMINI.md
+
+# Python sidecar (faces-service/) build artefacts + caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+.venv/
+faces-service/build/
+faces-service/dist/
+faces-service/.coverage
+faces-service/htmlcov/
+
+# Go sidecar (seekbar-service/) build artefacts
+seekbar-service/bin/
+seekbar-service/dist/
+seekbar-service/seekbar-server
+seekbar-service/seekbar-cli

@@ -23,6 +23,8 @@ import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
 import { pregenerateNsfw } from './nsfw.js';
+import { pregenerateAi } from './ai/index.js';
+import { pregenerateSeekbar } from './seekbar/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data');
@@ -1010,19 +1012,41 @@ export class DownloadManager extends EventEmitter {
                 try {
                     pregenerateNsfw(newId);
                 } catch {}
+                try {
+                    // Priority hint: realtime monitor jobs (priority 1) +
+                    // TTL/self-destruct unshifts (priority 0) jump ahead
+                    // of history backfill (priority 2) so live ingest
+                    // never starves behind a 100k-row backfill.
+                    const priority = job?.priority < 2 ? 'realtime' : 'backfill';
+                    pregenerateAi(newId, { priority });
+                } catch {}
                 // Faststart-optimise newly-downloaded MP4s so the
                 // gallery's HTML5 player can seek + start audio
                 // without waiting for the entire mdat to stream
-                // through. No-op for non-video / non-MP4 / already-
-                // optimised rows. Background, fire-and-forget; runs
-                // after the thumb so the first paint of the gallery
-                // sees the cached preview before the (slightly larger)
-                // file replaces the original on disk.
-                if (type === 'video') {
-                    try {
-                        faststartInBackground(newId);
-                    } catch {}
-                }
+                // through. No-op for non-MP4 / already-optimised rows
+                // (the inner function decides by file extension, not
+                // just `file_type`, so operator-mode downloads that
+                // land as `'document'` but ARE `.mp4` still benefit).
+                // Background, fire-and-forget; runs after the thumb so
+                // the first paint of the gallery sees the cached
+                // preview before the (slightly larger) file replaces
+                // the original on disk. Runs for every priority lane
+                // (realtime, TTL, history backfill) — backfilled files
+                // benefit from faststart as much as live ingests.
+                try {
+                    faststartInBackground(newId);
+                } catch {}
+                // Seekbar sprite pregenerate — gated internally by
+                // cfg.advanced.seekbar.{enabled, autoOnDownload}. Runs
+                // AFTER faststart so the sprite matches the final byte
+                // layout (faststart rewrites the moov atom, shifting
+                // frame offsets — a sprite taken before that would
+                // still render correctly but differ in hash from a
+                // post-faststart sample).
+                try {
+                    const priority = job?.priority < 2 ? 'realtime' : 'backfill';
+                    pregenerateSeekbar(newId, { priority });
+                } catch {}
             }
         } catch (e) {
             console.error('DB Insert Error', e);

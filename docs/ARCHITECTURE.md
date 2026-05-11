@@ -43,8 +43,9 @@ flowchart LR
 ```
 data/
 ├── db.sqlite             # downloads, queue, share_links, kv, web_sessions,
-│                          queue_backlog, update_history, image_embeddings,
-│                          backup_destinations / backup_jobs, etc. — WAL mode
+│                          queue_backlog, update_history, faces, people,
+│                          seekbar_sprites, backup_destinations / backup_jobs,
+│                          peer_*, cluster_audit — WAL mode
 │                          (kv holds config + disk_usage + history_jobs +
 │                          queue_history; deep-merged on load)
 ├── secret.key            # AES key for sessions; back this up
@@ -54,7 +55,9 @@ data/
 │   └── <sanitised-group-name>/
 │       ├── images/  videos/  documents/  audio/  stickers/
 ├── thumbs/<sha>.webp     # server-generated WebP thumbnails (cache)
-├── models/               # NSFW + AI model cache (only when feature is enabled)
+├── seekbar/<id>.webp     # video timeline sprite sheets + <id>.json sidecars
+├── faces-service/        # auto-downloaded Python sidecar binary + buffalo_l model cache
+├── models/               # NSFW model cache (only when the feature is enabled)
 ├── backups/              # pre-update DB snapshots (last 5 kept, verified)
 └── logs/
     ├── network.log       # noise-classified gramJS chatter
@@ -74,6 +77,8 @@ data/
 | `update_history` table | `src/core/db.js` (`recordUpdateAttempt` / `recordUpdateFailure` / `finaliseSuccessfulTrigger` / `finalisePendingUpdates`) | (new in v2.8, hardened in v2.10) |
 | `peers` + `peer_*` tables | `src/core/cluster/peers.js` + `src/core/cluster/sync.js` | (new in v2.10) |
 | `cluster_audit` table | `src/core/cluster/audit.js` | (new in v2.10) |
+| `faces` + `people` tables | `src/core/ai/faces.js` + `src/core/db.js` | (new in v2.16) |
+| `seekbar_sprites` table | `src/core/seekbar/generator.js` + `src/core/db.js` | (new in v2.17) |
 
 `saveConfig()` emits a `change` event on an in-process `EventEmitter` after every commit — `monitor.js` subscribes via `watchConfig()` and reloads without any filesystem watcher. Migration from JSON files is one-shot, idempotent, and runs inside `getDb()`; source files are renamed to `*.migrated` and kept as a reversible backup. The auto-update audit table is finalised on every container boot — any `triggered` row whose `from_version` *or* `from_instance_id` differs from the running container is promoted to `success`, capturing the actual transition observed (the `from_instance_id` column was added in v2.10 to handle `:latest`-tag rebuilds where semver is unchanged).
 
@@ -136,7 +141,8 @@ src/web/public/js/
 ├── nsfw-ui.js        # NSFW review sheet (lazy-loaded from settings.js)
 ├── share.js          # Share-link sheet (lazy-loaded from viewer + settings)
 ├── gallery-select.js # Drag-to-select lasso + ctrl/shift gestures + keyboard
-├── viewer.js         # full-screen media viewer
+├── viewer.js         # full-screen media viewer (seekbar sprite hover preview)
+├── maintenance-thumbs.js / maintenance-seekbar.js / maintenance-ai.js / maintenance-nsfw.js / maintenance-video.js / maintenance-duplicates.js / maintenance-logs.js / maintenance-hub.js
 ├── queue.js          # IDM-style queue page (append-on-scroll, in-place patch)
 ├── backfill.js       # Backfill page (active jobs + recent + start)
 ├── engine.js         # Engine card (start/stop/status)
@@ -179,6 +185,19 @@ src/core/
 ├── secret.js         # data/secret.key bootstrap
 ├── metrics.js        # OpenMetrics text format for Prometheus
 ├── job-tracker.js    # Single-flight + WS broadcast lifecycle for fire-and-forget admin jobs
+├── ai/               # Face clustering subsystem (v2.16+, opt-in)
+│   ├── index.js      # Public surface — pregenerateAi() hook, build/cancel, JobTracker drain
+│   ├── faces.js      # DBSCAN clustering + label preservation
+│   ├── faces-client.js  # HTTP client to the Python sidecar
+│   ├── faces-config.js  # kv-config + TGDL_FACES_* env-var precedence
+│   ├── faces-spawn.js   # Binary auto-download / Python fallback / Docker passthrough
+│   └── scan-runner.js   # Phase A (detect + embed) over downloads.iterate
+├── seekbar/          # Video timeline preview subsystem (v2.17+, opt-in)
+│   ├── index.js      # pregenerateSeekbar() hook, build/purge, cache stats
+│   ├── generator.js  # Per-row sprite + sidecar generator (Go sidecar client)
+│   ├── client.js     # HTTP client to the Go sidecar
+│   ├── spawn.js      # Auto-spawn the Go binary on a random localhost port
+│   └── scan-runner.js  # Keyset-paged backfill scan (no cursor across awaits)
 ├── cluster/          # v2.10 federation layer
 │   ├── identity.js   # peer_id, peer_name, cluster_token, pairing codes
 │   ├── peers.js      # CRUD + status tracking
@@ -197,6 +216,24 @@ src/core/
 │   └── router.js     # isLocalGroup() — owner-peer routing helpers
 └── logger.js         # noise classifier + WAL'd network log
 ```
+
+## Out-of-process sidecars (v2.16+)
+
+Two optional sidecars run beside the Node app. Both are off by default; each is gated by a `config.advanced.*.enabled` flag and spawned by Node on first use.
+
+| Sidecar | Language | Source tree | Released as | Spawn module | Purpose |
+|---|---|---|---|---|---|
+| **`tgdl-faces`** | Python (FastAPI + insightface) | `faces-service/` | `ghcr.io/botnick/tgdl-faces:<tag>` + per-platform PyInstaller binaries | `src/core/ai/faces-spawn.js` | Face detection + 512-dim ArcFace embeddings (`buffalo_l`). Multi-platform GPU acceleration (DirectML / CUDA / OpenVINO / CoreML / CPU). |
+| **`tgdl-seekbar`** | Go (stdlib HTTP + ffmpeg) | `seekbar-service/` | `ghcr.io/botnick/tgdl-seekbar:<tag>` + per-platform Go binaries | `src/core/seekbar/spawn.js` | WebP sprite-sheet timeline preview generation for the video player. |
+
+Spawn order on each:
+
+1. Honour an operator override URL (`TGDL_FACES_SIDECAR_URL` / `SEEKBAR_SIDECAR_URL`) — useful when running the sidecar in Docker compose under a fixed hostname.
+2. Otherwise look for a locally cached binary under `data/<service>/bin/` and launch it on a random high port with a freshly minted HMAC token. The token is held in process memory only — never written to disk.
+3. Auto-download the matching prebuilt binary from the GitHub release on first miss (gated by `TGDL_FACES_AUTO_DOWNLOAD` / `SEEKBAR_AUTO_DOWNLOAD`).
+4. For faces only: fall back to `python -m tgdl_faces` when the host has Python ≥3.10 and the package is `pip install`ed.
+
+The dashboard polls each sidecar's `/health` every 60 s; three consecutive failures triggers a respawn. Status transitions broadcast as `ai_faces_status` / `seekbar_sidecar_status` so the Maintenance pages can paint live pills without polling.
 
 ## Fire-and-forget admin jobs (`JobTracker`)
 

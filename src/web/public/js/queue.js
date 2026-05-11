@@ -670,6 +670,15 @@ function renderChips() {
     const host = document.getElementById('queue-chips');
     if (!host) return;
     const total = store.size;
+    // `deduped` is a cross-cutting flag, not a status — statusCounts tracks
+    // active/queued/paused/failed/done only. Count it by sweeping the store
+    // at render time (O(n) where n = store.size, capped by sliding window).
+    // Without this the "Duplicate" chip always showed 0 even when rows
+    // carried the orange Duplicate badge.
+    let dupeCount = 0;
+    for (const j of store.values()) {
+        if (j.deduped === true) dupeCount += 1;
+    }
     const counts = {
         all: total,
         active: statusCounts.get('active') || 0,
@@ -677,6 +686,7 @@ function renderChips() {
         paused: statusCounts.get('paused') || 0,
         failed: statusCounts.get('failed') || 0,
         done: statusCounts.get('done') || 0,
+        dupe: dupeCount,
     };
     host.innerHTML = STATUS_FILTERS.map((f) => {
         const active = view.filter === f.id;

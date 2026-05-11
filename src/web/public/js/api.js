@@ -140,5 +140,6 @@ export const api = {
     get: (url, opts) => request('GET', url, undefined, opts),
     post: (url, data, opts) => request('POST', url, data, opts),
     put: (url, data, opts) => request('PUT', url, data, opts),
+    patch: (url, data, opts) => request('PATCH', url, data, opts),
     delete: (url, data, opts) => request('DELETE', url, data, opts),
 };

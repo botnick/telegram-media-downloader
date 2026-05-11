@@ -1,0 +1,90 @@
+# Release pipeline for the tgdl-seekbar sidecar.
+#
+# Triggered by a `seekbar-v*` tag push — independent from the main
+# app's semver tags so the sidecar ships at its own cadence (ffmpeg /
+# hwaccel matrix updates, Go toolchain bumps).
+#
+# Builds a per-platform Go binary, tar.gz-packs it, and attaches each
+# archive to the GitHub Release. `src/core/seekbar/spawn.js` resolves
+# these tarballs at runtime under
+#   https://github.com/botnick/telegram-media-downloader/releases/download/seekbar-v<VER>/<slug>.tar.gz
+
+name: release-seekbar-service
+
+on:
+  push:
+    tags:
+      - 'seekbar-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-binaries:
+    name: binary (${{ matrix.os }} / ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            goos: windows
+            goarch: amd64
+            slug: tgdl-seekbar-win-x64
+            target: seekbar-server.exe
+          - os: ubuntu-22.04
+            goos: linux
+            goarch: amd64
+            slug: tgdl-seekbar-linux-x64
+            target: seekbar-server
+          - os: ubuntu-22.04-arm
+            goos: linux
+            goarch: arm64
+            slug: tgdl-seekbar-linux-arm64
+            target: seekbar-server
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+            slug: tgdl-seekbar-mac-x64
+            target: seekbar-server
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+            slug: tgdl-seekbar-mac-arm64
+            target: seekbar-server
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: seekbar-service
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.target }}" ./cmd/server
+          ls -lh "dist/${{ matrix.target }}"
+
+      - name: Pack tarball
+        shell: bash
+        run: |
+          cd dist
+          tar -czf "${{ matrix.slug }}.tar.gz" "${{ matrix.target }}"
+          ls -lh "${{ matrix.slug }}.tar.gz"
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: seekbar-service/dist/${{ matrix.slug }}.tar.gz
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,7 +16,7 @@
 set -e
 
 # --- 1. Unbounded .all() over high-cardinality tables ---
-HITS=$(grep -rnE "\.prepare\([^)]*FROM[[:space:]]+(downloads|peer_downloads|cluster_audit|cluster_egress_log|share_links|queue_backlog|update_history)\b" src/ \
+HITS=$(grep -rnE "\.prepare\([^)]*FROM[[:space:]]+(downloads|peer_downloads|cluster_audit|cluster_egress_log|share_links|queue_backlog|update_history|image_embeddings|image_tags|faces)\b" src/ \
     | grep -E "\.all\(" \
     | grep -vE "LIMIT|WHERE[[:space:]]+[A-Za-z_.]+[[:space:]]*=[[:space:]]*\?|WHERE[[:space:]]+[A-Za-z_.]+[[:space:]]+IN[[:space:]]*\(" \
     || true)

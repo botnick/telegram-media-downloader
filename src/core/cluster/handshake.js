@@ -295,7 +295,13 @@ export async function testPeerHealth(peer, { fetcher = globalThis.fetch } = {}) 
     if (!peer?.url) return { ok: false, code: 'bad_peer' };
     const path = '/api/cluster/health';
     const ts = Date.now();
-    const headers = signRequest({ method: 'GET', path, ts });
+    // Pass `targetPeerId` so the v2.10+ per-pair `shared_secret` is used
+    // when present — without it, signRequest falls back to the legacy
+    // global cluster_token, which the receiver may have rotated out after
+    // pairing. That mismatch was the source of "handshake paired → test
+    // token_invalid" reports: the pair derived a new shared secret on
+    // both sides, but Test was still signing with the global token.
+    const headers = signRequest({ method: 'GET', path, ts, targetPeerId: peer.peerId });
     let res;
     try {
         const ac = new AbortController();

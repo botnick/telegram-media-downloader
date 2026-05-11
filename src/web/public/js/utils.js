@@ -36,8 +36,13 @@ export function formatRelativeTime(input) {
 }
 
 export function escapeHtml(text) {
-    if (!text) return '';
-    return text
+    if (text == null) return '';
+    // Coerce non-string input to string. Without this, accidentally
+    // passing an object (e.g. when a WS payload's `msg` is `{...}`
+    // instead of a string) crashes the page with "text.replace is not
+    // a function" because `.replace` is a String.prototype method.
+    const s = typeof text === 'string' ? text : String(text);
+    return s
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')

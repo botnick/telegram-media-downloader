@@ -155,6 +155,24 @@ The grace window defaults to 5 minutes (`cluster.failover_grace_minutes`). Insid
 
 Some consumer routers block intra-LAN UDP broadcasts (so-called "AP isolation" / "client isolation"). Disable that toggle on the router admin page, or pair manually via URL + pairing code (the LAN feature is a convenience only — every cluster operation works fine without it).
 
+## Seekbar previews not showing on hover
+
+The video player's hover tile is opt-in. Three reasons it can be missing:
+
+1. **Feature is off.** Maintenance → Seekbar previews → flip the master toggle. The viewer subscribes to `seekbar_config_changed`, so the preview lights up without a reload.
+2. **Sprite hasn't been generated yet for that video.** The viewer paints a "Generating preview…" shimmer for ≤60 s (poll backoff 4 / 8 / 16 / 32 / 60 s) and flips to the real tile when `seekbar_sprite_ready` fires. For old videos, run **Scan now** from the Maintenance page.
+3. **Federated row from a peer.** The current Layer 1 cluster build returns `null` for `peer_id != 'self'` — the viewer falls back to time-only tooltip on remote rows. Tracked for a future release.
+
+If the sidecar itself won't come up, check **Maintenance → Seekbar previews → Health pill**. Common failures:
+
+- *Sidecar binary download blocked* — set `SEEKBAR_SIDECAR_URL` to a corporate mirror, or build from `seekbar-service/` and drop the binary at `data/seekbar-service/bin/`.
+- *ffmpeg missing on PATH* — the sidecar relies on `ffmpeg` + `ffprobe`. On Docker this is preinstalled; on bare metal `apt-get install ffmpeg` (Debian/Ubuntu) or the equivalent.
+- *Port exhaustion* — the spawn module probes a random high port; if every candidate is taken, the sidecar fails to bind. Restart the dashboard.
+
+## "database is locked" during a seekbar / dedup scan
+
+Pre-v2.17 builds streamed the seekbar backfill via better-sqlite3's `.iterate()` cursor, which holds an exclusive connection lock across `await` boundaries — so a long-running scan could block the realtime downloader's `kv['queue_history']` writer for minutes and surface as `TypeError: This database connection is busy executing a query`. v2.17 rewrote the scan-runner to keyset pagination (`.all()` per batch); upgrade to fix.
+
 ## NSFW classifier won't load: "sharp not loadable"
 
 The classifier's lazy loader couldn't `require('sharp')`. Common causes + fixes:

@@ -70,7 +70,12 @@ export async function openPeerStream(
     const url = `${peer.url}/api/cluster/files/${encodeURIComponent(remotePath)}`;
     const u = new URL(url);
     const path = u.pathname + (u.search || '');
-    const headers = signRequest({ method: 'GET', path });
+    // Pass `targetPeerId` so signRequest uses the per-pair shared_secret
+    // instead of falling back to the legacy global cluster_token. The
+    // remote peer rotated to the per-pair key on handshake; without this
+    // hint the file fetch would 401 even though `Test` and `Handshake`
+    // both succeeded earlier in the same pair lifecycle.
+    const headers = signRequest({ method: 'GET', path, targetPeerId: peer.peerId });
     if (range) headers.Range = range;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), STREAM_TIMEOUT_MS);
@@ -192,7 +197,7 @@ export async function requestSignedShareUrl(
     const body = JSON.stringify({ path: remotePath, ttlSec });
     const u = `${peer.url}/api/cluster/sign-url`;
     const path = '/api/cluster/sign-url';
-    const headers = signRequest({ method: 'POST', path, body });
+    const headers = signRequest({ method: 'POST', path, body, targetPeerId: peerId });
     headers['Content-Type'] = 'application/json';
     const res = await fetcher(u, { method: 'POST', headers, body });
     if (!res.ok) {

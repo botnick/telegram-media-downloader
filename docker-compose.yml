@@ -61,6 +61,25 @@ services:
       # entrypoint's GPU passthrough block (which device, which GID,
       # which group it joined). Quiet by default.
       - ENTRYPOINT_DEBUG_GPU=${ENTRYPOINT_DEBUG_GPU:-0}
+      # NSFW classifier — HF token only needed for gated repos or to dodge
+      # anonymous rate limits on first download. Every default model is
+      # public; leave unset for typical use.
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN:-}
+      # Face clustering sidecar URL. When the `faces` profile is enabled
+      # (`docker compose --profile faces up`), the `tgdl-faces` service
+      # below provides this endpoint and Node's `faces-spawn.js` skips
+      # the local binary auto-spawn path entirely. Outside compose this
+      # stays empty and Node falls back to the bundled PyInstaller
+      # binary downloaded on first use.
+      - FACES_SERVICE_URL=${FACES_SERVICE_URL:-http://tgdl-faces:8011}
+      # Seekbar preview sidecar URL. Leave unset to let the dashboard
+      # auto-spawn the bundled Go binary on a random localhost port;
+      # set when running `seekbar-service/` as a separate compose
+      # service. See seekbar-service/README.md for the standalone setup.
+      - SEEKBAR_SIDECAR_URL=${SEEKBAR_SIDECAR_URL:-}
+      - SEEKBAR_API_TOKEN=${SEEKBAR_API_TOKEN:-}
     # GPU passthrough — uncomment the matching block for your host.
     #
     # Synology (DSM 6 / 7 with Intel iGPU): the device is at /dev/dri/renderD128
@@ -122,6 +141,211 @@ services:
         max-size: "10m"
         max-file: "5"
         compress: "true"
+
+  # Face clustering sidecar. THREE variants are available — pick the one
+  # that matches your host's hardware:
+  #
+  #   CPU only (default; works everywhere):
+  #     docker compose --profile faces up -d
+  #
+  #   NVIDIA CUDA (linux/amd64 host with nvidia-container-toolkit):
+  #     docker compose --profile faces-cuda up -d
+  #
+  #   Intel OpenVINO (Intel iGPU / dGPU / NPU on linux/amd64):
+  #     docker compose --profile faces-openvino up -d
+  #
+  # All three expose port 8011 inside the compose network so the main
+  # app's `FACES_SERVICE_URL=http://tgdl-faces:8011` env var resolves
+  # the same way regardless of which variant is running. Pick exactly
+  # one — they'd race for the same DNS name and port. Outside compose
+  # Node's faces-spawn.js auto-downloads the standalone PyInstaller
+  # binary on first scan instead; the profile is for operators who'd
+  # rather pull a prebuilt multi-arch image than pin a binary to the
+  # host filesystem.
+  #
+  # The images are built by .github/workflows/release-faces-service.yml
+  # and tagged `:latest` (CPU), `:cuda-latest`, `:openvino-latest`.
+  # Watchtower picks them up via the label below.
+  tgdl-faces:
+    image: ghcr.io/botnick/tgdl-faces:latest
+    pull_policy: always
+    container_name: tgdl-faces
+    restart: unless-stopped
+    profiles: ["faces"]
+    volumes:
+      # Read-only mount of the downloads tree so path-mode detect
+      # requests skip the base64 round-trip. The Node app POSTs paths
+      # under /downloads which the allow-list below permits.
+      # Mount the downloads tree at the SAME path the main app sees
+      # (`/app/data/downloads`) so absolute paths produced by Node's
+      # scan-runner work as-is in the sidecar — no Docker-specific path
+      # remapping. Without this, every /detect call falls back to base64
+      # transfer (CPU-bound on the Node side) because the sidecar's
+      # ALLOW_ROOTS doesn't include the Node-side path prefix.
+      - ./data/downloads:/app/data/downloads:ro
+      # Persist the model cache outside the container so an image swap
+      # doesn't re-download buffalo_l on first run. The Dockerfile
+      # pre-bakes the model into the layer, but mounting the volume
+      # means an operator-driven swap (different sidecar version,
+      # custom model) is preserved across `docker compose pull` cycles.
+      - ./data/faces-service/models:/root/.cache/tgdl-faces/models
+    environment:
+      - TGDL_FACES_HOST=0.0.0.0
+      - TGDL_FACES_PORT=8011
+      # Restrict path-mode reads to the downloads volume. Anything
+      # outside this prefix is rejected with 403 and the Node side
+      # falls back to base64.
+      - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
+      - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Cold-start budget for the lazy buffalo_l load on Pi-class
+      # hardware. /health itself responds instantly; the warm-up cost
+      # lands on the first /detect call.
+      start_period: 90s
+    labels:
+      # Same watchtower opt-in pattern as the main service so the
+      # sidecar tracks `:latest` rebuilds without operator intervention.
+      - "com.centurylinklabs.watchtower.enable=true"
+    deploy:
+      resources:
+        # buffalo_l + insightface + onnxruntime peaks around 1.2 GB
+        # resident on amd64 amid a scan burst; 2g default leaves
+        # headroom. Override via TGDL_FACES_MEM_LIMIT for boxes with
+        # tighter envelopes (Pi 4 4GB, small Synology).
+        limits:
+          memory: ${TGDL_FACES_MEM_LIMIT:-2g}
+        reservations:
+          memory: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # CUDA variant of the faces sidecar. ENABLE WITH:
+  #   docker compose --profile faces-cuda up -d
+  #
+  # Requires NVIDIA Container Toolkit on the host (install via
+  # `apt-get install nvidia-container-toolkit` then `nvidia-ctk runtime
+  # configure --runtime=docker && systemctl restart docker`). The image
+  # is `ghcr.io/botnick/tgdl-faces:cuda-latest` — linux/amd64 only.
+  #
+  # Mutually exclusive with the `faces` and `faces-openvino` profiles —
+  # they all bind container_name=tgdl-faces and port 8011 so Node's
+  # FACES_SERVICE_URL=http://tgdl-faces:8011 resolves to whichever
+  # variant is running. Compose refuses to bring up more than one.
+  tgdl-faces-cuda:
+    image: ghcr.io/botnick/tgdl-faces:cuda-latest
+    pull_policy: always
+    container_name: tgdl-faces
+    restart: unless-stopped
+    profiles: ["faces-cuda"]
+    runtime: nvidia
+    volumes:
+      # Mount the downloads tree at the SAME path the main app sees
+      # (`/app/data/downloads`) so absolute paths produced by Node's
+      # scan-runner work as-is in the sidecar — no Docker-specific path
+      # remapping. Without this, every /detect call falls back to base64
+      # transfer (CPU-bound on the Node side) because the sidecar's
+      # ALLOW_ROOTS doesn't include the Node-side path prefix.
+      - ./data/downloads:/app/data/downloads:ro
+      - ./data/faces-service/models:/root/.cache/tgdl-faces/models
+    environment:
+      - TGDL_FACES_HOST=0.0.0.0
+      - TGDL_FACES_PORT=8011
+      - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
+      - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+      # Default to auto-pick: sidecar will probe CUDA first, fall back
+      # to CPU if the driver/runtime isn't usable inside the container.
+      - TGDL_FACES_PROVIDERS=${TGDL_FACES_PROVIDERS:-auto}
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    deploy:
+      resources:
+        # CUDA EP holds the model on GPU memory but onnxruntime still
+        # stages tensors on the host side; 3g default covers RTX-class
+        # cards with a buffalo_l preset. Override via the CUDA-specific
+        # limit env var so the CPU variant's TGDL_FACES_MEM_LIMIT stays
+        # smaller on the same host's compose.yml.
+        limits:
+          memory: ${TGDL_FACES_CUDA_MEM_LIMIT:-3g}
+        reservations:
+          memory: 1g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # OpenVINO variant of the faces sidecar. ENABLE WITH:
+  #   docker compose --profile faces-openvino up -d
+  #
+  # Requires the host's Intel iGPU/dGPU/NPU exposed via /dev/dri (same
+  # passthrough that ffmpeg vaapi uses) AND the operator's user inside
+  # the container holding the render group GID. The default permission
+  # set works on Synology DSM 7, recent Debian/Ubuntu, and Intel NUC
+  # hosts. The image is `ghcr.io/botnick/tgdl-faces:openvino-latest`
+  # — linux/amd64 only (OpenVINO doesn't ship arm64 wheels).
+  tgdl-faces-openvino:
+    image: ghcr.io/botnick/tgdl-faces:openvino-latest
+    pull_policy: always
+    container_name: tgdl-faces
+    restart: unless-stopped
+    profiles: ["faces-openvino"]
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "video"
+      - "render"
+    volumes:
+      # Mount the downloads tree at the SAME path the main app sees
+      # (`/app/data/downloads`) so absolute paths produced by Node's
+      # scan-runner work as-is in the sidecar — no Docker-specific path
+      # remapping. Without this, every /detect call falls back to base64
+      # transfer (CPU-bound on the Node side) because the sidecar's
+      # ALLOW_ROOTS doesn't include the Node-side path prefix.
+      - ./data/downloads:/app/data/downloads:ro
+      - ./data/faces-service/models:/root/.cache/tgdl-faces/models
+    environment:
+      - TGDL_FACES_HOST=0.0.0.0
+      - TGDL_FACES_PORT=8011
+      - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
+      - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+      - TGDL_FACES_PROVIDERS=${TGDL_FACES_PROVIDERS:-auto}
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    deploy:
+      resources:
+        limits:
+          memory: ${TGDL_FACES_MEM_LIMIT:-2g}
+        reservations:
+          memory: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   # Auto-restart on hangs. Docker's `restart: unless-stopped` policy only
   # fires when the process *exits*; a wedged event loop, deadlocked DB

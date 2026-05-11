@@ -51,6 +51,11 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `HASH_WORKER_POOL_SIZE`         | `min(8, ⌊cpus/2⌋)`  | Worker-thread pool used for SHA-256 streaming over multi-GB files (post-write hash + dedup catch-up). Keeps the main event loop free for HTTP / WebSocket traffic. Set higher on a beefy host with many parallel downloads, lower on a Pi 4 / NAS. |
 | `HASH_WORKER_DISABLE`           | unset               | Set to `1` to skip the worker pool entirely and hash on the main thread — useful for sandboxed runtimes that block `worker_threads`. |
 | `COMPRESSION_LEVEL`             | `6`                 | gzip / brotli compression level (1-9) used by the optional `compression` middleware on text payloads. Lower the level on slow CPUs (Pi Zero, embedded NAS) so requests don't queue up behind compression; raise it on hosts with spare CPU + slow uplink. Set the env to `0` to disable explicitly even when the package is installed. |
+| `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. When the `faces` compose profile is up this is set to `http://tgdl-faces:8011` automatically. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
+| `TGDL_FACES_AUTO_DOWNLOAD`      | `true`              | `false` refuses to download the prebuilt PyInstaller binary on first use — pair with a pre-staged binary under `data/faces-service/bin/` for air-gapped deploys. Full env-var reference in [docs/AI.md](AI.md). |
+| `SEEKBAR_SIDECAR_URL`           | unset               | Override URL for the Go seekbar sidecar. Set when running `seekbar-service/` as its own compose service; leave unset for the bundled auto-spawn path. |
+| `SEEKBAR_API_TOKEN`             | auto-generated      | Bearer token the dashboard sends as `X-API-Token` to the seekbar sidecar. Auto-generated per process; set explicitly only when running the sidecar standalone. |
+| `SEEKBAR_HWACCEL`               | `auto`              | `auto` / `cuda` / `qsv` / `vaapi` / `videotoolbox` / `v4l2m2m` / `none`. Forwarded to the sidecar's ffmpeg pipeline. |
 
 ## One-click in-dashboard auto-update (opt-in)
 

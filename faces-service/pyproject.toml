@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tgdl-faces"
+version = "0.1.0"
+description = "Telegram Media Downloader — face detection + embedding sidecar (insightface buffalo_l, 512-dim)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "telegram-media-downloader maintainers" }]
+keywords = ["face-detection", "face-recognition", "insightface", "buffalo_l", "telegram-media-downloader"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+# Versions below are pinned to ranges that ship wheels for
+# win_amd64, manylinux_x86_64, manylinux_aarch64, macosx_x86_64,
+# and macosx_arm64 — verified before bumping the upper bound.
+#
+# onnxruntime variant matrix:
+#   * Base `onnxruntime`        — CPU + Azure EPs only.
+#                                 Works on every supported platform/arch.
+#   * `onnxruntime-gpu`         — adds CUDA + TensorRT EPs.
+#                                 Linux/Windows + NVIDIA, requires CUDA 12 + cuDNN 8.9 wheels.
+#   * `onnxruntime-directml`    — adds DirectML EP.
+#                                 Windows only (win_amd64 / win_arm64 wheels).
+#   * `onnxruntime-openvino`    — adds OpenVINO EP. Intel iGPU/dGPU/NPU.
+#
+# The three packages share the `onnxruntime` module name and CANNOT
+# coexist. Pick one per host:
+#
+#   pip install -e faces-service/             # default CPU
+#   pip install -e faces-service/[gpu]        # NVIDIA CUDA (Linux + Windows)
+#   pip install -e faces-service/[directml]   # Windows DirectML (any GPU vendor)
+#   pip install -e faces-service/[openvino]   # Intel OpenVINO
+#
+# Installing an extra triggers `pip install onnxruntime-<variant>`, which
+# auto-uninstalls the conflicting base package. See `docs/AI.md` for the
+# host-by-host install matrix.
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.32,<1",
+    "insightface>=0.7,<1",
+    "onnxruntime>=1.20,<2",
+    "opencv-python-headless>=4.10,<5",
+    "numpy>=1.26,<3",
+    "Pillow>=10,<12",
+    "pydantic>=2,<3",
+]
+
+[project.optional-dependencies]
+gpu = ["onnxruntime-gpu>=1.20,<2"]
+directml = ["onnxruntime-directml>=1.20,<2"]
+openvino = ["onnxruntime-openvino>=1.20,<2"]
+test = [
+    "pytest>=8",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+tgdl-faces = "tgdl_faces.__main__:main"
+tgdl-faces-install = "tgdl_faces.install:main"
+
+[project.urls]
+Homepage = "https://github.com/botnick/telegram-media-downloader"
+Issues = "https://github.com/botnick/telegram-media-downloader/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tgdl_faces"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "tgdl_faces",
+    "tests",
+    "README.md",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

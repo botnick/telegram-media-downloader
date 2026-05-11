@@ -957,6 +957,36 @@ export function loadAdvanced(config) {
     // installs see the helpful warning until they explicitly silence it.
     wireToggle('setting-adv-thumbs-warn-misses', adv.thumbs?.warnMisses !== false);
 
+    // Seekbar — sprite-sheet generator for the video hover preview.
+    // Numeric inputs + format <select> live on the Maintenance → Seekbar
+    // page; populating them here from the live config means an operator
+    // opening that page sees their persisted values, not the placeholder
+    // defaults. The two `.tg-toggle` widgets (enabled / autoOnDownload)
+    // are wired by `maintenance-seekbar.js _syncToggleState` so the
+    // optimistic-flip-then-POST behaviour matches the AI page.
+    const sk = adv.seekbar || {};
+    const _setIfNum = (id, val, def) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = Number.isFinite(Number(val)) ? String(val) : String(def);
+    };
+    _setIfNum('setting-adv-seekbar-intervalSec', sk.intervalSec, 4);
+    _setIfNum('setting-adv-seekbar-tileWidth', sk.tileWidth, 160);
+    _setIfNum('setting-adv-seekbar-columns', sk.columns, 10);
+    _setIfNum('setting-adv-seekbar-maxTiles', sk.maxTiles, 240);
+    _setIfNum('setting-adv-seekbar-quality', sk.quality, 75);
+    _setIfNum('setting-adv-seekbar-concurrency', sk.concurrency, 4);
+    const skFmt = document.getElementById('setting-adv-seekbar-format');
+    if (skFmt) skFmt.value = String(sk.format || 'webp').toLowerCase();
+    const skHw = document.getElementById('setting-adv-seekbar-hwaccel');
+    if (skHw) skHw.value = String(sk.hwaccel || '').toLowerCase();
+    // Master + auto toggles — same idempotent wiring pattern as the
+    // NSFW toggles; their optimistic POST is owned by maintenance-seekbar.js
+    // but we still mirror the visual `.active` state here so a fresh
+    // Settings open shows the persisted values immediately.
+    wireToggle('setting-adv-seekbar-enabled', sk.enabled !== false);
+    wireToggle('setting-adv-seekbar-autoOnDownload', sk.autoOnDownload !== false);
+
     // Probe button — fetch /thumbs/hwaccel-probe and render available
     // backends as small chips. Idempotent wire-up via `dataset.wired`.
     const probeBtn = document.getElementById('setting-adv-ffmpeg-hwaccel-probe');
@@ -1153,12 +1183,57 @@ let _autoSaveBound = false;
 //             fades.
 //   error   — red triangle, error msg, sticks until the next successful save.
 //
+// Per-page label for the toast on non-settings pages. The autosave chip
+// in #page-settings says "Saved at 12:34:56" because that page touches
+// every config key — the timestamp is the useful anchor. On maintenance
+// pages only one section's keys move, so the operator wants a label
+// ("Build thumbnails settings saved") not a clock.
+function _autoSaveContextLabel() {
+    const page = document.body?.dataset?.page || '';
+    if (page === 'maintenance-thumbs') {
+        return i18nT('settings.autosave.label.thumbs', 'Build thumbnails settings');
+    }
+    if (page === 'maintenance-nsfw') {
+        return i18nT('settings.autosave.label.nsfw', 'NSFW settings');
+    }
+    if (page === 'maintenance-ai') {
+        return i18nT('settings.autosave.label.ai', 'AI settings');
+    }
+    return i18nT('settings.autosave.label.default', 'Settings');
+}
+
 // CSS state is driven by `data-state="…"` on the pill so animations + colors
 // live in main.css next to the rest of the chip styles.
 function _setAutosaveStatus(state, msg) {
     const root = document.getElementById('settings-autosave-status');
     const iconEl = document.getElementById('settings-autosave-icon');
     const textEl = document.getElementById('settings-autosave-text');
+    // The autosave pill lives inside `#page-settings` but stays in the
+    // DOM (just hidden) when the operator navigates to other pages —
+    // so a plain element-presence check would treat every page as
+    // "Settings page is here". Resolve the actually-visible page via
+    // `body.dataset.page` instead. Maintenance pages (Thumbs, Video,
+    // NSFW, AI) get a toast for terminal states; Settings page keeps
+    // the existing inline pill (no toast spam there).
+    const currentPage = document.body?.dataset?.page || '';
+    const isSettingsPage = currentPage === 'settings';
+    if (!isSettingsPage) {
+        if (state === 'saved') {
+            // Toast says WHAT was saved, not the clock — the inline pill
+            // owns the timestamp. `msg` from the flush already includes
+            // the time; replace it with the page label instead.
+            const label = _autoSaveContextLabel();
+            showToast(
+                i18nTf('settings.autosave.saved_label', { label }, `${label} saved`),
+                'success',
+            );
+        } else if (state === 'error') {
+            showToast(msg || i18nT('common.save_failed', 'Save failed'), 'error');
+        }
+        // Still update the (hidden) pill for consistency — cheap, and
+        // the moment the operator navigates back to Settings the
+        // pill reflects the latest state without a re-flush.
+    }
     if (!root || !iconEl || !textEl) return;
     if (_autoSaveStatusFadeTimer) {
         clearTimeout(_autoSaveStatusFadeTimer);
@@ -1318,6 +1393,48 @@ function _gatherScopedPayload(page) {
                     dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
                     threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
                     concurrency: num('setting-adv-nsfw-concurrency', 1),
+                },
+            },
+        };
+    }
+    if (page === 'maintenance-seekbar') {
+        // Master + auto toggles live in the same card as the numeric knobs
+        // (interval / tile / quality / hwaccel). The two toggles ALSO have
+        // their own optimistic `_toggleFlag()` POST in maintenance-seekbar.js
+        // — we still mirror them here so a blur/change on any other input
+        // (and the body-level autosave flush) sends a consistent merged
+        // body. Server-side deep-merge means there's no risk of stomping
+        // one over the other.
+        const num = (id, def) => {
+            const v = parseInt(get(id), 10);
+            return Number.isFinite(v) ? v : def;
+        };
+        return {
+            advanced: {
+                seekbar: {
+                    enabled:
+                        document
+                            .getElementById('setting-adv-seekbar-enabled')
+                            ?.classList.contains('active') !== false,
+                    autoOnDownload:
+                        document
+                            .getElementById('setting-adv-seekbar-autoOnDownload')
+                            ?.classList.contains('active') !== false,
+                    intervalSec: num('setting-adv-seekbar-intervalSec', 4),
+                    tileWidth: num('setting-adv-seekbar-tileWidth', 160),
+                    columns: num('setting-adv-seekbar-columns', 10),
+                    maxTiles: num('setting-adv-seekbar-maxTiles', 240),
+                    quality: num('setting-adv-seekbar-quality', 75),
+                    concurrency: num('setting-adv-seekbar-concurrency', 4),
+                    format: String(get('setting-adv-seekbar-format') || 'webp')
+                        .toLowerCase()
+                        .trim(),
+                    // Empty string `''` from the auto option means "inherit
+                    // from advanced.thumbs.hwaccel"; the server allow-list
+                    // accepts it as-is.
+                    hwaccel: String(get('setting-adv-seekbar-hwaccel') || '')
+                        .toLowerCase()
+                        .trim(),
                 },
             },
         };
@@ -2057,7 +2174,7 @@ async function openDedupSheet(sets) {
         // works for video previews too (first-frame extraction).
         const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1`;
         const thumbUrl =
-            isThumb || isVideo ? `/api/thumbs/${encodeURIComponent(file.id)}?w=120` : null;
+            isThumb || isVideo ? `/api/thumbs/${encodeURIComponent(file.id)}?w=320` : null;
         const thumb = thumbUrl
             ? `<img loading="lazy" decoding="async" class="w-12 h-12 object-cover rounded-md bg-tg-bg/40" src="${escapeHtml(thumbUrl)}" alt="" onerror="this.style.display='none'">`
             : `<div class="w-12 h-12 rounded-md bg-tg-bg/60 flex items-center justify-center text-tg-textSecondary"><i class="ri-file-line text-xl"></i></div>`;

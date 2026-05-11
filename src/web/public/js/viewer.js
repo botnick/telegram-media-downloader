@@ -2,7 +2,52 @@ import { state } from './store.js';
 import { formatDate, showToast } from './utils.js';
 import { attachSwipe, attachDragDismiss } from './gestures.js';
 import { tf as i18nTf, t as i18nT } from './i18n.js';
-import { getMediaUrl } from './media-url.js';
+import { getMediaUrl, getDownloadUrl } from './media-url.js';
+import { ws } from './ws.js';
+import { renderTextInto, renderCodeInto, renderMarkdownInto, langFromExt } from './viewer-text.js';
+import { renderArchiveInto } from './viewer-archive.js';
+
+// ---- Seekbar feature flag — lazy, module-scoped --------------------------
+//
+// The hover-preview only runs when `advanced.seekbar.enabled` is true in the
+// kv config. We fetch it once on first need and cache for the session; a
+// `config_updated` WS event invalidates so a toggle from the Maintenance →
+// Seekbar page is picked up live (no reload). Falsey by default while the
+// promise is in flight — the viewer falls through to time-only tooltips
+// during that brief window.
+let _seekbarEnabledCache = null;
+let _seekbarEnabledFetch = null;
+function _getSeekbarEnabled() {
+    if (_seekbarEnabledCache !== null) return Promise.resolve(_seekbarEnabledCache);
+    if (_seekbarEnabledFetch) return _seekbarEnabledFetch;
+    _seekbarEnabledFetch = fetch('/api/config', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((cfg) => {
+            _seekbarEnabledCache = cfg?.advanced?.seekbar?.enabled !== false;
+            return _seekbarEnabledCache;
+        })
+        .catch(() => {
+            _seekbarEnabledCache = false;
+            return false;
+        })
+        .finally(() => {
+            _seekbarEnabledFetch = null;
+        });
+    return _seekbarEnabledFetch;
+}
+// Invalidate the cache when an operator flips the toggle from the
+// Maintenance → Seekbar page. The matching server-side broadcast is fired
+// from POST /api/config. We subscribe once at module load (idempotent).
+try {
+    ws.on('seekbar_config_changed', () => {
+        _seekbarEnabledCache = null;
+    });
+    ws.on('config_updated', () => {
+        _seekbarEnabledCache = null;
+    });
+} catch {
+    /* ws not available in tests */
+}
 
 // ============================================================================
 // Media Viewer
@@ -142,6 +187,178 @@ async function _runReviewAction(action) {
     }
 }
 
+// File-kind classifier shared by openMediaViewer + the unit test in
+// tests/viewer-classifier.test.js. Re-exported as
+// `_classifyFileForTests` so the test doesn't depend on a DOM.
+function _classifyFile(file) {
+    const ext = (file?.name || '').split('.').pop()?.toLowerCase() || '';
+    const t = file?.type;
+    if (t === 'images') return 'image';
+    if (t === 'videos') return 'video';
+    if (
+        t === 'audio' ||
+        ['mp3', 'm4a', 'ogg', 'wav', 'flac', 'opus', 'aac', 'wma', 'alac'].includes(ext)
+    ) {
+        return 'audio';
+    }
+    if (ext === 'pdf') return 'pdf';
+    if (['md', 'markdown', 'mdown', 'mkd'].includes(ext)) return 'markdown';
+    if (['txt', 'log', 'csv', 'tsv', 'ini', 'conf', 'env', 'toml'].includes(ext)) return 'text';
+    if (
+        [
+            'js',
+            'mjs',
+            'cjs',
+            'ts',
+            'jsx',
+            'tsx',
+            'json',
+            'jsonc',
+            'html',
+            'htm',
+            'css',
+            'scss',
+            'sass',
+            'less',
+            'xml',
+            'svg',
+            'sql',
+            'sh',
+            'bash',
+            'zsh',
+            'fish',
+            'ps1',
+            'bat',
+            'cmd',
+            'py',
+            'rb',
+            'go',
+            'rs',
+            'c',
+            'cpp',
+            'cc',
+            'h',
+            'hpp',
+            'java',
+            'kt',
+            'swift',
+            'php',
+            'lua',
+            'pl',
+            'dart',
+            'vue',
+            'svelte',
+            'astro',
+            'graphql',
+            'dockerfile',
+            'makefile',
+            'cmake',
+            'vim',
+            'yaml',
+            'yml',
+        ].includes(ext)
+    ) {
+        return 'code';
+    }
+    if (['zip', 'tar', 'gz', 'tgz', 'bz2', 'tbz', 'tbz2', '7z', 'rar', 'xz', 'txz'].includes(ext)) {
+        return 'archive';
+    }
+    if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'].includes(ext)) {
+        return 'office';
+    }
+    return 'fallback';
+}
+
+// Friendly label for the chip next to the filename. Code files surface
+// the language ("JavaScript", "Python", "YAML", ...) when the extension
+// maps to a known highlight.js language; otherwise we fall back to a
+// generic "Code".
+function _typeLabelFor(file) {
+    const ext = (file?.name || '').split('.').pop()?.toLowerCase() || '';
+    const kind = _classifyFile(file);
+    switch (kind) {
+        case 'image':
+            return i18nT('viewer.kind.image', 'Image');
+        case 'video':
+            return i18nT('viewer.kind.video', 'Video');
+        case 'audio':
+            return i18nT('viewer.kind.audio', 'Audio');
+        case 'pdf':
+            return 'PDF';
+        case 'markdown':
+            return i18nT('viewer.kind.markdown', 'Markdown');
+        case 'text':
+            return i18nT('viewer.kind.text', 'Text');
+        case 'code': {
+            const lang = langFromExt(ext);
+            if (!lang) return i18nT('viewer.kind.code', 'Code');
+            return lang
+                .replace(/-/g, ' ')
+                .replace(/\b\w/g, (c) => c.toUpperCase())
+                .replace(/Javascript/i, 'JavaScript')
+                .replace(/Typescript/i, 'TypeScript');
+        }
+        case 'archive':
+            return i18nT('viewer.kind.archive', 'Archive');
+        case 'office':
+            return i18nT('viewer.kind.office', 'Document');
+        default:
+            return ext ? ext.toUpperCase() : i18nT('viewer.kind.file', 'File');
+    }
+}
+
+// Test-only export so the classifier can be exercised without a DOM.
+// Hidden behind an underscore-prefix to keep it out of the public surface.
+export const _classifyFileForTests = _classifyFile;
+
+// Tear every preview container down so the next openMediaViewer() call
+// can re-show exactly one. Called at the top of every open, on close,
+// and on file navigation. Defensive against missing nodes so older
+// index.html builds (mid-deploy) don't crash the viewer.
+function _resetAllPreviewContainers() {
+    for (const id of [
+        'image-container',
+        'video-container',
+        'pdf-container',
+        'audio-container',
+        'text-container',
+        'code-container',
+        'markdown-container',
+        'archive-container',
+        'office-container',
+        'fallback-container',
+    ]) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    }
+    // Detach any in-flight previews so abandoning a clip mid-load
+    // doesn't leak its src into the background.
+    const audio = document.getElementById('modal-audio');
+    if (audio) {
+        try {
+            audio.pause();
+        } catch {}
+        try {
+            audio.removeAttribute('src');
+            audio.load();
+        } catch {}
+    }
+    const pdfFrame = document.getElementById('pdf-frame');
+    if (pdfFrame) {
+        try {
+            pdfFrame.src = 'about:blank';
+        } catch {}
+    }
+}
+
+function _setTypeChip(file) {
+    const chip = document.getElementById('modal-type-chip');
+    if (!chip) return;
+    const label = _typeLabelFor(file);
+    chip.textContent = label;
+    chip.classList.toggle('hidden', !label);
+}
+
 export function openMediaViewer(index) {
     state.currentFileIndex = index;
     const file = state.files[index];
@@ -154,10 +371,12 @@ export function openMediaViewer(index) {
     // Federated rows (file.peer_id !== 'self') get the cluster-proxy
     // form `/files/<peerSidePath>?inline=1&peer=<peerId>`; see media-url.js.
     const url = getMediaUrl(file);
+    const downloadUrl = getDownloadUrl(file) || url;
 
-    // Reset views.
-    imageContainer.classList.add('hidden');
-    videoContainer.classList.add('hidden');
+    // Reset every preview container before swapping the new one in. Image +
+    // video are first-class so we keep direct refs around for the existing
+    // zoom / video-player wiring; the rest live behind _resetAllPreviewContainers.
+    _resetAllPreviewContainers();
 
     // Always tear the previous clip down BEFORE swapping in the new src so a
     // 100 MB video doesn't keep streaming in the background after you flip
@@ -167,24 +386,138 @@ export function openMediaViewer(index) {
     if (videoPlayer) videoPlayer.unload();
     image.removeAttribute('src');
 
-    if (file.type === 'images') {
-        image.src = url;
-        imageContainer.classList.remove('hidden');
-        setupImageZoom();
-    } else if (file.type === 'videos') {
-        videoContainer.classList.remove('hidden');
-        if (!videoPlayer) videoPlayer = new VideoPlayer();
-        videoPlayer.load(url, file.fullPath);
-    } else {
-        window.open(url, '_blank');
-        return;
+    const kind = _classifyFile(file);
+    const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
+
+    switch (kind) {
+        case 'image':
+            image.src = url;
+            imageContainer.classList.remove('hidden');
+            setupImageZoom();
+            break;
+        case 'video': {
+            videoContainer.classList.remove('hidden');
+            if (!videoPlayer) videoPlayer = new VideoPlayer();
+            videoPlayer.load(url, file.fullPath, file);
+            break;
+        }
+        case 'pdf': {
+            const c = document.getElementById('pdf-container');
+            const frame = document.getElementById('pdf-frame');
+            if (c && frame) {
+                c.classList.remove('hidden');
+                // `#toolbar=1` is a Chrome / Edge hint; Firefox / Safari
+                // ignore it gracefully and still render the document.
+                frame.src = `${url}${url.includes('?') ? '&' : '?'}#toolbar=1`;
+            } else {
+                _showFallback(file, downloadUrl);
+            }
+            break;
+        }
+        case 'audio': {
+            const c = document.getElementById('audio-container');
+            const audio = document.getElementById('modal-audio');
+            const titleEl = document.getElementById('audio-title');
+            const metaEl = document.getElementById('audio-meta');
+            if (c && audio) {
+                c.classList.remove('hidden');
+                audio.src = url;
+                audio.load();
+                if (titleEl) titleEl.textContent = file.name || '';
+                if (metaEl) {
+                    metaEl.textContent =
+                        `${file.sizeFormatted || ''} • ${formatDate(file.modified) || ''}`.trim();
+                }
+            } else {
+                _showFallback(file, downloadUrl);
+            }
+            break;
+        }
+        case 'text': {
+            const c = document.getElementById('text-container');
+            const preEl = document.getElementById('text-block');
+            const statusEl = document.getElementById('text-status');
+            if (c && preEl) {
+                c.classList.remove('hidden');
+                renderTextInto({
+                    preEl,
+                    statusEl,
+                    url,
+                    downloadUrl,
+                    fileName: file.name,
+                });
+            } else {
+                _showFallback(file, downloadUrl);
+            }
+            break;
+        }
+        case 'code': {
+            const c = document.getElementById('code-container');
+            const codeEl = document.getElementById('code-block');
+            const statusEl = document.getElementById('code-status');
+            if (c && codeEl) {
+                c.classList.remove('hidden');
+                renderCodeInto({
+                    codeEl,
+                    statusEl,
+                    url,
+                    downloadUrl,
+                    fileName: file.name,
+                    ext,
+                });
+            } else {
+                _showFallback(file, downloadUrl);
+            }
+            break;
+        }
+        case 'markdown': {
+            const c = document.getElementById('markdown-container');
+            const targetEl = document.getElementById('markdown-body');
+            const statusEl = document.getElementById('markdown-status');
+            if (c && targetEl) {
+                c.classList.remove('hidden');
+                renderMarkdownInto({
+                    targetEl,
+                    statusEl,
+                    url,
+                    downloadUrl,
+                    fileName: file.name,
+                });
+            } else {
+                _showFallback(file, downloadUrl);
+            }
+            break;
+        }
+        case 'archive': {
+            const c = document.getElementById('archive-container');
+            const targetEl = document.getElementById('archive-body');
+            const statusEl = document.getElementById('archive-status');
+            if (c && targetEl) {
+                c.classList.remove('hidden');
+                renderArchiveInto({
+                    targetEl,
+                    statusEl,
+                    filePath: file.fullPath,
+                    downloadUrl,
+                    fileName: file.name,
+                });
+            } else {
+                _showFallback(file, downloadUrl);
+            }
+            break;
+        }
+        case 'office':
+        default:
+            _showFallback(file, downloadUrl);
+            break;
     }
 
     document.getElementById('modal-filename').textContent = file.name;
     document.getElementById('modal-meta').textContent =
         `${file.sizeFormatted} • ${formatDate(file.modified)}`;
     document.getElementById('modal-counter').textContent = `${index + 1} / ${state.files.length}`;
-    document.getElementById('modal-download').href = url;
+    document.getElementById('modal-download').href = downloadUrl;
+    _setTypeChip(file);
 
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -192,6 +525,52 @@ export function openMediaViewer(index) {
     prefetchNeighbor(index + 1);
 
     _renderReviewToolbar(file, index);
+}
+
+// Generic "no inline preview" pane — used by the office case and as the
+// safety net for any classifier branch whose markup is missing (which
+// would otherwise leave the modal blank on a stale deploy).
+function _showFallback(file, downloadUrl) {
+    const c =
+        document.getElementById('fallback-container') ||
+        document.getElementById('office-container');
+    if (!c) return;
+    const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
+    const isOffice = ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'].includes(
+        ext,
+    );
+    const titleKey = isOffice ? 'viewer.fallback.office_title' : 'viewer.fallback.title';
+    const messageKey = isOffice ? 'viewer.fallback.office_message' : 'viewer.fallback.message';
+    const title = i18nT(titleKey, isOffice ? 'Office document' : 'No inline preview');
+    const msg = i18nT(
+        messageKey,
+        isOffice
+            ? 'Office documents render best in their native app — download to open.'
+            : "This file type doesn't have a built-in preview.",
+    );
+    const dlLabel = i18nT('viewer.fallback.download', 'Download file');
+    c.classList.remove('hidden');
+    c.innerHTML = `
+        <div class="text-center px-6 py-10 max-w-md mx-auto">
+            <i class="ri-file-line text-6xl text-tg-textSecondary mb-4 inline-block"></i>
+            <p class="text-tg-text mb-2 font-medium">${_escape(file.name || title)}</p>
+            <p class="text-sm text-tg-textSecondary mb-5">${_escape(msg)}</p>
+            <a href="${_escape(downloadUrl)}" download
+                class="inline-flex items-center gap-2 px-5 py-2.5 bg-tg-blue hover:bg-tg-darkBlue rounded-lg text-sm text-white font-medium transition">
+                <i class="ri-download-line"></i> <span>${_escape(dlLabel)}</span>
+            </a>
+        </div>
+    `;
+}
+
+function _escape(text) {
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 let _prefetchLink = null;
@@ -273,6 +652,14 @@ class VideoPlayer {
         this.progressDot = document.getElementById('video-progress-dot');
         this.bufferedLayer = document.getElementById('video-buffered-layer');
         this.hoverTime = document.getElementById('video-hover-time');
+        this.spritePreview = document.getElementById('video-sprite-preview');
+        // Inner Netflix-style preview parts. The frame paints the sprite
+        // background (size set inline per clip), the time pill labels it,
+        // and the pending overlay surfaces the spinner while a sidecar
+        // generation is still in flight.
+        this.spriteFrame = document.getElementById('video-sprite-frame');
+        this.spriteTime = document.getElementById('video-sprite-time');
+        this.spritePending = document.getElementById('video-sprite-pending');
         this.spinner = document.getElementById('video-spinner');
         this.errorOverlay = document.getElementById('video-error');
         this.errorMsg = document.getElementById('video-error-msg');
@@ -499,16 +886,56 @@ class VideoPlayer {
         this.video.onloadeddata = () => this._showSpinner(false);
         this.video.onerror = () => this._showError();
         this.video.onratechange = () => this._refreshSpeedUi();
+
+        // ---- Sidecar sprite WS subscriptions --------------------------------
+        // When the Go sidecar (or in-process ffmpeg fallback) finishes
+        // generating sprites for one or more videos, it broadcasts
+        // `seekbar_done` per file. If the finished id matches the clip
+        // currently open in the viewer AND we were in "pending" state,
+        // kick `_fetchSpriteMeta`'s tryFetch closure immediately so the
+        // preview tile flips to "ready" without waiting for the backoff
+        // poll. The `_spriteRetry` callable is rebound on every load();
+        // null-check makes events between clips safe.
+        const _onSeekbarFinish = (msg) => {
+            if (!msg) return;
+            const finishedId = String(msg.download_id ?? msg.video_id ?? msg.id ?? '');
+            if (!finishedId || !this._spriteFileId) return;
+            if (finishedId !== this._spriteFileId) return;
+            // Only re-poke when we're still waiting (pending). When
+            // already ready, the operator may just be doing a wipe-and-
+            // re-gen sweep — still useful to refetch so the new sprite
+            // bytes show up, but we use the same retry function so it
+            // re-loads the image with the latest URL.
+            if (typeof this._spriteRetry === 'function') {
+                try {
+                    this._spriteRetry();
+                } catch {
+                    /* swallow — fallthrough leaves the preview as-is */
+                }
+            }
+        };
+        // The `seekbar_*` event family carries individual file
+        // completions; the rebuild family carries them too after a
+        // wipe sweep. Subscribe to both so a "Wipe + scan" cycle
+        // refreshes the viewer's tile mid-watch.
+        ws.on('seekbar_done', _onSeekbarFinish);
+        ws.on('seekbar_rebuild_done', _onSeekbarFinish);
+        // Per-file completion notifications fired by `pregenerateSeekbar`
+        // (server-side broadcast helper) when a single video finishes.
+        ws.on('seekbar_sprite_ready', _onSeekbarFinish);
     }
 
     // ----- public lifecycle --------------------------------------------------
 
     /** Load a new clip. Resets all UI BEFORE any event fires. */
-    load(url, fileFullPath) {
+    load(url, fileFullPath, file = null) {
         this._currentUrl = url;
         this._storageKey = `video-progress-${fileFullPath}`;
         this._resumePlayed = false;
         this._lastSavedAt = 0;
+        this._sprite = null;
+        this._spriteTileH = 0;
+        this._fetchSpriteMeta(file);
         // Reset the auto-retry counter — a fresh clip gets a fresh
         // chance to recover from the spurious mobile-Safari error 4
         // that fires on initial src assignment. See `_showError()`.
@@ -658,6 +1085,20 @@ class VideoPlayer {
             clearTimeout(this._hideTimer);
             this._hideTimer = null;
         }
+        // Kill any in-flight sprite poll. The Symbol token already makes
+        // late image-load callbacks no-op, but the timer would otherwise
+        // keep firing for up to 60 s after the modal closed.
+        if (this._spritePollTimer) {
+            clearTimeout(this._spritePollTimer);
+            this._spritePollTimer = null;
+        }
+        this._spriteRetry = null;
+        this._spriteFileId = null;
+        this._spriteState = 'disabled';
+        if (this.spritePreview) {
+            this.spritePreview.classList.add('hidden');
+            this.spritePreview.dataset.state = 'disabled';
+        }
         this.speedMenu.classList.add('hidden');
         this._hideError();
         this._showSpinner(false);
@@ -804,13 +1245,202 @@ class VideoPlayer {
         if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
         const rect = this.progressBar.getBoundingClientRect();
         const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        this.hoverTime.textContent = formatTime(ratio * this.video.duration);
-        this.hoverTime.style.left = `${clientX - rect.left}px`;
-        this.hoverTime.classList.remove('hidden');
+        const x = clientX - rect.left;
+        const sec = ratio * this.video.duration;
+        const timeStr = formatTime(sec);
+
+        const sp = this._sprite;
+        const tileH = this._spriteTileH;
+        const wrap = this.spritePreview;
+        const frame = this.spriteFrame;
+        const timeEl = this.spriteTime;
+        const state = this._spriteState || 'disabled';
+
+        // No wrapper / sidecar feature disabled → fall through to the
+        // native time-only tooltip we've shipped since v1.
+        if (!wrap || state === 'disabled') {
+            this.hoverTime.textContent = timeStr;
+            this.hoverTime.style.left = `${x}px`;
+            this.hoverTime.classList.remove('hidden');
+            if (wrap) wrap.classList.add('hidden');
+            return;
+        }
+
+        // Sprite-aware path (Netflix-style). Hide the native time pill —
+        // the wrapper carries its own time chip below the frame so we
+        // never paint two tooltips at the same y.
+        this.hoverTime.classList.add('hidden');
+        if (timeEl) timeEl.textContent = timeStr;
+
+        // Position the wrapper centered on the cursor x, but clamp into
+        // the progress-bar bounds so the tile never overhangs the player
+        // chrome. CSS owns the translateX(-50%); we only set `left`.
+        const tileW = state === 'ready' && sp ? sp.tile_w || 160 : 160;
+        const halfW = tileW / 2;
+        const clampedX = Math.max(halfW + 4, Math.min(rect.width - halfW - 4, x));
+        wrap.style.left = `${clampedX}px`;
+
+        // State paint. `ready` swaps in the real sprite frame; `pending`
+        // keeps the CSS placeholder + shimmer.
+        if (state === 'ready' && sp && tileH && frame) {
+            const interval =
+                sp.interval_sec ||
+                (Number.isFinite(sp.duration_sec) && sp.frames > 0
+                    ? sp.duration_sec / sp.frames
+                    : 1);
+            const sourceSec = ratio * (sp.duration_sec || this.video.duration);
+            const idx = Math.max(
+                0,
+                Math.min((sp.frames || 1) - 1, Math.floor(sourceSec / interval)),
+            );
+            const col = idx % (sp.cols || 1);
+            const row = Math.floor(idx / (sp.cols || 1));
+            frame.style.width = `${tileW}px`;
+            frame.style.height = `${tileH}px`;
+            frame.style.backgroundPosition = `-${col * tileW}px -${row * tileH}px`;
+        }
+        // No data-state mutation here — it was set during fetch/poll. We
+        // just reveal the wrapper.
+        wrap.classList.remove('hidden');
     }
 
     _hideHoverPreview() {
         this.hoverTime.classList.add('hidden');
+        if (this.spritePreview) this.spritePreview.classList.add('hidden');
+    }
+
+    /**
+     * Fetch the per-clip sprite metadata sidecar. Three terminal states:
+     *
+     *   - `ready`     — sprite + meta exist on disk; render full preview.
+     *   - `pending`   — feature enabled but sidecar hasn't generated yet
+     *                   (404 / 202). Show the "Generating preview…"
+     *                   shimmer and poll on a backoff schedule, plus
+     *                   listen for the matching WS `seekbar_done` event
+     *                   so a sidecar finish flips the state instantly.
+     *   - `disabled`  — feature off, peer row, or no file id. Hide the
+     *                   wrapper completely; the native time-only tooltip
+     *                   takes over.
+     */
+    async _fetchSpriteMeta(file) {
+        const wrap = this.spritePreview;
+        // Cancel any in-flight poll from a previous clip before starting
+        // a new one. The Symbol-based `_spriteReq` token already makes
+        // late image-load callbacks no-op; clearing the timer kills any
+        // pending retry.
+        if (this._spritePollTimer) {
+            clearTimeout(this._spritePollTimer);
+            this._spritePollTimer = null;
+        }
+        this._spriteFileId = file?.id ? String(file.id) : null;
+        this._sprite = null;
+        this._spriteTileH = 0;
+        this._spriteState = 'disabled';
+
+        if (!wrap) return;
+        wrap.classList.add('hidden');
+        wrap.dataset.state = 'disabled';
+
+        const id = file?.id;
+        if (!id) return;
+        // Layer 1 — peer rows skipped (federated sprite proxy is a
+        // follow-up). Local rows fetch the sidecar once per clip; the
+        // CSS `[data-state="disabled"]` rule keeps the wrapper out of
+        // the layout entirely so peer videos just get the time-only
+        // tooltip we shipped before sprites existed.
+        if (file.peer_id && file.peer_id !== 'self') return;
+
+        // Feature flag — module-scoped cached so repeated opens don't
+        // hammer /api/config. Invalidated by WS `seekbar_config_changed`
+        // / `config_updated` so a toggle takes effect on next open
+        // without a page reload.
+        const enabled = await _getSeekbarEnabled();
+        if (!enabled) return;
+
+        // Token + state flip into "pending" so the spinner overlay paints
+        // while the meta request races with whatever sidecar work is in
+        // flight. If meta arrives ready, we'll flip to "ready" below.
+        const req = (this._spriteReq = Symbol('sprite-fetch'));
+        this._spriteState = 'pending';
+        wrap.dataset.state = 'pending';
+
+        // Polling schedule for the 404 / pending branch. Bounded so we
+        // don't poll forever for a clip the sidecar can't process at
+        // all (missing source file, unsupported codec, etc.). Each
+        // attempt is fire-and-forget; the WS listener below can short-
+        // circuit if a sidecar finish fires before our next tick.
+        const POLL_DELAYS_MS = [4000, 8000, 16000, 32000, 60000];
+        let pollIdx = 0;
+
+        const tryFetch = async () => {
+            try {
+                const r = await fetch(`/api/seekbar/meta/${encodeURIComponent(id)}`, {
+                    credentials: 'same-origin',
+                });
+                if (this._spriteReq !== req) return; // clip switched
+                if (r.status === 200) {
+                    const meta = await r.json();
+                    if (this._spriteReq !== req || !meta) return;
+                    this._sprite = meta;
+                    // Pre-load the sprite image to learn the real
+                    // tile_h, then flip the state to ready. Until then
+                    // we stay on "pending" so the spinner keeps
+                    // surfacing — avoids the brief "checkered empty
+                    // tile" flash that would happen if we flipped early.
+                    const img = new Image();
+                    img.onload = () => {
+                        if (this._spriteReq !== req) return;
+                        this._spriteTileH =
+                            meta.tile_h || (meta.rows > 0 ? img.naturalHeight / meta.rows : 0);
+                        if (this.spriteFrame) {
+                            this.spriteFrame.style.backgroundImage = `url(/api/seekbar/sprite/${encodeURIComponent(id)})`;
+                            this.spriteFrame.style.backgroundSize = `${img.naturalWidth}px ${img.naturalHeight}px`;
+                        }
+                        this._spriteState = 'ready';
+                        if (wrap) wrap.dataset.state = 'ready';
+                    };
+                    img.onerror = () => {
+                        if (this._spriteReq !== req) return;
+                        // Image 404 even though meta was 200 — sidecar
+                        // race where the JSON landed before the rename.
+                        // Re-poll, the second pass usually succeeds.
+                        this._sprite = null;
+                        this._scheduleSpritePoll(req, tryFetch, POLL_DELAYS_MS, pollIdx++);
+                    };
+                    img.src = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
+                    return;
+                }
+                if (r.status === 404 || r.status === 204 || r.status === 202) {
+                    // Pending — sidecar hasn't finished yet. Keep the
+                    // spinner up and poll on a backoff. The WS listener
+                    // in _wireOnce will also nudge tryFetch on a
+                    // matching `seekbar_done`.
+                    this._scheduleSpritePoll(req, tryFetch, POLL_DELAYS_MS, pollIdx++);
+                    return;
+                }
+                // Other 4xx/5xx — disable so the operator just gets the
+                // time-only tooltip. Don't burn battery polling.
+                this._spriteState = 'disabled';
+                if (wrap) wrap.dataset.state = 'disabled';
+            } catch {
+                // Network blip → schedule another poll.
+                this._scheduleSpritePoll(req, tryFetch, POLL_DELAYS_MS, pollIdx++);
+            }
+        };
+        this._spriteRetry = tryFetch;
+        tryFetch();
+    }
+
+    /** Schedule the next sprite poll on a clamped backoff. */
+    _scheduleSpritePoll(req, fn, delays, idx) {
+        if (this._spriteReq !== req) return;
+        if (idx >= delays.length) return; // gave up; only WS can revive
+        if (this._spritePollTimer) clearTimeout(this._spritePollTimer);
+        this._spritePollTimer = setTimeout(() => {
+            this._spritePollTimer = null;
+            if (this._spriteReq !== req) return;
+            fn();
+        }, delays[idx]);
     }
 
     _onTimeUpdate() {
@@ -1029,6 +1659,9 @@ export function closeMediaViewer() {
     if (videoPlayer) videoPlayer.unload();
     const image = document.getElementById('modal-image');
     if (image) image.removeAttribute('src');
+    // Stop / blank every other preview container so an audio clip or
+    // PDF iframe doesn't keep loading in the background after close.
+    _resetAllPreviewContainers();
     // Drop review-mode wiring so the next normal open doesn't render
     // the action toolbar by mistake.
     _reviewActions = null;
@@ -1064,24 +1697,35 @@ export function setupViewerEvents() {
     // Modal-level fullscreen button (top-right). Picks the smallest
     // active container so we don't drag the full modal chrome (counter
     // pill, prev/next buttons) into the fullscreen surface unless we
-    // have to:
-    //   - video showing  → #video-container (custom controls go FS too)
-    //   - image showing  → #image-container (zoom/pan stays scoped)
-    //   - neither        → #media-modal (defensive fallback)
+    // have to. Walks the same container ids as the dispatcher; first
+    // visible wins, falls back to the whole modal.
     document.getElementById('modal-fullscreen-btn')?.addEventListener('click', async () => {
         try {
             if (document.fullscreenElement) {
                 await document.exitFullscreen();
                 return;
             }
-            const video = document.getElementById('video-container');
-            const image = document.getElementById('image-container');
-            const target =
-                video && !video.classList.contains('hidden')
-                    ? video
-                    : image && !image.classList.contains('hidden')
-                      ? image
-                      : document.getElementById('media-modal');
+            const candidates = [
+                'video-container',
+                'image-container',
+                'pdf-container',
+                'text-container',
+                'code-container',
+                'markdown-container',
+                'archive-container',
+                'audio-container',
+                'office-container',
+                'fallback-container',
+            ];
+            let target = null;
+            for (const id of candidates) {
+                const el = document.getElementById(id);
+                if (el && !el.classList.contains('hidden')) {
+                    target = el;
+                    break;
+                }
+            }
+            if (!target) target = document.getElementById('media-modal');
             await target?.requestFullscreen?.();
         } catch (e) {
             showToast(
@@ -1104,6 +1748,33 @@ export function setupViewerEvents() {
         if (menu.contains(ev.target) || trigger?.contains(ev.target)) return;
         menu.classList.add('hidden');
     });
+
+    // Wrap-toggle for the text + code preview panes. State is shared per
+    // session (localStorage) so the operator's wrap preference survives
+    // navigation between files in the same modal session.
+    const wrapKey = 'viewer-text-wrap';
+    function _applyWrapPref() {
+        const wrap = localStorage.getItem(wrapKey) === '1';
+        for (const id of ['text-block', 'code-block']) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            // Toggle the wrap modifier class on the <pre> ancestor so
+            // both the plain-text <pre> and the highlight.js code <pre>
+            // (which wraps the <code> in #code-block) flip together.
+            const target = el.tagName === 'PRE' ? el : el.parentElement;
+            if (target) target.classList.toggle('wrap', wrap);
+        }
+    }
+    _applyWrapPref();
+    for (const id of ['text-wrap-toggle', 'code-wrap-toggle']) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        btn.addEventListener('click', () => {
+            const cur = localStorage.getItem(wrapKey) === '1';
+            localStorage.setItem(wrapKey, cur ? '0' : '1');
+            _applyWrapPref();
+        });
+    }
 
     // Keyboard shortcuts. Only fire when the modal is open AND focus isn't
     // inside an input / textarea / contenteditable. Esc / arrow nav stay

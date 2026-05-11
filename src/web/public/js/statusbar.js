@@ -198,31 +198,24 @@ export function initStatusBar() {
     // poller (one /api/monitor/status fetch, three subscribers).
     subscribeMonitorStatus(applyMonitor);
 
-    // Stats — WS push only (v2.3.24). Server broadcasts `stats_push`
-    // every 30 s with the snapshot; we still fetch once on boot so
-    // the bar isn't blank for the first 30 s, and once on every
-    // WS reconnect so a disconnect-window's worth of new downloads
-    // shows up immediately. The mutation-events still trigger a
-    // refetch (download_complete etc.) so the user sees their own
-    // delete / new download instantly without waiting for the next
-    // 30-second push.
+    // Stats — pure WS push. One HTTP fetch on boot to fill the bar before
+    // the first event, then every trigger (download_complete, bulk_delete,
+    // file_deleted, purge_all, group_purged, config_updated) lands as a
+    // `stats_update` frame with the full payload — no client refetch needed.
+    // Server-side debouncing keeps a 50-row bulk delete to a single push.
     refreshStats();
-    ws.on('stats_push', (msg) => {
-        if (!msg?.payload) return;
+    const _applyStats = (stats) => {
+        if (!stats) return;
         const f = $('status-files');
-        if (f) f.textContent = msg.payload.totalFiles ?? 0;
+        if (f) f.textContent = stats.totalFiles ?? 0;
         const d = $('status-disk');
-        if (d)
-            d.textContent =
-                msg.payload.diskUsageFormatted || formatBytes(msg.payload.diskUsage || 0);
-    });
+        if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
+    };
+    ws.on('stats_update', (msg) => _applyStats(msg?.stats || msg?.payload || null));
+    // Legacy `stats_push` envelope kept for one release while older server
+    // builds in the wild upgrade — harmless on new servers (never fires).
+    ws.on('stats_push', (msg) => _applyStats(msg?.payload || msg?.stats || null));
     ws.on('__ws_open', () => refreshStats());
-    const wsRefresh = () => refreshStats();
-    ws.on('download_complete', wsRefresh);
-    ws.on('file_deleted', wsRefresh);
-    ws.on('bulk_delete', wsRefresh);
-    ws.on('purge_all', wsRefresh);
-    ws.on('group_purged', wsRefresh);
 
     // Live cues from the WebSocket
     ws.on('__ws_open', () => {

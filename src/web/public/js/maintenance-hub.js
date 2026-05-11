@@ -44,6 +44,18 @@ const TOOLS = [
         wsEvents: ['thumbs_progress', 'thumbs_done'],
     },
     {
+        slug: 'seekbar',
+        i18nTitle: 'maintenance.hub.seekbar.title',
+        defaultTitle: 'Seekbar previews',
+        i18nBody: 'maintenance.hub.seekbar.body',
+        defaultBody:
+            'WebP sprite-sheet hover previews on the video player seek bar. Auto-spawns a Go sidecar; falls back to in-process ffmpeg.',
+        icon: 'ri-movie-line',
+        accent: 'blue',
+        statusUrl: '/api/maintenance/seekbar/build/status',
+        wsEvents: ['seekbar_progress', 'seekbar_done'],
+    },
+    {
         slug: 'video',
         i18nTitle: 'maintenance.hub.video.title',
         defaultTitle: 'Optimise videos for streaming',
@@ -65,6 +77,18 @@ const TOOLS = [
         accent: 'red',
         statusUrl: '/api/maintenance/nsfw/status',
         wsEvents: ['nsfw_progress', 'nsfw_done'],
+    },
+    {
+        slug: 'ai',
+        i18nTitle: 'maintenance.hub.ai.title',
+        defaultTitle: 'AI face clustering',
+        i18nBody: 'maintenance.hub.ai.body',
+        defaultBody:
+            'Face clustering via a local Python sidecar (insightface buffalo_l) — opt-in, no upload.',
+        icon: 'ri-sparkling-2-line',
+        accent: 'blue',
+        statusUrl: '/api/ai/status',
+        wsEvents: ['ai_people_progress', 'ai_people_done'],
     },
     {
         slug: 'logs',

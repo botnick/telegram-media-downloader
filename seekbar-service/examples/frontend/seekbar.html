@@ -1,0 +1,118 @@
+<!doctype html>
+<!--
+  Minimal vanilla-JS seekbar-with-hover-preview demo for seekbar-service.
+
+  Drop your own /sprite/:id + /meta/:id endpoints behind a reverse proxy
+  (or point straight at the service on :8089) and pass `videoId` through
+  query string: ?id=abc123&src=/videos/abc123.mp4
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Seekbar preview demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    body  { font-family: system-ui, sans-serif; background:#111; color:#eee; margin:0; padding:24px; }
+    .wrap { max-width: 720px; margin: auto; }
+    video { width:100%; display:block; background:#000; border-radius:8px; }
+    .bar  { position:relative; height:6px; background:#333; border-radius:3px; margin:12px 0; cursor:pointer; }
+    .fill { position:absolute; left:0; top:0; bottom:0; background:#4a90e2; border-radius:3px; width:0; }
+    .preview {
+      position:absolute; bottom:18px; pointer-events:none; display:none;
+      background-repeat:no-repeat; border:1px solid #444; border-radius:4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.6); transform: translateX(-50%);
+      background-color:#000;
+    }
+    .timer { font: 12px/1 monospace; color:#bbb; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>Seekbar preview demo</h2>
+    <video id="v" controls></video>
+    <div id="bar" class="bar">
+      <div id="fill" class="fill"></div>
+      <div id="preview" class="preview"></div>
+    </div>
+    <div class="timer">
+      <span id="cur">00:00</span> / <span id="dur">00:00</span>
+    </div>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const videoId = qs.get('id')  || 'demo';
+    const srcUrl  = qs.get('src') || '/videos/demo.mp4';
+    const base    = qs.get('api') || ''; // e.g. http://localhost:8089
+
+    const v = document.getElementById('v');
+    const bar = document.getElementById('bar');
+    const fill = document.getElementById('fill');
+    const preview = document.getElementById('preview');
+    const cur = document.getElementById('cur');
+    const dur = document.getElementById('dur');
+
+    v.src = srcUrl;
+
+    const fmt = (s) => {
+      s = Math.max(0, Math.floor(s));
+      const m = Math.floor(s / 60), r = s % 60;
+      return String(m).padStart(2,'0') + ':' + String(r).padStart(2,'0');
+    };
+
+    let meta = null;
+    let tileH = 0;
+    fetch(`${base}/meta/${encodeURIComponent(videoId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((m) => {
+        if (!m) return;
+        meta = m;
+        // Pre-load the sprite so the first hover doesn't have a flash.
+        const img = new Image();
+        img.onload = () => {
+          // Derive tile height from the rendered sprite — ffmpeg's
+          // scale=W:-2 keeps aspect ratio so tile_h depends on the
+          // clip's aspect; reading it from the actual image dims
+          // is the most reliable approach.
+          tileH = img.naturalHeight / meta.rows;
+          preview.style.width  = meta.tile_w + 'px';
+          preview.style.height = tileH + 'px';
+          preview.style.backgroundImage = `url(${base}/sprite/${encodeURIComponent(videoId)})`;
+          preview.style.backgroundSize  = `${img.naturalWidth}px ${img.naturalHeight}px`;
+        };
+        img.src = `${base}/sprite/${encodeURIComponent(videoId)}`;
+      })
+      .catch(() => {});
+
+    v.addEventListener('loadedmetadata', () => {
+      dur.textContent = fmt(v.duration);
+    });
+    v.addEventListener('timeupdate', () => {
+      cur.textContent = fmt(v.currentTime);
+      if (v.duration > 0) fill.style.width = ((v.currentTime / v.duration) * 100) + '%';
+    });
+    bar.addEventListener('click', (e) => {
+      const rect = bar.getBoundingClientRect();
+      const ratio = (e.clientX - rect.left) / rect.width;
+      if (v.duration > 0) v.currentTime = ratio * v.duration;
+    });
+    bar.addEventListener('pointermove', (e) => {
+      const rect = bar.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, x / rect.width));
+      if (!meta || !tileH) return;
+      const sec = ratio * meta.duration_sec;
+      const idx = Math.max(0, Math.min(meta.frames - 1, Math.floor(sec / meta.interval_sec)));
+      const col = idx % meta.cols;
+      const row = Math.floor(idx / meta.cols);
+      preview.style.backgroundPosition = `-${col * meta.tile_w}px -${row * tileH}px`;
+      preview.style.left = (x) + 'px';
+      preview.style.display = 'block';
+    });
+    bar.addEventListener('pointerleave', () => {
+      preview.style.display = 'none';
+    });
+  </script>
+</body>
+</html>

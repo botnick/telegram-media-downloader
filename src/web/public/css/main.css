@@ -1405,24 +1405,17 @@ html.theme-light .notify-menu .notify-row:hover {
     }
 }
 
-.media-item img {
-    opacity: 0;
-    transition: opacity 0.18s ease;
-}
+/* Skeleton fade-in REMOVED — the delegated `load` listener was racing
+   against the HTTP cache. When an image was already cached, the browser
+   fired `load` between `grid.innerHTML = …` and the capture-phase listener
+   attaching, so `.loaded` was never added and the tile stayed `opacity: 0`
+   forever (DOM contained a valid <img src=…>, but the pixel never
+   painted). The delegated `error` handler still hides genuinely-failed
+   images via `display: none`, so the only thing lost is the 180ms fade-in
+   animation. Worth it. */
+.media-item img,
 .media-item video {
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.media-item img.loaded,
-.media-item video.loaded {
     opacity: 1;
-}
-@media (prefers-reduced-motion: reduce) {
-    .media-item img,
-    .media-item video {
-        transition: none;
-    }
 }
 
 .media-item:hover .media-overlay {
@@ -1578,6 +1571,635 @@ html.theme-light .notify-menu .notify-row:hover {
 
 .tg-toggle.active::after {
     transform: translateX(20px);
+}
+
+/* Maintenance → AI page: button variants that match `.tg-input` height
+   pixel-perfect. `.tg-input` is `padding: 11px 16px + 1px border` =
+   ~43-44 px tall at text-sm; without matching border-box buttons end
+   up 2-3 px shorter and look misaligned. Both variants below carry
+   the same border-width + padding + font-size + line-height so
+   `<button>` and `<input>` end up the exact same height.
+
+   Use `tg-btn-input` for the primary action (Search / Apply / Save)
+   and `tg-btn-input-secondary` for secondary (Cancel / Test / Wipe /
+   Preload). */
+.tg-btn-input {
+    background: #2aabee;
+    color: white;
+    padding: 11px 16px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-weight: 500;
+    line-height: 1.25;
+    font-size: 14px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.tg-btn-input:hover {
+    background: #229ed9;
+}
+.tg-btn-input:active {
+    transform: scale(0.98);
+}
+.tg-btn-input:disabled,
+.tg-btn-input[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.tg-btn-input-secondary {
+    background: #2f3b4a;
+    color: #f5f5f5;
+    padding: 11px 16px;
+    border: 1px solid #38444d;
+    border-radius: 8px;
+    font-weight: 500;
+    line-height: 1.25;
+    font-size: 14px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.tg-btn-input-secondary:hover {
+    background: #3a4858;
+}
+.tg-btn-input-secondary:active {
+    transform: scale(0.98);
+}
+.tg-btn-input-secondary:disabled,
+.tg-btn-input-secondary[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* AI Doctor — health-check strip on the AI page. Each check is one
+   line: icon + label + detail (truncated). Compact so 10+ checks
+   fit without scrolling. */
+.ai-doctor-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    line-height: 1.5;
+    min-width: 0;
+}
+.ai-doctor-row + .ai-doctor-row {
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.ai-doctor-icon {
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 11px;
+    line-height: 1;
+}
+.ai-doctor-ok {
+    color: #4caf50;
+}
+.ai-doctor-warn {
+    color: #f4c430;
+}
+.ai-doctor-fail {
+    color: #ef5350;
+}
+.ai-doctor-info {
+    color: #2aabee;
+}
+.ai-doctor-label {
+    color: #f5f5f5;
+    font-size: 10.5px;
+    font-weight: 500;
+    flex-shrink: 0;
+    white-space: nowrap;
+    max-width: 35%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ai-doctor-detail {
+    color: #8b95a1;
+    font-size: 10px;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Realtime monitor card (Settings → Engine). Animated dot reflects
+   the live state (running/starting/stopping/stopped/error); pill
+   chip shows the same state with a colour cue + uppercase label.
+   Stats tiles use icons + per-stat colour for fast scanning. */
+.engine-card {
+    transition: border-color 0.2s;
+}
+.engine-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.engine-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+.engine-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #f5f5f5;
+}
+.engine-state-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6c7783;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+.engine-state-dot[data-state="running"] {
+    background: #4caf50;
+    animation: engine-pulse-green 2s ease-in-out infinite;
+}
+.engine-state-dot[data-state="starting"] {
+    background: #2aabee;
+    animation: engine-pulse-blue 1.2s ease-in-out infinite;
+}
+.engine-state-dot[data-state="stopping"] {
+    background: #f4c430;
+}
+.engine-state-dot[data-state="error"] {
+    background: #ef5350;
+    animation: engine-pulse-red 1.6s ease-in-out infinite;
+}
+@keyframes engine-pulse-green {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.55);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
+    }
+}
+@keyframes engine-pulse-blue {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(42, 171, 238, 0.55);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(42, 171, 238, 0);
+    }
+}
+@keyframes engine-pulse-red {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.55);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(239, 83, 80, 0);
+    }
+}
+
+.engine-state-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.4;
+    transition:
+        background 0.2s,
+        color 0.2s,
+        border-color 0.2s;
+    flex-shrink: 0;
+}
+.engine-state-pill i {
+    font-size: 13px;
+    line-height: 1;
+}
+.engine-state-running {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+.engine-state-starting {
+    background: rgba(42, 171, 238, 0.15);
+    color: #7dc9f0;
+    border: 1px solid rgba(42, 171, 238, 0.3);
+}
+.engine-state-stopping {
+    background: rgba(244, 180, 0, 0.15);
+    color: #f4c430;
+    border: 1px solid rgba(244, 180, 0, 0.3);
+}
+.engine-state-stopped {
+    background: rgba(255, 255, 255, 0.05);
+    color: #8b95a1;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.engine-state-error {
+    background: rgba(239, 83, 80, 0.18);
+    color: #ef5350;
+    border: 1px solid rgba(239, 83, 80, 0.4);
+}
+
+.engine-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+}
+@media (min-width: 640px) {
+    .engine-stats {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+.engine-stat-tile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 10px 12px;
+    transition:
+        background 0.15s,
+        border-color 0.15s;
+}
+.engine-stat-tile:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+.engine-stat-icon {
+    font-size: 22px;
+    color: #2aabee;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.engine-stat-tile[data-stat="active"] .engine-stat-icon {
+    color: #4caf50;
+}
+.engine-stat-tile[data-stat="downloaded"] .engine-stat-icon {
+    color: #7dc9f0;
+}
+.engine-stat-tile[data-stat="uptime"] .engine-stat-icon {
+    color: #8b95a1;
+}
+.engine-card[data-state="running"] .engine-stat-tile[data-stat="active"] .engine-stat-icon {
+    animation: engine-spin 1.6s linear infinite;
+}
+@keyframes engine-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.engine-stat-meta {
+    flex: 1;
+    min-width: 0;
+}
+.engine-stat-label {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8b95a1;
+    margin-bottom: 1px;
+}
+.engine-stat-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: #f5f5f5;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.engine-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.engine-link {
+    margin-left: auto;
+    font-size: 12px;
+    color: #2aabee;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.15s;
+    white-space: nowrap;
+}
+.engine-link:hover {
+    color: #5fbef2;
+    text-decoration: underline;
+}
+
+.engine-error {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #ef5350;
+    background: rgba(239, 83, 80, 0.08);
+    border: 1px solid rgba(239, 83, 80, 0.25);
+    border-radius: 8px;
+    padding: 8px 10px;
+    line-height: 1.5;
+}
+
+/* Doctor summary chip — visible status pill in the card header.
+   Colour reflects the worst-state check: green = all OK, yellow =
+   warning, red = failing, blue = working/in-flight. Pulses subtly
+   when in 'fail' state so a regression is hard to miss. */
+.ai-doctor-summary-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.4;
+    transition:
+        background 0.2s,
+        color 0.2s,
+        border-color 0.2s;
+}
+.ai-doctor-summary-chip i {
+    font-size: 11px;
+    line-height: 1;
+}
+.ai-doctor-summary-ok {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+.ai-doctor-summary-warn {
+    background: rgba(244, 180, 0, 0.15);
+    color: #f4c430;
+    border: 1px solid rgba(244, 180, 0, 0.3);
+}
+.ai-doctor-summary-fail {
+    background: rgba(239, 83, 80, 0.18);
+    color: #ef5350;
+    border: 1px solid rgba(239, 83, 80, 0.4);
+    animation: ai-doctor-pulse 2.2s ease-in-out infinite;
+}
+.ai-doctor-summary-loading {
+    background: rgba(42, 171, 238, 0.15);
+    color: #7dc9f0;
+    border: 1px solid rgba(42, 171, 238, 0.3);
+}
+@keyframes ai-doctor-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.45);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(239, 83, 80, 0);
+    }
+}
+
+/* Per-capability "Model override" expander on the AI page. Rotates the
+   chevron icon when the <details> is open. */
+.ai-cap-override[open] .ai-cap-chevron {
+    transform: rotate(90deg);
+}
+
+/* AI page — per-capability rows. Lives inside the Capability settings
+   panel; flat (no nested card-in-card), separated by hairline rules
+   like the NSFW settings rows. Compact vertical rhythm so all 3 caps
+   fit without scrolling. */
+.ai-models-list {
+    display: flex;
+    flex-direction: column;
+}
+.ai-model-card {
+    padding: 10px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: transparent;
+    border-radius: 0;
+}
+.ai-model-card:first-child {
+    border-top: 0;
+    padding-top: 4px;
+}
+.ai-model-card:last-child {
+    padding-bottom: 4px;
+}
+.ai-model-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.ai-model-icon {
+    font-size: 18px;
+    color: #2aabee;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.ai-model-titles {
+    flex: 1;
+    min-width: 0;
+}
+.ai-model-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #f5f5f5;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.ai-model-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    color: #8b95a1;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ai-model-disabled {
+    font-size: 9.5px;
+    background: rgba(255, 255, 255, 0.06);
+    color: #8b95a1;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+/* Tagging-mode chip — shown only on the Tags card, mirrors the
+   resolved zero-shot / classifier / hybrid path the scan will run. */
+.ai-model-mode {
+    font-size: 9.5px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+.ai-model-mode-hybrid {
+    background: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+}
+.ai-model-mode-classifier {
+    background: rgba(244, 180, 0, 0.15);
+    color: #f4c430;
+}
+.ai-model-mode-zero-shot {
+    background: rgba(42, 171, 238, 0.15);
+    color: #2aabee;
+}
+.ai-model-state {
+    font-size: 10.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.ai-model-state-idle {
+    background: rgba(255, 255, 255, 0.05);
+    color: #8b95a1;
+}
+.ai-model-state-loading {
+    background: rgba(244, 180, 0, 0.15);
+    color: #f4c430;
+}
+.ai-model-state-loaded {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+}
+.ai-model-state-bundled {
+    background: rgba(42, 171, 238, 0.15);
+    color: #2aabee;
+}
+.ai-model-detail {
+    margin-top: 4px;
+    font-size: 10.5px;
+    color: #8b95a1;
+}
+.ai-model-active-desc {
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: #b8c2cf;
+    line-height: 1.45;
+}
+.ai-model-badges {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.ai-model-tag-chip {
+    font-size: 9.5px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: rgba(42, 171, 238, 0.12);
+    color: #7dc9f0;
+    border: 1px solid rgba(42, 171, 238, 0.18);
+    line-height: 1.6;
+}
+.ai-model-progress {
+    margin-top: 4px;
+    font-size: 10px;
+    color: #8b95a1;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    min-height: 0;
+}
+.ai-model-progress:empty {
+    margin-top: 0;
+}
+.ai-model-swap {
+    margin-top: 6px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.ai-model-input {
+    flex: 1;
+    min-width: 200px;
+    background: #242f3d;
+    border: 1px solid #38444d;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #f5f5f5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.ai-model-input:hover {
+    border-color: #4a5c6e;
+}
+.ai-model-input:focus {
+    border-color: #2aabee;
+}
+.ai-model-swap .tg-btn-input,
+.ai-model-swap .tg-btn-input-secondary {
+    padding: 5px 10px;
+    font-size: 11.5px;
+}
+
+/* Maintenance → AI capability cards (faces-only build).
+   One card per capability + a dashed "Coming soon" placeholder.
+   Adding a new capability is a single push into CAPABILITIES in
+   maintenance-ai.js — no new CSS per drop. */
+.ai-capability-card {
+    transition:
+        border-color 0.15s,
+        background-color 0.15s;
+}
+.ai-capability-card:hover {
+    border-color: rgba(42, 171, 238, 0.35);
+}
+.ai-coming-soon-card {
+    opacity: 0.6;
+}
+.ai-coming-soon-card:hover {
+    opacity: 0.85;
+}
+/* Master toggle badge — clickable button styling so the operator
+   sees it as an actionable affordance (cursor + hover state). */
+#ai-master-badge {
+    border: 0;
+    line-height: 1.3;
+}
+#ai-master-badge[aria-checked="true"] {
+    background: rgba(76, 175, 80, 0.15);
+}
+
+/* Maintenance → AI page: tab pills + result tile overlay. Three pills
+   share a row (Search / Tags / People); the active pill gets the
+   brand-blue fill, inactive pills stay subtle. Adapted from the
+   .rescue-chip pattern. */
+.tg-tab {
+    background: #2aabee;
+    color: #fff;
+    font-weight: 500;
+    transition:
+        background 0.15s,
+        color 0.15s;
+}
+.tg-tab-inactive {
+    background: transparent;
+    color: #aaa;
+    transition:
+        background 0.15s,
+        color 0.15s;
+}
+.tg-tab-inactive:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
 }
 
 .tg-input {
@@ -2134,6 +2756,44 @@ textarea:focus {
     -webkit-tap-highlight-color: transparent;
     transition: background-color 120ms ease;
 }
+
+/* Compact density for the sidebar groups list only. The Manage Groups
+   picker and other pages that render `.chat-row` keep the comfortable
+   default — only the always-visible sidebar gets tighter rows so it
+   fits more chats on screen without scrolling. */
+#groups-list .chat-row {
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+}
+#groups-list .chat-row .row-title {
+    font-size: 13px;
+    gap: 4px;
+}
+#groups-list .chat-row .row-subtitle {
+    font-size: 11px;
+    line-height: 1.25;
+}
+#groups-list .chat-row .row-meta {
+    font-size: 10px;
+    gap: 2px;
+}
+#groups-list .chat-row .unread-pill {
+    min-width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    padding: 0 4px;
+    font-size: 10px;
+}
+#groups-list .chat-row .avatar,
+#groups-list .chat-row .avatar img {
+    width: 32px;
+    height: 32px;
+}
+#groups-list .chat-row.is-selected::before {
+    top: 6px;
+    bottom: 6px;
+}
 .chat-row:hover {
     background: var(--tg-hover, #2b5278);
 }
@@ -2269,6 +2929,35 @@ body[data-role="guest"] [data-admin-only] {
 body[data-role="guest"] #onboarding-banner {
     display: none !important;
 }
+/* Mobile-friendly onboarding banner. The inline template renders one
+   row of [emoji][title+body][button]; under ~640 px the title wraps,
+   the body collapses to two characters of width, and the action button
+   gets squeezed to ~28 px wide. Override the row layout here so the
+   banner stacks vertically and the button becomes a full-width tap
+   target on phones. Selectors are scoped under #onboarding-banner so
+   they win specificity against the inline Tailwind utilities without
+   needing !important. */
+@media (max-width: 639px) {
+    #onboarding-banner {
+        padding: 0.5rem 0.75rem;
+    }
+    #onboarding-banner > div {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    #onboarding-banner > div > .text-2xl {
+        font-size: 1.25rem;
+        line-height: 1;
+    }
+    #onboarding-banner #onboarding-go {
+        width: 100%;
+        margin-left: 0;
+        align-self: stretch;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+}
 /* Select-mode toggle is only meaningful inside the gallery — show it
    in the header only when the Viewer page is active. Hidden by
    default via the `hidden` class; this rule un-hides on viewer. */
@@ -2403,8 +3092,10 @@ body[data-page="settings"] {
    skip the tab strip there. */
 body[data-page="maintenance-duplicates"] #maintenance-tabs,
 body[data-page="maintenance-thumbs"] #maintenance-tabs,
+body[data-page="maintenance-seekbar"] #maintenance-tabs,
 body[data-page="maintenance-video"] #maintenance-tabs,
 body[data-page="maintenance-nsfw"] #maintenance-tabs,
+body[data-page="maintenance-ai"] #maintenance-tabs,
 body[data-page="maintenance-backup"] #maintenance-tabs,
 body[data-page="maintenance-cluster"] #maintenance-tabs,
 body[data-page="maintenance-recovery"] #maintenance-tabs,
@@ -3047,4 +3738,427 @@ html[data-contrast="more"] .media-item {
     padding: 8px 0 10px;
     margin-top: 4px;
     border-bottom: 1px solid var(--tg-border, #0d1117);
+}
+
+/* ---- Build thumbnails — live preview gallery (admin /maintenance/thumbs)
+ *
+ * Responsive grid, square aspect tiles, GPU-cheap. Tiles fade in only when
+ * IntersectionObserver flips them to `data-loaded="true"`. No flash of
+ * unstyled image; the dark panel shows through while the WebP decodes.
+ * Sliding-window virtualisation in JS caps tile count at ~500 so a 1M-row
+ * library doesn't grow the DOM unbounded.
+ */
+.thumbs-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 6px;
+    content-visibility: auto;
+    contain: layout style paint;
+}
+@media (min-width: 640px) {
+    .thumbs-gallery-grid {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 8px;
+    }
+}
+.thumbs-gallery-tile {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--tg-bg, #0e1620);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease;
+    contain: layout style paint;
+    /* Anchor styling reset — tile is <a>, so strip the underline + colour
+       browser defaults paint over our chrome. */
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+.thumbs-gallery-tile:focus {
+    outline: none;
+}
+.thumbs-gallery-tile:focus-visible {
+    outline: 2px solid var(--tg-blue, #2ea3ff);
+    outline-offset: 2px;
+}
+/* Pure placeholder — no img, no badge. Used for the initial paint so the
+   operator sees motion immediately. */
+.thumbs-gallery-tile.is-skeleton {
+    pointer-events: none;
+    cursor: default;
+}
+.thumbs-gallery-tile:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.thumbs-gallery-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+.thumbs-gallery-tile[data-loaded="true"] img {
+    opacity: 1;
+}
+.thumbs-gallery-tile[data-failed="true"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(220, 38, 38, 0.18), rgba(220, 38, 38, 0.04) 60%);
+    pointer-events: none;
+}
+/* Broken-image glyph centred on top of the failed overlay so the operator
+   can read the state at a glance instead of squinting at a near-empty tile. */
+.thumbs-gallery-tile .thumbs-tile-failed-icon {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: rgba(248, 113, 113, 0.85);
+    font-size: 22px;
+    pointer-events: none;
+}
+.thumbs-gallery-tile[data-failed="true"] .thumbs-tile-failed-icon {
+    display: flex;
+}
+/* "Not yet built" pin — tucked top-left, complementary to the kind badge
+   on the top-right. Disappears once the tile loads. */
+.thumbs-gallery-tile .thumbs-tile-pending {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(234, 179, 8, 0.85);
+    color: #1f1300;
+    font-size: 10px;
+    line-height: 1.2;
+    z-index: 2;
+}
+.thumbs-gallery-tile[data-loaded="true"]:not([data-failed="true"]) .thumbs-tile-pending {
+    display: none;
+}
+/* Per-tile retry — only visible when the tile failed. Hover bumps it to
+   full opacity so the click target reads as live. */
+.thumbs-gallery-tile .thumbs-tile-retry {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(15, 23, 42, 0.85);
+    color: #fff;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+    backdrop-filter: blur(4px);
+    transition:
+        transform 0.15s ease,
+        background 0.15s ease;
+}
+.thumbs-gallery-tile[data-failed="true"] .thumbs-tile-retry {
+    display: inline-flex;
+}
+.thumbs-gallery-tile .thumbs-tile-retry:hover {
+    transform: scale(1.06);
+    background: rgba(46, 163, 255, 0.95);
+}
+.thumbs-gallery-tile .thumbs-tile-retry:disabled {
+    opacity: 0.5;
+    cursor: progress;
+}
+.thumbs-gallery-tile .thumbs-tile-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    font-size: 9px;
+    line-height: 1.4;
+    backdrop-filter: blur(2px);
+}
+.thumbs-gallery-tile .thumbs-tile-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 4px 6px;
+    font-size: 9.5px;
+    line-height: 1.25;
+    color: #fff;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+.thumbs-gallery-tile .thumbs-tile-skeleton {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.02) 0%,
+        rgba(255, 255, 255, 0.06) 50%,
+        rgba(255, 255, 255, 0.02) 100%
+    );
+    background-size: 200% 100%;
+    animation: thumbs-skeleton-shimmer 1.4s infinite linear;
+}
+.thumbs-gallery-tile[data-loaded="true"] .thumbs-tile-skeleton,
+.thumbs-gallery-tile[data-failed="true"] .thumbs-tile-skeleton {
+    display: none;
+}
+@keyframes thumbs-skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+.thumbs-gallery-sentinel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 0 4px;
+    min-height: 36px;
+}
+.thumbs-gallery-sentinel.is-idle {
+    visibility: hidden;
+    min-height: 0;
+    padding: 0;
+}
+.thumbs-gallery-kind[aria-pressed="true"] {
+    background: var(--tg-blue, #2ea3ff);
+    color: #fff;
+    border-color: transparent;
+}
+.thumbs-gallery-kind[aria-pressed="true"] i {
+    color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+    .thumbs-gallery-tile img {
+        transition: none;
+    }
+    .thumbs-gallery-tile:hover {
+        transform: none;
+    }
+    .thumbs-gallery-tile .thumbs-tile-skeleton {
+        animation: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * Inline document preview panes (text / code / markdown / archive).
+ *
+ * The modal switches between these containers via classList toggles in
+ * viewer.js. Common look: tinted dark surface, monospace text wins
+ * priority, content scrolls inside its own overflow:auto wrapper so the
+ * surrounding modal frame stays stable.
+ * ------------------------------------------------------------------------- */
+.viewer-text-pre,
+.viewer-code-pre {
+    color: var(--tg-text, #f5f5f5);
+    background: transparent;
+    /* Cap line length on huge logs so the horizontal scrollbar doesn't
+       run off-screen on a 4K monitor. Wrap-toggle button flips this to
+       `pre-wrap` at runtime. */
+    max-width: 100%;
+    overflow-x: auto;
+    line-height: 1.45;
+}
+.viewer-text-pre.wrap,
+.viewer-code-pre.wrap {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+#code-container code {
+    /* highlight.js writes its colours via inline classes; keep its
+       background transparent so our container colour wins. */
+    background: transparent;
+}
+
+.viewer-markdown-body {
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+.viewer-markdown-body h1,
+.viewer-markdown-body h2,
+.viewer-markdown-body h3,
+.viewer-markdown-body h4,
+.viewer-markdown-body h5,
+.viewer-markdown-body h6 {
+    margin: 1.4em 0 0.6em;
+    color: var(--tg-text, #f5f5f5);
+    font-weight: 600;
+}
+.viewer-markdown-body h1 {
+    font-size: 1.65rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 0.3em;
+}
+.viewer-markdown-body h2 {
+    font-size: 1.35rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 0.25em;
+}
+.viewer-markdown-body h3 {
+    font-size: 1.15rem;
+}
+.viewer-markdown-body p,
+.viewer-markdown-body ul,
+.viewer-markdown-body ol {
+    margin: 0.75em 0;
+}
+.viewer-markdown-body ul,
+.viewer-markdown-body ol {
+    padding-left: 1.6em;
+}
+.viewer-markdown-body code {
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    font-size: 0.88em;
+}
+.viewer-markdown-body pre {
+    background: rgba(0, 0, 0, 0.45);
+    padding: 0.85em 1em;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+.viewer-markdown-body pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+}
+.viewer-markdown-body a {
+    color: var(--tg-blue, #2ea3ff);
+    text-decoration: none;
+}
+.viewer-markdown-body a:hover {
+    text-decoration: underline;
+}
+.viewer-markdown-body blockquote {
+    border-left: 4px solid rgba(255, 255, 255, 0.18);
+    margin: 0.75em 0;
+    padding: 0.3em 1em;
+    color: rgba(255, 255, 255, 0.75);
+}
+.viewer-markdown-body table {
+    border-collapse: collapse;
+    margin: 0.8em 0;
+    font-size: 0.88rem;
+}
+.viewer-markdown-body th,
+.viewer-markdown-body td {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0.45em 0.7em;
+    text-align: left;
+}
+.viewer-markdown-body th {
+    background: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+}
+.viewer-markdown-body img {
+    max-width: 100%;
+    border-radius: 6px;
+}
+.viewer-markdown-body hr {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 1.5em 0;
+}
+
+.archive-tree {
+    color: var(--tg-text, #f5f5f5);
+}
+.archive-row {
+    transition: background 120ms ease;
+}
+.archive-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Seekbar hover sprite preview — Netflix/YouTube style. The wrapper is
+ * absolutely positioned in JS via cursor x (kept inside the progressBar
+ * bounds so it never overflows the player chrome). The inner `#video-
+ * sprite-frame` paints the sprite background; size is set inline by JS
+ * from the per-clip meta JSON. We do all the chrome (rounded corners,
+ * ring, shadow, time pill) in CSS so JS only owns geometry.
+ */
+#video-sprite-preview {
+    /* Center the wrapper horizontally on the cursor. JS sets `left:` to
+     * the cursor x (clamped to the progress bar bounds) and we translate
+     * by 50% so the tile reads centered. */
+    transform: translateX(-50%);
+    z-index: 35;
+    /* Smooth glide as the cursor moves. Short enough that scrubbing
+     * still feels instant — long enough to mask the per-frame snap. */
+    transition:
+        left 80ms linear,
+        opacity 120ms ease-out,
+        transform 80ms linear;
+    opacity: 1;
+    /* Pointer-events:none is already set inline so the preview never
+     * eats clicks meant for the seek bar. */
+}
+#video-sprite-preview.hidden {
+    opacity: 0;
+}
+#video-sprite-frame {
+    background-repeat: no-repeat;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    /* When the sprite hasn't loaded yet (pending state), the inline
+     * width/height + bg-image are absent — show the placeholder gradient
+     * so the tile has a visible footprint instead of collapsing to 0×0. */
+    background-color: rgba(20, 22, 28, 0.85);
+    background-image: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.04) 0%,
+        rgba(255, 255, 255, 0.08) 50%,
+        rgba(255, 255, 255, 0.04) 100%
+    );
+}
+/* `data-state="pending"` — sidecar is still generating the sprite for
+ * this clip OR the request 404'd. Surface the spinner overlay and keep
+ * the tile at a sensible default size (16:9) so the operator sees the
+ * "in progress" affordance, not an empty rectangle. */
+#video-sprite-preview[data-state="pending"] #video-sprite-frame {
+    width: 160px;
+    height: 90px;
+}
+#video-sprite-preview[data-state="pending"] #video-sprite-pending {
+    display: flex;
+}
+/* `data-state="ready"` — sprite loaded successfully. Hide the pending
+ * overlay so the actual frame paints through. */
+#video-sprite-preview[data-state="ready"] #video-sprite-pending {
+    display: none !important;
+}
+/* `data-state="disabled"` — feature is off (advanced.seekbar.enabled=false)
+ * OR the row is a peer/share with no sidecar entitlement. We hide the
+ * tile entirely so the operator just sees the time-only tooltip. */
+#video-sprite-preview[data-state="disabled"] {
+    display: none !important;
 }

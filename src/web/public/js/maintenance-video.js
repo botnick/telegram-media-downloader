@@ -37,6 +37,53 @@ function _formatRelative(unixMs) {
     return i18nTf('maintenance.duplicates.stats.days_ago', { n: days }, `${days} d ago`);
 }
 
+// Snapshot of the persistent auto-optimise counters. Cached in-module
+// so the WS handler can render an updated card without re-fetching
+// every event — auto-stats arrive once per downloaded file, which on a
+// busy archive can be many per second.
+let _autoStatsCache = null;
+
+function _renderAutoStats(s) {
+    if (!s) return;
+    _autoStatsCache = s;
+    const elTotal = $('video-auto-stat-total');
+    const elOpt = $('video-auto-stat-optimized');
+    const elAlready = $('video-auto-stat-already');
+    const elErr = $('video-auto-stat-errored');
+    const elLast = $('video-auto-stat-last');
+    const elErrMsg = $('video-auto-stat-last-error');
+    if (elTotal) elTotal.textContent = (s.total || 0).toLocaleString();
+    if (elOpt) elOpt.textContent = (s.optimized || 0).toLocaleString();
+    if (elAlready) elAlready.textContent = (s.already || 0).toLocaleString();
+    if (elErr) elErr.textContent = (s.errored || 0).toLocaleString();
+    if (elLast) {
+        if (s.lastAt) {
+            elLast.textContent = _formatRelative(s.lastAt);
+            elLast.title = new Date(s.lastAt).toLocaleString();
+        } else {
+            elLast.textContent = i18nT('maintenance.duplicates.stats.last_scan_never', 'Never');
+            elLast.title = '';
+        }
+    }
+    if (elErrMsg) {
+        if (s.lastError && (s.errored || 0) > 0) {
+            elErrMsg.textContent = String(s.lastError);
+            elErrMsg.classList.remove('hidden');
+        } else {
+            elErrMsg.classList.add('hidden');
+        }
+    }
+}
+
+async function _refreshAutoStats() {
+    try {
+        const r = await api.get('/api/maintenance/faststart/auto-stats');
+        _renderAutoStats(r);
+    } catch {
+        /* leave stale; WS will catch up on the next event */
+    }
+}
+
 async function _refreshStats() {
     const elTotal = $('video-stat-total');
     const elOpt = $('video-stat-optimized');
@@ -192,6 +239,36 @@ function _wireWs() {
             );
         }
         _refreshStats().catch(() => {});
+        _refreshAutoStats().catch(() => {});
+    });
+    // Per-file auto-optimise broadcast — fires once per downloaded
+    // MP4 / MOV / M4V row, regardless of whether the moov rewrite
+    // actually ran (skipped/already files emit too so the counters
+    // stay honest). Bump the local cache in-place rather than fetch
+    // every time so a busy backfill doesn't hammer the endpoint.
+    ws.on('faststart_auto_done', (m) => {
+        const prev = _autoStatsCache || {
+            total: 0,
+            optimized: 0,
+            already: 0,
+            skipped: 0,
+            errored: 0,
+            lastAt: null,
+            lastError: null,
+            ffmpegAvailable: true,
+        };
+        const result = m?.result || 'skipped';
+        _renderAutoStats({
+            ...prev,
+            total: (prev.total || 0) + 1,
+            optimized: (prev.optimized || 0) + (result === 'optimized' ? 1 : 0),
+            already: (prev.already || 0) + (result === 'already' ? 1 : 0),
+            skipped: (prev.skipped || 0) + (result === 'skipped' ? 1 : 0),
+            errored: (prev.errored || 0) + (result === 'errored' ? 1 : 0),
+            lastAt: Date.now(),
+            lastResult: result,
+            lastError: result === 'errored' ? String(m?.error || '').slice(0, 200) : prev.lastError,
+        });
     });
 }
 
@@ -211,5 +288,6 @@ export function init() {
         $('video-scan-btn')?.addEventListener('click', _scanAll);
     }
     _refreshStats();
+    _refreshAutoStats();
     _recoverState();
 }

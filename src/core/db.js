@@ -213,30 +213,119 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_nsfw_tier ON downloads(file_type, nsfw_whitelist, nsfw_score) WHERE nsfw_score IS NOT NULL',
         );
     } catch {}
-    // v2.13 — AI Search & Smart Organisation removal. Idempotent on every
-    // boot: drop the four AI auxiliary tables + their indexes, then drop the
-    // two `downloads` columns. Each step is wrapped in try/catch so an
-    // already-clean DB is a no-op. SQLite ≥3.35 supports DROP COLUMN, which
-    // better-sqlite3 ships.
-    for (const sql of [
-        'DROP INDEX IF EXISTS idx_phash',
-        'DROP INDEX IF EXISTS idx_ai_unindexed',
-        'DROP INDEX IF EXISTS idx_faces_download',
-        'DROP INDEX IF EXISTS idx_faces_person',
-        'DROP INDEX IF EXISTS idx_tags_tag_score',
-        'DROP TABLE IF EXISTS faces',
-        'DROP TABLE IF EXISTS people',
-        'DROP TABLE IF EXISTS image_embeddings',
-        'DROP TABLE IF EXISTS image_tags',
-        'ALTER TABLE downloads DROP COLUMN phash',
-        'ALTER TABLE downloads DROP COLUMN ai_indexed_at',
-    ]) {
-        try {
-            db.exec(sql);
-        } catch {
-            /* already gone */
-        }
+    // v2.15 — AI subsystem re-add (semantic search + auto-tags + face
+    // clustering). Tables are opt-in; rows only land here once the operator
+    // turns a capability on in `config.advanced.ai` and runs a scan. Every
+    // statement is idempotent so a fresh boot, a v2.13/2.14 → v2.15 upgrade,
+    // and an already-migrated DB all converge on the same shape.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS image_embeddings (
+            download_id INTEGER PRIMARY KEY,
+            embedding   BLOB    NOT NULL,
+            model       TEXT    NOT NULL,
+            indexed_at  INTEGER NOT NULL,
+            FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS image_tags (
+            download_id INTEGER NOT NULL,
+            tag         TEXT    NOT NULL,
+            score       REAL    NOT NULL,
+            PRIMARY KEY (download_id, tag),
+            FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_tags_tag_score ON image_tags(tag, score DESC);
+        CREATE TABLE IF NOT EXISTS people (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            label              TEXT,
+            embedding_centroid BLOB    NOT NULL,
+            face_count         INTEGER NOT NULL DEFAULT 0,
+            created_at         INTEGER NOT NULL,
+            updated_at         INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS faces (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            download_id INTEGER NOT NULL,
+            x           REAL    NOT NULL,
+            y           REAL    NOT NULL,
+            w           REAL    NOT NULL,
+            h           REAL    NOT NULL,
+            embedding   BLOB    NOT NULL,
+            person_id   INTEGER,
+            FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE,
+            FOREIGN KEY (person_id)   REFERENCES people(id)    ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_faces_download ON faces(download_id);
+        CREATE INDEX IF NOT EXISTS idx_faces_person   ON faces(person_id);
+    `);
+    try {
+        db.exec('ALTER TABLE downloads ADD COLUMN ai_indexed_at INTEGER');
+    } catch {
+        /* column already present (re-run after v2.13 column drop) */
     }
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_ai_unindexed ON downloads(file_type, ai_indexed_at) WHERE ai_indexed_at IS NULL',
+        );
+    } catch {
+        /* index already present */
+    }
+    // v2.16 — faces.quality_score (Phase 2). Quality filter persists the
+    // raw detection score so the UI can show "low confidence" warnings
+    // and the operator can sort/filter by face quality if a cluster
+    // looks wrong.
+    try {
+        db.exec('ALTER TABLE faces ADD COLUMN quality_score REAL');
+    } catch {
+        /* column already present */
+    }
+    // v2.16 Phase 4 — peer_face_centroids. Stores the
+    // average-of-cluster face vectors that paired peers push to us.
+    // The label sync flow uses this to match an incoming "Bob" centroid
+    // against local clusters within `eps` and propagate the label.
+    // Opt-in via `config.advanced.ai.federateFaces`; table is created
+    // unconditionally so a future toggle-on doesn't need a migration.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS peer_face_centroids (
+            peer_id          TEXT    NOT NULL,
+            remote_person_id INTEGER NOT NULL,
+            centroid         BLOB    NOT NULL,
+            label            TEXT,
+            face_count       INTEGER NOT NULL DEFAULT 0,
+            updated_at       INTEGER NOT NULL,
+            PRIMARY KEY (peer_id, remote_person_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_peer_face_centroids_label
+            ON peer_face_centroids(label) WHERE label IS NOT NULL;
+    `);
+
+    // Seekbar sprite cache (v2.17). One row per indexed video; sprite +
+    // JSON metadata live on disk under data/seekbar/. Opt-in via
+    // config.advanced.seekbar.enabled; rows only appear once the
+    // operator turns the feature on and either downloads a new video
+    // (auto-pregenerate hook) or runs "Scan now" from the maintenance
+    // page. ON DELETE CASCADE so purging a download row removes its
+    // sprite metadata in lockstep.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS seekbar_sprites (
+            download_id   INTEGER PRIMARY KEY,
+            sprite_path   TEXT NOT NULL,
+            meta_path     TEXT NOT NULL,
+            duration_sec  REAL,
+            frames        INTEGER,
+            cols          INTEGER,
+            rows          INTEGER,
+            tile_w        INTEGER,
+            tile_h        INTEGER,
+            interval_sec  REAL,
+            format        TEXT,
+            bytes         INTEGER,
+            source_size   INTEGER,
+            source_mtime  INTEGER,
+            generated_at  INTEGER NOT NULL,
+            FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_seekbar_generated_at ON seekbar_sprites(generated_at);
+    `);
 
     // Smoke-test every column the rest of the code path depends on. The
     // ALTER TABLE migrations above swallow "column already exists" so they
@@ -246,7 +335,7 @@ function initSchema() {
     // error. Forcing the SELECT here makes us fail at boot instead.
     try {
         db.prepare(
-            'SELECT pinned, pending_until, rescued_at, ttl_seconds, file_hash, nsfw_score, nsfw_checked_at, nsfw_whitelist FROM downloads LIMIT 0',
+            'SELECT pinned, pending_until, rescued_at, ttl_seconds, file_hash, nsfw_score, nsfw_checked_at, nsfw_whitelist, ai_indexed_at FROM downloads LIMIT 0',
         ).all();
     } catch (e) {
         throw new Error(
@@ -1958,6 +2047,548 @@ export function unwhitelistNsfw(ids) {
     );
 }
 
+// ---- AI subsystem (v2.15.0) ----------------------------------------------
+//
+// Helper queries for src/core/ai/*. Each capability persists into a
+// different table but the read paths are concentrated here so the modules
+// stay small. Mirrors the NSFW helper pattern: small, composable, every
+// `.all()` over a high-cardinality table either has LIMIT/OFFSET or is
+// streamed via `.iterate()` per `CLAUDE.md → Big-data patterns`.
+
+/**
+ * Rows that haven't been visited yet by the AI indexer. Photos only — videos
+ * + documents are out of scope for the v2.15 subsystem (frame extraction
+ * comes later). Sorted oldest-first so a resumed scan picks up backlog
+ * before newly-arrived rows.
+ */
+export function getUnindexedAiBatch({ fileTypes = ['photo'], limit = 50 } = {}) {
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
+    const placeholders = types.map(() => '?').join(',');
+    return getDb()
+        .prepare(`
+        SELECT id, group_id, group_name, file_name, file_path, file_type, file_size, created_at
+          FROM downloads
+         WHERE file_type IN (${placeholders})
+           AND ai_indexed_at IS NULL
+         ORDER BY created_at ASC, id ASC
+         LIMIT ?
+    `)
+        .all(...types, Math.max(1, Math.min(500, Number(limit) || 50)));
+}
+
+export function setAiIndexedAt(downloadId, now = Date.now()) {
+    return getDb()
+        .prepare('UPDATE downloads SET ai_indexed_at = ? WHERE id = ?')
+        .run(Math.floor(now), Number(downloadId)).changes;
+}
+
+/**
+ * Counters for the Maintenance → AI page header. One COUNT per capability
+ * + a totalEligible/indexed roll-up so the UI can paint progress bars
+ * without per-feature round-trips.
+ */
+export function getAiCounts({ fileTypes = ['photo'] } = {}) {
+    const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
+    const placeholders = types.map(() => '?').join(',');
+    const db = getDb();
+    const total = db
+        .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`)
+        .get(...types).n;
+    const indexed = db
+        .prepare(
+            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NOT NULL`,
+        )
+        .get(...types).n;
+    const withEmbedding = db.prepare(`SELECT COUNT(*) AS n FROM image_embeddings`).get().n;
+    const withFaces = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces`).get().n;
+    const withTags = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM image_tags`).get().n;
+    const peopleCount = db.prepare(`SELECT COUNT(*) AS n FROM people`).get().n;
+    return {
+        totalEligible: total,
+        indexed,
+        unindexed: Math.max(0, total - indexed),
+        withEmbedding,
+        withFaces,
+        withTags,
+        peopleCount,
+    };
+}
+
+// ---- Image embeddings -----------------------------------------------------
+
+export function setImageEmbedding(downloadId, embeddingBlob, model, now = Date.now()) {
+    return getDb()
+        .prepare(`
+        INSERT INTO image_embeddings (download_id, embedding, model, indexed_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(download_id) DO UPDATE SET
+            embedding  = excluded.embedding,
+            model      = excluded.model,
+            indexed_at = excluded.indexed_at
+    `)
+        .run(Number(downloadId), embeddingBlob, String(model), Math.floor(now)).changes;
+}
+
+/**
+ * Stream every embedding row for the in-memory cosine-sim path. JOINs
+ * `downloads` so the search caller can return file metadata in one round
+ * trip. Iterator-based — see `CLAUDE.md → Big-data patterns rule 1`. The
+ * caller (vector-store.topK) materialises only the top-K results, so even
+ * a 1M-row library scans linearly without holding everything in heap.
+ */
+export function iterateAllImageEmbeddings({ fileTypes = null } = {}) {
+    let where = '';
+    const params = [];
+    if (Array.isArray(fileTypes) && fileTypes.length) {
+        where = ` WHERE d.file_type IN (${fileTypes.map(() => '?').join(',')})`;
+        params.push(...fileTypes);
+    }
+    return getDb()
+        .prepare(`
+        SELECT e.download_id, e.embedding, e.model, e.indexed_at,
+               d.id, d.group_id, d.group_name, d.file_name, d.file_path,
+               d.file_type, d.file_size, d.created_at
+          FROM image_embeddings e
+          JOIN downloads d ON d.id = e.download_id
+          ${where}
+    `)
+        .iterate(...params);
+}
+
+/**
+ * Distinct embedding-model values currently stored. Used by
+ * `clearStaleEmbeddings` after a model swap.
+ */
+export function listEmbeddingModels() {
+    return getDb()
+        .prepare(`
+        SELECT model, COUNT(*) AS count
+          FROM image_embeddings
+         GROUP BY model
+    `)
+        .all();
+}
+
+/**
+ * Nuke every AI artefact and reset every download's `ai_indexed_at`
+ * stamp so the next scan reprocesses the entire library from scratch.
+ * Used by the "Re-index everything" button when the operator changes
+ * model, dtype, or label list and wants a clean baseline. Returns
+ * counts so the UI can show what was reset.
+ */
+export function resetAllAiData() {
+    const db = getDb();
+    const tx = db.transaction(() => {
+        const embeddings = db.prepare('DELETE FROM image_embeddings').run().changes;
+        const tags = db.prepare('DELETE FROM image_tags').run().changes;
+        const faces = db.prepare('DELETE FROM faces').run().changes;
+        const people = db.prepare('DELETE FROM people').run().changes;
+        const requeued = db
+            .prepare('UPDATE downloads SET ai_indexed_at = NULL WHERE ai_indexed_at IS NOT NULL')
+            .run().changes;
+        return { embeddings, tags, faces, people, requeued };
+    });
+    return tx();
+}
+
+/**
+ * Drop every embedding row whose `model` differs from `currentModelId`,
+ * then reset `downloads.ai_indexed_at = NULL` for the affected rows so
+ * the next scan re-embeds them. Wrapped in one transaction so a partial
+ * state can never linger.
+ */
+export function clearStaleEmbeddings(currentModelId) {
+    const target = String(currentModelId || '').trim();
+    if (!target) return { dropped: 0, requeued: 0 };
+    const db = getDb();
+    const tx = db.transaction((modelId) => {
+        const dropped = db
+            .prepare(`DELETE FROM image_embeddings WHERE model != ?`)
+            .run(modelId).changes;
+        const requeued = db
+            .prepare(`
+                UPDATE downloads
+                   SET ai_indexed_at = NULL
+                 WHERE id NOT IN (SELECT download_id FROM image_embeddings)
+                   AND ai_indexed_at IS NOT NULL
+            `)
+            .run().changes;
+        return { dropped, requeued };
+    });
+    return tx(target);
+}
+
+// ---- Faces & people -------------------------------------------------------
+
+export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null }) {
+    return getDb()
+        .prepare(`
+        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `)
+        .run(
+            Number(downloadId),
+            Number(x),
+            Number(y),
+            Number(w),
+            Number(h),
+            embeddingBlob,
+            personId == null ? null : Number(personId),
+        );
+}
+
+export function deleteFacesForDownload(downloadId) {
+    return getDb().prepare('DELETE FROM faces WHERE download_id = ?').run(Number(downloadId))
+        .changes;
+}
+
+/** Streamed iterator for the clustering pass — see Big-data rule 1. */
+// Chunked face iterator. Reconciles two competing constraints:
+//
+//   1. better-sqlite3's `.iterate()` holds the DB connection open for
+//      the lifetime of the JS-side loop. If the caller yields to the
+//      event loop mid-iteration, an incoming POST /api/config writer
+//      collides and gets "This database connection is busy" — visible
+//      to operators as a "config save failed" toast.
+//   2. Loading ALL rows via `.all()` is fine for a 50k-face library
+//      but blows up at million-face scale (~2 GB Node heap).
+//
+// Solution: paginate via LIMIT/OFFSET in 1 000-row chunks. Each chunk's
+// `.all()` releases the connection immediately, so any pending writer
+// (config save, faststart stamp, faces.insert from Phase A's parallel
+// detect) can run between chunks. The caller's `setImmediate` yields
+// land in those windows naturally.
+//
+// 1 000-row chunk × 2 KB/row = 2 MB working set per pull, well within
+// V8 heap limits at any library size. Total wall time is comparable to
+// a single `.iterate()` walk; the only overhead is one extra SQL parse
+// per chunk (~µs).
+export function* iterateAllFaces({ chunkSize = 1000 } = {}) {
+    const db = getDb();
+    const stmt = db.prepare(
+        `SELECT id, download_id, x, y, w, h, embedding, person_id FROM faces
+         ORDER BY id LIMIT ? OFFSET ?`,
+    );
+    for (let offset = 0; ; offset += chunkSize) {
+        const chunk = stmt.all(chunkSize, offset);
+        if (!chunk.length) return;
+        for (const row of chunk) yield row;
+        if (chunk.length < chunkSize) return;
+    }
+}
+
+/**
+ * Update only the `quality_score` column on an existing face row. Used
+ * by the v2.16 quality filter so the UI can show "low confidence"
+ * warnings on borderline detections without re-running the scan.
+ */
+export function setFaceQualityScore(faceId, qualityScore) {
+    return getDb()
+        .prepare('UPDATE faces SET quality_score = ? WHERE id = ?')
+        .run(Number(qualityScore), Number(faceId)).changes;
+}
+
+/**
+ * Merge cluster `otherId` into `targetId`. Every face previously
+ * assigned to `otherId` is reassigned to `targetId`; the empty
+ * cluster row is deleted. Face counts are recalculated from the live
+ * row count so they stay accurate across operations.
+ *
+ * Returns `{ moved, deleted }` so the UI can show a precise toast.
+ */
+export function mergeFacePerson(targetId, otherId) {
+    const t = Number(targetId);
+    const o = Number(otherId);
+    if (!Number.isFinite(t) || !Number.isFinite(o) || t === o) {
+        return { moved: 0, deleted: 0 };
+    }
+    const db = getDb();
+    const tx = db.transaction(() => {
+        const moved = db
+            .prepare('UPDATE faces SET person_id = ? WHERE person_id = ?')
+            .run(t, o).changes;
+        const newCount = db.prepare('SELECT COUNT(*) AS n FROM faces WHERE person_id = ?').get(t).n;
+        db.prepare('UPDATE people SET face_count = ?, updated_at = ? WHERE id = ?').run(
+            newCount,
+            Date.now(),
+            t,
+        );
+        const deleted = db.prepare('DELETE FROM people WHERE id = ?').run(o).changes;
+        return { moved, deleted };
+    });
+    return tx();
+}
+
+/**
+ * Pull a set of face ids out of their current cluster(s) and create a
+ * fresh cluster containing only those faces. The new cluster's
+ * centroid is computed from the moved faces' embeddings. Useful when
+ * DBSCAN over-grouped two similar-looking people.
+ *
+ * Returns `{ personId, moved }` where personId is the new cluster's id.
+ */
+export function splitFacePerson(faceIds, label = null) {
+    const ids = (Array.isArray(faceIds) ? faceIds : [])
+        .map((x) => Number(x))
+        .filter((x) => Number.isFinite(x) && x > 0);
+    if (!ids.length) return { personId: null, moved: 0 };
+    const db = getDb();
+    const tx = db.transaction(() => {
+        const placeholders = ids.map(() => '?').join(',');
+        const rows = db
+            .prepare(`SELECT id, embedding, person_id FROM faces WHERE id IN (${placeholders})`)
+            .all(...ids);
+        if (!rows.length) return { personId: null, moved: 0 };
+        // Compute centroid from the picked faces. Float32 sum then
+        // divide — avoids the spread + Math.max pattern the OOM guard
+        // rejects.
+        const dim = rows[0].embedding.byteLength / 4;
+        const acc = new Float32Array(dim);
+        for (const r of rows) {
+            const view = new Float32Array(r.embedding.buffer, r.embedding.byteOffset, dim);
+            for (let i = 0; i < dim; i++) acc[i] += view[i];
+        }
+        for (let i = 0; i < dim; i++) acc[i] /= rows.length;
+        const centroidBlob = Buffer.from(acc.buffer);
+        const now = Date.now();
+        const r = db
+            .prepare(`
+                INSERT INTO people (label, embedding_centroid, face_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+            `)
+            .run(label, centroidBlob, rows.length, now, now);
+        const newPersonId = r.lastInsertRowid;
+        const moved = db
+            .prepare(`UPDATE faces SET person_id = ? WHERE id IN (${placeholders})`)
+            .run(newPersonId, ...ids).changes;
+        // Update each source cluster's face_count + drop those whose
+        // count hit zero.
+        const oldPersonIds = [...new Set(rows.map((r) => r.person_id).filter((x) => x))];
+        for (const pid of oldPersonIds) {
+            const n = db.prepare('SELECT COUNT(*) AS n FROM faces WHERE person_id = ?').get(pid).n;
+            if (n === 0) {
+                db.prepare('DELETE FROM people WHERE id = ?').run(pid);
+            } else {
+                db.prepare('UPDATE people SET face_count = ?, updated_at = ? WHERE id = ?').run(
+                    n,
+                    now,
+                    pid,
+                );
+            }
+        }
+        return { personId: Number(newPersonId), moved };
+    });
+    return tx();
+}
+
+/**
+ * Move a single face to a different cluster (or to no cluster if
+ * `personId` is null). Updates both the source and destination
+ * cluster's `face_count`. The source cluster is deleted if its count
+ * hits zero.
+ */
+export function reassignFace(faceId, personId) {
+    const fid = Number(faceId);
+    const pid = personId == null ? null : Number(personId);
+    if (!Number.isFinite(fid)) return { ok: false };
+    const db = getDb();
+    const tx = db.transaction(() => {
+        const before = db.prepare('SELECT person_id FROM faces WHERE id = ?').get(fid);
+        if (!before) return { ok: false };
+        const oldPid = before.person_id;
+        db.prepare('UPDATE faces SET person_id = ? WHERE id = ?').run(pid, fid);
+        const now = Date.now();
+        for (const p of [oldPid, pid]) {
+            if (p == null) continue;
+            const n = db.prepare('SELECT COUNT(*) AS n FROM faces WHERE person_id = ?').get(p).n;
+            if (n === 0 && p === oldPid) {
+                db.prepare('DELETE FROM people WHERE id = ?').run(p);
+            } else {
+                db.prepare('UPDATE people SET face_count = ?, updated_at = ? WHERE id = ?').run(
+                    n,
+                    now,
+                    p,
+                );
+            }
+        }
+        return { ok: true, oldPersonId: oldPid, newPersonId: pid };
+    });
+    return tx();
+}
+
+/**
+ * Find the closest persisted (labelled) cluster to a freshly computed
+ * centroid. Used by the v2.16 re-cluster label-preservation flow: when
+ * a new DBSCAN pass produces cluster X with centroid C, this returns
+ * the existing labelled cluster within `eps` so its label can carry
+ * over. Returns null when no match is within `eps`.
+ *
+ * Walks `people` once (small table — number of unique humans, typically
+ * dozens). Streams with `.iterate()` defensively in case a power user
+ * has tens of thousands of clusters.
+ */
+export function matchClusterToPersistedLabel(centroid, eps = 0.4) {
+    if (!(centroid instanceof Float32Array)) return null;
+    const dim = centroid.length;
+    const stmt = getDb().prepare(
+        'SELECT id, label, embedding_centroid FROM people WHERE label IS NOT NULL',
+    );
+    let bestId = null;
+    let bestDist = Infinity;
+    let bestLabel = null;
+    for (const row of stmt.iterate()) {
+        if (row.embedding_centroid.byteLength !== dim * 4) continue;
+        const other = new Float32Array(
+            row.embedding_centroid.buffer,
+            row.embedding_centroid.byteOffset,
+            dim,
+        );
+        let sum = 0;
+        for (let i = 0; i < dim; i++) {
+            const d = centroid[i] - other[i];
+            sum += d * d;
+        }
+        const dist = Math.sqrt(sum);
+        if (dist < bestDist && dist <= eps) {
+            bestDist = dist;
+            bestId = row.id;
+            bestLabel = row.label;
+        }
+    }
+    return bestId == null ? null : { id: bestId, label: bestLabel, distance: bestDist };
+}
+
+export function setFacePerson(faceId, personId) {
+    return getDb()
+        .prepare('UPDATE faces SET person_id = ? WHERE id = ?')
+        .run(personId == null ? null : Number(personId), Number(faceId)).changes;
+}
+
+export function clearAllPeople() {
+    const db = getDb();
+    const tx = db.transaction(() => {
+        db.prepare('UPDATE faces SET person_id = NULL').run();
+        db.prepare('DELETE FROM people').run();
+    });
+    tx();
+}
+
+export function insertPerson({ label = null, centroidBlob, faceCount = 0 }) {
+    const now = Date.now();
+    const r = getDb()
+        .prepare(`
+        INSERT INTO people (label, embedding_centroid, face_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+    `)
+        .run(label, centroidBlob, Math.max(0, Number(faceCount) || 0), now, now);
+    return r.lastInsertRowid;
+}
+
+export function listPeople({ limit = 500, offset = 0 } = {}) {
+    const lim = Math.max(1, Math.min(1000, Number(limit) || 500));
+    const off = Math.max(0, Number(offset) || 0);
+    const rows = getDb()
+        .prepare(`
+        SELECT p.id, p.label, p.face_count, p.created_at, p.updated_at,
+               (SELECT f.download_id FROM faces f WHERE f.person_id = p.id LIMIT 1) AS cover_download_id
+          FROM people p
+         ORDER BY p.face_count DESC, p.id ASC
+         LIMIT ? OFFSET ?
+    `)
+        .all(lim, off);
+    const total = getDb().prepare('SELECT COUNT(*) AS n FROM people').get().n;
+    return { people: rows, total };
+}
+
+export function renamePerson(id, label) {
+    return getDb()
+        .prepare(`UPDATE people SET label = ?, updated_at = ? WHERE id = ?`)
+        .run(label == null ? null : String(label), Date.now(), Number(id)).changes;
+}
+
+export function deletePerson(id) {
+    // ON DELETE SET NULL on faces.person_id keeps face rows around so a
+    // re-cluster can re-assign them — we don't lose embeddings.
+    return getDb().prepare('DELETE FROM people WHERE id = ?').run(Number(id)).changes;
+}
+
+export function listPhotosForPerson(personId, { limit = 50, offset = 0 } = {}) {
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const off = Math.max(0, Number(offset) || 0);
+    const rows = getDb()
+        .prepare(`
+        SELECT DISTINCT d.*
+          FROM faces f
+          JOIN downloads d ON d.id = f.download_id
+         WHERE f.person_id = ?
+         ORDER BY d.created_at DESC, d.id DESC
+         LIMIT ? OFFSET ?
+    `)
+        .all(Number(personId), lim, off);
+    const total = getDb()
+        .prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces WHERE person_id = ?`)
+        .get(Number(personId)).n;
+    return { files: rows, total };
+}
+
+// ---- Image tags -----------------------------------------------------------
+
+export function setImageTags(downloadId, tags) {
+    if (!Array.isArray(tags) || !tags.length) return 0;
+    const db = getDb();
+    const ins = db.prepare(`
+        INSERT INTO image_tags (download_id, tag, score) VALUES (?, ?, ?)
+        ON CONFLICT(download_id, tag) DO UPDATE SET score = excluded.score
+    `);
+    const tx = db.transaction(() => {
+        let n = 0;
+        for (const t of tags) {
+            if (!t || !t.tag) continue;
+            ins.run(Number(downloadId), String(t.tag).slice(0, 80), Number(t.score) || 0);
+            n += 1;
+        }
+        return n;
+    });
+    return tx();
+}
+
+export function clearImageTagsForDownload(downloadId) {
+    return getDb().prepare('DELETE FROM image_tags WHERE download_id = ?').run(Number(downloadId))
+        .changes;
+}
+
+export function listAllTags({ minCount = 1 } = {}) {
+    return getDb()
+        .prepare(`
+        SELECT tag, COUNT(*) AS count, AVG(score) AS avg_score
+          FROM image_tags
+         GROUP BY tag
+        HAVING count >= ?
+         ORDER BY count DESC, tag ASC
+         LIMIT 1000
+    `)
+        .all(Math.max(1, Number(minCount) || 1));
+}
+
+export function listPhotosForTag(tag, { limit = 50, offset = 0 } = {}) {
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const off = Math.max(0, Number(offset) || 0);
+    const rows = getDb()
+        .prepare(`
+        SELECT d.*, t.score AS tag_score
+          FROM image_tags t
+          JOIN downloads d ON d.id = t.download_id
+         WHERE t.tag = ?
+         ORDER BY t.score DESC, d.created_at DESC
+         LIMIT ? OFFSET ?
+    `)
+        .all(String(tag), lim, off);
+    const total = getDb()
+        .prepare('SELECT COUNT(*) AS n FROM image_tags WHERE tag = ?')
+        .get(String(tag)).n;
+    return { files: rows, total };
+}
+
 // ---- KV blob store --------------------------------------------------------
 //
 // Generic key/value persistence that replaces the old data/*.json files.
@@ -1985,9 +2616,33 @@ export function kvSet(key, value) {
         INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
     `);
-    getDb().transaction(() => {
-        stmt.run(String(key), json, now);
-    })();
+    // better-sqlite3 throws `This database connection is busy executing
+    // a query` when a long-running `.iterate()` holds the connection
+    // while `kvSet` writes. The root cause is upstream — see
+    // `iterateAllFaces` (now using `.all()` instead). Keep a defensive
+    // 4-attempt retry with a sync sleep here for the remaining iter
+    // call-sites (integrity sweep, dedup sweep) that legitimately stream
+    // through high-cardinality tables; without it those sweeps could
+    // race a UI save and surface a confusing toast to the operator.
+    const RETRIES = 4;
+    const BACKOFF_MS = 50;
+    for (let attempt = 0; attempt < RETRIES; attempt++) {
+        try {
+            getDb().transaction(() => {
+                stmt.run(String(key), json, now);
+            })();
+            return;
+        } catch (e) {
+            const msg = String(e?.message || e);
+            const busy =
+                msg.includes('database connection is busy') ||
+                msg.includes('SQLITE_BUSY') ||
+                e?.code === 'SQLITE_BUSY';
+            if (!busy || attempt === RETRIES - 1) throw e;
+            const buf = new SharedArrayBuffer(4);
+            Atomics.wait(new Int32Array(buf), 0, 0, BACKOFF_MS);
+        }
+    }
 }
 
 export function kvDelete(key) {
@@ -2855,4 +3510,142 @@ export function aggregateEgress({ days = 30 } = {}) {
           WHERE served_at >= ?
           GROUP BY peer_id`,
     ).all(cutoff);
+}
+
+// ---- Seekbar sprite cache (v2.17) -----------------------------------------
+//
+// Storage for the WebP-sprite + JSON-metadata pairs that drive the video
+// player's hover-preview timeline. One row per indexed video; the sprite
+// + sidecar JSON live on disk under `data/seekbar/`. The on-disk filenames
+// are derived from the download id (deterministic) so a row referencing
+// a missing file is self-healing (the next pregenerate / scan regenerates
+// against the new bytes).
+
+export function upsertSeekbarSprite(row) {
+    return getDb()
+        .prepare(`
+        INSERT INTO seekbar_sprites
+            (download_id, sprite_path, meta_path, duration_sec, frames, cols, rows,
+             tile_w, tile_h, interval_sec, format, bytes, source_size, source_mtime, generated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(download_id) DO UPDATE SET
+            sprite_path  = excluded.sprite_path,
+            meta_path    = excluded.meta_path,
+            duration_sec = excluded.duration_sec,
+            frames       = excluded.frames,
+            cols         = excluded.cols,
+            rows         = excluded.rows,
+            tile_w       = excluded.tile_w,
+            tile_h       = excluded.tile_h,
+            interval_sec = excluded.interval_sec,
+            format       = excluded.format,
+            bytes        = excluded.bytes,
+            source_size  = excluded.source_size,
+            source_mtime = excluded.source_mtime,
+            generated_at = excluded.generated_at
+    `)
+        .run(
+            Number(row.downloadId),
+            String(row.spritePath),
+            String(row.metaPath),
+            row.durationSec == null ? null : Number(row.durationSec),
+            row.frames == null ? null : Number(row.frames),
+            row.cols == null ? null : Number(row.cols),
+            row.rows == null ? null : Number(row.rows),
+            row.tileW == null ? null : Number(row.tileW),
+            row.tileH == null ? null : Number(row.tileH),
+            row.intervalSec == null ? null : Number(row.intervalSec),
+            String(row.format || 'webp'),
+            row.bytes == null ? null : Number(row.bytes),
+            row.sourceSize == null ? null : Number(row.sourceSize),
+            row.sourceMtime == null ? null : Number(row.sourceMtime),
+            Math.floor(row.generatedAt || Date.now()),
+        ).changes;
+}
+
+export function getSeekbarSprite(downloadId) {
+    return getDb()
+        .prepare('SELECT * FROM seekbar_sprites WHERE download_id = ?')
+        .get(Number(downloadId));
+}
+
+export function deleteSeekbarSprite(downloadId) {
+    return getDb()
+        .prepare('DELETE FROM seekbar_sprites WHERE download_id = ?')
+        .run(Number(downloadId)).changes;
+}
+
+export function deleteAllSeekbarSprites() {
+    return getDb().prepare('DELETE FROM seekbar_sprites').run().changes;
+}
+
+/**
+ * Page through videos that don't yet have a sprite. Keyset pagination
+ * over `id` so each call completes synchronously and frees the
+ * connection before the caller awaits anywhere. better-sqlite3 holds an
+ * exclusive lock for the lifetime of an open `.iterate()` cursor — a
+ * long-running scan that awaits between rows would block every other
+ * writer, including the downloader itself. Caller passes `beforeId`
+ * (use `Number.MAX_SAFE_INTEGER` for the first page) and walks DESC
+ * until an empty page comes back.
+ */
+export function pageMissingSeekbarVideos({ beforeId, limit = 200 } = {}) {
+    const before = Number.isFinite(Number(beforeId)) ? Number(beforeId) : Number.MAX_SAFE_INTEGER;
+    const lim = Math.max(1, Math.min(2000, Number(limit) || 200));
+    return getDb()
+        .prepare(`
+        SELECT d.id, d.file_path, d.file_type, d.file_size, d.file_name
+          FROM downloads d
+          LEFT JOIN seekbar_sprites s ON s.download_id = d.id
+         WHERE d.file_type = 'video'
+           AND d.file_path IS NOT NULL
+           AND s.download_id IS NULL
+           AND d.id < ?
+         ORDER BY d.id DESC
+         LIMIT ?
+    `)
+        .all(before, lim);
+}
+
+/**
+ * Page through existing seekbar rows for the wipe sweep. Keyset over
+ * `download_id` DESC — same connection-safety rationale as
+ * `pageMissingSeekbarVideos`.
+ */
+export function pageSeekbarSprites({ beforeId, limit = 200 } = {}) {
+    const before = Number.isFinite(Number(beforeId)) ? Number(beforeId) : Number.MAX_SAFE_INTEGER;
+    const lim = Math.max(1, Math.min(2000, Number(limit) || 200));
+    return getDb()
+        .prepare(`
+        SELECT download_id, sprite_path, meta_path, bytes
+          FROM seekbar_sprites
+         WHERE download_id < ?
+         ORDER BY download_id DESC
+         LIMIT ?
+    `)
+        .all(before, lim);
+}
+
+export function countSeekbarSprites() {
+    return Number(getDb().prepare('SELECT COUNT(*) AS n FROM seekbar_sprites').get().n) || 0;
+}
+
+export function sumSeekbarBytes() {
+    return (
+        Number(
+            getDb().prepare('SELECT COALESCE(SUM(bytes), 0) AS s FROM seekbar_sprites').get().s,
+        ) || 0
+    );
+}
+
+export function countVideoDownloads() {
+    return (
+        Number(
+            getDb()
+                .prepare(
+                    "SELECT COUNT(*) AS n FROM downloads WHERE file_type = 'video' AND file_path IS NOT NULL",
+                )
+                .get().n,
+        ) || 0
+    );
 }

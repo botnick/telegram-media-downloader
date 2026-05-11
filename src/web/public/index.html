@@ -29,6 +29,29 @@
         })();
     </script>
 
+    <!-- Pre-boot route guard — runs BEFORE Tailwind / module scripts so the
+         first paint never shows the wrong page. The full DOM-aware version
+         lives at the end of <body> where every #page-* div has been
+         parsed; here we just inject a `<style>` that hides every page
+         root so the browser's initial paint shows blank-but-correct
+         instead of flashing #page-viewer for 1-2 s while the bundle
+         hydrates. Without this CSS the viewer (the only page without a
+         default `hidden` class) wins the first paint regardless of URL.
+         The end-of-body script then unhides the resolved page; the CSS
+         keeps `display:none` only while `<html data-prebooting>` is set
+         (we drop the attribute right before unhiding). Net: ~zero
+         visible flash on F5 of any deep-linked route. -->
+    <style id="tgdl-preboot-route-style">
+        html[data-prebooting] #content-area > [id^="page-"] { display: none !important; }
+    </style>
+    <script>
+        (() => {
+            try {
+                document.documentElement.dataset.prebooting = '1';
+            } catch {}
+        })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -162,7 +185,12 @@
                     <i class="ri-arrow-left-line text-xl text-tg-textSecondary"></i>
                 </button>
                 <div class="flex-1 relative">
-                    <input type="text" id="search-input" data-i18n-placeholder="sidebar.search" placeholder="Search" class="tg-input pl-10 py-2 text-sm">
+                    <input type="search" id="search-input" name="q" role="searchbox"
+                        autocomplete="off" spellcheck="false"
+                        data-form-type="other"
+                        data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+                        data-i18n-placeholder="sidebar.search" placeholder="Search"
+                        class="tg-input pl-10 py-2 text-sm">
                     <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
                 </div>
             </div>
@@ -214,6 +242,7 @@
                     <div data-page="maintenance-thumbs"></div>
                     <div data-page="maintenance-video"></div>
                     <div data-page="maintenance-nsfw"></div>
+                    <div data-page="maintenance-ai"></div>
                     <div data-page="maintenance-logs"></div>
                     <div data-page="maintenance-backup"></div>
                     <div data-page="maintenance-cluster"></div>
@@ -251,7 +280,28 @@
                     <div class="px-3 pt-1 pb-3">
                         <div class="relative">
                             <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary" aria-hidden="true"></i>
-                            <input type="text" id="sidebar-groups-search"
+                            <!--
+                                Defences against browser + password-manager autofill, which
+                                was suggesting saved emails because the field defaulted to
+                                type=text inside a focusable input. Belt-and-braces because no
+                                single attribute covers every vendor:
+                                  - `type="search"` signals search semantics, not a username.
+                                  - `autocomplete="off"` is the basic switch.
+                                  - `name="filter"` avoids Chrome's email/username heuristic.
+                                  - `role="searchbox"` reinforces the semantic for AT + browsers.
+                                  - `data-form-type="other"` mutes Bitwarden's "is-this-a-login"
+                                    detector; `data-lpignore`, `data-1p-ignore`, `data-bwignore`
+                                    cover LastPass / 1Password / Bitwarden variants explicitly.
+                                  - `spellcheck="false"` keeps the red squiggle out of group names.
+                            -->
+                            <input type="search" id="sidebar-groups-search" name="filter"
+                                role="searchbox"
+                                autocomplete="off"
+                                spellcheck="false"
+                                data-form-type="other"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-bwignore="true"
                                 data-i18n-placeholder="sidebar.groups_search" placeholder="Filter groups…"
                                 aria-label="Filter downloaded groups"
                                 class="tg-input pl-9 py-2 text-sm w-full"
@@ -293,277 +343,255 @@
         </aside>
 
         <!-- Group Settings Modal -->
-        <div id="group-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div id="group-modal" class="fixed inset-0 z-50 flex items-center justify-center p-3 modal-backdrop hidden">
             <div
-                class="bg-tg-sidebar w-full max-w-md rounded-xl overflow-hidden shadow-2xl transform scale-100 transition-all">
-                <!-- Header -->
-                <div class="bg-tg-panel p-4 flex items-center justify-between border-b border-tg-border">
-                    <h3 class="text-white font-medium text-lg" data-i18n="group.modal.title">Group Settings</h3>
+                class="bg-tg-sidebar w-full max-w-lg rounded-xl overflow-hidden shadow-2xl transform scale-100 transition-all">
+                <!-- Header — slimmer than before so the modal fits more
+                     content on short viewports. -->
+                <div class="bg-tg-panel px-4 py-3 flex items-center justify-between border-b border-tg-border">
+                    <h3 class="text-white font-medium text-base" data-i18n="group.modal.title">Group Settings</h3>
                     <button onclick="closeGroupSettings()"
-                        class="w-8 h-8 rounded-full hover:bg-tg-hover flex items-center justify-center transition-colors">
-                        <i class="ri-close-line text-tg-textSecondary text-xl"></i>
+                        class="w-7 h-7 rounded-full hover:bg-tg-hover flex items-center justify-center transition-colors">
+                        <i class="ri-close-line text-tg-textSecondary text-lg"></i>
                     </button>
                 </div>
 
-                <!-- Tabs -->
-                <div class="flex border-b border-tg-border overflow-x-auto">
-                    <div class="tab-item active flex-1 text-center" onclick="switchSettingsTab('media')" id="tab-media" data-i18n="group.modal.tab.media">
-                        Media Filters
+                <!-- Tabs — 3 instead of 5 so they always fit on one row
+                     without horizontal scroll. The merge:
+                       Filters  = Media filters + Topics
+                       Routing  = Auto Forward + Accounts + Cluster
+                       Data     = Stats + Recent + Backfill + Rescue + Danger
+                     Icons keep the labels short enough for narrow viewports;
+                     `flex-1` makes each tap target evenly sized. -->
+                <div class="flex border-b border-tg-border">
+                    <div class="tab-item active flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('media')" id="tab-media">
+                        <i class="ri-filter-line"></i><span data-i18n="group.modal.tab.media">Filters</span>
                     </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('forward')" id="tab-forward" data-i18n="group.modal.tab.forward">
-                        Auto Forward
+                    <div class="tab-item flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('forward')" id="tab-forward">
+                        <i class="ri-share-forward-line"></i><span data-i18n="group.modal.tab.forward">Routing</span>
                     </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('accounts')" id="tab-accounts" data-i18n="group.modal.tab.accounts">
-                        Accounts
-                    </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('topics')" id="tab-topics" data-i18n="group.modal.tab.topics">
-                        Topics
-                    </div>
-                    <div class="tab-item flex-1 text-center" onclick="switchSettingsTab('data')" id="tab-data" data-i18n="group.modal.tab.data">
-                        Data
+                    <div class="tab-item flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('data')" id="tab-data">
+                        <i class="ri-database-2-line"></i><span data-i18n="group.modal.tab.data">Data</span>
                     </div>
                 </div>
 
-                <!-- Content -->
-                <div class="p-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                <!-- Content — compact density + tall scroll area so most
+                     of the modal real estate goes to actual content. -->
+                <div class="p-3 max-h-[75vh] overflow-y-auto custom-scrollbar">
 
-                    <!-- Media Filters Tab -->
-                    <div id="content-media">
-                        <div class="mb-4">
-                            <label
-                                class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
-                                <span class="text-white font-medium" data-i18n="group.modal.enable_monitoring">Enable Monitoring</span>
-                                <div class="tg-toggle" id="group-enable-toggle" onclick="toggleGroupEnabled(event)">
-                                </div>
-                            </label>
-                        </div>
+                    <!-- Filters tab — master enable + allowed media types
+                         + forum-topic filter (was its own tab). -->
+                    <div id="content-media" class="space-y-3">
+                        <label class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
+                            <span class="text-white text-sm font-medium" data-i18n="group.modal.enable_monitoring">Enable Monitoring</span>
+                            <div class="tg-toggle" id="group-enable-toggle" onclick="toggleGroupEnabled(event)"></div>
+                        </label>
 
-                        <div class="space-y-1">
-                            <p class="text-tg-textSecondary text-sm px-3 mb-2 uppercase font-medium tracking-wide" data-i18n="group.modal.allowed_media">
-                                Allowed Media Types</p>
-
+                        <div>
+                            <p class="text-tg-textSecondary text-[11px] px-2 mb-1 uppercase font-medium tracking-wide" data-i18n="group.modal.allowed_media">Allowed Media Types</p>
                             <div class="grid grid-cols-1 gap-1" id="filter-options">
-                                <!-- Filters injected by JS -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Auto Forward Tab -->
-                    <div id="content-forward" class="hidden space-y-4">
-                        <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
-                            <div class="flex items-center justify-between mb-3">
-                                <div>
-                                    <h4 class="text-white font-medium" data-i18n="group.fwd.title">Auto Forward</h4>
-                                    <p class="text-xs text-tg-textSecondary" data-i18n="group.fwd.subtitle">Forward media to another channel</p>
-                                </div>
-                                <div class="tg-toggle" id="fwd-enable-toggle" onclick="toggleFwdEnabled(event)"></div>
+                                <!-- injected by JS -->
                             </div>
                         </div>
 
-                        <div class="space-y-3" id="fwd-settings">
-                            <div>
-                                <label class="block text-tg-textSecondary text-sm mb-2" data-i18n="group.fwd.destination">Destination</label>
-                                <div class="relative">
-                                    <input type="text" id="fwd-destination" class="tg-input pr-10"
-                                        data-i18n-placeholder="group.fwd.dest_placeholder"
-                                        placeholder="Use 'Select' button or type ID">
-                                    <button onclick="openDestinationPicker()"
-                                        class="absolute right-2 top-1/2 transform -translate-y-1/2 text-tg-textSecondary hover:text-white p-1 rounded hover:bg-white/10 transition-colors"
-                                        data-i18n-title="group.fwd.select_from_list"
-                                        title="Select from list">
-                                        <i class="ri-list-check-2 text-lg"></i>
-                                    </button>
-                                </div>
-                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.fwd.dest_help">
-                                    Leave empty to use "Telegram Downloader Storage".
-                                </p>
-                            </div>
-
-                            <div onclick="toggleFwdDelete(event)"
-                                class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
-                                <div>
-                                    <span class="text-white text-sm" data-i18n="group.fwd.delete_after">Delete after forward</span>
-                                    <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="group.fwd.delete_after_help">Remove local file after successful
-                                        upload</p>
-                                </div>
-                                <div class="tg-toggle" id="fwd-delete-toggle"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Accounts Tab -->
-                    <div id="content-accounts" class="hidden space-y-4">
-                        <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
-                            <h4 class="text-white font-medium mb-1" data-i18n="group.accounts.title">Account Assignment</h4>
-                            <p class="text-xs text-tg-textSecondary mb-4" data-i18n="group.accounts.subtitle">Choose which Telegram account handles each
-                                role for this group</p>
-
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="block text-tg-textSecondary text-sm mb-2">
-                                        <i class="ri-download-line mr-1"></i> <span data-i18n="group.accounts.monitor">Monitor Account</span>
-                                    </label>
-                                    <select id="monitor-account" class="tg-input w-full">
-                                        <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
-                                    </select>
-                                    <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.accounts.monitor_help">This account will watch
-                                        and download media from this group</p>
-                                </div>
-
-                                <div>
-                                    <label class="block text-tg-textSecondary text-sm mb-2">
-                                        <i class="ri-share-forward-line mr-1"></i> <span data-i18n="group.accounts.forward">Forward Account</span>
-                                    </label>
-                                    <select id="forward-account" class="tg-input w-full">
-                                        <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
-                                    </select>
-                                    <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.accounts.forward_help">This account will
-                                        re-upload forwarded media (Auto Forward)</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                            <p class="text-xs text-yellow-400">
-                                <i class="ri-information-line mr-1"></i>
-                                <span data-i18n="group.accounts.manage_hint">Manage accounts under Settings → Telegram Accounts.</span>
-                            </p>
-                        </div>
-
-                        <!-- Cluster routing — hidden when no peers paired so
-                             non-cluster operators see no change. app.js
-                             populates the dropdowns from /api/cluster/peers
-                             when opening the modal; if the response is empty
-                             the wrapper stays hidden. The two dropdowns map
-                             1:1 to groups[i].ownerPeerId / backupPeerId,
-                             which the failover.js + router.js subsystem
-                             already reads — no server-side change needed. -->
-                        <div id="group-cluster-routing" class="hidden p-4 bg-tg-panel rounded-lg border border-tg-border/50 space-y-4">
-                            <div>
-                                <h4 class="text-white font-medium mb-1 flex items-center gap-2">
-                                    <i class="ri-broadcast-line text-tg-blue"></i>
-                                    <span data-i18n="group.cluster.title">Cluster routing</span>
-                                </h4>
-                                <p class="text-xs text-tg-textSecondary" data-i18n="group.cluster.subtitle">Route this group's downloads to a specific peer. Other peers see the catalogue via the bridge but stay silent on Telegram.</p>
-                            </div>
-                            <div>
-                                <label class="block text-tg-textSecondary text-sm mb-2">
-                                    <i class="ri-server-line mr-1"></i> <span data-i18n="group.cluster.owner_peer">Owner peer</span>
-                                </label>
-                                <select id="group-owner-peer" class="tg-input w-full">
-                                    <option value="" data-i18n="group.cluster.any_peer">(Any peer — first online wins)</option>
-                                </select>
-                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.cluster.owner_help">Designates which peer downloads this group. Empty = any peer with the matching account.</p>
-                            </div>
-                            <div>
-                                <label class="block text-tg-textSecondary text-sm mb-2">
-                                    <i class="ri-shield-flash-line mr-1"></i> <span data-i18n="group.cluster.backup_peer">Backup peer</span>
-                                </label>
-                                <select id="group-backup-peer" class="tg-input w-full">
-                                    <option value="" data-i18n="group.cluster.no_backup">(No automatic failover)</option>
-                                </select>
-                                <p class="text-xs text-tg-textSecondary mt-1.5 opacity-70" data-i18n="group.cluster.backup_help">If the owner is silent past the cluster grace window, the backup takes over downloading.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Topics Tab -->
-                    <!-- Data tab — surfaces what's actually downloaded for
-                         this group. Stats card pulls /api/groups/:id/stats;
-                         recent-files strip uses /api/groups/:id/files
-                         (paginated). Action row covers "Delete files only"
-                         (keep config) and "Wipe all data" (purge config + DB
-                         + on-disk folder). -->
-                    <div id="content-data" class="hidden space-y-4">
-                        <div id="group-data-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
-                        <div class="bg-tg-panel rounded-xl p-4 border border-tg-border/50">
-                            <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="group.data.recent">Recent files</h4>
-                            <div id="group-data-files" class="space-y-1.5 max-h-64 overflow-y-auto"></div>
-                            <button id="group-data-loadmore" type="button" class="text-xs text-tg-blue hover:underline mt-2 hidden" data-i18n="group.data.loadmore">Load more</button>
-                        </div>
-                        <div class="bg-tg-panel rounded-xl p-4 border border-tg-border/50">
-                            <h4 class="text-tg-text text-sm font-medium mb-2" data-i18n="group.data.actions">Actions</h4>
-                            <div class="space-y-2">
-                                <button id="group-data-delete-files-btn" type="button" class="w-full px-3 py-2 rounded-lg bg-tg-orange/15 hover:bg-tg-orange/25 text-tg-orange text-sm font-medium inline-flex items-center justify-between gap-2 transition-colors">
-                                    <span class="inline-flex items-center gap-2"><i class="ri-eraser-line"></i><span data-i18n="group.data.delete_files">Delete files only</span></span>
-                                    <span class="text-[11px] opacity-70" data-i18n="group.data.keeps_config">keeps config</span>
-                                </button>
-                                <button id="group-data-purge-btn" type="button" class="w-full px-3 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm font-medium inline-flex items-center justify-between gap-2 transition-colors">
-                                    <span class="inline-flex items-center gap-2"><i class="ri-delete-bin-line"></i><span data-i18n="group.data.wipe_all">Wipe all data</span></span>
-                                    <span class="text-[11px] opacity-70" data-i18n="group.data.removes_group">removes group</span>
-                                </button>
-                            </div>
-                            <p class="text-[11px] text-tg-textSecondary mt-3" data-i18n="group.data.actions_help">"Delete files only" clears the gallery + on-disk files but keeps the group monitored — useful for re-downloading fresh. "Wipe all data" also removes the group from your monitor list.</p>
-                        </div>
-                    </div>
-
-                    <div id="content-topics" class="hidden space-y-4">
-                        <div class="p-4 bg-tg-panel rounded-lg border border-tg-border/50">
-                            <label class="flex items-center justify-between mb-3">
-                                <span class="text-white font-medium" data-i18n="group.topics.title">Forum-topic filter</span>
+                        <!-- Forum-topic filter (folded in from the old
+                             "Topics" tab — same fields/IDs). -->
+                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40">
+                            <label class="flex items-center justify-between mb-2">
+                                <span class="text-white text-sm font-medium" data-i18n="group.topics.title">Forum-topic filter</span>
                                 <div class="tg-toggle" id="topics-enable-toggle" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
                             </label>
-                            <p class="text-xs text-tg-textSecondary mb-3" data-i18n="group.topics.help_html">
-                                If this group is a forum (supergroup with topics), restrict downloads to specific topic IDs. Comma-separated. Get a topic ID from a Telegram message link like <code class="text-tg-text">https://t.me/c/&lt;id&gt;/&lt;topicId&gt;/&lt;msg&gt;</code>.
+                            <p class="text-[11px] text-tg-textSecondary mb-2 leading-snug" data-i18n="group.topics.help_html">
+                                Forum supergroups only. Restrict downloads to specific topic IDs. Empty = all topics.
                             </p>
                             <input id="topics-ids" type="text" class="tg-input w-full text-sm" data-i18n-placeholder="group.topics.ids_placeholder" placeholder="e.g., 12, 34, 56">
-                            <p class="text-[11px] text-tg-textSecondary mt-2" data-i18n="group.topics.note">Empty list = monitor every topic. Toggle off to disable filtering entirely.</p>
                         </div>
                     </div>
 
-                    <!-- Rescue Mode (per-group). Keeps only messages that get
-                         deleted from Telegram source within the retention
-                         window — a focused archive of ephemeral chatter
-                         instead of an endless mirror. -->
-                    <div class="bg-tg-panel rounded-xl p-4 mt-4">
-                        <h3 class="text-sm text-tg-text font-medium mb-2 flex items-center gap-2">
-                            <i class="ri-lifebuoy-line text-tg-blue"></i>
-                            <span data-i18n="group.rescue.title">Rescue mode</span>
-                        </h3>
-                        <div class="flex gap-2 mb-3" id="setting-rescue-mode" role="radiogroup" data-i18n-aria-label="group.rescue.title" aria-label="Rescue mode">
-                            <button type="button" data-rescue-value="auto" class="rescue-chip flex-1 py-1.5 px-2 rounded-lg text-xs bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_auto">Auto (follow default)</button>
-                            <button type="button" data-rescue-value="on" class="rescue-chip flex-1 py-1.5 px-2 rounded-lg text-xs bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_on">On</button>
-                            <button type="button" data-rescue-value="off" class="rescue-chip flex-1 py-1.5 px-2 rounded-lg text-xs bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_off">Off</button>
+                    <!-- Routing tab — Auto-Forward + per-role account
+                         assignment + cluster routing. The old standalone
+                         "Accounts" and "Topics" tabs were folded in (Topics
+                         moved up into Filters; Accounts + Cluster live here)
+                         to drop the tab count from 5 to 3. All field IDs
+                         preserved so the save handler keeps working. -->
+                    <div id="content-forward" class="hidden space-y-3">
+                        <!-- Auto Forward -->
+                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40">
+                            <label class="flex items-center justify-between mb-2 cursor-pointer">
+                                <div class="min-w-0">
+                                    <div class="text-white text-sm font-medium" data-i18n="group.fwd.title">Auto Forward</div>
+                                    <p class="text-[11px] text-tg-textSecondary" data-i18n="group.fwd.subtitle">Forward media to another channel</p>
+                                </div>
+                                <div class="tg-toggle shrink-0" id="fwd-enable-toggle" onclick="toggleFwdEnabled(event)"></div>
+                            </label>
+                            <div class="space-y-2" id="fwd-settings">
+                                <div>
+                                    <label class="block text-tg-textSecondary text-[11px] mb-1" data-i18n="group.fwd.destination">Destination</label>
+                                    <div class="relative">
+                                        <input type="text" id="fwd-destination" class="tg-input pr-9 text-sm py-2"
+                                            data-i18n-placeholder="group.fwd.dest_placeholder"
+                                            placeholder="Use 'Select' button or type ID">
+                                        <button onclick="openDestinationPicker()"
+                                            class="absolute right-2 top-1/2 transform -translate-y-1/2 text-tg-textSecondary hover:text-white p-0.5 rounded hover:bg-white/10 transition-colors"
+                                            data-i18n-title="group.fwd.select_from_list" title="Select from list">
+                                            <i class="ri-list-check-2"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <label onclick="toggleFwdDelete(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
+                                    <span class="text-tg-text text-xs" data-i18n="group.fwd.delete_after">Delete after forward</span>
+                                    <div class="tg-toggle" id="fwd-delete-toggle"></div>
+                                </label>
+                            </div>
                         </div>
-                        <label for="setting-rescue-hours" class="block text-xs text-tg-textSecondary mb-1.5" data-i18n="group.rescue.hours_label">Retention (hours)</label>
-                        <input id="setting-rescue-hours" type="number" min="1" max="720" placeholder="48" class="tg-input w-full text-sm" />
-                        <p class="text-xs text-tg-textSecondary mt-2" data-i18n="group.rescue.help">Only keeps messages that get deleted from this chat within X hours. Anything still on Telegram after that gets pruned locally.</p>
+
+                        <!-- Account assignment (was its own tab). -->
+                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40 space-y-2">
+                            <div class="text-white text-sm font-medium" data-i18n="group.accounts.title">Account Assignment</div>
+                            <div>
+                                <label class="block text-tg-textSecondary text-[11px] mb-1">
+                                    <i class="ri-download-line mr-1"></i><span data-i18n="group.accounts.monitor">Monitor</span>
+                                </label>
+                                <select id="monitor-account" class="tg-input w-full text-sm py-2">
+                                    <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-tg-textSecondary text-[11px] mb-1">
+                                    <i class="ri-share-forward-line mr-1"></i><span data-i18n="group.accounts.forward">Forward</span>
+                                </label>
+                                <select id="forward-account" class="tg-input w-full text-sm py-2">
+                                    <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Cluster routing — auto-hidden when no peers paired. -->
+                        <div id="group-cluster-routing" class="hidden p-3 bg-tg-panel rounded-lg border border-tg-border/40 space-y-2">
+                            <div class="text-white text-sm font-medium flex items-center gap-2">
+                                <i class="ri-broadcast-line text-tg-blue"></i>
+                                <span data-i18n="group.cluster.title">Cluster routing</span>
+                            </div>
+                            <div>
+                                <label class="block text-tg-textSecondary text-[11px] mb-1">
+                                    <i class="ri-server-line mr-1"></i><span data-i18n="group.cluster.owner_peer">Owner peer</span>
+                                </label>
+                                <select id="group-owner-peer" class="tg-input w-full text-sm py-2">
+                                    <option value="" data-i18n="group.cluster.any_peer">(Any peer — first online wins)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-tg-textSecondary text-[11px] mb-1">
+                                    <i class="ri-shield-flash-line mr-1"></i><span data-i18n="group.cluster.backup_peer">Backup peer</span>
+                                </label>
+                                <select id="group-backup-peer" class="tg-input w-full text-sm py-2">
+                                    <option value="" data-i18n="group.cluster.no_backup">(No automatic failover)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- History backfill — quick shortcut. Clicking a preset
-                         deep-links to the dedicated Backfill page (#/backfill/<id>)
-                         with the group preselected and the limit applied. -->
-                    <div class="bg-tg-panel rounded-xl p-4 mt-4">
-                        <h3 class="text-sm text-tg-text font-medium mb-2 flex items-center gap-2">
-                            <i class="ri-history-line text-tg-blue"></i>
-                            <span data-i18n="backfill.modal.title">Backfill history</span>
-                        </h3>
-                        <p class="text-xs text-tg-textSecondary mb-3" data-i18n="backfill.modal.help">Open the Backfill page with this chat preselected.</p>
-                        <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-2 text-xs">
-                            <button class="tg-btn-secondary py-1" data-history-limit="5" data-i18n="backfill.preset.last_5">Last 5</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="10" data-i18n="backfill.preset.last_10">Last 10</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="100" data-i18n="backfill.preset.last_100">Last 100</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="1000" data-i18n="backfill.preset.last_1k">Last 1k</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="10000" data-i18n="backfill.preset.last_10k">Last 10k</button>
-                            <button class="tg-btn-secondary py-1" data-history-limit="0" data-i18n="backfill.preset.all">All</button>
+                    <!-- Data tab — single home for everything related to this
+                         group's stored content. Layout (top → bottom):
+                           1. Stats  (Files / Size / Type breakdown / Last download)
+                           2. Recent files (paginated list, Load more)
+                           3. Backfill history (quick-shortcut preset row)
+                           4. Rescue mode (per-group retention policy)
+                           5. Danger zone (Delete files only / Wipe all data)
+                         Rescue + Backfill used to live OUTSIDE the tab container,
+                         which meant they bled into every tab. Folding them into
+                         the Data tab keeps the modal focused — each tab now owns
+                         a single concern. -->
+                    <div id="content-data" class="hidden space-y-3">
+                        <!-- 1. Stats -->
+                        <div id="group-data-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5"></div>
+
+                        <!-- 2. Recent files -->
+                        <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <h4 class="text-tg-text text-sm font-medium flex items-center gap-1.5">
+                                    <i class="ri-file-list-3-line text-tg-blue"></i>
+                                    <span data-i18n="group.data.recent">Recent files</span>
+                                </h4>
+                                <span id="group-data-files-count" class="text-[10px] text-tg-textSecondary tabular-nums"></span>
+                            </div>
+                            <div id="group-data-files" class="space-y-1 max-h-64 overflow-y-auto pr-1"></div>
+                            <button id="group-data-loadmore" type="button" class="text-[11px] text-tg-blue hover:underline mt-1.5 hidden" data-i18n="group.data.loadmore">Load more</button>
                         </div>
-                        <p class="text-xs text-tg-warning mt-1" data-i18n="backfill.modal.deeplink_hint">Opens the Backfill page so you can review running and recent jobs in one place.</p>
-                        <p id="history-progress" class="text-xs text-tg-textSecondary mt-2 hidden"></p>
+
+                        <!-- 3. Backfill — preset chip row, deep-links to /#/backfill -->
+                        <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
+                            <h4 class="text-tg-text text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                <i class="ri-history-line text-tg-blue"></i>
+                                <span data-i18n="backfill.modal.title">Backfill history</span>
+                            </h4>
+                            <div class="grid grid-cols-6 gap-1 text-[11px]">
+                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="5" data-i18n="backfill.preset.last_5">5</button>
+                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="10" data-i18n="backfill.preset.last_10">10</button>
+                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="100" data-i18n="backfill.preset.last_100">100</button>
+                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="1000" data-i18n="backfill.preset.last_1k">1k</button>
+                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="10000" data-i18n="backfill.preset.last_10k">10k</button>
+                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="0" data-i18n="backfill.preset.all">All</button>
+                            </div>
+                            <p id="history-progress" class="text-[11px] text-tg-textSecondary mt-1.5 hidden"></p>
+                        </div>
+
+                        <!-- 4. Rescue mode -->
+                        <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
+                            <h4 class="text-tg-text text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                <i class="ri-lifebuoy-line text-tg-blue"></i>
+                                <span data-i18n="group.rescue.title">Rescue mode</span>
+                            </h4>
+                            <div class="flex gap-1 mb-2" id="setting-rescue-mode" role="radiogroup" data-i18n-aria-label="group.rescue.title" aria-label="Rescue mode">
+                                <button type="button" data-rescue-value="auto" class="rescue-chip flex-1 py-1 px-2 rounded text-[11px] bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_auto">Auto</button>
+                                <button type="button" data-rescue-value="on" class="rescue-chip flex-1 py-1 px-2 rounded text-[11px] bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_on">On</button>
+                                <button type="button" data-rescue-value="off" class="rescue-chip flex-1 py-1 px-2 rounded text-[11px] bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_off">Off</button>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label for="setting-rescue-hours" class="text-[11px] text-tg-textSecondary shrink-0" data-i18n="group.rescue.hours_label">Retention (h)</label>
+                                <input id="setting-rescue-hours" type="number" min="1" max="720" placeholder="48" class="tg-input flex-1 text-sm py-1.5" />
+                            </div>
+                        </div>
+
+                        <!-- 5. Danger zone -->
+                        <div class="bg-tg-panel rounded-lg p-3 border border-red-500/30">
+                            <h4 class="text-red-300 text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                                <i class="ri-alert-line"></i>
+                                <span data-i18n="group.data.actions">Danger zone</span>
+                            </h4>
+                            <div class="grid grid-cols-2 gap-1.5">
+                                <button id="group-data-delete-files-btn" type="button" class="px-2 py-1.5 rounded bg-tg-orange/15 hover:bg-tg-orange/25 text-tg-orange text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors">
+                                    <i class="ri-eraser-line"></i><span data-i18n="group.data.delete_files">Delete files</span>
+                                </button>
+                                <button id="group-data-purge-btn" type="button" class="px-2 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors">
+                                    <i class="ri-delete-bin-line"></i><span data-i18n="group.data.wipe_all">Wipe all</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                 </div>
 
-                <!-- Footer -->
-                <div class="p-4 border-t border-tg-border flex justify-end gap-3 bg-tg-sidebar">
+                <!-- Footer — slimmer; the modal already eats more vertical
+                     space than most other surfaces, so trim where we can. -->
+                <div class="px-3 py-2.5 border-t border-tg-border flex justify-end gap-2 bg-tg-sidebar">
                     <button onclick="closeGroupSettings()"
-                        class="px-4 py-2 rounded-lg text-tg-textButton hover:bg-tg-hover transition-colors" data-i18n="common.cancel">Cancel</button>
+                        class="px-3 py-1.5 text-sm rounded-lg text-tg-textButton hover:bg-tg-hover transition-colors" data-i18n="common.cancel">Cancel</button>
                     <button onclick="saveGroupSettings()"
-                        class="px-6 py-2 rounded-lg bg-tg-blue text-white font-medium hover:bg-opacity-90 transition-all shadow-lg shadow-tg-blue/20" data-i18n="group.modal.save_changes">Save
-                        Changes</button>
+                        class="px-4 py-1.5 text-sm rounded-lg bg-tg-blue text-white font-medium hover:bg-opacity-90 transition-all shadow-lg shadow-tg-blue/20" data-i18n="group.modal.save_changes">Save Changes</button>
                 </div>
             </div>
         </div>
 
+        <!-- Main column. onboarding.js inserts the banner as a sibling
+             of <main>; without this wrapper the parent would be the
+             outer row flex (`<div class="flex h-full">` above), turning
+             the banner into a vertical column item between the sidebar
+             and main — which overlapped the hamburger / page header and
+             blocked every click. The wrapper makes that sibling-insertion
+             land in a column flex so the banner stacks above main like
+             intended. -->
+        <div class="flex-1 flex flex-col min-w-0 h-full">
         <!-- Main Content -->
         <main class="flex-1 flex flex-col h-full overflow-hidden">
 
@@ -773,11 +801,17 @@
                         <a class="maintenance-tab" data-mt-page="maintenance-thumbs" href="#/maintenance/thumbs" role="tab">
                             <i class="ri-image-2-line"></i><span data-i18n="nav.maintenance.thumbs">Thumbnails</span>
                         </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-seekbar" href="#/maintenance/seekbar" role="tab">
+                            <i class="ri-movie-line"></i><span data-i18n="nav.maintenance.seekbar">Seekbar previews</span>
+                        </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-video" href="#/maintenance/video" role="tab">
                             <i class="ri-film-line"></i><span data-i18n="nav.maintenance.video">Videos</span>
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-nsfw" href="#/maintenance/nsfw" role="tab">
                             <i class="ri-alarm-warning-line"></i><span data-i18n="nav.maintenance.nsfw">NSFW</span>
+                        </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-ai" href="#/maintenance/ai" role="tab">
+                            <i class="ri-sparkling-2-line"></i><span data-i18n="nav.maintenance.ai">AI</span>
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-backup" href="#/maintenance/backup" role="tab">
                             <i class="ri-cloud-line"></i><span data-i18n="nav.maintenance.backup">Backup</span>
@@ -791,11 +825,20 @@
                         <a class="maintenance-tab" data-mt-page="maintenance-logs" href="#/maintenance/logs" role="tab">
                             <i class="ri-terminal-box-line"></i><span data-i18n="nav.maintenance.logs">Logs</span>
                         </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-updates" href="#/maintenance/updates" role="tab">
+                            <i class="ri-download-cloud-2-line"></i><span data-i18n="nav.maintenance.updates">Updates</span>
+                        </a>
                     </div>
                 </nav>
 
                 <!-- Viewer Page -->
-                <div id="page-viewer">
+                <!-- Default `hidden` so the pre-boot resolver (end of body)
+                     is the only thing that unhides the right page. Without
+                     this, page-viewer flashed for 1-2 s on every F5 of a
+                     deep-linked URL — it was the lone page-* div with no
+                     hidden class, so the browser painted it before the
+                     router could swap. -->
+                <div id="page-viewer" class="hidden">
                     <div id="media-grid" class="media-grid"></div>
                     <!-- Drag-to-select rubber-band rectangle. Single shared
                          element managed by gallery-select.js — kept outside
@@ -846,7 +889,10 @@
                         <div class="relative">
                             <i
                                 class="ri-search-line absolute left-3 top-1/2 transform -translate-y-1/2 text-tg-textSecondary"></i>
-                            <input type="text" id="groups-search"
+                            <input type="search" id="groups-search" name="filter" role="searchbox"
+                                autocomplete="off" spellcheck="false"
+                                data-form-type="other"
+                                data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
                                 class="w-full bg-tg-panel border border-tg-border rounded-lg pl-10 pr-4 py-2 text-tg-text focus:ring-1 focus:ring-tg-blue focus:border-tg-blue outline-none"
                                 data-i18n-placeholder="groups.search_placeholder"
                                 placeholder="Search groups/channels..." oninput="filterDialogs(this.value)">
@@ -913,49 +959,71 @@
 
                     <section id="settings-system" role="tabpanel" data-admin-only class="settings-section space-y-4 mb-6">
 
-                    <!-- Engine card. Drives the realtime monitor lifecycle
+                    <!-- Realtime monitor card. Drives the engine lifecycle
                          (start/stop/restart) and surfaces queue + active +
-                         downloaded counters for the running session. The
-                         topbar pill mirrors the same state for at-a-glance
-                         visibility on every page. -->
-                    <div id="settings-card-engine" class="bg-tg-panel rounded-xl p-4 mb-6">
-                        <div class="flex items-center gap-2 mb-3">
-                            <i class="ri-pulse-line text-tg-blue text-xl" aria-hidden="true"></i>
-                            <h3 class="text-tg-text text-base font-semibold" data-i18n="settings.engine.title">Realtime monitor</h3>
-                            <span id="engine-pill" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300" data-i18n="settings.engine.stopped">Stopped</span>
+                         downloaded counters for the running session.
+                         The animated dot + state pill mirror the topbar
+                         indicator so at-a-glance status is consistent
+                         everywhere. -->
+                    <section id="settings-card-engine" class="engine-card bg-tg-panel rounded-xl p-4 mb-6">
+                        <header class="engine-header">
+                            <div class="engine-title-group">
+                                <span id="engine-state-dot" class="engine-state-dot" data-state="stopped" aria-hidden="true"></span>
+                                <i class="ri-pulse-line text-tg-blue text-lg" aria-hidden="true"></i>
+                                <h3 class="engine-title" data-i18n="settings.engine.title">Realtime monitor</h3>
+                            </div>
+                            <span id="engine-pill" class="engine-state-pill engine-state-stopped">
+                                <i class="ri-stop-circle-line"></i>
+                                <span data-i18n="settings.engine.stopped">Stopped</span>
+                            </span>
+                        </header>
+
+                        <div class="engine-stats">
+                            <div class="engine-stat-tile" data-stat="queue">
+                                <i class="ri-stack-line engine-stat-icon" aria-hidden="true"></i>
+                                <div class="engine-stat-meta">
+                                    <div class="engine-stat-label" data-i18n="settings.engine.queue">Queue</div>
+                                    <div id="engine-queue" class="engine-stat-value">0</div>
+                                </div>
+                            </div>
+                            <div class="engine-stat-tile" data-stat="active">
+                                <i class="ri-loader-4-line engine-stat-icon" aria-hidden="true"></i>
+                                <div class="engine-stat-meta">
+                                    <div class="engine-stat-label" data-i18n="settings.engine.active">Active</div>
+                                    <div id="engine-active" class="engine-stat-value">0</div>
+                                </div>
+                            </div>
+                            <div class="engine-stat-tile" data-stat="downloaded">
+                                <i class="ri-download-line engine-stat-icon" aria-hidden="true"></i>
+                                <div class="engine-stat-meta">
+                                    <div class="engine-stat-label" data-i18n="settings.engine.downloaded">Downloaded</div>
+                                    <div id="engine-downloaded" class="engine-stat-value">0</div>
+                                </div>
+                            </div>
+                            <div class="engine-stat-tile" data-stat="uptime">
+                                <i class="ri-time-line engine-stat-icon" aria-hidden="true"></i>
+                                <div class="engine-stat-meta">
+                                    <div class="engine-stat-label" data-i18n="settings.engine.uptime">Uptime</div>
+                                    <div id="engine-uptime" class="engine-stat-value">—</div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.queue">Queue</div>
-                                <div id="engine-queue" class="text-lg font-semibold text-tg-text tabular-nums">0</div>
-                            </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.active">Active</div>
-                                <div id="engine-active" class="text-lg font-semibold text-tg-text tabular-nums">0</div>
-                            </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.downloaded">Downloaded</div>
-                                <div id="engine-downloaded" class="text-lg font-semibold text-tg-text tabular-nums">0</div>
-                            </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-2 text-center">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="settings.engine.uptime">Uptime</div>
-                                <div id="engine-uptime" class="text-lg font-semibold text-tg-text tabular-nums">—</div>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <button type="button" id="engine-start" class="tg-btn-primary text-sm px-4 py-2 inline-flex items-center gap-1.5">
+
+                        <div class="engine-actions">
+                            <button type="button" id="engine-start" class="tg-btn-input inline-flex items-center gap-1.5">
                                 <i class="ri-play-fill"></i><span data-i18n="settings.engine.start">Start monitor</span>
                             </button>
-                            <button type="button" id="engine-stop" class="tg-btn-secondary text-sm px-4 py-2 inline-flex items-center gap-1.5 hidden">
+                            <button type="button" id="engine-stop" class="tg-btn-input-secondary hidden inline-flex items-center gap-1.5">
                                 <i class="ri-stop-fill"></i><span data-i18n="settings.engine.stop">Stop monitor</span>
                             </button>
-                            <button type="button" id="engine-restart" class="tg-btn-secondary text-sm px-4 py-2 inline-flex items-center gap-1.5">
+                            <button type="button" id="engine-restart" class="tg-btn-input-secondary inline-flex items-center gap-1.5">
                                 <i class="ri-restart-line"></i><span data-i18n="settings.engine.restart">Restart</span>
                             </button>
-                            <a href="#/queue" class="text-xs text-tg-blue hover:underline ml-auto inline-flex items-center gap-1" data-i18n="settings.engine.view_queue">View full queue →</a>
+                            <a href="#/queue" class="engine-link" data-i18n="settings.engine.view_queue">View full queue →</a>
                         </div>
-                        <p id="engine-error" class="hidden mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-2"></p>
-                    </div>
+
+                        <p id="engine-error" class="engine-error hidden"></p>
+                    </section>
 
                     <!-- Discovery pointer to the Maintenance hub. Replaces
                          the 14-button card retired in v2.9 — keeps the
@@ -2142,11 +2210,39 @@
                                         title="Wipes every cached thumbnail; the next gallery scroll regenerates them on demand.">
                                     <i class="ri-eraser-line"></i><span data-i18n="maintenance.thumbs.wipe_cache">Wipe cache</span>
                                 </button>
-                                <button id="thumbs-build-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
-                                        data-i18n-title="maintenance.thumbs.build_tooltip"
-                                        title="Walks every catalogued file and generates a WebP thumb where one is missing.">
-                                    <i class="ri-image-2-line"></i><span data-i18n="maintenance.thumbs.build_all">Build all</span>
+                                <!-- Cancel button — visible only while a build sweep is running.
+                                     POSTs /api/maintenance/thumbs/build/cancel; the WS
+                                     `thumbs_done` event finishes the lifecycle. -->
+                                <button id="thumbs-cancel-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 hidden"
+                                        title="Cancel the build sweep">
+                                    <i class="ri-stop-circle-line"></i><span data-i18n="maintenance.thumbs.cancel">Cancel</span>
                                 </button>
+                                <!-- Split button: main click = "Build all"; caret opens a popover
+                                     to scope the sweep to one media class (images / videos / audio). -->
+                                <div class="relative inline-flex items-stretch">
+                                    <button id="thumbs-build-btn" class="tg-btn text-xs pl-3 pr-2 py-1.5 inline-flex items-center gap-1.5 rounded-r-none"
+                                            data-i18n-title="maintenance.thumbs.build_tooltip"
+                                            title="Walks every catalogued file and generates a WebP thumb where one is missing.">
+                                        <i class="ri-image-2-line"></i><span data-i18n="maintenance.thumbs.build_all">Build all</span>
+                                    </button>
+                                    <button id="thumbs-build-kind-btn" type="button" class="tg-btn text-xs px-1.5 py-1.5 inline-flex items-center rounded-l-none border-l border-tg-border/30"
+                                            data-i18n-title="maintenance.thumbs.build_kind_tooltip"
+                                            title="Build for one media class only"
+                                            aria-haspopup="true" aria-expanded="false">
+                                        <i class="ri-arrow-down-s-line"></i>
+                                    </button>
+                                    <div id="thumbs-build-kind-menu" class="hidden absolute right-0 top-full mt-1 z-20 bg-tg-panel border border-tg-border/40 rounded-lg shadow-lg overflow-hidden min-w-[160px]" role="menu">
+                                        <button type="button" class="block w-full text-left px-3 py-1.5 text-xs hover:bg-tg-hover/40 inline-flex items-center gap-1.5" data-kind="all" role="menuitem">
+                                            <i class="ri-stack-line text-tg-textSecondary"></i><span data-i18n="maintenance.thumbs.build_kind_all">Build everything</span>
+                                        </button>
+                                        <button type="button" class="block w-full text-left px-3 py-1.5 text-xs hover:bg-tg-hover/40 inline-flex items-center gap-1.5" data-kind="image" role="menuitem">
+                                            <i class="ri-image-line text-tg-textSecondary"></i><span data-i18n="maintenance.thumbs.build_kind_image">Images only</span>
+                                        </button>
+                                        <button type="button" class="block w-full text-left px-3 py-1.5 text-xs hover:bg-tg-hover/40 inline-flex items-center gap-1.5" data-kind="video" role="menuitem">
+                                            <i class="ri-video-line text-tg-textSecondary"></i><span data-i18n="maintenance.thumbs.build_kind_video">Videos only</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -2238,12 +2334,352 @@
                             <div id="setting-adv-thumbs-warn-misses" class="tg-toggle shrink-0 mt-0.5"></div>
                         </div>
                     </section>
+
+                    <!-- Live thumbnail preview gallery — virtualised, lazy-loaded.
+                         Uses /api/maintenance/thumbs/list (cursor pagination) +
+                         /api/thumbs/:id?w=320 per tile. IntersectionObserver
+                         drives both image src-set and infinite scroll; the DOM
+                         is capped at ~500 tiles via a sliding window. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mt-3" id="thumbs-gallery-card">
+                        <div class="flex items-start justify-between gap-3 flex-wrap mb-3">
+                            <div class="min-w-0">
+                                <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
+                                    <i class="ri-gallery-line text-tg-blue"></i>
+                                    <span data-i18n="maintenance.thumbs.gallery.title">Thumbnail preview</span>
+                                </h3>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.thumbs.gallery.help">Newest first · scroll to load more · tiles render only when visible.</p>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button class="thumbs-gallery-kind tg-btn-secondary text-[11px] px-2.5 py-1 inline-flex items-center gap-1" data-kind="all" aria-pressed="true">
+                                    <i class="ri-stack-line"></i><span data-i18n="maintenance.thumbs.gallery.kind_all">All</span>
+                                </button>
+                                <button class="thumbs-gallery-kind tg-btn-secondary text-[11px] px-2.5 py-1 inline-flex items-center gap-1" data-kind="image">
+                                    <i class="ri-image-line"></i><span data-i18n="maintenance.thumbs.gallery.kind_image">Images</span>
+                                </button>
+                                <button class="thumbs-gallery-kind tg-btn-secondary text-[11px] px-2.5 py-1 inline-flex items-center gap-1" data-kind="video">
+                                    <i class="ri-video-line"></i><span data-i18n="maintenance.thumbs.gallery.kind_video">Videos</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="thumbs-gallery-meta" class="text-[11px] text-tg-textSecondary mb-2 tabular-nums"></div>
+                        <div id="thumbs-gallery-grid" class="thumbs-gallery-grid" role="list" aria-busy="false"></div>
+                        <div id="thumbs-gallery-sentinel" class="thumbs-gallery-sentinel" aria-hidden="true">
+                            <div class="text-[11px] text-tg-textSecondary inline-flex items-center gap-1.5">
+                                <i class="ri-loader-4-line animate-spin"></i>
+                                <span data-i18n="maintenance.thumbs.gallery.loading">Loading more…</span>
+                            </div>
+                        </div>
+                        <div id="thumbs-gallery-empty" class="hidden text-center py-6 text-tg-textSecondary text-xs">
+                            <i class="ri-image-2-line text-2xl block mb-1 opacity-60"></i>
+                            <div data-i18n="maintenance.thumbs.gallery.empty">No thumbnails to show yet — run Build all or wait for new downloads.</div>
+                            <button id="thumbs-gallery-empty-cta" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5 mt-3">
+                                <i class="ri-image-2-line"></i><span data-i18n="maintenance.thumbs.gallery.empty_cta">Build all now</span>
+                            </button>
+                        </div>
+                        <div id="thumbs-gallery-end" class="hidden text-center py-3 text-tg-textSecondary text-[11px]">
+                            <span data-i18n="maintenance.thumbs.gallery.end">— end of library —</span>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Maintenance / Seekbar previews (admin-only).
+                     Layout mirrors maintenance/ai: header card carries
+                     title + subtitle + sidecar pill + action cluster +
+                     inline progress + KPI strip; System health is a
+                     collapsible <details> below; settings card holds
+                     the toggles + sliders + nested hwaccel sub-card. -->
+                <div id="page-maintenance-seekbar" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="maintenance.seekbar.page_title"
+                     data-page-subtitle-key="maintenance.seekbar.subtitle">
+
+                    <!-- Header card — title/subtitle/sidecar pill on the
+                         left; Cancel + Scan now visible at all times,
+                         less-used actions tucked behind the overflow
+                         (Wipe cache / Run probe / Restart sidecar) so
+                         the header reads at a glance. Progress bar +
+                         KPI tiles live inside the same card. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.seekbar.page_title">Seekbar previews</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.seekbar.subtitle">Generate WebP sprite sheets for video hover-preview thumbnails.</p>
+                                <!-- Sidecar pill — same pattern as the AI
+                                     subsystem badge. Hydrated by
+                                     `_renderSidecarStatus()` on the
+                                     `seekbar_sidecar_status` WS event. -->
+                                <div id="seekbar-sidecar-pill" class="mt-2 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-tg-bg/40 text-tg-textSecondary" role="status">
+                                    <i class="ri-loader-4-line animate-spin"></i>
+                                    <span data-i18n="maintenance.seekbar.sidecar.checking">Checking…</span>
+                                </div>
+                                <p id="seekbar-sidecar-detail" class="text-[10.5px] text-tg-textSecondary/80 mt-1 font-mono break-all"></p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="seekbar-cancel-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled
+                                        data-i18n-title="maintenance.seekbar.cancel"
+                                        title="Cancel the running scan">
+                                    <i class="ri-stop-circle-line"></i><span data-i18n="maintenance.seekbar.cancel">Cancel</span>
+                                </button>
+                                <button id="seekbar-scan-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.seekbar.scan_now"
+                                        title="Backfill sprites for every existing video that doesn't have one yet.">
+                                    <i class="ri-play-fill"></i><span data-i18n="maintenance.seekbar.scan_now">Scan now</span>
+                                </button>
+                                <details id="seekbar-more-menu" class="relative">
+                                    <summary class="tg-btn-secondary text-xs px-2 py-1.5 inline-flex items-center gap-1 cursor-pointer list-none"
+                                             title="More actions" aria-haspopup="menu">
+                                        <i class="ri-more-2-fill"></i>
+                                    </summary>
+                                    <div class="absolute right-0 top-full mt-1 z-30 w-56 bg-tg-panel border border-tg-border rounded-lg shadow-xl py-1" role="menu">
+                                        <button id="seekbar-hwaccel-probe" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                title="Probe which hwaccel backends actually initialise on this host.">
+                                            <i class="ri-radar-line text-tg-blue"></i><span data-i18n="maintenance.seekbar.hwaccel.probe">Run hardware probe</span>
+                                        </button>
+                                        <button id="seekbar-restart-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                data-i18n-title="maintenance.seekbar.restart_sidecar_title"
+                                                title="Restart the Go sidecar — useful after a hwaccel / driver change.">
+                                            <i class="ri-restart-line text-yellow-300"></i><span data-i18n="maintenance.seekbar.restart_sidecar">Restart sidecar</span>
+                                        </button>
+                                        <div class="border-t border-tg-border/40 my-1"></div>
+                                        <button id="seekbar-wipe-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-red-300 hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                title="Delete every sprite + metadata row on disk.">
+                                            <i class="ri-delete-bin-2-line"></i><span data-i18n="maintenance.seekbar.wipe_cache">Wipe cache</span>
+                                        </button>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+
+                        <!-- Progress bar — visible while a scan / rebuild
+                             is running. Same shape as the AI page. -->
+                        <div id="seekbar-progress" class="hidden mt-3" role="status" aria-live="polite">
+                            <div class="text-sm text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span id="seekbar-progress-label" data-i18n="maintenance.seekbar.progress">Generating sprites…</span>
+                                <span id="seekbar-progress-pct" class="ml-auto text-[11px] text-tg-textSecondary tabular-nums">0%</span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
+                                <div id="seekbar-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
+                            </div>
+                            <div id="seekbar-progress-detail" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
+                        </div>
+
+                        <!-- KPI strip — four tiles at the bottom of the
+                             header card so the operator sees footprint +
+                             ffmpeg status without scrolling. -->
+                        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.indexed">Indexed videos</div>
+                                <div id="seekbar-kpi-indexed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.disk">Disk usage</div>
+                                <div id="seekbar-kpi-disk" class="text-xl font-semibold text-tg-blue tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.last_scan">Last scan</div>
+                                <div id="seekbar-kpi-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.ffmpeg">ffmpeg</div>
+                                <div id="seekbar-kpi-ffmpeg" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- System health — collapsed by default. Mirrors the
+                         AI doctor card shape: chevron + stethoscope icon
+                         + heading + worst-state summary inline; details
+                         expand into a flat key/value grid with the
+                         operational facts (sidecar mode, URL, PID,
+                         binary path, hwaccel result, version). -->
+                    <details id="seekbar-doctor-card" class="bg-tg-panel rounded-xl px-3 py-2 mb-3 group">
+                        <summary class="cursor-pointer list-none flex items-center justify-between gap-2 flex-wrap">
+                            <div class="min-w-0 flex items-center gap-1.5 flex-wrap">
+                                <i class="ri-arrow-right-s-line text-tg-textSecondary text-xs transition-transform group-open:rotate-90"></i>
+                                <i class="ri-stethoscope-line text-tg-blue text-xs"></i>
+                                <span class="text-tg-text text-xs font-medium" data-i18n="maintenance.seekbar.health.title">System health</span>
+                                <span id="seekbar-doctor-summary" class="text-[10.5px] text-tg-textSecondary"></span>
+                            </div>
+                            <button id="seekbar-doctor-refresh-btn" type="button" class="text-[10.5px] text-tg-textSecondary hover:text-tg-text inline-flex items-center gap-1 px-2 py-0.5 rounded hover:bg-tg-bg/40">
+                                <i class="ri-refresh-line"></i><span data-i18n="maintenance.seekbar.health.refresh">Refresh</span>
+                            </button>
+                        </summary>
+                        <dl id="seekbar-health-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs mt-2">
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.sidecar">Sidecar</dt>
+                                <dd id="seekbar-health-sidecar" class="text-tg-text font-mono">—</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.url">URL</dt>
+                                <dd id="seekbar-health-url" class="text-tg-text font-mono truncate">—</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.pid">PID</dt>
+                                <dd id="seekbar-health-pid" class="text-tg-text font-mono">—</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.binary">Binary</dt>
+                                <dd id="seekbar-health-binary" class="text-tg-text font-mono truncate">—</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.hwaccel">Hwaccel</dt>
+                                <dd id="seekbar-health-hwaccel" class="text-tg-text font-mono">—</dd>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.version">Version</dt>
+                                <dd id="seekbar-health-version" class="text-tg-text font-mono">—</dd>
+                            </div>
+                        </dl>
+                        <p id="seekbar-health-error" class="hidden mt-2 text-[11px] text-red-400 font-mono break-all"></p>
+                    </details>
+
+                    <!-- Sprite settings — flat layout, all controls at
+                         the same depth like the AI faces card. Master
+                         toggles up top, sprite knobs in a 2-col grid,
+                         hwaccel sub-card nested at the bottom. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h3 class="text-tg-text text-sm font-medium mb-1 flex items-center gap-2">
+                            <i class="ri-movie-line text-tg-blue"></i>
+                            <span data-i18n="maintenance.seekbar.settings.title">Sprite settings</span>
+                        </h3>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.seekbar.settings.desc">Defaults are tuned for hover scrubbing on Telegram clips; tweak only if your library has very long files or very tight disk budget.</p>
+
+                        <div class="space-y-3">
+                            <!-- Master enable toggle. Auto-on default
+                                 (the Go sidecar auto-downloads on first
+                                 boot); operators flip this only if they
+                                 want to suppress generation entirely. -->
+                            <div class="flex items-start justify-between gap-3 pb-3 border-b border-tg-border/30">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.seekbar.enable_label">Enable seekbar previews</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.seekbar.enable_help">Master switch. When off, no new sprites are generated and the player falls back to the time-only tooltip on hover.</p>
+                                </div>
+                                <div id="setting-adv-seekbar-enabled" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="true" tabindex="0"></div>
+                            </div>
+
+                            <!-- Auto-on-download toggle — controls the
+                                 pregenerateSeekbar() post-download hook. -->
+                            <div class="flex items-start justify-between gap-3 pb-3 border-b border-tg-border/30">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.seekbar.auto_label">Auto-generate on download</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.seekbar.auto_help">Every newly-downloaded video gets a sprite in the background. Realtime jumps ahead of any backfill in flight.</p>
+                                </div>
+                                <div id="setting-adv-seekbar-autoOnDownload" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="true" tabindex="0"></div>
+                            </div>
+
+                            <!-- Sprite tuning — a 2-col grid keeps numeric
+                                 inputs scannable without bloating the
+                                 page. Placeholders show the current
+                                 defaults so an empty field reads as
+                                 "use the default". -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label for="setting-adv-seekbar-intervalSec" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.interval">Interval (s)</label>
+                                    <input id="setting-adv-seekbar-intervalSec" type="number" min="1" max="30" step="1" class="tg-input w-full text-sm" placeholder="4">
+                                </div>
+                                <div>
+                                    <label for="setting-adv-seekbar-tileWidth" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.tile_width">Tile width (px)</label>
+                                    <input id="setting-adv-seekbar-tileWidth" type="number" min="80" max="400" step="1" class="tg-input w-full text-sm" placeholder="160">
+                                </div>
+                                <div>
+                                    <label for="setting-adv-seekbar-columns" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.columns">Columns</label>
+                                    <input id="setting-adv-seekbar-columns" type="number" min="2" max="20" step="1" class="tg-input w-full text-sm" placeholder="10">
+                                </div>
+                                <div>
+                                    <label for="setting-adv-seekbar-maxTiles" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.max_tiles">Max tiles</label>
+                                    <input id="setting-adv-seekbar-maxTiles" type="number" min="20" max="500" step="1" class="tg-input w-full text-sm" placeholder="240">
+                                </div>
+                                <div>
+                                    <label for="setting-adv-seekbar-format" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.format">Format</label>
+                                    <select id="setting-adv-seekbar-format" class="tg-input w-full text-sm">
+                                        <option value="webp">WebP</option>
+                                        <option value="jpeg">JPEG</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="setting-adv-seekbar-quality" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.quality">Quality</label>
+                                    <input id="setting-adv-seekbar-quality" type="number" min="30" max="95" step="1" class="tg-input w-full text-sm" placeholder="75">
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label for="setting-adv-seekbar-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.concurrency">Sidecar concurrency</label>
+                                    <input id="setting-adv-seekbar-concurrency" type="number" min="1" max="16" step="1" class="tg-input w-full text-sm sm:w-40" placeholder="4">
+                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.concurrency_help">How many sprite encodes the Go sidecar runs in parallel. 4 is the sweet spot on 4–8-core hosts.</p>
+                                </div>
+                            </div>
+
+                            <!-- Hardware acceleration sub-card — same
+                                 nested-card shape as AI faces providers. -->
+                            <div class="bg-tg-bg/30 rounded-lg p-3 border border-tg-border/40 mt-3">
+                                <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
+                                    <div class="min-w-0">
+                                        <div class="text-xs text-tg-text font-medium" data-i18n="maintenance.seekbar.hwaccel.label">Hardware acceleration</div>
+                                        <p class="text-[10.5px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.seekbar.hwaccel.help">Auto picks the best backend per platform (cuda → vaapi → qsv on Linux x86, videotoolbox on macOS, cuda → qsv → d3d11va on Windows, v4l2m2m on Pi). Falls back to CPU silently.</p>
+                                    </div>
+                                </div>
+                                <div id="seekbar-hwaccel-result" class="text-[11px] text-tg-textSecondary leading-relaxed min-h-[24px] flex flex-wrap gap-1 items-center font-mono" role="status" aria-live="polite"></div>
+                                <label for="setting-adv-seekbar-hwaccel" class="text-tg-text text-xs block mt-3 mb-1" data-i18n="maintenance.seekbar.hwaccel.backend_label">Backend</label>
+                                <select id="setting-adv-seekbar-hwaccel" class="tg-input w-full text-sm">
+                                    <option value="">auto</option>
+                                    <option value="cuda">cuda — NVIDIA</option>
+                                    <option value="vaapi">vaapi — Intel/AMD Linux</option>
+                                    <option value="qsv">qsv — Intel QuickSync</option>
+                                    <option value="d3d11va">d3d11va — Windows</option>
+                                    <option value="videotoolbox">videotoolbox — macOS</option>
+                                    <option value="v4l2m2m">v4l2m2m — Pi/Rockchip</option>
+                                    <option value="none">none — CPU only</option>
+                                </select>
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.hwaccel.backend_help">Auto is safe; pick a specific backend only after the probe shows it works. The sidecar silently falls back to CPU if the chosen backend can't initialise on this host.</p>
+                            </div>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Maintenance / Video faststart optimiser (admin-only) -->
                 <div id="page-maintenance-video" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.video.page_title"
                      data-page-subtitle-key="maintenance.video.subtitle">
+                    <!-- Auto-optimise on download — indicator card.
+                         Counters maintained by the post-download hook in
+                         src/core/faststart.js (`optimizeDownloadInBackground`)
+                         and served by GET /api/maintenance/faststart/auto-stats.
+                         Live-updated by the `faststart_auto_done` WS event
+                         so a fresh MP4 landing animates the counters. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold flex items-center gap-2 flex-wrap">
+                                    <span class="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide bg-tg-green/20 text-tg-green px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-tg-green"></span><span data-i18n="maintenance.video.auto.badge">Auto</span></span>
+                                    <span data-i18n="maintenance.video.auto.title">Auto-optimise on download</span>
+                                </h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.video.auto.subtitle">Every newly-downloaded MP4 / MOV / M4V is moov-rewritten in the background before it lands in the gallery. No operator click required — these counters track the auto path only.</p>
+                            </div>
+                            <div id="video-auto-stat-last-wrap" class="text-right shrink-0">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.video.auto.last">Last auto run</div>
+                                <div id="video-auto-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-0.5">—</div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.video.auto.seen">Seen</div>
+                                <div id="video-auto-stat-total" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.video.auto.optimized">Optimised</div>
+                                <div id="video-auto-stat-optimized" class="text-xl font-semibold text-tg-green tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.video.auto.already">Already</div>
+                                <div id="video-auto-stat-already" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.video.auto.errored">Errored</div>
+                                <div id="video-auto-stat-errored" class="text-xl font-semibold text-tg-red tabular-nums">—</div>
+                            </div>
+                        </div>
+                        <p id="video-auto-stat-last-error" class="hidden mt-2 text-[11px] text-tg-red truncate"></p>
+                        <p class="text-[11px] text-tg-textSecondary mt-2 leading-relaxed" data-i18n="maintenance.video.auto.help">Counters persist across restarts. "Seen" = how many post-download decisions the hook handled. Use the backfill action below for files that were already in the library before auto-optimise existed.</p>
+                    </section>
+
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <div class="flex items-start justify-between gap-3 flex-wrap">
                             <div class="min-w-0">
@@ -2257,8 +2693,8 @@
                             <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                                 <button id="video-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
                                         data-i18n-title="maintenance.video.scan_tooltip"
-                                        title="Walk every MP4 / MOV / M4V and rewrite ones whose moov atom isn't at the head with +faststart. Stream-copy, no re-encode.">
-                                    <i class="ri-film-line"></i><span data-i18n="maintenance.video.scan_all">Optimise all</span>
+                                        title="Backfill the moov rewrite across every MP4 / MOV / M4V already in the library. New downloads are handled automatically by the hook above.">
+                                    <i class="ri-film-line"></i><span data-i18n="maintenance.video.scan_all">Backfill existing files</span>
                                 </button>
                             </div>
                         </div>
@@ -2303,7 +2739,7 @@
                                 <div id="video-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
                             </div>
                         </div>
-                        <p class="text-[11px] text-tg-textSecondary mt-2 leading-relaxed" data-i18n="maintenance.video.stats_help">Pending = MP4s whose moov atom is at the end of the file. Skipped = files in containers that don't use moov (WebM, MKV) or that aren't on disk. New downloads are auto-optimised after they land.</p>
+                        <p class="text-[11px] text-tg-textSecondary mt-2 leading-relaxed" data-i18n="maintenance.video.stats_help">Library-wide totals. Pending = MP4s whose moov atom is still at the end of the file (eligible for the backfill action above). Skipped = files in containers that don't use moov (WebM, MKV) or that aren't on disk. Auto-optimise stats for new downloads are tracked separately at the top.</p>
                     </section>
                 </div>
 
@@ -2495,6 +2931,353 @@
                             </div>
                         </div>
                     </section>
+                </div>
+
+                <!-- Maintenance / AI subpage (admin-only).
+                     Faces-only build. The page surfaces the Python face-
+                     clustering sidecar (insightface buffalo_l, 512-dim
+                     embeddings, DBSCAN clustering) and routes every
+                     operation through /api/ai/* endpoints. Capability
+                     grid is designed to accommodate future features
+                     (OCR, object detection, face quality) by pushing a
+                     single entry into CAPABILITIES in maintenance-ai.js
+                     — no layout surgery needed. -->
+                <div id="page-maintenance-ai" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="maintenance.ai.page_title"
+                     data-page-subtitle-key="maintenance.ai.subtitle">
+                    <!-- Header card — same pattern as maintenance/thumbs.
+                         Title + subtitle + sidecar status on the left;
+                         the three actions (Scan / Cancel / Reindex) on
+                         the right. Progress bar sits between them and
+                         the KPI strip when a scan is running. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.ai.page_title">AI</h2>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.subtitle">Face clustering — recognise people across your library using a local Python service.</p>
+                                <!-- Sidecar status pill — always visible
+                                     so operators can see whether the
+                                     Python service is reachable. Hydrated
+                                     by `_renderSidecarBadge()`. -->
+                                <div id="ai-sidecar-badge" class="mt-2 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-tg-bg/40 text-tg-textSecondary" role="status">
+                                    <i class="ri-flashlight-line"></i><span id="ai-sidecar-badge-text" data-i18n="maintenance.ai.sidecar.unknown">Sidecar: probing…</span>
+                                </div>
+                            </div>
+                            <!-- Action cluster — primary Scan + Cancel
+                                 visible at all times; less-used actions
+                                 (Re-cluster, Reindex from scratch, Manage
+                                 GPU support) tuck behind an overflow
+                                 details menu so the header reads at a
+                                 glance instead of overwhelming. -->
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <button id="ai-cancel-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled
+                                        title="Cancel the running scan">
+                                    <i class="ri-stop-circle-line"></i><span data-i18n="maintenance.ai.cancel">Cancel</span>
+                                </button>
+                                <button id="ai-scan-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.ai.scan_tooltip"
+                                        title="Detect faces on every photo missing an index pass, then re-cluster.">
+                                    <i class="ri-play-fill"></i><span data-i18n="maintenance.ai.scan_now">Scan now</span>
+                                </button>
+                                <details id="ai-more-menu" class="relative">
+                                    <summary class="tg-btn-secondary text-xs px-2 py-1.5 inline-flex items-center gap-1 cursor-pointer list-none"
+                                             title="More actions" aria-haspopup="menu">
+                                        <i class="ri-more-2-fill"></i>
+                                    </summary>
+                                    <div class="absolute right-0 top-full mt-1 z-30 w-56 bg-tg-panel border border-tg-border rounded-lg shadow-xl py-1" role="menu">
+                                        <button id="ai-recluster-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                data-i18n-title="maintenance.ai.recluster_tooltip"
+                                                title="Run DBSCAN clustering only — uses existing face detections + the current threshold to surface People. Fast (seconds, not minutes).">
+                                            <i class="ri-refresh-line text-tg-blue"></i><span data-i18n="maintenance.ai.recluster">Re-cluster</span>
+                                        </button>
+                                        <button id="ai-reindex-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                data-i18n-title="maintenance.ai.reindex_tooltip"
+                                                title="Wipes every face detection and every cluster, then re-scans every photo.">
+                                            <i class="ri-restart-line text-yellow-300"></i><span data-i18n="maintenance.ai.reindex">Reindex from scratch</span>
+                                        </button>
+                                        <div class="border-t border-tg-border/40 my-1"></div>
+                                        <button id="ai-open-install-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                title="Reinstall or change GPU support">
+                                            <i class="ri-magic-line text-tg-blue"></i><span data-i18n="maintenance.ai.install.open">Manage GPU support</span>
+                                        </button>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+
+                        <!-- Progress bar — only visible while a scan is
+                             active. Status text + spinner + bar +
+                             percentage match the thumbs page exactly so
+                             muscle memory transfers. -->
+                        <div id="ai-progress" class="hidden mt-3" role="status" aria-live="polite">
+                            <div class="text-sm text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span id="ai-progress-status" data-i18n="maintenance.ai.scanning">Scanning…</span>
+                            </div>
+                            <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
+                                <div id="ai-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
+                            </div>
+                            <div id="ai-progress-pct" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
+                        </div>
+
+                        <!-- KPI strip — three tiles. Indexed photos
+                             (faces walked / eligible photos), people
+                             clusters surfaced, last scan timestamp. -->
+                        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_indexed">Indexed photos</div>
+                                <div id="ai-stat-indexed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_people">People clusters</div>
+                                <div id="ai-stat-people" class="text-xl font-semibold text-tg-blue tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_last">Last scan</div>
+                                <div id="ai-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- System health — collapsed by default. Summary
+                         line in the <summary> reflects the worst-state
+                         check (all OK / N warnings / N failing). Each
+                         row is a one-line check with ✓/⚠/✗ + label +
+                         detail (sidecar URL, model id, provider,
+                         platform, photo coverage). -->
+                    <details id="ai-doctor-card" class="bg-tg-panel rounded-xl px-3 py-2 mb-3 group">
+                        <summary class="cursor-pointer list-none flex items-center justify-between gap-2 flex-wrap">
+                            <div class="min-w-0 flex items-center gap-1.5 flex-wrap">
+                                <i class="ri-arrow-right-s-line text-tg-textSecondary text-xs transition-transform group-open:rotate-90"></i>
+                                <i class="ri-stethoscope-line text-tg-blue text-xs"></i>
+                                <span class="text-tg-text text-xs font-medium" data-i18n="maintenance.ai.doctor_heading">System health</span>
+                                <span id="ai-doctor-summary" class="text-[10.5px] text-tg-textSecondary"></span>
+                            </div>
+                            <button id="ai-doctor-refresh-btn" type="button" class="text-[10.5px] text-tg-textSecondary hover:text-tg-text inline-flex items-center gap-1 px-2 py-0.5 rounded hover:bg-tg-bg/40">
+                                <i class="ri-refresh-line"></i><span data-i18n="maintenance.ai.doctor_refresh">Refresh</span>
+                            </button>
+                        </summary>
+                        <div id="ai-doctor-list" class="mt-2"></div>
+                    </details>
+
+                    <!-- Setup / GPU acceleration card.
+                         Auto-shown by maintenance-ai.js when the sidecar is
+                         unhealthy (deps missing / install pending) OR when
+                         the operator explicitly opens it via the badge.
+                         The button posts to /api/ai/faces/install-deps
+                         which spawns `python -m tgdl_faces.install` and
+                         streams stdout to the live log below over the
+                         `ai_faces_install_progress` WS event. -->
+                    <section id="ai-install-card" class="hidden bg-tg-panel rounded-xl p-4 mb-3 border border-tg-blue/30">
+                        <div class="flex items-start justify-between gap-3 flex-wrap">
+                            <div class="min-w-0">
+                                <h3 class="text-tg-text text-sm font-semibold flex items-center gap-2">
+                                    <i class="ri-magic-line text-tg-blue"></i>
+                                    <span data-i18n="maintenance.ai.install.title">Install GPU acceleration</span>
+                                </h3>
+                                <p class="text-[11px] text-tg-textSecondary mt-1 max-w-xl" data-i18n="maintenance.ai.install.desc">One click installs the matching onnxruntime backend for this host (DirectML on Windows, CUDA on Linux + NVIDIA, OpenVINO on Linux + Intel, CoreML on macOS, CPU elsewhere) and starts the sidecar. Takes 1–5 minutes the first time while wheels download.</p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                <select id="ai-install-force" class="tg-input text-xs py-1 px-2" title="Override platform detection">
+                                    <option value=""         data-i18n="maintenance.ai.install.auto">Auto-detect</option>
+                                    <option value="directml" data-i18n="maintenance.ai.install.force_directml">Force DirectML (Windows)</option>
+                                    <option value="gpu"      data-i18n="maintenance.ai.install.force_cuda">Force CUDA (NVIDIA)</option>
+                                    <option value="openvino" data-i18n="maintenance.ai.install.force_openvino">Force OpenVINO (Intel)</option>
+                                    <option value="cpu"      data-i18n="maintenance.ai.install.force_cpu">Force CPU only</option>
+                                </select>
+                                <button id="ai-install-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-download-cloud-2-line"></i><span data-i18n="maintenance.ai.install.run">Install now</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live progress + log tail. Hidden until the
+                             first WS event lands. -->
+                        <div id="ai-install-progress" class="hidden mt-3" role="status" aria-live="polite">
+                            <div class="text-xs text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                                <span id="ai-install-status" data-i18n="maintenance.ai.install.running">Installing…</span>
+                            </div>
+                            <pre id="ai-install-log" class="bg-tg-bg/60 rounded p-2 text-[10.5px] font-mono whitespace-pre-wrap leading-snug max-h-48 overflow-auto"></pre>
+                        </div>
+                    </section>
+
+                    <!-- Face clustering settings card — flat layout
+                         matching maintenance/thumbs hardware-acceleration
+                         section. All controls are top-level (no
+                         "capability card" nesting), so every toggle and
+                         slider is at the same depth and reads
+                         left-to-right. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h3 class="text-tg-text text-sm font-medium mb-1 flex items-center gap-2">
+                            <i class="ri-user-smile-line text-tg-blue"></i>
+                            <span data-i18n="maintenance.ai.faces.title">Face clustering</span>
+                        </h3>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.ai.faces.desc">Detects faces with insightface, groups recurring people into clusters via DBSCAN.</p>
+                        <!-- Resolved model line — sidecar + dim + provider.
+                             Stays in sync with the live /api/ai/status. -->
+                        <div id="ai-model-line" class="text-[10px] text-tg-textSecondary font-mono truncate mb-3" title=""></div>
+
+                        <div class="space-y-3">
+                            <!-- Master AI subsystem toggle. Off = no
+                                 face detection at all. Label + help
+                                 make it obvious what this controls;
+                                 the prior tiny header badge had no
+                                 affordance. -->
+                            <div class="flex items-start justify-between gap-3 pb-3 border-b border-tg-border/30">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.ai.master_toggle_label">Run AI subsystem</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.master_toggle_help">Master switch. When off, no scans run, the sidecar stops accepting work, and auto-index on new downloads is skipped.</p>
+                                </div>
+                                <div id="ai-master-toggle" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="false" tabindex="0"></div>
+                            </div>
+
+                            <!-- Auto-on-download toggle — controls the
+                                 pregenerateAi() hook. Visible as its
+                                 own row instead of a tiny pip next to
+                                 a card title. -->
+                            <div class="flex items-start justify-between gap-3 pb-3 border-b border-tg-border/30">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.ai.auto_toggle_label">Auto-scan new downloads</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.auto_toggle_help">When on, every newly-downloaded photo is queued for face detection in the background. Turn off to scan only via the buttons above.</p>
+                                </div>
+                                <div id="ai-auto-toggle" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="false" tabindex="0"></div>
+                            </div>
+
+                            <!-- Detector model select. Switching the
+                                 preset auto-restarts the sidecar +
+                                 reminds the operator that the existing
+                                 clusters need to be re-built (different
+                                 embedding space). -->
+                            <div>
+                                <label for="ai-faces-model" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.ai.faces.model">Detector model</label>
+                                <select id="ai-faces-model" class="tg-input w-full text-sm">
+                                    <option value="buffalo_l"  data-i18n="maintenance.ai.faces.model_buffalo_l">buffalo_l — balanced (99.5% LFW, default)</option>
+                                    <option value="antelopev2" data-i18n="maintenance.ai.faces.model_antelopev2">antelopev2 — best accuracy (99.6%, Glint360K)</option>
+                                    <option value="buffalo_m"  data-i18n="maintenance.ai.faces.model_buffalo_m">buffalo_m — faster (99.3%)</option>
+                                    <option value="buffalo_s"  data-i18n="maintenance.ai.faces.model_buffalo_s">buffalo_s — fastest (99.0%)</option>
+                                    <option value="buffalo_sc" data-i18n="maintenance.ai.faces.model_buffalo_sc">buffalo_sc — compact specialty (≈98.5%)</option>
+                                </select>
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.model_help">Switching the model requires a Re-cluster — embedding spaces differ across presets.</p>
+                            </div>
+
+                            <!-- Cluster threshold slider. Output shows
+                                 the live value; the actual save fires
+                                 on `change`, not on each `input`, so
+                                 dragging doesn't spam the API. -->
+                            <div>
+                                <div class="flex items-center justify-between gap-2">
+                                    <label for="ai-faces-epsilon" class="text-tg-text text-xs" data-i18n="maintenance.ai.faces.threshold">Cluster threshold (DBSCAN ε)</label>
+                                    <output id="ai-faces-epsilon-out" class="text-[11px] text-tg-text font-mono tabular-nums">1.05</output>
+                                </div>
+                                <input id="ai-faces-epsilon" type="range" min="0.3" max="1.5" step="0.01" value="1.05" class="tg-range w-full mt-1">
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.threshold_help">Calibrated on real 900+ photo data. 0.8–1.0 = strict (precise). 1.05 = peak (recommended). 1.10+ starts merging different people; 1.15+ collapses everyone into one mega-cluster.</p>
+                            </div>
+
+                            <!-- Min cluster size. DBSCAN's `minPoints`
+                                 — too low and noise becomes "people"; too
+                                 high and rare people get dropped. -->
+                            <div>
+                                <label for="ai-faces-min-points" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.ai.faces.min_points">Min cluster size</label>
+                                <input id="ai-faces-min-points" type="number" min="2" max="20" step="1" value="3" class="tg-input text-sm w-full sm:w-32">
+                            </div>
+
+                            <!-- Hardware acceleration sub-card. Same
+                                 structure as Build thumbnails'
+                                 hwaccel-probe block so operators see one
+                                 consistent UX for "tell me what this
+                                 server can use". -->
+                            <div class="bg-tg-bg/30 rounded-lg p-3 border border-tg-border/40 mt-3" data-faces-provider-card>
+                                <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
+                                    <div class="min-w-0">
+                                        <div class="text-xs text-tg-text font-medium" data-i18n="maintenance.ai.faces.providers.probe_label">Hardware acceleration</div>
+                                        <p class="text-[10.5px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.faces.providers.probe_caption">Detect which GPU/CPU backend this host can run the face model on. CUDA → CoreML → DirectML → OpenVINO → CPU, in order of speed.</p>
+                                    </div>
+                                    <button id="ai-faces-provider-probe-btn" type="button"
+                                        class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center justify-center gap-1.5 shrink-0">
+                                        <i class="ri-radar-line"></i>
+                                        <span data-i18n="maintenance.ai.faces.providers.probe_action">Run hardware probe</span>
+                                    </button>
+                                </div>
+                                <div id="ai-faces-provider-probe-result"
+                                     class="text-[11px] text-tg-textSecondary leading-relaxed min-h-[24px] flex flex-wrap gap-1 items-center"
+                                     role="status" aria-live="polite"></div>
+                                <label for="ai-faces-provider" class="text-tg-text text-xs block mt-3 mb-1" data-i18n="maintenance.ai.faces.providers.label">Inference provider</label>
+                                <select id="ai-faces-provider" class="tg-input w-full text-sm">
+                                    <option value="auto"     selected data-i18n="maintenance.ai.faces.providers.auto">Auto (best available)</option>
+                                    <option value="cuda"     data-i18n="maintenance.ai.faces.providers.cuda">CUDA — NVIDIA GPU</option>
+                                    <option value="coreml"   data-i18n="maintenance.ai.faces.providers.coreml">CoreML — Apple Silicon</option>
+                                    <option value="directml" data-i18n="maintenance.ai.faces.providers.directml">DirectML — Windows</option>
+                                    <option value="openvino" data-i18n="maintenance.ai.faces.providers.openvino">OpenVINO — Intel</option>
+                                    <option value="cpu"      data-i18n="maintenance.ai.faces.providers.cpu">CPU only</option>
+                                </select>
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.providers.help">Auto is the safe default; pick a specific backend only after a probe shows it works. Falls back to CPU if the chosen backend isn't available.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- People (face clusters) — the surface today.
+                         Search box + Unlabeled-only chip + refresh on
+                         top, then the cluster grid. Clicking a tile
+                         opens the details panel (photos + Rename /
+                         Merge / Split / Delete). -->
+                    <section id="ai-pane-people" class="bg-tg-panel rounded-xl p-4 mb-3" role="region" aria-label="Face clusters">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i class="ri-group-line text-tg-blue"></i>
+                            <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.people.heading">People</h3>
+                            <span id="ai-people-count" class="text-[10.5px] text-tg-textSecondary"></span>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap mb-3">
+                            <input id="ai-people-search" type="search" class="tg-input flex-1 min-w-[160px] text-xs py-1.5"
+                                placeholder="Search names or IDs…" data-i18n-placeholder="maintenance.ai.people.search_placeholder"
+                                autocomplete="off" spellcheck="false">
+                            <label class="inline-flex items-center gap-1 text-[11px] text-tg-textSecondary cursor-pointer select-none">
+                                <input id="ai-people-unlabeled" type="checkbox" class="accent-tg-blue">
+                                <span data-i18n="maintenance.ai.people.unlabeled_only">Unlabeled only</span>
+                            </label>
+                            <button id="ai-people-refresh-btn" type="button" class="tg-btn-secondary text-[11px] px-2 py-1 inline-flex items-center gap-1"
+                                title="Refresh the people grid">
+                                <i class="ri-refresh-line"></i>
+                            </button>
+                        </div>
+                        <div id="ai-people-empty" class="hidden text-center py-10 text-sm text-tg-textSecondary">
+                            <i class="ri-user-search-line text-3xl block mb-2 text-tg-textSecondary/60"></i>
+                            <div data-i18n="maintenance.ai.people_empty">No people clustered yet. Run a scan above.</div>
+                        </div>
+                        <div id="ai-people-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+                        <div id="ai-people-photos" class="hidden mt-4 pt-3 border-t border-tg-border/30">
+                            <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                                <div class="text-xs text-tg-textSecondary"><span data-i18n="maintenance.ai.people_photos_for">Photos for</span> <span id="ai-people-photos-name" class="text-tg-text font-medium"></span></div>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <button id="ai-person-rename-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-edit-line"></i><span data-i18n="maintenance.ai.people.actions.rename">Rename</span></button>
+                                    <button id="ai-person-merge-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-git-merge-line"></i><span data-i18n="maintenance.ai.people.actions.merge">Merge…</span></button>
+                                    <button id="ai-person-split-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-scissors-cut-line"></i><span data-i18n="maintenance.ai.people.actions.split">Split…</span></button>
+                                    <button id="ai-person-delete-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1 text-red-300"><i class="ri-delete-bin-line"></i><span data-i18n="maintenance.ai.people.actions.delete">Delete</span></button>
+                                </div>
+                            </div>
+                            <div id="ai-people-photos-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+                        </div>
+                    </section>
+
+                    <!-- Future capabilities footer — a single muted
+                         line so the page acknowledges the extensibility
+                         goal without spending a card on an empty
+                         placeholder. -->
+                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection · Face quality scoring · Smart albums</p>
+
+                    <!-- Hidden hosts for legacy element ids referenced
+                         by older bookmarklets / extensions. Empty + no-op
+                         so a stray getElementById doesn't throw, but
+                         nothing visible to the operator. The old
+                         capability-grid container is kept as an empty
+                         hidden div so any in-flight script that touches
+                         `#ai-capabilities-grid` during transition
+                         doesn't crash. -->
+                    <div class="hidden" aria-hidden="true">
+                        <span id="setting-adv-ai-enabled"></span>
+                        <span id="setting-adv-ai-federate-faces"></span>
+                        <div id="ai-capabilities-grid"></div>
+                    </div>
                 </div>
 
                 <!-- Maintenance / Logs page (admin-only) -->
@@ -2901,6 +3684,7 @@
 
             </div>
         </main>
+        </div>
     </div>
 
     <!-- Selection footer (shown when items are selected) -->
@@ -3073,6 +3857,42 @@
                         <!-- Hover preview tooltip -->
                         <div id="video-hover-time"
                             class="absolute -top-1 px-2 py-1 bg-black/80 text-white text-xs font-mono tabular-nums rounded pointer-events-none -translate-x-1/2 -translate-y-full hidden">00:00</div>
+                        <!-- Sprite-sheet hover preview — Netflix/YouTube
+                             style. Outer wrapper carries the rounded
+                             border + shadow; the inner tile element
+                             paints the sprite background, and the time
+                             pill labels the frame. A second overlay div
+                             shows the "Generating preview…" shimmer when
+                             the seekbar feature is enabled but no
+                             sidecar artefact exists yet for this clip.
+                             Wrapper is absolutely positioned by JS using
+                             cursor x; we keep `data-state` for CSS
+                             variant styling (`ready` / `pending`). -->
+                        <div id="video-sprite-preview"
+                            class="hidden absolute bottom-7 pointer-events-none select-none"
+                            data-state="ready"
+                            aria-hidden="true">
+                            <div id="video-sprite-tile"
+                                class="relative overflow-hidden rounded-md ring-1 ring-white/15 shadow-2xl bg-black/70 backdrop-blur-sm">
+                                <!-- The sprite frame paints into this div
+                                     via background-image + background-position. -->
+                                <div id="video-sprite-frame" class="block"></div>
+                                <!-- Generating shimmer — surfaced when
+                                     data-state="pending". Two layers: a
+                                     subtle moving sheen and a small
+                                     status row at the bottom. -->
+                                <div id="video-sprite-pending"
+                                    class="hidden absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55">
+                                    <i class="ri-loader-4-line text-tg-blue text-xl animate-spin"></i>
+                                    <span class="text-[10px] uppercase tracking-wide text-white/80" data-i18n="viewer.video.sprite_generating">Generating preview…</span>
+                                </div>
+                            </div>
+                            <!-- Centered time chip below the tile. -->
+                            <div class="flex justify-center mt-1">
+                                <span id="video-sprite-time"
+                                    class="px-1.5 py-0.5 bg-black/85 text-white text-[11px] font-mono tabular-nums rounded shadow">00:00</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Controls row — standardised layout. Each child has
@@ -3125,6 +3945,90 @@
                     </div>
                 </div>
             </div>
+
+            <!-- PDF preview — browser's native viewer in an iframe. Sandbox
+                 lets the PDF renderer run inline scripts (some browsers
+                 stream PDF.js into the iframe) but blocks top-level
+                 navigation so a hostile PDF can't pivot away from the
+                 dashboard. -->
+            <div id="pdf-container" class="relative w-full h-full hidden">
+                <iframe id="pdf-frame"
+                    class="w-full h-full bg-white border-0"
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads"
+                    title="PDF preview"></iframe>
+            </div>
+
+            <!-- Audio player — large centered <audio controls>. -->
+            <div id="audio-container"
+                class="relative w-full h-full flex flex-col items-center justify-center bg-black px-6 hidden">
+                <i class="ri-music-2-line text-7xl text-tg-blue/70 mb-6"></i>
+                <p id="audio-title" class="text-tg-text text-lg font-medium truncate max-w-full mb-1"></p>
+                <p id="audio-meta" class="text-sm text-tg-textSecondary mb-6"></p>
+                <audio id="modal-audio" controls preload="metadata" class="w-full max-w-2xl"></audio>
+            </div>
+
+            <!-- Plain-text preview. Header carries a wrap-toggle pill. -->
+            <div id="text-container"
+                class="relative w-full h-full flex flex-col bg-[#0d1117] hidden">
+                <div class="flex items-center gap-3 px-4 py-2 border-b border-white/10 text-xs text-tg-textSecondary">
+                    <i class="ri-file-text-line text-base"></i>
+                    <span class="flex-1 truncate" data-i18n="viewer.text.title">Plain text</span>
+                    <button id="text-wrap-toggle" type="button"
+                        class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-tg-text/85 text-[11px] uppercase tracking-wide transition"
+                        data-i18n="viewer.text.wrap">Wrap</button>
+                </div>
+                <div id="text-status" class="text-tg-textSecondary"></div>
+                <div class="flex-1 overflow-auto">
+                    <pre id="text-block"
+                        class="viewer-text-pre m-0 p-4 text-sm text-tg-text/90 font-mono whitespace-pre"></pre>
+                </div>
+            </div>
+
+            <!-- Code preview — same skeleton as text, plus highlight.js. -->
+            <div id="code-container"
+                class="relative w-full h-full flex flex-col bg-[#0d1117] hidden">
+                <div class="flex items-center gap-3 px-4 py-2 border-b border-white/10 text-xs text-tg-textSecondary">
+                    <i class="ri-code-line text-base"></i>
+                    <span class="flex-1 truncate" data-i18n="viewer.code.title">Code</span>
+                    <button id="code-wrap-toggle" type="button"
+                        class="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-tg-text/85 text-[11px] uppercase tracking-wide transition"
+                        data-i18n="viewer.text.wrap">Wrap</button>
+                </div>
+                <div id="code-status" class="text-tg-textSecondary"></div>
+                <div class="flex-1 overflow-auto">
+                    <pre class="viewer-code-pre m-0"><code id="code-block"
+                        class="block p-4 text-sm font-mono whitespace-pre"></code></pre>
+                </div>
+            </div>
+
+            <!-- Markdown preview — sanitised HTML rendered by marked + DOMPurify. -->
+            <div id="markdown-container"
+                class="relative w-full h-full flex flex-col bg-[#0d1117] hidden">
+                <div class="flex items-center gap-3 px-4 py-2 border-b border-white/10 text-xs text-tg-textSecondary">
+                    <i class="ri-markdown-line text-base"></i>
+                    <span class="flex-1 truncate" data-i18n="viewer.markdown.title">Markdown</span>
+                </div>
+                <div id="markdown-status" class="text-tg-textSecondary"></div>
+                <div class="flex-1 overflow-auto">
+                    <div id="markdown-body" class="viewer-markdown-body px-6 py-5 max-w-3xl mx-auto text-tg-text/90"></div>
+                </div>
+            </div>
+
+            <!-- Archive preview — server-rendered tree from /api/files/archive-list. -->
+            <div id="archive-container"
+                class="relative w-full h-full flex flex-col bg-[#0d1117] hidden">
+                <div id="archive-status" class="text-tg-textSecondary"></div>
+                <div id="archive-body" class="flex-1 overflow-auto"></div>
+            </div>
+
+            <!-- Office documents — no realistic inline preview path,
+                 placeholder + download. -->
+            <div id="office-container"
+                class="relative w-full h-full flex items-center justify-center bg-[#0d1117] hidden"></div>
+
+            <!-- Generic fallback for unknown / unsupported types. -->
+            <div id="fallback-container"
+                class="relative w-full h-full flex items-center justify-center bg-[#0d1117] hidden"></div>
         </div>
 
         <!-- Bottom Controls Container (Always Visible) -->
@@ -3152,7 +4056,11 @@
             <div id="modal-info-bar" class="w-full p-4 border-t border-white/10 bg-black/40 backdrop-blur-sm">
                 <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
                     <div class="min-w-0 flex-1">
-                        <h4 id="modal-filename" class="text-white font-medium truncate text-base"></h4>
+                        <div class="flex items-center gap-2 min-w-0">
+                            <h4 id="modal-filename" class="text-white font-medium truncate text-base"></h4>
+                            <span id="modal-type-chip"
+                                class="hidden inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 text-tg-text/90 text-[11px] font-medium uppercase tracking-wide shrink-0"></span>
+                        </div>
                         <p id="modal-meta" class="text-sm text-gray-300"></p>
                     </div>
                     <div class="flex items-center gap-2">
@@ -3185,8 +4093,13 @@
     </div>
 
     <!-- Floating Action Button (mobile only) — opens an action sheet for
-         the most common workflows so the user never has to dig for them. -->
-    <button id="fab" class="fab" data-i18n-aria-label="fab.actions" aria-label="Quick actions" type="button">
+         the most common workflows so the user never has to dig for them.
+         `data-admin-only` hides it for guest sessions: every action in
+         the sheet is an admin mutation, so a guest tapping FAB only
+         sees a menu of buttons that 403. JS additionally hides the FAB
+         while hint='configure-api' (no actions are usable until API
+         creds exist — the onboarding banner steers the user there). -->
+    <button id="fab" class="fab" data-admin-only data-i18n-aria-label="fab.actions" aria-label="Quick actions" type="button">
         <i class="ri-add-line" aria-hidden="true"></i>
     </button>
 
@@ -3212,6 +4125,42 @@
             <i class="ri-settings-3-line" aria-hidden="true"></i><span data-i18n="nav.settings">Settings</span>
         </a>
     </nav>
+
+    <!-- Pre-boot route resolver — runs synchronously AT END OF BODY so
+         every #page-* div has been parsed. Reads location.hash, walks
+         longest-to-shortest candidate ids (e.g. /maintenance/ai →
+         try `page-maintenance-ai` then `page-maintenance`), unhides the
+         winner, and drops the `data-prebooting` flag so the
+         `display:none !important` CSS in <head> stops applying.
+         The router still owns navigation after this; we just guarantee
+         the FIRST paint already shows the right page, with no flash. -->
+    <script>
+        (() => {
+            try {
+                const raw = (location.hash || '').replace(/^#\/?/, '').split('?')[0].replace(/\/+$/, '');
+                const parts = raw ? raw.split('/').filter(Boolean) : [];
+                let target = null;
+                for (let i = parts.length; i > 0 && !target; i--) {
+                    const id = 'page-' + parts.slice(0, i).join('-');
+                    if (document.getElementById(id)) target = id;
+                }
+                if (!target) target = 'page-viewer';
+                const el = document.getElementById(target);
+                if (el) {
+                    el.classList.remove('hidden');
+                    // Stash so app.js can pick it up without re-parsing the hash.
+                    document.documentElement.dataset.bootPage = target;
+                }
+            } catch {
+                /* fall through — app.js / router will resolve via the
+                   normal path; worst case we get the existing flash. */
+            } finally {
+                try {
+                    delete document.documentElement.dataset.prebooting;
+                } catch {}
+            }
+        })();
+    </script>
 
     <!-- Scripts -->
     <script type="module" src="/js/pwa.js"></script>

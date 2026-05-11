@@ -1,6 +1,6 @@
 {
     "name": "telegram-media-downloader",
-    "version": "2.14.0",
+    "version": "2.17.0",
     "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
     "type": "module",
     "main": "src/index.js",
@@ -36,9 +36,11 @@
         "format": "biome format --write .",
         "check": "biome check --write . && npm run check:oom",
         "check:oom": "sh scripts/check-oom-patterns.sh",
+        "pre-download-models": "node scripts/pre-download-models.js",
+        "build:seekbar": "node scripts/build-seekbar.js",
         "test": "vitest run",
         "test:watch": "vitest",
-        "prepare": "lefthook install || true"
+        "prepare": "lefthook install || exit 0"
     },
     "repository": {
         "type": "git",
@@ -77,7 +79,6 @@
     },
     "optionalDependencies": {
         "@ffmpeg-installer/ffmpeg": "^1.1.0",
-        "@huggingface/transformers": "^4.2.0",
         "basic-ftp": "^5.0.5",
         "dropbox": "^10.34.0",
         "googleapis": "^144.0.0"

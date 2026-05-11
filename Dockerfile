@@ -64,10 +64,17 @@ COPY runner.js config.example.json package.json LICENSE README.md SECURITY.md ./
 # `chmod a+rX` guarantees files end up readable + dirs traversable even when
 # BuildKit lays down mode 0 (seen on Windows hosts and some gha-cache hits),
 # which previously surfaced as `Cannot find module '/app/src/web/server.js'`.
-RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions /app/data/backups \
+RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions /app/data/backups /app/data/models \
     && chmod -R a+rX /app \
     && chmod +x /app/scripts/docker-entrypoint.sh \
     && chown -R node:node /app
+
+# Pre-warm the AI model cache at build time so a first scan completes in
+# milliseconds instead of waiting on a cold ~150 MB download. Allowed to
+# fail with `|| true` for offline / firewalled CI machines — first run
+# falls back to lazy download. Skips silently when @huggingface/transformers
+# isn't installed (minimal builds without the optional dep).
+RUN node scripts/pre-download-models.js || true
 
 # We deliberately run the entrypoint as root so it can chown the bind-mounted
 # /app/data volume on first boot — gosu drops to `node` before exec'ing

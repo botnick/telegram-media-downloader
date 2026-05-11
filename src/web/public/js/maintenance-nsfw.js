@@ -308,7 +308,7 @@ function _renderTile(file, index) {
     const scorePct = Math.round((file.nsfw_score || 0) * 100);
     const tid = _tierForScore(file.nsfw_score || 0);
     const tierColor = TIER_COLOR[tid] || '#9E9E9E';
-    const thumb = `/api/thumbs/${encodeURIComponent(file.id)}?w=400`;
+    const thumb = `/api/thumbs/${encodeURIComponent(file.id)}?w=320`;
     const isWl = !!file.nsfw_whitelist;
     const wlPin = isWl
         ? `<span class="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/85 text-white font-medium">WL</span>`

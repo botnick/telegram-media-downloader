@@ -131,7 +131,7 @@ function _createdAtMs(file) {
 }
 
 function _renderRow(file, set) {
-    const thumbUrl = `/api/thumbs/${encodeURIComponent(file.id)}?w=120`;
+    const thumbUrl = `/api/thumbs/${encodeURIComponent(file.id)}?w=320`;
     const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1`;
     const when = file.createdAt ? new Date(file.createdAt).toLocaleDateString() : '—';
     const sizeStr = file.fileSize ? _formatBytes(file.fileSize) : '';
@@ -171,7 +171,7 @@ function _renderSet(set, idx) {
         set.files?.[0]?.id != null
             ? `<img loading="lazy" decoding="async"
                  class="w-14 h-14 object-cover rounded-lg bg-tg-bg/40 shrink-0 ring-1 ring-tg-border/40"
-                 src="/api/thumbs/${encodeURIComponent(set.files[0].id)}?w=160" alt="" onerror="this.style.display='none'">`
+                 src="/api/thumbs/${encodeURIComponent(set.files[0].id)}?w=320" alt="" onerror="this.style.display='none'">`
             : '<div class="w-14 h-14 rounded-lg bg-tg-bg/40 shrink-0 ring-1 ring-tg-border/40 flex items-center justify-center text-tg-textSecondary"><i class="ri-file-copy-2-line text-lg"></i></div>';
     const shortHash = String(set.hash || '').slice(0, 12);
     return `

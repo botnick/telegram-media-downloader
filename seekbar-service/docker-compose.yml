@@ -1,0 +1,52 @@
+# Example docker-compose for running seekbar-service alongside an
+# existing parent app (telegram-media-downloader or any other media
+# system that wants hover-preview sprites).
+#
+# Mount the videos read-only and a sprites output volume rw. The
+# parent process talks to this service over HTTP — auth via the
+# bearer token if SEEKBAR_API_TOKEN is set.
+
+services:
+  seekbar:
+    image: tgdl-seekbar:latest
+    # build: .                # uncomment for local builds
+    container_name: tgdl-seekbar
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    environment:
+      SEEKBAR_HTTP_LISTEN: ":8089"
+      SEEKBAR_OUTPUT_DIR: "/data/output"
+      SEEKBAR_TEMP_DIR: "/data/tmp"
+      SEEKBAR_HWACCEL: "auto"       # auto|none|cuda|qsv|vaapi|videotoolbox|v4l2m2m
+      SEEKBAR_CONCURRENCY: "2"
+      SEEKBAR_INTERVAL_SEC: "5"
+      SEEKBAR_WIDTH: "160"
+      SEEKBAR_COLUMNS: "10"
+      SEEKBAR_MAX_TILES: "200"
+      SEEKBAR_FORMAT: "webp"
+      SEEKBAR_QUALITY: "70"
+      SEEKBAR_OVERWRITE: "if-changed"
+      SEEKBAR_LOG_LEVEL: "info"
+      SEEKBAR_LOG_FORMAT: "text"
+      # Uncomment to require X-API-Token on /v1/* routes.
+      # SEEKBAR_API_TOKEN: "change-me-to-a-long-random-string"
+    volumes:
+      - ./videos:/videos:ro
+      - ./sprites:/data/output
+      - ./tmp:/data/tmp
+    # GPU passthrough — uncomment for VAAPI / Intel QSV on Linux hosts.
+    # devices:
+    #   - "/dev/dri:/dev/dri"
+    # NVIDIA — uncomment with the nvidia container runtime installed.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: ["gpu"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--tries=1", "--timeout=3", "http://127.0.0.1:8089/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

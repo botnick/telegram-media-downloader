@@ -1,0 +1,180 @@
+# Release pipeline for the tgdl-faces sidecar.
+#
+# Triggered by a `faces-v*` tag push — independent from the main app's
+# semantic-version tags so the sidecar can ship at its own cadence
+# (model upgrades, security fixes in onnxruntime, etc.) without forcing
+# a full app release.
+#
+# Two jobs:
+#   1. build-binaries  — PyInstaller one-file binary per platform/arch,
+#                        attached to the GH Release as a tarball asset.
+#                        Consumed by src/core/ai/faces-spawn.js for the
+#                        standalone bare-metal install path.
+#   2. build-docker    — buildx multi-arch (linux/amd64 + linux/arm64)
+#                        image pushed to ghcr.io/botnick/tgdl-faces.
+#                        Consumed by docker-compose.yml under the
+#                        `faces` profile.
+
+name: release-faces-service
+
+on:
+  push:
+    tags:
+      - 'faces-v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # ---------------------------------------------------------------
+  # Job 1 — Per-platform PyInstaller binaries
+  # ---------------------------------------------------------------
+  #
+  # PyInstaller `--onefile` produces a self-extracting executable
+  # bundling Python, the dependency wheels, and the buffalo_l weights.
+  # Expected compressed size lands around 80 MB — verified achievable
+  # for buffalo_l + insightface + onnxruntime + opencv. If a future
+  # model swap pushes the bundle past GitHub's 2 GB release-asset
+  # ceiling, fall back to `--onedir` and tar the resulting folder
+  # (insightface + onnx files are already separately compressed inside
+  # the bundle, so additional tarball compression buys little).
+  build-binaries:
+    name: binary (${{ matrix.os }} / ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            arch: x64
+            target: tgdl-faces-win-x64.exe
+            archive: tgdl-faces-win-x64.tar.gz
+          - os: ubuntu-22.04
+            arch: x64
+            target: tgdl-faces-linux-x64
+            archive: tgdl-faces-linux-x64.tar.gz
+          - os: ubuntu-22.04-arm
+            arch: arm64
+            target: tgdl-faces-linux-arm64
+            archive: tgdl-faces-linux-arm64.tar.gz
+          - os: macos-13
+            arch: x64
+            target: tgdl-faces-mac-x64
+            archive: tgdl-faces-mac-x64.tar.gz
+          - os: macos-14
+            arch: arm64
+            target: tgdl-faces-mac-arm64
+            archive: tgdl-faces-mac-arm64.tar.gz
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: faces-service
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install build deps
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]"
+          pip install pyinstaller
+
+      - name: Pre-download buffalo_l weights
+        shell: bash
+        env:
+          TGDL_FACES_MODELS_DIR: ${{ runner.temp }}/tgdl-faces-models
+        run: |
+          mkdir -p "$TGDL_FACES_MODELS_DIR"
+          python -c "from insightface.app import FaceAnalysis; a = FaceAnalysis(name='buffalo_l', root=r'${TGDL_FACES_MODELS_DIR}'); a.prepare(ctx_id=-1)"
+
+      - name: PyInstaller — build one-file bundle
+        shell: bash
+        env:
+          TGDL_FACES_MODELS_DIR: ${{ runner.temp }}/tgdl-faces-models
+        run: |
+          # PyInstaller's --add-data uses : on POSIX, ; on Windows.
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            DATA_SEP=";"
+          else
+            DATA_SEP=":"
+          fi
+
+          pyinstaller \
+            --onefile \
+            --name tgdl-faces \
+            --collect-all insightface \
+            --collect-all onnxruntime \
+            --add-data "${TGDL_FACES_MODELS_DIR}${DATA_SEP}tgdl_faces_models" \
+            tgdl_faces/__main__.py
+
+      - name: Rename binary
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            mv "dist/tgdl-faces.exe" "dist/${{ matrix.target }}"
+          else
+            mv "dist/tgdl-faces" "dist/${{ matrix.target }}"
+            chmod +x "dist/${{ matrix.target }}"
+          fi
+
+      - name: Pack tarball
+        shell: bash
+        run: |
+          cd dist
+          tar -czf "${{ matrix.archive }}" "${{ matrix.target }}"
+          ls -lh "${{ matrix.archive }}"
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: faces-service/dist/${{ matrix.archive }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------
+  # Job 2 — Multi-arch container image
+  # ---------------------------------------------------------------
+  #
+  # Built independently from the binaries job — both feed the same
+  # release tag but neither depends on the other. The Docker job
+  # could land first if the matrix binaries take longer to build.
+  build-docker:
+    name: docker (linux/amd64 + linux/arm64)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./faces-service
+          file: ./faces-service/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/botnick/tgdl-faces:${{ github.ref_name }}
+            ghcr.io/botnick/tgdl-faces:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -117,6 +117,75 @@ describe('config manager (kv-backed)', () => {
         expect(fired).toEqual(['before']);
     });
 
+    it('seeds the advanced.ai.faces sub-block with sensible defaults', () => {
+        const cfg = manager.loadConfig();
+        const f = cfg.advanced.ai.faces;
+        expect(f).toBeTruthy();
+        expect(f.backend).toBe('sidecar');
+        expect(f.autoDownload).toBe(true);
+        expect(f.detSize).toBe(640);
+        expect(f.providers).toBe('auto');
+        expect(f.epsilon).toBeCloseTo(1.05, 5);
+        expect(f.minPoints).toBe(2);
+        expect(f.detectorModel).toBe('buffalo_l');
+        expect(f.portRange).toEqual([41000, 49999]);
+        expect(f.downloadMirrors).toEqual([]);
+        expect(f.federate).toBe(false);
+        expect(f.embedDim).toBe(512);
+        expect(f.arRange).toEqual([0.5, 2.0]);
+    });
+
+    it('migrates legacy flat keys into advanced.ai.faces.*', () => {
+        // Old install — operator had tuned facesEpsilon + facesServiceUrl
+        // + federateFaces before the rewrite. Loading should surface those
+        // values in both the new path AND keep the flat alias for
+        // backward compat.
+        dbApi.kvSet('config', {
+            advanced: {
+                ai: {
+                    facesEpsilon: 0.7,
+                    facesMinPoints: 5,
+                    facesServiceUrl: 'http://other:8011',
+                    facesDetector: 'ssd',
+                    facesLabelMatchEps: 0.4,
+                    federateFaces: true,
+                },
+            },
+        });
+        const cfg = manager.loadConfig();
+        const f = cfg.advanced.ai.faces;
+        expect(f.epsilon).toBe(0.7);
+        expect(f.minPoints).toBe(5);
+        expect(f.sidecarUrl).toBe('http://other:8011');
+        expect(f.detector).toBe('ssd');
+        expect(f.labelMatchEps).toBe(0.4);
+        expect(f.federate).toBe(true);
+        // Flat aliases preserved so legacy readers (server.js, scan-
+        // runner, downloader) keep working without a coordinated rewrite.
+        expect(cfg.advanced.ai.facesEpsilon).toBe(0.7);
+        expect(cfg.advanced.ai.facesMinPoints).toBe(5);
+        expect(cfg.advanced.ai.facesServiceUrl).toBe('http://other:8011');
+        expect(cfg.advanced.ai.facesDetector).toBe('ssd');
+        expect(cfg.advanced.ai.facesLabelMatchEps).toBe(0.4);
+        expect(cfg.advanced.ai.federateFaces).toBe(true);
+    });
+
+    it('explicit advanced.ai.faces.* wins over legacy flat alias', () => {
+        // Operator set BOTH. The new path is authoritative.
+        dbApi.kvSet('config', {
+            advanced: {
+                ai: {
+                    facesEpsilon: 0.7,
+                    faces: { epsilon: 0.45 },
+                },
+            },
+        });
+        const cfg = manager.loadConfig();
+        expect(cfg.advanced.ai.faces.epsilon).toBe(0.45);
+        // Flat alias reflects the resolved value.
+        expect(cfg.advanced.ai.facesEpsilon).toBe(0.45);
+    });
+
     it('loadConfig dedupes groups that share the same id', () => {
         // Plant a stored tree with two entries for the same Telegram id but
         // different display names — what the dashboard sees when the same

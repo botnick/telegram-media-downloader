@@ -39,7 +39,7 @@ import path from 'path';
 import { existsSync, promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { getDb } from './db.js';
+import { getDb, kvGet, kvSet } from './db.js';
 import { resolveFfmpegBin, hasFfmpeg, purgeThumbsForDownload } from './thumbs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +51,67 @@ const DOWNLOADS_DIR = path.resolve(PROJECT_ROOT, 'data', 'downloads');
 // the rest are MP4 / ISOBMFF derivatives where the moov rewrite
 // applies.
 const FASTSTART_EXTS = new Set(['.mp4', '.m4v', '.mov', '.3gp']);
+
+// kv key for the running auto-optimise counters surfaced on the
+// Maintenance → Optimise videos page. Pattern matches the integrity /
+// thumbs / cluster stats blobs — increment in-place, don't recompute.
+const AUTO_STATS_KV = 'faststart_stats';
+
+// Broadcast hook for per-file `faststart_auto_done` events — wired by
+// `setBroadcast(broadcast)` at boot from server.js (mirrors the
+// integrity.js + cluster ws-channel pattern). Stays a no-op in the CLI
+// monitor path.
+let _broadcast = () => {};
+
+/**
+ * Inject the WebSocket broadcaster so per-file auto-optimise events
+ * surface live in the dashboard. Called once at boot from server.js;
+ * the CLI monitor leaves it as a no-op.
+ */
+export function setBroadcast(fn) {
+    if (typeof fn === 'function') _broadcast = fn;
+}
+
+// Log once at startup if ffmpeg is missing so the operator sees an
+// explicit signal instead of silent skips on every download. Cached so
+// re-imports / hot reloads don't spam the log.
+let _ffmpegWarnedMissing = false;
+function _warnIfMissingFfmpeg() {
+    if (_ffmpegWarnedMissing) return;
+    if (hasFfmpeg()) return;
+    _ffmpegWarnedMissing = true;
+    console.warn(
+        '[faststart] ffmpeg not on PATH — auto-optimise disabled. New MP4 downloads will be served as-is.',
+    );
+}
+
+/**
+ * Bump the running auto-stats blob after each per-row decision. Cheap —
+ * one kv read + one kv write per download (kvSet wraps in a transaction
+ * already). Counters are persistent so a restart doesn't reset the
+ * "today's progress" the maintenance UI shows.
+ *
+ * `result` is one of: optimized | already | skipped | errored.
+ */
+function _bumpAutoStats(result, errorMsg = null) {
+    try {
+        const prev = kvGet(AUTO_STATS_KV) || {};
+        const next = {
+            total: (prev.total || 0) + 1,
+            optimized: (prev.optimized || 0) + (result === 'optimized' ? 1 : 0),
+            already: (prev.already || 0) + (result === 'already' ? 1 : 0),
+            skipped: (prev.skipped || 0) + (result === 'skipped' ? 1 : 0),
+            errored: (prev.errored || 0) + (result === 'errored' ? 1 : 0),
+            lastAt: Date.now(),
+            lastResult: result,
+            lastError: result === 'errored' ? String(errorMsg || '').slice(0, 200) : null,
+        };
+        kvSet(AUTO_STATS_KV, next);
+    } catch {
+        // kv writes can fail mid-shutdown when better-sqlite3 is closed
+        // out from under us — never let counters break the download path.
+    }
+}
 
 const CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.FASTSTART_CONCURRENCY) || 2));
 
@@ -164,6 +225,45 @@ function _runFfmpeg(args) {
     });
 }
 
+// Windows races a lot of readers on a freshly-downloaded MP4: the web
+// server may be streaming `/files/<path>?inline=1`, the thumb generator
+// is reading the first keyframe, the NSFW scanner is decoding it,
+// Defender is doing an open-on-write scan. Any of those holds the
+// destination handle open just long enough for `fs.rename` to throw
+// `EPERM`/`EBUSY`/`EACCES`. Retry with linear backoff; fall back to
+// `copy + unlink` as a last resort (still atomic-enough for our use —
+// the on-disk path always points at a valid MP4, just one of two
+// possible mtimes).
+async function _renameWithRetry(from, to, { retries = 6 } = {}) {
+    const RETRY_CODES = new Set(['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY']);
+    let lastErr = null;
+    for (let i = 0; i < retries; i++) {
+        try {
+            await fs.rename(from, to);
+            return;
+        } catch (e) {
+            lastErr = e;
+            if (!RETRY_CODES.has(e.code)) throw e;
+            // 200, 400, 800, 1600, 3200, 6400 ms — total ≈ 12.6 s budget
+            // before falling back. Windows file locks typically clear in
+            // sub-second; the long tail covers antivirus quarantine scans.
+            await new Promise((r) => setTimeout(r, 200 * 2 ** i));
+        }
+    }
+    // Last resort — copy + unlink. Not atomic but the only way out when
+    // some reader truly won't release the destination handle. The window
+    // between copyFile and unlink is short; readers in flight see the
+    // old bytes, new readers see the new bytes.
+    try {
+        await fs.copyFile(from, to);
+        await fs.unlink(from);
+        return;
+    } catch (e2) {
+        const code = lastErr?.code || e2.code || 'UNKNOWN';
+        throw new Error(`rename ${code} after ${retries} retries + copy fallback: ${e2.message}`);
+    }
+}
+
 async function _remuxInPlace(absPath) {
     const tmp = absPath + '.faststart.tmp';
     // Stream-copy both A and V, only rewrite container metadata. `-y`
@@ -196,7 +296,7 @@ async function _remuxInPlace(absPath) {
         } catch {}
         throw new Error(`tmp size sanity check failed: src=${srcStat.size} tmp=${tmpStat.size}`);
     }
-    await fs.rename(tmp, absPath);
+    await _renameWithRetry(tmp, absPath);
     return tmpStat.size;
 }
 
@@ -221,7 +321,14 @@ export async function optimizeDownload(id) {
         .prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?')
         .get(dlId);
     if (!row) return { status: 'skipped', reason: 'no row' };
-    if (row.file_type !== 'video') return { status: 'skipped', reason: 'not video' };
+    // Operator-mode downloads often land as `file_type='document'` even
+    // though the container IS MP4 (Telegram doesn't always set the video
+    // attribute). Decide by extension, not just by file_type — that
+    // means a `.mp4` document still gets the moov rewrite, but a
+    // `.pdf`/`.zip` document still gets skipped.
+    if (row.file_type !== 'video' && row.file_type !== 'document') {
+        return { status: 'skipped', reason: 'not video/document' };
+    }
     const abs = _resolveAbs(row.file_path);
     if (!abs) return { status: 'skipped', reason: 'file missing' };
     const ext = path.extname(abs).toLowerCase();
@@ -258,20 +365,58 @@ export async function optimizeDownload(id) {
 
 /**
  * Background hook fired by the downloader after a successful insert
- * for a video row. Same fire-and-forget shape as `pregenerateThumb`:
- * runs in a microtask so the download flow returns immediately, and
- * silently swallows failures (the on-demand path or the Maintenance
- * sweep can retry). Errors are logged to console for traceability.
+ * for a video / document row whose container could be MP4. Same fire-
+ * and-forget shape as `pregenerateThumb`: runs in a microtask so the
+ * download flow returns immediately. Logs every entry + exit so the
+ * operator can confirm auto-optimise is running, bumps the persistent
+ * `kv['faststart_stats']` counters used by the Maintenance UI, and
+ * broadcasts `faststart_auto_done` per file so the dashboard updates
+ * live without polling.
  */
 export function optimizeDownloadInBackground(id) {
-    queueMicrotask(() => {
-        optimizeDownload(id)
-            .then((r) => {
-                if (r?.status === 'errored') {
-                    console.warn(`[faststart] id=${id} failed: ${r.error}`);
-                }
-            })
-            .catch(() => {});
+    _warnIfMissingFfmpeg();
+    queueMicrotask(async () => {
+        let r;
+        try {
+            r = await optimizeDownload(id);
+        } catch (e) {
+            r = { status: 'errored', error: e?.message || String(e) };
+        }
+        const status = r?.status || 'errored';
+        const newSize = r?.newSize || 0;
+        const reason = r?.reason || null;
+        const error = r?.error || null;
+        // Single log line per file — `result=optimized|already|skipped|errored`
+        // makes the stream greppable. Skipped includes a `reason` so the
+        // operator can tell "not an MP4" from "ffmpeg missing".
+        const detail = status === 'skipped' && reason ? ` reason=${reason}` : '';
+        const sizeBit = status === 'optimized' ? ` size=${newSize}` : '';
+        const errBit = status === 'errored' ? ` error=${String(error).slice(0, 160)}` : '';
+        const line = `[faststart] id=${id} result=${status}${detail}${sizeBit}${errBit}`;
+        if (status === 'errored') console.warn(line);
+        else console.log(line);
+        // Persist running counters even for skipped rows — the
+        // operator's mental model is "how many downloads did the auto
+        // hook see?", not "how many actually rewrote". Errored rows are
+        // counted separately so the UI can surface "2 failed today".
+        _bumpAutoStats(status, error);
+        // WS event distinct from the sweep's `faststart_done` (which
+        // JobTracker emits with aggregate sweep numbers). Per-file
+        // broadcasts let the auto-stats card animate live as the
+        // backfill catches up.
+        try {
+            _broadcast({
+                type: 'faststart_auto_done',
+                downloadId: Number(id) || id,
+                result: status,
+                reason,
+                newSize,
+                error,
+            });
+        } catch {
+            // broadcast failure (no WS clients, server shutting down) is
+            // never the downloader's problem.
+        }
     });
 }
 
@@ -386,4 +531,26 @@ export async function getStats() {
         else unknown++;
     }
     return { total, optimized, pending, missing, unknown };
+}
+
+/**
+ * Snapshot of the persistent auto-optimise counters surfaced by
+ * `/api/maintenance/faststart/auto-stats`. Includes the same shape the
+ * post-insert hook writes via `_bumpAutoStats` plus a `ffmpegAvailable`
+ * flag so the UI can show a "ffmpeg missing" chip without a separate
+ * roundtrip.
+ */
+export function getAutoStats() {
+    const blob = kvGet(AUTO_STATS_KV) || {};
+    return {
+        total: blob.total || 0,
+        optimized: blob.optimized || 0,
+        already: blob.already || 0,
+        skipped: blob.skipped || 0,
+        errored: blob.errored || 0,
+        lastAt: blob.lastAt || null,
+        lastResult: blob.lastResult || null,
+        lastError: blob.lastError || null,
+        ffmpegAvailable: hasFfmpeg(),
+    };
 }

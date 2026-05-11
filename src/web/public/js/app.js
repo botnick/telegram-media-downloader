@@ -15,6 +15,11 @@ import { initTheme, getTheme, setTheme } from './theme.js';
 import { initStatusBar } from './statusbar.js';
 import * as Notifications from './notifications.js';
 import { initOnboarding, refreshOnboarding } from './onboarding.js';
+import { initOnboardingDismiss } from './onboarding-dismiss.js';
+import {
+    getLatest as getMonitorStatusLatest,
+    subscribe as subscribeMonitorStatus,
+} from './monitor-status.js';
 import { initReauthModal } from './reauth-modal.js';
 import { initShortcuts } from './shortcuts.js';
 import * as router from './router.js';
@@ -49,7 +54,6 @@ import {
 import * as Fonts from './fonts.js';
 import { showQueuePage, initQueue } from './queue.js';
 import { initHeaderMobile, pushLogToNotify } from './header-mobile.js';
-import { setupGalleryContextMenu } from './gallery-context.js';
 import { setupDragDropLink } from './dragdrop-link.js';
 import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './mini-player.js';
 import { wireChangelogTrigger } from './changelog-viewer.js';
@@ -264,6 +268,13 @@ async function init() {
     });
     ws.on('config_updated', () => {
         if (state.currentPage === 'settings') Settings.loadSettings();
+        // Refresh the in-memory group cache so other pages (Backfill,
+        // Sidebar, Manage Groups) see new/removed entries without a hard
+        // reload. Stale `state.groups` was causing "History failed: Group
+        // not configured" right after adding a group via Manage Groups,
+        // because the Backfill page kept sending an id the new config
+        // accepted but the old client snapshot didn't list anymore.
+        loadGroups().catch(() => {});
     });
     // NSFW review tool — server fires `nsfw_progress` every batch and
     // `nsfw_done` when the scan finishes. We refresh the Maintenance
@@ -392,6 +403,10 @@ async function init() {
     if (isAdmin) {
         initStatusBar();
         initOnboarding();
+        // Must initialise AFTER initOnboarding so our monitor-status
+        // subscriber lands later in the Set and runs after the banner
+        // re-render — see onboarding-dismiss.js for why.
+        initOnboardingDismiss();
         ws.on('config_updated', refreshOnboarding);
         ws.on('monitor_state', refreshOnboarding);
     }
@@ -409,7 +424,6 @@ async function init() {
     // t.me URL onto the dashboard, mini-player handle, in-app changelog
     // viewer, screen wake-lock during downloads. Each module feature-
     // detects so unsupported browsers silently no-op.
-    setupGalleryContextMenu();
     setupDragDropLink();
     setupMiniPlayer();
     wireChangelogTrigger();
@@ -802,6 +816,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-thumbs.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-thumbs', e));
+    } else if (page === 'maintenance-seekbar') {
+        document.getElementById('page-title').textContent = i18nT(
+            'maintenance.seekbar.page_title',
+            'Seekbar previews',
+        );
+        document.getElementById('page-subtitle').textContent = i18nT(
+            'maintenance.seekbar.subtitle',
+            'Generate WebP sprite sheets for video hover-preview thumbnails.',
+        );
+        import('./maintenance-seekbar.js')
+            .then((m) => m.init())
+            .catch((e) => console.error('maintenance-seekbar', e));
     } else if (page === 'maintenance-video') {
         document.getElementById('page-title').textContent = i18nT(
             'maintenance.video.page_title',
@@ -826,6 +852,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-nsfw.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-nsfw', e));
+    } else if (page === 'maintenance-ai') {
+        document.getElementById('page-title').textContent = i18nT(
+            'maintenance.ai.page_title',
+            'AI search & smart organisation',
+        );
+        document.getElementById('page-subtitle').textContent = i18nT(
+            'maintenance.ai.subtitle',
+            'Semantic image search, auto-tag, and face clustering — all running locally.',
+        );
+        import('./maintenance-ai.js')
+            .then((m) => m.init())
+            .catch((e) => console.error('maintenance-ai', e));
     } else if (page === 'maintenance-logs') {
         document.getElementById('page-title').textContent = i18nT(
             'maintenance.logs.page_title',
@@ -968,8 +1006,10 @@ function registerRoutes() {
     router.route('/maintenance', () => renderPage('maintenance'));
     router.route('/maintenance/duplicates', () => renderPage('maintenance-duplicates'));
     router.route('/maintenance/thumbs', () => renderPage('maintenance-thumbs'));
+    router.route('/maintenance/seekbar', () => renderPage('maintenance-seekbar'));
     router.route('/maintenance/video', () => renderPage('maintenance-video'));
     router.route('/maintenance/nsfw', () => renderPage('maintenance-nsfw'));
+    router.route('/maintenance/ai', () => renderPage('maintenance-ai'));
     router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
     router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
     router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
@@ -1283,8 +1323,10 @@ const PAGE_HEADER_ICON = {
     maintenance: 'ri-tools-line',
     'maintenance-duplicates': 'ri-file-copy-2-line',
     'maintenance-thumbs': 'ri-image-line',
+    'maintenance-seekbar': 'ri-movie-line',
     'maintenance-video': 'ri-film-line',
     'maintenance-nsfw': 'ri-shield-check-line',
+    'maintenance-ai': 'ri-sparkling-2-line',
     'maintenance-logs': 'ri-terminal-box-line',
     'maintenance-backup': 'ri-cloud-line',
     'maintenance-cluster': 'ri-broadcast-line',
@@ -1781,17 +1823,19 @@ function renderMediaGrid(opts = {}) {
                     // useful signal). Pending shows a remaining-hours estimate +
                     // tooltip with the local-time deadline.
                     const rescueBadge = renderRescueBadge(file);
-                    // Server-side WebP thumbnails. One ~10-30 KB image per tile
+                    // Server-side WebP thumbnails. One ~6-12 KB image per tile
                     // — replaces both the previous full-resolution image source
-                    // and the mobile-vs-desktop branching. Width snaps to one of
-                    // the allowed sizes (240 covers grid + compact); the server
-                    // caches the result so subsequent scrolls are pure HTTP-304s.
+                    // and the mobile-vs-desktop branching. v2.x collapsed the
+                    // cache to a single canonical 320-px width (see thumbs.js
+                    // ALLOWED_WIDTHS); every viewport asks for the same URL so
+                    // the cache hits 100% of the time. Server snaps any `?w=`
+                    // value to 320 via clampWidth() so legacy bookmarked tabs
+                    // still get a valid response.
                     // Falls back to a typed-icon placeholder if the source isn't
                     // thumbnailable (audio / document / dead source).
                     // Federated rows (file.peer_id !== 'self') route through
                     // the cluster thumb proxy via getThumbUrl(); see media-url.js.
-                    const thumbW = _isMobileViewport() ? 240 : 320;
-                    const thumbUrl = getThumbUrl(file, thumbW);
+                    const thumbUrl = getThumbUrl(file, 320);
                     // Onerror falls back to displaying nothing (the panel
                     // background shows through), which is the desired graceful
                     // degradation for a missing/dead file.
@@ -1898,6 +1942,12 @@ function renderMediaGrid(opts = {}) {
                             data-tile-open title="${escapeHtml(i18nT('viewer.open', 'Open'))}" aria-label="${escapeHtml(i18nT('viewer.open', 'Open'))}">
                         <i class="ri-eye-line"></i>
                     </button>
+                    <button type="button" class="w-7 h-7 rounded-md hover:bg-tg-hover flex items-center justify-center text-tg-textSecondary"
+                            data-tile-similar data-id="${file.id}"
+                            title="${escapeHtml(i18nT('viewer.find_similar', 'Find similar photos'))}"
+                            aria-label="${escapeHtml(i18nT('viewer.find_similar', 'Find similar photos'))}">
+                        <i class="ri-search-eye-line"></i>
+                    </button>
                 </div>
                 ${checkBadge}
                 ${rescueBadge}
@@ -1924,6 +1974,28 @@ function renderMediaGrid(opts = {}) {
     // biggest cost on a full re-render — eliminating it keeps tab
     // switches snappy on a thousand-tile grid.
     _wireMediaGridDelegation(grid);
+    // Race fix — when an image is already in the HTTP cache, the browser
+    // can fire `load` synchronously between `innerHTML =` and the
+    // delegation handler attaching above. The delegated capture-phase
+    // listener misses that event, the tile never gets `.loaded`, and the
+    // CSS rule `.media-item img { opacity: 0 }` keeps the thumb invisible
+    // (the DOM contains a valid <img src=…>, but the pixel never paints).
+    // Sweep one frame later, after the browser has run its initial layout
+    // pass on the freshly-inserted HTML, and flag every <img> whose
+    // `complete` flag is already true. naturalWidth=0 means the request
+    // 404'd from cache → fall back to `display:none` just like the
+    // delegated error path would.
+    requestAnimationFrame(() => {
+        for (const img of grid.querySelectorAll('.media-item img')) {
+            if (!img.complete) continue;
+            if (img.naturalWidth > 0) {
+                img.classList.add('loaded');
+            } else if (img.getAttribute('src')) {
+                img.classList.add('loaded');
+                img.style.display = 'none';
+            }
+        }
+    });
     _attachLazyObservers(grid);
     _attachTileWindowObserver(grid, append, fromIndex);
     // Re-apply select-mode class + repaint .is-selected on tiles after
@@ -1983,6 +2055,18 @@ function _wireMediaGridDelegation(grid) {
         // Pin chip — toggles pinned state via the API and flips the
         // visual class in place. Stops propagation so clicking the
         // chip doesn't also open the viewer.
+        // "Find similar" chip — runs /api/ai/search/similar against
+        // this tile's id and replaces the gallery with the result set.
+        // Same behaviour as the dual-mode search-bar Enter path.
+        const simBtn = ev.target.closest('[data-tile-similar]');
+        if (simBtn) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const id = Number(simBtn.dataset.id);
+            if (!Number.isFinite(id) || id <= 0) return;
+            await _runSimilarSearch(id);
+            return;
+        }
         const pinBtn = ev.target.closest('[data-tile-pin]');
         if (pinBtn) {
             ev.preventDefault();
@@ -3182,23 +3266,32 @@ async function saveGroupSettings() {
 }
 
 function switchSettingsTab(tab) {
+    // Tab count collapsed from 5 to 3 (Filters / Routing / Data):
+    //   - Topics moved into the Filters tab
+    //   - Accounts + Cluster moved into the Routing tab
+    // The legacy `accounts` / `topics` tab IDs no longer have matching
+    // header buttons; the `?.` chain below is intentionally tolerant in
+    // case any code path or deep-link still passes them.
     document.getElementById('content-media')?.classList.toggle('hidden', tab !== 'media');
     document.getElementById('content-forward')?.classList.toggle('hidden', tab !== 'forward');
-    document.getElementById('content-accounts')?.classList.toggle('hidden', tab !== 'accounts');
-    document.getElementById('content-topics')?.classList.toggle('hidden', tab !== 'topics');
     document.getElementById('content-data')?.classList.toggle('hidden', tab !== 'data');
 
     document.getElementById('tab-media')?.classList.toggle('active', tab === 'media');
     document.getElementById('tab-forward')?.classList.toggle('active', tab === 'forward');
-    document.getElementById('tab-accounts')?.classList.toggle('active', tab === 'accounts');
-    document.getElementById('tab-topics')?.classList.toggle('active', tab === 'topics');
     document.getElementById('tab-data')?.classList.toggle('active', tab === 'data');
 
     // Lazy-load the Data tab — only fetch stats + files when the operator
     // clicks into it, so the modal stays cheap to open for groups they
-    // never look at.
+    // never look at. Use `currentEditGroup.id` (set on modal open) NOT
+    // `state.currentGroupId` (set on sidebar selection) — the two can
+    // disagree when the operator opens settings from a non-sidebar entry
+    // point (Manage Groups action sheet, deep-link, Maintenance page),
+    // which was the cause of "Recent files don't show" reports: the
+    // modal queried `/api/groups/<wrong-id>/files`, got empty rows, and
+    // rendered the empty state.
     if (tab === 'data') {
-        _loadGroupDataTab(state.currentGroupId).catch(() => {});
+        const id = currentEditGroup?.id ?? state.currentGroupId;
+        if (id) _loadGroupDataTab(id).catch(() => {});
     }
 }
 
@@ -3224,6 +3317,14 @@ async function _loadGroupDataTab(groupId) {
         _groupDataState.offset = (files.rows || []).length;
         _groupDataState.hasMore = !!files.hasMore;
         if (more) more.classList.toggle('hidden', !files.hasMore);
+        // Header counter: "20 / 1,240" — quick orientation for how
+        // much of the catalogue is visible in the strip.
+        const counter = document.getElementById('group-data-files-count');
+        if (counter) {
+            const shown = (files.rows || []).length;
+            const total = Number(files.total) || shown;
+            counter.textContent = `${shown.toLocaleString()} / ${total.toLocaleString()}`;
+        }
     } catch (e) {
         if (statsHost) {
             statsHost.innerHTML = `<div class="col-span-full text-center text-xs text-red-300 py-3">${_escape(e?.data?.error || e.message || 'Failed')}</div>`;
@@ -3273,19 +3374,91 @@ function _renderGroupStats(s) {
             <div class="text-[11px] text-tg-text tabular-nums">${_escape(last)}</div>
         </div>`;
 }
+// Compact "5 min ago" style. Fall back to absolute date for older items
+// so the operator can still tell a week-old row apart from a month-old.
+function _relativeTime(unixOrIso) {
+    const t =
+        typeof unixOrIso === 'string' ? new Date(unixOrIso).getTime() : Number(unixOrIso) || 0;
+    if (!t) return '';
+    const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (diffSec < 60) return `${diffSec}s ago`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+    return new Date(t).toLocaleDateString();
+}
+
 function _renderGroupFiles(rows) {
     if (!rows || !rows.length) {
-        return `<div class="text-center text-xs text-tg-textSecondary py-3">${_escape(i18nT('group.data.empty', 'No files yet.'))}</div>`;
+        return `<div class="text-center py-8">
+            <i class="ri-inbox-line text-3xl text-tg-textSecondary/40 block mb-1.5"></i>
+            <div class="text-xs text-tg-textSecondary">${_escape(i18nT('group.data.empty', 'No files yet.'))}</div>
+        </div>`;
     }
     return rows
         .map((r) => {
-            const when = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+            const whenAbs = r.created_at ? new Date(r.created_at).toLocaleString() : '';
+            const whenRel = _relativeTime(r.created_at);
+            const fileType = r.file_type || 'document';
+            const isImage = fileType === 'photo' || fileType === 'image' || fileType === 'sticker';
+            const isVideo = fileType === 'video';
+            const isAudio = fileType === 'audio';
+            const isDoc = !isImage && !isVideo && !isAudio;
+            // Thumbnail container — `aspect-square rounded-md` with a subtle
+            // ring on hover. Image/video share the same shape (12×12) so
+            // rows align cleanly even when types are mixed. Audio + document
+            // get a type-tinted icon tile (no `/api/thumbs/<id>` fetch, no
+            // wasted 404).
+            const typeIcon = isAudio ? 'ri-music-2-line' : 'ri-file-text-line';
+            const typeTint = isAudio
+                ? 'bg-purple-500/15 text-purple-300'
+                : 'bg-tg-blue/15 text-tg-blue';
+            const thumb =
+                isImage || isVideo
+                    ? `<div class="relative w-12 h-12 rounded-md overflow-hidden shrink-0 bg-tg-bg/60">
+                        <img src="/api/thumbs/${r.id}?w=320" alt=""
+                          class="w-full h-full object-cover"
+                          loading="lazy" decoding="async"
+                          onerror="this.style.display='none';this.parentElement.classList.add('is-broken')">
+                        ${isVideo ? '<i class="ri-play-fill text-white text-base absolute inset-0 m-auto w-fit h-fit drop-shadow-md pointer-events-none"></i>' : ''}
+                       </div>`
+                    : `<div class="w-12 h-12 rounded-md ${typeTint} flex items-center justify-center shrink-0">
+                        <i class="${typeIcon} text-lg"></i>
+                       </div>`;
+            const nsfwChip =
+                Number(r.nsfw_score) >= 0.7
+                    ? `<span class="text-[9px] px-1 py-0.5 rounded bg-red-500/20 text-red-300 shrink-0 font-medium" title="NSFW score ${Number(r.nsfw_score).toFixed(2)}">NSFW</span>`
+                    : '';
+            // Type chip — small uppercase label so a heterogeneous list
+            // (photos + videos + audio + docs all mixed) is scannable.
+            const typeLabel = isImage
+                ? 'IMG'
+                : isVideo
+                  ? 'VID'
+                  : isAudio
+                    ? 'AUD'
+                    : (r.file_name || '').split('.').pop()?.toUpperCase()?.slice(0, 4) || 'DOC';
+            const filePath = (r.file_path || '').replace(/\\/g, '/');
+            const href = filePath ? `/files/${encodeURI(filePath)}?inline=1` : null;
+            const open = href
+                ? `onclick="window.open('${_escape(href)}','_blank','noopener,noreferrer')"`
+                : '';
             return `
-                <div class="flex items-center gap-2 p-1.5 hover:bg-tg-hover/40 rounded text-xs">
-                    <i class="ri-file-line text-tg-textSecondary shrink-0"></i>
-                    <span class="text-tg-text truncate flex-1" title="${_escape(r.file_name || '')}">${_escape(r.file_name || '(unnamed)')}</span>
-                    <span class="text-tg-textSecondary tabular-nums shrink-0">${_escape(_formatBytes(r.file_size))}</span>
-                    <span class="text-tg-textSecondary/70 tabular-nums shrink-0 hidden sm:inline">${_escape(when)}</span>
+                <div class="group flex items-center gap-2.5 p-1.5 rounded-md hover:bg-tg-hover/40 cursor-pointer transition-colors" ${open} title="${_escape(whenAbs)}">
+                    ${thumb}
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[9px] px-1 py-0.5 rounded bg-tg-bg/50 text-tg-textSecondary font-mono shrink-0">${_escape(typeLabel)}</span>
+                            <span class="text-xs text-tg-text truncate" title="${_escape(r.file_name || '')}">${_escape(r.file_name || '(unnamed)')}</span>
+                            ${nsfwChip}
+                        </div>
+                        <div class="text-[10px] text-tg-textSecondary tabular-nums mt-0.5 flex items-center gap-1.5">
+                            <span>${_escape(_formatBytes(r.file_size))}</span>
+                            <span class="opacity-50">·</span>
+                            <span>${_escape(whenRel)}</span>
+                        </div>
+                    </div>
+                    <i class="ri-external-link-line text-tg-textSecondary/0 group-hover:text-tg-textSecondary/70 transition-colors text-sm shrink-0"></i>
                 </div>`;
         })
         .join('');
@@ -3513,6 +3686,11 @@ function setupEventListeners() {
     // We resolve names through getGroupName() so a stale row rendered
     // before /api/groups/refresh-info filled in the canonical label
     // still matches when the user types it.
+    // Dual-mode search bar (v2.16): typing keystrokes filters the
+    // groups-list (existing instant behaviour, kept). Pressing Enter
+    // routes through `/api/ai/search` for semantic content search and
+    // navigates the gallery to the results. The Enter path no-ops when
+    // AI is disabled or unconfigured — operator stays in groups filter.
     document.getElementById('search-input')?.addEventListener('input', (e) => {
         const query = e.target.value.trim().toLowerCase();
         document.querySelectorAll('#groups-list .chat-row').forEach((item) => {
@@ -3523,9 +3701,145 @@ function setupEventListeners() {
             item.style.display = !query || text.includes(query) || idMatch ? '' : 'none';
         });
     });
+    document.getElementById('search-input')?.addEventListener('keydown', async (e) => {
+        if (e.key !== 'Enter') return;
+        const q = e.target.value.trim();
+        if (!q) return;
+        e.preventDefault();
+        await _runSemanticSearch(q);
+    });
 
     // Media tabs
     setupMediaTabs();
+}
+
+// v2.16 — "Find similar" from a single tile. Routes via
+// `/api/ai/search/similar` with the seed download id; results replace
+// the gallery the same way the text-search path does.
+async function _runSimilarSearch(downloadId) {
+    try {
+        const r = await api.post('/api/ai/search/similar', { downloadId, limit: 60 });
+        if (!r || !r.success) {
+            const code = r?.code || '';
+            if (code === 'AI_DISABLED') {
+                showToast(
+                    i18nT(
+                        'maintenance.ai.search_disabled',
+                        'AI search is disabled — enable it in Maintenance → AI.',
+                    ),
+                    'warning',
+                );
+                return;
+            }
+            throw new Error(r?.error || 'similar search failed');
+        }
+        const results = Array.isArray(r.results) ? r.results : [];
+        if (!results.length) {
+            showToast(
+                i18nT(
+                    'maintenance.ai.no_results',
+                    'No similar photos found — run an index scan first.',
+                ),
+                'info',
+            );
+            return;
+        }
+        const mapped = results.map((row) => ({
+            id: row.download_id || row.id,
+            group_id: row.group_id,
+            group_name: row.group_name,
+            file_name: row.file_name,
+            file_path: row.file_path,
+            file_type: row.file_type,
+            file_size: row.file_size,
+            created_at: row.created_at,
+            _aiScore: typeof row.score === 'number' ? row.score : null,
+            fullPath: row.file_path,
+        }));
+        state.files = mapped;
+        try {
+            renderMediaGrid();
+        } catch (e) {
+            console.warn('renderMediaGrid after similar search:', e);
+        }
+        const title = document.getElementById('page-title');
+        if (title) {
+            title.textContent = `🔍 ${i18nT('viewer.find_similar', 'Similar')} — ${mapped.length} ${i18nT('common.results', 'results')}`;
+        }
+    } catch (e) {
+        showToast(`${i18nT('common.error', 'Error')}: ${e.message}`, 'error');
+    }
+}
+
+// v2.16 — semantic search on the gallery. Triggered by Enter from
+// `#search-input`. POSTs to `/api/ai/search`, replaces `state.files`
+// with the result list, re-renders the gallery, and updates the
+// header to show the active query. AI-disabled / no-results states
+// fall through to a toast — operator stays on the current view.
+async function _runSemanticSearch(q) {
+    if (!q) return;
+    showToast(i18nT('maintenance.ai.searching', `Searching: ${q}`), 'info');
+    try {
+        const r = await api.post('/api/ai/search', { q, limit: 60 });
+        if (!r || !r.success) {
+            const code = r?.code || '';
+            if (code === 'AI_DISABLED') {
+                showToast(
+                    i18nT(
+                        'maintenance.ai.search_disabled',
+                        'AI search is disabled — enable it in Maintenance → AI.',
+                    ),
+                    'warning',
+                );
+                return;
+            }
+            throw new Error(r?.error || 'search failed');
+        }
+        const results = Array.isArray(r.results) ? r.results : [];
+        if (!results.length) {
+            showToast(
+                i18nT(
+                    'maintenance.ai.no_results',
+                    'No results — try another query or run an index scan first.',
+                ),
+                'info',
+            );
+            return;
+        }
+        // Map API rows to gallery-tile shape. The `/api/ai/search`
+        // response carries the same columns as `/api/downloads` rows
+        // (joined from `downloads` table inside vector-store.topK), so
+        // a shallow remap is enough — `renderMediaGrid` reads the same
+        // fields either way.
+        const mapped = results.map((row) => ({
+            id: row.download_id || row.id,
+            group_id: row.group_id,
+            group_name: row.group_name,
+            file_name: row.file_name,
+            file_path: row.file_path,
+            file_type: row.file_type,
+            file_size: row.file_size,
+            created_at: row.created_at,
+            // surface relevance score on the tile via a small overlay
+            _aiScore: typeof row.score === 'number' ? row.score : null,
+            // The viewer treats `fullPath` as the canonical resource
+            // — copy from file_path so click-to-open works.
+            fullPath: row.file_path,
+        }));
+        state.files = mapped;
+        try {
+            renderMediaGrid();
+        } catch (e) {
+            console.warn('renderMediaGrid after AI search:', e);
+        }
+        // Update the page title so the operator knows they're in
+        // search-results mode.
+        const title = document.getElementById('page-title');
+        if (title)
+            title.textContent = `🔍 "${q}" — ${mapped.length} ${i18nT('common.results', 'results')}`;
+    } catch (e) {
+        showToast(`${i18nT('common.error', 'Error')}: ${e.message}`, 'error');
+    }
 }
 
 function setupStoriesPanel() {
@@ -3644,50 +3958,82 @@ function highlightThemeButtons() {
 function setupFab() {
     const fab = document.getElementById('fab');
     if (!fab) return;
+
+    // Hide the FAB while the operator hasn't pasted API credentials yet
+    // — every action in the sheet needs at least apiId/apiHash to be
+    // useful, so showing it just teases a menu of dead buttons. The
+    // onboarding banner is already steering the user to Settings →
+    // Telegram API at that stage; FAB stays out of the way until step 1
+    // is done. Subscribes to the shared monitor-status push so a fresh
+    // install snaps to "visible" the moment creds land.
+    const applyVisibility = (status) => {
+        const hint = status?.hint || null;
+        fab.style.display = hint === 'configure-api' ? 'none' : '';
+    };
+    applyVisibility(getMonitorStatusLatest());
+    subscribeMonitorStatus(applyVisibility);
+
+    // Action catalogue keyed by id so the per-hint policy below can pick
+    // and order without duplicating definitions.
+    const catalog = () => ({
+        'paste-link': {
+            icon: 'ri-link-m',
+            label: i18nT('fab.paste_link', 'Paste a Telegram link'),
+            sub: i18nT('fab.paste_link_sub', 'Download from a t.me/... URL'),
+            run: () => document.getElementById('paste-url-btn')?.click(),
+        },
+        stories: {
+            icon: 'ri-camera-line',
+            label: i18nT('fab.stories', 'Stories'),
+            sub: i18nT('fab.stories_sub', "Save someone's active Stories"),
+            run: () => document.getElementById('stories-btn')?.click(),
+        },
+        'add-account': {
+            icon: 'ri-user-add-line',
+            label: i18nT('fab.add_account', 'Add Telegram account'),
+            sub: i18nT('fab.add_account_sub', 'Phone → OTP → 2FA wizard'),
+            run: () => {
+                window.location.href = '/add-account.html';
+            },
+        },
+        'browse-chats': {
+            icon: 'ri-chat-3-line',
+            label: i18nT('fab.browse_chats', 'Browse chats'),
+            sub: i18nT('fab.browse_chats_sub', 'Pick a chat to monitor or backfill'),
+            run: () => navigateTo('groups'),
+        },
+    });
+
+    // Order + filter actions by where the user is in onboarding so the
+    // first row is always the next thing that moves them forward. Keeps
+    // the sheet short on early stages instead of dumping four greyed-out
+    // actions and letting the user guess.
+    const itemsForHint = (hint) => {
+        const c = catalog();
+        if (hint === 'add-account') return [c['add-account']];
+        if (hint === 'enable-group')
+            return [c['browse-chats'], c['paste-link'], c.stories, c['add-account']];
+        return [c['paste-link'], c.stories, c['browse-chats'], c['add-account']];
+    };
+
     fab.addEventListener('click', () => {
+        const hint = getMonitorStatusLatest()?.hint || null;
+        const items = itemsForHint(hint);
+
         const list = document.createElement('div');
         list.className = 'flex flex-col';
-        const items = [
-            {
-                icon: 'ri-link-m',
-                label: i18nT('fab.paste_link', 'Paste a Telegram link'),
-                sub: i18nT('fab.paste_link_sub', 'Download from a t.me/... URL'),
-                run: () => document.getElementById('paste-url-btn')?.click(),
-            },
-            {
-                icon: 'ri-camera-line',
-                label: i18nT('fab.stories', 'Stories'),
-                sub: i18nT('fab.stories_sub', "Save someone's active Stories"),
-                run: () => document.getElementById('stories-btn')?.click(),
-            },
-            {
-                icon: 'ri-user-add-line',
-                label: i18nT('fab.add_account', 'Add Telegram account'),
-                sub: i18nT('fab.add_account_sub', 'Phone → OTP → 2FA wizard'),
-                run: () => {
-                    window.location.href = '/add-account.html';
-                },
-            },
-            {
-                icon: 'ri-chat-3-line',
-                label: i18nT('fab.browse_chats', 'Browse chats'),
-                sub: i18nT('fab.browse_chats_sub', 'Pick a chat to monitor or backfill'),
-                run: () => navigateTo('groups'),
-            },
-        ];
         for (const it of items) {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className =
-                'flex items-center gap-3 p-3 rounded-lg hover:bg-tg-hover text-left w-full';
+                'flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-tg-hover active:bg-tg-hover/80 text-left w-full transition-colors';
             btn.innerHTML = `
-                <div class="w-10 h-10 rounded-full bg-tg-blue/15 flex items-center justify-center text-tg-blue">
-                    <i class="${it.icon} text-xl"></i>
-                </div>
+                <i class="${it.icon} text-2xl text-tg-blue shrink-0 w-9 text-center" aria-hidden="true"></i>
                 <div class="min-w-0 flex-1">
                     <div class="text-tg-text font-medium text-sm">${escapeHtml(it.label)}</div>
                     <div class="text-tg-textSecondary text-xs truncate">${escapeHtml(it.sub)}</div>
-                </div>`;
+                </div>
+                <i class="ri-arrow-right-s-line text-tg-textSecondary opacity-50 shrink-0" aria-hidden="true"></i>`;
             btn.addEventListener('click', () => {
                 handle.close();
                 setTimeout(it.run, 80); // let the sheet close before triggering the next UI
@@ -3695,7 +4041,7 @@ function setupFab() {
             list.appendChild(btn);
         }
         const handle = openSheet({
-            title: i18nT('fab.actions', 'Quick actions'),
+            title: i18nT('fab.actions', 'Quick Actions'),
             content: list,
             size: 'sm',
         });

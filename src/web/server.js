@@ -61,6 +61,7 @@ import {
     recordUpdateAttempt,
     recordUpdateFailure,
     listUpdateHistory,
+    getUnindexedAiBatch,
 } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
@@ -84,11 +85,33 @@ import {
     getOrCreateThumb,
     purgeThumbsForDownload,
     purgeAllThumbs,
+    purgeNonStandardThumbs,
     getThumbsCacheStats,
     buildAllThumbnails,
     hasFfmpeg,
     ALLOWED_WIDTHS as THUMB_WIDTHS,
+    DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
+    thumbKindTypes,
+    hasCachedThumb,
 } from '../core/thumbs.js';
+import {
+    buildAllSeekbar,
+    getMetaForDownload as getSeekbarMetaForDownload,
+    getSeekbarCacheStats,
+    getSpritePath as getSeekbarSpritePath,
+    generateForDownload as generateSeekbarForDownload,
+    purgeAllSeekbar,
+    purgeSeekbarForDownload,
+} from '../core/seekbar/index.js';
+import {
+    getSidecarStatus as getSeekbarSidecarStatus,
+    refreshSidecar as refreshSeekbarSidecar,
+    setBroadcast as setSeekbarBroadcast,
+    SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
+    startSidecar as startSeekbarSidecar,
+} from '../core/seekbar/spawn.js';
+import { probeHwaccel as probeSeekbarHwaccel } from '../core/seekbar/client.js';
+import { getSeekbarSprite } from '../core/db.js';
 import {
     startScan as nsfwStartScan,
     cancelScan as nsfwCancelScan,
@@ -102,9 +125,37 @@ import {
     getNsfwDeleteCandidates,
     whitelistNsfw,
 } from '../core/nsfw.js';
+import {
+    startFacesScan as aiStartFacesScan,
+    cancelScan as aiCancelScan,
+    isScanRunning as aiIsScanRunning,
+    getScanState as aiGetScanState,
+    _bgQueueDepths as aiBgQueueDepths,
+} from '../core/ai/index.js';
+// Search + Auto-tag + vector index were removed in this release. Stubs
+// below keep the existing route handlers compiling until the bigger
+// "drop endpoints" cleanup lands. Each stub responds 410 Gone so the SPA
+// can render a friendly "feature removed" message instead of crashing.
+// Search + Auto-tag were removed in this release; only Face clustering
+// survives. The stub constants that used to live here (aiStartEmbedScan,
+// aiStartTagsScan, aiEmbedText, aiTopK, aiLoadVecOnce, AI_EMBED_DEFAULTS,
+// …) were deleted along with the routes that called them.
 import { runAutoUpdate, autoUpdateStatus } from '../core/updater.js';
 import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
+import {
+    getAiCounts,
+    listAllTags,
+    listPhotosForTag,
+    listPeople,
+    listPhotosForPerson,
+    renamePerson,
+    deletePerson,
+    clearStaleEmbeddings,
+    resetAllAiData,
+    listEmbeddingModels,
+    getDb as aiGetDb,
+} from '../core/db.js';
 import * as backup from '../core/backup/index.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
@@ -528,6 +579,15 @@ try {
 // (Tailwind + Remixicon) and the inline event-handlers we still use in
 // index.html. Tightening "self"-only is a follow-up once the inline handlers
 // are migrated to addEventListener.
+//
+// `https://cdnjs.cloudflare.com` is allow-listed for the viewer's
+// lazy-loaded preview helpers — highlight.js (code blocks), marked
+// (markdown), and DOMPurify (sanitise rendered markdown). Only fetched
+// the first time the operator opens a code / markdown file in the modal,
+// then cached by the browser.
+// `frame-src: 'self'` lets the viewer's PDF container point an iframe
+// at `/files/<path>?inline=1#toolbar=1` so the browser's native PDF
+// viewer renders it without leaving the dashboard.
 app.use(
     helmet({
         contentSecurityPolicy: {
@@ -539,6 +599,7 @@ app.use(
                     "'unsafe-inline'",
                     'https://cdn.tailwindcss.com',
                     'https://cdn.jsdelivr.net',
+                    'https://cdnjs.cloudflare.com',
                 ],
                 // The SPA uses inline onclick / oninput handlers in index.html
                 // (toggle UI, range-slider value updaters, modal close-buttons).
@@ -550,6 +611,7 @@ app.use(
                     "'self'",
                     "'unsafe-inline'",
                     'https://cdn.jsdelivr.net',
+                    'https://cdnjs.cloudflare.com',
                     'https://fonts.googleapis.com',
                 ],
                 'style-src-attr': ["'unsafe-inline'"],
@@ -563,6 +625,7 @@ app.use(
                 'media-src': ["'self'", 'blob:'],
                 'connect-src': ["'self'", 'ws:', 'wss:'],
                 'object-src': ["'none'"],
+                'frame-src': ["'self'"],
                 'frame-ancestors': ["'self'"],
             },
         },
@@ -866,7 +929,34 @@ async function writeConfigAtomic(config) {
     } catch {
         prev = null;
     }
-    saveConfig(config);
+    // Async-retry against `SQLITE_BUSY` — better-sqlite3 throws this
+    // when another long-running `.iterate()` (Phase B clustering,
+    // dedup sweep, integrity walk) holds the single connection. The
+    // retry runs with real `await`-able backoff so the event loop can
+    // service the in-flight iterator (which yields via setImmediate
+    // between batches) and free the connection. Exponential backoff
+    // 50/100/200/400/800ms, capped at ~3 s total — covers every
+    // observed iter window without blocking the operator on a stuck
+    // save more than a couple of redraws.
+    let lastErr = null;
+    const backoffsMs = [50, 100, 200, 400, 800, 800, 800];
+    for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
+        try {
+            saveConfig(config);
+            lastErr = null;
+            break;
+        } catch (e) {
+            const msg = String(e?.message || e);
+            const busy =
+                msg.includes('database connection is busy') ||
+                msg.includes('SQLITE_BUSY') ||
+                e?.code === 'SQLITE_BUSY';
+            if (!busy) throw e;
+            lastErr = e;
+            await new Promise((r) => setTimeout(r, backoffsMs[attempt]));
+        }
+    }
+    if (lastErr) throw lastErr;
     invalidateConfigCache();
     // v2.10: replicate per top-level key. publishConfigChange itself
     // checks the per-key cluster.replicate.<key> policy and skips the
@@ -1014,6 +1104,8 @@ const GUEST_GET_ALLOW = [
     '/api/groups', // sidebar list of downloaded folders (no config secrets in the response)
     '/api/stats', // footer disk + file counters
     '/api/thumbs', // GET /api/thumbs/:id — image thumb stream
+    '/api/seekbar/sprite', // GET /api/seekbar/sprite/:id — WebP sprite sheet
+    '/api/seekbar/meta', // GET /api/seekbar/meta/:id — sprite JSON sidecar
 ];
 const GUEST_OTHER_ALLOW = new Set(['POST /api/logout']);
 
@@ -2362,8 +2454,75 @@ app.post('/api/history', async (req, res) => {
         if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
 
         const config = loadConfig();
-        const group = (config.groups || []).find((g) => String(g.id) === String(groupId));
-        if (!group) return res.status(404).json({ error: 'Group not configured' });
+        let group = (config.groups || []).find((g) => String(g.id) === String(groupId));
+        // Sidebar surfaces "download-only" groups — rows that have files
+        // in `downloads` but never made it into `config.groups` (e.g.
+        // imported from a peer, restored from a backup, or seeded by an
+        // older build that wrote the row before registering the group).
+        // Clicking such a row deep-links to #/backfill/<id>; without
+        // auto-registration the operator just sees "Group not configured"
+        // and has no obvious next step. Auto-register here when we can
+        // resolve the dialog from any connected account, then continue.
+        if (!group) {
+            let resolved = null;
+            try {
+                const probe = await import('../core/dialogs-resolver.js').catch(() => null);
+                if (probe?.resolveDialogName) {
+                    resolved = await probe.resolveDialogName(String(groupId)).catch(() => null);
+                }
+            } catch {}
+            // Fall back to the DB's best-known name so the auto-added entry
+            // isn't called "Unknown" forever.
+            let dbName = null;
+            try {
+                const row = getDb()
+                    .prepare(
+                        "SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL AND group_name != '' AND group_name != 'Unknown' LIMIT 1",
+                    )
+                    .get(String(groupId));
+                if (row?.group_name) dbName = row.group_name;
+            } catch {}
+            const idForConfig =
+                String(groupId).startsWith('-') &&
+                Number.isSafeInteger(parseInt(String(groupId), 10))
+                    ? parseInt(String(groupId), 10)
+                    : groupId;
+            group = {
+                id: idForConfig,
+                name: resolved || dbName || `Group ${groupId}`,
+                enabled: false,
+                filters: {
+                    photos: true,
+                    videos: true,
+                    files: true,
+                    links: true,
+                    voice: false,
+                    gifs: false,
+                    stickers: false,
+                },
+                autoForward: { enabled: false, destination: null, deleteAfterForward: false },
+                trackUsers: { enabled: false, users: [] },
+                topics: { enabled: false, ids: [] },
+            };
+            config.groups = config.groups || [];
+            config.groups.push(group);
+            try {
+                await writeConfigAtomic(config);
+                _dialogsResponseCache = { at: 0, body: null };
+                broadcast({ type: 'config_updated' });
+                log({
+                    source: 'history',
+                    level: 'info',
+                    msg: `auto-registered group ${groupId} ("${group.name}") before backfill — was present in downloads but missing from config`,
+                });
+            } catch (e) {
+                console.warn('[history] auto-register failed:', e.message);
+                return res.status(404).json({
+                    error: 'Group not configured — add it from Manage Groups first',
+                    code: 'GROUP_NOT_CONFIGURED',
+                });
+            }
+        }
 
         const { HistoryDownloader } = await import('../core/history.js');
         const { DownloadManager } = await import('../core/downloader.js');
@@ -3306,18 +3465,126 @@ app.post('/api/download/url', async (req, res) => {
 });
 
 // 1. Stats API (SQLite)
+//
+// HTTP endpoint AND WebSocket push (`stats_update`). The footer/statusbar
+// hits the HTTP path once on first paint, then switches to WS — every
+// trigger event (download_complete, bulk_delete, file_deleted, purge_all,
+// group_purged, config_updated) calls `broadcastStatsSoon()` which
+// debounces a recompute + push within 400ms. Cache TTL keeps repeat
+// hits to /api/stats cheap when the page reloads mid-burst.
+
+const STATS_CACHE_TTL_MS = 2000;
+let _statsCache = { role: null, at: 0, body: null };
+
+async function _computeStatsPayload(role) {
+    const dbStats = getDbStats();
+    const config = loadConfig();
+    let diskUsage = Number(dbStats.totalSize) || 0;
+    if (diskUsage <= 0) {
+        diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
+        writeDiskUsageCache(diskUsage);
+    }
+    let accountCount = 0;
+    try {
+        const am = await getAccountManager();
+        accountCount = am.count;
+    } catch {
+        try {
+            const dir = path.join(DATA_DIR, 'sessions');
+            if (existsSync(dir)) {
+                accountCount = fsSync.readdirSync(dir).filter((f) => f.endsWith('.enc')).length;
+            }
+        } catch {}
+    }
+    let peerStats = [];
+    if (role !== 'guest') {
+        try {
+            const fed = getStatsFederated();
+            const peerNameMap = new Map();
+            try {
+                for (const p of listPeers()) {
+                    peerNameMap.set(String(p.peerId), {
+                        name: p.name || p.peerId,
+                        online: p.status === 'online',
+                    });
+                }
+            } catch {}
+            peerStats = (fed.peerStats || []).map((row) => ({
+                peerId: row.peerId,
+                peerName: peerNameMap.get(String(row.peerId))?.name || row.peerId,
+                online: !!peerNameMap.get(String(row.peerId))?.online,
+                totalFiles: row.totalFiles,
+                totalSize: row.totalSize,
+                totalSizeFormatted: formatBytes(row.totalSize),
+            }));
+        } catch {}
+    }
+    return {
+        totalFiles: dbStats.totalFiles,
+        totalSize: dbStats.totalSize,
+        diskUsage,
+        diskUsageFormatted: formatBytes(diskUsage),
+        maxDiskSize: config.diskManagement?.maxTotalSize || '0',
+        totalGroups: config.groups?.length || 0,
+        enabledGroups: config.groups?.filter((g) => g.enabled).length || 0,
+        accounts: accountCount,
+        apiConfigured: !!(config.telegram?.apiId && config.telegram?.apiHash),
+        telegramConnected: isConnected || runtime.state === 'running',
+        peerStats,
+    };
+}
+
+// Debounced WS push. Trigger events fire in bursts (50-row bulk delete
+// emits one event per row); we coalesce to a single recompute + broadcast
+// per ~400ms window so the WS channel doesn't get spammed.
+let _statsBroadcastTimer = null;
+function broadcastStatsSoon() {
+    if (_statsBroadcastTimer) return;
+    _statsBroadcastTimer = setTimeout(async () => {
+        _statsBroadcastTimer = null;
+        try {
+            // Admin payload — guests just refetch via HTTP on reconnect.
+            const body = await _computeStatsPayload('admin');
+            _statsCache = { role: 'admin', at: Date.now(), body };
+            broadcast({ type: 'stats_update', stats: body });
+        } catch (e) {
+            console.warn('[stats] broadcast failed:', e.message);
+        }
+    }, 400);
+}
+
 app.get('/api/stats', async (req, res) => {
     try {
-        const dbStats = getDbStats(); // From DB
+        const now = Date.now();
+        const role = req.role || 'admin';
+        // Cache hit (within TTL + same role) — return immediately, no DB hit.
+        if (
+            _statsCache.body &&
+            _statsCache.role === role &&
+            now - _statsCache.at < STATS_CACHE_TTL_MS
+        ) {
+            return res.json(_statsCache.body);
+        }
+        const body = await _computeStatsPayload(role);
+        _statsCache = { role, at: now, body };
+        return res.json(body);
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+
+// Legacy long-form handler removed in favour of the cached path above
+// (`_computeStatsPayload` + 2s TTL + WS push). Trigger events are hooked
+// further down where each `broadcast({ type: 'bulk_delete' / 'file_deleted'
+// / 'group_purged' / 'purge_all' / 'config_updated' })` lives — each one
+// is paired with `broadcastStatsSoon()` so the footer stays live without
+// the SPA having to poll.
+/* eslint-disable no-unused-vars */
+async function _stats_legacy_block_removed(req, res) {
+    try {
+        const dbStats = getDbStats();
         const config = loadConfig();
 
-        // Disk usage: prefer the live `SUM(file_size)` from the DB because
-        // it's always in sync with the row count we just read. If the DB
-        // sum is zero (catalogue empty after a Purge / before first run),
-        // walk `data/downloads/` for the real on-disk size and refresh the
-        // JSON cache — never trust a stale `disk_usage.json` snapshot, the
-        // legacy cache was never invalidated on purge so a wiped dashboard
-        // would footer-report a multi-week-old "930 KB".
         let diskUsage = Number(dbStats.totalSize) || 0;
         if (diskUsage <= 0) {
             diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
@@ -3399,7 +3666,8 @@ app.get('/api/stats', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
-});
+}
+/* eslint-enable no-unused-vars */
 
 // 2. Dialogs API (Groups)
 // /api/dialogs response cache. Telegram rate-limits getDialogs aggressively
@@ -4279,6 +4547,27 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
     }
     const tracker = _jobTrackers.dedupDelete;
     const r = tracker.tryStart(async ({ onProgress }) => {
+        // path → id resolution. Frontend sends forward-slash strings; the
+        // downloader writes file_path with the OS-native separator (which
+        // on Windows is `\`), so `DELETE WHERE file_path = ?` against the
+        // raw frontend string never matches the row. Resolve to ids up
+        // front via a slash-insensitive comparison, then merge into the
+        // id-keyed delete path that already works everywhere. Files still
+        // unlink off disk via the path because the OS treats `/` and `\`
+        // identically on Windows path resolution.
+        const resolvedIdsFromPaths = [];
+        if (pathList.length) {
+            const db = getDb();
+            const stmt = db.prepare(
+                "SELECT id FROM downloads WHERE REPLACE(file_path, '\\', '/') = ?",
+            );
+            for (const p of pathList) {
+                const norm = String(p || '').replace(/\\/g, '/');
+                if (!norm) continue;
+                const row = stmt.get(norm);
+                if (row?.id) resolvedIdsFromPaths.push(row.id);
+            }
+        }
         const total = idList.length + pathList.length;
         let processed = 0;
         let unlinked = 0;
@@ -4300,29 +4589,46 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         }
         if (idList.length) {
             const db = getDb();
+            // SELECT `file_path` so we use the same on-disk path the
+            // downloader / thumbs / bulk-zip rely on. The previous
+            // implementation re-built `<group>/<typeFolder>/<file_name>`
+            // from scratch — that path matched ONLY when group rename,
+            // sanitizeName output, and original folder layout all aligned;
+            // any drift (group renamed in UI, special chars sanitised
+            // differently, custom file_path from the downloader) made
+            // safeResolveDownload return ENOENT and the file survived
+            // on disk while the DB row got dropped.
             const rows = db
                 .prepare(
-                    `SELECT id, group_id, group_name, file_name, file_type FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`,
+                    `SELECT id, group_id, group_name, file_name, file_type, file_path FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`,
                 )
                 .all(...idList);
             const config = loadConfig();
             const folderById = new Map();
             for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
             for (const row of rows) {
-                const folder =
-                    folderById.get(String(row.group_id)) ||
-                    sanitizeName(row.group_name || 'unknown');
-                const typeFolder =
-                    row.file_type === 'photo'
-                        ? 'images'
-                        : row.file_type === 'video'
-                          ? 'videos'
-                          : row.file_type === 'audio'
-                            ? 'audio'
-                            : row.file_type === 'sticker'
-                              ? 'stickers'
-                              : 'documents';
-                const candidate = `${folder}/${typeFolder}/${row.file_name}`;
+                // Prefer the stored file_path — it's the authoritative
+                // record of where the downloader wrote the file. Fall back
+                // to the reconstructed candidate ONLY when file_path is
+                // missing (legacy rows pre-v1.x that never had the column).
+                const stored = (row.file_path || '').replace(/\\/g, '/');
+                let candidate = stored;
+                if (!candidate || !candidate.includes('/')) {
+                    const folder =
+                        folderById.get(String(row.group_id)) ||
+                        sanitizeName(row.group_name || 'unknown');
+                    const typeFolder =
+                        row.file_type === 'photo'
+                            ? 'images'
+                            : row.file_type === 'video'
+                              ? 'videos'
+                              : row.file_type === 'audio'
+                                ? 'audio'
+                                : row.file_type === 'sticker'
+                                  ? 'stickers'
+                                  : 'documents';
+                    candidate = `${folder}/${typeFolder}/${row.file_name}`;
+                }
                 const sr = await safeResolveDownload(candidate);
                 if (sr.ok) {
                     try {
@@ -4338,14 +4644,18 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 }
             }
         }
-        const dbDeleted = deleteDownloadsBy({ ids: idList, filePaths: pathList });
+        // Merge frontend ids + ids we just resolved from paths into a
+        // single dedup set so we do not delete a row twice + so the
+        // thumb purge loop hits every removed download.
+        const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
+        const dbDeleted = deleteDownloadsBy({ ids: allIds });
         onProgress({ processed: total, total, stage: 'purging_thumbs' });
-        for (const id of idList) {
+        for (const id of allIds) {
             try {
                 await purgeThumbsForDownload(id);
             } catch {}
         }
-        broadcast({ type: 'bulk_delete', unlinked, dbDeleted });
+        broadcast({ type: 'bulk_delete', unlinked, dbDeleted, ids: allIds });
         return { unlinked, dbDeleted, requested: total };
     });
     if (!r.started) {
@@ -4483,7 +4793,16 @@ app.post('/api/downloads/bulk-zip', async (req, res) => {
         const archiveBase = `tgdl-${safeArchiveName(labelGroup)}-${entries.length}files-${ts}.zip`;
 
         res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', `attachment; filename="${archiveBase}"`);
+        // Node HTTP setHeader() rejects non-Latin1 characters in header
+        // values — a Thai/CJK group name would throw ERR_INVALID_CHAR.
+        // RFC 5987: send a sanitised ASCII fallback in `filename=` AND
+        // the UTF-8 percent-encoded original in `filename*=`. Modern
+        // browsers pick the latter; ancient ones fall back to the ASCII.
+        const asciiArchive = archiveBase.replace(/[^\x20-\x7e]/g, '_');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${asciiArchive}"; filename*=UTF-8''${encodeURIComponent(archiveBase)}`,
+        );
         // Streaming archive — no Content-Length, must disable any
         // intermediate buffering. Cache-Control no-store so a CDN doesn't
         // try to cache a multi-GB blob keyed on the POST body.
@@ -4551,6 +4870,216 @@ app.delete('/api/file', async (req, res) => {
         res.status(500).json({ error: 'Internal error' });
     }
 });
+
+// 6a. Archive listing — used by the in-app viewer to preview the
+// contents of `.zip` / `.tar` / `.tar.gz` / `.tgz` / `.7z` / `.rar`
+// downloads inline (a tree of names + sizes) instead of forcing the
+// operator to download the whole archive first.
+//
+// Strategy: shell out to whichever extractor is available on the host
+// (`unzip -l` for zip, `tar -tvf` for tarballs, `7z l` for 7z / rar).
+// `execFile` with a fixed argv vector means the resolved disk path is
+// passed as a single argument — no shell interpolation, so a filename
+// that contains shell metacharacters is impossible to weaponise. The
+// only path that ever reaches the binary is one safeResolveDownload
+// has already cleared (no `..`, no symlink escape, anchored inside
+// `data/downloads/`). 5 s timeout caps a hostile archive that prints
+// 100k entries; output is hard-capped at 8 MB stdout / 256 KB stderr.
+//
+// Admin-only by virtue of the default-deny guest gate — this is a
+// metadata read, but it spawns a process so we treat it as an admin
+// surface for safety.
+app.get('/api/files/archive-list', async (req, res) => {
+    try {
+        const filePath = req.query.path;
+        if (typeof filePath !== 'string' || !filePath) {
+            return res.status(400).json({ error: 'path required' });
+        }
+        const r = await safeResolveDownload(filePath);
+        if (!r.ok) {
+            const status = r.reason === 'missing' ? 404 : 403;
+            return res
+                .status(status)
+                .json({ error: r.reason === 'missing' ? 'File not found' : 'Forbidden' });
+        }
+
+        const lower = r.real.toLowerCase();
+        let cmd;
+        let args;
+        let parser;
+        if (lower.endsWith('.zip')) {
+            cmd = 'unzip';
+            args = ['-l', '--', r.real];
+            parser = _parseUnzipOutput;
+        } else if (
+            lower.endsWith('.tar') ||
+            lower.endsWith('.tar.gz') ||
+            lower.endsWith('.tgz') ||
+            lower.endsWith('.tar.bz2') ||
+            lower.endsWith('.tbz') ||
+            lower.endsWith('.tbz2') ||
+            lower.endsWith('.tar.xz') ||
+            lower.endsWith('.txz')
+        ) {
+            cmd = 'tar';
+            args = ['-tvf', r.real];
+            parser = _parseTarOutput;
+        } else if (lower.endsWith('.7z') || lower.endsWith('.rar')) {
+            cmd = '7z';
+            args = ['l', '-slt', '--', r.real];
+            parser = _parse7zOutput;
+        } else if (lower.endsWith('.gz') || lower.endsWith('.bz2') || lower.endsWith('.xz')) {
+            // Single-stream compression (no archive index). We can't list
+            // contents — surface a friendly placeholder so the client can
+            // render "single-stream compression; download to expand".
+            return res.json({
+                entries: [],
+                supported: false,
+                reason: 'single_stream',
+                name: path.basename(r.real),
+            });
+        } else {
+            return res.json({
+                entries: [],
+                supported: false,
+                reason: 'unknown_format',
+                name: path.basename(r.real),
+            });
+        }
+
+        const { execFile } = await import('node:child_process');
+        const { stdout, stderr, code } = await new Promise((resolve) => {
+            try {
+                execFile(
+                    cmd,
+                    args,
+                    { timeout: 5000, maxBuffer: 8 * 1024 * 1024, windowsHide: true },
+                    (err, stdout, stderr) => {
+                        resolve({
+                            stdout: String(stdout || ''),
+                            stderr: String(stderr || ''),
+                            code: err ? err.code || 1 : 0,
+                            spawnErr: err && err.code === 'ENOENT' ? err : null,
+                        });
+                    },
+                );
+            } catch (spawnErr) {
+                resolve({ stdout: '', stderr: '', code: 1, spawnErr });
+            }
+        });
+
+        if (code !== 0 && (!stdout || stdout.length === 0)) {
+            // Tool is missing or the archive is malformed. Either way, give
+            // the operator a graceful fallback instead of a stack trace.
+            const missing = String(stderr).includes('ENOENT') || stderr.includes('not found');
+            return res.json({
+                entries: [],
+                supported: false,
+                reason: missing ? 'tool_missing' : 'list_failed',
+                tool: cmd,
+                name: path.basename(r.real),
+            });
+        }
+
+        const entries = parser(stdout).slice(0, 5000); // cap rendered rows
+        res.json({
+            entries,
+            supported: true,
+            total: entries.length,
+            name: path.basename(r.real),
+            tool: cmd,
+        });
+    } catch (error) {
+        console.error('GET /api/files/archive-list:', error);
+        res.status(500).json({ error: error?.message || 'Internal error' });
+    }
+});
+
+// Parse `unzip -l` output:
+//     Archive:  foo.zip
+//       Length      Date    Time    Name
+//     ---------  ---------- -----   ----
+//          1234  2024-04-01 12:00   path/to/file.txt
+//             0  2024-04-01 12:00   path/to/
+//     ---------                     -------
+//          1234                     1 file
+function _parseUnzipOutput(text) {
+    const lines = String(text).split(/\r?\n/);
+    const out = [];
+    let inBody = false;
+    for (const line of lines) {
+        if (/^-+\s+-+/.test(line)) {
+            inBody = !inBody;
+            continue;
+        }
+        if (!inBody) continue;
+        // `length date time name` — name may contain spaces.
+        const m = line.match(/^\s*(\d+)\s+\S+\s+\S+\s+(.+?)\s*$/);
+        if (!m) continue;
+        const size = Number(m[1]);
+        const name = m[2];
+        if (!name) continue;
+        out.push({ name, size: Number.isFinite(size) ? size : 0, isDir: name.endsWith('/') });
+    }
+    return out;
+}
+
+// Parse `tar -tvf` output, both BSD + GNU dialects:
+//     -rw-r--r--  0 user  staff   1234 Apr 01 12:00 path/to/file.txt
+//     drwxr-xr-x  0 user  staff      0 Apr 01 12:00 path/to/
+function _parseTarOutput(text) {
+    const lines = String(text).split(/\r?\n/);
+    const out = [];
+    for (const line of lines) {
+        if (!line.trim()) continue;
+        // Split on whitespace, last token (or trailing slash-token group) is the name.
+        // tar's verbose format has the name as the LAST whitespace-delimited
+        // field except when there's a link target (`-> dst`). Grab everything
+        // after the size+date timestamp.
+        //   <mode> <links> <owner> <size> <month> <day> <year-or-time> <name>
+        const m = line.match(
+            /^(\S)\S*\s+\S+\s+\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(.+?)(\s+->\s+.+)?$/,
+        );
+        if (!m) continue;
+        const isDir = m[1] === 'd' || m[3].endsWith('/');
+        out.push({ name: m[3], size: Number(m[2]) || 0, isDir });
+    }
+    return out;
+}
+
+// Parse `7z l -slt` output (line-tagged form):
+//     Path = path/to/file.txt
+//     Size = 1234
+//     ...
+//     Attributes = A
+function _parse7zOutput(text) {
+    const lines = String(text).split(/\r?\n/);
+    const out = [];
+    let cur = null;
+    let inBody = false;
+    for (const line of lines) {
+        if (/^---/.test(line)) {
+            inBody = true;
+            continue;
+        }
+        if (!inBody) continue;
+        if (!line.trim()) {
+            if (cur && cur.name) out.push(cur);
+            cur = null;
+            continue;
+        }
+        const m = line.match(/^(\w[\w ]*?)\s*=\s*(.*)$/);
+        if (!m) continue;
+        if (!cur) cur = { name: '', size: 0, isDir: false };
+        const key = m[1];
+        const val = m[2];
+        if (key === 'Path') cur.name = val;
+        else if (key === 'Size') cur.size = Number(val) || 0;
+        else if (key === 'Attributes' && val.includes('D')) cur.isDir = true;
+    }
+    if (cur && cur.name) out.push(cur);
+    return out;
+}
 
 // 6b. Purge Group (Files + DB + Config + Photo — No Trace)
 //
@@ -5406,18 +5935,33 @@ app.get('/api/thumbs/:id', async (req, res) => {
             } else {
                 _thumbMissBatch.count += 1;
             }
+            // No-store on the miss path. Without this header the browser
+            // remembers the 404 + text/plain body for the URL's default
+            // heuristic window and keeps replaying it from cache after
+            // the thumb finally lands on disk — operator sees "ภาพอื่น
+            // โหลด ปกติ id X ไม่ขึ้น แม้ generated แล้ว". Forcing the
+            // client to re-request next time fixes that.
+            res.setHeader('Cache-Control', 'no-store');
             return res.status(404).type('text/plain').send('No thumb');
         }
 
         res.setHeader('Content-Type', 'image/webp');
-        // Aggressive cache — the URL embeds id+width which is content-
-        // stable. If the source is replaced, purgeThumbsForDownload()
-        // wipes the cache entry so the next request regenerates.
-        res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-        // Mtime makes browser If-Modified-Since round trips cheap.
+        // Browser cache for an hour + must-revalidate so stale entries
+        // (e.g. a 404 the client cached before this URL had a real thumb
+        // on disk) get rechecked against Last-Modified instead of being
+        // served forever from the local cache. `immutable` was the wrong
+        // hint for this URL: the same id+width can legitimately serve
+        // different bytes after a source replacement or a manual purge.
+        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        // ETag derived from mtime + size so a regenerated thumb produces
+        // a different validator and the browser can't reuse the old
+        // body byte-for-byte under a 304.
+        const stMtime = Math.floor(thumb.mtime);
+        const etag = `"thumb-${id}-${thumb.width || 'd'}-${stMtime}"`;
+        res.setHeader('ETag', etag);
         const lastMod = new Date(thumb.mtime).toUTCString();
         res.setHeader('Last-Modified', lastMod);
-        if (req.headers['if-modified-since'] === lastMod) {
+        if (req.headers['if-none-match'] === etag || req.headers['if-modified-since'] === lastMod) {
             return res.status(304).end();
         }
         return res.sendFile(thumb.path, (err) => {
@@ -5439,20 +5983,47 @@ app.get('/api/thumbs/:id', async (req, res) => {
 // via `thumbs_rebuild_done` WS event.
 app.post('/api/maintenance/thumbs/rebuild', async (req, res) => {
     const tracker = _jobTrackers.thumbsRebuild;
+    // Optional body.kind scopes the wipe to one media class — e.g.
+    // {"kind":"video"} only purges the cache rows whose downloads.file_type
+    // matches the video bucket. Defaults to the full directory unlink.
+    const kindRaw = String(req.body?.kind || 'all').toLowerCase();
+    const kind = thumbKindTypes(kindRaw) ? kindRaw : 'all';
     const r = tracker.tryStart(async () => {
-        const removed = await purgeAllThumbs();
-        return { removed };
+        const removed = await purgeAllThumbs({ kind });
+        return { removed, kind };
     });
     if (!r.started) {
         return res
             .status(409)
             .json({ error: 'A thumbnail wipe is already running', code: 'ALREADY_RUNNING' });
     }
-    res.json({ success: true, started: true });
+    res.json({ success: true, started: true, kind });
 });
 
 app.get('/api/maintenance/thumbs/rebuild/status', async (req, res) => {
     res.json(_jobTrackers.thumbsRebuild.getStatus());
+});
+
+// Rebuild one tile. Used by the gallery's per-tile retry action — purges
+// the cached widths for that id; the next /api/thumbs/:id hit regenerates
+// on demand. Cheap, idempotent, admin-only.
+app.post('/api/maintenance/thumbs/rebuild-one/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ error: 'Bad id' });
+        }
+        const removed = await purgeThumbsForDownload(id);
+        // Best-effort warm of the default width so the client's retry doesn't
+        // stare at a 404 + skeleton. Failures here are non-fatal — the
+        // on-demand path handles the next request.
+        try {
+            await getOrCreateThumb(id, THUMB_DEFAULT_WIDTH);
+        } catch {}
+        res.json({ success: true, removed, cached: hasCachedThumb(id) });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
 });
 
 // Maintenance — generate thumbnails for every download row that doesn't
@@ -5477,21 +6048,28 @@ app.get('/api/maintenance/thumbs/rebuild/status', async (req, res) => {
 // retry succeeds. Prefix 'thumbs' preserved.
 app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
     const tracker = _jobTrackers.thumbsBuild;
+    // Optional body.kind scopes the build to one media class. Accepts
+    // 'all' | 'image' | 'video' | 'audio'; unknown values fall back to 'all'
+    // so the existing client (no body) still works untouched.
+    const kindRaw = String(req.body?.kind || 'all').toLowerCase();
+    const kind = thumbKindTypes(kindRaw) ? kindRaw : 'all';
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         const result = await buildAllThumbnails({
-            onProgress: (p) => onProgress(p),
+            kind,
+            onProgress: (p) => onProgress({ ...p, kind }),
             signal,
         });
         try {
             kvSet('thumbs_last_build', {
                 finishedAt: Date.now(),
+                kind,
                 built: result?.built ?? 0,
                 skipped: result?.skipped ?? 0,
                 errored: result?.errored ?? 0,
                 scanned: result?.scanned ?? 0,
             });
         } catch {}
-        return result;
+        return { ...result, kind };
     });
     if (!r.started) {
         return res.status(409).json({
@@ -5499,7 +6077,15 @@ app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
             code: r.code || 'ALREADY_RUNNING',
         });
     }
-    res.json({ success: true, started: true });
+    res.json({ success: true, started: true, kind });
+});
+
+// Cancel an in-flight build sweep. Idempotent — if nothing is running, the
+// tracker just reports false and the client treats it as already-stopped.
+// JobTracker emits a final `thumbs_done` with `cancelled:true`.
+app.post('/api/maintenance/thumbs/build/cancel', async (req, res) => {
+    const cancelled = _jobTrackers.thumbsBuild.cancel();
+    res.json({ success: true, cancelled });
 });
 
 app.get('/api/maintenance/thumbs/build/status', async (req, res) => {
@@ -5511,6 +6097,73 @@ app.get('/api/maintenance/thumbs/build/stats', async (req, res) => {
     try {
         const lastRun = kvGet('thumbs_last_build') || null;
         res.json({ lastRun });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Paginated thumbnail preview for the Build thumbnails page. Cursor-based
+// (id DESC) so the operator's scrolling feels stable — new downloads land
+// at the top, scrolling pulls older rows. Capped at 200 per page so the
+// frontend's virtual window can drain a request in one paint.
+//
+// Kinds:
+//   image  — file_type IN ('photo','image')
+//   video  — file_type = 'video'
+//   all    — both
+//
+// Big-data note: id is the PK index; the `WHERE id < ?` clause is a sargable
+// range scan, no LIMIT/OFFSET on a 1M-row library.
+app.get('/api/maintenance/thumbs/list', async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 60));
+        const rawCursor = parseInt(req.query.cursor, 10);
+        const cursor = Number.isFinite(rawCursor) && rawCursor > 0 ? rawCursor : null;
+        const kindRaw = String(req.query.kind || 'all').toLowerCase();
+        const types = thumbKindTypes(kindRaw) || thumbKindTypes('all');
+        const placeholders = types.map(() => '?').join(',');
+        const args = [...types];
+        // `file_path IS NOT NULL` matches what `buildAllThumbnails` walks —
+        // hides rows whose files were deleted but whose DB entries linger,
+        // so the gallery doesn't paint tiles that will only ever 404.
+        let where = `file_type IN (${placeholders}) AND file_path IS NOT NULL`;
+        if (cursor !== null) {
+            where += ' AND id < ?';
+            args.push(cursor);
+        }
+        const db = getDb();
+        const rows = db
+            .prepare(
+                // file_path is needed so the gallery's lightbox click can
+                // build /files/<path>?inline=1 — without it the click
+                // would have to round-trip to /api/downloads/:id just to
+                // resolve the path, doubling the request rate of a fast
+                // operator clicking through tiles.
+                `SELECT id, file_name, file_type, file_size, file_path, created_at
+                 FROM downloads
+                 WHERE ${where}
+                 ORDER BY id DESC
+                 LIMIT ?`,
+            )
+            .all(...args, limit);
+        // Decorate with `cached:true|false` — the gallery uses this to
+        // surface "12 not built yet" without round-tripping per tile.
+        const out = rows.map((r) => ({ ...r, cached: hasCachedThumb(r.id) }));
+        const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
+        // COUNT(*) is the expensive part on a 1M-row library (index scan,
+        // not stat cache because of the WHERE). Send it only on the first
+        // page; subsequent pages re-use the value the client already has.
+        let total = null;
+        if (cursor === null) {
+            total =
+                db
+                    .prepare(
+                        `SELECT COUNT(*) AS c FROM downloads
+                     WHERE file_type IN (${placeholders}) AND file_path IS NOT NULL`,
+                    )
+                    .get(...types).c || 0;
+        }
+        res.json({ rows: out, nextCursor, hasMore: nextCursor !== null, total });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
@@ -5554,6 +6207,211 @@ app.get('/api/maintenance/thumbs/stats', async (req, res) => {
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// ====== Seekbar hover-preview sprites ====================================
+//
+// Sidecar-backed sprite-sheet generator (see seekbar-service/). All
+// long-running operations follow the JobTracker pattern so the
+// maintenance page can recover live state across reloads.
+
+app.post('/api/maintenance/seekbar/build-all', async (req, res) => {
+    const tracker = _jobTrackers.seekbarBuild;
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        const result = await buildAllSeekbar({ onProgress, signal });
+        try {
+            kvSet('seekbar_last_build', { finishedAt: Date.now(), ...result });
+        } catch {}
+        return result;
+    });
+    if (!r.started) return res.status(409).json(r);
+    res.json({ started: true });
+});
+
+app.post('/api/maintenance/seekbar/build/cancel', async (req, res) => {
+    _jobTrackers.seekbarBuild.cancel();
+    res.json({ success: true });
+});
+
+app.get('/api/maintenance/seekbar/build/status', async (req, res) => {
+    res.json(_jobTrackers.seekbarBuild.getStatus());
+});
+
+app.get('/api/maintenance/seekbar/build/stats', async (req, res) => {
+    res.json({ lastBuild: kvGet('seekbar_last_build') || null });
+});
+
+app.post('/api/maintenance/seekbar/rebuild', async (req, res) => {
+    const tracker = _jobTrackers.seekbarRebuild;
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        const wiped = await purgeAllSeekbar();
+        onProgress({ phase: 'wiped', wiped });
+        if (signal?.aborted) return { wiped, regenerated: 0 };
+        const result = await buildAllSeekbar({ onProgress, signal });
+        try {
+            kvSet('seekbar_last_build', { finishedAt: Date.now(), ...result, wiped });
+        } catch {}
+        return { wiped, ...result };
+    });
+    if (!r.started) return res.status(409).json(r);
+    res.json({ started: true });
+});
+
+app.get('/api/maintenance/seekbar/rebuild/status', async (req, res) => {
+    res.json(_jobTrackers.seekbarRebuild.getStatus());
+});
+
+app.post('/api/maintenance/seekbar/regen/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ error: 'invalid id' });
+        }
+        const db = (await import('../core/db.js')).getDb();
+        const row = db
+            .prepare('SELECT id, file_path, file_type FROM downloads WHERE id = ?')
+            .get(id);
+        if (!row) return res.status(404).json({ error: 'not_found' });
+        if (row.file_type !== 'video') {
+            return res.status(400).json({ error: 'not a video' });
+        }
+        const r = await generateSeekbarForDownload(row, null, { overwrite: 'always' });
+        res.json({ success: true, ...r });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/maintenance/seekbar/stats', async (req, res) => {
+    try {
+        const stats = getSeekbarCacheStats();
+        const sidecar = getSeekbarSidecarStatus();
+        res.json({ success: true, sidecar, ffmpegAvailable: hasFfmpeg(), ...stats });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/maintenance/seekbar/list', async (req, res) => {
+    try {
+        const db = (await import('../core/db.js')).getDb();
+        const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+        const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+        const rows = db
+            .prepare(
+                `SELECT s.download_id AS id, s.bytes, s.frames, s.cols, s.rows, s.duration_sec,
+                        s.format, s.generated_at, d.file_name
+                   FROM seekbar_sprites s
+                   JOIN downloads d ON d.id = s.download_id
+                  ORDER BY s.generated_at DESC
+                  LIMIT ? OFFSET ?`,
+            )
+            .all(limit, offset);
+        const total = db.prepare('SELECT COUNT(*) AS n FROM seekbar_sprites').get().n;
+        res.json({ rows, total, limit, offset, hasMore: offset + rows.length < total });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/maintenance/seekbar/health', async (req, res) => {
+    // Aggregate diagnostic surface — the maintenance page's System
+    // health card reads this. Keeps the client to one round-trip on
+    // mount and one snapshot every WS state change.
+    try {
+        const sidecar = getSeekbarSidecarStatus();
+        let hwaccel = null;
+        if (sidecar?.ok) {
+            try {
+                hwaccel = await probeSeekbarHwaccel();
+            } catch (e) {
+                hwaccel = { error: String(e?.message || e).slice(0, 200) };
+            }
+        }
+        res.json({
+            success: true,
+            sidecar,
+            hwaccel,
+            ffmpegAvailable: hasFfmpeg(),
+            version: SEEKBAR_SIDECAR_VERSION,
+            platform: `${process.platform}/${process.arch}`,
+            node: process.version,
+        });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/maintenance/seekbar/hwaccel-probe', async (req, res) => {
+    try {
+        if (!getSeekbarSidecarStatus()?.ok) {
+            return res.json({
+                available: [],
+                compiled: [],
+                ffmpeg_path: '',
+                error: 'sidecar not running',
+            });
+        }
+        const r = await probeSeekbarHwaccel();
+        res.json(r);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.post('/api/maintenance/seekbar/sidecar/restart', async (req, res) => {
+    try {
+        await refreshSeekbarSidecar();
+        res.json({ success: true, sidecar: getSeekbarSidecarStatus() });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Public sprite + meta — admin and guest both can fetch (sprites are
+// derived assets that already gate behind the share-link / library ACL
+// on the row itself).
+app.get('/api/seekbar/sprite/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(404).end();
+        const row = getSeekbarSprite(id);
+        if (!row?.sprite_path) {
+            res.set('Cache-Control', 'no-store');
+            return res.status(404).end();
+        }
+        const spritePath = getSeekbarSpritePath(id, row.format || 'webp');
+        const finalPath = (await import('fs')).existsSync(row.sprite_path)
+            ? row.sprite_path
+            : spritePath;
+        const etag = `"sk-${id}-${row.generated_at || 0}"`;
+        if (req.headers['if-none-match'] === etag) {
+            res.set('ETag', etag);
+            return res.status(304).end();
+        }
+        res.set('ETag', etag);
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        res.set('Content-Type', row.format === 'jpeg' ? 'image/jpeg' : 'image/webp');
+        res.sendFile(finalPath);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/seekbar/meta/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) return res.status(404).end();
+        const meta = await getSeekbarMetaForDownload(id);
+        if (!meta) {
+            res.set('Cache-Control', 'no-store');
+            return res.status(404).end();
+        }
+        res.set('Cache-Control', 'public, max-age=300');
+        res.json(meta);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
     }
 });
 
@@ -5622,6 +6480,20 @@ app.get('/api/maintenance/faststart/stats', async (req, res) => {
             lastRun = kvGet('faststart_last_run') || null;
         } catch {}
         res.json({ success: true, ffmpegAvailable: hasFfmpeg(), ...r, lastRun });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Counters maintained by the post-download auto-optimise hook (see
+// `optimizeDownloadInBackground` in `src/core/faststart.js`). Read-only
+// snapshot of `kv['faststart_stats']` — the maintenance UI uses this to
+// surface "auto-optimised since boot: N optimised / M total" without
+// polling the heavier `/stats` endpoint that walks every video row.
+app.get('/api/maintenance/faststart/auto-stats', async (req, res) => {
+    try {
+        const { getAutoStats } = await import('../core/faststart.js');
+        res.json({ success: true, ...getAutoStats() });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -6147,6 +7019,1132 @@ app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
 
 app.get('/api/maintenance/nsfw/v2/bulk/status', async (req, res) => {
     res.json(_jobTrackers.nsfwBulk.getStatus());
+});
+
+// ====== AI subsystem (semantic search + auto-tag + face clustering) =========
+//
+// Three independent scans share one page (Maintenance → AI). Each is
+// admin-only by virtue of the global mutation gate, opt-in via
+// `config.advanced.ai.{enabled,semanticSearch,autoTags,faceClustering}`.
+// Patterns mirror the NSFW route group:
+//   - status returns the kv flags + scan states + counts in one round trip
+//   - scan/start uses the same JobTracker `tryStart` contract
+//   - search endpoints are reads against `image_embeddings` (in-memory cosine)
+//   - tags + people endpoints are list/paginate against the persisted rows
+//
+// Bug-class avoidance:
+//   - Every read goes through paginated DB helpers (LIMIT/OFFSET) so
+//     CLAUDE.md → Big-data rule 1 stays honoured.
+//   - All 503s carry `code` so the client can render targeted help.
+function _aiCfg() {
+    try {
+        const live = loadConfig();
+        return live?.advanced?.ai || {};
+    } catch {
+        return {};
+    }
+}
+
+// ---- AI status -----------------------------------------------------------
+//
+// Faces-only build — the prior `/api/ai/status` payload exposed embed +
+// tag pipeline state, vec extension probe, model preset metadata, etc.
+// All of that's gone with the Search/Tags removal; this is the minimum
+// the AI maintenance page actually reads now.
+
+// 5 s in-memory cache for the live `/info` probe. The dashboard polls
+// /api/ai/status every few seconds; without the cache we'd hit the
+// sidecar each time + spike when many tabs are open.
+const _SIDECAR_INFO_CACHE = { url: null, ts: 0, data: null };
+const _SIDECAR_INFO_TTL_MS = 5000;
+async function _fetchSidecarInfo(url) {
+    const now = Date.now();
+    if (
+        _SIDECAR_INFO_CACHE.url === url &&
+        now - _SIDECAR_INFO_CACHE.ts < _SIDECAR_INFO_TTL_MS &&
+        _SIDECAR_INFO_CACHE.data
+    ) {
+        return _SIDECAR_INFO_CACHE.data;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    try {
+        const res = await fetch(`${url.replace(/\/+$/, '')}/info`, {
+            signal: controller.signal,
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        _SIDECAR_INFO_CACHE.url = url;
+        _SIDECAR_INFO_CACHE.ts = now;
+        _SIDECAR_INFO_CACHE.data = data;
+        return data;
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+app.get('/api/ai/status', async (_req, res) => {
+    try {
+        const cfg = _aiCfg();
+        const counts = (() => {
+            try {
+                return getAiCounts({ fileTypes: cfg.fileTypes || ['photo'] });
+            } catch {
+                return { totalEligible: 0, indexed: 0, withFaces: 0 };
+            }
+        })();
+        // Surface the nested `faces` block too so the AI maintenance
+        // page can hydrate the provider dropdown without a second
+        // /api/config call. Keeping the flat `facesEpsilon` / etc.
+        // siblings preserves backward compat with any in-flight code
+        // that still reads the legacy shape.
+        const facesBlock = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
+        res.json({
+            success: true,
+            config: {
+                enabled: cfg.enabled === true,
+                faceClustering: cfg.faceClustering !== false,
+                federateFaces: cfg.federateFaces === true,
+                fileTypes: cfg.fileTypes || ['photo'],
+                facesEpsilon: Number.isFinite(cfg.facesEpsilon) ? cfg.facesEpsilon : 0.5,
+                facesMinPoints: Number.isFinite(cfg.facesMinPoints) ? cfg.facesMinPoints : 3,
+                facesDetector: cfg.facesDetector || 'tiny',
+                facesDetectorModel: String(
+                    facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
+                ),
+                faces: {
+                    providers: String(facesBlock.providers || 'auto').toLowerCase(),
+                    detectorModel: String(
+                        facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
+                    ),
+                },
+            },
+            counts,
+            scans: { faces: aiGetScanState('faces') },
+            models: {
+                faces: await (async () => {
+                    // Surface the operator-chosen insightface preset
+                    // (buffalo_l / antelopev2 / buffalo_m / buffalo_s /
+                    // buffalo_sc) in the human-readable id. The legacy
+                    // `cfg.facesModel` free-text override still wins
+                    // when set (advanced operator path); otherwise use
+                    // the dropdown-saved `facesDetectorModel`.
+                    const preset = String(
+                        facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
+                    );
+                    const id =
+                        (cfg.facesModel || '').trim() || `insightface ${preset} (Python sidecar)`;
+                    // Live provider list — probe the running sidecar's
+                    // `/info` so the dashboard's "GPU acceleration"
+                    // chip reflects the actually-loaded EP, not the
+                    // saved hint. The probe is best-effort: a 2 s
+                    // timeout caps the worst case so a dead sidecar
+                    // doesn't slow the status page down. Result is
+                    // cached for 5 s so the page can poll without
+                    // hammering the sidecar.
+                    let providers = null;
+                    try {
+                        const facesSpawn = await import('../core/ai/faces-spawn.js');
+                        const sidecarUrl = facesSpawn.getSidecarStatus()?.url;
+                        if (sidecarUrl) {
+                            const info = await _fetchSidecarInfo(sidecarUrl);
+                            if (info?.providers) providers = info.providers;
+                        }
+                    } catch {
+                        /* sidecar offline / fetch failed — fall through */
+                    }
+                    return {
+                        id,
+                        preset,
+                        dim: 512,
+                        dtype: 'fp32',
+                        source: cfg.facesModel ? 'override' : 'bundled',
+                        enabled: cfg.faceClustering !== false,
+                        loaded: !cfg.facesModel,
+                        bundled: !cfg.facesModel,
+                        providers,
+                        providersRequested: String(facesBlock.providers || 'auto'),
+                    };
+                })(),
+            },
+            bgQueue: (() => {
+                try {
+                    return aiBgQueueDepths();
+                } catch {
+                    return { realtime: 0, backfill: 0 };
+                }
+            })(),
+            trackers: { aiPeople: _jobTrackers.aiPeople.getStatus() },
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ---- Scan controls -------------------------------------------------------
+//
+// Faces is the only feature left; the legacy `feature: 'embed' | 'tags'`
+// branches have been removed. The handler still accepts a `feature`
+// field so older clients fail with a clear `unknown feature` error
+// rather than a silent no-op.
+const AI_SCAN_FEATURES = new Set(['faces']);
+
+function _aiTrackerFor(feature) {
+    if (feature === 'faces') return _jobTrackers.aiPeople;
+    return null;
+}
+
+function _aiStarterFor(feature) {
+    if (feature === 'faces') return aiStartFacesScan;
+    return null;
+}
+
+// JobTracker integration for AI scans:
+//   The scan-runner module already owns the per-feature state machine
+//   (running/scanned/total/abort) and broadcasts its own WS events; the
+//   tracker is wired in via a one-shot tryStart so re-mounted pages can
+//   recover via `_jobTrackers.aiX.getStatus()` and so the "ai_index_done"
+//   WS event still fires through the tracker's standard finish hook. The
+//   inner runFn returns a Promise that resolves on the scan-runner's
+//   onDone callback so tracker.success/failure semantics line up with
+//   the actual work.
+function _aiTrackerEventPrefix(feature) {
+    if (feature === 'embed') return 'ai_index';
+    if (feature === 'tags') return 'ai_tags';
+    if (feature === 'faces') return 'ai_people';
+    return 'ai';
+}
+
+app.post('/api/ai/scan/start', async (req, res) => {
+    try {
+        const cfg = _aiCfg();
+        if (cfg.enabled !== true) {
+            return res.status(503).json({
+                error: 'AI subsystem disabled — enable it in Maintenance → AI first.',
+                code: 'AI_DISABLED',
+            });
+        }
+        const feature = String(req.body?.feature || '').toLowerCase();
+        if (!AI_SCAN_FEATURES.has(feature)) {
+            return res.status(400).json({ error: 'feature must be embed|tags|faces' });
+        }
+        if (aiIsScanRunning(feature)) {
+            return res.status(409).json({ error: 'Scan already running', code: 'ALREADY_RUNNING' });
+        }
+        const tracker = _aiTrackerFor(feature);
+        const starter = _aiStarterFor(feature);
+        const prefix = _aiTrackerEventPrefix(feature);
+        const claim = tracker.tryStart(({ onProgress, signal }) => {
+            return new Promise((resolve, reject) => {
+                // Forward the runner's signal abort -> our internal
+                // cancelScan, so /api/ai/scan/cancel and the tracker's
+                // own abort path both terminate the same scan.
+                if (signal && typeof signal.addEventListener === 'function') {
+                    signal.addEventListener('abort', () => {
+                        try {
+                            aiCancelScan(feature);
+                        } catch {}
+                    });
+                }
+                starter(
+                    cfg,
+                    (p) => {
+                        // tracker.onProgress already _safeBroadcasts
+                        // `${prefix}_progress` with the merged status — a
+                        // second broadcast here would double every event
+                        // on the wire. Keep tracker as the single source.
+                        try {
+                            onProgress(p);
+                        } catch {}
+                    },
+                    (p) => {
+                        // tracker auto-broadcasts `${prefix}_done` on
+                        // resolve/reject — surface scan errors back into
+                        // the tracker promise so it logs + finishes once.
+                        if (p?.error) reject(new Error(p.error));
+                        else resolve(p || {});
+                    },
+                    (entry) => log(entry),
+                );
+            });
+        });
+        if (!claim.started) {
+            return res.status(409).json({ error: 'Tracker busy', code: claim.code });
+        }
+        log({ source: 'ai', level: 'info', msg: `${feature} scan starting` });
+        res.json({ success: true, started: true });
+    } catch (e) {
+        log({ source: 'ai', level: 'error', msg: `scan/start failed: ${e?.message || e}` });
+        const status = e.code === 'AI_LIB_MISSING' || e.code === 'FACES_LIB_MISSING' ? 503 : 500;
+        res.status(status).json({ error: e.message, code: e.code || 'UNKNOWN' });
+    }
+});
+
+app.post('/api/ai/scan/cancel', async (req, res) => {
+    const feature = String(req.body?.feature || '').toLowerCase();
+    if (!AI_SCAN_FEATURES.has(feature)) {
+        return res.status(400).json({ error: 'feature must be embed|tags|faces' });
+    }
+    const ok = aiCancelScan(feature);
+    res.json({ success: true, cancelled: ok });
+});
+
+app.get('/api/ai/scan/status', async (req, res) => {
+    const feature = String(req.query?.feature || '').toLowerCase();
+    if (!AI_SCAN_FEATURES.has(feature)) {
+        return res.status(400).json({ error: 'feature must be embed|tags|faces' });
+    }
+    res.json({ success: true, state: aiGetScanState(feature) });
+});
+
+// ---- Provider probe (face sidecar onnxruntime backends) -----------------
+//
+// Mirrors the ffmpeg `hwaccel-probe` endpoint pattern used by the Build
+// thumbnails page. Proxies to the Python sidecar's `/providers` route
+// which spins up a tiny onnxruntime session against each candidate
+// provider — only backends that genuinely allocate a session end up in
+// `available`. Surfaces a clear 503 when the sidecar isn't running.
+app.get('/api/ai/faces/provider-probe', async (_req, res) => {
+    try {
+        const facesClient = await import('../core/ai/faces-client.js');
+        const url = facesClient.getSidecarUrl();
+        if (!url) {
+            return res
+                .status(503)
+                .json({ error: 'Face sidecar not running', code: 'SIDECAR_OFFLINE' });
+        }
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 10_000);
+        let r;
+        try {
+            r = await globalThis.fetch(`${url}/providers`, { signal: ctrl.signal });
+        } finally {
+            clearTimeout(t);
+        }
+        if (!r.ok) {
+            return res
+                .status(r.status)
+                .json({ error: `Sidecar returned HTTP ${r.status}`, code: 'SIDECAR_ERROR' });
+        }
+        const body = await r.json();
+        res.json(body);
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Restart the sidecar so a config change (e.g. provider switch) takes
+// effect without an app restart. The spawn module's stopSidecar() sends
+// SIGTERM with a SIGKILL fallback after KILL_GRACE_MS; startSidecar()
+// then re-reads `loadConfig()` + env so the new provider is picked up.
+app.post('/api/ai/faces/restart', async (_req, res) => {
+    try {
+        const spawn = await import('../core/ai/faces-spawn.js');
+        spawn.stopSidecar();
+        // Fire-and-forget — startSidecar() is idempotent and never
+        // throws (errors surface via `getSidecarStatus()` + WS).
+        spawn.startSidecar().catch(() => {});
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Auto-detect-platform installer for the Python sidecar. Runs
+// `python -m tgdl_faces.install`, which picks the right onnxruntime EP
+// (DirectML on Windows, CUDA on Linux+NVIDIA, OpenVINO on Linux+Intel,
+// CoreML/CPU elsewhere) and pip-installs it. Progress streams over WS
+// as `ai_faces_install_progress` / `ai_faces_install_done`. Body accepts
+// optional `{force: 'cpu'|'gpu'|'directml'|'openvino'}` for operators
+// who want to override detection. Single-flight inside faces-spawn.
+app.post('/api/ai/faces/install-deps', async (req, res) => {
+    try {
+        const spawnMod = await import('../core/ai/faces-spawn.js');
+        const force = typeof req.body?.force === 'string' ? req.body.force : undefined;
+        spawnMod.resetAutoInstallGuard();
+        // Fire-and-forget — pip can take 1-5 min on first run while
+        // downloading onnxruntime wheels. Progress flows over WS.
+        spawnMod
+            .installPythonDeps({ force })
+            .then((r) => {
+                if (r.ok) {
+                    try {
+                        spawnMod.stopSidecar();
+                    } catch {}
+                    try {
+                        spawnMod.startSidecar().catch(() => {});
+                    } catch {}
+                }
+            })
+            .catch(() => {});
+        res.json({ started: true });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Full reindex — clears every face detection + every cluster, then
+// flips every photo's `ai_indexed_at` back to NULL so the next scan
+// re-detects from scratch. Use when:
+//   - switching `facesDetectorModel` (embedding space changes)
+//   - a previous run produced obviously-wrong clusters (bad threshold)
+//   - the operator wants a clean slate
+//
+// This is DESTRUCTIVE — the People grid wipes immediately and the
+// next scan re-builds it. Caller MUST gate this behind a confirm
+// sheet UI-side. The Node side enforces a single-flight guard against
+// any scan that's currently running.
+// Phase B only — re-cluster existing face embeddings without
+// re-detecting. Lets the operator tweak ε / minPoints and see the new
+// People grid in seconds (vs minutes for a full re-scan). Implemented
+// by triggering the standard faces scan-runner; Phase A is a no-op when
+// every photo carries `ai_indexed_at IS NOT NULL`, so for fully-indexed
+// libraries this lands in Phase B immediately. For partially-indexed
+// libraries (a scan was cancelled mid-way), Phase A picks up where it
+// left off — same as clicking "Scan now".
+app.post('/api/ai/faces/recluster', async (_req, res) => {
+    try {
+        if (aiIsScanRunning && aiIsScanRunning('faces')) {
+            return res.status(409).json({
+                error: 'scan_running',
+                message: 'A face scan is already in progress.',
+            });
+        }
+        try {
+            if (aiStartFacesScan) aiStartFacesScan().catch(() => {});
+        } catch {}
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.post('/api/ai/faces/reindex', async (_req, res) => {
+    try {
+        if (aiIsScanRunning && aiIsScanRunning('faces')) {
+            return res.status(409).json({
+                error: 'scan_running',
+                message: 'A face scan is already in progress. Cancel it before reindexing.',
+            });
+        }
+        const cfg = _aiCfg();
+        const types = cfg.fileTypes || ['photo'];
+        const placeholders = types.map(() => '?').join(',');
+        const db = getDb();
+        const tx = db.transaction(() => {
+            db.prepare(`DELETE FROM faces`).run();
+            db.prepare(`DELETE FROM people`).run();
+            db.prepare(
+                `UPDATE downloads SET ai_indexed_at = NULL WHERE file_type IN (${placeholders})`,
+            ).run(...types);
+        });
+        tx();
+        broadcast({ type: 'ai_faces_reindexed', ts: Date.now() });
+        // Kick off the scan immediately so the operator sees progress
+        // right away. Fire-and-forget — the scan owns its own state
+        // machine + WS events.
+        try {
+            if (aiStartFacesScan) aiStartFacesScan().catch(() => {});
+        } catch {}
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- People (face clusters) ---------------------------------------------
+
+app.get('/api/ai/people', async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(500, Number(req.query?.limit) || 100));
+        const offset = Math.max(0, Number(req.query?.offset) || 0);
+        const scope = String(req.query?.scope || 'local').toLowerCase();
+        const local = listPeople({ limit, offset });
+        if (scope !== 'federated') {
+            return res.json({ success: true, scope: 'local', ...local });
+        }
+        // Federated — list local clusters first, then peer summaries
+        // tagged with the owning peer id. The UI's cover thumbnail is
+        // resolved via the peer-aware /api/thumbs/* path.
+        let peerErrors = 0;
+        try {
+            const { listPeers } = await import('../core/cluster/peers.js');
+            const { relayTo } = await import('../core/cluster/relay.js');
+            const peers = listPeers();
+            const peerLists = await Promise.all(
+                peers.map(async (p) => {
+                    try {
+                        const r = await relayTo({
+                            targetPeerId: p.peerId,
+                            method: 'GET',
+                            path: `/api/ai/people?limit=${limit}`,
+                        });
+                        if (!r.ok) return [];
+                        const json = await r.json();
+                        const rows = Array.isArray(json?.people) ? json.people : [];
+                        return rows.map((row) => ({
+                            ...row,
+                            _peerId: p.peerId,
+                            _peerName: p.name || p.peerId,
+                        }));
+                    } catch {
+                        peerErrors += 1;
+                        return [];
+                    }
+                }),
+            );
+            const merged = [
+                ...(local.people || []).map((row) => ({ ...row, _peerId: 'local' })),
+                ...peerLists.flat(),
+            ];
+            return res.json({
+                success: true,
+                scope: 'federated',
+                people: merged,
+                total: merged.length,
+                peerErrors,
+            });
+        } catch (e) {
+            return res.json({ success: true, scope: 'local', ...local });
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Faces detected on a single download — used by the viewer's overlay
+// to draw face boxes over the image. Cheap (single indexed SELECT)
+// + small payload (tens of rows max per photo).
+app.get('/api/ai/faces/by-download/:id', async (req, res) => {
+    try {
+        const downloadId = Number(req.params.id);
+        if (!Number.isFinite(downloadId) || downloadId <= 0) {
+            return res.status(400).json({ error: 'invalid download id' });
+        }
+        const rows = aiGetDb()
+            .prepare(`
+                SELECT f.id, f.x, f.y, f.w, f.h, f.person_id, f.quality_score,
+                       p.label AS person_label
+                  FROM faces f
+                  LEFT JOIN people p ON p.id = f.person_id
+                 WHERE f.download_id = ?
+                 ORDER BY f.id ASC
+            `)
+            .all(downloadId);
+        res.json({ success: true, downloadId, faces: rows });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/ai/group-by-person', async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
+        const rows = aiGetDb()
+            .prepare(`
+                SELECT p.id, p.label, p.face_count,
+                       (SELECT f.download_id FROM faces f WHERE f.person_id = p.id LIMIT 1) AS cover_download_id
+                  FROM people p
+                 ORDER BY p.face_count DESC, p.id ASC
+                 LIMIT ?
+            `)
+            .all(limit);
+        res.json({ success: true, groups: rows });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/ai/people/:id/photos', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ error: 'invalid person id' });
+        }
+        const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
+        const offset = Math.max(0, Number(req.query?.offset) || 0);
+        const result = listPhotosForPerson(id, { limit, offset });
+        res.json({ success: true, personId: id, ...result });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.patch('/api/ai/people/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ error: 'invalid person id' });
+        }
+        const label = String(req.body?.label || '')
+            .trim()
+            .slice(0, 100);
+        const changes = renamePerson(id, label || null);
+        if (!changes) return res.status(404).json({ error: 'person not found' });
+        res.json({ success: true, id, label });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Merge person `otherId` INTO `id`. Every face previously labelled
+// `otherId` now belongs to `id`; the empty cluster is deleted. The
+// preserved cluster keeps its label. Used by the UI when two clusters
+// turn out to be the same person.
+app.post('/api/ai/people/:id/merge', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const otherId = Number(req.body?.otherId);
+        if (!Number.isFinite(id) || !Number.isFinite(otherId) || id === otherId) {
+            return res.status(400).json({ error: 'id + otherId required and must differ' });
+        }
+        const { mergeFacePerson } = await import('../core/db.js');
+        const r = mergeFacePerson(id, otherId);
+        log({
+            source: 'ai',
+            level: 'info',
+            msg: `people/merge: target=${id} other=${otherId} moved=${r.moved} deleted=${r.deleted}`,
+        });
+        res.json({ success: true, target: id, other: otherId, ...r });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Pull selected faces out of their current cluster(s) and create a
+// fresh cluster from them. Used when DBSCAN over-merged two similar
+// people — operator picks the faces that look wrong, calls split,
+// gets a new cluster they can rename.
+app.post('/api/ai/people/:id/split', async (req, res) => {
+    try {
+        const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds : [];
+        const label =
+            String(req.body?.label || '')
+                .trim()
+                .slice(0, 100) || null;
+        if (!faceIds.length) {
+            return res.status(400).json({ error: 'faceIds required (non-empty array)' });
+        }
+        const { splitFacePerson } = await import('../core/db.js');
+        const r = splitFacePerson(faceIds, label);
+        if (!r.personId) {
+            return res.status(404).json({ error: 'no faces matched the supplied ids' });
+        }
+        log({
+            source: 'ai',
+            level: 'info',
+            msg: `people/split: new personId=${r.personId} moved=${r.moved} label=${label || '(unlabelled)'}`,
+        });
+        res.json({ success: true, ...r });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Move a single face to a different cluster (or to `null` = unassigned).
+// Used for "this one face was put in the wrong cluster" repair.
+app.post('/api/ai/faces/:id/reassign', async (req, res) => {
+    try {
+        const faceId = Number(req.params.id);
+        if (!Number.isFinite(faceId) || faceId <= 0) {
+            return res.status(400).json({ error: 'invalid face id' });
+        }
+        const target =
+            req.body?.personId == null || req.body.personId === ''
+                ? null
+                : Number(req.body.personId);
+        if (target != null && !Number.isFinite(target)) {
+            return res.status(400).json({ error: 'invalid personId' });
+        }
+        const { reassignFace } = await import('../core/db.js');
+        const r = reassignFace(faceId, target);
+        if (!r.ok) return res.status(404).json({ error: 'face not found' });
+        log({
+            source: 'ai',
+            level: 'info',
+            msg: `faces/reassign: face=${faceId} from=${r.oldPersonId} to=${r.newPersonId}`,
+        });
+        res.json({ success: true, ...r });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/ai/people/:id', async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ error: 'invalid person id' });
+        }
+        const changes = deletePerson(id);
+        if (!changes) return res.status(404).json({ error: 'person not found' });
+        res.json({ success: true, id });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Re-index — full reset. Drops every AI artefact (embeddings, tags,
+// faces, people) and clears `ai_indexed_at` on every download so the
+// next scan starts from scratch. Use after changing model/dtype/label
+// list when the partial-clear of `clearStaleEmbeddings` isn't enough
+// (e.g. label list shrunk and the operator wants stale tags gone too).
+//
+// Aborts every in-flight scan first to avoid the race where the loop
+// keeps re-stamping `ai_indexed_at` while we're trying to null it out.
+app.post('/api/ai/reindex', async (req, res) => {
+    try {
+        // Cancel any in-flight scan before nuking the artefacts.
+        let cancelled = 0;
+        for (const f of ['embed', 'tags', 'faces']) {
+            if (aiCancelScan(f)) cancelled += 1;
+        }
+        // Settle one tick so the scan loops see the abort signal.
+        if (cancelled) await new Promise((r) => setTimeout(r, 100));
+        const r = resetAllAiData();
+        log({
+            source: 'ai',
+            level: 'info',
+            msg: `re-index — wiped embeddings=${r.embeddings} tags=${r.tags} faces=${r.faces} people=${r.people}; re-queued=${r.requeued}; cancelled-scans=${cancelled}`,
+        });
+        try {
+            broadcast({ type: 'ai_reindex', ...r });
+        } catch {}
+        res.json({ success: true, cancelled, ...r });
+    } catch (e) {
+        log({ source: 'ai', level: 'error', msg: `re-index failed: ${e?.message || e}` });
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// AI auto-scan drip timer — wakes every `autoScanIntervalMs`, checks
+// the live config + queue depth, then pushes up to `autoScanBatchSize`
+// un-indexed photos onto the backfill queue. The existing
+// `pregenerateAi` drain picks them up and runs them through the
+// embed/tag/face pipelines using the operator's current model + dtype
+// settings.
+//
+// Why drip + queue (not direct scan loop):
+//   - Queue path is shared with realtime downloads, so live monitor
+//     jobs always preempt drip work (realtime is `priority='realtime'`,
+//     drip is `'backfill'`).
+//   - Resume-safe: state lives in `cfg.autoScan`. A restart leaves the
+//     state untouched, the timer rearms on boot, and we resume from
+//     wherever `ai_indexed_at IS NULL` says we left off.
+//   - Cancel-safe: switching to 'paused' / 'idle' just makes the next
+//     tick a no-op. In-flight work in the existing queue finishes
+//     gracefully (operator stops new work, not the row currently
+//     being embedded).
+let _aiAutoScanTimer = null;
+let _aiAutoScanLastTickAt = 0;
+let _aiAutoScanLastEnqueued = 0;
+
+function _aiAutoScanTick() {
+    try {
+        const cfg = _aiCfg();
+        if (cfg.enabled !== true) return;
+        if (cfg.autoScan !== 'running') return;
+        const ceiling = Math.max(1, Number(cfg.autoScanQueueCeiling) || 50);
+        const batchSize = Math.max(1, Number(cfg.autoScanBatchSize) || 10);
+        let depths;
+        try {
+            depths = aiBgQueueDepths();
+        } catch {
+            depths = { realtime: 0, backfill: 0 };
+        }
+        // Back off when the backfill queue is already saturated — the
+        // drain reads from it FIFO, so dumping more in just grows the
+        // in-memory list without speeding work up.
+        if (depths.backfill >= ceiling) {
+            _aiAutoScanLastTickAt = Date.now();
+            _aiAutoScanLastEnqueued = 0;
+            return;
+        }
+        // Realtime traffic gets priority — if there's live work
+        // happening, skip the drip this tick so the user-visible path
+        // finishes faster.
+        if (depths.realtime > 0) {
+            _aiAutoScanLastTickAt = Date.now();
+            _aiAutoScanLastEnqueued = 0;
+            return;
+        }
+        const fileTypes = cfg.fileTypes || ['photo'];
+        const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
+        if (!batch.length) {
+            _aiAutoScanLastTickAt = Date.now();
+            _aiAutoScanLastEnqueued = 0;
+            return;
+        }
+        for (const row of batch) {
+            try {
+                aiPregenerateAi(row.id, { priority: 'backfill' });
+            } catch {}
+        }
+        _aiAutoScanLastTickAt = Date.now();
+        _aiAutoScanLastEnqueued = batch.length;
+        log({
+            source: 'ai-autoscan',
+            level: 'info',
+            msg: `tick: enqueued=${batch.length} backfillDepth=${depths.backfill} ceiling=${ceiling}`,
+        });
+    } catch (e) {
+        log({
+            source: 'ai-autoscan',
+            level: 'warn',
+            msg: `tick failed: ${e?.message || e}`,
+        });
+    }
+}
+
+function _aiAutoScanRearm() {
+    try {
+        if (_aiAutoScanTimer) {
+            clearInterval(_aiAutoScanTimer);
+            _aiAutoScanTimer = null;
+        }
+        const cfg = _aiCfg();
+        if (cfg.enabled !== true) return;
+        if (cfg.autoScan !== 'running') return;
+        const ms = Math.max(5_000, Math.min(3_600_000, Number(cfg.autoScanIntervalMs) || 60_000));
+        _aiAutoScanTimer = setInterval(_aiAutoScanTick, ms);
+        _aiAutoScanTimer.unref?.();
+        // Kick once right away so the operator sees a tick land before
+        // the first full interval elapses.
+        setImmediate(_aiAutoScanTick);
+        log({
+            source: 'ai-autoscan',
+            level: 'info',
+            msg: `armed: interval=${ms}ms batchSize=${cfg.autoScanBatchSize ?? 10}`,
+        });
+    } catch (e) {
+        log({
+            source: 'ai-autoscan',
+            level: 'warn',
+            msg: `rearm failed: ${e?.message || e}`,
+        });
+    }
+}
+// Arm on boot — picks up the persisted state automatically. The
+// config-change subscriber below also rearms on every save.
+setImmediate(_aiAutoScanRearm);
+try {
+    const { watchConfig } = await import('../config/manager.js');
+    watchConfig(() => _aiAutoScanRearm());
+} catch {}
+
+// Start / Pause / Stop control — single endpoint, action enum so the
+// state machine stays explicit. Resume is just `action='start'` from
+// a paused state — the un-indexed cursor (ai_indexed_at IS NULL)
+// keeps the picks identical so progress persists.
+app.post('/api/ai/auto-scan', async (req, res) => {
+    try {
+        const action = String(req.body?.action || '').toLowerCase();
+        const ACTIONS = { start: 'running', pause: 'paused', stop: 'idle' };
+        const next = ACTIONS[action];
+        if (!next) {
+            return res.status(400).json({ error: 'action must be one of: start, pause, stop' });
+        }
+        const { loadConfig, saveConfig } = await import('../config/manager.js');
+        const live = loadConfig();
+        const merged = {
+            ...live,
+            advanced: {
+                ...(live.advanced || {}),
+                ai: { ...(live.advanced?.ai || {}), autoScan: next },
+            },
+        };
+        await saveConfig(merged);
+        _aiAutoScanRearm();
+        log({
+            source: 'ai-autoscan',
+            level: 'info',
+            msg: `state: ${live.advanced?.ai?.autoScan || 'idle'} → ${next} (action=${action})`,
+        });
+        res.json({ success: true, state: next });
+    } catch (e) {
+        log({
+            source: 'ai-autoscan',
+            level: 'error',
+            msg: `state change failed: ${e?.message || e}`,
+        });
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// AI health check / doctor strip — surfaces the Python face sidecar's
+// install + runtime surface (binary, interpreter, provider, model, index
+// progress). UI renders the response as a list of ✓/⚠/✗ rows so the
+// operator can spot a missing dep in one look. Each `check` has a stable
+// `id` so the UI can color-code without parsing the label string.
+//
+// Hardening rules (carried over from the v2.12.1 hardening pass):
+//   - Every probe wrapped in try/catch — one failing probe never
+//     fails the request.
+//   - Every setTimeout / spawn uses an integer literal — no NaN risk
+//     that could surface as `TimeoutNaNWarning` in the docker logs.
+//   - Every fetch / child spawn carries an AbortController or hard
+//     timeout so a wedged dep can't hang the request.
+
+// Doctor — sidecar-aligned probe set. Six rows that cover the actual
+// install surface (Python sidecar + onnxruntime backends + buffalo_l):
+//
+//   1. Python face sidecar reachability (auto-spawn lifecycle state).
+//   2. Host Python on PATH — informational, used by the fallback spawn
+//      path when the prebuilt binary is unavailable.
+//   3. Prebuilt sidecar binary on disk (auto-downloaded on first scan).
+//   4. Inference provider resolved by onnxruntime inside the sidecar.
+//   5. Model loaded (insightface buffalo_l).
+//   6. Photos indexed (kept — drives the operator's progress sense).
+//
+// Each probe is wrapped in try/catch — one failing probe never fails the
+// request. Every fetch / spawn carries a fixed-integer timeout so a
+// black-holed dep can't hang the request.
+app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
+    const checks = [];
+
+    // 1. Sidecar reachability — drives the headline OK/spawning/failed
+    //    state. We surface the spawn module's lifecycle directly so the
+    //    operator sees "downloading…" / "starting up…" instead of a bare
+    //    fail row while the binary is being fetched in the background.
+    try {
+        const { getSidecarStatus } = await import('../core/ai/faces-spawn.js');
+        const st = getSidecarStatus();
+        if (st.state === 'healthy') {
+            checks.push({
+                id: 'sidecar',
+                label: 'Python face sidecar',
+                status: 'ok',
+                detail: `running at ${st.url}`,
+            });
+        } else if (st.state === 'downloading') {
+            checks.push({
+                id: 'sidecar',
+                label: 'Python face sidecar',
+                status: 'info',
+                detail: 'downloading binary…',
+            });
+        } else if (st.state === 'spawning') {
+            checks.push({
+                id: 'sidecar',
+                label: 'Python face sidecar',
+                status: 'info',
+                detail: 'starting up…',
+            });
+        } else if (st.state === 'failed') {
+            checks.push({
+                id: 'sidecar',
+                label: 'Python face sidecar',
+                status: 'fail',
+                detail: st.error || 'failed to start',
+            });
+        } else {
+            checks.push({
+                id: 'sidecar',
+                label: 'Python face sidecar',
+                status: 'info',
+                detail: 'disabled',
+            });
+        }
+    } catch (e) {
+        checks.push({
+            id: 'sidecar',
+            label: 'Python face sidecar',
+            status: 'warn',
+            detail: e?.message || 'probe failed',
+        });
+    }
+
+    // 2. Host Python — informational. The auto-spawn flow prefers the
+    //    PyInstaller binary; Python on the host is only consulted as a
+    //    fallback when the prebuilt binary fails to launch. Never fails
+    //    the card on absence — most installs run the prebuilt and never
+    //    need a host interpreter.
+    try {
+        const { execFile } = await import('node:child_process');
+        const bin = process.platform === 'win32' ? 'python' : 'python3';
+        const out = await new Promise((resolve, reject) => {
+            execFile(bin, ['--version'], { timeout: 2000 }, (err, stdout, stderr) => {
+                if (err) reject(err);
+                else resolve(String(stdout || stderr).trim());
+            });
+        });
+        const m = out.match(/Python (\d+)\.(\d+)(?:\.(\d+))?/);
+        const major = m ? Number(m[1]) : 0;
+        const minor = m ? Number(m[2]) : 0;
+        if (major >= 3 && minor >= 10) {
+            checks.push({
+                id: 'python',
+                label: 'Host Python',
+                status: 'ok',
+                detail: `${out} (fallback path available)`,
+            });
+        } else if (major >= 3) {
+            checks.push({
+                id: 'python',
+                label: 'Host Python',
+                status: 'warn',
+                detail: `${out} — sidecar prefers 3.10+`,
+            });
+        } else {
+            checks.push({
+                id: 'python',
+                label: 'Host Python',
+                status: 'info',
+                detail: `${out} (using prebuilt binary)`,
+            });
+        }
+    } catch {
+        checks.push({
+            id: 'python',
+            label: 'Host Python',
+            status: 'info',
+            detail: 'no Python on PATH (using prebuilt binary)',
+        });
+    }
+
+    // 3. Prebuilt sidecar binary on disk. Mirrors the path resolution
+    //    used by faces-spawn.js so the doctor card reports the same
+    //    location the spawn flow actually writes to (including
+    //    TGDL_DATA_DIR overrides used in tests).
+    try {
+        const { promises: fs } = await import('node:fs');
+        const dataDir = process.env.TGDL_DATA_DIR
+            ? path.resolve(process.env.TGDL_DATA_DIR)
+            : DATA_DIR;
+        const plat =
+            process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux';
+        const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+        const ext = process.platform === 'win32' ? '.exe' : '';
+        const binPath = path.join(
+            dataDir,
+            'faces-service',
+            'bin',
+            `tgdl-faces-${plat}-${arch}${ext}`,
+        );
+        const st = await fs.stat(binPath);
+        const sizeMb = (st.size / (1024 * 1024)).toFixed(1);
+        checks.push({
+            id: 'binary',
+            label: 'Prebuilt sidecar binary',
+            status: 'ok',
+            detail: `cached: ${sizeMb} MB`,
+        });
+    } catch {
+        // First-run setup hint — until the GitHub Release lands the
+        // download will 404, so the operator needs to know about the two
+        // recovery paths (docker compose or `pip install -e faces-service/`).
+        checks.push({
+            id: 'binary',
+            label: 'Prebuilt sidecar binary',
+            status: 'info',
+            detail:
+                'not yet downloaded — `docker compose --profile faces up` or ' +
+                '`pip install -e faces-service/` from the repo root, then restart',
+        });
+    }
+
+    // 4 + 5. Provider + model — both pulled from the sidecar. `/health`
+    //    carries the model + ready flag; the resolved onnxruntime
+    //    providers list lives on `/info` (set after the model loads).
+    //    Merging both keeps the doctor card aligned with the sidecar's
+    //    wire format without forcing a Python-side change.
+    try {
+        const facesClient = await import('../core/ai/faces-client.js');
+        const url = facesClient.getSidecarUrl();
+        const h = await facesClient.health();
+        if (h.ok) {
+            let providers = [];
+            if (url) {
+                try {
+                    const ctrl = new AbortController();
+                    const t = setTimeout(() => ctrl.abort(), 2000);
+                    try {
+                        const r = await globalThis.fetch(`${url}/info`, { signal: ctrl.signal });
+                        if (r.ok) {
+                            const info = await r.json();
+                            if (Array.isArray(info?.providers)) providers = info.providers;
+                        }
+                    } finally {
+                        clearTimeout(t);
+                    }
+                } catch {
+                    /* /info is best-effort — fall through to CPU default */
+                }
+            }
+            const top = providers[0] || 'CPUExecutionProvider';
+            const providerLabel =
+                {
+                    CUDAExecutionProvider: 'GPU acceleration: CUDA',
+                    CoreMLExecutionProvider: 'GPU acceleration: Apple Silicon (CoreML)',
+                    DmlExecutionProvider: 'GPU acceleration: DirectML',
+                    CPUExecutionProvider: 'CPU-only (no GPU detected)',
+                }[top] || top;
+            checks.push({
+                id: 'provider',
+                label: 'Inference provider',
+                status: 'ok',
+                detail: providerLabel,
+            });
+            checks.push({
+                id: 'model',
+                label: 'Model loaded',
+                status: h.ready ? 'ok' : 'warn',
+                detail: h.ready
+                    ? `${h.model || 'buffalo_l'} (${h.dim || 512}-dim)`
+                    : 'not loaded yet (first scan will load)',
+            });
+        } else {
+            checks.push({
+                id: 'provider',
+                label: 'Inference provider',
+                status: 'warn',
+                detail: 'unable to probe (sidecar offline)',
+            });
+            checks.push({
+                id: 'model',
+                label: 'Model loaded',
+                status: 'warn',
+                detail: 'unable to probe (sidecar offline)',
+            });
+        }
+    } catch (e) {
+        checks.push({
+            id: 'provider',
+            label: 'Inference provider',
+            status: 'warn',
+            detail: e?.message || 'probe failed',
+        });
+        checks.push({
+            id: 'model',
+            label: 'Model loaded',
+            status: 'warn',
+            detail: e?.message || 'probe failed',
+        });
+    }
+
+    // 6. Photos indexed — kept from the prior probe set. Drives the
+    //    operator's sense of progress; cheap (single SQL aggregate).
+    try {
+        const c = getAiCounts({ fileTypes: ['photo'] });
+        const pct = c.totalEligible ? Math.floor((c.indexed / c.totalEligible) * 100) : 0;
+        checks.push({
+            id: 'indexed',
+            label: 'Photos indexed',
+            status: 'ok',
+            detail: `${c.indexed}/${c.totalEligible} (${pct}%) · with faces ${c.withFaces || 0}`,
+        });
+    } catch (e) {
+        checks.push({
+            id: 'indexed',
+            label: 'Photos indexed',
+            status: 'warn',
+            detail: e?.message || String(e),
+        });
+    }
+
+    res.json({ success: true, checks });
 });
 
 // ====== Recovery cleanup ====================================================
@@ -6951,7 +8949,10 @@ app.get('/api/cluster/peer-thumbs/:remoteId', async (req, res) => {
             return res.status(400).type('text/plain').send('Bad id');
         }
         const thumb = await getOrCreateThumb(id, req.query.w);
-        if (!thumb) return res.status(404).type('text/plain').send('No thumb');
+        if (!thumb) {
+            res.setHeader('Cache-Control', 'no-store');
+            return res.status(404).type('text/plain').send('No thumb');
+        }
         res.setHeader('Content-Type', 'image/webp');
         res.setHeader('Cache-Control', 'private, no-store');
         if (Buffer.isBuffer(thumb)) return res.send(thumb);
@@ -7604,7 +9605,12 @@ app.get('/api/maintenance/logs/download', async (req, res) => {
         const all = raw.split(/\r?\n/);
         const tail = all.slice(Math.max(0, all.length - lines)).join('\n');
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+        // RFC 5987 — strip non-ASCII for the basic param, keep UTF-8 in filename*.
+        const asciiLogName = String(name).replace(/[^\x20-\x7e]/g, '_');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="${asciiLogName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        );
         res.send(tail);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -7872,6 +9878,33 @@ app.post('/api/config', async (req, res) => {
                     ...(cur.thumbs || {}),
                     ...(inc.thumbs || {}),
                 },
+                ai: (() => {
+                    const merged = { ...(cur.ai || {}), ...(inc.ai || {}) };
+                    // Deep-merge the nested `faces` sub-block so a partial
+                    // patch (e.g. `{faces:{epsilon:0.65}}` from the slider)
+                    // doesn't wipe siblings like `providers`, `sidecarUrl`,
+                    // `arRange`, etc. Without this, every slider tweak
+                    // would reset the rest of the faces config to defaults
+                    // on the next `_mergeAi` round.
+                    if (inc.ai?.faces && typeof inc.ai.faces === 'object') {
+                        merged.faces = {
+                            ...((cur.ai || {}).faces || {}),
+                            ...inc.ai.faces,
+                        };
+                    }
+                    return merged;
+                })(),
+                // Seekbar subsystem — sprite-sheet generator for the video
+                // hover preview. Mirrors the `nsfw`/`thumbs` shape: shallow
+                // merge here, per-field clamp + allow-list below. Without
+                // this branch, every POST /api/config that touches the
+                // `advanced.*` block would silently drop `advanced.seekbar`
+                // because `newConfig.advanced = merged` replaces the entire
+                // namespace with whatever `merged` lists.
+                seekbar: {
+                    ...(cur.seekbar || {}),
+                    ...(inc.seekbar || {}),
+                },
             };
             // ffmpeg hwaccel — allow-list validation. An attacker who
             // got past the admin gate could otherwise pass arbitrary
@@ -7967,6 +10000,107 @@ app.post('/api/config', async (req, res) => {
                 .filter((s) => ALLOWED_TYPES.includes(s));
             if (!ns.fileTypes.length) ns.fileTypes = NSFW_DEFAULTS.fileTypes.slice();
 
+            // AI subsystem (semantic search + auto-tag + face clustering).
+            // All values are config-driven — same posture as NSFW. Master
+            // switch defaults OFF; sub-feature toggles default ON so once
+            // an operator flips master to true they get all three out of
+            // the box.
+            const ai = merged.ai;
+            ai.enabled = ai.enabled === true;
+            ai.semanticSearch = ai.semanticSearch !== false;
+            ai.autoTags = ai.autoTags !== false;
+            ai.faceClustering = ai.faceClustering !== false;
+            ai.model =
+                typeof ai.model === 'string' && ai.model.trim()
+                    ? ai.model.trim()
+                    : 'Xenova/clip-vit-base-patch32';
+            // Per-capability overrides — string only, empty = inherit
+            // from the master `model`. Trimmed; never auto-filled so the
+            // UI can render an empty field as "inherit".
+            for (const k of ['searchModel', 'tagsModel', 'facesModel']) {
+                ai[k] = typeof ai[k] === 'string' ? ai[k].trim() : '';
+            }
+            const AI_DTYPES = new Set(['q8', 'fp16', 'fp32', 'q4']);
+            const aiDIn = String(ai.dtype || '')
+                .toLowerCase()
+                .trim();
+            ai.dtype = AI_DTYPES.has(aiDIn) ? aiDIn : 'q8';
+            ai.indexConcurrency = clampInt(ai.indexConcurrency, 1, 4, 1);
+            ai.batchSize = clampInt(ai.batchSize, 1, 200, 16);
+            ai.maxTagsPerImage = clampInt(ai.maxTagsPerImage, 1, 20, 5);
+            // tagsMode allow-list — anything off-list snaps back to 'auto'.
+            const TAGS_MODES = new Set(['auto', 'zero-shot', 'classifier']);
+            ai.tagsMode = TAGS_MODES.has(String(ai.tagsMode || '').toLowerCase())
+                ? String(ai.tagsMode).toLowerCase()
+                : 'auto';
+            // Float clamps via integer round-trip so the same helper applies.
+            ai.minTagScore =
+                clampInt(Math.round((Number(ai.minTagScore) || 0.2) * 1000), 0, 1000, 200) / 1000;
+            ai.facesEpsilon =
+                clampInt(Math.round((Number(ai.facesEpsilon) || 0.5) * 1000), 100, 1500, 500) /
+                1000;
+            ai.facesMinPoints = clampInt(ai.facesMinPoints, 2, 50, 3);
+            const AI_FILE_TYPES = ['photo'];
+            ai.fileTypes = (Array.isArray(ai.fileTypes) ? ai.fileTypes : ['photo'])
+                .map((s) => String(s).toLowerCase())
+                .filter((s) => AI_FILE_TYPES.includes(s));
+            if (!ai.fileTypes.length) ai.fileTypes = ['photo'];
+            // Tag labels — strip non-strings + dedup. Cap at 200 so a
+            // pasted thesaurus can't blow up tokenizer batch size.
+            ai.tagLabels = (Array.isArray(ai.tagLabels) ? ai.tagLabels : [])
+                .map((s) => String(s).trim())
+                .filter(Boolean);
+            ai.tagLabels = [...new Set(ai.tagLabels)].slice(0, 200);
+            if (!ai.tagLabels.length) {
+                // Fall back to the default list if the operator wiped it
+                // — saving an empty list would otherwise silently disable
+                // tagging until they edited config again.
+                ai.tagLabels = [
+                    'portrait',
+                    'landscape',
+                    'group_photo',
+                    'selfie',
+                    'food',
+                    'document',
+                    'screenshot',
+                    'meme',
+                    'logo',
+                    'indoor',
+                    'outdoor',
+                    'animal',
+                    'pet',
+                    'vehicle',
+                    'building',
+                    'art',
+                    'text',
+                ];
+            }
+            // hfToken — string only; trim. Empty string = no token, which
+            // is the recommended default (every model is public).
+            ai.hfToken = typeof ai.hfToken === 'string' ? ai.hfToken.trim().slice(0, 200) : '';
+            // federateFaces — explicit opt-in only (biometric data).
+            ai.federateFaces = ai.federateFaces === true;
+            // facesDetector allow-list — 'tiny' (default) or 'ssd'.
+            const FACE_DETECTORS = new Set(['tiny', 'ssd']);
+            ai.facesDetector = FACE_DETECTORS.has(String(ai.facesDetector || '').toLowerCase())
+                ? String(ai.facesDetector).toLowerCase()
+                : 'tiny';
+            // autoScan state machine — allow-list keeps the timer logic
+            // simple. Old boolean values get migrated:
+            //   true  → 'running'
+            //   false → 'idle'
+            const AUTO_SCAN_STATES = new Set(['idle', 'running', 'paused']);
+            const rawAutoScan =
+                ai.autoScan === true
+                    ? 'running'
+                    : ai.autoScan === false
+                      ? 'idle'
+                      : String(ai.autoScan || 'idle').toLowerCase();
+            ai.autoScan = AUTO_SCAN_STATES.has(rawAutoScan) ? rawAutoScan : 'idle';
+            ai.autoScanIntervalMs = clampInt(ai.autoScanIntervalMs, 5_000, 3_600_000, 60_000);
+            ai.autoScanBatchSize = clampInt(ai.autoScanBatchSize, 1, 200, 10);
+            ai.autoScanQueueCeiling = clampInt(ai.autoScanQueueCeiling, 1, 200, 50);
+
             const r = merged.diskRotator;
             r.sweepBatch = clampInt(r.sweepBatch, 1, 1000, 50);
             r.maxDeletesPerSweep = clampInt(r.maxDeletesPerSweep, 1, 100000, 5000);
@@ -7977,6 +10111,63 @@ app.post('/api/config', async (req, res) => {
 
             const w = merged.web;
             w.sessionTtlDays = clampInt(w.sessionTtlDays, 1, 365, 7);
+
+            // Seekbar sprite-sheet generator. Every knob clamps to a safe
+            // range so a hand-edited config can't OOM the Go sidecar
+            // (maxTiles=10000) or DoS ffmpeg (concurrency=64). format +
+            // hwaccel are allow-lists; everything off-list snaps back to
+            // the documented default. Empty string for hwaccel = inherit
+            // from advanced.thumbs.hwaccel (resolved inside core/seekbar/
+            // generator.js so the SPA doesn't need to know).
+            const sk = merged.seekbar;
+            // Master + auto switches — boolean coercion mirrors the AI /
+            // NSFW pattern. Default ON because the feature ships dark by
+            // default at the sidecar level (binary needs to download).
+            sk.enabled = sk.enabled !== false;
+            sk.autoOnDownload = sk.autoOnDownload !== false;
+            sk.intervalSec = clampInt(sk.intervalSec, 1, 60, 4);
+            sk.tileWidth = clampInt(sk.tileWidth, 64, 480, 160);
+            sk.columns = clampInt(sk.columns, 2, 30, 10);
+            sk.maxTiles = clampInt(sk.maxTiles, 12, 1000, 240);
+            sk.quality = clampInt(sk.quality, 10, 100, 75);
+            sk.concurrency = clampInt(sk.concurrency, 1, 16, 4);
+            sk.maxRetries = clampInt(sk.maxRetries, 0, 10, 3);
+            const SEEKBAR_FORMATS = new Set(['webp', 'jpeg']);
+            const fmtIn = String(sk.format || '')
+                .toLowerCase()
+                .trim();
+            sk.format = SEEKBAR_FORMATS.has(fmtIn) ? fmtIn : 'webp';
+            const SEEKBAR_OVERWRITE = new Set(['never', 'if-changed', 'always']);
+            const owIn = String(sk.overwrite || '')
+                .toLowerCase()
+                .trim();
+            sk.overwrite = SEEKBAR_OVERWRITE.has(owIn) ? owIn : 'if-changed';
+            // Same allow-list as `advanced.thumbs.hwaccel` plus the
+            // platform-extra backends the Go sidecar supports. `''` means
+            // "inherit from thumbs"; `'none'` is an explicit CPU-only
+            // override that the generator forwards as no `-hwaccel` flag.
+            const SEEKBAR_HWACCEL = new Set([
+                '',
+                'auto',
+                'none',
+                'cuda',
+                'vaapi',
+                'qsv',
+                'd3d11va',
+                'dxva2',
+                'videotoolbox',
+                'v4l2m2m',
+            ]);
+            const skHw = String(sk.hwaccel ?? '')
+                .toLowerCase()
+                .trim();
+            sk.hwaccel = SEEKBAR_HWACCEL.has(skHw) ? skHw || null : null;
+            // sidecarUrl / apiToken — string only, trimmed; empty = use
+            // the auto-spawned local binary. We never leak the token
+            // back in GET /api/config (`_sanitizeConfigForRead` redacts
+            // it alongside the dashboard passwordHash).
+            sk.sidecarUrl = typeof sk.sidecarUrl === 'string' ? sk.sidecarUrl.trim() : '';
+            sk.apiToken = typeof sk.apiToken === 'string' ? sk.apiToken.trim().slice(0, 256) : '';
 
             newConfig.advanced = merged;
         }
@@ -8056,6 +10247,43 @@ app.post('/api/config', async (req, res) => {
             }
         }
 
+        // Seekbar sidecar — runtime knobs (concurrency, hwaccel, format,
+        // tileWidth, etc.) are forwarded as env vars when the Go process
+        // spawns. So when an operator tweaks those on the Maintenance →
+        // Seekbar page, we need to relaunch the sidecar so the new values
+        // take effect — otherwise the next sprite would be generated with
+        // the *previous* boot's env. URL / token changes also need a fresh
+        // connect because client.js caches them at module scope.
+        // Fire-and-forget: the dashboard pill flips through `stopped` →
+        // `starting` → `running` as the sidecar comes back up; the GET
+        // /api/maintenance/seekbar/health endpoint surfaces the live mode
+        // either way.
+        if (req.body.advanced?.seekbar) {
+            try {
+                refreshSeekbarSidecar().catch((e) =>
+                    console.warn(
+                        '[seekbar-sidecar] config-change refresh failed:',
+                        e?.message || e,
+                    ),
+                );
+            } catch (e) {
+                console.warn('[seekbar-sidecar] config-change refresh threw:', e?.message || e);
+            }
+            // Broadcast so any open `/maintenance/seekbar` page can
+            // refresh its System Health card + KPI strip without waiting
+            // for the operator to click Refresh.
+            try {
+                broadcast({ type: 'seekbar_config_changed' });
+            } catch {}
+        }
+
+        // Invalidate the dialogs response cache so the next /api/dialogs hit
+        // rebuilds `inConfig` from the freshly-saved config. Without this,
+        // adding a group via POST /api/config keeps showing the dialog as
+        // "not in config" (and absent from the Monitored Only tab) for up
+        // to DIALOG_CACHE_TTL_MS — the operator sees their group on the
+        // sidebar but not in the picker filter.
+        _dialogsResponseCache = { at: 0, body: null };
         broadcast({ type: 'config_updated' });
         res.json({ success: true });
     } catch (error) {
@@ -8174,6 +10402,11 @@ app.put('/api/groups/:id', async (req, res) => {
         }
 
         await writeConfigAtomic(config);
+        // Drop the dialogs response cache so the picker filter re-derives
+        // `inConfig` for the just-added/updated group. Otherwise the
+        // "Monitored Only" tab keeps the group hidden for up to
+        // DIALOG_CACHE_TTL_MS even though it's now in config.
+        _dialogsResponseCache = { at: 0, body: null };
         broadcast({ type: 'config_updated', config });
 
         // Auto-backfill on first add (v2.3.34) — when a group transitions
@@ -8650,11 +10883,14 @@ app.use('/files', async (req, res, next) => {
 
         const inline = req.query.inline === '1';
         const baseName = path.basename(r.real);
-        // Quote-safe filename (RFC 6266 fallback handled by encodeURIComponent).
+        // RFC 5987 — `filename*` for UTF-8, plus an ASCII fallback for legacy
+        // clients. Some browsers / proxies still parse the basic `filename=`
+        // first, so omitting it leaves the file with a generic name.
         const dispKind = inline ? 'inline' : 'attachment';
+        const asciiName = baseName.replace(/[^\x20-\x7e]/g, '_');
         res.setHeader(
             'Content-Disposition',
-            `${dispKind}; filename*=UTF-8''${encodeURIComponent(baseName)}`,
+            `${dispKind}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(baseName)}`,
         );
 
         // HEIC / HEIF inline view — browsers don't render the format
@@ -8838,11 +11074,37 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Trigger types that change footer/statusbar metrics. Touching any of these
+// pokes the debounced `broadcastStatsSoon()` so connected clients receive a
+// fresh `stats_update` push without needing to refetch /api/stats.
+const _STATS_TRIGGER_TYPES = new Set([
+    'bulk_delete',
+    'file_deleted',
+    'group_purged',
+    'purge_all',
+    'config_updated',
+    'download_complete',
+]);
+
 function broadcast(data) {
     const message = JSON.stringify(data);
     clients.forEach((client) => {
         if (client.readyState === 1) client.send(message);
     });
+    // Side-channel: if the event meaningfully changed stats, schedule a
+    // single recompute + push. Debounce inside broadcastStatsSoon() makes
+    // a 50-row bulk delete still cost one stats broadcast, not fifty.
+    try {
+        if (
+            data &&
+            typeof data === 'object' &&
+            typeof data.type === 'string' &&
+            _STATS_TRIGGER_TYPES.has(data.type) &&
+            typeof broadcastStatsSoon === 'function'
+        ) {
+            broadcastStatsSoon();
+        }
+    } catch {}
 }
 
 // ---- In-memory log ring + WS stream ---------------------------------------
@@ -8936,6 +11198,18 @@ const _jobTrackers = {
     // BEFORE the finally block reset the flag, so a retry after error
     // got a spurious 409 ALREADY_RUNNING. Prefix 'thumbs' preserved.
     thumbsBuild: createJobTracker({ kind: 'thumbsBuild', broadcast, log, eventPrefix: 'thumbs' }),
+    seekbarBuild: createJobTracker({
+        kind: 'seekbarBuild',
+        broadcast,
+        log,
+        eventPrefix: 'seekbar',
+    }),
+    seekbarRebuild: createJobTracker({
+        kind: 'seekbarRebuild',
+        broadcast,
+        log,
+        eventPrefix: 'seekbar_rebuild',
+    }),
     // Same race fix as thumbsBuild — `let _faststartRunning` had the
     // identical broadcast-before-flag-reset window. Prefix 'faststart'
     // preserved so the video page's WS listeners don't change.
@@ -8960,6 +11234,12 @@ const _jobTrackers = {
         log,
         eventPrefix: 'recovery_bulk',
     }),
+    // AI subsystem — three independent scans owned by the same page.
+    // Event prefixes match the WS contract used by maintenance-ai.js:
+    // ai_index_progress / ai_index_done, ai_tags_*, ai_people_*.
+    aiIndex: createJobTracker({ kind: 'aiIndex', broadcast, log, eventPrefix: 'ai_index' }),
+    aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
+    aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
 };
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's
@@ -9095,6 +11375,47 @@ ${tip}
     // AccountManager-driven path covers everything else lazily.
     connectTelegram().catch(() => {});
 
+    // Seekbar sidecar — auto-spawn the Go binary (or attach to an
+    // operator-provided URL). Best-effort; the maintenance page renders
+    // the status either way.
+    try {
+        setSeekbarBroadcast(broadcast);
+        startSeekbarSidecar().catch((e) => {
+            console.warn('[seekbar-sidecar] start failed:', e?.message || e);
+        });
+    } catch (e) {
+        console.warn('[seekbar-sidecar] wiring failed:', e?.message || e);
+    }
+
+    // One-shot v2.x cache migration — collapse the thumb cache from five
+    // widths (120 / 200 / 240 / 320 / 480 px) down to a single canonical
+    // 320-px width. Pre-upgrade caches still hold the legacy WebPs as
+    // dead bytes; this walks the downloads table once and unlinks every
+    // legacy-width file. Guarded by a kv flag so it doesn't repeat on
+    // every boot. Idempotent if the flag is cleared by hand.
+    // Fires inside `setImmediate` so the HTTP listener is already
+    // accepting connections before we touch the disk — operators get
+    // the dashboard right away; the sweep finishes in the background.
+    setImmediate(() => {
+        try {
+            if (kvGet('thumbs_widths_unified_v1') === true) return;
+            purgeNonStandardThumbs()
+                .then(({ removed, bytes }) => {
+                    kvSet('thumbs_widths_unified_v1', true);
+                    if (removed > 0) {
+                        console.log(
+                            `[thumbs] purged ${removed} legacy-width WebPs (${bytes} bytes freed)`,
+                        );
+                    }
+                })
+                .catch((e) => {
+                    console.warn('[thumbs] one-shot legacy-width purge failed:', e.message);
+                });
+        } catch (e) {
+            console.warn('[thumbs] one-shot purge guard threw:', e.message);
+        }
+    });
+
     // Boot the disk rotator. No-op when diskManagement.enabled is false —
     // safe to call at every startup. Restarts via POST /api/config (above).
     // The `getActiveFilePaths` accessor lets the rotator skip any file the
@@ -9129,6 +11450,18 @@ ${tip}
         });
     } catch (e) {
         console.warn('[integrity] start failed:', e.message);
+    }
+
+    // Wire the WS broadcaster for per-file auto-optimise events so the
+    // maintenance dashboard can animate its counters live as fresh
+    // downloads land. Mirrors the `integrity.start({ broadcast })`
+    // injection pattern — the core module stays standalone-runnable
+    // (CLI monitor leaves it a no-op).
+    try {
+        const { setBroadcast: setFaststartBroadcast } = await import('../core/faststart.js');
+        setFaststartBroadcast(broadcast);
+    } catch (e) {
+        console.warn('[faststart] setBroadcast failed:', e.message);
     }
 
     // Boot the rescue sweeper. Always armed — even when cfg.rescue.enabled
@@ -9186,6 +11519,16 @@ ${tip}
     } catch (e) {
         console.warn('[nsfw] preload-on-boot skipped:', e.message);
     }
+
+    // Auto-spawn the face-clustering Python sidecar. Fire-and-forget — the
+    // module handles three modes (docker env, operator override, local
+    // spawn) and surfaces every state transition via the `ai_faces_status`
+    // WS broadcast plus `getSidecarStatus()` for /api/ai/status.
+    import('../core/ai/faces-spawn.js')
+        .then((m) => m.startSidecar())
+        .catch((e) => {
+            console.warn('[ai-faces-spawn] boot skipped:', e?.message || e);
+        });
 
     // Resolve group names from Telegram for any DB records still unnamed
     await resolveGroupNamesFromTelegram();

@@ -33,30 +33,49 @@ function applyStatus(status) {
     const startBtn = $('engine-start');
     const stopBtn = $('engine-stop');
     const errEl = $('engine-error');
+    const dot = $('engine-state-dot');
+    const card = $('settings-card-engine');
+    // Each state carries a translated label, a CSS class for the pill
+    // chip (`engine-state-{state}`), and a remixicon glyph that
+    // visually echoes the state (play / pause / spinner / error).
     const stateLabels = {
         running: {
             text: i18nT('settings.engine.running', 'Running'),
-            cls: 'bg-tg-green/20 text-tg-green',
+            cls: 'engine-state-running',
+            icon: 'ri-pulse-line',
         },
         starting: {
             text: i18nT('settings.engine.starting', 'Starting…'),
-            cls: 'bg-tg-blue/20 text-tg-blue',
+            cls: 'engine-state-starting',
+            icon: 'ri-loader-4-line',
         },
         stopping: {
             text: i18nT('settings.engine.stopping', 'Stopping…'),
-            cls: 'bg-tg-orange/20 text-tg-orange',
+            cls: 'engine-state-stopping',
+            icon: 'ri-pause-circle-line',
         },
         stopped: {
             text: i18nT('settings.engine.stopped', 'Stopped'),
-            cls: 'bg-gray-700 text-gray-300',
+            cls: 'engine-state-stopped',
+            icon: 'ri-stop-circle-line',
         },
-        error: { text: i18nT('settings.engine.error', 'Error'), cls: 'bg-red-500/20 text-red-300' },
+        error: {
+            text: i18nT('settings.engine.error', 'Error'),
+            cls: 'engine-state-error',
+            icon: 'ri-error-warning-line',
+        },
     };
     const lbl = stateLabels[status.state] || stateLabels.stopped;
     if (pill) {
-        pill.textContent = lbl.text;
-        pill.className = `ml-auto text-xs px-2 py-0.5 rounded-full ${lbl.cls}`;
+        pill.className = `engine-state-pill ${lbl.cls}`;
+        pill.innerHTML = `<i class="${lbl.icon}"></i><span>${lbl.text}</span>`;
     }
+    // Pulsing dot mirrors the pill state — drives the keyframe
+    // animation per `data-state` rule in main.css.
+    if (dot) dot.dataset.state = status.state || 'stopped';
+    // The `data-state="running"` on the card root drives the
+    // spinner animation on the Active stat tile.
+    if (card) card.dataset.state = status.state || 'stopped';
     if (startBtn && stopBtn) {
         const running = status.state === 'running' || status.state === 'starting';
         startBtn.classList.toggle('hidden', running);

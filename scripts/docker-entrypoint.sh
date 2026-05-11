@@ -90,7 +90,13 @@ if [ "$(id -u)" = "0" ]; then
     # injects /dev/nvidia* with mode 0666, so no group fix is needed; the
     # device works for any UID. Skip the loop.
 
-    exec gosu node:node "$@"
+    # gosu accepts either `<user>` or `<user>:<group>`. The latter
+    # requires both a user AND a group named `node` to exist — true on
+    # the official Node images, but Synology DSM (and some BusyBox
+    # images) only ship the `node` user with a numeric primary group.
+    # Dropping the explicit group lets gosu inherit the user's primary
+    # group, which works on every Linux + DSM variant we ship to.
+    exec gosu node "$@"
 fi
 
 exec "$@"
