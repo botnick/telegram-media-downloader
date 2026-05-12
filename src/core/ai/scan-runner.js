@@ -246,6 +246,18 @@ async function _runScan(feature, cfg, worker, onProgress, onDone, onLog) {
             if (typeof onLog === 'function') onLog({ source: `ai-scan-${feature}`, level, msg });
         } catch {}
     };
+    // Adapter for helpers that emit structured log envelopes
+    // ({source, level, msg}) instead of (level, msg).
+    const logEntry = (entry) => {
+        if (entry && typeof entry === 'object') {
+            const lvl = typeof entry.level === 'string' ? entry.level : 'info';
+            const src = entry.source ? `${entry.source}: ` : '';
+            const m = entry.msg ?? entry.message ?? JSON.stringify(entry);
+            log(lvl, `${src}${String(m)}`);
+            return;
+        }
+        log('info', String(entry ?? ''));
+    };
     if (_scans[feature]?.running) {
         log('warn', `start${feature} called while already running — ignoring`);
         return { alreadyRunning: true };
@@ -275,7 +287,7 @@ async function _runScan(feature, cfg, worker, onProgress, onDone, onLog) {
 
     (async () => {
         try {
-            await worker(state, ctrl.signal, bump, log, cfg);
+            await worker(state, ctrl.signal, bump, log, cfg, logEntry);
         } catch (e) {
             state.error = e?.message || String(e);
             log('error', `${feature} scan crashed: ${state.error}`);
@@ -301,7 +313,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
     return _runScan(
         'faces',
         cfg,
-        async (state, signal, bump, log, cfg) => {
+        async (state, signal, bump, log, cfg, logEntry) => {
             // Resolve `fileTypes` with the same precedence as the cluster
             // knobs: new path > legacy flat alias > env override > default.
             const facesCfgIn = cfg?.faces || {};
@@ -389,7 +401,11 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                     try {
                                         for (const frameAbs of framePaths) {
                                             if (signal.aborted) break;
-                                            const faces = await detectFaces(frameAbs, cfg, log);
+                                            const faces = await detectFaces(
+                                                frameAbs,
+                                                cfg,
+                                                logEntry,
+                                            );
                                             if (Array.isArray(faces) && faces.length) {
                                                 for (const f of faces) {
                                                     insertFace({
@@ -413,7 +429,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                     }
                                 }
                             } else {
-                                const detected = await detectFaces(abs, cfg, log);
+                                const detected = await detectFaces(abs, cfg, logEntry);
                                 if (Array.isArray(detected) && detected.length) {
                                     deleteFacesForDownload(row.id);
                                     for (const f of detected) {

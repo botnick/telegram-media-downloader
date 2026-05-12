@@ -1,17 +1,21 @@
 # AI subsystem
 
-Face detection + face clustering — backed by a small Python sidecar
-(`faces-service/`) running insightface buffalo_l (MIT, 512-dim ArcFace
-embeddings). The Node app speaks HTTP to the sidecar; everything else
-(DBSCAN, cluster ops, label preservation) stays in-process.
+Three independent analysis pipelines backed by a single Python sidecar
+(`faces-service/`):
+
+1. **Face detection + clustering** — insightface buffalo_l (MIT, 512-dim ArcFace embeddings). DBSCAN groups recurring people; cluster ops (rename, merge, split, reassign) stay in-process.
+2. **Text extraction (OCR)** — pytesseract wrapper around system Tesseract binary. Extracts visible text from images with per-character confidence scoring.
+3. **Object detection** — YOLOv8-nano ONNX model (6MB, 80 COCO classes: person, car, dog, chair, etc). Returns bounding boxes + confidence scores.
+
+The Node app speaks HTTP to the sidecar; everything else stays in-process.
 
 The sidecar is **zero-install** on every supported platform — see the
 support matrix below.
 
-> **What changed in v2.16.** Semantic image search and auto-tagging were
-> removed. Face clustering moved out-of-process. The Node side no longer
-> bundles `@vladmandic/face-api` or `@tensorflow/tfjs-node`, both of
-> which had broken installs on Windows + Node 22.
+> **New in v2.18.** OCR and object detection added to the AI subsystem.
+> Requires `tesseract-ocr` system binary (OCR only) and `~6 MB YOLOv8n ONNX
+> model` (object detection only). Both are optional; enable individually
+> from Maintenance → AI.
 
 ## Architecture
 
@@ -191,12 +195,63 @@ wheels for `onnxruntime-gpu` and `onnxruntime-openvino` are not
 published. Pi 4 4GB+ runs buffalo_l at ~2 fps on CPU; the Pi Zero /
 Pi 3 are too underpowered (insightface needs ~600 MB RSS).
 
+## OCR setup
+
+**Tesseract binary** (required for text extraction):
+
+```bash
+# macOS
+brew install tesseract
+
+# Debian/Ubuntu
+sudo apt-get install tesseract-ocr
+
+# Windows (chocolatey)
+choco install tesseract
+```
+
+If tesseract is on PATH, pytesseract finds it automatically. The
+dashboard's AI maintenance page reports readiness; a 503 response code
+means tesseract is missing.
+
+## Object detection setup
+
+**YOLOv8-nano ONNX model** (~6 MB, required for object detection):
+
+The model auto-downloads on first use to `~/.cache/yolov8n.onnx`. If
+download fails (offline, firewall), manually place the file at that path
+or build from source:
+
+```bash
+pip install ultralytics onnxruntime
+python3 << 'EOF'
+from ultralytics import YOLO
+model = YOLO('yolov8n')
+model.export(format='onnx')
+# Copy yolov8n.onnx to ~/.cache/yolov8n.onnx
+EOF
+```
+
+Detects 80 common object classes (COCO dataset). Returns per-object
+confidence scores and bounding boxes in original image coordinates.
+
+The dashboard reports readiness on the AI page; a 503 response means the
+model is missing.
+
 ## Configuration
 
-Surface: `config.advanced.ai` (kv['config']). The faces-specific knobs
-live under `advanced.ai.faces.*`; every value can also be overridden at
-deploy time via a `TGDL_FACES_<KEY>` env var (deployment > config >
-default).
+Surface: `config.advanced.ai` (kv['config']). Capability-specific knobs:
+
+- **Face clustering:** `advanced.ai.faces.*` (detector model, DBSCAN epsilon/minPoints, video sampling)
+- **Text extraction:** `advanced.ai.imageOcr` (enable/disable toggle)
+- **Object detection:** `advanced.ai.objectDetection` (enable/disable toggle)
+
+Every value can also be overridden at deploy time via env vars:
+- `TGDL_FACES_*` for faces config
+- `TGDL_OCR_*` for OCR config (future)
+- `TGDL_OBJECTS_*` for object detection config (future)
+
+Priority: deployment > config file > default.
 
 Old flat keys (`facesServiceUrl`, `facesEpsilon`, `facesMinPoints`,
 `facesDetector`, `facesLabelMatchEps`, `federateFaces`) are migrated

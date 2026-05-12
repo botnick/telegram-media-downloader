@@ -1,13 +1,14 @@
 # tgdl-faces
 
-Face detection + 512-dim embedding HTTP sidecar for **telegram-media-downloader**.
+Multi-modal AI HTTP sidecar for **telegram-media-downloader**.
 
-Wraps the [insightface](https://github.com/deepinsight/insightface) `buffalo_l` model
-(ArcFace, 512-dim, MIT-licensed) behind a tiny FastAPI service. The Node app talks to it
-over HTTP, so the Node side carries no Python / native-binding burden — which means a
-fresh `npm install` works uniformly on Windows, Linux, macOS, Raspberry Pi, and Synology
-DSM. (The previous in-process stack used `@vladmandic/face-api` + `@tensorflow/tfjs-node`,
-which has no prebuilt Node-22 binding for Windows.)
+Three independent pipelines, each optional:
+
+1. **Face detection + embedding** — [insightface](https://github.com/deepinsight/insightface) `buffalo_l` (ArcFace, 512-dim, MIT-licensed)
+2. **Text extraction (OCR)** — [Tesseract](https://github.com/UB-Mannheim/tesseract) via pytesseract (configurable languages, character confidence)
+3. **Object detection** — YOLOv8-nano ONNX (6 MB, 80 COCO classes, bounding boxes)
+
+All pipelines are exposed over HTTP (FastAPI) so the Node app carries no Python / native-binding burden — `npm install` works uniformly on Windows, Linux, macOS, Raspberry Pi, and Synology DSM. (The previous in-process stack used `@vladmandic/face-api` + `@tensorflow/tfjs-node`, which has no prebuilt Node-22 binding for Windows.)
 
 End users never touch this directory directly. Two delivery paths cover every install:
 
@@ -21,15 +22,35 @@ This README is for contributors who want to run the sidecar from source.
 
 ## Endpoints
 
+### Face detection
+
 | Method | Path | Body | Response |
 |---|---|---|---|
 | `GET` | `/health` | — | `{ ok, version, model, dim, ready, error? }` (always 200) |
-| `GET` | `/info` | — | `{ model, dim, providers, det_size, version }` |
+| `GET` | `/info` | — | `{ model, dim, providers, det_size, version, clip_ready, ocr_ready?, detection_ready? }` |
 | `GET` | `/providers` | — | `{ candidates[], available[], details[], recommended, current }` — onnxruntime backend probe |
 | `POST` | `/detect` | `{ path \| image_b64, min_score?, min_box_px?, ar_range? }` | `{ faces[], image_w, image_h }` |
 | `POST` | `/detect-embed` | _alias of `/detect` — same body, same response_ | — |
 
-Errors are returned as `{ "error": "<text>", "code": "<machine_code>" }` with a stable
+### Text extraction (OCR)
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| `POST` | `/ocr` | `{ path \| image_b64, lang?: string }` | `{ result: { text, language, confidence } }` |
+
+`lang` defaults to `"eng"`; Tesseract supports 100+ language codes (e.g. `"tha"` for Thai, `"fra"` for French).
+
+### Object detection
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| `POST` | `/detect-objects` | `{ path \| image_b64, confidence?: 0-1 }` | `{ objects: [{ object, confidence, x, y, w, h }, ...] }` |
+
+`confidence` threshold defaults to 0.5; increase to reduce false positives, decrease for more detections. Bounding boxes are in original image coordinates: `x, y` = top-left, `w, h` = width/height (pixels).
+
+### Error responses
+
+All endpoints return errors as `{ "error": "<text>", "code": "<machine_code>" }` with a stable
 status code:
 
 | Status | Code | Meaning |
@@ -38,7 +59,8 @@ status code:
 | `403` | `path_not_allowed` | `path` falls outside `TGDL_FACES_ALLOW_ROOTS`. |
 | `404` | `file_not_found` | `path` resolves to a missing or unreadable file. |
 | `415` | `image_decode_failed` | The bytes weren't a recognisable image. |
-| `500` | `detect_failed` | Unexpected model-side failure. |
+| `500` | `detect_failed` / `ocr_failed` / `detection_failed` | Unexpected model-side failure. |
+| `503` | `ocr_not_ready` / `detection_not_ready` | Tesseract or YOLOv8n model not available; install dependencies. |
 
 `/health` deliberately never returns 5xx — the Node side polls it every 60s and a 5xx
 flood is noisier than a `{ ok: false, error: ... }` payload. Consumers must inspect
@@ -104,6 +126,60 @@ curl -X POST http://127.0.0.1:8011/detect \
     -H 'content-type: application/json' \
     -d "{\"image_b64\": \"$B64\"}"
 ```
+
+### Optional: Text extraction (OCR)
+
+Install the Tesseract binary (required for `/ocr` endpoint):
+
+```bash
+# macOS
+brew install tesseract
+
+# Ubuntu/Debian
+sudo apt-get install tesseract-ocr
+
+# Windows (via chocolatey)
+choco install tesseract
+
+# Windows (via scoop)
+scoop install tesseract
+```
+
+pytesseract finds Tesseract automatically if it's on PATH. Verify:
+
+```bash
+curl -X POST http://127.0.0.1:8011/ocr \
+    -H 'content-type: application/json' \
+    -d '{"image_b64": "..."}'  # or {"path": "..."}
+```
+
+### Optional: Object detection
+
+Download the YOLOv8-nano ONNX model (~6 MB) to `~/.cache/yolov8n.onnx`:
+
+```bash
+# macOS / Linux
+mkdir -p ~/.cache
+python3 << 'EOF'
+from ultralytics import YOLO
+import shutil
+model = YOLO('yolov8n')
+model.export(format='onnx')
+shutil.copy('yolov8n.onnx', os.path.expanduser('~/.cache/yolov8n.onnx'))
+EOF
+
+# Or download manually to ~/.cache/yolov8n.onnx
+```
+
+Verify:
+
+```bash
+curl -X POST http://127.0.0.1:8011/detect-objects \
+    -H 'content-type: application/json' \
+    -d '{"image_b64": "..."}'  # or {"path": "..."}
+```
+
+Both OCR and object detection are optional — the sidecar runs without them and returns 503 on those endpoints if dependencies are missing.
 
 ## Tests
 
