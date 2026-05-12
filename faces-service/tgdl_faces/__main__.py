@@ -200,17 +200,19 @@ def main() -> None:
 
     preload_model()
 
-    # Import lazily so `python -m tgdl_faces --help` style commands that
-    # uvicorn might add in future don't pay the heavy insightface import.
+    # Import the app object directly — the string form "tgdl_faces.app:app"
+    # causes uvicorn to use importlib at runtime, which PyInstaller cannot
+    # detect at analysis time and therefore never bundles tgdl_faces into
+    # the frozen binary (→ ModuleNotFoundError inside the .exe).
+    # Direct static import lets PyInstaller include the package automatically.
+    from tgdl_faces.app import get_app  # noqa: PLC0415
     import uvicorn  # noqa: PLC0415
 
     uvicorn.run(
-        "tgdl_faces.app:app",
+        get_app(),
         host=host,
         port=port,
         log_level="info",
-        # Disable uvicorn's reloader — the sidecar is a long-running
-        # service supervised by the Node app, not a dev playground.
         reload=False,
     )
 
