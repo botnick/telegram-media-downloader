@@ -29,6 +29,7 @@ import {
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
     refreshSidecar as refreshSeekbarSidecar,
+    SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
 } from '../../core/seekbar/spawn.js';
 import { probeHwaccel as probeSeekbarHwaccel } from '../../core/seekbar/client.js';
 import { getSeekbarSprite } from '../../core/db/seekbar.js';
