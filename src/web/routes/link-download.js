@@ -82,10 +82,14 @@ export function createLinkDownloadRouter({ getAccountManager }) {
                   .filter((h) => typeof h === 'string' && h.trim())
                   .map((h) => h.trim().toLowerCase())
             : [];
-        // If no allowlist is configured, fall back to the private-host
-        // check only (existing behaviour). The allowlist is an optional
-        // hard fence operators can enable for stricter control.
-        if (allowedProxyTestHosts.length > 0 && !allowedProxyTestHosts.includes(normalizedHost)) {
+        // Enforce server-controlled destinations to prevent SSRF.
+        // Proxy probing is only allowed for explicitly configured hosts.
+        if (allowedProxyTestHosts.length === 0) {
+            return res.status(400).json({
+                error: 'allowedProxyTestHosts must be configured to use proxy test',
+            });
+        }
+        if (!allowedProxyTestHosts.includes(normalizedHost)) {
             return res.status(400).json({
                 error: 'host is not in allowedProxyTestHosts',
             });
