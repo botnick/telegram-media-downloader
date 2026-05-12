@@ -10718,6 +10718,12 @@ async function _spawnInternalBackfill({
 // 9. Profile Photos
 app.get('/api/groups/:id/photo', async (req, res) => {
     let id = req.params.id;
+    // Comment-thread groups use `comment:<parentGroupId>` as their group_id.
+    // Strip the prefix and serve the parent group's photo so the comment
+    // group inherits the same avatar in the gallery / sidebar.
+    if (typeof id === 'string' && id.startsWith('comment:')) {
+        id = id.slice('comment:'.length);
+    }
     // Synthetic IDs from `reindexFromDisk` (`unknown:<sanitisedFolderName>`)
     // carry no Telegram entity directly. Resolve them to a numeric ID by
     // matching the folder name against the live dialogs cache (the user's

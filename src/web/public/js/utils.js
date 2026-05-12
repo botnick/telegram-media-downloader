@@ -135,8 +135,11 @@ export function createAvatar(idOrOpts, name, type) {
     const initial = (name || '?').charAt(0).toUpperCase();
 
     let typeIcon = 'question-line';
-    if (type === 'channel' || String(id).startsWith('-100')) typeIcon = 'megaphone-fill';
-    else if (type === 'group' || String(id).startsWith('-')) typeIcon = 'group-fill';
+    // Derive a numeric peer ID from any known synthetic prefix so the
+    // type-icon fallback works for comment:, unknown:, and similar IDs.
+    const numericId = String(id).replace(/^(comment|unknown):/, '');
+    if (type === 'channel' || numericId.startsWith('-100')) typeIcon = 'megaphone-fill';
+    else if (type === 'group' || numericId.startsWith('-')) typeIcon = 'group-fill';
     else if (type === 'bot') typeIcon = 'robot-2-fill';
     else typeIcon = 'user-fill';
 
