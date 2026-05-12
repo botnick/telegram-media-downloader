@@ -246,6 +246,7 @@
                     <div data-page="maintenance-logs"></div>
                     <div data-page="maintenance-backup"></div>
                     <div data-page="maintenance-cluster"></div>
+                    <div data-page="maintenance-db-stats"></div>
                     <div data-page="maintenance-recovery"></div>
                     <div data-page="maintenance-updates"></div>
                 </div>
@@ -845,6 +846,9 @@
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab">
                             <i class="ri-broadcast-line"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
+                        </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-db-stats" href="#/maintenance/db-stats" role="tab">
+                            <i class="ri-database-2-line"></i><span data-i18n="nav.maintenance.db_stats">DB Stats</span>
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-recovery" href="#/maintenance/recovery" role="tab">
                             <i class="ri-first-aid-kit-line"></i><span data-i18n="nav.maintenance.recovery">Recovery</span>
@@ -3655,6 +3659,15 @@
                         </div>
                         <div id="recovery-list" class="space-y-2"></div>
                     </section>
+                </div>
+
+                <!-- Maintenance / DB Stats (admin-only) -->
+                <div id="page-maintenance-db-stats" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="maintenance.db-stats.title"
+                     data-page-subtitle-key="maintenance.db-stats.subtitle">
+                    <div id="db-stats-root">
+                        <div class="text-center py-8 text-xs text-tg-textSecondary">Loading…</div>
+                    </div>
                 </div>
 
                 <!-- Maintenance / Updates (admin-only) -->

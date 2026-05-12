@@ -902,6 +902,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-cluster.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-cluster', e));
+    } else if (page === 'maintenance-db-stats') {
+        document.getElementById('page-title').textContent = i18nT(
+            'maintenance.db-stats.title',
+            'Database stats',
+        );
+        document.getElementById('page-subtitle').textContent = i18nT(
+            'maintenance.db-stats.subtitle',
+            'Table sizes, group breakdown, file types, and AI indexing status.',
+        );
+        import('./maintenance-db-stats.js')
+            .then((m) => m.showDbStatsPage())
+            .catch((e) => console.error('maintenance-db-stats', e));
     } else if (page === 'maintenance-recovery') {
         document.getElementById('page-title').textContent = i18nT(
             'maintenance.recovery.page_title',
@@ -1332,6 +1344,7 @@ const PAGE_HEADER_ICON = {
     'maintenance-logs': 'ri-terminal-box-line',
     'maintenance-backup': 'ri-cloud-line',
     'maintenance-cluster': 'ri-broadcast-line',
+    'maintenance-db-stats': 'ri-database-2-line',
     'maintenance-recovery': 'ri-first-aid-kit-line',
     'maintenance-updates': 'ri-download-cloud-2-line',
 };
