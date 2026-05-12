@@ -132,6 +132,7 @@ import {
     isScanRunning as aiIsScanRunning,
     getScanState as aiGetScanState,
     _bgQueueDepths as aiBgQueueDepths,
+    detectFaces as aiDetectFaces,
 } from '../core/ai/index.js';
 // Search + Auto-tag + vector index were removed in this release. Stubs
 // below keep the existing route handlers compiling until the bigger
@@ -7509,7 +7510,7 @@ app.post('/api/ai/faces/recluster', async (_req, res) => {
             });
         }
         try {
-            if (aiStartFacesScan) aiStartFacesScan().catch(() => {});
+            if (aiStartFacesScan) aiStartFacesScan(_aiCfg()).catch(() => {});
         } catch {}
         res.json({ success: true });
     } catch (e) {
@@ -7542,9 +7543,85 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
         // right away. Fire-and-forget — the scan owns its own state
         // machine + WS events.
         try {
-            if (aiStartFacesScan) aiStartFacesScan().catch(() => {});
+            if (aiStartFacesScan) aiStartFacesScan(_aiCfg()).catch(() => {});
         } catch {}
         res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// ---- Detect-test (single-photo diagnostic) --------------------------------
+//
+// Lets the operator verify that the sidecar can process a specific photo
+// without running a full scan. Takes a download ID, resolves the path, and
+// calls detectFaces — returning the raw sidecar result plus quality-filter
+// outcome. Useful for diagnosing 0-faces results: the operator can pick a
+// photo they know has a face and see exactly what the sidecar returns.
+
+app.post('/api/ai/detect-test', async (req, res) => {
+    try {
+        const id = Number(req.body?.downloadId);
+        if (!Number.isFinite(id) || id < 1) {
+            return res.status(400).json({ error: 'downloadId must be a positive integer' });
+        }
+        const db = getDb();
+        const row = db.prepare(`SELECT id, file_path, file_type FROM downloads WHERE id = ?`).get(id);
+        if (!row) {
+            return res.status(404).json({ error: 'download not found', code: 'NOT_FOUND' });
+        }
+
+        // Same path resolver as scan-runner.js / ai/index.js.
+        // Uses the module-level DOWNLOADS_DIR so the root is consistent.
+        function _resolveAbsLocal(storedPath) {
+            if (!storedPath) return null;
+            if (path.isAbsolute(storedPath) && existsSync(storedPath)) return storedPath;
+            let s = String(storedPath).replace(/\\/g, '/');
+            while (s.startsWith('data/downloads/')) s = s.slice('data/downloads/'.length);
+            const candidate = path.join(DOWNLOADS_DIR, s);
+            if (existsSync(candidate)) return candidate;
+            if (existsSync(storedPath)) return storedPath;
+            return null;
+        }
+
+        const abs = _resolveAbsLocal(row.file_path);
+        if (!abs) {
+            return res.json({
+                success: true,
+                downloadId: id,
+                filePath: row.file_path,
+                absPath: null,
+                fileType: row.file_type,
+                error: 'file_not_found_on_disk',
+                raw: null,
+                rawCount: null,
+                warnings: [],
+            });
+        }
+
+        const cfg = _aiCfg();
+        const warnings = [];
+        const logCollect = (entry) => {
+            if (entry?.level === 'warn' || entry?.level === 'error') {
+                warnings.push(`[${entry.level}] ${entry.msg}`);
+            }
+        };
+        const detected = await aiDetectFaces(abs, cfg, logCollect);
+        return res.json({
+            success: true,
+            downloadId: id,
+            filePath: row.file_path,
+            absPath: abs,
+            fileType: row.file_type,
+            error: null,
+            raw: detected === null ? null : detected.map((f) => ({
+                x: f.x, y: f.y, w: f.w, h: f.h,
+                score: f.score,
+                embeddingDim: f.embedding?.length ?? 0,
+            })),
+            rawCount: detected === null ? null : detected.length,
+            warnings,
+        });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }

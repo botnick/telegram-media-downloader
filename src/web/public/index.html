@@ -3332,6 +3332,24 @@
                              "sidecar up but no scan yet". -->
                         <div id="ai-people-empty-help" class="hidden mt-2 text-center text-[11px] text-tg-textSecondary/80 max-w-sm mx-auto"></div>
 
+                        <!-- Test-detection form — shown in empty state when sidecar is up + scan ran.
+                             Enter a download ID to run a single detect call and see the raw result. -->
+                        <div id="ai-detect-test-form" class="hidden mt-4 text-center">
+                            <div class="text-[11px] text-tg-textSecondary/70 mb-2" data-i18n="maintenance.ai.detect_test_hint">Diagnose: enter a Download ID to test detection on that photo:</div>
+                            <div class="flex items-center gap-2 justify-center">
+                                <input id="ai-detect-test-id" type="number" min="1"
+                                       class="tg-input text-xs px-2 py-1.5 w-28 text-center"
+                                       data-i18n-placeholder="maintenance.ai.detect_test_placeholder"
+                                       placeholder="Download ID" />
+                                <button id="ai-detect-test-btn" type="button"
+                                        class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-test-tube-line"></i>
+                                    <span data-i18n="maintenance.ai.detect_test_run">Test</span>
+                                </button>
+                            </div>
+                            <div id="ai-detect-test-result" class="hidden mt-3 text-[11px] text-left bg-tg-bg/50 border border-white/10 rounded-lg p-3 max-w-sm mx-auto font-mono whitespace-pre-wrap break-all leading-relaxed"></div>
+                        </div>
+
                         <!-- People gallery grid: 2 cols on mobile, 3 on sm, 4 on lg. -->
                         <div id="ai-people-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
 

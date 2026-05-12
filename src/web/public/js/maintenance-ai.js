@@ -70,6 +70,7 @@ function _bindOnce() {
     // for tweaking ε / minPoints + seeing the new cluster count
     // immediately without waiting for a full re-scan.
     $('#ai-recluster-btn')?.addEventListener('click', _recluster);
+    $('#ai-detect-test-btn')?.addEventListener('click', _runDetectTest);
 
     // Master + auto toggles — both live as labelled rows in the Face
     // clustering settings section. Click-anywhere on the toggle flips
@@ -793,6 +794,53 @@ async function _reindexFromScratch() {
     }
 }
 
+// ---- Detect-test (single-photo diagnostic) --------------------------------
+
+async function _runDetectTest() {
+    const idInput = $('#ai-detect-test-id');
+    const resultEl = $('#ai-detect-test-result');
+    const btn = $('#ai-detect-test-btn');
+    const id = parseInt(idInput?.value, 10);
+    if (!id || id < 1) {
+        showToast(i18nT('maintenance.ai.detect_test_need_id', 'Enter a Download ID first'), 'info');
+        return;
+    }
+    if (btn) btn.disabled = true;
+    if (resultEl) { resultEl.textContent = '…'; resultEl.classList.remove('hidden'); }
+    try {
+        const r = await api.post('/api/ai/detect-test', { downloadId: id });
+        if (!r.success) throw new Error(r.error || 'detect-test failed');
+        const lines = [];
+        lines.push(`File:    ${r.filePath || '—'}`);
+        lines.push(`Abs:     ${r.absPath || '(not found on disk)'}`);
+        lines.push(`Type:    ${r.fileType || '—'}`);
+        if (r.error) {
+            lines.push(`Error:   ${r.error}`);
+        } else if (r.rawCount === null) {
+            lines.push('Result:  sidecar returned null (unreachable or hard error)');
+        } else if (r.rawCount === 0) {
+            lines.push('Result:  0 faces detected after quality filter');
+        } else {
+            lines.push(`Result:  ${r.rawCount} face(s) detected`);
+            for (const f of r.raw || []) {
+                lines.push(`  • box=${f.w}×${f.h}px, score=${f.score?.toFixed(3)}, emb=${f.embeddingDim}d`);
+            }
+        }
+        if (r.warnings?.length) {
+            lines.push('');
+            lines.push('Warnings:');
+            for (const w of r.warnings) lines.push(`  ${w}`);
+        }
+        if (resultEl) resultEl.textContent = lines.join('\n');
+    } catch (e) {
+        const msg = e?.data?.error || e?.message || 'unknown';
+        if (resultEl) resultEl.textContent = `Error: ${msg}`;
+        showToast(`${i18nT('common.error', 'Error')}: ${msg}`, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
 // ---- Scan controls --------------------------------------------------------
 
 async function _startScan(feature) {
@@ -992,11 +1040,13 @@ function _renderPeopleGrid() {
             : '';
     }
 
+    const testForm = $('#ai-detect-test-form');
     if (!filtered.length) {
         grid.innerHTML = '';
         if (empty) empty.classList.remove('hidden');
         // Help message: "no faces detected" — only shown when the full
         // (unfiltered) cache is also empty, i.e. not just a filter miss.
+        let showTestForm = false;
         if (emptyHelp) {
             if (_peopleCache.length === 0) {
                 // Determine whether the sidecar is reachable to give context.
@@ -1015,6 +1065,7 @@ function _renderPeopleGrid() {
                         'maintenance.ai.people_empty_scan_ran',
                         'Scan complete — no faces were detected in your photos. Try checking a photo in the viewer, or your library may not contain visible faces.',
                     );
+                    showTestForm = true;
                 } else {
                     emptyHelp.textContent = i18nT(
                         'maintenance.ai.people_empty_no_faces',
@@ -1026,10 +1077,12 @@ function _renderPeopleGrid() {
                 emptyHelp.classList.add('hidden');
             }
         }
+        if (testForm) testForm.classList.toggle('hidden', !showTestForm);
         return;
     }
     if (empty) empty.classList.add('hidden');
     if (emptyHelp) emptyHelp.classList.add('hidden');
+    if (testForm) testForm.classList.add('hidden');
 
     // Epsilon warning — surface when a single cluster contains an unusually
     // large share of all faces (>25%), which is the canonical symptom of
