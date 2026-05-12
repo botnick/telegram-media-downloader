@@ -12,8 +12,44 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+var (
+	encoderCacheMu sync.Mutex
+	encoderCache   map[string]bool
+)
+
+// HasEncoder returns true when the named encoder (e.g. "libwebp") is present
+// in the local ffmpeg build. Results are cached after the first call per encoder.
+func HasEncoder(ctx context.Context, ffmpegBin, encoder string) bool {
+	if ffmpegBin == "" {
+		ffmpegBin = "ffmpeg"
+	}
+	cacheKey := ffmpegBin + ":" + encoder
+	encoderCacheMu.Lock()
+	if encoderCache != nil {
+		if v, ok := encoderCache[cacheKey]; ok {
+			encoderCacheMu.Unlock()
+			return v
+		}
+	}
+	encoderCacheMu.Unlock()
+
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(probeCtx, ffmpegBin, "-encoders").Output()
+	found := err == nil && bytes.Contains(out, []byte(" "+encoder+" "))
+
+	encoderCacheMu.Lock()
+	if encoderCache == nil {
+		encoderCache = make(map[string]bool)
+	}
+	encoderCache[cacheKey] = found
+	encoderCacheMu.Unlock()
+	return found
+}
 
 // Duration returns the clip's duration in seconds. ffprobe is spawned
 // with a hard 10s timeout — a broken container should never hang the

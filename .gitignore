@@ -78,3 +78,6 @@ TODO-ai.md
 yarn-debug.log*
 yarn-error.log*
 yarn.lock
+/.gemini-tasks
+TODO.md
+seekbar-service/server

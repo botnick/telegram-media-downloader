@@ -13,6 +13,7 @@ import (
 
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/api"
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/config"
+	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/ffmpeg"
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/logx"
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
@@ -33,6 +34,13 @@ func main() {
 		"concurrency", cfg.Jobs.Concurrency,
 		"hwaccel", cfg.FFmpeg.HWAccel,
 	)
+	if cfg.Thumb.Format == "webp" && !ffmpeg.HasEncoder(context.Background(), cfg.FFmpeg.Path, "libwebp") {
+		log.Warn("libwebp encoder absent from ffmpeg build — falling back to jpeg",
+			"ffmpeg", cfg.FFmpeg.Path,
+			"hint", "install ffmpeg with --enable-libwebp or set thumb.format: jpeg in config")
+		cfg.Thumb.Format = "jpeg"
+	}
+
 	if err := os.MkdirAll(cfg.Storage.OutputDir, 0o755); err != nil {
 		log.Error("cannot create output_dir", "err", err)
 		os.Exit(1)
