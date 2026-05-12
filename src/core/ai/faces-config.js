@@ -51,9 +51,11 @@ const NUMBER_KEYS = new Set([
     'healthMonitorIntervalMs',
     'healthFailuresBeforeRelaunch',
     'downloadRedirectCap',
+    'videoFrameIntervalSec',
+    'videoMaxFrames',
 ]);
 
-const BOOL_KEYS = new Set(['autoDownload', 'federate']);
+const BOOL_KEYS = new Set(['autoDownload', 'federate', 'includeVideos']);
 
 const STRING_KEYS = new Set(['backend', 'sidecarUrl', 'detectorModel', 'providers', 'detector']);
 
@@ -97,6 +99,9 @@ const ENV_MAP = Object.freeze({
     downloadRedirectCap: 'TGDL_FACES_DOWNLOAD_REDIRECT_CAP',
     downloadMirrors: 'TGDL_FACES_DOWNLOAD_MIRRORS',
     federate: 'TGDL_FACES_FEDERATE',
+    includeVideos: 'TGDL_FACES_INCLUDE_VIDEOS',
+    videoFrameIntervalSec: 'TGDL_FACES_VIDEO_FRAME_INTERVAL_SEC',
+    videoMaxFrames: 'TGDL_FACES_VIDEO_MAX_FRAMES',
 });
 
 /**

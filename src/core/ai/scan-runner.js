@@ -14,6 +14,10 @@
  */
 
 import { existsSync } from 'fs';
+import fs from 'fs/promises';
+import { spawn } from 'child_process';
+import crypto from 'crypto';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -33,6 +37,7 @@ import {
 import { clusterFaces, detectFaces } from './faces.js';
 import { resolveFacesValue } from './faces-config.js';
 import { getSidecarUrl } from './faces-client.js';
+import { hasFfmpeg, resolveFfmpegBin } from '../thumbs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -115,6 +120,123 @@ function _resolveAbs(storedPath) {
     return null;
 }
 
+function _resolveFfprobeBin() {
+    try {
+        const ffmpeg = resolveFfmpegBin();
+        if (ffmpeg) {
+            const probe = ffmpeg.endsWith('ffmpeg.exe')
+                ? ffmpeg.slice(0, -10) + 'ffprobe.exe'
+                : ffmpeg.endsWith('ffmpeg')
+                  ? ffmpeg.slice(0, -6) + 'ffprobe'
+                  : '';
+            if (probe && existsSync(probe)) return probe;
+        }
+    } catch {
+        /* fall through */
+    }
+    return process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
+}
+
+function _runProc(bin, args) {
+    return new Promise((resolve, reject) => {
+        const p = spawn(bin, args, { windowsHide: true });
+        const out = [];
+        const err = [];
+        p.stdout.on('data', (c) => out.push(c));
+        p.stderr.on('data', (c) => err.push(c));
+        p.on('error', reject);
+        p.on('close', (code) => {
+            if (code === 0) {
+                resolve({
+                    stdout: Buffer.concat(out).toString('utf8'),
+                    stderr: Buffer.concat(err).toString('utf8'),
+                });
+                return;
+            }
+            reject(
+                new Error(
+                    `${bin} exited ${code}: ${Buffer.concat(err).toString('utf8').trim() || 'no stderr'}`,
+                ),
+            );
+        });
+    });
+}
+
+async function _probeVideoDurationSec(absPath) {
+    try {
+        const probe = _resolveFfprobeBin();
+        const { stdout } = await _runProc(probe, [
+            '-v',
+            'error',
+            '-show_entries',
+            'format=duration',
+            '-of',
+            'csv=p=0',
+            absPath,
+        ]);
+        const v = Number.parseFloat(String(stdout || '').trim());
+        return Number.isFinite(v) && v > 0 ? v : null;
+    } catch {
+        return null;
+    }
+}
+
+async function _extractVideoFrames(absPath, { intervalSec = 8, maxFrames = 24 } = {}) {
+    const duration = await _probeVideoDurationSec(absPath);
+    if (!duration) return [];
+    const interval = Math.max(1, Number(intervalSec) || 8);
+    const cap = Math.max(1, Math.min(200, Number(maxFrames) || 24));
+    const frameCount = Math.max(1, Math.min(cap, Math.ceil(duration / interval)));
+    const realInterval = duration / frameCount;
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tgdl-ai-frames-'));
+    const outPattern = path.join(root, 'f-%05d.jpg');
+    const ffmpeg = resolveFfmpegBin() || (process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+    try {
+        await _runProc(ffmpeg, [
+            '-hide_banner',
+            '-loglevel',
+            'error',
+            '-i',
+            absPath,
+            '-vf',
+            `fps=1/${realInterval},scale=960:-2:flags=fast_bilinear`,
+            '-frames:v',
+            String(frameCount),
+            '-q:v',
+            '3',
+            '-y',
+            outPattern,
+        ]);
+        const names = (await fs.readdir(root)).filter((n) => n.endsWith('.jpg')).sort();
+        const frames = names.map((n) => path.join(root, n));
+        return frames;
+    } finally {
+        // caller deletes extracted frame files after detection;
+        // this finally just guarantees directory exists for cleanup path.
+    }
+}
+
+async function _cleanupTmpFrames(paths) {
+    const dirs = new Set();
+    for (const p of paths || []) {
+        try {
+            await fs.unlink(p);
+        } catch {
+            /* best effort */
+        }
+        try {
+            dirs.add(path.dirname(p));
+        } catch {}
+    }
+    for (const d of dirs) {
+        try {
+            await fs.rmdir(d);
+        } catch {
+            /* best effort */
+        }
+    }
+}
+
 // Generic envelope: claim slot → run worker → release. Worker owns its own
 // progress reporting via the `bump` callback.
 async function _runScan(feature, cfg, worker, onProgress, onDone, onLog) {
@@ -182,15 +304,52 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             // Resolve `fileTypes` with the same precedence as the cluster
             // knobs: new path > legacy flat alias > env override > default.
             const facesCfgIn = cfg?.faces || {};
+            const includeVideos =
+                resolveFacesValue('includeVideos', facesCfgIn) === true ||
+                facesCfgIn.includeVideos === true ||
+                cfg.includeVideos === true;
             const envFileTypes = resolveFacesValue('fileTypes', facesCfgIn);
-            const fileTypes = Array.isArray(facesCfgIn.fileTypes)
+            const fileTypesBase = Array.isArray(facesCfgIn.fileTypes)
                 ? facesCfgIn.fileTypes
                 : Array.isArray(cfg.fileTypes)
                   ? cfg.fileTypes
                   : Array.isArray(envFileTypes)
                     ? envFileTypes
                     : ['photo'];
+            const fileTypesSet = new Set(
+                fileTypesBase.map((t) => String(t || '').toLowerCase()).filter(Boolean),
+            );
+            if (includeVideos) fileTypesSet.add('video');
+            const fileTypes = [...fileTypesSet];
             const db = getDb();
+            const videoFrameIntervalSec = Math.max(
+                1,
+                Number(
+                    resolveFacesValue('videoFrameIntervalSec', facesCfgIn) ??
+                        facesCfgIn.videoFrameIntervalSec ??
+                        cfg.videoFrameIntervalSec ??
+                        8,
+                ) || 8,
+            );
+            const videoMaxFrames = Math.max(
+                1,
+                Math.min(
+                    200,
+                    Number(
+                        resolveFacesValue('videoMaxFrames', facesCfgIn) ??
+                            facesCfgIn.videoMaxFrames ??
+                            cfg.videoMaxFrames ??
+                            24,
+                    ) || 24,
+                ),
+            );
+            const canSampleVideos = includeVideos && hasFfmpeg();
+            if (includeVideos && !canSampleVideos) {
+                log(
+                    'warn',
+                    'faces scan: includeVideos=true but ffmpeg is unavailable; skipping video rows',
+                );
+            }
 
             // Phase A — detect faces on every photo we haven't visited yet.
             // Visited = "ai_indexed_at IS NOT NULL"; even photos that yield
@@ -216,26 +375,61 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 for (const row of batch) {
                     if (signal.aborted) break;
                     const abs = _resolveAbs(row.file_path);
-                    let detected = null;
+                    let detectedTotal = 0;
                     if (abs) {
                         try {
-                            detected = await detectFaces(abs, cfg, log);
+                            if (String(row.file_type || '').toLowerCase() === 'video') {
+                                if (canSampleVideos) {
+                                    const framePaths = await _extractVideoFrames(abs, {
+                                        intervalSec: videoFrameIntervalSec,
+                                        maxFrames: videoMaxFrames,
+                                    });
+                                    deleteFacesForDownload(row.id);
+                                    try {
+                                        for (const frameAbs of framePaths) {
+                                            if (signal.aborted) break;
+                                            const faces = await detectFaces(frameAbs, cfg, log);
+                                            if (Array.isArray(faces) && faces.length) {
+                                                for (const f of faces) {
+                                                    insertFace({
+                                                        downloadId: row.id,
+                                                        x: f.x,
+                                                        y: f.y,
+                                                        w: f.w,
+                                                        h: f.h,
+                                                        embeddingBlob: _f32ToBlob(f.embedding),
+                                                    });
+                                                    detectedTotal += 1;
+                                                }
+                                            }
+                                        }
+                                    } finally {
+                                        await _cleanupTmpFrames(framePaths);
+                                    }
+                                }
+                            } else {
+                                const detected = await detectFaces(abs, cfg, log);
+                                if (Array.isArray(detected) && detected.length) {
+                                    deleteFacesForDownload(row.id);
+                                    for (const f of detected) {
+                                        insertFace({
+                                            downloadId: row.id,
+                                            x: f.x,
+                                            y: f.y,
+                                            w: f.w,
+                                            h: f.h,
+                                            embeddingBlob: _f32ToBlob(f.embedding),
+                                        });
+                                        detectedTotal += 1;
+                                    }
+                                }
+                            }
                         } catch (e) {
                             log('warn', `detectFaces threw on id=${row.id}: ${e?.message || e}`);
                         }
                     }
-                    if (Array.isArray(detected) && detected.length) {
-                        deleteFacesForDownload(row.id);
-                        for (const f of detected) {
-                            insertFace({
-                                downloadId: row.id,
-                                x: f.x,
-                                y: f.y,
-                                w: f.w,
-                                h: f.h,
-                                embeddingBlob: _f32ToBlob(f.embedding),
-                            });
-                        }
+                    if (detectedTotal > 0) {
+                        log('info', `faces scan: id=${row.id} detected=${detectedTotal}`);
                     }
                     setAiIndexedAt(row.id);
                     state.scanned += 1;

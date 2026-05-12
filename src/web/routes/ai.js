@@ -134,6 +134,9 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
                         detectorModel: String(
                             facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
                         ),
+                        includeVideos: facesBlock.includeVideos === true,
+                        videoFrameIntervalSec: Number(facesBlock.videoFrameIntervalSec || 8),
+                        videoMaxFrames: Number(facesBlock.videoMaxFrames || 24),
                     },
                 },
                 counts,
