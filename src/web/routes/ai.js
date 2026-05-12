@@ -152,6 +152,8 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
                 scans: {
                     faces: aiGetScanState('faces'),
                     tags: aiGetScanState('tags'),
+                    ocr: aiGetScanState('ocr'),
+                    objects: aiGetScanState('objects'),
                 },
                 models: {
                     faces: await (async () => {

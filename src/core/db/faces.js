@@ -1266,3 +1266,154 @@ export function getImagesWithObject(object, { limit = 50, offset = 0 } = {}) {
 
     return { files: rows, total };
 }
+
+// ---- Smart Albums --------------------------------------------------------
+
+function _normalizeSmartAlbumRule(rule) {
+    const type = String(rule?.type || '').trim();
+    if (type !== 'tags_contains') {
+        throw new Error('unsupported rule type; expected tags_contains');
+    }
+    const tag = String(rule?.tag || '')
+        .trim()
+        .slice(0, 80);
+    if (!tag) throw new Error('tag is required');
+    const minScore = Math.max(0, Math.min(1, Number(rule?.minScore) || 0));
+    return { type, tag, minScore };
+}
+
+export function listSmartAlbums() {
+    const db = getDb();
+    return db
+        .prepare(`
+        SELECT a.id, a.name, a.rule_json, a.enabled, a.sort_key, a.created_at, a.updated_at,
+               COUNT(i.download_id) AS item_count,
+               MAX(i.matched_at) AS last_matched_at
+          FROM smart_albums a
+          LEFT JOIN smart_album_items i ON i.album_id = a.id
+         GROUP BY a.id
+         ORDER BY a.updated_at DESC, a.id DESC
+    `)
+        .all()
+        .map((r) => ({
+            ...r,
+            enabled: Number(r.enabled) === 1,
+            rule: (() => {
+                try {
+                    return JSON.parse(r.rule_json || '{}');
+                } catch {
+                    return {};
+                }
+            })(),
+        }));
+}
+
+export function upsertSmartAlbum({
+    id = null,
+    name,
+    rule,
+    enabled = true,
+    sortKey = 'created_at_desc',
+}) {
+    const db = getDb();
+    const safeName = String(name || '')
+        .trim()
+        .slice(0, 120);
+    if (!safeName) throw new Error('name is required');
+    const normalizedRule = _normalizeSmartAlbumRule(rule);
+    const now = Date.now();
+    if (id == null) {
+        const r = db
+            .prepare(
+                `INSERT INTO smart_albums (name, rule_json, enabled, sort_key, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+            )
+            .run(
+                safeName,
+                JSON.stringify(normalizedRule),
+                enabled ? 1 : 0,
+                String(sortKey || 'created_at_desc'),
+                now,
+                now,
+            );
+        return Number(r.lastInsertRowid);
+    }
+    const albumId = Number(id);
+    if (!Number.isFinite(albumId) || albumId <= 0) throw new Error('invalid album id');
+    const changed = db
+        .prepare(
+            `UPDATE smart_albums
+                SET name = ?, rule_json = ?, enabled = ?, sort_key = ?, updated_at = ?
+              WHERE id = ?`,
+        )
+        .run(
+            safeName,
+            JSON.stringify(normalizedRule),
+            enabled ? 1 : 0,
+            String(sortKey || 'created_at_desc'),
+            now,
+            albumId,
+        ).changes;
+    if (!changed) throw new Error('album not found');
+    return albumId;
+}
+
+export function deleteSmartAlbum(id) {
+    return getDb().prepare(`DELETE FROM smart_albums WHERE id = ?`).run(Number(id)).changes;
+}
+
+export function rebuildSmartAlbum(id) {
+    const db = getDb();
+    const albumId = Number(id);
+    if (!Number.isFinite(albumId) || albumId <= 0) throw new Error('invalid album id');
+    const row = db
+        .prepare(`SELECT id, rule_json, enabled FROM smart_albums WHERE id = ?`)
+        .get(albumId);
+    if (!row) throw new Error('album not found');
+    const rule = _normalizeSmartAlbumRule(JSON.parse(row.rule_json || '{}'));
+    const tx = db.transaction(() => {
+        db.prepare(`DELETE FROM smart_album_items WHERE album_id = ?`).run(albumId);
+        if (Number(row.enabled) !== 1) return { matched: 0 };
+        const ins = db.prepare(
+            `INSERT INTO smart_album_items (album_id, download_id, matched_at) VALUES (?, ?, ?)`,
+        );
+        const matchedAt = Date.now();
+        const hits = db
+            .prepare(
+                `SELECT DISTINCT t.download_id
+                   FROM image_tags t
+                   JOIN downloads d ON d.id = t.download_id
+                  WHERE t.tag = ? AND t.score >= ?`,
+            )
+            .all(rule.tag, rule.minScore);
+        let matched = 0;
+        for (const h of hits) {
+            matched += ins.run(albumId, Number(h.download_id), matchedAt).changes;
+        }
+        db.prepare(`UPDATE smart_albums SET updated_at = ? WHERE id = ?`).run(Date.now(), albumId);
+        return { matched };
+    });
+    return tx();
+}
+
+export function listSmartAlbumItems(id, { limit = 50, offset = 0 } = {}) {
+    const db = getDb();
+    const albumId = Number(id);
+    if (!Number.isFinite(albumId) || albumId <= 0) throw new Error('invalid album id');
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const off = Math.max(0, Number(offset) || 0);
+    const rows = db
+        .prepare(
+            `SELECT d.*, i.matched_at
+               FROM smart_album_items i
+               JOIN downloads d ON d.id = i.download_id
+              WHERE i.album_id = ?
+              ORDER BY d.created_at DESC, d.id DESC
+              LIMIT ? OFFSET ?`,
+        )
+        .all(albumId, lim, off);
+    const total = db
+        .prepare(`SELECT COUNT(*) AS n FROM smart_album_items WHERE album_id = ?`)
+        .get(albumId).n;
+    return { files: rows, total };
+}

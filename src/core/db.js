@@ -359,6 +359,34 @@ function initSchema() {
         CREATE INDEX IF NOT EXISTS idx_seekbar_generated_at ON seekbar_sprites(generated_at);
     `);
 
+    // v2.18 — Smart Albums (rule-based saved collections).
+    //
+    // v1 supports one rule type: `tags_contains` with payload:
+    //   { type:'tags_contains', tag:'cat', minScore:0.0..1.0 }.
+    // `smart_album_items` is materialized so gallery reads are fast.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS smart_albums (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL,
+            rule_json  TEXT    NOT NULL,
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            sort_key   TEXT    NOT NULL DEFAULT 'created_at_desc',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_smart_albums_updated ON smart_albums(updated_at DESC);
+        CREATE TABLE IF NOT EXISTS smart_album_items (
+            album_id    INTEGER NOT NULL,
+            download_id INTEGER NOT NULL,
+            matched_at  INTEGER NOT NULL,
+            PRIMARY KEY (album_id, download_id),
+            FOREIGN KEY (album_id) REFERENCES smart_albums(id) ON DELETE CASCADE,
+            FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_smart_album_items_album ON smart_album_items(album_id, matched_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_smart_album_items_download ON smart_album_items(download_id);
+    `);
+
     // Smoke-test every column the rest of the code path depends on. The
     // ALTER TABLE migrations above swallow "column already exists" so they
     // also swallow real failures (out-of-disk, locked DB, corrupt schema).

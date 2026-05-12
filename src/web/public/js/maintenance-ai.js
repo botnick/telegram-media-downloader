@@ -661,6 +661,73 @@ function _bindOnce() {
     $('#ai-tags-scan-btn')?.addEventListener('click', () => _startScan('tags'));
     $('#ai-tags-cancel-btn')?.addEventListener('click', () => _cancelScan('tags'));
 
+    // OCR — toggle + scan/cancel buttons.
+    $('#ai-ocr-toggle')?.addEventListener('click', async () => {
+        const el = $('#ai-ocr-toggle');
+        const was = el.getAttribute('aria-checked') === 'true';
+        const next = !was;
+        try {
+            el.style.pointerEvents = 'none';
+            await api.post('/api/config', {
+                advanced: { ai: { imageOcr: next } },
+            });
+            el.setAttribute('aria-checked', String(next));
+            el.classList.toggle('bg-tg-blue', next);
+            el.classList.toggle('bg-tg-bg/40', !next);
+        } catch (e) {
+            showToast(
+                `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message}`,
+                'error',
+            );
+        } finally {
+            el.style.pointerEvents = '';
+        }
+    });
+    $('#ai-ocr-toggle')?.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'Enter') {
+            e.preventDefault();
+            $('#ai-ocr-toggle')?.click();
+        }
+    });
+    $('#ai-ocr-scan-btn')?.addEventListener('click', () => _startScan('ocr'));
+    $('#ai-ocr-cancel-btn')?.addEventListener('click', () => _cancelScan('ocr'));
+
+    // Object detection — toggle + confidence slider + scan/cancel buttons.
+    $('#ai-objects-toggle')?.addEventListener('click', async () => {
+        const el = $('#ai-objects-toggle');
+        const was = el.getAttribute('aria-checked') === 'true';
+        const next = !was;
+        try {
+            el.style.pointerEvents = 'none';
+            await api.post('/api/config', {
+                advanced: { ai: { objectDetection: next } },
+            });
+            el.setAttribute('aria-checked', String(next));
+            el.classList.toggle('bg-tg-blue', next);
+            el.classList.toggle('bg-tg-bg/40', !next);
+        } catch (e) {
+            showToast(
+                `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message}`,
+                'error',
+            );
+        } finally {
+            el.style.pointerEvents = '';
+        }
+    });
+    $('#ai-objects-toggle')?.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'Enter') {
+            e.preventDefault();
+            $('#ai-objects-toggle')?.click();
+        }
+    });
+    $('#ai-objects-confidence')?.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value) || 0.5;
+        const display = $('#ai-objects-confidence-value');
+        if (display) display.textContent = val.toFixed(1);
+    });
+    $('#ai-objects-scan-btn')?.addEventListener('click', () => _startScan('objects'));
+    $('#ai-objects-cancel-btn')?.addEventListener('click', () => _cancelScan('objects'));
+
     // Doctor refresh
     $('#ai-doctor-refresh-btn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -708,14 +775,16 @@ function _bindOnce() {
     $('#ai-person-split-btn')?.addEventListener('click', _splitSelectedPerson);
     $('#ai-person-delete-btn')?.addEventListener('click', _deleteSelectedPerson);
 
-    // WebSocket — only the people / scan events survive in the faces-only
-    // build. ai_index_* / ai_tags_* were removed with the Search + Tags
-    // pipelines. ai_faces_status surfaces sidecar lifecycle changes so the
-    // header badge updates without a polling loop.
+    // WebSocket — scan events for all capabilities.
+    // ai_faces_status surfaces sidecar lifecycle changes so the header badge updates without a polling loop.
     ws.on('ai_people_progress', (m) => _onScanProgress('faces', m));
     ws.on('ai_people_done', (m) => _onScanDone('faces', m));
     ws.on('ai_tags_progress', (m) => _onScanProgress('tags', m));
     ws.on('ai_tags_done', (m) => _onScanDone('tags', m));
+    ws.on('ai_ocr_progress', (m) => _onScanProgress('ocr', m));
+    ws.on('ai_ocr_done', (m) => _onScanDone('ocr', m));
+    ws.on('ai_objects_progress', (m) => _onScanProgress('objects', m));
+    ws.on('ai_objects_done', (m) => _onScanDone('objects', m));
     ws.on('ai_faces_status', () => refreshStatus());
 
     // Auto-installer feedback. Streams stdout from `python -m
@@ -1077,6 +1146,34 @@ function _renderStatus(status) {
         const cur = Array.isArray(cfg.tagLabels) ? cfg.tagLabels.join(', ') : '';
         if (tagsLabelsEl.value !== cur) tagsLabelsEl.value = cur;
     }
+
+    // OCR card — toggle, scan state.
+    const ocrToggle = $('#ai-ocr-toggle');
+    if (ocrToggle) {
+        const on = cfg.imageOcr === true;
+        ocrToggle.classList.toggle('bg-tg-blue', on);
+        ocrToggle.classList.toggle('bg-tg-bg/40', !on);
+        ocrToggle.setAttribute('aria-checked', String(on));
+    }
+    const ocrRunning = !!scans?.ocr?.running;
+    const ocrScanBtn = $('#ai-ocr-scan-btn');
+    const ocrCancelBtn = $('#ai-ocr-cancel-btn');
+    if (ocrScanBtn) ocrScanBtn.disabled = ocrRunning;
+    if (ocrCancelBtn) ocrCancelBtn.disabled = !ocrRunning;
+
+    // Object detection card — toggle, scan state.
+    const objectsToggle = $('#ai-objects-toggle');
+    if (objectsToggle) {
+        const on = cfg.objectDetection === true;
+        objectsToggle.classList.toggle('bg-tg-blue', on);
+        objectsToggle.classList.toggle('bg-tg-bg/40', !on);
+        objectsToggle.setAttribute('aria-checked', String(on));
+    }
+    const objectsRunning = !!scans?.objects?.running;
+    const objectsScanBtn = $('#ai-objects-scan-btn');
+    const objectsCancelBtn = $('#ai-objects-cancel-btn');
+    if (objectsScanBtn) objectsScanBtn.disabled = objectsRunning;
+    if (objectsCancelBtn) objectsCancelBtn.disabled = !objectsRunning;
 }
 
 function _renderSidecarBadge(status) {
@@ -1869,6 +1966,16 @@ function _onScanProgress(feature, msg) {
         const cancelBtn = $('#ai-tags-cancel-btn');
         if (scanBtn) scanBtn.disabled = running;
         if (cancelBtn) cancelBtn.disabled = !running;
+    } else if (feature === 'ocr') {
+        const scanBtn = $('#ai-ocr-scan-btn');
+        const cancelBtn = $('#ai-ocr-cancel-btn');
+        if (scanBtn) scanBtn.disabled = running;
+        if (cancelBtn) cancelBtn.disabled = !running;
+    } else if (feature === 'objects') {
+        const scanBtn = $('#ai-objects-scan-btn');
+        const cancelBtn = $('#ai-objects-cancel-btn');
+        if (scanBtn) scanBtn.disabled = running;
+        if (cancelBtn) cancelBtn.disabled = !running;
     }
 
     // Shared progress bar — shows whichever scan is currently running.
@@ -1887,11 +1994,17 @@ function _onScanProgress(feature, msg) {
             : '';
     }
     if (progressStatus && running) {
-        const label =
-            feature === 'faces'
-                ? i18nT('maintenance.ai.scanning', 'Scanning…')
-                : i18nT('maintenance.ai.scanning_tags', 'Tagging photos…');
-        progressStatus.textContent = label;
+        let label;
+        if (feature === 'faces') {
+            label = i18nT('maintenance.ai.scanning', 'Scanning…');
+        } else if (feature === 'tags') {
+            label = i18nT('maintenance.ai.scanning_tags', 'Tagging photos…');
+        } else if (feature === 'ocr') {
+            label = i18nT('maintenance.ai.scanning_ocr', 'Extracting text…');
+        } else if (feature === 'objects') {
+            label = i18nT('maintenance.ai.scanning_objects', 'Detecting objects…');
+        }
+        if (label) progressStatus.textContent = label;
     }
 }
 

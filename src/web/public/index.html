@@ -3419,11 +3419,86 @@
                         <p id="ai-tag-suggestions-empty" class="text-[11px] text-tg-textSecondary text-center py-3 hidden">No tag suggestions yet.</p>
                     </section>
 
-                    <!-- Future capabilities footer — a single muted
-                         line so the page acknowledges the extensibility
-                         goal without spending a card on an empty
-                         placeholder. -->
-                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection · Face quality scoring · Smart albums</p>
+                    <!-- OCR text extraction card. -->
+                    <details id="ai-pane-ocr" class="bg-tg-panel rounded-xl p-4 mb-3 group">
+                        <summary class="cursor-pointer list-none flex items-center justify-between gap-2 mb-1">
+                            <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
+                                <i class="ri-arrow-right-s-line text-tg-textSecondary text-xs transition-transform group-open:rotate-90"></i>
+                                <i class="ri-file-text-line text-tg-blue"></i>
+                                <span data-i18n="maintenance.ai.ocr.title">Text extraction (OCR)</span>
+                            </h3>
+                        </summary>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.ai.ocr.desc">Extracts visible text from images using Tesseract OCR. Works best on documents, screenshots, and text-heavy images.</p>
+
+                        <div class="space-y-3">
+                            <!-- OCR toggle. -->
+                            <div class="flex items-start justify-between gap-3 pb-3 border-b border-tg-border/30">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.ai.ocr.toggle_label">Text extraction</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.ocr.toggle_help">When on, extracts text from images. Requires the AI subsystem to be enabled and Tesseract to be installed.</p>
+                                </div>
+                                <div id="ai-ocr-toggle" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="false" tabindex="0"></div>
+                            </div>
+
+                            <!-- Scan + Cancel buttons row. -->
+                            <div class="flex items-center gap-2 pt-2">
+                                <button id="ai-ocr-scan-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-file-text-line"></i>
+                                    <span data-i18n="maintenance.ai.ocr.scan">Extract text</span>
+                                </button>
+                                <button id="ai-ocr-cancel-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled>
+                                    <span data-i18n="common.cancel">Cancel</span>
+                                </button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Object detection card. -->
+                    <details id="ai-pane-objects" class="bg-tg-panel rounded-xl p-4 mb-3 group">
+                        <summary class="cursor-pointer list-none flex items-center justify-between gap-2 mb-1">
+                            <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
+                                <i class="ri-arrow-right-s-line text-tg-textSecondary text-xs transition-transform group-open:rotate-90"></i>
+                                <i class="ri-search-eye-line text-tg-blue"></i>
+                                <span data-i18n="maintenance.ai.objects.title">Object detection</span>
+                            </h3>
+                        </summary>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.ai.objects.desc">Detects objects in images using YOLOv8. Recognises 80 common object classes (person, car, dog, chair, etc). Includes bounding box coordinates.</p>
+
+                        <div class="space-y-3">
+                            <!-- Object detection toggle. -->
+                            <div class="flex items-start justify-between gap-3 pb-3 border-b border-tg-border/30">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.ai.objects.toggle_label">Object detection</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.objects.toggle_help">When on, detects objects in images. Requires the AI subsystem to be enabled and the YOLOv8-nano model (~6 MB).</p>
+                                </div>
+                                <div id="ai-objects-toggle" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="false" tabindex="0"></div>
+                            </div>
+
+                            <!-- Confidence threshold slider. -->
+                            <div>
+                                <label for="ai-objects-confidence" class="text-tg-text text-xs block mb-1">Detection confidence threshold</label>
+                                <div class="flex items-center gap-2">
+                                    <input id="ai-objects-confidence" type="range" min="0.1" max="0.9" step="0.1" value="0.5" class="flex-1">
+                                    <span id="ai-objects-confidence-value" class="text-xs text-tg-textSecondary font-mono w-8">0.5</span>
+                                </div>
+                                <p class="text-[10px] text-tg-textSecondary mt-1">Lower = more detections (more false positives). Higher = stricter (more confident detections).</p>
+                            </div>
+
+                            <!-- Scan + Cancel buttons row. -->
+                            <div class="flex items-center gap-2 pt-2">
+                                <button id="ai-objects-scan-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-search-eye-line"></i>
+                                    <span data-i18n="maintenance.ai.objects.scan">Detect objects</span>
+                                </button>
+                                <button id="ai-objects-cancel-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled>
+                                    <span data-i18n="common.cancel">Cancel</span>
+                                </button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Future capabilities footer. -->
+                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: Face quality scoring · Smart albums</p>
 
                     <!-- Hidden hosts for legacy element ids referenced
                          by older bookmarklets / extensions. Empty + no-op
