@@ -2072,12 +2072,29 @@ class VideoPlayer {
                 : 1);
         const spriteUrl = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
 
-        // Thumbnail display size: responsive height, flex-grows to fill container.
+        // Thumbnail display size: responsive height based on viewport.
         const thumbH = window.innerWidth <= 640 ? 44 : 56;
         const rows = Math.max(1, Math.ceil(frames / cols));
-        // Percentage-based sprite positioning so thumbs fill any flex width.
+        // Percentage-based sprite positioning so thumbs render correctly at any flex width.
         const bgSW = cols * 100; // %
         const bgSH = rows * 100; // %
+
+        // Natural thumb width from tile aspect ratio × display height.
+        const naturalThumbW = Math.max(28, Math.round((tileW / Math.max(1, tileH)) * thumbH));
+        // Expose to CSS so flex sizing rules can reference it.
+        track.style.setProperty('--filmstrip-thumb-natural-w', `${naturalThumbW}px`);
+
+        // Decide justify-content: when frames × maxAllowedW (1.5×) fits inside the
+        // track without scrolling, center the group so there's no asymmetric dead
+        // space. Gap between thumbs is 2px (from CSS). Use track.parentElement width
+        // minus arrow buttons (≈52px total) as the available inner width estimate.
+        const arrowsW = window.innerWidth > 480 ? 52 : 0;
+        const availW = (wrap.offsetWidth || window.innerWidth) - arrowsW;
+        const gapTotal = Math.max(0, frames - 1) * 2;
+        const cappedThumbW = Math.round(naturalThumbW * 1.5);
+        const totalAtCap = frames * cappedThumbW + gapTotal;
+        // Center when all thumbs at max cap still fit within the container.
+        track.style.justifyContent = totalAtCap <= availW ? 'center' : '';
 
         // Cache float label ref for use in highlight updates.
         if (!this._filmstripTimeFloat) {
