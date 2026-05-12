@@ -1023,41 +1023,6 @@ runtime.on('catch_up_needed', ({ groupId, gap }) => {
         .catch((e) => console.warn('[catch-up] spawn failed:', e?.message || e));
 });
 
-// Build the monitor-status snapshot. Used by both the GET endpoint
-// (for the SPA's first paint / a manual refresh) AND the periodic
-// WS broadcaster below — keeping them on one code path so a future
-// field never lands in one place but not the other.
-async function _buildMonitorStatusSnapshot() {
-    const status = runtime.status();
-    if (status.accounts === 0) {
-        try {
-            const am = await getAccountManager();
-            status.accounts = am.count;
-        } catch {
-            try {
-                const dir = path.join(DATA_DIR, 'sessions');
-                if (existsSync(dir)) {
-                    status.accounts = fsSync
-                        .readdirSync(dir)
-                        .filter((f) => f.endsWith('.enc')).length;
-                }
-            } catch {
-                /* ignore */
-            }
-        }
-    }
-    const config = await readConfigSafe();
-    status.hint =
-        !config.telegram?.apiId || !config.telegram?.apiHash
-            ? 'configure-api'
-            : status.accounts === 0
-              ? 'add-account'
-              : (config.groups || []).filter((g) => g.enabled).length === 0
-                ? 'enable-group'
-                : null;
-    return status;
-}
-
 // ====== History batch download =============================================
 //
 // Run an out-of-band backfill against a configured group. Re-uses the
@@ -1463,10 +1428,7 @@ app.use('/api', createStoriesRouter({ getAccountManager }));
 app.use('/api', createQueueRouter({ broadcast }));
 app.use('/', createAuthRouter({ broadcast }));
 app.use('/api', createAccountsRouter({ getAccountManager }));
-app.use(
-    '/api',
-    createMonitorRouter({ getAccountManager, buildSnapshot: _buildMonitorStatusSnapshot }),
-);
+app.use('/api', createMonitorRouter({ getAccountManager }));
 app.use(
     '/api',
     createHistoryRouter({
