@@ -1045,6 +1045,7 @@
     "maintenance.ai.person_rename_hint": "Double-click to rename",
     "maintenance.ai.people_empty_sidecar_down": "No faces detected — ensure the faces sidecar is running and photos exist.",
     "maintenance.ai.people_empty_no_faces": "No faces detected — run a scan above to index your photos.",
+    "maintenance.ai.people_empty_scan_ran": "Scan complete — no faces were detected in your photos. Check a photo in the viewer, or your library may not contain visible faces.",
     "maintenance.ai.no_results": "No results",
     "maintenance.ai.searching": "Searching",
     "maintenance.ai.search_disabled": "AI search is disabled — enable it in Maintenance → AI.",

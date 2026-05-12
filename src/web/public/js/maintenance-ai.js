@@ -1001,11 +1001,19 @@ function _renderPeopleGrid() {
             if (_peopleCache.length === 0) {
                 // Determine whether the sidecar is reachable to give context.
                 const faces = _lastStatus?.models?.faces || {};
+                const counts = _lastStatus?.counts || {};
                 const sidecarUp = faces.loaded === true || faces.state === 'healthy' || faces.state === 'ready';
+                const lastScan = _lastStatus?.scans?.faces?.finishedAt || 0;
+                const scannedPhotos = Number(counts.indexed) || 0;
                 if (!sidecarUp) {
                     emptyHelp.textContent = i18nT(
                         'maintenance.ai.people_empty_sidecar_down',
                         'No faces detected — ensure the faces sidecar is running and photos exist.',
+                    );
+                } else if (lastScan > 0 && scannedPhotos > 0) {
+                    emptyHelp.textContent = i18nT(
+                        'maintenance.ai.people_empty_scan_ran',
+                        'Scan complete — no faces were detected in your photos. Try checking a photo in the viewer, or your library may not contain visible faces.',
                     );
                 } else {
                     emptyHelp.textContent = i18nT(
