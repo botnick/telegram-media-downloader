@@ -2997,11 +2997,9 @@
                      Faces-only build. The page surfaces the Python face-
                      clustering sidecar (insightface buffalo_l, 512-dim
                      embeddings, DBSCAN clustering) and routes every
-                     operation through /api/ai/* endpoints. Capability
-                     grid is designed to accommodate future features
-                     (OCR, object detection, face quality) by pushing a
-                     single entry into CAPABILITIES in maintenance-ai.js
-                     — no layout surgery needed. -->
+                     operation through /api/ai/* endpoints. NSFW
+                     classification lives on its own Maintenance → NSFW
+                     tab. -->
                 <div id="page-maintenance-ai" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.ai.page_title"
                      data-page-subtitle-key="maintenance.ai.subtitle">
@@ -3014,7 +3012,7 @@
                         <div class="flex items-start justify-between gap-3 flex-wrap">
                             <div class="min-w-0">
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.ai.page_title">AI</h2>
-                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.subtitle">Face clustering — recognise people across your library using a local Python service.</p>
+                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.subtitle">Face recognition groups people across your library. NSFW classifier is on its own tab.</p>
                                 <!-- Sidecar status pill — always visible
                                      so operators can see whether the
                                      Python service is reachable, which
@@ -3357,7 +3355,7 @@
                          line so the page acknowledges the extensibility
                          goal without spending a card on an empty
                          placeholder. -->
-                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection · Face quality scoring · Smart albums</p>
+                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection · Face quality ranking</p>
 
                     <!-- Hidden hosts for legacy element ids referenced
                          by older bookmarklets / extensions. Empty + no-op

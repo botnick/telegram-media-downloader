@@ -2,10 +2,8 @@
  *
  * Faces-only build. The Python face-clustering sidecar (insightface
  * buffalo_l, 512-dim embeddings) is the only AI surface here today;
- * Search + Auto-tag were removed in v2.14. The page is structured as
- * a capability grid so future drops (OCR, object detection, face
- * quality scoring) can land by pushing a single entry into the
- * CAPABILITIES array — no layout surgery, no new endpoints.
+ * Search + Auto-tag were removed in v2.14. NSFW classification lives
+ * on its own Maintenance → NSFW tab.
  *
  * Init contract: `init()` is called every time the SPA navigates to
  * `#/maintenance/ai`. It must be idempotent — repeated calls re-bind
@@ -31,121 +29,6 @@ const _peopleFilter = { query: '', unlabeledOnly: false };
 // Scan phase tracking — distinguishes Phase A (per-image detect) from
 // Phase B (DBSCAN clustering, runs after A completes, typically seconds).
 let _scanPhase = 'A'; // 'A' | 'B'
-
-/* ----------------------------------------------------------------------
- * Capability registry.
- *
- * Drives the capability grid. Adding a new capability later (OCR /
- * object detection / face quality) is a single push here + matching
- * i18n keys + (optionally) a renderer override. The defaults work
- * as English fallbacks so a fresh install reads cleanly even before
- * locale files load.
- *
- * Shape:
- *   id            — internal key, matches `models.<id>` in /api/ai/status
- *   i18n          — { title, desc, scanLabel } translation keys
- *   defaults      — fallback strings used when the i18n key is absent
- *   statusKey     — dotted path into /api/ai/status (e.g. 'models.faces')
- *   scanFeature   — POST /api/ai/scan/start `body.feature` value
- *   autoToggleKey — config.advanced.ai.<key> for the per-cap toggle
- *   controls      — array of slider/number controls bound to config keys
- * ------------------------------------------------------------------- */
-const CAPABILITIES = [
-    {
-        id: 'faces',
-        icon: 'ri-user-smile-line',
-        i18n: {
-            title: 'maintenance.ai.faces.title',
-            desc: 'maintenance.ai.faces.desc',
-            scanLabel: 'maintenance.ai.faces.scan',
-            cancelLabel: 'common.cancel',
-        },
-        defaults: {
-            title: 'Face clustering',
-            desc: 'Detects faces with insightface buffalo_l, groups recurring people into clusters via DBSCAN.',
-            scanLabel: 'Scan now',
-            cancelLabel: 'Cancel',
-        },
-        statusKey: 'models.faces',
-        scanFeature: 'faces',
-        autoToggleKey: 'faceClustering',
-        controls: [
-            {
-                type: 'select',
-                cfgKey: 'facesDetectorModel',
-                labelKey: 'maintenance.ai.faces.model',
-                labelDefault: 'Detector model',
-                default: 'buffalo_l',
-                options: [
-                    {
-                        value: 'buffalo_l',
-                        labelKey: 'maintenance.ai.faces.model_buffalo_l',
-                        labelDefault: 'buffalo_l — balanced (99.5% LFW, default)',
-                    },
-                    {
-                        value: 'antelopev2',
-                        labelKey: 'maintenance.ai.faces.model_antelopev2',
-                        labelDefault: 'antelopev2 — best accuracy (99.6%, Glint360K)',
-                    },
-                    {
-                        value: 'buffalo_m',
-                        labelKey: 'maintenance.ai.faces.model_buffalo_m',
-                        labelDefault: 'buffalo_m — faster (99.3%)',
-                    },
-                    {
-                        value: 'buffalo_s',
-                        labelKey: 'maintenance.ai.faces.model_buffalo_s',
-                        labelDefault: 'buffalo_s — fastest (99.0%)',
-                    },
-                ],
-                helpKey: 'maintenance.ai.faces.model_help',
-                helpDefault:
-                    'Switching the model requires a Re-cluster — embedding spaces differ across presets.',
-            },
-            {
-                type: 'slider',
-                cfgKey: 'facesEpsilon',
-                labelKey: 'maintenance.ai.faces.threshold',
-                labelDefault: 'Cluster threshold (DBSCAN ε)',
-                // Calibrated against real 926-photo / 689-face data:
-                //   0.8-1.0 = strict (78 clusters, high precision)
-                //   1.05    = PEAK (80 clusters, balanced) ← default
-                //   1.10    = starting to merge (top cluster jumps)
-                //   1.15+   = mega-merge — DON'T
-                min: 0.3,
-                max: 1.5,
-                step: 0.01,
-                default: 1.05,
-            },
-            {
-                type: 'number',
-                cfgKey: 'facesMinPoints',
-                labelKey: 'maintenance.ai.faces.min_points',
-                labelDefault: 'Min cluster size',
-                min: 2,
-                max: 20,
-                step: 1,
-                default: 2,
-            },
-        ],
-    },
-    // Placeholder card — communicates the extensible nature of the grid
-    // to operators without leaving an empty section. Rendered separately
-    // (no controls / no toggle / dashed border).
-    {
-        id: '__comingSoon__',
-        comingSoon: true,
-        icon: 'ri-flask-line',
-        i18n: {
-            title: 'maintenance.ai.coming_soon.title',
-            desc: 'maintenance.ai.coming_soon.list',
-        },
-        defaults: {
-            title: 'Coming soon',
-            desc: 'Object detection · OCR · Face quality ranking · Smart albums',
-        },
-    },
-];
 
 export async function init() {
     if (!_initOnce) {
@@ -370,12 +253,23 @@ function _onInstallDone(m) {
  * forgets a `/api/ai/faces/restart` so the new model loads next /detect.
  */
 async function _saveSetting(cfgKey, value, { restartSidecar = false } = {}) {
+    // Map UI control cfgKey → canonical save path. The slider/number controls
+    // read from legacy flat keys (`cfg.facesEpsilon`, `cfg.facesMinPoints`),
+    // but the new nested `advanced.ai.faces.*` block is the canonical home —
+    // `_mergeAi` precedence is `faces.* > flat`, so a flat-key save gets
+    // silently overridden on the next load. Save into BOTH paths so the
+    // nested block actually changes.
+    const saveAliases = {
+        facesEpsilon: ['facesEpsilon', 'epsilon'],
+        facesMinPoints: ['facesMinPoints', 'minPoints'],
+        facesDetectorModel: ['facesDetectorModel', 'detectorModel'],
+    };
     try {
         const body = { advanced: { ai: {} } };
-        const map = _CTRL_SAVE_PATHS[cfgKey];
-        if (map) {
-            body.advanced.ai[map[0]] = value;
-            body.advanced.ai.faces = { [map[2]]: value };
+        const alias = saveAliases[cfgKey];
+        if (alias) {
+            body.advanced.ai[alias[0]] = value;
+            body.advanced.ai.faces = { [alias[1]]: value };
         } else {
             body.advanced.ai[cfgKey] = value;
         }
@@ -680,90 +574,7 @@ async function _onMasterToggle() {
     }
 }
 
-// ---- Capability cards -----------------------------------------------------
-
-function _renderCapabilities(status) {
-    const root = $('#ai-capabilities-grid');
-    if (!root) return;
-    const cfg = status?.config || {};
-    const models = status?.models || {};
-
-    const html = CAPABILITIES.map((cap) => {
-        if (cap.comingSoon) return _renderComingSoonCard(cap);
-        const m = models[cap.id] || {};
-        return _renderCapabilityCard(cap, m, cfg);
-    }).join('');
-    root.innerHTML = html;
-
-    // Wire controls. Per-card toggle, control inputs, scan buttons —
-    // bound once per render because the markup is rebuilt on every
-    // status refresh.
-    for (const cap of CAPABILITIES) {
-        if (cap.comingSoon) continue;
-        const card = root.querySelector(`[data-cap="${cap.id}"]`);
-        if (!card) continue;
-
-        // Capability auto-toggle (e.g. faceClustering).
-        const toggle = card.querySelector('[data-cap-toggle]');
-        if (toggle && cap.autoToggleKey) {
-            toggle.addEventListener('click', () => _toggleCapability(cap.autoToggleKey, toggle));
-        }
-
-        // Scan controls.
-        card.querySelector('[data-cap-scan]')?.addEventListener('click', () =>
-            _startScan(cap.scanFeature),
-        );
-        card.querySelector('[data-cap-cancel]')?.addEventListener('click', () =>
-            _cancelScan(cap.scanFeature),
-        );
-
-        // Each control input — slider / number. Persist on `change`
-        // so the operator can tweak the slider without spamming saves
-        // while dragging.
-        for (const ctrl of cap.controls || []) {
-            const inp = card.querySelector(`[data-cap-ctrl="${ctrl.cfgKey}"]`);
-            if (!inp) continue;
-            inp.addEventListener('change', () => _saveControl(ctrl, inp));
-            // Live slider readout — updates the adjacent <output> as
-            // the operator drags, even before the change fires.
-            if (ctrl.type === 'slider') {
-                inp.addEventListener('input', () => {
-                    const out = card.querySelector(`[data-cap-out="${ctrl.cfgKey}"]`);
-                    if (out) out.textContent = Number(inp.value).toFixed(2);
-                });
-            }
-        }
-
-        // Faces-only: hardware-provider probe + dropdown. The card itself
-        // is markup-only — wiring lives here so the renderer stays
-        // declarative.
-        if (cap.id === 'faces' && card.querySelector('[data-faces-provider-card]')) {
-            _wireFacesProviderCard(card);
-        }
-    }
-}
-
-/**
- * Wire the provider sub-card embedded in the faces capability card:
- *   - "Run hardware probe" button → GET /api/ai/faces/provider-probe,
- *     renders verified/unverified chips. Mirrors `setting-adv-ffmpeg-
- *     hwaccel-probe` from maintenance-thumbs.js.
- *   - Provider <select> change → POST /api/config with the nested
- *     `advanced.ai.faces.providers` key, then asks the server to
- *     relaunch the sidecar so the new provider takes effect.
- */
-function _wireFacesProviderCard(card) {
-    const btn = card.querySelector('#ai-faces-provider-probe-btn');
-    const sel = card.querySelector('#ai-faces-provider');
-    if (btn && !btn.dataset.wired) {
-        btn.dataset.wired = '1';
-        btn.addEventListener('click', _runFacesProviderProbe);
-    }
-    if (sel && !sel.dataset.wired) {
-        sel.dataset.wired = '1';
-        sel.addEventListener('change', _onFacesProviderChange);
-    }
-}
+// ---- Hardware provider probe ----------------------------------------------
 
 // Dropdown short-key ↔ onnxruntime full provider name. Kept in sync with
 // `faces-service/tgdl_faces/insight.py:_PROVIDER_ALIASES` so the UI and
@@ -922,270 +733,6 @@ async function _onFacesProviderChange(e) {
             `${i18nT('common.save_failed', 'Save failed')}: ${err?.data?.error || err?.message || 'unknown'}`,
             'error',
         );
-    }
-}
-
-function _renderCapabilityCard(cap, model, cfg) {
-    const title = escapeHtml(i18nT(cap.i18n?.title, cap.defaults.title));
-    const desc = escapeHtml(i18nT(cap.i18n?.desc, cap.defaults.desc));
-    const enabled = cfg[cap.autoToggleKey] !== false;
-    const running = !!_lastStatus?.scans?.[cap.scanFeature]?.running;
-    const scanned = Number(_lastStatus?.scans?.[cap.scanFeature]?.scanned) || 0;
-    const total = Number(_lastStatus?.scans?.[cap.scanFeature]?.total) || 0;
-    const pct = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
-    const scanLabel = escapeHtml(i18nT(cap.i18n?.scanLabel, cap.defaults.scanLabel || 'Scan now'));
-    const cancelLabel = escapeHtml(
-        i18nT(cap.i18n?.cancelLabel, cap.defaults.cancelLabel || 'Cancel'),
-    );
-
-    // Model line — id + provider + dim. Falls back to a sidecar-aligned
-    // label when the status payload hasn't been enriched yet (early boot
-    // or fresh install without a scan).
-    const modelId = model?.id || (model?.bundled ? 'insightface buffalo_l (Python sidecar)' : '—');
-    const dim = model?.dim || (model?.bundled ? 512 : null);
-    const provider = _resolveProvider(model);
-    const modelLine = [escapeHtml(modelId), dim ? `${dim}-dim` : null, provider || null]
-        .filter(Boolean)
-        .join(' · ');
-
-    const controlsHtml = (cap.controls || []).map((ctrl) => _renderControl(ctrl, cfg)).join('');
-
-    // Hardware-acceleration sub-card — faces capability only. Mirrors
-    // the UX of `#setting-adv-ffmpeg-hwaccel-probe` in the Build
-    // thumbnails page: dropdown of provider hints + a "Run hardware
-    // probe" button that actually attempts each backend on the host
-    // and surfaces which ones initialise.
-    const providerHtml = cap.id === 'faces' ? _renderFacesProviderCard(cfg) : '';
-
-    return `
-        <div class="ai-capability-card bg-tg-bg/30 rounded-lg p-3 border border-tg-border/30" data-cap="${escapeHtml(cap.id)}">
-            <div class="flex items-start gap-3 flex-wrap">
-                <i class="${escapeHtml(cap.icon || 'ri-sparkling-line')} text-tg-blue text-xl shrink-0"></i>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-tg-text text-sm font-semibold">${title}</span>
-                        ${
-                            !enabled
-                                ? `<span class="ai-model-disabled" title="${escapeHtml(i18nT('maintenance.ai.disabled_pill_help', 'Capability is disabled.'))}">${escapeHtml(i18nT('maintenance.ai.disabled_pill', 'Disabled'))}</span>`
-                                : ''
-                        }
-                    </div>
-                    <p class="text-[11px] text-tg-textSecondary mt-0.5">${desc}</p>
-                    <div class="text-[10px] text-tg-textSecondary mt-1 font-mono truncate" title="${escapeHtml(modelId)}">${modelLine}</div>
-                </div>
-                <div class="ai-cap-toggle tg-toggle ${enabled ? 'active' : ''}" data-cap-toggle role="switch" aria-checked="${enabled}" tabindex="0"
-                    title="Enable or disable this capability"></div>
-            </div>
-
-            <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                ${controlsHtml}
-            </div>
-
-            ${providerHtml}
-
-            <div class="mt-3 flex items-center gap-2 flex-wrap">
-                <button type="button" class="tg-btn-input text-xs px-3 py-1.5" data-cap-scan ${running ? 'disabled' : ''}>
-                    <i class="ri-play-fill"></i> ${scanLabel}
-                </button>
-                <button type="button" class="tg-btn-input-secondary text-xs px-3 py-1.5 ${running ? '' : 'hidden'}" data-cap-cancel>
-                    <i class="ri-stop-fill"></i> ${cancelLabel}
-                </button>
-                <span class="text-[11px] text-tg-textSecondary" data-cap-progress-text>
-                    ${running ? `${scanned.toLocaleString()} / ${total.toLocaleString()}` : ''}
-                </span>
-            </div>
-
-            <div class="ai-cap-progress-track mt-2 h-1 rounded-full bg-tg-bg/50 overflow-hidden ${running ? '' : 'hidden'}" data-cap-progress-wrap>
-                <div class="h-full bg-tg-blue transition-all" style="width: ${pct}%" data-cap-progress-bar></div>
-            </div>
-        </div>
-    `;
-}
-
-/**
- * Render the "Hardware acceleration" sub-card embedded inside the faces
- * capability card. The dropdown's value is hydrated from
- * `config.advanced.ai.faces.providers` (defaulting to 'auto'); the
- * probe button + chip list are wired in `_wireFacesProviderCard()`.
- */
-function _renderFacesProviderCard(cfg) {
-    // The providers knob lives under the nested `faces` block (Track I);
-    // fall back to the legacy `facesProviders` flat key for safety, then
-    // 'auto' as the canonical default.
-    const cur = String(cfg?.faces?.providers || cfg?.facesProviders || 'auto').toLowerCase();
-    const opts = ['auto', 'cuda', 'coreml', 'directml', 'openvino', 'cpu'];
-    const labelKeyMap = {
-        auto: ['maintenance.ai.faces.providers.auto', 'Auto (best available)'],
-        cuda: ['maintenance.ai.faces.providers.cuda', 'CUDA — NVIDIA GPU'],
-        coreml: ['maintenance.ai.faces.providers.coreml', 'CoreML — Apple Silicon'],
-        directml: ['maintenance.ai.faces.providers.directml', 'DirectML — Windows'],
-        openvino: ['maintenance.ai.faces.providers.openvino', 'OpenVINO — Intel'],
-        cpu: ['maintenance.ai.faces.providers.cpu', 'CPU only'],
-    };
-    const optionsHtml = opts
-        .map((v) => {
-            const [k, def] = labelKeyMap[v];
-            const sel = v === cur ? ' selected' : '';
-            return `<option value="${v}"${sel} data-i18n="${k}">${escapeHtml(i18nT(k, def))}</option>`;
-        })
-        .join('');
-    return `
-        <div class="bg-tg-bg/30 rounded-lg p-3 border border-tg-border/40 mt-3" data-faces-provider-card>
-            <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
-                <div class="text-xs text-tg-text font-medium" data-i18n="maintenance.ai.faces.providers.probe_label">Test which inference provider this host can use</div>
-                <button id="ai-faces-provider-probe-btn" type="button"
-                    class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center justify-center gap-1.5 shrink-0">
-                    <i class="ri-radar-line"></i>
-                    <span data-i18n="maintenance.ai.faces.providers.probe_action">Run hardware probe</span>
-                </button>
-            </div>
-            <div id="ai-faces-provider-probe-result"
-                 class="text-[11px] text-tg-textSecondary leading-relaxed min-h-[24px] flex flex-wrap gap-1 items-center"
-                 role="status" aria-live="polite"></div>
-            <label for="ai-faces-provider" class="text-tg-text text-xs block mt-3 mb-1" data-i18n="maintenance.ai.faces.providers.label">Inference provider</label>
-            <select id="ai-faces-provider" class="tg-input w-full text-sm">
-                ${optionsHtml}
-            </select>
-            <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.providers.help">Auto is the safe default; pick a specific backend only after a probe shows it works. Falls back to CPU if the chosen backend isn't available.</p>
-        </div>
-    `;
-}
-
-function _renderControl(ctrl, cfg) {
-    const label = escapeHtml(i18nT(ctrl.labelKey, ctrl.labelDefault));
-    // Pull current value generically — string for selects, number for
-    // sliders/numbers. Fall back to ctrl.default when the config doesn't
-    // yet hold the key (fresh install or just-added setting).
-    const rawCur = cfg[ctrl.cfgKey];
-    const numCur = Number.isFinite(rawCur) ? rawCur : ctrl.default;
-    if (ctrl.type === 'slider') {
-        return `
-            <label class="block">
-                <div class="flex items-center justify-between gap-2">
-                    <span class="text-[11px] text-tg-textSecondary">${label}</span>
-                    <output class="text-[11px] text-tg-text font-mono tabular-nums" data-cap-out="${escapeHtml(ctrl.cfgKey)}">${Number(numCur).toFixed(2)}</output>
-                </div>
-                <input type="range" class="tg-range w-full mt-1" data-cap-ctrl="${escapeHtml(ctrl.cfgKey)}"
-                    min="${ctrl.min}" max="${ctrl.max}" step="${ctrl.step}" value="${numCur}">
-            </label>
-        `;
-    }
-    if (ctrl.type === 'number') {
-        return `
-            <label class="block">
-                <span class="text-[11px] text-tg-textSecondary">${label}</span>
-                <input type="number" class="tg-input text-xs py-1 mt-1" data-cap-ctrl="${escapeHtml(ctrl.cfgKey)}"
-                    min="${ctrl.min}" max="${ctrl.max}" step="${ctrl.step || 1}" value="${numCur}">
-            </label>
-        `;
-    }
-    if (ctrl.type === 'select') {
-        const strCur = typeof rawCur === 'string' && rawCur ? rawCur : ctrl.default;
-        const optionsHtml = (ctrl.options || [])
-            .map((o) => {
-                const optLabel = escapeHtml(i18nT(o.labelKey, o.labelDefault || o.value));
-                const sel = o.value === strCur ? ' selected' : '';
-                return `<option value="${escapeHtml(o.value)}"${sel} data-i18n="${escapeHtml(o.labelKey || '')}">${optLabel}</option>`;
-            })
-            .join('');
-        const helpHtml = ctrl.helpKey
-            ? `<p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="${escapeHtml(ctrl.helpKey)}">${escapeHtml(i18nT(ctrl.helpKey, ctrl.helpDefault || ''))}</p>`
-            : '';
-        return `
-            <label class="block sm:col-span-2">
-                <span class="text-[11px] text-tg-textSecondary">${label}</span>
-                <select class="tg-input text-xs py-1 mt-1 w-full" data-cap-ctrl="${escapeHtml(ctrl.cfgKey)}">
-                    ${optionsHtml}
-                </select>
-                ${helpHtml}
-            </label>
-        `;
-    }
-    return '';
-}
-
-function _renderComingSoonCard(cap) {
-    const title = escapeHtml(i18nT(cap.i18n?.title, cap.defaults.title));
-    const desc = escapeHtml(i18nT(cap.i18n?.desc, cap.defaults.desc));
-    return `
-        <div class="ai-coming-soon-card rounded-lg p-3 border border-dashed border-tg-border/40 bg-tg-bg/20 text-tg-textSecondary" aria-hidden="true">
-            <div class="flex items-start gap-3 flex-wrap">
-                <i class="${escapeHtml(cap.icon || 'ri-flask-line')} text-tg-textSecondary text-xl shrink-0"></i>
-                <div class="flex-1 min-w-0">
-                    <div class="text-tg-text/70 text-sm font-medium">${title}</div>
-                    <p class="text-[11px] text-tg-textSecondary mt-0.5">${desc}</p>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-async function _toggleCapability(toggleKey, el) {
-    const cur = el.classList.contains('active');
-    const next = !cur;
-    el.classList.toggle('active', next);
-    el.setAttribute('aria-checked', String(next));
-    try {
-        const r = await api.post('/api/config', { advanced: { ai: { [toggleKey]: next } } });
-        if (!r.success) throw new Error(r.error || 'save failed');
-        showToast(i18nT('common.saved', 'Saved'), 'success');
-        await refreshStatus();
-    } catch (e) {
-        el.classList.toggle('active', cur);
-        el.setAttribute('aria-checked', String(cur));
-        showToast(`${i18nT('common.save_failed', 'Save failed')}: ${e.message}`, 'error');
-    }
-}
-
-// Map UI control cfgKey → canonical save path. The slider/number controls
-// read from legacy flat keys (`cfg.facesEpsilon`, `cfg.facesMinPoints`),
-// but the new nested `advanced.ai.faces.*` block is the canonical home —
-// `_mergeAi` precedence is `faces.* > flat`, so a flat-key save gets
-// silently overridden on the next load. Save into BOTH paths so the
-// nested block actually changes.
-const _CTRL_SAVE_PATHS = {
-    facesEpsilon: ['facesEpsilon', 'faces', 'epsilon'],
-    facesMinPoints: ['facesMinPoints', 'faces', 'minPoints'],
-    facesDetectorModel: ['facesDetectorModel', 'faces', 'detectorModel'],
-};
-
-async function _saveControl(ctrl, inp) {
-    const raw = inp.value;
-    // Numeric controls (slider / number) save the parsed number; select
-    // controls keep the value as a string — `_CTRL_SAVE_PATHS` carries
-    // the alias mapping for both.
-    const isStringCtrl = ctrl.type === 'select';
-    const v = isStringCtrl ? String(raw || '') : Number(raw);
-    if (!isStringCtrl && !Number.isFinite(v)) return;
-    try {
-        // Build a payload that updates BOTH the legacy flat key AND
-        // the nested faces.* path so the merger picks up the new value
-        // regardless of which precedence rule fires.
-        const body = { advanced: { ai: {} } };
-        const map = _CTRL_SAVE_PATHS[ctrl.cfgKey];
-        if (map) {
-            body.advanced.ai[map[0]] = v;
-            body.advanced.ai.faces = { [map[2]]: v };
-        } else {
-            body.advanced.ai[ctrl.cfgKey] = v;
-        }
-        const r = await api.post('/api/config', body);
-        if (!r.success) throw new Error(r.error || 'save failed');
-        showToast(i18nT('common.saved', 'Saved'), 'success');
-        // For model change, also kick a sidecar relaunch so the new
-        // insightface preset is loaded on the next /detect call.
-        if (ctrl.cfgKey === 'facesDetectorModel') {
-            try {
-                await api.post('/api/ai/faces/restart', {});
-            } catch (e) {
-                console.warn('faces/restart on model change:', e);
-            }
-        }
-        // Don't re-render the whole status — the slider's own output
-        // already shows the live value, and a re-render would steal
-        // focus from the operator's current input.
-    } catch (e) {
-        showToast(`${i18nT('common.save_failed', 'Save failed')}: ${e.message}`, 'error');
     }
 }
 
