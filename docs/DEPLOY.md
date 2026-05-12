@@ -54,8 +54,15 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. When the `faces` compose profile is up this is set to `http://tgdl-faces:8011` automatically. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
 | `TGDL_FACES_AUTO_DOWNLOAD`      | `true`              | `false` refuses to download the prebuilt PyInstaller binary on first use — pair with a pre-staged binary under `data/faces-service/bin/` for air-gapped deploys. Full env-var reference in [docs/AI.md](AI.md). |
 | `SEEKBAR_SIDECAR_URL`           | unset               | Override URL for the Go seekbar sidecar. Set when running `seekbar-service/` as its own compose service; leave unset for the bundled auto-spawn path. |
+| `SEEKBAR_AUTO_DOWNLOAD`         | `true`              | `false` refuses to download the prebuilt Go binary on first use — pair with a pre-built binary under `data/seekbar-service/bin/` or the developer path `seekbar-service/bin/` for air-gapped deploys. |
 | `SEEKBAR_API_TOKEN`             | auto-generated      | Bearer token the dashboard sends as `X-API-Token` to the seekbar sidecar. Auto-generated per process; set explicitly only when running the sidecar standalone. |
 | `SEEKBAR_HWACCEL`               | `auto`              | `auto` / `cuda` / `qsv` / `vaapi` / `videotoolbox` / `v4l2m2m` / `none`. Forwarded to the sidecar's ffmpeg pipeline. |
+
+### Sidecar binary integrity
+
+Both the faces (`tgdl-faces-*`) and seekbar (`tgdl-seekbar-*`) sidecars are downloaded from GitHub Releases over HTTPS. On each download the node process fetches `<asset>.tar.gz.sha256` from the same release, computes the SHA-256 of the downloaded tarball, and aborts with an error if they do not match. The result (`checksumVerified: true/false/null`) is included in the `/api/ai/faces/status` and seekbar status responses so operators can confirm integrity after first boot.
+
+Air-gapped installs that set `TGDL_FACES_AUTO_DOWNLOAD=false` or `SEEKBAR_AUTO_DOWNLOAD=false` skip the download entirely; no checksum check runs because no download occurs. Pre-stage the binary manually and the spawn path picks it up without touching the network.
 
 ## One-click in-dashboard auto-update (opt-in)
 

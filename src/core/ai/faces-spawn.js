@@ -20,7 +20,8 @@
  * old binary stays on disk but the new one is fetched and used.
  */
 
-import { existsSync, promises as fs, statSync } from 'fs';
+import { createHash } from 'crypto';
+import { createReadStream, existsSync, promises as fs, statSync } from 'fs';
 import { createWriteStream } from 'fs';
 import path from 'path';
 import https from 'https';
@@ -126,6 +127,8 @@ let _child = null;
 let _childUrl = null;
 let _state = 'idle'; // idle | downloading | spawning | healthy | failed
 let _error = null;
+// null = not yet checked; true = verified; false = file missing or mismatch
+let _checksumVerified = null;
 let _healthMonitorTimer = null;
 let _healthMonitorFailCount = 0;
 let _firstBoot = true;
@@ -149,6 +152,7 @@ export function getSidecarStatus() {
         error: _error,
         pid: _child?.pid || null,
         version: SIDECAR_VERSION,
+        checksumVerified: _checksumVerified,
     };
 }
 
@@ -930,6 +934,75 @@ function _verifyBinary(binPath) {
     }
 }
 
+// ---- Checksum verification ----------------------------------------------
+
+export async function _parseChecksumFile(text) {
+    const hex = text.trim().split(/\s/)[0];
+    if (!/^[0-9a-f]{64}$/i.test(hex)) throw new Error(`invalid checksum format: ${text.trim()}`);
+    return hex.toLowerCase();
+}
+
+export function _hashFile(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = createHash('sha256');
+        const stream = createReadStream(filePath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('end', () => resolve(hash.digest('hex')));
+        stream.on('error', reject);
+    });
+}
+
+// Fetches a tiny text file (e.g. a .sha256 checksum). Not streaming — checksum
+// files are always < 1 KB so buffering in memory is fine.
+function _fetchText(url, redirectsLeft = _downloadRedirectLimit()) {
+    return new Promise((resolve, reject) => {
+        const parsed = _parseUrl(url);
+        if (!parsed) return reject(new Error(`bad url: ${url}`));
+        const lib = parsed.protocol === 'http:' ? http : https;
+        const req = lib.get(
+            url,
+            { headers: { 'user-agent': 'tgdl-faces-spawn', accept: 'text/plain' } },
+            (res) => {
+                if (
+                    res.statusCode >= 300 &&
+                    res.statusCode < 400 &&
+                    res.headers.location &&
+                    redirectsLeft > 0
+                ) {
+                    res.resume();
+                    _fetchText(_resolveLocation(url, res.headers.location), redirectsLeft - 1).then(
+                        resolve,
+                        reject,
+                    );
+                    return;
+                }
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`http ${res.statusCode} from ${url}`));
+                }
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+                res.on('error', reject);
+            },
+        );
+        req.on('error', reject);
+    });
+}
+
+// Fetches <tarUrl>.sha256, hashes the local tarball, and throws on mismatch.
+export async function _verifyChecksum(tarballPath, tarUrl) {
+    const checksumUrl = `${tarUrl}.sha256`;
+    const text = await _fetchText(checksumUrl);
+    const expected = await _parseChecksumFile(text);
+    const actual = await _hashFile(tarballPath);
+    if (actual !== expected) {
+        throw new Error(
+            `checksum mismatch for ${path.basename(tarballPath)}: expected ${expected}, got ${actual}`,
+        );
+    }
+}
+
 // ---- Download + extract -------------------------------------------------
 
 async function _downloadAndExtract(target) {
@@ -941,11 +1014,13 @@ async function _downloadAndExtract(target) {
         Array.isArray(target.tarUrls) && target.tarUrls.length ? target.tarUrls : [target.tarUrl];
     let lastErr = null;
     let downloaded = false;
+    let downloadedUrl = null;
     for (const url of urls) {
         _log('info', `downloading ${url} -> ${tmpTarball}`);
         try {
             await _streamDownload(url, tmpTarball);
             downloaded = true;
+            downloadedUrl = url;
             break;
         } catch (e) {
             lastErr = e;
@@ -959,6 +1034,19 @@ async function _downloadAndExtract(target) {
     }
     if (!downloaded) {
         throw lastErr || new Error('all download URLs failed');
+    }
+    _checksumVerified = null;
+    try {
+        await _verifyChecksum(tmpTarball, downloadedUrl);
+        _checksumVerified = true;
+        _log('info', `checksum verified for ${path.basename(downloadedUrl)}`);
+    } catch (e) {
+        _checksumVerified = false;
+        _log('warn', `checksum verification failed: ${e?.message || e} — aborting install`);
+        try {
+            await fs.unlink(tmpTarball);
+        } catch {}
+        throw e;
     }
     try {
         _log('info', `extracting ${tmpTarball} into ${target.binDir}`);
