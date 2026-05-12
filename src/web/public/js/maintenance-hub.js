@@ -125,6 +125,18 @@ const TOOLS = [
         wsEvents: ['peer_added', 'peer_removed', 'peer_status'],
     },
     {
+        slug: 'db-stats',
+        i18nTitle: 'maintenance.hub.db-stats.title',
+        defaultTitle: 'Database stats',
+        i18nBody: 'maintenance.hub.db-stats.body',
+        defaultBody:
+            'Table sizes, group breakdown, file types, disk usage, and AI indexing status.',
+        icon: 'ri-database-2-line',
+        accent: 'teal',
+        statusUrl: null,
+        wsEvents: [],
+    },
+    {
         slug: 'recovery',
         i18nTitle: 'maintenance.hub.recovery.title',
         defaultTitle: 'Recovery cleanup',

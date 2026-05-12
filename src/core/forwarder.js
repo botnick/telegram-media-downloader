@@ -21,7 +21,7 @@ export class AutoForwarder {
      * @param {Object} downloadInfo - From downloader 'download_complete' event
      */
     async process(downloadInfo) {
-        const { filePath, groupId, groupName, message } = downloadInfo;
+        const { filePath, groupId, groupName, message, mediaType } = downloadInfo;
 
         // 1. Check Group Config
         const groupConfig = this.config.groups.find((g) => String(g.id) === String(groupId));
@@ -91,7 +91,13 @@ export class AutoForwarder {
             // hourly integrity sweep will eventually drop the orphan
             // DB row whose file is gone (or here, whose file we
             // intentionally couldn't delete).
-            if (settings.deleteAfterForward) {
+            //
+            // When keepImages / keepVideos is enabled, photos/videos are
+            // kept locally even when deleteAfterForward is true. This lets
+            // users auto-forward without losing their local copy.
+            const shouldDeletePhoto = mediaType === 'photos' ? !settings.keepImages : true;
+            const shouldDeleteVideo = mediaType === 'videos' ? !settings.keepVideos : true;
+            if (settings.deleteAfterForward && shouldDeletePhoto && shouldDeleteVideo) {
                 try {
                     await fs.unlink(filePath);
                     console.log(

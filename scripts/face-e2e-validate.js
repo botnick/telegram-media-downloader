@@ -78,21 +78,6 @@ async function detectPath(absPath) {
     return { ms, status: res.status, faces: j?.faces || [] };
 }
 
-async function detectB64(absPath) {
-    const buf = await fs.readFile(absPath);
-    const b64 = buf.toString('base64');
-    const t0 = Date.now();
-    const res = await fetch(`${URL}/detect`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_b64: b64 }),
-    });
-    const ms = Date.now() - t0;
-    if (!res.ok) return { ms, faces: [] };
-    const j = await res.json();
-    return { ms, faces: j?.faces || [] };
-}
-
 function startGpuSampler() {
     const samples = [];
     const proc = spawn(

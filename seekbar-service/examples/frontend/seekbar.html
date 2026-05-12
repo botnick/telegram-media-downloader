@@ -41,9 +41,12 @@
   </div>
 
   <script>
+    function _sanitizeUrl(url) {
+        try { const u = new URL(url, location.origin); return u.href; } catch { return ''; }
+    }
     const qs = new URLSearchParams(location.search);
     const videoId = qs.get('id')  || 'demo';
-    const srcUrl  = qs.get('src') || '/videos/demo.mp4';
+    const srcUrl  = _sanitizeUrl(qs.get('src')) || '/videos/demo.mp4';
     const base    = qs.get('api') || ''; // e.g. http://localhost:8089
 
     const v = document.getElementById('v');

@@ -5,7 +5,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import crypto from 'crypto';
 
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-cluster-relay-'));
 

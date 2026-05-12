@@ -27,8 +27,6 @@ import {
 } from '../core/constants.js';
 import {
     getDb,
-    getDownloads,
-    getAllDownloads,
     getAllDownloadsFederated,
     getDownloadsForGroupFederated,
     searchDownloadsFederated,
@@ -39,7 +37,6 @@ import {
     getGroupStats,
     listGroupFiles,
     backfillGroupNames,
-    searchDownloads,
     deleteDownloadsBy,
     createShareLink,
     getShareLinkForServe,
@@ -101,7 +98,6 @@ import {
     getSpritePath as getSeekbarSpritePath,
     generateForDownload as generateSeekbarForDownload,
     purgeAllSeekbar,
-    purgeSeekbarForDownload,
 } from '../core/seekbar/index.js';
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
@@ -145,15 +141,11 @@ import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
 import {
     getAiCounts,
-    listAllTags,
-    listPhotosForTag,
     listPeople,
     listPhotosForPerson,
     renamePerson,
     deletePerson,
-    clearStaleEmbeddings,
     resetAllAiData,
-    listEmbeddingModels,
     getDb as aiGetDb,
 } from '../core/db.js';
 import * as backup from '../core/backup/index.js';
@@ -189,20 +181,14 @@ import { verifyRequest as verifyPeerHmac } from '../core/cluster/hmac.js';
 import {
     listPeers,
     getPeer,
-    upsertPeer,
     updatePeer,
     removePeer,
     markOnline,
     markOffline,
 } from '../core/cluster/peers.js';
 import { initiateHandshake, acceptHandshake, testPeerHealth } from '../core/cluster/handshake.js';
-import {
-    startSyncEngine,
-    stopSyncEngine,
-    syncAllOnce,
-    getSyncState,
-} from '../core/cluster/sync.js';
-import { findHashAcrossCluster, parseClusterRefPath } from '../core/cluster/dedup.js';
+import { startSyncEngine, syncAllOnce, getSyncState } from '../core/cluster/sync.js';
+import { parseClusterRefPath } from '../core/cluster/dedup.js';
 import {
     tryStartSweep,
     abortSweep,
@@ -210,22 +196,14 @@ import {
     listConflicts,
     resolveConflict,
 } from '../core/cluster/sweep.js';
-import { streamFromPeer, openPeerStream, requestSignedShareUrl } from '../core/cluster/proxy.js';
+import { streamFromPeer, requestSignedShareUrl } from '../core/cluster/proxy.js';
 import * as clusterWs from '../core/cluster/ws-channel.js';
 import * as clusterDiscovery from '../core/cluster/discovery.js';
 import { startFailoverWatcher, runFailoverPass } from '../core/cluster/failover.js';
 import { publishConfigChange } from '../core/cluster/config-sync.js';
 import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
-import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
-import {
-    recordClusterAudit,
-    listClusterAudit,
-    listOwnDownloadsSince,
-    listPeerDownloads,
-    setPeerCatalogBlob,
-    getPeerCatalogBlob,
-} from '../core/db.js';
+import { recordClusterAudit, listClusterAudit, listOwnDownloadsSince } from '../core/db.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
 // gramJS opens a fresh DC connection per file download (different DCs host
@@ -2500,7 +2478,13 @@ app.post('/api/history', async (req, res) => {
                     gifs: false,
                     stickers: false,
                 },
-                autoForward: { enabled: false, destination: null, deleteAfterForward: false },
+                autoForward: {
+                    enabled: false,
+                    destination: null,
+                    deleteAfterForward: false,
+                    keepImages: false,
+                    keepVideos: false,
+                },
                 trackUsers: { enabled: false, users: [] },
                 topics: { enabled: false, ids: [] },
             };
@@ -3669,6 +3653,100 @@ async function _stats_legacy_block_removed(req, res) {
 }
 /* eslint-enable no-unused-vars */
 
+// 1b. DB Stats — detailed table sizes, group breakdown, file types, AI indexing
+app.get('/api/db/stats', async (req, res) => {
+    try {
+        const db = getDb();
+
+        // Table sizes
+        const tables = ['downloads', 'faces', 'people', 'image_embeddings', 'image_tags', 'queue'];
+        const tableCounts = {};
+        for (const t of tables) {
+            try {
+                const r = db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get();
+                tableCounts[t] = r?.n || 0;
+            } catch {
+                tableCounts[t] = 0;
+            }
+        }
+
+        // Group breakdown, sorted by most recent activity
+        const groups = db
+            .prepare(`
+            SELECT group_name, COUNT(*) AS n,
+                   SUM(CASE WHEN file_type = 'photo' THEN 1 ELSE 0 END) AS photos,
+                   SUM(CASE WHEN file_type = 'video' THEN 1 ELSE 0 END) AS videos,
+                   SUM(file_size) AS bytes,
+                   MAX(created_at) AS last_activity
+              FROM downloads
+             GROUP BY group_name
+             ORDER BY last_activity DESC
+        `)
+            .all();
+
+        // File type totals
+        const totals = db
+            .prepare(`
+            SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN file_type = 'photo' THEN 1 ELSE 0 END) AS photos,
+                   SUM(CASE WHEN file_type = 'video' THEN 1 ELSE 0 END) AS videos,
+                   SUM(CASE WHEN file_type = 'audio' THEN 1 ELSE 0 END) AS audio,
+                   SUM(CASE WHEN file_type = 'document' THEN 1 ELSE 0 END) AS documents,
+                   SUM(CASE WHEN file_type = 'voice' THEN 1 ELSE 0 END) AS voice,
+                   SUM(file_size) AS bytes
+              FROM downloads
+        `)
+            .get();
+
+        // Recent activity (last 30 min)
+        const recent = db
+            .prepare(`
+            SELECT group_name, COUNT(*) AS n, SUM(file_size) AS bytes
+              FROM downloads
+             WHERE created_at >= datetime('now', '-30 minutes')
+             GROUP BY group_name
+             ORDER BY n DESC
+        `)
+            .all();
+
+        // AI indexing
+        const indexed =
+            db.prepare(`SELECT COUNT(*) AS n FROM downloads WHERE ai_indexed_at IS NOT NULL`).get()
+                ?.n || 0;
+        const total = db.prepare(`SELECT COUNT(*) AS n FROM downloads`).get()?.n || 0;
+        let aiFaces = 0,
+            aiPeople = 0,
+            aiTags = 0;
+        try {
+            aiFaces = db.prepare('SELECT COUNT(*) AS n FROM faces').get()?.n || 0;
+        } catch {}
+        try {
+            aiPeople = db.prepare('SELECT COUNT(*) AS n FROM people').get()?.n || 0;
+        } catch {}
+        try {
+            aiTags = db.prepare('SELECT COUNT(*) AS n FROM image_tags').get()?.n || 0;
+        } catch {}
+
+        res.json({
+            success: true,
+            tableCounts,
+            groups,
+            totals,
+            recent,
+            ai: {
+                indexed,
+                total,
+                pct: total ? Math.round((indexed / total) * 100) : 0,
+                faces: aiFaces,
+                people: aiPeople,
+                tags: aiTags,
+            },
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // 2. Dialogs API (Groups)
 // /api/dialogs response cache. Telegram rate-limits getDialogs aggressively
 // and the picker is opened many times in a typical session — caching the
@@ -3846,6 +3924,8 @@ app.get('/api/dialogs', async (req, res) => {
                         enabled: false,
                         destination: null,
                         deleteAfterForward: false,
+                        keepImages: false,
+                        keepVideos: false,
                     },
                     photoUrl: `/api/groups/${id}/photo`,
                     accountIds: accIds,
@@ -4142,15 +4222,36 @@ app.get('/api/downloads', async (req, res) => {
 
         const results = rows
             .map((r) => {
-                const cfg = configGroups.find((g) => String(g.id) === r.group_id);
+                // Detect comment: groups and derive display info from the parent group.
+                // Telegram creates separate comment groups for channel posts; these are
+                // stored with a 'comment:' prefix in the group_id so we can distinguish
+                // them and display them as "<Channel Name> (comments)" in the sidebar.
+                const isCommentGroup =
+                    typeof r.group_id === 'string' && r.group_id.startsWith('comment:');
+                const parentGroupId = isCommentGroup ? r.group_id.slice(8) : null;
+
+                const cfg = isCommentGroup
+                    ? configGroups.find((g) => String(g.id) === parentGroupId)
+                    : configGroups.find((g) => String(g.id) === r.group_id);
+
                 // Best-available: live Telegram dialogs name → config → DB → placeholder.
-                const name = bestGroupName(
-                    r.group_id,
-                    cfg?.name,
-                    r.best_name || r.any_name,
-                    dialogsNames.get(String(r.group_id)),
-                );
-                const hasPhoto = existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
+                const name = isCommentGroup
+                    ? bestGroupName(
+                          parentGroupId,
+                          cfg?.name,
+                          r.best_name || r.any_name,
+                          dialogsNames.get(String(parentGroupId)),
+                      ) + ' (comments)'
+                    : bestGroupName(
+                          r.group_id,
+                          cfg?.name,
+                          r.best_name || r.any_name,
+                          dialogsNames.get(String(r.group_id)),
+                      );
+
+                const hasPhoto = isCommentGroup
+                    ? existsSync(path.join(PHOTOS_DIR, `${parentGroupId}.jpg`))
+                    : existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
 
                 return {
                     id: r.group_id,
@@ -4158,10 +4259,14 @@ app.get('/api/downloads', async (req, res) => {
                     // Type drives the sidebar avatar's corner badge
                     // (channel = megaphone / group = group icon / user / bot).
                     // Prefer config (sticky), fall back to live-dialogs cache.
-                    type: cfg?.type || dialogsTypeFor(r.group_id),
+                    type: isCommentGroup
+                        ? cfg?.type || dialogsTypeFor(parentGroupId)
+                        : cfg?.type || dialogsTypeFor(r.group_id),
                     totalFiles: r.count,
                     sizeFormatted: formatBytes(r.size || 0),
-                    photoUrl: hasPhoto ? `/photos/${r.group_id}.jpg` : null,
+                    photoUrl: hasPhoto
+                        ? `/photos/${isCommentGroup ? parentGroupId : r.group_id}.jpg`
+                        : null,
                     enabled: cfg ? cfg.enabled : false,
                 };
             })
@@ -7210,13 +7315,6 @@ function _aiStarterFor(feature) {
 //   inner runFn returns a Promise that resolves on the scan-runner's
 //   onDone callback so tracker.success/failure semantics line up with
 //   the actual work.
-function _aiTrackerEventPrefix(feature) {
-    if (feature === 'embed') return 'ai_index';
-    if (feature === 'tags') return 'ai_tags';
-    if (feature === 'faces') return 'ai_people';
-    return 'ai';
-}
-
 app.post('/api/ai/scan/start', async (req, res) => {
     try {
         const cfg = _aiCfg();
@@ -7235,7 +7333,6 @@ app.post('/api/ai/scan/start', async (req, res) => {
         }
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
-        const prefix = _aiTrackerEventPrefix(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
             return new Promise((resolve, reject) => {
                 // Forward the runner's signal abort -> our internal
@@ -10331,7 +10428,13 @@ app.put('/api/groups/:id', async (req, res) => {
                     gifs: false,
                     stickers: false,
                 },
-                autoForward: { enabled: false, destination: null, deleteAfterForward: false },
+                autoForward: {
+                    enabled: false,
+                    destination: null,
+                    deleteAfterForward: false,
+                    keepImages: false,
+                    keepVideos: false,
+                },
                 trackUsers: { enabled: false, users: [] },
                 topics: { enabled: false, ids: [] },
             };
@@ -10359,6 +10462,14 @@ app.put('/api/groups/:id', async (req, res) => {
                         ? req.body.topics.ids.map(Number).filter(Number.isFinite)
                         : [],
                 };
+        }
+
+        // Comment media tracking — when enabled, the real-time monitor
+        // and history backfill also poll the channel's linked discussion
+        // group for comment media. These are stored with a 'comment:'
+        // prefix in their group_id to distinguish them from the main channel.
+        if (req.body.trackComments !== undefined) {
+            group.trackComments = !!req.body.trackComments;
         }
 
         // Multi-Account assignments
@@ -10577,6 +10688,12 @@ async function _spawnInternalBackfill({
 // 9. Profile Photos
 app.get('/api/groups/:id/photo', async (req, res) => {
     let id = req.params.id;
+    // Comment-thread groups use `comment:<parentGroupId>` as their group_id.
+    // Strip the prefix and serve the parent group's photo so the comment
+    // group inherits the same avatar in the gallery / sidebar.
+    if (typeof id === 'string' && id.startsWith('comment:')) {
+        id = id.slice('comment:'.length);
+    }
     // Synthetic IDs from `reindexFromDisk` (`unknown:<sanitisedFolderName>`)
     // carry no Telegram entity directly. Resolve them to a numeric ID by
     // matching the folder name against the live dialogs cache (the user's

@@ -113,7 +113,7 @@ describe('splitFacePerson', () => {
             centroidBlob: f32Blob([1, 0, 0, 0]),
             faceCount: 4,
         });
-        const f1 = api.insertFace({
+        api.insertFace({
             downloadId: did,
             x: 0,
             y: 0,
@@ -121,8 +121,8 @@ describe('splitFacePerson', () => {
             h: 100,
             embeddingBlob: f32Blob([1, 0, 0, 0]),
             personId: pid,
-        }).lastInsertRowid;
-        const f2 = api.insertFace({
+        });
+        api.insertFace({
             downloadId: did,
             x: 0,
             y: 0,
@@ -130,7 +130,7 @@ describe('splitFacePerson', () => {
             h: 100,
             embeddingBlob: f32Blob([0.9, 0.1, 0, 0]),
             personId: pid,
-        }).lastInsertRowid;
+        });
         const f3 = api.insertFace({
             downloadId: did,
             x: 0,

@@ -480,6 +480,8 @@ async function init() {
     // assign post-await because no inline onclick reaches them before
     // the operator clicks something.
     window.toggleFwdDelete = toggleFwdDelete;
+    window.toggleFwdKeepImages = toggleFwdKeepImages;
+    window.toggleFwdKeepVideos = toggleFwdKeepVideos;
     window.openDestinationPicker = openDestinationPicker;
     window.filterDialogs = filterDialogs;
     window.filterSidebarGroups = filterSidebarGroups;
@@ -900,6 +902,18 @@ function renderPage(page, params = {}) {
         import('./maintenance-cluster.js')
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-cluster', e));
+    } else if (page === 'maintenance-db-stats') {
+        document.getElementById('page-title').textContent = i18nT(
+            'maintenance.db-stats.title',
+            'Database stats',
+        );
+        document.getElementById('page-subtitle').textContent = i18nT(
+            'maintenance.db-stats.subtitle',
+            'Table sizes, group breakdown, file types, and AI indexing status.',
+        );
+        import('./maintenance-db-stats.js')
+            .then((m) => m.showDbStatsPage())
+            .catch((e) => console.error('maintenance-db-stats', e));
     } else if (page === 'maintenance-recovery') {
         document.getElementById('page-title').textContent = i18nT(
             'maintenance.recovery.page_title',
@@ -1013,6 +1027,7 @@ function registerRoutes() {
     router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
     router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
     router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
+    router.route('/maintenance/db-stats', () => renderPage('maintenance-db-stats'));
     router.route('/maintenance/recovery', () => renderPage('maintenance-recovery'));
     router.route('/maintenance/updates', () => renderPage('maintenance-updates'));
 }
@@ -1330,6 +1345,7 @@ const PAGE_HEADER_ICON = {
     'maintenance-logs': 'ri-terminal-box-line',
     'maintenance-backup': 'ri-cloud-line',
     'maintenance-cluster': 'ri-broadcast-line',
+    'maintenance-db-stats': 'ri-database-2-line',
     'maintenance-recovery': 'ri-first-aid-kit-line',
     'maintenance-updates': 'ri-download-cloud-2-line',
 };
@@ -2395,7 +2411,7 @@ function setupGalleryGestures() {
         scroll.style.overscrollBehavior = 'contain';
         attachPullToRefresh(scroll, {
             onRefresh: async () => {
-                if (typeof refreshCurrentPage === 'function') refreshCurrentPage();
+                refreshCurrentPage();
                 await new Promise((r) => setTimeout(r, 400));
             },
         });
@@ -2881,6 +2897,10 @@ async function openGroupSettings(groupId, groupName) {
     if (fwdDeleteToggle)
         fwdDeleteToggle.classList.toggle('active', fwd.deleteAfterForward === true);
 
+    // Comment media tracking
+    const commentsToggle = document.getElementById('track-comments-toggle');
+    if (commentsToggle) commentsToggle.classList.toggle('active', group?.trackComments === true);
+
     // Topics
     const topics = group?.topics || {};
     const topicsToggle = document.getElementById('topics-enable-toggle');
@@ -3174,6 +3194,10 @@ async function saveGroupSettings() {
         document.getElementById('fwd-enable-toggle')?.classList.contains('active') ?? false;
     const fwdDelete =
         document.getElementById('fwd-delete-toggle')?.classList.contains('active') ?? false;
+    const fwdKeepImages =
+        document.getElementById('fwd-keep-images-toggle')?.classList.contains('active') ?? false;
+    const fwdKeepVideos =
+        document.getElementById('fwd-keep-videos-toggle')?.classList.contains('active') ?? false;
     const fwdDest = document.getElementById('fwd-destination')?.value || '';
 
     // Collect account assignments
@@ -3196,6 +3220,10 @@ async function saveGroupSettings() {
     const backupPeerId = clusterRoutingEditable
         ? document.getElementById('group-backup-peer')?.value || ''
         : null;
+
+    // Comment media tracking
+    const trackComments =
+        document.getElementById('track-comments-toggle')?.classList.contains('active') ?? false;
 
     // Topics
     const topicsEnabled =
@@ -3224,7 +3252,10 @@ async function saveGroupSettings() {
             enabled: fwdEnabled,
             destination: fwdDest,
             deleteAfterForward: fwdDelete,
+            keepImages: fwdKeepImages,
+            keepVideos: fwdKeepVideos,
         },
+        trackComments,
         topics: {
             enabled: topicsEnabled,
             // When the user enables the filter and supplies a list, treat it
@@ -3403,7 +3434,6 @@ function _renderGroupFiles(rows) {
             const isImage = fileType === 'photo' || fileType === 'image' || fileType === 'sticker';
             const isVideo = fileType === 'video';
             const isAudio = fileType === 'audio';
-            const isDoc = !isImage && !isVideo && !isAudio;
             // Thumbnail container — `aspect-square rounded-md` with a subtle
             // ring on hover. Image/video share the same shape (12×12) so
             // rows align cleanly even when types are mixed. Audio + document
@@ -3482,6 +3512,20 @@ function toggleFwdDelete(event) {
     event.preventDefault();
     event.stopPropagation();
     const toggle = document.getElementById('fwd-delete-toggle');
+    if (toggle) toggle.classList.toggle('active');
+}
+
+function toggleFwdKeepImages(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const toggle = document.getElementById('fwd-keep-images-toggle');
+    if (toggle) toggle.classList.toggle('active');
+}
+
+function toggleFwdKeepVideos(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const toggle = document.getElementById('fwd-keep-videos-toggle');
     if (toggle) toggle.classList.toggle('active');
 }
 

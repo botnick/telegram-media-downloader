@@ -246,6 +246,7 @@
                     <div data-page="maintenance-logs"></div>
                     <div data-page="maintenance-backup"></div>
                     <div data-page="maintenance-cluster"></div>
+                    <div data-page="maintenance-db-stats"></div>
                     <div data-page="maintenance-recovery"></div>
                     <div data-page="maintenance-updates"></div>
                 </div>
@@ -406,6 +407,19 @@
                             </p>
                             <input id="topics-ids" type="text" class="tg-input w-full text-sm" data-i18n-placeholder="group.topics.ids_placeholder" placeholder="e.g., 12, 34, 56">
                         </div>
+
+                        <!-- Comment media tracking — channels with a linked
+                             discussion group can download media from comments
+                             alongside post media. Opt-in per group. -->
+                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40">
+                            <label class="flex items-center justify-between">
+                                <div>
+                                    <span class="text-white text-sm font-medium" data-i18n="group.comments.title">Track comment media</span>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5 leading-snug" data-i18n="group.comments.help">Download media posted in the comments section of this channel's posts.</p>
+                                </div>
+                                <div class="tg-toggle ml-4 shrink-0" id="track-comments-toggle" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
+                            </label>
+                        </div>
                     </div>
 
                     <!-- Routing tab — Auto-Forward + per-role account
@@ -441,6 +455,20 @@
                                 <label onclick="toggleFwdDelete(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
                                     <span class="text-tg-text text-xs" data-i18n="group.fwd.delete_after">Delete after forward</span>
                                     <div class="tg-toggle" id="fwd-delete-toggle"></div>
+                                </label>
+                                <label onclick="toggleFwdKeepImages(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
+                                    <div>
+                                        <span class="text-tg-text text-xs" data-i18n="group.fwd.keep_images">Keep images after forward</span>
+                                        <p class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="group.fwd.keep_images_help">Don't delete forwarded photos locally</p>
+                                    </div>
+                                    <div class="tg-toggle shrink-0" id="fwd-keep-images-toggle"></div>
+                                </label>
+                                <label onclick="toggleFwdKeepVideos(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
+                                    <div>
+                                        <span class="text-tg-text text-xs" data-i18n="group.fwd.keep_videos">Keep videos after forward</span>
+                                        <p class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="group.fwd.keep_videos_help">Don't delete forwarded videos locally</p>
+                                    </div>
+                                    <div class="tg-toggle shrink-0" id="fwd-keep-videos-toggle"></div>
                                 </label>
                             </div>
                         </div>
@@ -818,6 +846,9 @@
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab">
                             <i class="ri-broadcast-line"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
+                        </a>
+                        <a class="maintenance-tab" data-mt-page="maintenance-db-stats" href="#/maintenance/db-stats" role="tab">
+                            <i class="ri-database-2-line"></i><span data-i18n="nav.maintenance.db_stats">DB Stats</span>
                         </a>
                         <a class="maintenance-tab" data-mt-page="maintenance-recovery" href="#/maintenance/recovery" role="tab">
                             <i class="ri-first-aid-kit-line"></i><span data-i18n="nav.maintenance.recovery">Recovery</span>
@@ -3628,6 +3659,15 @@
                         </div>
                         <div id="recovery-list" class="space-y-2"></div>
                     </section>
+                </div>
+
+                <!-- Maintenance / DB Stats (admin-only) -->
+                <div id="page-maintenance-db-stats" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                     data-page-title-key="maintenance.db-stats.title"
+                     data-page-subtitle-key="maintenance.db-stats.subtitle">
+                    <div id="db-stats-root">
+                        <div class="text-center py-8 text-xs text-tg-textSecondary">Loading…</div>
+                    </div>
                 </div>
 
                 <!-- Maintenance / Updates (admin-only) -->
