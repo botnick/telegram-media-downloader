@@ -116,9 +116,16 @@ function _resolveAbs(storedPath) {
 // Generic envelope: claim slot → run worker → release. Worker owns its own
 // progress reporting via the `bump` callback.
 async function _runScan(feature, cfg, worker, onProgress, onDone, onLog) {
-    const log = (level, msg) => {
+    const log = (levelOrEntry, msg) => {
         try {
-            if (typeof onLog === 'function') onLog({ source: `ai-scan-${feature}`, level, msg });
+            if (typeof onLog !== 'function') return;
+            if (levelOrEntry !== null && typeof levelOrEntry === 'object') {
+                // faces.js / faces-client.js call onLog({source, level, msg}) directly.
+                // Pass the object through so the server's log() can destructure it.
+                onLog(levelOrEntry);
+            } else {
+                onLog({ source: `ai-scan-${feature}`, level: levelOrEntry, msg });
+            }
         } catch {}
     };
     if (_scans[feature]?.running) {
@@ -208,10 +215,10 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             const envBatch = resolveFacesValue('batchSize', facesCfgIn);
             const batchSizeRaw = _pickNumber([facesCfgIn.batchSize, cfg?.batchSize, envBatch], 16);
             const batchSize = Math.max(1, Math.min(200, Number(batchSizeRaw) || 16));
-            let _statNull = 0;     // detectFaces returned null (sidecar error / file missing)
-            let _statEmpty = 0;    // detectFaces returned [] (processed but no faces detected)
-            let _statFaces = 0;    // total face embeddings stored
-            let _statPhotos = 0;   // photos with ≥1 face
+            let _statNull = 0; // detectFaces returned null (sidecar error / file missing)
+            let _statEmpty = 0; // detectFaces returned [] (processed but no faces detected)
+            let _statFaces = 0; // total face embeddings stored
+            let _statPhotos = 0; // photos with ≥1 face
             let _nextStatLog = 200; // log a summary every N photos
             while (!signal.aborted) {
                 const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
@@ -231,7 +238,10 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                             try {
                                 detected = await detectFaces(abs, cfg, log);
                             } catch (e) {
-                                log('warn', `detectFaces threw on id=${row.id}: ${e?.message || e}`);
+                                log(
+                                    'warn',
+                                    `detectFaces threw on id=${row.id}: ${e?.message || e}`,
+                                );
                             }
                         }
                         if (detected === null) {

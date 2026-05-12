@@ -629,7 +629,12 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
         // dropdown value. Without these, the Python child re-uses its
         // default (buffalo_l + auto) regardless of what the UI saved.
         TGDL_FACES_DETECTOR_MODEL: String(_resolvedCfg.detectorModel || 'buffalo_l'),
-        TGDL_FACES_PROVIDERS: String(_resolvedCfg.providers || 'auto'),
+        // On Windows, 'auto' selects DirectML which triggers STATUS_ACCESS_VIOLATION
+        // (0xC0000005) on many machines due to ONNX/DML driver instability.
+        // Default to CPU on Windows unless the operator explicitly chose a provider.
+        TGDL_FACES_PROVIDERS: String(
+            _resolvedCfg.providers || (process.platform === 'win32' ? 'cpu' : 'auto'),
+        ),
         TGDL_FACES_DET_SIZE: String(_resolvedCfg.detSize || 640),
         // Disable Python's stdout buffering so log lines surface in the
         // dashboard's log feed in real time rather than batched at exit.
@@ -1325,7 +1330,11 @@ async function _spawnAndProbe(binPath) {
         // operator-selected insightface preset + EP hint so the
         // prebuilt binary loads the dropdown's choice on /restart.
         TGDL_FACES_DETECTOR_MODEL: String(_resolvedCfg.detectorModel || 'buffalo_l'),
-        TGDL_FACES_PROVIDERS: String(_resolvedCfg.providers || 'auto'),
+        // Matching the python-fallback default: CPU on Windows to avoid
+        // the DirectML STATUS_ACCESS_VIOLATION crash.
+        TGDL_FACES_PROVIDERS: String(
+            _resolvedCfg.providers || (process.platform === 'win32' ? 'cpu' : 'auto'),
+        ),
         TGDL_FACES_DET_SIZE: String(_resolvedCfg.detSize || 640),
     };
 
