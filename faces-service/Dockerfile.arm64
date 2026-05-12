@@ -1,0 +1,101 @@
+# syntax=docker/dockerfile:1.7
+#
+# ARM64 variant of the tgdl-faces sidecar.
+#
+# Targets linux/arm64 (Raspberry Pi 4/5, NVIDIA Jetson, AWS Graviton,
+# Apple Silicon running Linux VMs). CUDA is not available on ARM64
+# (no NVIDIA onnxruntime-gpu wheels); the default provider chain is
+# OpenVINO → CPU (CPU is always the final fallback).
+#
+# Memory-optimised defaults:
+#   TGDL_FACES_DET_SIZE=480  (vs 640 on x86_64) — halves detector RAM use
+#   TGDL_FACES_MAX_CONCURRENCY=1               — prevents OOM on 4 GB Pi 4
+#   TGDL_FACES_MAX_IMAGE_DIM=1280              — tighter cap for constrained RAM
+#
+# Build (on an ARM64 host, or with buildx + QEMU emulation):
+#   docker buildx build --platform linux/arm64 \
+#       -f Dockerfile.arm64 -t tgdl-faces:arm64 .
+#
+# Run:
+#   docker run -p 8011:8011 tgdl-faces:arm64
+
+# ---------------------------------------------------------------------------
+# Stage 1 — builder
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim-bookworm AS builder
+
+# gcc / g++ — several Python wheels (notably scipy + scikit-image on arm64)
+#             fall back to source builds when manylinux_aarch64 wheels are
+#             unavailable. libopenblas-dev + liblapack-dev provide the
+#             BLAS/LAPACK needed by scipy's build.
+# libgl1 + libglib2.0-0 — OpenCV runtime deps.
+# ca-certificates — HTTPS to the insightface model mirror.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gcc g++ \
+        libopenblas-dev liblapack-dev \
+        libgl1 libglib2.0-0 \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY pyproject.toml README.md ./
+COPY tgdl_faces ./tgdl_faces
+
+# Base onnxruntime ships CPU + OpenVINO EPs on aarch64; no CUDA available.
+RUN pip install --user --no-cache-dir .
+
+# Pre-download buffalo_l at build time so the runtime image boots offline.
+ENV TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+RUN python -c "\
+from insightface.app import FaceAnalysis; \
+a = FaceAnalysis(name='buffalo_l', root='/root/.cache/tgdl-faces/models', \
+    providers=['CPUExecutionProvider']); \
+a.prepare(ctx_id=-1, det_size=(480, 480))"
+
+# ---------------------------------------------------------------------------
+# Stage 2 — runtime
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim-bookworm AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libopenblas0 \
+        libgl1 libglib2.0-0 \
+        ca-certificates \
+        tini \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /root/.local /root/.local
+COPY --from=builder /root/.cache/tgdl-faces/models /root/.cache/tgdl-faces/models
+
+WORKDIR /app
+COPY tgdl_faces /app/tgdl_faces
+
+ENV PATH="/root/.local/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TGDL_FACES_HOST=0.0.0.0 \
+    TGDL_FACES_PORT=8011 \
+    TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models \
+    TGDL_FACES_PROVIDERS=auto \
+    TGDL_FACES_DET_SIZE=480 \
+    TGDL_FACES_MAX_CONCURRENCY=1 \
+    TGDL_FACES_MAX_IMAGE_DIM=1280
+
+EXPOSE 8011
+
+# Longer start_period — arm64 model load can take 30–60s on Pi 4.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD wget -qO- http://localhost:8011/health | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('ok') and d.get('ready') else 1)"
+
+LABEL org.opencontainers.image.title="tgdl-faces-arm64" \
+      org.opencontainers.image.description="Face detection + 512-dim embedding sidecar (ARM64 / Pi variant)" \
+      org.opencontainers.image.version="0.2.0" \
+      org.opencontainers.image.source="https://github.com/botnick/telegram-media-downloader" \
+      org.opencontainers.image.licenses="MIT" \
+      com.centurylinklabs.watchtower.enable="true"
+
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "tgdl_faces"]

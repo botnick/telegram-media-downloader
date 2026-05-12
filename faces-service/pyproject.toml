@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tgdl-faces"
-version = "0.1.0"
+version = "0.2.0"
 description = "Telegram Media Downloader — face detection + embedding sidecar (insightface buffalo_l, 512-dim)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -55,6 +55,12 @@ dependencies = [
     "numpy>=1.26,<3",
     "Pillow>=10,<12",
     "pydantic>=2,<3",
+    # insightface 0.7 internally uses scikit-image for face-alignment
+    # transforms and scipy for distance metrics; they are transitive deps
+    # but listing them explicitly pins ranges that ship manylinux wheels
+    # on aarch64 (where source builds fail without a Fortran compiler).
+    "scikit-image>=0.21,<2",
+    "scipy>=1.12,<2",
 ]
 
 [project.optional-dependencies]
