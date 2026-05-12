@@ -325,6 +325,9 @@ export function openMediaViewerSingle(file) {
 export function openMediaViewerForReview(files, index, opts = {}) {
     if (!Array.isArray(files) || !files.length) return;
     state.files = files;
+    // Reset filter so navigateMedia walks the full provided list, not whatever
+    // gallery tab was active before the maintenance page was opened.
+    state.currentFilter = 'all';
     _reviewActions = Array.isArray(opts.actions) ? opts.actions : [];
     _reviewMetaRender = typeof opts.metaRender === 'function' ? opts.metaRender : null;
     openMediaViewer(Math.max(0, Math.min(index || 0, files.length - 1)));
@@ -1643,7 +1646,7 @@ class VideoPlayer {
             const sourceSec = ratio * (sp.duration_sec || this.video.duration);
             const idx = Math.max(
                 0,
-                Math.min((sp.frames || 1) - 1, Math.floor(sourceSec / interval)),
+                Math.min((sp.frames || 1) - 1, Math.round(sourceSec / interval)),
             );
             const col = idx % (sp.cols || 1);
             const row = Math.floor(idx / (sp.cols || 1));
@@ -2067,9 +2070,7 @@ class VideoPlayer {
         const cols = sp.cols || 1;
         const interval =
             sp.interval_sec ||
-            (Number.isFinite(sp.duration_sec) && sp.frames > 0
-                ? sp.duration_sec / sp.frames
-                : 1);
+            (Number.isFinite(sp.duration_sec) && sp.frames > 0 ? sp.duration_sec / sp.frames : 1);
         const spriteUrl = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
 
         // Responsive thumb height.
@@ -2080,10 +2081,10 @@ class VideoPlayer {
 
         // Reveal wrap now so clientWidth reflects the real layout.
         wrap.classList.remove('hidden');
-        const arrowsW = (this.filmstripPrev?.offsetWidth ?? 26)
-                      + (this.filmstripNext?.offsetWidth ?? 26);
-        const GAP = 2;     // px gap between thumbs (matches CSS gap: 2px)
-        const PAD = 8;     // track side padding (4px × 2)
+        const arrowsW =
+            (this.filmstripPrev?.offsetWidth ?? 26) + (this.filmstripNext?.offsetWidth ?? 26);
+        const GAP = 2; // px gap between thumbs (matches CSS gap: 2px)
+        const PAD = 8; // track side padding (4px × 2)
         const trackW = Math.max(
             frames * naturalThumbW,
             (wrap.clientWidth || window.innerWidth) - arrowsW - PAD,
@@ -2186,10 +2187,11 @@ class VideoPlayer {
         if (!Number.isFinite(v.duration) || v.duration <= 0) return;
         const interval =
             sp.interval_sec ||
-            (Number.isFinite(sp.duration_sec) && sp.frames > 0
-                ? sp.duration_sec / sp.frames
-                : 1);
-        const idx = Math.max(0, Math.min((sp.frames || 1) - 1, Math.floor(v.currentTime / interval)));
+            (Number.isFinite(sp.duration_sec) && sp.frames > 0 ? sp.duration_sec / sp.frames : 1);
+        const idx = Math.max(
+            0,
+            Math.min((sp.frames || 1) - 1, Math.round(v.currentTime / interval)),
+        );
         if (idx === this._filmstripLastIdx) return;
         this._filmstripLastIdx = idx;
         const thumbs = this.filmstripTrack.children;

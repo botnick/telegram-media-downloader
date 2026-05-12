@@ -7509,9 +7509,6 @@ app.post('/api/ai/faces/recluster', async (_req, res) => {
                 message: 'A face scan is already in progress.',
             });
         }
-        try {
-            if (aiStartFacesScan) aiStartFacesScan(_aiCfg()).catch(() => {});
-        } catch {}
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
@@ -7539,12 +7536,6 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
         });
         tx();
         broadcast({ type: 'ai_faces_reindexed', ts: Date.now() });
-        // Kick off the scan immediately so the operator sees progress
-        // right away. Fire-and-forget — the scan owns its own state
-        // machine + WS events.
-        try {
-            if (aiStartFacesScan) aiStartFacesScan(_aiCfg()).catch(() => {});
-        } catch {}
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
