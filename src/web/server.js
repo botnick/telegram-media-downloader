@@ -207,6 +207,10 @@ import { recordClusterAudit, listClusterAudit, listOwnDownloadsSince } from '../
 import { formatBytes, bestGroupName, nameLooksUnresolved } from './lib/format.js';
 import { readConfigSafe, invalidateConfigCache } from './lib/config-cache.js';
 import {
+    createVersionRouter,
+    readCurrentVersion as _readCurrentVersion,
+} from './routes/version.js';
+import {
     cookieParser,
     checkAuth,
     guestGate,
@@ -1286,216 +1290,6 @@ app.post('/api/auth/reset/confirm', loginLimiter, async (req, res) => {
     } catch (e) {
         console.error('reset/confirm:', e);
         res.status(500).json({ error: 'Internal error' });
-    }
-});
-
-// Tells the SPA whether auth is configured + whether the current request is
-// authenticated. Always returns 200; the SPA decides what to render.
-// Build identity for the status-bar version chip + bug reports.
-// `commit` falls back to "dev" outside of CI; the Docker build passes it
-// in via a `GIT_SHA` build arg → ENV. `builtAt` likewise.
-function _readCurrentVersion() {
-    if (process.env.npm_package_version) return process.env.npm_package_version;
-    try {
-        return JSON.parse(fsSync.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'))
-            .version;
-    } catch {
-        return 'unknown';
-    }
-}
-
-app.get('/api/version', (req, res) => {
-    res.json({
-        version: _readCurrentVersion(),
-        commit: (process.env.GIT_SHA || 'dev').slice(0, 7),
-        builtAt: process.env.BUILT_AT || null,
-    });
-});
-
-// Update-check: poll the GitHub Releases API for the latest tag, cache it for
-// 6 hours, and tell the SPA whether a newer version is out. Fail-soft — any
-// network/parse error returns updateAvailable:false and we keep serving the
-// last-known good answer (marked stale) so a flaky GitHub doesn't blank the
-// status-bar chip. Public path so the chip can render pre-login.
-//
-// TTL evolution: 6 h (initial) → 1 h (v2.3.11) → 10 min (v2.3.12) after
-// the user asked for "near-real-time" notifications. 6 upstream calls
-// per hour per instance is comfortably under GitHub's 60-req-per-hour
-// unauthenticated rate limit (cache is shared across all clients of
-// one instance — multiple browser tabs / users behind the same dashboard
-// hit the same in-memory cache). Combined with the
-// `current >= cached_latest` bypass below, an instance running the
-// freshly-shipped version always re-checks immediately rather than
-// trusting a now-stale "no update" answer from the previous window.
-const UPDATE_CHECK_TTL_MS = 10 * 60 * 1000;
-const UPDATE_CHECK_REPO = 'botnick/telegram-media-downloader';
-let _updateCache = { fetchedAt: 0, data: null };
-
-function _cmpSemver(a, b) {
-    const norm = (s) =>
-        String(s || '')
-            .replace(/^v/i, '')
-            .split('-')[0]
-            .split('.')
-            .map((n) => parseInt(n, 10) || 0);
-    const A = norm(a),
-        B = norm(b);
-    const len = Math.max(A.length, B.length);
-    for (let i = 0; i < len; i++) {
-        const x = A[i] || 0,
-            y = B[i] || 0;
-        if (x > y) return 1;
-        if (x < y) return -1;
-    }
-    return 0;
-}
-
-async function _fetchLatestRelease() {
-    if (typeof fetch !== 'function') return null;
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 5000);
-    try {
-        const r = await fetch(`https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases/latest`, {
-            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'tgdl-update-check' },
-            signal: ctrl.signal,
-        });
-        if (!r.ok) return null;
-        const j = await r.json();
-        return {
-            tag: j.tag_name,
-            name: j.name || j.tag_name,
-            url: j.html_url,
-            publishedAt: j.published_at,
-        };
-    } catch {
-        return null;
-    } finally {
-        clearTimeout(t);
-    }
-}
-
-app.get('/api/version/check', async (req, res) => {
-    const current = _readCurrentVersion();
-    const now = Date.now();
-    const force = req.query.force === '1';
-    if (!force && _updateCache.data && now - _updateCache.fetchedAt < UPDATE_CHECK_TTL_MS) {
-        const { latest } = _updateCache.data;
-        // Bypass the cache when the running container is at-or-newer
-        // than the cached "latest". That state means we just rolled
-        // forward (e.g. user pulled v2.3.10 while cache still says
-        // v2.3.7); the cached "no update" answer is informationally
-        // stale and would mask any release shipped in the meantime.
-        // Re-fetch instead of trusting the cache.
-        if (_cmpSemver(current, latest) >= 0) {
-            // fall through to re-fetch
-        } else {
-            const updateAvailable = _cmpSemver(latest, current) > 0;
-            return res.json({ current, ..._updateCache.data, updateAvailable, cached: true });
-        }
-    }
-    const latest = await _fetchLatestRelease();
-    if (!latest) {
-        if (_updateCache.data) {
-            const updateAvailable = _cmpSemver(_updateCache.data.latest, current) > 0;
-            return res.json({
-                current,
-                ..._updateCache.data,
-                updateAvailable,
-                cached: true,
-                stale: true,
-            });
-        }
-        return res.json({ current, latest: null, updateAvailable: false, error: 'unreachable' });
-    }
-    const data = {
-        latest: latest.tag,
-        latestName: latest.name,
-        releaseUrl: latest.url,
-        publishedAt: latest.publishedAt,
-    };
-    _updateCache = { fetchedAt: now, data };
-    res.json({
-        current,
-        ...data,
-        updateAvailable: _cmpSemver(latest.tag, current) > 0,
-        cached: false,
-    });
-});
-
-// ====== Auto-update (Docker via watchtower sidecar) ========================
-//
-// `GET /api/update/status` — capability probe. Returns `{ available, …reasons }`
-// so the SPA can render either the active "Install update" button or a
-// disabled state with a help tooltip ("enable the auto-update profile in
-// docker-compose.yml…").
-//
-// `POST /api/update` — admin-only kickoff. Snapshots the SQLite DB into
-// `data/backups/`, then signals the watchtower sidecar to pull + recreate
-// this container. Returns 200 immediately; the actual swap happens out of
-// band moments later (the SPA's WS reconnect logic detects the cycle).
-app.get('/api/update/status', async (req, res) => {
-    res.json(autoUpdateStatus());
-});
-
-app.post('/api/update', async (req, res) => {
-    const tracker = _jobTrackers.autoUpdate;
-    const fromVersion = _readCurrentVersion();
-    const r = tracker.tryStart(async () => {
-        let result;
-        try {
-            result = await runAutoUpdate();
-        } catch (e) {
-            // Audit even pre-flight failures so the operator can see "we
-            // tried at 14:02, watchtower was unreachable" in the history
-            // panel rather than a silent dead-letter.
-            try {
-                recordUpdateFailure({
-                    fromVersion,
-                    errorCode: e?.code || 'UNKNOWN',
-                    errorMsg: e?.message || String(e),
-                });
-            } catch {}
-            throw e;
-        }
-        // Watchtower acknowledged. Stamp a `triggered` row — the new
-        // container's boot path will promote it to `success` when it
-        // observes a different version, or to `stalled` if the swap
-        // never landed (10 min timeout).
-        try {
-            recordUpdateAttempt({
-                fromVersion,
-                backupPath: result.backup?.path || null,
-                backupBytes: result.backup?.sizeBytes ?? null,
-            });
-        } catch {}
-        // Heads-up to every open tab — fires BEFORE watchtower kills us
-        // so the overlay shows up while the WS is still alive.
-        try {
-            broadcast({ type: 'update_started', backup: result.backup });
-        } catch {}
-        return { backup: result.backup };
-    });
-    if (!r.started) {
-        return res
-            .status(409)
-            .json({ error: 'An update is already in progress', code: 'ALREADY_RUNNING' });
-    }
-    res.json({ success: true, started: true });
-});
-
-app.get('/api/auto-update/status', async (req, res) => {
-    res.json(_jobTrackers.autoUpdate.getStatus());
-});
-
-// Audit log of every /api/update click, newest first. Powers the
-// "Recent updates" panel in the maintenance UI + lets operators spot
-// repeat failures (e.g. watchtower mis-token on every retry).
-app.get('/api/update/history', async (req, res) => {
-    try {
-        const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 25));
-        res.json({ history: listUpdateHistory({ limit }) });
-    } catch (e) {
-        res.status(500).json({ error: e?.message || 'Failed to read update history' });
     }
 });
 
@@ -11130,6 +10924,9 @@ const _jobTrackers = {
     aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
     aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
 };
+// ---- Router mounts (registered here so _jobTrackers + broadcast are in scope)
+app.use('/api', createVersionRouter({ broadcast, autoUpdateTracker: _jobTrackers.autoUpdate }));
+
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's
 // finished its purge can be GC'd from this map. Keep last 32 to bound.
