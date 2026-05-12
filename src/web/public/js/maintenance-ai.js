@@ -345,6 +345,59 @@ function _bindOnce() {
     $('#ai-faces-provider-probe-btn')?.addEventListener('click', _runFacesProviderProbe);
     $('#ai-faces-provider')?.addEventListener('change', _onFacesProviderChange);
 
+    // Image tagging card — toggle, labels textarea, scan + cancel.
+    $('#ai-tags-toggle')?.addEventListener('click', async () => {
+        const el = $('#ai-tags-toggle');
+        if (!el) return;
+        const cur = el.classList.contains('active');
+        const next = !cur;
+        el.classList.toggle('active', next);
+        el.setAttribute('aria-checked', String(next));
+        try {
+            const r = await api.post('/api/config', {
+                advanced: { ai: { imageTagging: next } },
+            });
+            if (!r.success) throw new Error(r.error || 'save failed');
+            showToast(i18nT('common.saved', 'Saved'), 'success');
+            await refreshStatus();
+        } catch (e) {
+            el.classList.toggle('active', cur);
+            el.setAttribute('aria-checked', String(cur));
+            showToast(
+                `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
+                'error',
+            );
+        }
+    });
+    $('#ai-tags-toggle')?.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            $('#ai-tags-toggle')?.click();
+        }
+    });
+    $('#ai-tags-labels')?.addEventListener('change', async (e) => {
+        const raw = String(e.target?.value || '');
+        const parts = raw
+            .split(/[,\n]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const value = parts.length ? parts : [];
+        try {
+            const r = await api.post('/api/config', {
+                advanced: { ai: { tagLabels: value } },
+            });
+            if (!r.success) throw new Error(r.error || 'save failed');
+            showToast(i18nT('common.saved', 'Saved'), 'success');
+        } catch (e) {
+            showToast(
+                `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
+                'error',
+            );
+        }
+    });
+    $('#ai-tags-scan-btn')?.addEventListener('click', () => _startScan('tags'));
+    $('#ai-tags-cancel-btn')?.addEventListener('click', () => _cancelScan('tags'));
+
     // Doctor refresh
     $('#ai-doctor-refresh-btn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -654,6 +707,34 @@ function _renderStatus(status) {
     if (provSel) {
         const cur = String(cfg.faces?.providers || 'auto').toLowerCase();
         if (provSel.value !== cur) provSel.value = cur;
+    }
+
+    // Image tagging card — toggle, model line, scan state, labels.
+    const tagsToggle = $('#ai-tags-toggle');
+    if (tagsToggle) {
+        const on = cfg.imageTagging !== false;
+        tagsToggle.classList.toggle('active', on);
+        tagsToggle.setAttribute('aria-checked', String(on));
+    }
+    const tagsModel = models.tags || {};
+    const tagsModelId = tagsModel.id || (tagsModel.loaded ? 'CLIP loaded' : '—');
+    const tagsVocab = tagsModel.vocabularySize ? `${tagsModel.vocabularySize} tags` : '';
+    const tagsModelLineEl = $('#ai-tags-model-line');
+    if (tagsModelLineEl) {
+        const parts = [tagsModelId, tagsVocab].filter(Boolean);
+        tagsModelLineEl.textContent = parts.join(' · ') || '—';
+        tagsModelLineEl.title = tagsModelId;
+    }
+    const tagsRunning = !!scans?.tags?.running;
+    const tagsScanBtn = $('#ai-tags-scan-btn');
+    const tagsCancelBtn = $('#ai-tags-cancel-btn');
+    if (tagsScanBtn) tagsScanBtn.disabled = tagsRunning;
+    if (tagsCancelBtn) tagsCancelBtn.disabled = !tagsRunning;
+    // Hydrate tag labels textarea from config.
+    const tagsLabelsEl = $('#ai-tags-labels');
+    if (tagsLabelsEl) {
+        const cur = Array.isArray(cfg.tagLabels) ? cfg.tagLabels.join(', ') : '';
+        if (tagsLabelsEl.value !== cur) tagsLabelsEl.value = cur;
     }
 }
 
@@ -1405,23 +1486,29 @@ async function _cancelScan(feature) {
 }
 
 function _onScanProgress(feature, msg) {
-    // Faces is the only feature today — `feature` arg kept for future
-    // OCR / object detection drops that reuse this WS handler.
-    if (feature !== 'faces') return;
     const running = !!msg.running;
     const scanned = Number(msg.scanned) || 0;
     const total = Number(msg.total) || 0;
     const pct = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
 
-    const scanBtn = $('#ai-scan-btn');
-    const cancelBtn = $('#ai-cancel-btn');
+    if (feature === 'faces') {
+        const scanBtn = $('#ai-scan-btn');
+        const cancelBtn = $('#ai-cancel-btn');
+        if (scanBtn) scanBtn.disabled = running;
+        if (cancelBtn) cancelBtn.disabled = !running;
+    } else if (feature === 'tags') {
+        const scanBtn = $('#ai-tags-scan-btn');
+        const cancelBtn = $('#ai-tags-cancel-btn');
+        if (scanBtn) scanBtn.disabled = running;
+        if (cancelBtn) cancelBtn.disabled = !running;
+    }
+
+    // Shared progress bar — shows whichever scan is currently running.
     const progressWrap = $('#ai-progress');
     const progressBar = $('#ai-progress-bar');
     const progressPct = $('#ai-progress-pct');
     const progressStatus = $('#ai-progress-status');
 
-    if (scanBtn) scanBtn.disabled = running;
-    if (cancelBtn) cancelBtn.disabled = !running;
     if (progressWrap) progressWrap.classList.toggle('hidden', !running);
     if (progressBar) progressBar.style.width = `${pct}%`;
     if (progressPct) {
@@ -1432,7 +1519,11 @@ function _onScanProgress(feature, msg) {
             : '';
     }
     if (progressStatus && running) {
-        progressStatus.textContent = i18nT('maintenance.ai.scanning', 'Scanning…');
+        const label =
+            feature === 'faces'
+                ? i18nT('maintenance.ai.scanning', 'Scanning…')
+                : i18nT('maintenance.ai.scanning_tags', 'Tagging photos…');
+        progressStatus.textContent = label;
     }
 }
 
@@ -1445,6 +1536,7 @@ function _onScanDone(feature, msg) {
     }
     refreshStatus();
     if (feature === 'faces') _loadPeople();
+    if (feature === 'tags') _renderTagBrowser();
 }
 
 // ---- People (face clusters) ----------------------------------------------
