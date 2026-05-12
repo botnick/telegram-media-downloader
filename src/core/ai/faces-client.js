@@ -120,10 +120,18 @@ export function getSidecarUrl() {
     return _sidecarUrl || null;
 }
 
+const HEALTH_PROBE_TIMEOUT_MS = 5000;
+const HEALTH_PROBE_RETRIES = 3;
+
 /**
  * Probe the sidecar's `/health` endpoint. Result is cached for 5 s — the
  * AI maintenance card polls this on every redraw and the sidecar's
  * `/health` is otherwise hit several times per second during a scan.
+ *
+ * Retries up to `HEALTH_PROBE_RETRIES` times on network / 5xx errors
+ * before caching a failure so a single transient blip doesn't flip the
+ * status card red. Uses a dedicated 5 s timeout (not `_requestTimeoutMs`)
+ * so a hung sidecar never blocks the maintenance page.
  *
  * NEVER throws — a thrown error here would cascade into a broken card
  * (the AI panel is the only thing that reports sidecar status, so it
@@ -138,11 +146,29 @@ export async function health() {
         return _healthCache.value;
     }
     let value;
-    try {
-        const res = await _fetchWithTimeout(`${url}/health`, { method: 'GET' });
-        if (!res.ok) {
-            value = { ok: false, error: `http_${res.status}` };
-        } else {
+    let lastErr = null;
+    for (let attempt = 0; attempt < HEALTH_PROBE_RETRIES; attempt++) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), HEALTH_PROBE_TIMEOUT_MS);
+            let res;
+            try {
+                res = await globalThis.fetch(`${url}/health`, {
+                    method: 'GET',
+                    signal: ctrl.signal,
+                });
+            } finally {
+                clearTimeout(timer);
+            }
+            if (!res.ok) {
+                lastErr = new Error(`http_${res.status}`);
+                // 5xx is retryable; 4xx is a final answer.
+                if (res.status < 500) {
+                    value = { ok: false, error: `http_${res.status}` };
+                    break;
+                }
+                continue;
+            }
             const body = await res.json();
             value = {
                 ok: body?.ok === true,
@@ -162,9 +188,14 @@ export async function health() {
                 platform: typeof body?.platform === 'string' ? body.platform : null,
                 python: typeof body?.python === 'string' ? body.python : null,
             };
+            lastErr = null;
+            break;
+        } catch (e) {
+            lastErr = e;
         }
-    } catch (e) {
-        value = { ok: false, error: e?.message || String(e) };
+    }
+    if (value === undefined) {
+        value = { ok: false, error: lastErr?.message || String(lastErr) };
     }
     _healthCache = { value, expiresAt: now + _healthCacheTtlMs };
     return value;

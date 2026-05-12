@@ -117,14 +117,20 @@ function setupOverflowMenu() {
 function _renderNotifyList() {
     const list = document.getElementById('notify-list');
     const empty = document.getElementById('notify-empty');
+    const countEl = document.getElementById('notify-count');
     if (!list) return;
     const buf = _readBuffer();
     if (!buf.length) {
         list.innerHTML = '';
         if (empty) empty.classList.remove('hidden');
+        if (countEl) countEl.classList.add('hidden');
         return;
     }
     if (empty) empty.classList.add('hidden');
+    if (countEl) {
+        countEl.textContent = buf.length > 99 ? '99+' : String(buf.length);
+        countEl.classList.remove('hidden');
+    }
     // Newest first — buffer is appended, render reversed.
     list.innerHTML = buf
         .slice()
@@ -132,17 +138,13 @@ function _renderNotifyList() {
         .map((e) => {
             const icon = _icon(e.level);
             const rel = _formatRel(e.ts);
-            return `<div class="notify-row" data-level="${e.level}">
-            <div class="notify-icon"><i class="${icon}"></i></div>
-            <div class="notify-body">
-                <div class="notify-msg">${escapeHtml(e.msg)}</div>
-                <div class="notify-meta">
-                    <span>${escapeHtml(e.source || 'app')}</span>
-                    <span>·</span>
-                    <span>${rel}</span>
-                </div>
-            </div>
-        </div>`;
+            const src = escapeHtml(e.source || 'app');
+            return `<div class="notify-row" data-level="${escapeHtml(e.level || '')}">` +
+                `<div class="notify-icon"><i class="${icon}" aria-hidden="true"></i></div>` +
+                `<div class="notify-body">` +
+                `<div class="notify-msg">${escapeHtml(e.msg)}</div>` +
+                `<div class="notify-meta"><span class="notify-source-chip">${src}</span><span>·</span><span>${rel}</span></div>` +
+                `</div></div>`;
         })
         .join('');
 }

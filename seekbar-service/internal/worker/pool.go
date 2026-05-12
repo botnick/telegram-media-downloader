@@ -68,7 +68,7 @@ type SpriteMeta struct {
 
 // ProgressFunc is called after each completed/failed job so the host
 // process (or SSE/WS relay) can report % completion.
-type ProgressFunc func(done, total, generated, errored int)
+type ProgressFunc func(done, total, generated, errored, queued int)
 
 // Pool manages concurrent sprite workers.
 type Pool struct {
@@ -79,13 +79,13 @@ type Pool struct {
 	mu      sync.Mutex
 	queue   []*Job
 	total   int
-	done    int32
-	genOk   int32
-	genErr  int32
-	running int32
+	done    int32 // total finished (ok + err)
+	genOk   int32 // completed successfully
+	genErr  int32 // failed permanently
+	running int32 // currently in-flight
 
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
 	onProgress ProgressFunc
 }
 
@@ -109,17 +109,33 @@ func (p *Pool) Submit(j *Job) {
 	p.total++
 }
 
-// Start launches worker goroutines. Call Stop or cancel the parent ctx
-// to drain.
-func (p *Pool) Start(ctx context.Context) {
-	// Resolve hwaccel once at boot rather than per-job.
-	hwa, err := ffmpeg.Resolve(ctx, p.cfg.FFmpeg.Path, p.cfg.FFmpeg.HWAccel)
-	if err != nil {
-		p.log.Warn("hwaccel resolve failed, using CPU", "err", err)
+// Start launches worker goroutines. Accepts a pre-resolved hwaccel
+// backend so the caller (server.go) can share detection results with
+// the /health endpoint without probing twice. Pass an empty string to
+// let the pool resolve hwaccel itself from the config.
+//
+// Returns the resolved HWAccelBackend that is now in use (may be "" for
+// CPU-only). Call Stop or cancel the parent ctx to drain.
+func (p *Pool) Start(ctx context.Context, resolvedHWAccel string) ffmpeg.HWAccelBackend {
+	var hwa ffmpeg.HWAccelBackend
+	if resolvedHWAccel != "" {
+		// Caller already probed — trust it.
+		hwa = ffmpeg.HWAccelBackend(resolvedHWAccel)
+	} else {
+		// Resolve hwaccel once at boot rather than per-job.
+		probeCtx, probeCancel := context.WithTimeout(ctx, 20*time.Second)
+		var err error
+		hwa, err = ffmpeg.Resolve(probeCtx, p.cfg.FFmpeg.Path, p.cfg.FFmpeg.HWAccel, p.cfg.FFmpeg.VAAPIDevice)
+		probeCancel()
+		if err != nil {
+			p.log.Warn("hwaccel resolve failed, using CPU", "err", err)
+		}
 	}
 	p.hwArgs = ffmpeg.Args(hwa, p.cfg.FFmpeg.VAAPIDevice)
 	if len(p.hwArgs) > 0 {
 		p.log.Info("hwaccel active", "backend", string(hwa))
+	} else {
+		p.log.Info("hwaccel not available, using CPU decode")
 	}
 
 	ctx, p.cancel = context.WithCancel(ctx)
@@ -131,6 +147,7 @@ func (p *Pool) Start(ctx context.Context) {
 		p.wg.Add(1)
 		go p.worker(ctx)
 	}
+	return hwa
 }
 
 // Stop signals cancellation and waits for in-flight jobs to finish.
@@ -141,8 +158,21 @@ func (p *Pool) Stop() {
 	p.wg.Wait()
 }
 
-// Stats returns a snapshot of the pool progress.
-func (p *Pool) Stats() (total, done, genOk, genErr, queued int) {
+// Stats returns a snapshot of pool counters.
+// Returns: queued, processing, completed, failed counts.
+func (p *Pool) Stats() (queued, processing, completed, failed int) {
+	p.mu.Lock()
+	queued = len(p.queue)
+	p.mu.Unlock()
+	return queued,
+		int(atomic.LoadInt32(&p.running)),
+		int(atomic.LoadInt32(&p.genOk)),
+		int(atomic.LoadInt32(&p.genErr))
+}
+
+// LegacyStats returns the old (total, done, genOk, genErr, queued)
+// tuple for backwards-compatible callers.
+func (p *Pool) LegacyStats() (total, done, genOk, genErr, queued int) {
 	p.mu.Lock()
 	queued = len(p.queue)
 	total = p.total
@@ -187,7 +217,10 @@ func (p *Pool) worker(ctx context.Context) {
 		atomic.AddInt32(&p.running, -1)
 		d := int(atomic.AddInt32(&p.done, 1))
 		if p.onProgress != nil {
-			p.onProgress(d, p.total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)))
+			p.mu.Lock()
+			q := len(p.queue)
+			p.mu.Unlock()
+			p.onProgress(d, p.total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)), q)
 		}
 	}
 }

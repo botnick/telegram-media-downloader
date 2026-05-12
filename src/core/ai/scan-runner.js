@@ -28,7 +28,7 @@ import {
     setAiIndexedAt,
     setFacePerson,
 } from '../db.js';
-import { clusterFaces, detectFaces } from './faces.js';
+import { clusterFaces, detectFaces, FACE_DEFAULTS } from './faces.js';
 import { resolveFacesValue } from './faces-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -211,35 +211,44 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             while (!signal.aborted) {
                 const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
                 if (!batch.length) break;
-                for (const row of batch) {
-                    if (signal.aborted) break;
-                    const abs = _resolveAbs(row.file_path);
-                    let detected = null;
-                    if (abs) {
-                        try {
-                            detected = await detectFaces(abs, cfg, log);
-                        } catch (e) {
-                            log('warn', `detectFaces threw on id=${row.id}: ${e?.message || e}`);
+                // Process the batch in parallel — each detectFaces call is an
+                // async HTTP request to the Python sidecar, so the event loop
+                // is free while each request is in flight. The sidecar's own
+                // concurrency gate (faces-client `_maxConcurrency`) prevents
+                // overloading it. Synchronous DB writes are single-threaded
+                // by JS runtime, so no DB busy risk here.
+                await Promise.all(
+                    batch.map(async (row) => {
+                        if (signal.aborted) return;
+                        const abs = _resolveAbs(row.file_path);
+                        let detected = null;
+                        if (abs) {
+                            try {
+                                detected = await detectFaces(abs, cfg, log);
+                            } catch (e) {
+                                log('warn', `detectFaces threw on id=${row.id}: ${e?.message || e}`);
+                            }
                         }
-                    }
-                    if (Array.isArray(detected) && detected.length) {
-                        deleteFacesForDownload(row.id);
-                        for (const f of detected) {
-                            insertFace({
-                                downloadId: row.id,
-                                x: f.x,
-                                y: f.y,
-                                w: f.w,
-                                h: f.h,
-                                embeddingBlob: _f32ToBlob(f.embedding),
-                            });
+                        if (Array.isArray(detected) && detected.length) {
+                            deleteFacesForDownload(row.id);
+                            for (const f of detected) {
+                                if (!f.embedding || !f.embedding.length) continue;
+                                insertFace({
+                                    downloadId: row.id,
+                                    x: f.x,
+                                    y: f.y,
+                                    w: f.w,
+                                    h: f.h,
+                                    embeddingBlob: _f32ToBlob(f.embedding),
+                                });
+                            }
                         }
-                    }
-                    setAiIndexedAt(row.id);
-                    state.scanned += 1;
-                    bump();
-                    await new Promise((r) => setImmediate(r));
-                }
+                        setAiIndexedAt(row.id);
+                        state.scanned += 1;
+                        bump();
+                    }),
+                );
+                await new Promise((r) => setImmediate(r));
             }
 
             // Phase B — DBSCAN over every face embedding. Always re-runs
@@ -267,7 +276,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                     facesCfgForCluster.epsilon,
                     cfg.facesEpsilon,
                 ],
-                0.5,
+                FACE_DEFAULTS.facesEpsilon,
             );
             const minPointsForCluster = _pickNumber(
                 [
@@ -275,7 +284,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                     facesCfgForCluster.minPoints,
                     cfg.facesMinPoints,
                 ],
-                3,
+                FACE_DEFAULTS.facesMinPoints,
             );
             log(
                 'info',
@@ -302,7 +311,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             const facesCfg = cfg?.faces || {};
             const epsilonResolved = _pickNumber(
                 [resolveFacesValue('epsilon', facesCfg), facesCfg.epsilon, cfg.facesEpsilon],
-                0.5,
+                FACE_DEFAULTS.facesEpsilon,
             );
             const matchEpsEnv = resolveFacesValue('labelMatchEps', facesCfg);
             const matchEps = _pickNumber(

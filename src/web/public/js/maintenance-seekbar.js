@@ -50,6 +50,8 @@ export async function init() {
         _refreshHealth(),
         _recoverBuildState(),
         _syncToggleState(),
+        _loadGroupsSelector(),
+        _refreshQueueStats(),
     ]);
 }
 
@@ -138,6 +140,16 @@ function _wireButtons() {
         e.preventDefault();
         _refreshHealth().catch(() => {});
     });
+
+    // Group-selector enable/disable rebuild button when a group is selected.
+    const groupSel = document.getElementById('seekbar-group-select');
+    const rebuildGroupBtn = document.getElementById('seekbar-rebuild-group-btn');
+    if (groupSel && rebuildGroupBtn) {
+        groupSel.addEventListener('change', () => {
+            rebuildGroupBtn.disabled = !groupSel.value;
+        });
+        rebuildGroupBtn.addEventListener('click', () => _rebuildGroup(groupSel.value));
+    }
 }
 
 async function _startScan() {
@@ -304,6 +316,7 @@ function _onDone(p) {
     _setBuildUi(false);
     _refreshStats().catch(() => {});
     _refreshLastBuild().catch(() => {});
+    _refreshQueueStats().catch(() => {});
     if (p?.cancelled) {
         showToast(i18nT('maintenance.seekbar.cancelled', 'Scan cancelled'));
     } else {
@@ -431,6 +444,82 @@ async function _refreshHealth() {
             errEl.classList.add('hidden');
         }
     }
+}
+
+/**
+ * Populate the group selector from the monitored-groups list. Groups that
+ * have no videos are included — the rebuild endpoint handles the empty case.
+ * Bounded at 200 groups to stay consistent with the big-data rules.
+ */
+async function _loadGroupsSelector() {
+    const sel = document.getElementById('seekbar-group-select');
+    if (!sel) return;
+    try {
+        const r = await api.get('/api/groups?limit=200');
+        const groups = Array.isArray(r?.groups) ? r.groups : Array.isArray(r) ? r : [];
+        if (!groups.length) return;
+        const defaultOpt = sel.options[0];
+        // Remove old dynamic options (keep the placeholder).
+        while (sel.options.length > 1) sel.remove(1);
+        for (const g of groups) {
+            const id = String(g.groupId || g.id || '');
+            if (!id) continue;
+            const name = String(g.name || g.title || g.groupId || id);
+            const opt = document.createElement('option');
+            opt.value = id;
+            opt.textContent = name.length > 50 ? `${name.slice(0, 47)}…` : name;
+            sel.appendChild(opt);
+        }
+    } catch (e) {
+        console.warn('[seekbar] group selector load failed:', e?.message || e);
+    }
+}
+
+/**
+ * Rebuild sprites for a single group. POSTs to
+ * /api/maintenance/seekbar/build-group with { groupId }. The server runs the
+ * same JobTracker as build-all — progress lands on the existing seekbar_progress
+ * WS event so the header progress bar updates automatically.
+ */
+async function _rebuildGroup(groupId) {
+    if (!groupId) return;
+    const btn = document.getElementById('seekbar-rebuild-group-btn');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await api.post('/api/maintenance/seekbar/build-group', { groupId });
+        if (r?.started) {
+            _setBuildUi(true);
+            showToast(i18nT('maintenance.seekbar.scan_started', 'Scan started'));
+        } else if (r?.code === 'ALREADY_RUNNING') {
+            showToast(
+                i18nT('maintenance.seekbar.already_running', 'A scan is already running'),
+                'info',
+            );
+            _setBuildUi(true);
+        } else if (r?.error) {
+            showToast(r.error, 'error');
+        }
+    } catch (e) {
+        showToast(e?.data?.error || e?.message || 'Rebuild failed', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+/**
+ * Refresh the queue stats tiles (queued / processing / completed / failed).
+ * Falls back gracefully when the endpoint doesn't exist on older builds.
+ */
+async function _refreshQueueStats() {
+    const r = await _safeGet('/api/maintenance/seekbar/queue/stats');
+    const set = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val != null ? Number(val).toLocaleString() : '—';
+    };
+    set('seekbar-queue-queued', r?.queued ?? r?.pending);
+    set('seekbar-queue-processing', r?.processing ?? r?.running);
+    set('seekbar-queue-completed', r?.completed ?? r?.done);
+    set('seekbar-queue-failed', r?.failed ?? r?.errored);
 }
 
 async function _safeGet(url) {

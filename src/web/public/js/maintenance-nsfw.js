@@ -219,27 +219,101 @@ function _renderBulkBar() {
     if (progEl) progEl.textContent = '';
 }
 
+// Round `n` up to a visually clean axis ceiling.
+function _histNiceMax(n) {
+    if (n <= 0) return 10;
+    const mag = Math.pow(10, Math.floor(Math.log10(n)));
+    const frac = n / mag;
+    let nice;
+    if (frac <= 1) nice = mag;
+    else if (frac <= 2) nice = 2 * mag;
+    else if (frac <= 5) nice = 5 * mag;
+    else nice = 10 * mag;
+    return Math.max(nice, n);
+}
+
+// Return up to `count+1` evenly-spaced Y-axis tick values from 0 to yMax.
+function _histNiceYTicks(yMax, count) {
+    const step = _histNiceMax(Math.ceil(yMax / count));
+    const ticks = [0];
+    for (let v = step; v <= yMax * 1.01; v += step) {
+        ticks.push(v);
+        if (ticks.length > count + 2) break;
+    }
+    return ticks;
+}
+
+function _renderHistLegend() {
+    const el = $('nsfw-hist-legend');
+    if (!el) return;
+    const tiers = view.tiersMeta || [];
+    if (!tiers.length) { el.innerHTML = ''; return; }
+    el.innerHTML = tiers
+        .map((t) => {
+            const color = TIER_COLOR[t.id] || '#9E9E9E';
+            return `<span class="nsfw-hist-legend-item"><span class="nsfw-hist-legend-dot" style="background:${color}"></span>${escapeHtml(_tierLabel(t.id))}</span>`;
+        })
+        .join('');
+}
+
+function _wireHistogramTooltip(svgEl) {
+    if (svgEl._tooltipWired) return;
+    svgEl._tooltipWired = true;
+    const wrap = svgEl.parentElement;
+    let tip = $('nsfw-hist-tooltip');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'nsfw-hist-tooltip';
+        tip.className = 'nsfw-hist-tooltip';
+        tip.setAttribute('aria-hidden', 'true');
+        wrap.appendChild(tip);
+    }
+    const hide = () => { tip.style.display = 'none'; };
+    svgEl.addEventListener('pointermove', (e) => {
+        const bar = e.target.closest?.('.nsfw-hist-bar');
+        if (!bar) { hide(); return; }
+        const n = Number(bar.dataset.n);
+        const pct = bar.dataset.pct;
+        const color = bar.dataset.color;
+        tip.innerHTML = `<span class="nsfw-hist-tip-dot" style="background:${color}"></span><b>${pct}%</b> ${n.toLocaleString()} files`;
+        tip.style.display = 'block';
+        const wrapRect = wrap.getBoundingClientRect();
+        const barRect = bar.getBoundingClientRect();
+        const cx = barRect.left + barRect.width / 2 - wrapRect.left;
+        const ty = barRect.top - wrapRect.top;
+        tip.style.left = `${cx}px`;
+        tip.style.top = `${ty}px`;
+        tip.style.transform = 'translate(-50%, calc(-100% - 6px))';
+    });
+    svgEl.addEventListener('pointerleave', hide);
+    svgEl.addEventListener('pointercancel', hide);
+}
+
 function _renderHistogram(hist) {
     const svgEl = $('nsfw-histogram');
     if (!svgEl) return;
     const counts = hist.counts || [];
     const bins = hist.bins || counts.length;
+
+    _renderHistLegend();
+
     if (!bins) {
         svgEl.innerHTML = '';
         return;
     }
-    // Bounded loop instead of `Math.max(1, ...counts)` — counts is
-    // 20 bins today (safe to spread), but the OOM guard in
-    // scripts/check-oom-patterns.sh flags every Math.max(...spread) so
-    // we keep a uniform "no spread on dynamic arrays" rule everywhere.
+
+    // Max count — bounded loop (OOM guard: no spread on dynamic arrays).
     let maxN = 1;
     for (const n of counts) if (n > maxN) maxN = n;
-    const W = 600;
-    const H = 140;
-    const PLOT_TOP = 8; // breathing room above the tallest bar
-    const PLOT_BOT = 28; // baseline + axis labels
-    const PLOT_H = H - PLOT_TOP - PLOT_BOT;
-    const barW = W / bins;
+
+    // SVG layout constants.
+    const W = 580, H = 200;
+    const ML = 42, MR = 8, MT = 14, MB = 48;
+    const PW = W - ML - MR;
+    const PH = H - MT - MB;
+    const yMax = _histNiceMax(maxN);
+    const barW = PW / bins;
+
     const tiers = view.tiersMeta || [];
     const tierFor = (mid) => {
         for (const t of tiers) {
@@ -247,50 +321,78 @@ function _renderHistogram(hist) {
         }
         return null;
     };
-    // Tier-band shading: paint each tier's score range as a light wash
-    // behind the bars so the operator sees which bin lives in which
-    // bucket without consulting the legend.
-    const bands = tiers
-        .map((t) => {
-            const x = t.min * W;
-            const w = (Math.min(1, t.max) - t.min) * W;
-            const color = TIER_COLOR[t.id] || '#9E9E9E';
-            return `<rect x="${x.toFixed(1)}" y="${PLOT_TOP}" width="${w.toFixed(1)}" height="${PLOT_H}" fill="${color}" opacity="0.08"/>`;
+
+    // Gradient defs: one per tier colour.
+    const defs = Object.entries(TIER_COLOR)
+        .map(([tid, color]) => {
+            const id = `nhg-${tid}`;
+            return `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.95"/><stop offset="100%" stop-color="${color}" stop-opacity="0.5"/></linearGradient>`;
         })
         .join('');
+
+    // Tier-band shading behind bars.
+    const bands = tiers
+        .map((t) => {
+            const bx = ML + t.min * PW;
+            const bw = (Math.min(1, t.max) - t.min) * PW;
+            const color = TIER_COLOR[t.id] || '#9E9E9E';
+            return `<rect x="${bx.toFixed(1)}" y="${MT}" width="${bw.toFixed(1)}" height="${PH}" fill="${color}" opacity="0.07"/>`;
+        })
+        .join('');
+
+    // Y-axis grid lines + count labels.
+    const yTicks = _histNiceYTicks(yMax, 4);
+    const gridAndY = yTicks
+        .map((v) => {
+            const gy = (MT + PH - (v / yMax) * PH).toFixed(1);
+            const label = v >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : String(v);
+            return `<line x1="${ML}" y1="${gy}" x2="${ML + PW}" y2="${gy}" stroke="currentColor" stroke-opacity="${v === 0 ? '0.2' : '0.07'}" stroke-width="1"/>
+                    <text x="${(ML - 5).toFixed(1)}" y="${(Number(gy) + 3.5).toFixed(1)}" font-size="9" fill="currentColor" fill-opacity="0.45" text-anchor="end">${label}</text>`;
+        })
+        .join('');
+
+    // Bars with per-tier gradient fill and staggered grow animation.
     const bars = counts
         .map((n, i) => {
             const mid = (i + 0.5) / bins;
             const tid = tierFor(mid);
+            const fill = tid ? `url(#nhg-${tid})` : '#9E9E9E';
             const color = TIER_COLOR[tid] || '#9E9E9E';
-            const h = (n / maxN) * (PLOT_H - 2);
-            const x = i * barW + 0.5;
-            const y = PLOT_TOP + PLOT_H - h;
-            return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(barW - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" opacity="0.9"><title>${(mid * 100).toFixed(0)}%: ${n}</title></rect>`;
+            const barH = Math.max(n > 0 ? 2 : 0, (n / yMax) * PH);
+            const bx = (ML + i * barW + 1).toFixed(1);
+            const by = (MT + PH - barH).toFixed(1);
+            const bw = Math.max(1, barW - 2).toFixed(1);
+            return `<rect class="nsfw-hist-bar" style="--i:${i}" x="${bx}" y="${by}" width="${bw}" height="${barH.toFixed(1)}" fill="${fill}" rx="2" ry="2" data-n="${n}" data-pct="${Math.round(mid * 100)}" data-color="${color}"/>`;
         })
         .join('');
-    // Threshold marker (vertical line at the configured cutoff). Score
-    // is in [0,1] so x = threshold * W.
+
+    // Threshold marker — dashed vertical line with triangle pointer.
     const threshold = Number(view.tierCounts?.threshold) || 0;
-    const tx = (threshold * W).toFixed(1);
-    const thresholdLine =
+    const tx = (ML + threshold * PW).toFixed(1);
+    const thresholdMark =
         threshold > 0 && threshold < 1
-            ? `<line x1="${tx}" y1="${PLOT_TOP - 4}" x2="${tx}" y2="${PLOT_TOP + PLOT_H}" stroke="#fff" stroke-opacity="0.65" stroke-width="1" stroke-dasharray="3 3"/>
-           <text x="${tx}" y="${PLOT_TOP - 6}" font-size="9" fill="currentColor" fill-opacity="0.75" text-anchor="middle">τ=${threshold.toFixed(2)}</text>`
+            ? `<line x1="${tx}" y1="${(MT - 6).toFixed(1)}" x2="${tx}" y2="${(MT + PH + 5).toFixed(1)}" stroke="white" stroke-opacity="0.6" stroke-width="1.5" stroke-dasharray="4 3"/>
+               <polygon points="${tx},${(MT - 11).toFixed(1)} ${(Number(tx) - 4.5).toFixed(1)},${(MT - 2).toFixed(1)} ${(Number(tx) + 4.5).toFixed(1)},${(MT - 2).toFixed(1)}" fill="white" fill-opacity="0.6"/>
+               <text x="${tx}" y="${(MT + PH + 18).toFixed(1)}" font-size="9" fill="currentColor" fill-opacity="0.6" text-anchor="middle">τ ${threshold.toFixed(2)}</text>`
             : '';
-    // X-axis ticks at 0/25/50/75/100% and a baseline rule.
-    const baselineY = PLOT_TOP + PLOT_H + 0.5;
-    const ticks = [0, 25, 50, 75, 100]
+
+    // X-axis score labels: 0% … 100%.
+    const xLabels = [0, 25, 50, 75, 100]
         .map((p) => {
-            const x = (p / 100) * W;
-            return `<text x="${x}" y="${H - 6}" font-size="10" fill="currentColor" fill-opacity="0.6" text-anchor="${p === 0 ? 'start' : p === 100 ? 'end' : 'middle'}">${p}%</text>`;
+            const ax = (ML + (p / 100) * PW).toFixed(1);
+            const anchor = p === 0 ? 'start' : p === 100 ? 'end' : 'middle';
+            return `<text x="${ax}" y="${(H - 7).toFixed(1)}" font-size="9" fill="currentColor" fill-opacity="0.42" text-anchor="${anchor}">${p}%</text>`;
         })
         .join('');
+
+    // Left axis spine + baseline.
+    const spine = `<line x1="${ML}" y1="${MT}" x2="${ML}" y2="${(MT + PH + 1).toFixed(1)}" stroke="currentColor" stroke-opacity="0.15" stroke-width="1"/>`;
+
     svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svgEl.setAttribute('preserveAspectRatio', 'none');
-    svgEl.innerHTML = `${bands}${bars}${thresholdLine}
-        <line x1="0" y1="${baselineY}" x2="${W}" y2="${baselineY}" stroke="currentColor" stroke-opacity="0.25" stroke-width="1"/>
-        ${ticks}`;
+    svgEl.innerHTML = `<defs>${defs}</defs>${bands}${gridAndY}${bars}${spine}${thresholdMark}${xLabels}`;
+
+    _wireHistogramTooltip(svgEl);
 }
 
 // Pick a tier for a score so the tile badge / bottom-border lands in
@@ -602,6 +704,9 @@ async function _loadList() {
 }
 
 async function _refreshHistogram() {
+    // Ensure tier metadata is loaded before rendering so bars are
+    // coloured correctly and the legend is populated.
+    await _loadTiersMeta();
     try {
         const r = await api.get('/api/maintenance/nsfw/v2/histogram?bins=20');
         _renderHistogram(r);

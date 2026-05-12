@@ -118,9 +118,8 @@ def load_image_from_path(path: str, allow_roots: list[str]) -> np.ndarray:
     buf = np.frombuffer(raw, dtype=np.uint8)
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
     if img is None:
-        # File exists but couldn't be parsed — treat as missing so the
-        # caller backs off rather than retrying.
-        raise FileNotFoundError(f"failed to decode image at {path!r}")
+        # File exists but bytes are not a recognisable image format.
+        raise ImageDecodeError(f"failed to decode image at {path!r}")
     return img
 
 

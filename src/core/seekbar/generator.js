@@ -154,12 +154,25 @@ function _ffprobeDuration(absPath) {
 /**
  * Compute the sprite layout for a given duration + config. Pure — exposed
  * for unit tests so the math can be verified without spawning ffmpeg.
+ *
+ * Adaptive: shorter clips deserve finer detail (a 90-second clip with a
+ * 4-second interval only yields 22 frames, which makes the seekbar
+ * preview feel coarse). The configured `intervalSec` is the *upper*
+ * bound; we shrink it for shorter clips so frame count climbs toward
+ * `maxTiles` without exploding it. Long clips fall back to the
+ * configured interval and clamp to `maxTiles`.
  */
 export function planSprite(durationSec, cfg) {
     const target = Math.max(0.5, Number(cfg.intervalSec) || 5);
     const minFrames = 12;
     const maxFrames = Math.max(minFrames, Number(cfg.maxTiles) || 200);
-    let frames = Math.ceil(durationSec / target);
+
+    // Adaptive sweet-spot: aim for roughly 60–120 frames on any clip
+    // long enough to support that, capped by the operator's maxTiles.
+    // Pick the configured interval OR a duration-derived one, whichever
+    // gives MORE frames (i.e. a shorter interval) up to the cap.
+    const adaptiveTarget = Math.min(target, Math.max(1, durationSec / 90));
+    let frames = Math.ceil(durationSec / adaptiveTarget);
     if (!Number.isFinite(frames) || frames < minFrames) frames = minFrames;
     if (frames > maxFrames) frames = maxFrames;
     const interval = durationSec / frames;
@@ -329,6 +342,7 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
                 videoId: String(id),
                 srcPath: srcAbs,
                 async: false,
+                cfg: conf,
             });
             if (r && r.status === 'done' && r.sprite_path) {
                 const sidecarMeta = {

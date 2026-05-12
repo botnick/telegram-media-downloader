@@ -64,6 +64,10 @@ openvino = ["onnxruntime-openvino>=1.20,<2"]
 test = [
     "pytest>=8",
     "httpx>=0.27",
+    # onnx is used by the /providers probe to build a tiny model for
+    # per-backend verification. It ships with onnxruntime as a transitive
+    # dep on most platforms but is listed explicitly for CI clarity.
+    "onnx>=1.16,<2",
 ]
 
 [project.scripts]

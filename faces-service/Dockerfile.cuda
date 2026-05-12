@@ -1,0 +1,90 @@
+# syntax=docker/dockerfile:1.7
+#
+# CUDA variant of the tgdl-faces sidecar.
+#
+# Requires:
+#   - NVIDIA container toolkit on the host (nvidia-container-runtime)
+#   - CUDA 12.x drivers on the host
+#   - `--runtime=nvidia` (or `deploy.resources.reservations.devices` in
+#     compose) when starting the container
+#
+# Build:
+#   docker build -f Dockerfile.cuda -t tgdl-faces:cuda .
+#
+# Run:
+#   docker run --runtime=nvidia --gpus all -p 8011:8011 tgdl-faces:cuda
+
+# ---------------------------------------------------------------------------
+# Stage 1 — builder
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-dev python3-pip \
+        gcc g++ \
+        libgl1 libglib2.0-0 \
+        ca-certificates \
+    && ln -sf python3.11 /usr/bin/python3 \
+    && ln -sf python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY pyproject.toml README.md ./
+COPY tgdl_faces ./tgdl_faces
+
+# Install CPU variant first, then overlay onnxruntime-gpu which pip will
+# use to satisfy the onnxruntime requirement (they share the module name).
+RUN pip install --user --no-cache-dir ".[gpu]"
+
+# Pre-download buffalo_l model weights.
+ENV TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+RUN python -c "from insightface.app import FaceAnalysis; a = FaceAnalysis(name='buffalo_l', root='/root/.cache/tgdl-faces/models', providers=['CPUExecutionProvider']); a.prepare(ctx_id=-1)"
+
+# ---------------------------------------------------------------------------
+# Stage 2 — runtime
+# ---------------------------------------------------------------------------
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.11 python3-pip \
+        libgl1 libglib2.0-0 \
+        ca-certificates \
+        tini \
+        wget \
+    && ln -sf python3.11 /usr/bin/python3 \
+    && ln -sf python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /root/.local /root/.local
+COPY --from=builder /root/.cache/tgdl-faces/models /root/.cache/tgdl-faces/models
+
+WORKDIR /app
+COPY tgdl_faces /app/tgdl_faces
+
+ENV PATH="/root/.local/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TGDL_FACES_HOST=0.0.0.0 \
+    TGDL_FACES_PORT=8011 \
+    TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models \
+    TGDL_FACES_PROVIDERS=cuda
+
+EXPOSE 8011
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+    CMD wget -qO- http://localhost:8011/health | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('ok') and d.get('ready') else 1)"
+
+LABEL org.opencontainers.image.title="tgdl-faces-cuda" \
+      org.opencontainers.image.description="Face detection + 512-dim embedding sidecar (CUDA GPU variant)" \
+      org.opencontainers.image.source="https://github.com/botnick/telegram-media-downloader" \
+      org.opencontainers.image.licenses="MIT" \
+      com.centurylinklabs.watchtower.enable="true"
+
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "tgdl_faces"]

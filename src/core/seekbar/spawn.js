@@ -89,19 +89,28 @@ function _resolveBinary() {
         return process.env.SEEKBAR_BIN;
     }
     const isWin = process.platform === 'win32';
-    const exeName = isWin ? 'seekbar-server.exe' : 'seekbar-server';
-    // Preferred: developer-built binary committed under seekbar-service/bin
-    const localBuilt = path.join(PROJECT_ROOT, 'seekbar-service', 'bin', exeName);
-    if (existsSync(localBuilt)) return localBuilt;
+    const slug = _platformSlug();
+    const slugExe = slug ? `${slug}${isWin ? '.exe' : ''}` : null;
+    // Preferred: slugged developer-built binary under seekbar-service/bin/
+    // (the canonical naming convention across all platforms).
+    const localBinDir = path.join(PROJECT_ROOT, 'seekbar-service', 'bin');
+    if (slugExe) {
+        const localSlug = path.join(localBinDir, slugExe);
+        if (_isBinaryUsable(localSlug)) return localSlug;
+    }
+    // Generic name kept for hand-built dev binaries that pre-date the
+    // slugged convention.
+    const genericName = isWin ? 'seekbar-server.exe' : 'seekbar-server';
+    const localGeneric = path.join(localBinDir, genericName);
+    if (_isBinaryUsable(localGeneric)) return localGeneric;
     // Auto-downloaded binary lives in data/seekbar-service/bin/
     const autoDir = path.join(DATA_DIR, 'seekbar-service', 'bin');
-    const slug = _platformSlug();
-    if (slug) {
-        const slugged = path.join(autoDir, `${slug}${isWin ? '.exe' : ''}`);
-        if (_isBinaryUsable(slugged)) return slugged;
+    if (slugExe) {
+        const autoSlug = path.join(autoDir, slugExe);
+        if (_isBinaryUsable(autoSlug)) return autoSlug;
     }
-    const generic = path.join(autoDir, exeName);
-    if (_isBinaryUsable(generic)) return generic;
+    const autoGeneric = path.join(autoDir, genericName);
+    if (_isBinaryUsable(autoGeneric)) return autoGeneric;
     return null;
 }
 

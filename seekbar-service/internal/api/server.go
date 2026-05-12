@@ -6,11 +6,13 @@
 //   GET    /v1/jobs/:id          — job status
 //   GET    /v1/jobs              — list recent jobs
 //   POST   /v1/jobs/:id/cancel   — request cancel (best-effort)
+//   GET    /v1/config            — current effective config (for parent health checks)
 //   GET    /sprite/:video_id     — serve the WebP/JPEG sprite bytes
 //   GET    /meta/:video_id       — serve the JSON sidecar
 //   DELETE /v1/sprite/:video_id  — remove sprite + meta from disk
-//   GET    /health               — liveness probe
+//   GET    /health               — liveness probe (always open)
 //   GET    /v1/hwaccel           — probe what backends work on this host
+//   GET    /v1/stats             — pool counters
 //
 // The token (if HTTP.APIToken is set) is checked once via middleware so
 // every mutating route is gated. /health is always open so a Docker
@@ -22,7 +24,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +41,8 @@ import (
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
 
+const ServiceVersion = "0.1.0"
+
 type Server struct {
 	cfg  *config.Config
 	log  *logx.Logger
@@ -45,15 +51,73 @@ type Server struct {
 	mu      sync.RWMutex
 	jobs    map[string]*worker.Job
 	jobList []string
+
+	// resolved at Start() — cached so /health is instant
+	hwaccelResolved string
+	ffmpegVersion   string
+	startedAt       time.Time
 }
 
 func New(cfg *config.Config, log *logx.Logger, pool *worker.Pool) *Server {
 	return &Server{
-		cfg:  cfg,
-		log:  log,
-		pool: pool,
-		jobs: make(map[string]*worker.Job),
+		cfg:       cfg,
+		log:       log,
+		pool:      pool,
+		jobs:      make(map[string]*worker.Job),
+		startedAt: time.Now(),
 	}
+}
+
+// Init resolves hwaccel + ffmpeg version in the background so /health
+// answers quickly. Pass the already-resolved backend from pool.Start so
+// we don't probe twice; resolvedHWAccel == "" causes an independent probe.
+func (s *Server) Init(resolvedHWAccel string) {
+	go func() {
+		// If the pool already resolved hwaccel, store it immediately
+		// without another probe.
+		if resolvedHWAccel != "" {
+			s.mu.Lock()
+			s.hwaccelResolved = resolvedHWAccel
+			s.mu.Unlock()
+		} else {
+			// Independent probe with a 20-second cap so startup never
+			// hangs on a misconfigured host.
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			b, err := ffmpeg.Resolve(ctx, s.cfg.FFmpeg.Path, s.cfg.FFmpeg.HWAccel, s.cfg.FFmpeg.VAAPIDevice)
+			if err == nil {
+				s.mu.Lock()
+				s.hwaccelResolved = string(b)
+				s.mu.Unlock()
+			}
+		}
+		// ffmpeg version — always probe independently.
+		if v := ffmpegVersionString(s.cfg.FFmpeg.Path); v != "" {
+			s.mu.Lock()
+			s.ffmpegVersion = v
+			s.mu.Unlock()
+		}
+	}()
+}
+
+// ffmpegVersionString extracts the version token from `ffmpeg -version`.
+func ffmpegVersionString(bin string) string {
+	if bin == "" {
+		bin = "ffmpeg"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "-version").Output()
+	if err != nil {
+		return ""
+	}
+	line := strings.SplitN(string(out), "\n", 2)[0]
+	// "ffmpeg version N.N.N Copyright ..." — trim to just the version token.
+	fields := strings.Fields(line)
+	if len(fields) >= 3 {
+		return fields[2]
+	}
+	return strings.TrimSpace(line)
 }
 
 // Routes returns the chi mux with every endpoint wired.
@@ -63,6 +127,7 @@ func (s *Server) Routes() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(s.logRequests)
 
+	// Always-open endpoints — no token required.
 	r.Get("/health", s.handleHealth)
 	r.Get("/sprite/{videoID}", s.handleSprite)
 	r.Get("/meta/{videoID}", s.handleMeta)
@@ -77,6 +142,7 @@ func (s *Server) Routes() http.Handler {
 		r.Delete("/sprite/{videoID}", s.handleDeleteSprite)
 		r.Get("/hwaccel", s.handleHWAccel)
 		r.Get("/stats", s.handleStats)
+		r.Get("/config", s.handleConfig)
 	})
 	return r
 }
@@ -116,9 +182,31 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 // ---- Health / static serve ----
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	s.mu.RLock()
+	hwa := s.hwaccelResolved
+	ffv := s.ffmpegVersion
+	s.mu.RUnlock()
+
+	queued, processing, completed, failed := s.pool.Stats()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":      true,
-		"service": "seekbar-service",
+		"ok":               true,
+		"service":          "seekbar-service",
+		"version":          ServiceVersion,
+		"platform":         runtime.GOOS,
+		"arch":             runtime.GOARCH,
+		"ready":            true,
+		"ffmpeg_version":   ffv,
+		"hwaccel_config":   s.cfg.FFmpeg.HWAccel,
+		"hwaccel_resolved": hwa,
+		"format":           s.cfg.Thumb.Format,
+		"concurrency":      s.cfg.Jobs.Concurrency,
+		"uptime_sec":       time.Since(s.startedAt).Seconds(),
+		"stats": map[string]any{
+			"queued":     queued,
+			"processing": processing,
+			"completed":  completed,
+			"failed":     failed,
+		},
 	})
 }
 
@@ -217,8 +305,8 @@ func (s *Server) handleSubmitOne(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ctx.Done():
 				writeJSON(w, http.StatusAccepted, map[string]any{
-					"job_id":  j.ID,
-					"status":  "timeout",
+					"job_id":   j.ID,
+					"status":   "timeout",
 					"video_id": j.VideoID,
 				})
 				return
@@ -275,7 +363,6 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	// 10k rows when the operator opens the maintenance page.
 	limit := 200
 	if v := r.URL.Query().Get("limit"); v != "" {
-		// ignore parse errors — keep default
 		if n := atoi(v); n > 0 && n < 2000 {
 			limit = n
 		}
@@ -340,23 +427,74 @@ func (s *Server) handleHWAccel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"error": err.Error()})
 		return
 	}
-	avail := ffmpeg.ProbeAvailable(ctx, s.cfg.FFmpeg.Path, compiled)
+	avail := ffmpeg.ProbeAvailableWithDevice(ctx, s.cfg.FFmpeg.Path, compiled, s.cfg.FFmpeg.VAAPIDevice)
+
+	s.mu.RLock()
+	resolved := s.hwaccelResolved
+	s.mu.RUnlock()
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"compiled":    backendsAsStrings(compiled),
-		"available":   backendsAsStrings(avail),
-		"ffmpeg_path": s.cfg.FFmpeg.Path,
-		"current":     s.cfg.FFmpeg.HWAccel,
+		"compiled":         backendsAsStrings(compiled),
+		"available":        backendsAsStrings(avail),
+		"ffmpeg_path":      s.cfg.FFmpeg.Path,
+		"hwaccel_config":   s.cfg.FFmpeg.HWAccel,
+		"hwaccel_resolved": resolved,
 	})
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
-	total, done, ok, errored, queued := s.pool.Stats()
+	queued, processing, completed, failed := s.pool.Stats()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total":     total,
-		"done":      done,
-		"generated": ok,
-		"errored":   errored,
-		"queued":    queued,
+		"queued":     queued,
+		"processing": processing,
+		"completed":  completed,
+		"failed":     failed,
+	})
+}
+
+// handleConfig returns the current effective configuration. Useful for
+// the Node.js parent to verify the sidecar picked up its env vars
+// correctly without needing a full health-check parse.
+func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
+	s.mu.RLock()
+	resolved := s.hwaccelResolved
+	ffv := s.ffmpegVersion
+	s.mu.RUnlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"http": map[string]any{
+			"listen":    s.cfg.HTTP.Listen,
+			"base_path": s.cfg.HTTP.BasePath,
+			// APIToken deliberately omitted — never expose secrets.
+			"cors_origins": s.cfg.HTTP.CORSOrigins,
+		},
+		"storage": map[string]any{
+			"output_dir": s.cfg.Storage.OutputDir,
+			"temp_dir":   s.cfg.Storage.TempDir,
+			"overwrite":  s.cfg.Storage.Overwrite,
+		},
+		"ffmpeg": map[string]any{
+			"path":             s.cfg.FFmpeg.Path,
+			"probe_path":       s.cfg.FFmpeg.ProbePath,
+			"hwaccel":          s.cfg.FFmpeg.HWAccel,
+			"hwaccel_resolved": resolved,
+			"ffmpeg_version":   ffv,
+			"vaapi_device":     s.cfg.FFmpeg.VAAPIDevice,
+		},
+		"thumb": map[string]any{
+			"interval_sec": s.cfg.Thumb.IntervalSec,
+			"width":        s.cfg.Thumb.Width,
+			"height":       s.cfg.Thumb.Height,
+			"columns":      s.cfg.Thumb.Columns,
+			"max_tiles":    s.cfg.Thumb.MaxTiles,
+			"format":       s.cfg.Thumb.Format,
+			"quality":      s.cfg.Thumb.Quality,
+		},
+		"jobs": map[string]any{
+			"concurrency": s.cfg.Jobs.Concurrency,
+			"max_retries": s.cfg.Jobs.MaxRetries,
+			"retry_delay": s.cfg.Jobs.RetryDelay,
+		},
 	})
 }
 
