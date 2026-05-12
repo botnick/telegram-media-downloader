@@ -117,8 +117,8 @@ DEFAULT_VOCABULARY = [
 ]
 
 # ONNX model file names inside the HuggingFace repo.
-_VISION_MODEL_PATH = "vision_encoder/model.onnx"
-_TEXT_MODEL_PATH = "text_encoder/model.onnx"
+_VISION_MODEL_PATH = "onnx/vision_model.onnx"
+_TEXT_MODEL_PATH = "onnx/text_model.onnx"
 _TOKENIZER_FILE = "tokenizer.json"
 _CONFIG_FILE = "config.json"
 
@@ -288,17 +288,11 @@ class CLIPTagger:
         )
         self._text_input_names = [inp.name for inp in self._text_session.get_inputs()]
 
-        # Load tokenizer
+        # Load tokenizer — CLIP BPE tokenizer already has special tokens
+        # ([CLS]=0, [SEP]=1, [PAD]=2?, [UNK]=3) baked in. Adding duplicates
+        # would shift token IDs beyond the embedding table and cause
+        # "indices element out of data bounds" at inference.
         self._tokenizer = HFTokenizer.from_file(tokenizer_path)
-        self._tokenizer.add_special_tokens(["[CLS]", "[SEP]", "[PAD]", "[UNK]"])
-        if self._tokenizer.token_to_id("[CLS]") is None:
-            self._tokenizer.add_tokens(["[CLS]"])
-        if self._tokenizer.token_to_id("[SEP]") is None:
-            self._tokenizer.add_tokens(["[SEP]"])
-        if self._tokenizer.token_to_id("[PAD]") is None:
-            self._tokenizer.add_tokens(["[PAD]"])
-        if self._tokenizer.token_to_id("[UNK]") is None:
-            self._tokenizer.add_tokens(["[UNK]"])
 
         # Load config for model-specific parameters
         with open(config_path) as f:
@@ -380,20 +374,22 @@ class CLIPTagger:
         emb = emb.flatten()
         emb = emb / max(float(np.linalg.norm(emb)), 1e-9)
 
-        # Cosine similarity against every tag embedding
+        # Cosine similarity (raw dot product) against every tag
+        # embedding. Both the image and text embeddings are L2-
+        # normalised, so dot product = cosine similarity in [-1, 1].
+        # We do NOT apply softmax because the vocabulary is arbitrary
+        # (not a closed set) and softmax artificially suppresses scores
+        # when the vocabulary is large.
         scores = np.dot(text_embeddings, emb)
-        # Softmax over the vocabulary to get probability-like scores
-        scores = np.exp(scores - scores.max())
-        scores = scores / scores.sum()
 
-        # Build result list
+        # Build result list sorted by descending similarity
+        indices = np.argsort(scores)[::-1]
         results: list[dict[str, Any]] = []
-        for i in range(len(vocab)):
+        for i in indices:
             s = float(scores[i])
             if s >= threshold:
                 results.append({"tag": vocab[i], "score": round(s, 4)})
 
-        results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
     @property
@@ -444,9 +440,18 @@ class CLIPTagger:
         input_ids = np.full((n, self._context_length), 0, dtype=np.int64)
         attention_mask = np.zeros((n, self._context_length), dtype=np.int64)
 
-        cls_id = self._tokenizer.token_to_id("[CLS]") or 0
-        sep_id = self._tokenizer.token_to_id("[SEP]") or 0
-        pad_id = self._tokenizer.token_to_id("[PAD]") or 0
+        # CLIP tokenizer uses standard special tokens. The CLIP BPE
+        # tokenizer encodes "</w>"-suffixed tokens; for special tokens
+        # we need to look them up directly.
+        cls_id = self._tokenizer.token_to_id("[CLS]")
+        if cls_id is None:
+            cls_id = self._tokenizer.token_to_id("<|startoftext|>") or 0
+        sep_id = self._tokenizer.token_to_id("[SEP]")
+        if sep_id is None:
+            sep_id = self._tokenizer.token_to_id("<|endoftext|>") or 0
+        # Use 0 as default padding id — CLIP's first token is often
+        # a valid sentinel pad token.
+        pad_id = 0
 
         for i, text in enumerate(texts):
             encoded = self._tokenizer.encode(text)
