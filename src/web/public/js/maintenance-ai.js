@@ -27,6 +27,15 @@ let _selectedPerson = null;
 let _selectedPersonName = '';
 let _peopleCache = []; // full people list (un-filtered) for client-side search
 const _peopleFilter = { query: '', unlabeledOnly: false };
+let _tagListCache = [];
+let _tagSelected = '';
+let _tagFilterQuery = '';
+let _tagSortMode = 'count_desc';
+let _tagPhotosOffset = 0;
+let _tagPhotosTotal = 0;
+const _tagPhotosLimit = 50;
+const LS_FACES_COLLAPSED = 'tgdl.ai.faces.collapsed';
+const LS_TAGS_COLLAPSED = 'tgdl.ai.tags.collapsed';
 
 /* ----------------------------------------------------------------------
  * Capability registry.
@@ -178,26 +187,35 @@ const CAPABILITIES = [
  * Fetch all detected tags from the server and render chip buttons.
  * Shows the tag browser section when tags exist, hides it otherwise.
  */
-async function _renderTagBrowser() {
+async function _renderTagBrowser(forceReload = true) {
     const section = $('#ai-tag-browser');
     const chips = $('#ai-tag-chips');
     const empty = $('#ai-tag-empty');
+    const photos = $('#ai-tag-photos');
     if (!section || !chips) return;
 
     try {
-        const r = await api.get('/api/ai/tags/list');
-        const tags = Array.isArray(r?.tags) ? r.tags : [];
-        if (!tags.length) {
-            section.classList.add('hidden');
-            return;
+        if (forceReload || !_tagListCache.length) {
+            const r = await api.get('/api/ai/tags/list');
+            _tagListCache = Array.isArray(r?.tags) ? r.tags : [];
         }
         section.classList.remove('hidden');
+        if (!_tagListCache.length) {
+            chips.innerHTML = '';
+            if (photos) {
+                photos.innerHTML =
+                    '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6">No tags yet — run a tag scan to populate.</p>';
+            }
+            if (empty) empty.classList.remove('hidden');
+            _setTagLoadMoreVisible(false);
+            return;
+        }
         if (empty) empty.classList.add('hidden');
-
+        const tags = _getVisibleTags();
         chips.innerHTML = tags
             .map(
                 (t) =>
-                    `<button type="button" class="tg-btn-input text-[11px] px-2.5 py-1 inline-flex items-center gap-1 tag-chip" data-tag="${escapeHtml(t.tag)}">
+                    `<button type="button" class="tg-btn-input text-[11px] px-2.5 py-1 inline-flex items-center gap-1 tag-chip" data-tag="${escapeHtml(t.tag)}" aria-pressed="false">
                         ${escapeHtml(t.tag)}
                         <span class="text-[10px] text-tg-textSecondary tabular-nums">${t.count}</span>
                     </button>`,
@@ -210,16 +228,52 @@ async function _renderTagBrowser() {
                 chips.querySelectorAll('.tag-chip').forEach((b) => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tag = btn.dataset.tag;
-                if (tag) _loadTagPhotos(tag);
+                btn.setAttribute('aria-pressed', 'true');
+                if (tag) {
+                    _tagSelected = tag;
+                    _loadTagPhotos(tag);
+                }
+            });
+            btn.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    _moveTagChipFocus(btn, 1);
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    _moveTagChipFocus(btn, -1);
+                } else if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    btn.click();
+                }
             });
         });
+        chips.querySelectorAll('.tag-chip').forEach((b) => {
+            if (b.dataset.tag !== _tagSelected) b.setAttribute('aria-pressed', 'false');
+        });
 
-        // Auto-select the first chip
-        const first = chips.querySelector('.tag-chip');
-        if (first) {
-            first.classList.add('active');
-            _loadTagPhotos(first.dataset.tag);
+        // Keep selected tag if it still exists after refresh/filtering.
+        const selectedBtn = _tagSelected
+            ? Array.from(chips.querySelectorAll('.tag-chip')).find(
+                  (el) => el.dataset.tag === _tagSelected,
+              )
+            : null;
+        const pick = selectedBtn || chips.querySelector('.tag-chip');
+        if (pick) {
+            pick.classList.add('active');
+            pick.setAttribute('aria-pressed', 'true');
+            const tag = pick.dataset.tag || '';
+            if (tag) {
+                if (_tagSelected !== tag) _tagSelected = tag;
+                _loadTagPhotos(tag);
+            }
+            return;
         }
+        // No tags match current filter.
+        if (photos) {
+            photos.innerHTML =
+                '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6">No tags match the current filter.</p>';
+        }
+        _setTagLoadMoreVisible(false);
     } catch (e) {
         console.warn('tag browser:', e);
         section.classList.add('hidden');
@@ -232,11 +286,19 @@ async function _renderTagBrowser() {
 async function _loadTagPhotos(tag) {
     const photos = $('#ai-tag-photos');
     if (!photos) return;
+    _tagSelected = String(tag || '');
+    _tagPhotosOffset = 0;
+    _tagPhotosTotal = 0;
+    _setTagLoadMoreVisible(false);
     photos.innerHTML =
         '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6"><i class="ri-loader-4-line animate-spin mr-1"></i>Loading…</p>';
     try {
-        const r = await api.get(`/api/ai/tags/photos?tag=${encodeURIComponent(tag)}&limit=50`);
+        const r = await api.get(
+            `/api/ai/tags/photos?tag=${encodeURIComponent(tag)}&limit=${_tagPhotosLimit}&offset=0`,
+        );
         const files = Array.isArray(r?.files) ? r.files : [];
+        _tagPhotosTotal = Number(r?.total) || files.length;
+        _tagPhotosOffset = files.length;
         if (!files.length) {
             photos.innerHTML =
                 '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6">No photos with this tag.</p>';
@@ -252,9 +314,112 @@ async function _loadTagPhotos(tag) {
                 </div>`;
             })
             .join('');
+        _setTagLoadMoreVisible(_tagPhotosOffset < _tagPhotosTotal);
     } catch (e) {
+        _setTagLoadMoreVisible(false);
         photos.innerHTML = `<p class="text-[11px] text-red-400 col-span-full text-center py-6">Failed: ${escapeHtml(e?.message || 'unknown')}</p>`;
     }
+}
+
+async function _loadMoreTagPhotos() {
+    const photos = $('#ai-tag-photos');
+    const tag = _tagSelected;
+    if (!photos || !tag) return;
+    if (_tagPhotosOffset >= _tagPhotosTotal) {
+        _setTagLoadMoreVisible(false);
+        return;
+    }
+    const loadMoreBtn = $('#ai-tag-load-more');
+    if (loadMoreBtn) loadMoreBtn.disabled = true;
+    try {
+        const r = await api.get(
+            `/api/ai/tags/photos?tag=${encodeURIComponent(tag)}&limit=${_tagPhotosLimit}&offset=${_tagPhotosOffset}`,
+        );
+        const files = Array.isArray(r?.files) ? r.files : [];
+        _tagPhotosTotal = Number(r?.total) || _tagPhotosTotal;
+        if (!files.length) {
+            _setTagLoadMoreVisible(false);
+            return;
+        }
+        const html = files
+            .map((f) => {
+                const thumb = `/api/thumbs/${encodeURIComponent(f.id)}?w=320`;
+                const score = f.tag_score ? Math.round(f.tag_score * 100) + '%' : '';
+                return `<div class="relative aspect-square rounded-md overflow-hidden bg-tg-bg/40 group cursor-pointer" onclick="navigateTo('viewer/${encodeURIComponent(f.group_name || '')}')">
+                    <img loading="lazy" class="absolute inset-0 w-full h-full object-cover" src="${escapeHtml(thumb)}" onerror="this.style.display='none'">
+                    <span class="absolute bottom-1 right-1 text-[10px] px-1 py-0.5 rounded bg-black/60 text-white tabular-nums">${escapeHtml(score)}</span>
+                </div>`;
+            })
+            .join('');
+        photos.insertAdjacentHTML('beforeend', html);
+        _tagPhotosOffset += files.length;
+        _setTagLoadMoreVisible(_tagPhotosOffset < _tagPhotosTotal);
+    } catch (e) {
+        showToast(`Failed to load more: ${e?.message || 'unknown'}`, 'error');
+    } finally {
+        if (loadMoreBtn) loadMoreBtn.disabled = false;
+    }
+}
+
+function _setTagLoadMoreVisible(show) {
+    const btn = $('#ai-tag-load-more');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !show);
+}
+
+function _moveTagChipFocus(currentBtn, dir) {
+    const chips = $('#ai-tag-chips');
+    if (!chips || !currentBtn) return;
+    const list = Array.from(chips.querySelectorAll('.tag-chip'));
+    if (!list.length) return;
+    const idx = list.indexOf(currentBtn);
+    if (idx < 0) return;
+    let next = idx + dir;
+    if (next < 0) next = list.length - 1;
+    if (next >= list.length) next = 0;
+    list[next]?.focus();
+}
+
+function _getVisibleTags() {
+    const q = _tagFilterQuery.trim().toLowerCase();
+    let tags = _tagListCache.slice();
+    if (q)
+        tags = tags.filter((t) =>
+            String(t?.tag || '')
+                .toLowerCase()
+                .includes(q),
+        );
+    if (_tagSortMode === 'avg_score_desc') {
+        tags.sort((a, b) => (Number(b.avg_score) || 0) - (Number(a.avg_score) || 0));
+    } else if (_tagSortMode === 'tag_asc') {
+        tags.sort((a, b) => String(a.tag || '').localeCompare(String(b.tag || '')));
+    } else {
+        tags.sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0));
+    }
+    return tags;
+}
+
+function _initCollapsiblePane({ buttonId, bodyId, storageKey }) {
+    const btn = document.getElementById(buttonId);
+    const body = document.getElementById(bodyId);
+    if (!btn || !body) return;
+    const labelEl = btn.querySelector('span');
+    const iconEl = btn.querySelector('i');
+    const apply = (collapsed) => {
+        body.classList.toggle('hidden', collapsed);
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        if (labelEl) labelEl.textContent = collapsed ? 'Expand' : 'Collapse';
+        if (iconEl) iconEl.className = collapsed ? 'ri-arrow-right-s-line' : 'ri-arrow-down-s-line';
+    };
+    const stored = localStorage.getItem(storageKey);
+    apply(stored === null ? true : stored === '1');
+    btn.addEventListener('click', () => {
+        const collapsed = !body.classList.contains('hidden');
+        apply(collapsed);
+        try {
+            localStorage.setItem(storageKey, collapsed ? '1' : '0');
+        } catch {}
+    });
 }
 
 export async function init() {
@@ -434,6 +599,25 @@ function _bindOnce() {
 
     // Tag browser — refresh + chip clicks.
     $('#ai-tag-browser-refresh')?.addEventListener('click', () => _renderTagBrowser());
+    $('#ai-tag-filter')?.addEventListener('input', (e) => {
+        _tagFilterQuery = String(e.target?.value || '');
+        _renderTagBrowser(false);
+    });
+    $('#ai-tag-sort')?.addEventListener('change', (e) => {
+        _tagSortMode = String(e.target?.value || 'count_desc');
+        _renderTagBrowser(false);
+    });
+    $('#ai-tag-load-more')?.addEventListener('click', _loadMoreTagPhotos);
+    _initCollapsiblePane({
+        buttonId: 'ai-pane-faces-toggle',
+        bodyId: 'ai-pane-faces-body',
+        storageKey: LS_FACES_COLLAPSED,
+    });
+    _initCollapsiblePane({
+        buttonId: 'ai-pane-tags-toggle',
+        bodyId: 'ai-pane-tags-body',
+        storageKey: LS_TAGS_COLLAPSED,
+    });
 
     // Person action buttons.
     $('#ai-person-rename-btn')?.addEventListener('click', _renameSelectedPerson);
