@@ -2072,31 +2072,55 @@ class VideoPlayer {
                 : 1);
         const spriteUrl = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
 
-        // Thumbnail display size: responsive height based on viewport.
+        // Responsive thumb height.
         const thumbH = window.innerWidth <= 640 ? 44 : 56;
         const rows = Math.max(1, Math.ceil(frames / cols));
-        // Percentage-based sprite positioning so thumbs render correctly at any flex width.
-        const bgSW = cols * 100; // %
-        const bgSH = rows * 100; // %
-
-        // Natural thumb width from tile aspect ratio × display height.
+        // Natural width = tile aspect ratio × display height (pixel-perfect fit).
         const naturalThumbW = Math.max(28, Math.round((tileW / Math.max(1, tileH)) * thumbH));
-        // Expose to CSS so flex sizing rules can reference it.
-        track.style.setProperty('--filmstrip-thumb-natural-w', `${naturalThumbW}px`);
 
-        // Decide justify-content: when frames × maxAllowedW (1.5×) fits inside the
-        // track without scrolling, center the group so there's no asymmetric dead
-        // space. Gap between thumbs is 2px (from CSS). Use track.parentElement width
-        // minus arrow buttons (≈52px total) as the available inner width estimate.
-        const arrowsW = window.innerWidth > 480 ? 52 : 0;
-        const availW = (wrap.offsetWidth || window.innerWidth) - arrowsW;
-        const gapTotal = Math.max(0, frames - 1) * 2;
-        const cappedThumbW = Math.round(naturalThumbW * 1.5);
-        const totalAtCap = frames * cappedThumbW + gapTotal;
-        // Center when all thumbs at max cap still fit within the container.
-        track.style.justifyContent = totalAtCap <= availW ? 'center' : '';
+        // Reveal wrap now so clientWidth reflects the real layout.
+        wrap.classList.remove('hidden');
+        const arrowsW = (this.filmstripPrev?.offsetWidth ?? 26)
+                      + (this.filmstripNext?.offsetWidth ?? 26);
+        const GAP = 2;     // px gap between thumbs (matches CSS gap: 2px)
+        const PAD = 8;     // track side padding (4px × 2)
+        const trackW = Math.max(
+            frames * naturalThumbW,
+            (wrap.clientWidth || window.innerWidth) - arrowsW - PAD,
+        );
+        // Per-thumb fill width: exactly fills the track with no empty space.
+        const fillW = (trackW - GAP * (frames - 1)) / frames;
 
-        // Cache float label ref for use in highlight updates.
+        // Above 2.5× natural the image starts looking noticeably distorted.
+        // Cap there and let CSS space-between spread any remainder as gaps —
+        // this turns a short clip into evenly-spaced chapter markers instead
+        // of grotesquely wide blobs.
+        const MAX_RATIO = 2.5;
+        let thumbW, distribute;
+        if (fillW >= naturalThumbW * MAX_RATIO) {
+            thumbW = Math.round(naturalThumbW * MAX_RATIO);
+            distribute = true;
+        } else {
+            thumbW = Math.max(28, Math.round(fillW));
+            distribute = false;
+        }
+
+        // Object-fit: cover semantics for the sprite.
+        // Scale so one sprite tile exactly fills thumbW; the tile will then be
+        // renderedTileH pixels tall — possibly taller than thumbH, in which case
+        // the excess is cropped symmetrically top and bottom (center crop).
+        // This prevents horizontal stretch: the image widens naturally rather
+        // than distorting.  When thumbW === naturalThumbW it degenerates to the
+        // exact pixel-perfect fit (no crop needed).
+        const coverScale = thumbW / Math.max(1, tileW);
+        const renderedTileH = tileH * coverScale;
+        const vCrop = Math.round((renderedTileH - thumbH) / 2);
+        const bgW = Math.round(thumbW * cols);
+        const bgH = Math.round(renderedTileH * rows);
+
+        track.style.justifyContent = distribute ? 'space-between' : '';
+        track.style.removeProperty('--filmstrip-thumb-natural-w');
+
         if (!this._filmstripTimeFloat) {
             this._filmstripTimeFloat = document.getElementById('filmstrip-time-float');
         }
@@ -2105,17 +2129,17 @@ class VideoPlayer {
         for (let i = 0; i < frames; i++) {
             const col = i % cols;
             const row = Math.floor(i / cols);
-            const bpX = cols > 1 ? +(col / (cols - 1) * 100).toFixed(4) : 0;
-            const bpY = rows > 1 ? +(row / (rows - 1) * 100).toFixed(4) : 0;
+            const bpX = -Math.round(col * thumbW);
+            const bpY = -(Math.round(row * renderedTileH) + vCrop);
             const sec = i * interval;
             const timeStr = formatTime(sec);
             html +=
-                `<div class="filmstrip-thumb" style="height:${thumbH}px" data-idx="${i}" data-sec="${sec.toFixed(2)}" role="option" aria-label="${timeStr}">` +
-                `<div class="filmstrip-thumb-inner" style="background-image:url(${spriteUrl});background-size:${bgSW}% ${bgSH}%;background-position:${bpX}% ${bpY}%"></div>` +
+                `<div class="filmstrip-thumb" style="width:${thumbW}px;height:${thumbH}px" data-idx="${i}" data-sec="${sec.toFixed(2)}" role="option" aria-label="${timeStr}">` +
+                `<div class="filmstrip-thumb-inner" style="background-image:url(${spriteUrl});background-size:${bgW}px ${bgH}px;background-position:${bpX}px ${bpY}px"></div>` +
                 `</div>`;
         }
         track.innerHTML = html;
-        wrap.classList.remove('hidden');
+        // wrap already revealed above
 
         // Click-to-seek (event delegation).
         track.onclick = (e) => {
