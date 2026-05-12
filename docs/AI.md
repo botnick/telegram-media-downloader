@@ -224,9 +224,9 @@ should read the nested path.
 | `detector` | `TGDL_FACES_DETECTOR` | `tiny` | Legacy face-api hint (sidecar ignores) |
 | `batchSize` | `TGDL_FACES_BATCH_SIZE` | `16` | Phase-A rows per tick |
 | `fileTypes` | `TGDL_FACES_FILE_TYPES` | `photo` | Comma list of `downloads.file_type` to scan |
-| `sidecarMaxConcurrency` | `TGDL_FACES_MAX_CONCURRENCY` | `0` (unlimited) | Cap inflight detect calls Node-side |
+| `sidecarMaxConcurrency` | `TGDL_FACES_MAX_CONCURRENCY` | `1` | Cap inflight detect calls Node-side (1 = sequential, safe for CPU/GPU) |
 | `healthCacheTtlMs` | `TGDL_FACES_HEALTH_CACHE_TTL_MS` | `5000` | /health response cache |
-| `requestTimeoutMs` | `TGDL_FACES_REQUEST_TIMEOUT_MS` | `15000` | Per-request hard timeout |
+| `requestTimeoutMs` | `TGDL_FACES_REQUEST_TIMEOUT_MS` | `60000` | Per-request hard timeout (CPU buffalo_l can take 5–30 s per image) |
 | `maxRetries` | `TGDL_FACES_MAX_RETRIES` | `3` | POST retry count on 5xx / network errors |
 | `retryBackoffMs` | `TGDL_FACES_RETRY_BACKOFF_MS` | `300,600,1200` | Linear backoff schedule (ms) |
 | `portRange` | `TGDL_FACES_PORT_RANGE` | `41000:49999` | Random localhost port range |
@@ -339,25 +339,73 @@ URLs ending in `.tar.gz` are taken verbatim; bare base URLs have
 The sidecar reads `TGDL_FACES_PROVIDERS` and forwards the resolved
 chain to onnxruntime. Options:
 
-- **`auto`** (default) — picks the fastest available provider:
-  CUDA → CoreML → DirectML → OpenVINO → CPU.
-- **`cuda`** — NVIDIA GPU. Requires the `onnxruntime-gpu` wheel inside
-  the PyInstaller binary; the standard release ships the CPU build, so
-  CUDA users must build the sidecar from source (see
-  `faces-service/README.md`) or use a custom Docker image.
+- **`auto`** (default) — picks the fastest available provider on the
+  current platform. On Windows: CUDA → CPU (DirectML is excluded from
+  auto because it crashes with uvicorn's asyncio threadpool). On Linux:
+  CUDA → OpenVINO → CPU. On macOS: CoreML → CPU.
+- **`cuda`** — NVIDIA GPU. Requires `onnxruntime-gpu` wheel + CUDA
+  Toolkit 12.x + cuDNN 9 installed on the host (see below).
 - **`coreml`** — Apple Silicon Neural Engine. Works on macOS arm64 with
   the standard release out of the box.
-- **`directml`** — Windows GPU compute. Requires the `onnxruntime-directml`
-  wheel; standard release ships CPU.
+- **`directml`** — Windows GPU compute via DirectML. Requires the
+  `onnxruntime-directml` wheel. **Note:** has known threading issues with
+  uvicorn asyncio worker threads on Windows (STATUS_ACCESS_VIOLATION crash)
+  — use CUDA instead if you have an NVIDIA GPU.
 - **`cpu`** — force CPU even when a GPU provider is available.
 
 Boot logs print the resolved provider chain:
 ```
-[tgdl-faces] INFO loading buffalo_l from ... (providers=['CoreMLExecutionProvider','CPUExecutionProvider'] requested=auto det_size=(640, 640))
+[tgdl-faces] INFO loading buffalo_l from ... (providers=['CUDAExecutionProvider','CPUExecutionProvider'] requested=auto det_size=(640, 640))
 ```
 
 `/health` and `/info` both surface `providers_resolved` so the AI
-maintenance card shows the actually-active provider.
+maintenance card shows the actually-active provider. If a GPU provider
+was requested but onnxruntime fell back to CPU (missing DLLs, etc.) the
+sidecar logs a warning and the health endpoint correctly reports CPU.
+
+### NVIDIA CUDA setup (Windows / Linux)
+
+The Python sidecar (`faces-service/`) can run on CUDA when:
+
+1. **`onnxruntime-gpu` is installed** (replaces the default CPU wheel):
+   ```bash
+   # from the repo root — uninstalls onnxruntime / onnxruntime-directml first
+   pip install -e faces-service/[gpu]
+   # or: python -m tgdl_faces.install --force gpu
+   ```
+
+2. **CUDA Toolkit 12.x** is installed on the host:
+   - Download: <https://developer.nvidia.com/cuda-downloads>
+   - Choose CUDA 12.6 (latest 12.x). Runtime installer (~300 MB) is enough
+     — you do not need the full development toolkit.
+   - On Windows: run the `.exe` installer, reboot if prompted.
+   - On Linux: follow the distro-specific instructions on the download page.
+
+3. **cuDNN 9** is installed:
+   - Download via NVIDIA Developer: <https://developer.nvidia.com/cudnn>
+   - On Windows: copy the DLLs from the cuDNN archive into
+     `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x\bin\`.
+   - On Linux: install the `libcudnn9-cuda-12` package from the NVIDIA
+     repo (same page provides apt/yum commands).
+
+After installing, restart the sidecar. Boot log should show:
+```
+Applied providers: ['CUDAExecutionProvider'], with options: ...
+[tgdl-faces] INFO buffalo_l ready (..., gpu_provider=cuda)
+```
+
+If the sidecar still falls back to CPU it will log a warning:
+```
+WARNING GPU provider was requested ... but onnxruntime fell back to CPUExecutionProvider
+        — likely missing runtime libraries.
+```
+Check that `cublasLt64_12.dll` (Windows) / `libcublasLt.so.12` (Linux)
+is in the system library path.
+
+The prebuilt binary (`tgdl-faces-*.exe`) ships the CPU onnxruntime and
+cannot switch to CUDA. GPU acceleration requires either the Python
+fallback path (`pip install -e faces-service/[gpu]`) or a custom Docker
+image built with `Dockerfile.cuda`.
 
 ## API surface
 
