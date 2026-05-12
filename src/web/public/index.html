@@ -3497,6 +3497,30 @@
                         </div>
                     </details>
 
+                    <section id="ai-smart-albums" class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
+                            <div class="min-w-0">
+                                <h3 class="text-tg-text text-sm font-semibold">Smart albums</h3>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5">Rule-based collections. v1 supports tag rules.</p>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <button id="ai-smart-albums-add" type="button" class="tg-btn text-xs px-2.5 py-1 inline-flex items-center gap-1">
+                                    <i class="ri-add-line"></i><span>Add</span>
+                                </button>
+                                <button id="ai-smart-albums-refresh" type="button" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1">
+                                    <i class="ri-refresh-line"></i><span>Refresh</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="ai-smart-albums-list" class="space-y-2">
+                            <p class="text-[11px] text-tg-textSecondary text-center py-3">Loading albums…</p>
+                        </div>
+                        <div id="ai-smart-album-items" class="hidden mt-3 pt-3 border-t border-tg-border/30">
+                            <div class="text-[11px] text-tg-textSecondary mb-2">Items in <span id="ai-smart-album-items-name" class="text-tg-text font-medium"></span></div>
+                            <div id="ai-smart-album-items-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+                        </div>
+                    </section>
+
                     <!-- Future capabilities footer. -->
                     <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: Face quality scoring · Smart albums</p>
 

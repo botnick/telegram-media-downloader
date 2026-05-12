@@ -15,12 +15,17 @@ import {
 } from '../../core/ai/scan-runner.js';
 import {
     backfillMissingFaceQualityScores,
+    deleteSmartAlbum,
     getAiCounts,
     listPeople,
     listPhotosForPerson,
+    listSmartAlbumItems,
+    listSmartAlbums,
     renamePerson,
+    rebuildSmartAlbum,
     deletePerson,
     resetAllAiData,
+    upsertSmartAlbum,
     getUnindexedAiBatch,
 } from '../../core/db/faces.js';
 import { pregenerateAi as aiPregenerateAi } from '../../core/ai/index.js';
@@ -324,6 +329,64 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
             res.json({ success: true, objects });
         } catch (e) {
             res.status(500).json({ error: e.message });
+        }
+    });
+
+    // ---- Smart albums (v1: tags_contains rule) ------------------------------
+    router.get('/ai/smart-albums', async (_req, res) => {
+        try {
+            const albums = listSmartAlbums();
+            res.json({ success: true, albums });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.post('/ai/smart-albums', async (req, res) => {
+        try {
+            const id = req.body?.id == null ? null : Number(req.body.id);
+            const name = String(req.body?.name || '');
+            const rule = req.body?.rule || {};
+            const enabled = req.body?.enabled !== false;
+            const sortKey = String(req.body?.sortKey || 'created_at_desc');
+            const albumId = upsertSmartAlbum({ id, name, rule, enabled, sortKey });
+            const rebuilt = rebuildSmartAlbum(albumId);
+            res.json({ success: true, id: albumId, rebuilt });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    router.delete('/ai/smart-albums/:id', async (req, res) => {
+        try {
+            const id = Number(req.params.id);
+            const deleted = deleteSmartAlbum(id);
+            if (!deleted) return res.status(404).json({ error: 'album not found' });
+            res.json({ success: true, deleted });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    router.post('/ai/smart-albums/:id/rebuild', async (req, res) => {
+        try {
+            const id = Number(req.params.id);
+            const rebuilt = rebuildSmartAlbum(id);
+            res.json({ success: true, id, rebuilt });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
+        }
+    });
+
+    router.get('/ai/smart-albums/:id/items', async (req, res) => {
+        try {
+            const id = Number(req.params.id);
+            const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
+            const offset = Math.max(0, Number(req.query?.offset) || 0);
+            const result = listSmartAlbumItems(id, { limit, offset });
+            res.json({ success: true, id, ...result });
+        } catch (e) {
+            res.status(400).json({ error: e.message });
         }
     });
 

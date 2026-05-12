@@ -469,6 +469,150 @@ async function _applyTagMerge(tag1, tag2) {
     }
 }
 
+// ---- Smart albums -------------------------------------------------------
+
+async function _renderSmartAlbums() {
+    const list = $('#ai-smart-albums-list');
+    if (!list) return;
+    try {
+        const r = await api.get('/api/ai/smart-albums');
+        const albums = Array.isArray(r?.albums) ? r.albums : [];
+        if (!albums.length) {
+            list.innerHTML =
+                '<p class="text-[11px] text-tg-textSecondary text-center py-3">No smart albums yet. Add one above.</p>';
+            $('#ai-smart-album-items')?.classList.add('hidden');
+            return;
+        }
+        list.innerHTML = albums
+            .map((a) => {
+                const rule = a?.rule || {};
+                const subtitle =
+                    rule.type === 'tags_contains'
+                        ? `tag:${rule.tag} (min ${Math.round((Number(rule.minScore) || 0) * 100)}%)`
+                        : rule.type || 'unknown';
+                return `<div class="bg-tg-panelOverlay rounded p-2.5">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <div class="text-xs text-tg-text font-medium truncate">${escapeHtml(a.name || `Album #${a.id}`)}</div>
+                            <div class="text-[10px] text-tg-textSecondary truncate">${escapeHtml(subtitle)} · ${Number(a.item_count) || 0} items</div>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button class="tg-btn-secondary text-[10px] px-2 py-1" data-sa-open="${a.id}" data-sa-name="${escapeHtml(a.name || `Album #${a.id}`)}">Open</button>
+                            <button class="tg-btn-secondary text-[10px] px-2 py-1" data-sa-rebuild="${a.id}">Rebuild</button>
+                            <button class="tg-btn-secondary text-[10px] px-2 py-1 text-red-300" data-sa-delete="${a.id}">Delete</button>
+                        </div>
+                    </div>
+                </div>`;
+            })
+            .join('');
+        list.querySelectorAll('[data-sa-open]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                _loadSmartAlbumItems(
+                    btn.getAttribute('data-sa-open'),
+                    btn.getAttribute('data-sa-name'),
+                );
+            });
+        });
+        list.querySelectorAll('[data-sa-rebuild]').forEach((btn) => {
+            btn.addEventListener('click', () =>
+                _rebuildSmartAlbum(btn.getAttribute('data-sa-rebuild')),
+            );
+        });
+        list.querySelectorAll('[data-sa-delete]').forEach((btn) => {
+            btn.addEventListener('click', () =>
+                _deleteSmartAlbum(btn.getAttribute('data-sa-delete')),
+            );
+        });
+    } catch (e) {
+        list.innerHTML = `<p class="text-[11px] text-red-300 text-center py-3">Failed: ${escapeHtml(e?.message || 'unknown')}</p>`;
+    }
+}
+
+async function _loadSmartAlbumItems(id, name) {
+    const section = $('#ai-smart-album-items');
+    const nameEl = $('#ai-smart-album-items-name');
+    const grid = $('#ai-smart-album-items-grid');
+    if (!section || !grid) return;
+    section.classList.remove('hidden');
+    if (nameEl) nameEl.textContent = String(name || `#${id}`);
+    grid.innerHTML =
+        '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-3">Loading…</p>';
+    try {
+        const r = await api.get(`/api/ai/smart-albums/${encodeURIComponent(id)}/items?limit=120`);
+        const files = Array.isArray(r?.files) ? r.files : [];
+        if (!files.length) {
+            grid.innerHTML =
+                '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-3">No items matched.</p>';
+            return;
+        }
+        grid.innerHTML = files
+            .map((f) => {
+                const thumb = `/api/thumbs/${encodeURIComponent(f.id)}?w=320`;
+                return `<a href="#/files/${f.id}" class="block group relative">
+                    <img loading="lazy" class="aspect-square w-full object-cover rounded-md bg-tg-bg/40" src="${escapeHtml(thumb)}" alt="${escapeHtml(f.file_name || String(f.id))}">
+                </a>`;
+            })
+            .join('');
+    } catch (e) {
+        grid.innerHTML = `<p class="text-[11px] text-red-300 col-span-full text-center py-3">Failed: ${escapeHtml(e?.message || 'unknown')}</p>`;
+    }
+}
+
+async function _createSmartAlbum() {
+    const name = await promptSheet({
+        title: 'New smart album',
+        message: 'Album name',
+        confirmLabel: 'Next',
+    });
+    if (name == null) return;
+    const tag = await promptSheet({
+        title: 'Tag rule',
+        message: 'Tag to match (exact)',
+        confirmLabel: 'Create',
+    });
+    if (tag == null) return;
+    try {
+        const r = await api.post('/api/ai/smart-albums', {
+            name: String(name).trim(),
+            rule: { type: 'tags_contains', tag: String(tag).trim(), minScore: 0 },
+        });
+        if (!r.success) throw new Error(r.error || 'create failed');
+        showToast('Smart album created', 'success');
+        await _renderSmartAlbums();
+    } catch (e) {
+        showToast(`Create failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _rebuildSmartAlbum(id) {
+    try {
+        const r = await api.post(`/api/ai/smart-albums/${encodeURIComponent(id)}/rebuild`, {});
+        if (!r.success) throw new Error(r.error || 'rebuild failed');
+        showToast(`Rebuilt: ${r?.rebuilt?.matched || 0} matches`, 'success');
+        await _renderSmartAlbums();
+    } catch (e) {
+        showToast(`Rebuild failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _deleteSmartAlbum(id) {
+    const ok = await confirmSheet({
+        title: 'Delete smart album?',
+        message: 'This removes the album and its materialized items.',
+        confirmText: 'Delete',
+        destructive: true,
+    });
+    if (!ok) return;
+    try {
+        const r = await api.delete(`/api/ai/smart-albums/${encodeURIComponent(id)}`);
+        if (!r.success) throw new Error(r.error || 'delete failed');
+        showToast('Deleted', 'success');
+        await _renderSmartAlbums();
+    } catch (e) {
+        showToast(`Delete failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
 function _getVisibleTags() {
     const q = _tagFilterQuery.trim().toLowerCase();
     let tags = _tagListCache.slice();
@@ -511,6 +655,7 @@ export async function init() {
     _loadPeople().catch(() => {});
     _renderTagBrowser().catch(() => {});
     _renderTagSuggestions().catch(() => {});
+    _renderSmartAlbums().catch(() => {});
 }
 
 // Public refresher — exported so the SPA shell can poke us after a
@@ -523,6 +668,7 @@ export async function refreshStatus() {
         _renderStatus(r);
         _renderTagBrowser().catch(() => {});
         _renderTagSuggestions().catch(() => {});
+        _renderSmartAlbums().catch(() => {});
     } catch (e) {
         console.warn('ai/status:', e);
     }
@@ -758,6 +904,8 @@ function _bindOnce() {
     });
     $('#ai-tag-load-more')?.addEventListener('click', _loadMoreTagPhotos);
     $('#ai-tag-suggestions-refresh')?.addEventListener('click', () => _renderTagSuggestions());
+    $('#ai-smart-albums-refresh')?.addEventListener('click', () => _renderSmartAlbums());
+    $('#ai-smart-albums-add')?.addEventListener('click', () => _createSmartAlbum());
     _initDetailsCollapsedState({
         detailsId: 'ai-pane-faces',
         storageKey: LS_FACES_COLLAPSED,
