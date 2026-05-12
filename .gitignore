@@ -1,90 +1,80 @@
-# Dependencies
-node_modules/
-.pnp/
-.pnp.js
-.yarn/install-state.gz
 
-# Lockfiles from package managers we don't use (we use npm)
-yarn.lock
-pnpm-lock.yaml
-
-# Environment & secrets
+__pycache__/
+!.env.example
+.agent/
+.cache/
+.claude/
+.DS_Store
 .env
 .env.*
-!.env.example
-
-# Runtime data (everything under data/ is gitignored except a few examples)
-data/
-
-# Logs / crash reports
-*.log
-logs/
-protection_log.txt
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Test / coverage output
-coverage/
-.nyc_output/
-.vitest-cache/
-*.lcov
-
-# Build output (currently unused; reserved)
-dist/
-build/
-out/
-.next/
-.cache/
-.parcel-cache/
-.turbo/
-*.tsbuildinfo
-
-# OS junk
-.DS_Store
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# IDEs / editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*.bak
-*~
-.history/
-
-# Husky internal
-.husky/_/
-
-# Local-only assistant / agent state
-brain/
 .gemini/
-.agent/
-.claude/
-SKILL.md
-CLAUDE.md
-AGENTS.md
-GEMINI.md
-
-# Python sidecar (faces-service/) build artefacts + caches
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+.history/
+.husky/_/
+.idea/
+.next/
+.nyc_output/
+.parcel-cache/
+.pnp.js
+.pnp/
 .pytest_cache/
-*.egg-info/
+.turbo/
 .venv/
+.vitest-cache/
+.vscode/
+.yarn/install-state.gz
+*.bak
+*.egg-info/
+*.lcov
+*.log
+*.pyc
+*.pyd
+*.pyo
+*.swo
+*.swp
+*.tsbuildinfo
+*~
+# Build output (currently unused; reserved)
+# Dependencies
+# Environment & secrets
+# Go sidecar (seekbar-service/) build artefacts
+# Husky internal
+# IDEs / editors
+# Local-only assistant / agent state
+# Lockfiles from package managers we don't use (we use npm)
+# Logs / crash reports
+# OS junk
+# Python sidecar (faces-service/) build artefacts + caches
+# Runtime data (everything under data/ is gitignored except a few examples)
+# Test / coverage output
+$RECYCLE.BIN/
+AGENTS.md
+brain/
+build/
+CLAUDE.md
+coverage/
+data/
+Desktop.ini
+dist/
+ehthumbs.db
+faces-service/.coverage
 faces-service/build/
 faces-service/dist/
-faces-service/.coverage
 faces-service/htmlcov/
-
-# Go sidecar (seekbar-service/) build artefacts
+GEMINI.md
+logs/
+node_modules/
+npm-debug.log*
+out/
+pnpm-debug.log*
+pnpm-lock.yaml
+protection_log.txt
 seekbar-service/bin/
 seekbar-service/dist/
-seekbar-service/seekbar-server
 seekbar-service/seekbar-cli
+seekbar-service/seekbar-server
+SKILL.md
+Thumbs.db
+TODO-ai.md
+yarn-debug.log*
+yarn-error.log*
+yarn.lock
