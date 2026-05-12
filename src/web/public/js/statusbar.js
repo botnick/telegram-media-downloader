@@ -62,15 +62,20 @@ function applyMonitor(mon) {
     }
 }
 
+function _applyStatsToBar(stats) {
+    if (!stats) return;
+    const f = $('status-files');
+    if (f) f.textContent = (stats.totalFiles ?? 0).toLocaleString();
+    const d = $('status-disk');
+    if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
+    const g = $('status-groups');
+    if (g) g.textContent = stats.totalGroups ?? 0;
+}
+
 async function refreshStats() {
     try {
         const stats = await api.get('/api/stats').catch(() => null);
-        if (stats) {
-            const f = $('status-files');
-            if (f) f.textContent = stats.totalFiles ?? 0;
-            const d = $('status-disk');
-            if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
-        }
+        _applyStatsToBar(stats);
     } catch {
         /* keep last values */
     }
@@ -204,17 +209,10 @@ export function initStatusBar() {
     // `stats_update` frame with the full payload — no client refetch needed.
     // Server-side debouncing keeps a 50-row bulk delete to a single push.
     refreshStats();
-    const _applyStats = (stats) => {
-        if (!stats) return;
-        const f = $('status-files');
-        if (f) f.textContent = stats.totalFiles ?? 0;
-        const d = $('status-disk');
-        if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
-    };
-    ws.on('stats_update', (msg) => _applyStats(msg?.stats || msg?.payload || null));
+    ws.on('stats_update', (msg) => _applyStatsToBar(msg?.stats || msg?.payload || null));
     // Legacy `stats_push` envelope kept for one release while older server
     // builds in the wild upgrade — harmless on new servers (never fires).
-    ws.on('stats_push', (msg) => _applyStats(msg?.payload || msg?.stats || null));
+    ws.on('stats_push', (msg) => _applyStatsToBar(msg?.payload || msg?.stats || null));
     ws.on('__ws_open', () => refreshStats());
 
     // Live cues from the WebSocket

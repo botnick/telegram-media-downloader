@@ -110,21 +110,19 @@ body {
     color: #f5f5f5;
     overscroll-behavior: none;
 }
-/* Reserve room for the status bar on desktop and for the bottom-nav
-   on mobile so fixed-position bars never cover content. Guest sessions
-   hide the desktop status bar (admin-only), so drop the reservation
-   too — otherwise the page ends with an empty 32 px footer gap. */
+/* Reserve room for fixed bars so they never cover content.
+   Mobile: bottom-nav (56 px) + status-bar (28 px) stacked.
+   Desktop: status-bar only (28 px). Guests see the status bar on
+   all screen sizes (files/disk chips are not admin-only), so we
+   no longer drop the desktop reservation for guest sessions. */
 @media (max-width: 767.98px) {
     body {
-        padding-bottom: calc(56px + env(safe-area-inset-bottom));
+        padding-bottom: calc(56px + 28px + env(safe-area-inset-bottom));
     }
 }
 @media (min-width: 768px) {
     body {
         padding-bottom: 32px;
-    }
-    body[data-role="guest"] {
-        padding-bottom: 0;
     }
 }
 
@@ -767,6 +765,46 @@ html.theme-light #status-bar .text-tg-textSecondary {
 }
 html.theme-light #status-version {
     color: rgba(101, 115, 126, 0.85) !important;
+}
+html.theme-light .status-chip {
+    background: rgba(0, 0, 0, 0.04) !important;
+}
+html.theme-light .status-chip .status-chip-val {
+    color: #232e3c !important;
+}
+
+/* ---- Status bar positioning + chip styles ---- */
+/* On mobile the status bar sits above the bottom-nav (z-35).
+   Use bottom offset = nav height + safe-area-inset-bottom. */
+.status-bar {
+    bottom: 0;
+}
+@media (max-width: 767.98px) {
+    .status-bar {
+        bottom: calc(56px + env(safe-area-inset-bottom));
+    }
+}
+/* Stat chips — subtle pill background, icon + value pairs */
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--tg-textSecondary, #8b9baa);
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.status-chip .status-chip-val {
+    color: var(--tg-text, #f5f5f5);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+.status-chip i {
+    font-size: 12px;
+    line-height: 1;
 }
 
 /* Engine/queue/maintenance pills + status colours */
