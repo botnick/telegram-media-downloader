@@ -25,7 +25,6 @@ import {
 import {
     getSeekbarCacheStats,
     getMetaForDownload as getSeekbarMetaForDownload,
-    purgeSeekbarForDownload,
 } from '../../core/seekbar/index.js';
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
@@ -58,7 +57,6 @@ import {
     getNsfwIdsByTier,
     reclassifyNsfw,
 } from '../../core/db/faces.js';
-import { getStats } from '../../core/db/downloads.js';
 import { getThumbsCacheStats, hasFfmpeg } from '../../core/thumbs.js';
 import { loginVerify, isAuthConfigured, revokeAllSessions } from '../../core/web-auth.js';
 import {

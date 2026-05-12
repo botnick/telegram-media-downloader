@@ -181,7 +181,6 @@ const CAPABILITIES = [
 async function _renderTagBrowser() {
     const section = $('#ai-tag-browser');
     const chips = $('#ai-tag-chips');
-    const photos = $('#ai-tag-photos');
     const empty = $('#ai-tag-empty');
     if (!section || !chips) return;
 

@@ -1,6 +1,5 @@
 import express from 'express';
 import { getDb } from '../../core/db.js';
-import { loadConfig } from '../../config/manager.js';
 import {
     createShareLink,
     listShareLinks,

@@ -32,12 +32,7 @@ import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
-import {
-    ensureShareSecret,
-    verifyShareToken,
-    buildShareUrlPath,
-    applyShareLimits,
-} from '../core/share.js';
+import { ensureShareSecret, verifyShareToken, applyShareLimits } from '../core/share.js';
 import { purgeNonStandardThumbs } from '../core/thumbs.js';
 import {
     setBroadcast as setSeekbarBroadcast,

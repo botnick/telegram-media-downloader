@@ -1,8 +1,6 @@
 import express from 'express';
 import { loadConfig } from '../../config/manager.js';
-import { runtime } from '../../core/runtime.js';
 import { writeConfigAtomic } from '../lib/config-writer.js';
-import { getDb } from '../../core/db.js';
 import { getRescueStats } from '../../core/db/downloads.js';
 import { getRescueSweeper } from '../../core/rescue.js';
 import { applyShareLimits } from '../../core/share.js';

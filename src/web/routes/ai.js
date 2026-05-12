@@ -19,7 +19,6 @@ import {
     getUnindexedAiBatch,
 } from '../../core/db/faces.js';
 import { pregenerateAi as aiPregenerateAi } from '../../core/ai/index.js';
-import { getNsfwDeleteCandidates } from '../../core/nsfw.js';
 
 export function createAiRouter({ broadcast, log, jobTrackers }) {
     const router = express.Router();

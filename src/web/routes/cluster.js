@@ -1,7 +1,6 @@
 import express from 'express';
 import WebSocketLib from 'ws';
 import { getDb } from '../../core/db.js';
-import { loadConfig } from '../../config/manager.js';
 import {
     getSelfPeerId,
     getSelfPeerName,
@@ -27,7 +26,6 @@ import {
     testPeerHealth,
 } from '../../core/cluster/handshake.js';
 import { startSyncEngine, syncAllOnce, getSyncState } from '../../core/cluster/sync.js';
-import { parseClusterRefPath } from '../../core/cluster/dedup.js';
 import {
     tryStartSweep,
     abortSweep,
@@ -720,7 +718,7 @@ export function createClusterRouter({ broadcast, log }) {
         const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
         if (!q) return res.json({ rows: [] });
         try {
-            const like = `%${q.replace(/[%_]/g, '\\$&')}%`;
+            const like = `%${q.replace(/\\/g, '\\\\').replace(/[%_]/g, '\\$&')}%`;
             const rows = getDb()
                 .prepare(
                     `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
