@@ -713,13 +713,6 @@ export async function getOrCreateThumb(downloadId, widthHint) {
     const srcAbs = _resolveDownloadAbs(row.file_path);
     if (!srcAbs) return null;
 
-    // WebP source files are already web-native images — no thumbnail
-    // generation needed. sharp can technically re-encode them but some
-    // WebPs (animated, unusual EXIF, stripped ICC) cause ffmpeg/sharp
-    // errors. Returning null here lets the gallery fall back to the
-    // original file URL, which is already the right format for the browser.
-    if (path.extname(srcAbs).toLowerCase() === '.webp') return null;
-
     const kind = _kindFromPath(srcAbs, row.file_type);
     if (!kind) return null;
 
@@ -990,18 +983,16 @@ export async function buildAllThumbnails(opts = {}) {
     const typeFilter =
         types && types.length ? `AND file_type IN (${types.map(() => '?').join(',')})` : '';
     const typeArgs = types && types.length ? types : [];
-    // Exclude WebP source files at the SQL level — browser renders them natively.
-    const webpFilter = "AND (file_path IS NULL OR LOWER(file_path) NOT LIKE '%.webp')";
     const total = db
         .prepare(`
         SELECT COUNT(*) AS n FROM downloads
-         WHERE file_path IS NOT NULL ${typeFilter} ${webpFilter}
+         WHERE file_path IS NOT NULL ${typeFilter}
     `)
         .get(...typeArgs).n;
     const PAGE_SIZE = 50;
     const pageStmt = db.prepare(`
         SELECT id FROM downloads
-         WHERE file_path IS NOT NULL ${typeFilter} ${webpFilter}
+         WHERE file_path IS NOT NULL ${typeFilter}
            AND id < ?
          ORDER BY id DESC
          LIMIT ?
