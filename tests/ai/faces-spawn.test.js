@@ -7,7 +7,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import path from 'path';
 
-import { _computeBinaryTarget, SIDECAR_VERSION } from '../../src/core/ai/faces-spawn.js';
+import {
+    computeBinaryTarget as _computeBinaryTarget,
+    SIDECAR_VERSION,
+} from '../../src/core/ai/faces-download.js';
 
 const DATA_DIR = '/data';
 

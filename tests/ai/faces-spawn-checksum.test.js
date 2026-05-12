@@ -5,7 +5,11 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { _parseChecksumFile, _hashFile, _verifyChecksum } from '../../src/core/ai/faces-spawn.js';
+import {
+    _parseChecksumFile,
+    _hashFile,
+    _verifyChecksum,
+} from '../../src/core/ai/faces-download.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

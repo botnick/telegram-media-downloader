@@ -20,18 +20,28 @@
  * old binary stays on disk but the new one is fetched and used.
  */
 
-import { createHash } from 'crypto';
-import { createReadStream, existsSync, promises as fs, statSync } from 'fs';
-import { createWriteStream } from 'fs';
+import { existsSync, promises as fs } from 'fs';
 import path from 'path';
-import https from 'https';
 import http from 'http';
-import net from 'net';
 import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { setSidecarUrl, getSidecarUrl, applyFacesCfg } from './faces-client.js';
 import { resolveAllFaces } from './faces-config.js';
+import { inferPyLevel, isAccessNoise, wirePipeLogging } from './faces-log-filter.js';
+import { pickAvailablePort } from './faces-port.js';
+import {
+    SIDECAR_VERSION,
+    normaliseUrl as _normaliseUrl,
+    resolveBinaryTarget,
+    isBinaryUsable as _isBinaryUsable,
+    verifyBinary as _verifyBinary,
+    downloadAndExtract,
+    _parseChecksumFile,
+    _hashFile,
+    _verifyChecksum,
+    computeBinaryTarget as _computeBinaryTarget,
+} from './faces-download.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -39,14 +49,7 @@ const DATA_DIR = process.env.TGDL_DATA_DIR
     ? path.resolve(process.env.TGDL_DATA_DIR)
     : path.join(PROJECT_ROOT, 'data');
 
-/**
- * Pinned sidecar release. Bumping this triggers a fresh binary download
- * on next boot — release `faces-v<X>` on the GitHub repo must exist with
- * the matching `tgdl-faces-<platform>-<arch>.tar.gz` assets attached.
- */
-export const SIDECAR_VERSION = '0.1.0';
-
-const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/faces-v${SIDECAR_VERSION}`;
+export { SIDECAR_VERSION };
 
 // Lifecycle defaults. Used when the operator hasn't set `advanced.ai.faces.*`
 // AND hasn't set a `TGDL_FACES_*` env override — i.e. an untouched install.
@@ -110,14 +113,6 @@ function _downloadRedirectLimit() {
     const n = _cfg().downloadRedirectCap;
     return Number.isFinite(n) && n > 0 ? n | 0 : DOWNLOAD_REDIRECT_LIMIT_DEFAULT;
 }
-
-// Tar typeflag byte codes (kept as numeric constants — comparing against
-// numbers dodges any source-file NUL-handling issues that crop up when
-// you embed `'\0'` literals in JS).
-const TAR_TYPE_REGULAR_MODERN = 0x30; /* '0' */
-const TAR_TYPE_REGULAR_LEGACY = 0x00; /* NUL (ustar) */
-const TAR_TYPE_REGULAR_SPACE = 0x20; /* ' ' (some old tools) */
-const TAR_TYPE_DIRECTORY = 0x35; /* '5' */
 
 // Module-level state. The state machine is intentionally simple — the
 // spawn module is owned by exactly one process and one boot path; the
@@ -293,7 +288,7 @@ async function _doStart() {
         return getSidecarStatus();
     }
 
-    const target = _resolveBinaryTarget(_resolvedCfg);
+    const target = resolveBinaryTarget(_resolvedCfg, { dataDir: DATA_DIR });
     if (!target) {
         _state = 'failed';
         _error = `unsupported platform/arch: ${process.platform}/${process.arch}`;
@@ -321,9 +316,17 @@ async function _doStart() {
             _log('info', `${downloadError} — skipping download, will try Python fallback`);
         } else {
             _state = 'downloading';
+            _checksumVerified = null;
             _broadcast({ type: 'ai_faces_status', ok: false, state: 'downloading' });
             try {
-                await _downloadAndExtract(target);
+                await downloadAndExtract(target, {
+                    logFn: _log,
+                    broadcastFn: _broadcast,
+                    redirectLimit: _downloadRedirectLimit(),
+                    onChecksumResult: (v) => {
+                        _checksumVerified = v;
+                    },
+                });
                 binaryReady = _isBinaryUsable(target.binPath);
             } catch (e) {
                 downloadError = `binary download failed: ${e?.message || e}`;
@@ -343,7 +346,14 @@ async function _doStart() {
         } catch {}
         if (_resolvedCfg.autoDownload !== false) {
             try {
-                await _downloadAndExtract(target);
+                await downloadAndExtract(target, {
+                    logFn: _log,
+                    broadcastFn: _broadcast,
+                    redirectLimit: _downloadRedirectLimit(),
+                    onChecksumResult: (v) => {
+                        _checksumVerified = v;
+                    },
+                });
             } catch (e) {
                 downloadError = `binary re-download failed: ${e?.message || e}`;
                 _log('warn', `${downloadError} — will try Python fallback`);
@@ -376,7 +386,10 @@ async function _doStart() {
     // surprise Python spawn.
     const autoOptOut = process.env.TGDL_FACES_AUTO_DOWNLOAD === 'false';
     if (!autoOptOut) {
-        const port = await _pickAvailablePort().catch(() => null);
+        const port = await pickAvailablePort({
+            portRange: _portRange(),
+            probeAttempts: _portProbeAttempts(),
+        }).catch(() => null);
         if (port) {
             const downloadsDir = path.resolve(DATA_DIR, 'downloads');
             const modelsDir = path.resolve(DATA_DIR, 'faces-service', 'models');
@@ -396,14 +409,14 @@ async function _doStart() {
                     `starting via python fallback (no prebuilt binary): ${fallback.pyBin}`,
                 );
                 _child = fallback.child;
-                _wirePipeLogging(fallback.child.stdout, 'info');
+                wirePipeLogging(fallback.child.stdout, 'info', _log);
                 // Python's `logging.basicConfig(stream=sys.stderr)` is the
                 // standard config; uvicorn likewise writes INFO/access to
                 // stderr. Default unparseable lines to 'info' (not 'error')
                 // so a clean boot doesn't paint the log feed red.
-                // `_inferPyLevel` still upgrades any line containing
+                // `inferPyLevel` still upgrades any line containing
                 // ERROR / CRITICAL / WARNING to the matching level.
-                _wirePipeLogging(fallback.child.stderr, 'info');
+                wirePipeLogging(fallback.child.stderr, 'info', _log);
                 let exited = false;
                 let exitInfo = null;
                 fallback.child.on('exit', (code, signal) => {
@@ -811,541 +824,13 @@ export async function installPythonDeps({ pyBin: pyBinArg, force } = {}) {
 export function resetAutoInstallGuard() {
     _autoInstallTried = false;
 }
-
-// ---- Binary target resolution -------------------------------------------
-
-/**
- * Resolve the local binary path + the candidate tarball URLs for the
- * current platform/arch. Returns `null` for unsupported combos so the
- * caller can disable gracefully rather than crash.
- *
- * Exported (via `_resolveBinaryTargetForTest`) so the platform-parity test
- * suite can pin `process.platform` / `process.arch` for each row of the
- * support matrix without monkey-patching the whole spawn module.
- *
- * Tarball-URL precedence:
- *   1. `TGDL_FACES_SIDECAR_BIN_URL` (legacy `FACES_SIDECAR_BIN_URL` also
- *      honoured for backward compat).
- *   2. `advanced.ai.faces.downloadMirrors[*]` (operator-listed alternatives,
- *      tried in order).
- *   3. The canonical GitHub Release URL.
- */
-function _resolveBinaryTarget(resolvedCfg = _resolvedCfg) {
-    return _computeBinaryTarget({
-        platform: process.platform,
-        arch: process.arch,
-        dataDir: DATA_DIR,
-        envBinUrl:
-            _normaliseUrl(process.env.TGDL_FACES_SIDECAR_BIN_URL) ||
-            _normaliseUrl(process.env.FACES_SIDECAR_BIN_URL),
-        cfgMirrors: Array.isArray(resolvedCfg?.downloadMirrors) ? resolvedCfg.downloadMirrors : [],
-    });
-}
-
-/**
- * Pure version of `_resolveBinaryTarget` — exported for unit tests so the
- * full support-matrix (win/linux/mac × x64/arm64) can be exercised without
- * mocking the entire spawn module. No side effects, no process inspection.
- *
- * @param {object} opts
- * @param {string} opts.platform  `process.platform` value
- * @param {string} opts.arch      `process.arch` value
- * @param {string} opts.dataDir   absolute path to the data dir
- * @param {string?} opts.envBinUrl  resolved env URL override (or null)
- * @param {string[]?} opts.cfgMirrors  operator-supplied mirror URLs
- * @returns {object|null}  target descriptor or null on unsupported platform
- */
-export function _computeBinaryTarget(opts) {
-    const { platform: nodePlatform, arch: nodeArch, dataDir, envBinUrl, cfgMirrors } = opts;
-    const platformMap = { win32: 'win', linux: 'linux', darwin: 'mac' };
-    const archMap = { x64: 'x64', arm64: 'arm64' };
-    const platform = platformMap[nodePlatform];
-    const arch = archMap[nodeArch];
-    if (!platform || !arch) return null;
-
-    const slug = `tgdl-faces-${platform}-${arch}`;
-    const exe = nodePlatform === 'win32' ? '.exe' : '';
-    const binDir = path.join(dataDir, 'faces-service', 'bin');
-    const modelsDir = path.join(dataDir, 'faces-service', 'models');
-    const binPath = path.join(binDir, `${slug}${exe}`);
-
-    // Build the ordered candidate URL list.
-    const candidates = [];
-    if (envBinUrl) candidates.push(envBinUrl);
-    if (Array.isArray(cfgMirrors)) {
-        for (const m of cfgMirrors) {
-            const url = _normaliseUrl(m);
-            if (!url) continue;
-            // The mirror may be a full URL to a specific tarball or a base
-            // URL the caller wants templated. We accept both: if the URL
-            // already ends with `.tar.gz` it's taken verbatim; otherwise we
-            // append `/<slug>.tar.gz`.
-            if (url.endsWith('.tar.gz')) candidates.push(url);
-            else candidates.push(`${url.replace(/\/+$/, '')}/${slug}.tar.gz`);
-        }
-    }
-    candidates.push(`${GH_RELEASE_BASE}/${slug}.tar.gz`);
-
-    // `tarUrl` stays for backward compat with existing callers; new code
-    // walks `tarUrls` in order.
-    return {
-        platform,
-        arch,
-        slug,
-        exe,
-        binDir,
-        modelsDir,
-        binPath,
-        tarUrl: candidates[0],
-        tarUrls: candidates,
-    };
-}
-
-function _isBinaryUsable(binPath) {
-    try {
-        const st = statSync(binPath);
-        if (!st.isFile()) return false;
-        if (process.platform !== 'win32') {
-            // Exec bit check — readFile alone doesn't tell us whether the
-            // file is runnable. On Windows the .exe extension is enough;
-            // POSIX needs at least one exec bit set.
-            if ((st.mode & 0o111) === 0) return false;
-        }
-        return st.size > 0;
-    } catch {
-        return false;
-    }
-}
-
-function _verifyBinary(binPath) {
-    try {
-        const res = spawnSync(binPath, ['--help'], {
-            stdio: 'ignore',
-            timeout: 5000,
-        });
-        // Any clean exit (0 or non-zero) means the kernel could load it.
-        // A spawn-time error (ENOENT, EACCES, code 'EAGAIN' on Windows
-        // when AV is scanning) shows up as `res.error`.
-        if (res?.error) return false;
-        if (res?.status === null && res?.signal) return false;
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-// ---- Checksum verification ----------------------------------------------
-
-export async function _parseChecksumFile(text) {
-    const hex = text.trim().split(/\s/)[0];
-    if (!/^[0-9a-f]{64}$/i.test(hex)) throw new Error(`invalid checksum format: ${text.trim()}`);
-    return hex.toLowerCase();
-}
-
-export function _hashFile(filePath) {
-    return new Promise((resolve, reject) => {
-        const hash = createHash('sha256');
-        const stream = createReadStream(filePath);
-        stream.on('data', (chunk) => hash.update(chunk));
-        stream.on('end', () => resolve(hash.digest('hex')));
-        stream.on('error', reject);
-    });
-}
-
-// Fetches a tiny text file (e.g. a .sha256 checksum). Not streaming — checksum
-// files are always < 1 KB so buffering in memory is fine.
-function _fetchText(url, redirectsLeft = _downloadRedirectLimit()) {
-    return new Promise((resolve, reject) => {
-        const parsed = _parseUrl(url);
-        if (!parsed) return reject(new Error(`bad url: ${url}`));
-        const lib = parsed.protocol === 'http:' ? http : https;
-        const req = lib.get(
-            url,
-            { headers: { 'user-agent': 'tgdl-faces-spawn', accept: 'text/plain' } },
-            (res) => {
-                if (
-                    res.statusCode >= 300 &&
-                    res.statusCode < 400 &&
-                    res.headers.location &&
-                    redirectsLeft > 0
-                ) {
-                    res.resume();
-                    _fetchText(_resolveLocation(url, res.headers.location), redirectsLeft - 1).then(
-                        resolve,
-                        reject,
-                    );
-                    return;
-                }
-                if (res.statusCode !== 200) {
-                    res.resume();
-                    return reject(new Error(`http ${res.statusCode} from ${url}`));
-                }
-                const chunks = [];
-                res.on('data', (c) => chunks.push(c));
-                res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-                res.on('error', reject);
-            },
-        );
-        req.on('error', reject);
-    });
-}
-
-// Fetches <tarUrl>.sha256, hashes the local tarball, and throws on mismatch.
-export async function _verifyChecksum(tarballPath, tarUrl) {
-    const checksumUrl = `${tarUrl}.sha256`;
-    const text = await _fetchText(checksumUrl);
-    const expected = await _parseChecksumFile(text);
-    const actual = await _hashFile(tarballPath);
-    if (actual !== expected) {
-        throw new Error(
-            `checksum mismatch for ${path.basename(tarballPath)}: expected ${expected}, got ${actual}`,
-        );
-    }
-}
-
-// ---- Download + extract -------------------------------------------------
-
-async function _downloadAndExtract(target) {
-    await fs.mkdir(target.binDir, { recursive: true });
-    await fs.mkdir(target.modelsDir, { recursive: true });
-
-    const tmpTarball = path.join(target.binDir, `${target.slug}-${Date.now()}.tar.gz`);
-    const urls =
-        Array.isArray(target.tarUrls) && target.tarUrls.length ? target.tarUrls : [target.tarUrl];
-    let lastErr = null;
-    let downloaded = false;
-    let downloadedUrl = null;
-    for (const url of urls) {
-        _log('info', `downloading ${url} -> ${tmpTarball}`);
-        try {
-            await _streamDownload(url, tmpTarball);
-            downloaded = true;
-            downloadedUrl = url;
-            break;
-        } catch (e) {
-            lastErr = e;
-            _log('warn', `download from ${url} failed: ${e?.message || e}`);
-            // Clean partial file before trying the next mirror so the
-            // extractor doesn't pick up a half-baked tarball.
-            try {
-                await fs.unlink(tmpTarball);
-            } catch {}
-        }
-    }
-    if (!downloaded) {
-        throw lastErr || new Error('all download URLs failed');
-    }
-    _checksumVerified = null;
-    try {
-        await _verifyChecksum(tmpTarball, downloadedUrl);
-        _checksumVerified = true;
-        _log('info', `checksum verified for ${path.basename(downloadedUrl)}`);
-    } catch (e) {
-        _checksumVerified = false;
-        _log('warn', `checksum verification failed: ${e?.message || e} — aborting install`);
-        try {
-            await fs.unlink(tmpTarball);
-        } catch {}
-        throw e;
-    }
-    try {
-        _log('info', `extracting ${tmpTarball} into ${target.binDir}`);
-        await _extractTarball(tmpTarball, target.binDir);
-    } finally {
-        // Always clean up the temp tarball, even if extraction failed —
-        // leaving 80 MB of stale .tar.gz files behind on a retry loop
-        // would eat the operator's disk fast.
-        try {
-            await fs.unlink(tmpTarball);
-        } catch {}
-    }
-
-    if (!existsSync(target.binPath)) {
-        throw new Error(`expected binary at ${target.binPath} after extraction`);
-    }
-
-    // chmod +x on Unix-likes. Windows has no exec bit so skip.
-    if (process.platform !== 'win32') {
-        try {
-            await fs.chmod(target.binPath, 0o755);
-        } catch (e) {
-            _log('warn', `chmod failed: ${e?.message || e}`);
-        }
-    }
-}
-
-/**
- * Stream an HTTPS URL to disk with redirect following and progress
- * broadcasting. Never buffers the whole payload — the file goes straight
- * onto disk so an 80 MB tarball doesn't spike the heap.
- */
-function _streamDownload(url, destPath, redirectsLeft = _downloadRedirectLimit()) {
-    return new Promise((resolve, reject) => {
-        const parsed = _parseUrl(url);
-        if (!parsed) return reject(new Error(`bad url: ${url}`));
-
-        const lib = parsed.protocol === 'http:' ? http : https;
-        const req = lib.get(
-            url,
-            {
-                headers: {
-                    'user-agent': 'tgdl-faces-spawn',
-                    accept: 'application/octet-stream',
-                },
-                timeout: DOWNLOAD_CONNECT_TIMEOUT_MS,
-            },
-            (res) => {
-                // Follow up to 5 redirects (GitHub bounces to a CDN).
-                if (
-                    res.statusCode >= 300 &&
-                    res.statusCode < 400 &&
-                    res.headers.location &&
-                    redirectsLeft > 0
-                ) {
-                    res.resume();
-                    const next = _resolveLocation(url, res.headers.location);
-                    _streamDownload(next, destPath, redirectsLeft - 1).then(resolve, reject);
-                    return;
-                }
-                if (res.statusCode !== 200) {
-                    res.resume();
-                    reject(new Error(`http ${res.statusCode} from ${url}`));
-                    return;
-                }
-
-                const total = Number(res.headers['content-length']) || 0;
-                let loaded = 0;
-                let lastBroadcast = 0;
-
-                const ws = createWriteStream(destPath);
-                res.on('data', (chunk) => {
-                    loaded += chunk.length;
-                    // Throttle WS events to ~10/s so a fast connection
-                    // doesn't drown the WS bus with hundreds of progress
-                    // payloads per second.
-                    const now = Date.now();
-                    if (now - lastBroadcast >= 100 || (total > 0 && loaded === total)) {
-                        lastBroadcast = now;
-                        const pct = total > 0 ? Math.min(100, (loaded * 100) / total) : 0;
-                        _broadcast({
-                            type: 'ai_faces_download_progress',
-                            loaded,
-                            total,
-                            pct,
-                        });
-                    }
-                });
-                res.on('error', (e) => {
-                    ws.destroy();
-                    reject(e);
-                });
-                ws.on('error', (e) => reject(e));
-                ws.on('finish', () => resolve());
-                res.pipe(ws);
-            },
-        );
-        req.on('timeout', () => {
-            req.destroy(new Error('download connect timeout'));
-        });
-        req.on('error', (e) => reject(e));
-    });
-}
-
-/**
- * Extract a .tar.gz into `destDir`. Prefer the system `tar` binary —
- * Windows 10+ ships it, every supported Linux/macOS has it. Fall back
- * to a Node-level decode using zlib + a minimal tar parser when `tar`
- * isn't on PATH (rare, but possible on stripped-down container images).
- */
-async function _extractTarball(tarballPath, destDir) {
-    // Try system tar first.
-    try {
-        const res = spawnSync('tar', ['-xzf', tarballPath, '-C', destDir], {
-            stdio: ['ignore', 'pipe', 'pipe'],
-            timeout: 120_000,
-        });
-        if (!res.error && res.status === 0) return;
-        if (res.error) {
-            _log('info', `system tar unavailable (${res.error.code || res.error.message})`);
-        } else {
-            _log(
-                'warn',
-                `system tar failed status=${res.status}: ${res.stderr?.toString?.() || ''}`,
-            );
-        }
-    } catch (e) {
-        _log('info', `system tar threw: ${e?.message || e}`);
-    }
-
-    // Fallback: Node-level decode. Streams to disk, never buffers the
-    // whole tarball in memory.
-    await _extractTarballNodeFallback(tarballPath, destDir);
-}
-
-/**
- * Streaming tar.gz extractor — gunzip the tarball, then walk 512-byte
- * tar blocks. Supports REGULAR files and DIRECTORIES (which is all the
- * sidecar release ships). Symlinks, long-name extensions, and PAX
- * headers are intentionally rejected — if a future sidecar release
- * needs them, the GitHub Actions build can re-pack without them.
- */
-async function _extractTarballNodeFallback(tarballPath, destDir) {
-    const { createGunzip } = await import('zlib');
-    const { createReadStream } = await import('fs');
-    const rs = createReadStream(tarballPath);
-    const gz = createGunzip();
-
-    let buf = Buffer.alloc(0);
-    let pendingHeader = null;
-    let pendingBytesRemaining = 0;
-    let pendingPaddingBytes = 0;
-    let pendingWriteStream = null;
-    let pendingWritePromise = null;
-
-    const ensureDir = async (p) => {
-        await fs.mkdir(p, { recursive: true });
-    };
-
-    const finishPendingWrite = async () => {
-        if (pendingWriteStream) {
-            const ws = pendingWriteStream;
-            const wp = pendingWritePromise;
-            pendingWriteStream = null;
-            pendingWritePromise = null;
-            ws.end();
-            await wp;
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        gz.on('error', reject);
-        rs.on('error', reject);
-
-        gz.on('data', async (chunk) => {
-            try {
-                buf = Buffer.concat([buf, chunk]);
-                // Loop until we run out of complete records (headers /
-                // file payloads) in the buffered slice.
-                while (true) {
-                    if (pendingHeader) {
-                        // Consuming file payload.
-                        if (pendingBytesRemaining > 0) {
-                            const slice = buf.subarray(
-                                0,
-                                Math.min(pendingBytesRemaining, buf.length),
-                            );
-                            if (slice.length === 0) return;
-                            if (pendingWriteStream) {
-                                if (!pendingWriteStream.write(slice)) {
-                                    gz.pause();
-                                    pendingWriteStream.once('drain', () => gz.resume());
-                                }
-                            }
-                            pendingBytesRemaining -= slice.length;
-                            buf = buf.subarray(slice.length);
-                            if (pendingBytesRemaining > 0) return;
-                        }
-                        if (pendingPaddingBytes > 0) {
-                            if (buf.length < pendingPaddingBytes) return;
-                            buf = buf.subarray(pendingPaddingBytes);
-                            pendingPaddingBytes = 0;
-                        }
-                        await finishPendingWrite();
-                        pendingHeader = null;
-                        continue;
-                    }
-                    if (buf.length < 512) return;
-                    const header = buf.subarray(0, 512);
-                    buf = buf.subarray(512);
-                    // All-zero block = end of archive.
-                    if (header.every((b) => b === 0)) {
-                        // Two zero blocks mark EOF; we treat the first one
-                        // as terminator too — extra padding is harmless.
-                        continue;
-                    }
-                    const name = _readNulTerminated(header, 0, 100);
-                    const sizeOctal = _readNulTerminated(header, 124, 12).trim();
-                    // Tar typeflag byte (numeric — avoids embedding a NUL
-                    // literal in source).
-                    const typeByte = header[156] || 0;
-                    const size = sizeOctal ? parseInt(sizeOctal, 8) : 0;
-                    const padding = size % 512 === 0 ? 0 : 512 - (size % 512);
-
-                    const target = path.join(destDir, name);
-                    if (!target.startsWith(path.resolve(destDir))) {
-                        throw new Error(`tar entry escapes destDir: ${name}`);
-                    }
-
-                    const isDir = typeByte === TAR_TYPE_DIRECTORY || name.endsWith('/');
-                    const isRegular =
-                        typeByte === TAR_TYPE_REGULAR_MODERN ||
-                        typeByte === TAR_TYPE_REGULAR_LEGACY ||
-                        typeByte === TAR_TYPE_REGULAR_SPACE;
-
-                    if (isDir) {
-                        await ensureDir(target);
-                        pendingHeader = header;
-                        pendingBytesRemaining = 0;
-                        pendingPaddingBytes = padding;
-                    } else if (isRegular) {
-                        await ensureDir(path.dirname(target));
-                        pendingHeader = header;
-                        pendingBytesRemaining = size;
-                        pendingPaddingBytes = padding;
-                        pendingWriteStream = createWriteStream(target);
-                        pendingWritePromise = new Promise((res, rej) => {
-                            pendingWriteStream.on('finish', () => res());
-                            pendingWriteStream.on('error', rej);
-                        });
-                        if (size === 0) {
-                            // Empty file — flush immediately so the loop
-                            // moves on.
-                            await finishPendingWrite();
-                            if (padding > 0) {
-                                if (buf.length < padding) return;
-                                buf = buf.subarray(padding);
-                                pendingPaddingBytes = 0;
-                            }
-                            pendingHeader = null;
-                        }
-                    } else {
-                        // Unsupported entry type — skip its payload + padding.
-                        pendingHeader = header;
-                        pendingBytesRemaining = size;
-                        pendingPaddingBytes = padding;
-                        pendingWriteStream = null;
-                        pendingWritePromise = Promise.resolve();
-                    }
-                }
-            } catch (e) {
-                reject(e);
-            }
-        });
-
-        gz.on('end', async () => {
-            try {
-                await finishPendingWrite();
-                resolve();
-            } catch (e) {
-                reject(e);
-            }
-        });
-
-        rs.pipe(gz);
-    });
-}
-
-function _readNulTerminated(buf, offset, length) {
-    let end = offset;
-    const max = offset + length;
-    while (end < max && buf[end] !== 0) end++;
-    return buf.toString('utf8', offset, end);
-}
-
 // ---- Spawn + health probe -----------------------------------------------
 
 async function _spawnAndProbe(binPath) {
-    const port = await _pickAvailablePort();
+    const port = await pickAvailablePort({
+        portRange: _portRange(),
+        probeAttempts: _portProbeAttempts(),
+    });
     const downloadsDir = path.resolve(DATA_DIR, 'downloads');
     const modelsDir = path.resolve(DATA_DIR, 'faces-service', 'models');
     await fs.mkdir(downloadsDir, { recursive: true });
@@ -1373,10 +858,10 @@ async function _spawnAndProbe(binPath) {
     });
     _child = child;
 
-    _wirePipeLogging(child.stdout, 'info');
+    wirePipeLogging(child.stdout, 'info', _log);
     // Match the python-fallback rationale above: Python+uvicorn write
     // INFO to stderr by default, so 'info' is the right fallback level.
-    _wirePipeLogging(child.stderr, 'info');
+    wirePipeLogging(child.stderr, 'info', _log);
 
     let exited = false;
     let exitInfo = null;
@@ -1407,61 +892,8 @@ async function _spawnAndProbe(binPath) {
     throw new Error(`health probe timed out after ${timeoutMs} ms`);
 }
 
-// Python's `logging` + uvicorn write EVERYTHING to stderr (INFO included),
-// so wiring stderr → `_log('error', ...)` blindly mis-tags every healthy
-// startup line as a hard error. Parse the level prefix from common
-// Python log formats so the dashboard log feed colours each line correctly.
-const _PY_LEVEL_PATTERNS = [
-    [/\bERROR\b/i, 'error'],
-    [/\bCRITICAL\b/i, 'error'],
-    [/\bWARN(ING)?\b/i, 'warn'],
-    [/\bINFO\b/i, 'info'],
-    [/\bDEBUG\b/i, 'info'],
-];
-function _inferPyLevel(line, fallback) {
-    for (const [re, lvl] of _PY_LEVEL_PATTERNS) {
-        if (re.test(line)) return lvl;
-    }
-    return fallback;
-}
-// Drop successful per-request access lines from the dashboard log feed.
-// Uvicorn + the in-process logger each emit one line per inference hit
-// (`POST /detect -> 200` and `"POST /detect HTTP/1.1" 200 OK`). At scan
-// rates of ~1 req/s that floods the Maintenance → Logs panel with
-// thousands of green noise entries, drowning real warnings. We keep any
-// non-200 response so failures still surface. Health probes are
-// filtered too since `/health` fires every few seconds from the health
-// monitor.
-const _ACCESS_NOISE_RE =
-    /(?:"(?:GET|POST|PUT|DELETE|OPTIONS)\s+\/(?:detect|health|info|detect_b64)(?:\?\S*)?\s+HTTP\/[\d.]+"\s+200\b|(?:GET|POST|PUT|DELETE|OPTIONS)\s+\/(?:detect|health|info|detect_b64)\s+->\s+200\b)/;
-function _isAccessNoise(line) {
-    return _ACCESS_NOISE_RE.test(line);
-}
-function _wirePipeLogging(stream, level) {
-    if (!stream) return;
-    let leftover = '';
-    stream.setEncoding('utf8');
-    stream.on('data', (chunk) => {
-        const text = leftover + chunk;
-        const lines = text.split(/\r?\n/);
-        leftover = lines.pop() || '';
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            if (_isAccessNoise(trimmed)) continue;
-            _log(_inferPyLevel(trimmed, level), line);
-        }
-    });
-    stream.on('end', () => {
-        if (leftover.trim() && !_isAccessNoise(leftover)) {
-            _log(_inferPyLevel(leftover, level), leftover);
-        }
-        leftover = '';
-    });
-    stream.on('error', () => {
-        /* don't crash if the pipe goes away */
-    });
-}
+// ---- Log filtering and pipe wiring (extracted to faces-log-filter.js) ---
+// inferPyLevel, isAccessNoise, wirePipeLogging are imported from there.
 
 function _probeHealth(url) {
     return new Promise((resolve) => {
@@ -1497,31 +929,8 @@ function _probeHealth(url) {
     });
 }
 
-async function _pickAvailablePort() {
-    const [lo, hi] = _portRange();
-    const attempts = _portProbeAttempts();
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        const port = _randInt(lo, hi);
-        if (await _isPortFree(port)) return port;
-    }
-    throw new Error(
-        `could not find a free localhost port in ${lo}-${hi} after ${attempts} attempts`,
-    );
-}
-
-function _isPortFree(port) {
-    return new Promise((resolve) => {
-        const srv = net.createServer();
-        srv.once('error', () => resolve(false));
-        srv.listen(port, '127.0.0.1', () => {
-            srv.close(() => resolve(true));
-        });
-    });
-}
-
-function _randInt(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+// ---- Port allocation (extracted to faces-port.js) -----------------------
+// pickAvailablePort, isPortFree are imported from there.
 
 // ---- Background health monitor ------------------------------------------
 
@@ -1718,28 +1127,7 @@ function _log(level, msg) {
     } catch {}
 }
 
-function _normaliseUrl(raw) {
-    if (!raw || typeof raw !== 'string') return null;
-    const trimmed = raw.trim().replace(/\/+$/, '');
-    if (!trimmed) return null;
-    return trimmed;
-}
-
-function _parseUrl(raw) {
-    try {
-        return new URL(raw);
-    } catch {
-        return null;
-    }
-}
-
-function _resolveLocation(base, loc) {
-    try {
-        return new URL(loc, base).toString();
-    } catch {
-        return loc;
-    }
-}
+// _normaliseUrl is imported from faces-download.js as _normaliseUrl.
 
 function _sleep(ms) {
     return new Promise((r) => {
