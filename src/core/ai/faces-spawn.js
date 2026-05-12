@@ -426,6 +426,8 @@ async function _doStart() {
     // Python fallback as a usable last resort.
     if (binaryReady && !_verifyBinary(target.binPath)) {
         _log('warn', `binary at ${target.binPath} failed verification — re-downloading`);
+        _killChild();
+        await new Promise((r) => setTimeout(r, 1000));
         try {
             await fs.unlink(target.binPath);
         } catch {}
@@ -1367,7 +1369,11 @@ async function _extractTarballNodeFallback(tarballPath, destDir) {
                         pendingHeader = header;
                         pendingBytesRemaining = size;
                         pendingPaddingBytes = padding;
-                        pendingWriteStream = createWriteStream(target);
+                        try {
+                            pendingWriteStream = createWriteStream(target);
+                        } catch (wsErr) {
+                            throw new Error(`cannot write ${name}: ${wsErr.message}`);
+                        }
                         pendingWritePromise = new Promise((res, rej) => {
                             pendingWriteStream.on('finish', () => res());
                             pendingWriteStream.on('error', rej);
