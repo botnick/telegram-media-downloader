@@ -183,7 +183,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             const envFileTypes = resolveFacesValue('fileTypes', facesCfgIn);
             const fileTypes = Array.isArray(facesCfgIn.fileTypes)
                 ? facesCfgIn.fileTypes
-                : Array.isArray(cfg.fileTypes)
+                : Array.isArray(cfg?.fileTypes)
                   ? cfg.fileTypes
                   : Array.isArray(envFileTypes)
                     ? envFileTypes
@@ -206,8 +206,13 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
 
             // `batchSize` precedence (same model as fileTypes above).
             const envBatch = resolveFacesValue('batchSize', facesCfgIn);
-            const batchSizeRaw = _pickNumber([facesCfgIn.batchSize, cfg.batchSize, envBatch], 16);
+            const batchSizeRaw = _pickNumber([facesCfgIn.batchSize, cfg?.batchSize, envBatch], 16);
             const batchSize = Math.max(1, Math.min(200, Number(batchSizeRaw) || 16));
+            let _statNull = 0;     // detectFaces returned null (sidecar error / file missing)
+            let _statEmpty = 0;    // detectFaces returned [] (processed but no faces detected)
+            let _statFaces = 0;    // total face embeddings stored
+            let _statPhotos = 0;   // photos with ≥1 face
+            let _nextStatLog = 200; // log a summary every N photos
             while (!signal.aborted) {
                 const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
                 if (!batch.length) break;
@@ -229,6 +234,14 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                 log('warn', `detectFaces threw on id=${row.id}: ${e?.message || e}`);
                             }
                         }
+                        if (detected === null) {
+                            _statNull++;
+                        } else if (detected.length === 0) {
+                            _statEmpty++;
+                        } else {
+                            _statFaces += detected.length;
+                            _statPhotos++;
+                        }
                         if (Array.isArray(detected) && detected.length) {
                             deleteFacesForDownload(row.id);
                             for (const f of detected) {
@@ -248,8 +261,23 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         bump();
                     }),
                 );
+                if (state.scanned >= _nextStatLog) {
+                    log(
+                        'info',
+                        `faces scan progress: ${state.scanned}/${phaseATotal} — ` +
+                            `${_statPhotos} with faces (${_statFaces} total), ` +
+                            `${_statEmpty} no-face, ${_statNull} errors`,
+                    );
+                    _nextStatLog = state.scanned + 200;
+                }
                 await new Promise((r) => setImmediate(r));
             }
+            log(
+                'info',
+                `faces scan: phase A done — ${_statPhotos} photos had faces ` +
+                    `(${_statFaces} total embeddings), ` +
+                    `${_statEmpty} no-face, ${_statNull} sidecar errors`,
+            );
 
             // Phase B — DBSCAN over every face embedding. Always re-runs
             // (clusters drift as new faces land).

@@ -305,6 +305,12 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
     }
 
     const faces = Array.isArray(body?.faces) ? body.faces : [];
+    // The sidecar returns 200 + an `error` field for soft failures
+    // (file_not_found, decode_failed). Log them so the scan summary
+    // shows *why* a photo yielded 0 faces instead of silently moving on.
+    if (body?.error) {
+        _log(onLog, 'warn', `detect ${absPath}: sidecar soft-error="${body.error}" — 0 faces stored`);
+    }
     return faces
         .map((f) => {
             // Embedding must be Float32Array — downstream (`_f32ToBlob`)
