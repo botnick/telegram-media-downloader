@@ -1027,6 +1027,7 @@ function registerRoutes() {
     router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
     router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
     router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
+    router.route('/maintenance/db-stats', () => renderPage('maintenance-db-stats'));
     router.route('/maintenance/recovery', () => renderPage('maintenance-recovery'));
     router.route('/maintenance/updates', () => renderPage('maintenance-updates'));
 }
