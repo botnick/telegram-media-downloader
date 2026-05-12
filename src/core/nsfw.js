@@ -20,8 +20,9 @@
  */
 
 import path from 'path';
+import os from 'os';
 import { existsSync, promises as fs } from 'fs';
-import { fileURLToPath } from 'url';
+import sharp from 'sharp';
 import {
     getDb,
     getUnscannedNsfwBatch,
@@ -30,10 +31,10 @@ import {
     checkNsfwBlocklistHashes,
 } from './db.js';
 import { sha256OfFile } from './checksum.js';
+import { getSpritePath, getMetaFilePath } from './seekbar/generator.js';
+import { getDataDir, getRepoRoot } from './paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+const DATA_DIR = getDataDir();
 
 // Public defaults. Live values are pulled from `config.advanced.nsfw`
 // at every entry point so a `config_updated` save takes effect on the
@@ -63,6 +64,7 @@ export const NSFW_DEFAULTS = Object.freeze({
     fileTypes: ['photo'],
     cacheDir: 'data/models',
     batchSize: 50,
+    videoMaxTiles: 48,
 });
 
 // Suggestions surfaced as a `<datalist>` in the UI — operators can pick
@@ -90,7 +92,7 @@ let _activeModelId = null;
 
 function _resolveCacheDirAbs(cacheDirCfg) {
     const raw = cacheDirCfg || NSFW_DEFAULTS.cacheDir;
-    return path.isAbsolute(raw) ? raw : path.resolve(PROJECT_ROOT, raw);
+    return path.isAbsolute(raw) ? raw : path.resolve(getRepoRoot(), raw);
 }
 
 async function _loadClassifier(cfg, onProgress, onLog) {
@@ -269,6 +271,89 @@ async function _classifyFile(classifier, absPath) {
     return { score: nsfwScore, label: nsfwScore >= 0.5 ? 'nsfw' : 'normal' };
 }
 
+// ---- Video sprite classifier ----------------------------------------------
+
+/**
+ * Classify a video by sampling tiles from its seekbar sprite sheet.
+ * Returns null when no sprite exists (caller stores null score so the row
+ * isn't re-fetched endlessly) or when the sprite is malformed.
+ *
+ * Aggregation: top-3 average — requires consensus from multiple tiles rather
+ * than flagging on any single tile, which dramatically reduces false positives
+ * from brief on-screen graphics / thumbnails.
+ *
+ * @param {object} classifier   transformers.js pipeline instance
+ * @param {number} downloadId   downloads.id
+ * @param {number} [maxTiles]   sample budget; falls back to NSFW_DEFAULTS.videoMaxTiles
+ */
+async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
+    const limit = Math.max(1, Number(maxTiles) || NSFW_DEFAULTS.videoMaxTiles);
+    const spritePath = getSpritePath(downloadId);
+    const metaPath = getMetaFilePath(downloadId);
+    if (!existsSync(spritePath) || !existsSync(metaPath)) return null;
+
+    let meta;
+    try {
+        meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+    } catch {
+        return null;
+    }
+
+    const cols = Number(meta.cols) || 1;
+    const rows = Number(meta.rows) || 1;
+    const tileW = Number(meta.tile_w) || 0;
+    const totalFrames = Number(meta.frames) || cols * rows;
+    if (tileW <= 0 || totalFrames <= 0) return null;
+
+    // tile_h may be 0 in the sidecar — derive from actual sprite dimensions.
+    let tileH = Number(meta.tile_h) || 0;
+    if (tileH <= 0) {
+        try {
+            const m = await sharp(spritePath, { failOn: 'none' }).metadata();
+            if ((m.height || 0) > 0) tileH = Math.floor(m.height / rows);
+        } catch {
+            return null;
+        }
+    }
+    if (tileH <= 0) return null;
+
+    const sampleCount = Math.min(limit, totalFrames);
+    const step = totalFrames / sampleCount;
+    const indices = Array.from({ length: sampleCount }, (_, k) => Math.floor(k * step));
+
+    // Single reused temp file per video — tiles classified sequentially.
+    const tmpPath = path.join(os.tmpdir(), `nsfw-tile-${downloadId}-${Date.now()}.jpg`);
+    const scores = [];
+    try {
+        for (const i of indices) {
+            const left = (i % cols) * tileW;
+            const top = Math.floor(i / cols) * tileH;
+            try {
+                await sharp(spritePath, { failOn: 'none' })
+                    .extract({ left, top, width: tileW, height: tileH })
+                    .jpeg({ quality: 85 })
+                    .toFile(tmpPath);
+            } catch {
+                continue;
+            }
+            try {
+                const res = await _classifyFile(classifier, tmpPath);
+                if (res) scores.push(res.score);
+            } catch {}
+        }
+    } finally {
+        try {
+            await fs.unlink(tmpPath);
+        } catch {}
+    }
+    if (scores.length === 0) return { score: 0, label: 'normal' };
+    // Top-3 average — consensus required to avoid flagging on a single tile.
+    scores.sort((a, b) => b - a);
+    const topK = Math.min(3, scores.length);
+    const aggregated = scores.slice(0, topK).reduce((s, v) => s + v, 0) / topK;
+    return { score: aggregated, label: aggregated >= 0.5 ? 'nsfw' : 'normal' };
+}
+
 // ---- Scan loop ------------------------------------------------------------
 //
 // "candidates" = photos the classifier thinks are NOT 18+ → the rows the
@@ -340,6 +425,7 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
         Math.min(4, Number(cfg.concurrency) || NSFW_DEFAULTS.concurrency),
     );
     const batchSize = Math.max(1, Math.min(500, Number(cfg.batchSize) || NSFW_DEFAULTS.batchSize));
+    const videoMaxTiles = Math.max(1, Number(cfg.videoMaxTiles) || NSFW_DEFAULTS.videoMaxTiles);
 
     _scanState = {
         running: true,
@@ -430,7 +516,10 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                         const abs = resolveAbs(row.file_path);
                         let res = null;
                         try {
-                            res = await _classifyFile(classifier, abs);
+                            res =
+                                row.file_type === 'video'
+                                    ? await _classifyVideoSprite(classifier, row.id, videoMaxTiles)
+                                    : await _classifyFile(classifier, abs);
                         } catch {
                             res = null;
                         }
@@ -457,7 +546,14 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                                 const abs = resolveAbs(row.file_path);
                                 let res = null;
                                 try {
-                                    res = await _classifyFile(classifier, abs);
+                                    res =
+                                        row.file_type === 'video'
+                                            ? await _classifyVideoSprite(
+                                                  classifier,
+                                                  row.id,
+                                                  videoMaxTiles,
+                                              )
+                                            : await _classifyFile(classifier, abs);
                                 } catch {
                                     res = null;
                                 }
@@ -657,13 +753,20 @@ async function _drainBg() {
             if (!classifier) continue;
 
             let score = null;
-            if (abs) {
-                try {
-                    const r = await _classifyFile(classifier, abs);
-                    if (r) score = r.score;
-                } catch {
-                    /* per-file failure: leave score NULL but mark scanned */
-                }
+            try {
+                const bgMaxTiles = Math.max(
+                    1,
+                    Number(cfg.videoMaxTiles) || NSFW_DEFAULTS.videoMaxTiles,
+                );
+                const r =
+                    row.file_type === 'video'
+                        ? await _classifyVideoSprite(classifier, Number(row.id), bgMaxTiles)
+                        : abs
+                          ? await _classifyFile(classifier, abs)
+                          : null;
+                if (r) score = r.score;
+            } catch {
+                /* per-file failure: leave score NULL but mark scanned */
             }
             try {
                 setNsfwResult(id, score);

@@ -175,9 +175,100 @@ def load_image_from_path(path: str, allow_roots: list[str]) -> np.ndarray:
     buf = np.frombuffer(raw, dtype=np.uint8)
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
     if img is None:
-        # File exists but bytes are not a recognisable image format.
+        # cv2 fails on animated WebP and some uncommon encodings — try Pillow.
+        # For animated images (animated WebP, APNG, GIF) the image object
+        # starts at frame 0 but some Pillow builds reject convert("RGB") until
+        # seek(0) is called explicitly to materialise a concrete frame.
+        try:
+            from PIL import Image as _PilImage  # noqa: PLC0415
+            import io as _bio  # noqa: PLC0415
+            with _PilImage.open(_bio.BytesIO(raw)) as pil:
+                try:
+                    pil.seek(0)
+                except (AttributeError, EOFError):
+                    pass
+                frame = pil.convert("RGB")
+                img = cv2.cvtColor(np.array(frame, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+        except Exception:
+            img = None
+    if img is None:
         raise ImageDecodeError(f"failed to decode image at {path!r}")
     return _apply_exif_orientation(img, raw)
+
+
+def extract_video_frames(
+    path: str,
+    allow_roots: list[str],
+    max_frames: int = 120,
+) -> list[np.ndarray]:
+    """Extract evenly-spaced frames from a video using cv2.VideoCapture.
+
+    Frames are returned as in-memory BGR ndarrays — no temp files written.
+    Sample count adapts to video duration so short clips get at least one
+    frame and very long videos stay under ``max_frames``.
+
+    Raises
+    ------
+    PathNotAllowedError
+        ``path`` falls outside TGDL_FACES_ALLOW_ROOTS.
+    FileNotFoundError
+        ``path`` is missing or cv2 cannot open it as a video.
+    """
+    if not allow_roots:
+        raise PathNotAllowedError(
+            "path mode is disabled (TGDL_FACES_ALLOW_ROOTS is empty)"
+        )
+    target = _norm(path)
+    roots = [_norm(r) for r in allow_roots if r]
+    if not any(_is_under(target, r) for r in roots):
+        raise PathNotAllowedError(f"path {path!r} is outside TGDL_FACES_ALLOW_ROOTS")
+
+    cap = cv2.VideoCapture(target)
+    if not cap.isOpened():
+        raise FileNotFoundError(f"cv2 cannot open video {path!r}")
+
+    try:
+        raw_fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = raw_fps if raw_fps and raw_fps > 0 else 25.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if total_frames <= 0:
+            # Some containers don't report frame count — grab one frame.
+            ret, frame = cap.read()
+            return [frame] if (ret and frame is not None) else []
+
+        duration = total_frames / fps
+
+        # Adaptive sample count: more frames for short clips, fewer for long.
+        if duration < 30:
+            n_samples = min(3, total_frames)
+        elif duration < 300:       # < 5 min
+            n_samples = min(30, max_frames)
+        elif duration < 1800:      # < 30 min
+            n_samples = min(60, max_frames)
+        else:
+            n_samples = max_frames
+
+        n_samples = max(1, min(n_samples, total_frames))
+
+        if n_samples == 1:
+            indices = [total_frames // 2]
+        else:
+            step = (total_frames - 1) / (n_samples - 1)
+            indices = [
+                min(int(round(i * step)), total_frames - 1)
+                for i in range(n_samples)
+            ]
+
+        frames: list[np.ndarray] = []
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                frames.append(frame)
+        return frames
+    finally:
+        cap.release()
 
 
 def load_image_from_b64(data: str) -> np.ndarray:

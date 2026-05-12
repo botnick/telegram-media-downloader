@@ -224,12 +224,17 @@ def test_x86_linux_includes_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
     assert chain[0] == "CUDAExecutionProvider"
 
 
-def test_windows_auto_chain_prefers_directml(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_windows_auto_chain_excludes_directml(monkeypatch: pytest.MonkeyPatch) -> None:
+    # DmlExecutionProvider is excluded from the Windows auto-chain because it
+    # requires a COM STA and crashes (STATUS_ACCESS_VIOLATION) in uvicorn threads.
+    # CUDA is preferred instead; users who need DirectML must set
+    # TGDL_FACES_PROVIDERS=directml explicitly.
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     monkeypatch.setattr(platform, "machine", lambda: "AMD64")
 
     chain = insight._platform_aware_auto_chain()
-    assert chain[0] == "DmlExecutionProvider"
+    assert chain[0] == "CUDAExecutionProvider"
+    assert "DmlExecutionProvider" not in chain
 
 
 # ── Quality filter correctness ────────────────────────────────────────────────
@@ -282,6 +287,8 @@ def test_quality_filter_ar_range(monkeypatch: pytest.MonkeyPatch) -> None:
         img, min_box_px=5, ar_range=(0.5, 2.0), _track_stats=False
     )
     assert result == []
+
+
 
 
 # ── Embedding dimension guard ─────────────────────────────────────────────────

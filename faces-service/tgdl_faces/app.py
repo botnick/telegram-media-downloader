@@ -43,6 +43,8 @@ from .insight import (
     gpu_available,
     gpu_provider,
     is_ready,
+    preload_named_model,
+    preload_status,
     last_error,
     platform_tag,
     python_version,
@@ -56,6 +58,7 @@ from .io import (
     Base64DecodeError,
     ImageDecodeError,
     PathNotAllowedError,
+    extract_video_frames,
     load_image_from_b64,
     load_image_from_path,
 )
@@ -156,6 +159,12 @@ class Face(BaseModel):
     w: int
     h: int
     score: float
+    quality_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Composite quality (det_score + size + sharpness + landmarks + pose)",
+    )
     embedding: list[float] = Field(
         ...,
         description=f"L2-normalised {EMBEDDING_DIM}-dim float vector",
@@ -186,6 +195,29 @@ class BatchDetectResponse(BaseModel):
     results: list[BatchDetectItem]
     total_files: int
     total_faces: int
+
+
+class VideoDetectRequest(BaseModel):
+    """Body for ``POST /detect/video``.
+
+    ``path`` must resolve under TGDL_FACES_ALLOW_ROOTS (same rule as
+    ``/detect/batch``). ``max_frames`` caps how many evenly-spaced frames
+    are sampled — the default 120 covers a 2-hour video at 1 frame/min.
+    """
+
+    path: str = Field(..., description="Absolute path to a video file on disk.")
+    min_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_box_px: int | None = Field(default=None, ge=1)
+    ar_range: tuple[float, float] | None = Field(default=None)
+    max_frames: int = Field(default=120, ge=1, le=500)
+
+    @model_validator(mode="after")
+    def _validate_ar_range(self) -> "VideoDetectRequest":
+        if self.ar_range is not None:
+            lo, hi = float(self.ar_range[0]), float(self.ar_range[1])
+            if lo <= 0 or hi <= 0 or lo >= hi:
+                raise ValueError("ar_range must be (lo, hi) with 0 < lo < hi")
+        return self
 
 
 # --- FastAPI app ------------------------------------------------------------
@@ -539,22 +571,10 @@ def _do_detect_sync(body: DetectRequest) -> JSONResponse:
     Separated from the async route handler so the CPU-bound work runs in
     uvicorn's thread pool instead of blocking the event loop.
     """
-    # Guard: model must be loaded (or at least attempted). Return 503
-    # during the brief window while preload_model() is still running.
-    if last_error() is not None:
-        return _error(
-            f"model failed to load: {last_error()}",
-            code="model_load_failed",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-    if not is_ready():
-        # Still loading in the background.
-        return _error(
-            "model is still loading, retry shortly",
-            code="model_loading",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
+    # Image loading / path validation happens BEFORE the model check so that
+    # security errors (403) and client errors (415, 200+error) are never
+    # masked by model-not-ready (503). Base64DecodeError re-raises and is
+    # caught by the global 415 handler.
     img, err_code = _load_image(body.path, body.image_b64)
     if img is None:
         assert err_code is not None
@@ -573,6 +593,21 @@ def _do_detect_sync(body: DetectRequest) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={"faces": [], "error": "decode_failed"},
+        )
+
+    # Guard: model must be loaded. Return 503 during the brief window while
+    # preload_model() is still running, but only after input is validated.
+    if last_error() is not None:
+        return _error(
+            f"model failed to load: {last_error()}",
+            code="model_load_failed",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    if not is_ready():
+        return _error(
+            "model is still loading, retry shortly",
+            code="model_loading",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
     # Build the filter kwargs without overwriting defaults when the
@@ -607,6 +642,19 @@ def _do_detect_sync(body: DetectRequest) -> JSONResponse:
     )
 
 
+@app.post("/preload/{model_name}")
+def preload(model_name: str) -> JSONResponse:
+    """Trigger background download of a model without switching."""
+    preload_named_model(model_name)
+    return JSONResponse(content={"model": model_name, "status": preload_status(model_name)})
+
+
+@app.get("/preload/{model_name}/status")
+def preload_check(model_name: str) -> JSONResponse:
+    """Check download status of a model."""
+    return JSONResponse(content={"model": model_name, "status": preload_status(model_name)})
+
+
 @app.post("/detect")
 async def detect(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     """Detect & embed faces. Returns ``{faces, image_w, image_h}``.
@@ -628,6 +676,25 @@ async def detect_embed(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     lets either side be refactored without breaking the other.
     """
     return await run_in_threadpool(_do_detect_sync, body)
+
+
+def _resolve_throttle_ms() -> float:
+    """Return inter-item sleep (ms) for batch detection; 0 = no throttle.
+
+    ``TGDL_FACES_THROTTLE_MS`` limits CPU saturation on CPU-only hosts by
+    inserting a short pause between each image in a batch. The sidecar
+    sleeps this many milliseconds after releasing the concurrency semaphore
+    from the previous image before starting the next one — the OS scheduler
+    can run other threads during this window.
+
+    Default 0 (no pause). Typical values: 50–200 ms.
+    """
+    raw = os.environ.get("TGDL_FACES_THROTTLE_MS", "0").strip()
+    try:
+        v = float(raw)
+    except ValueError:
+        return 0.0
+    return max(0.0, v)
 
 
 def _do_batch_sync(body: BatchDetectRequest) -> JSONResponse:
@@ -653,10 +720,15 @@ def _do_batch_sync(body: BatchDetectRequest) -> JSONResponse:
     if body.ar_range is not None:
         kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
 
+    throttle_sec = _resolve_throttle_ms() / 1000.0
     results: list[dict[str, Any]] = []
     total_faces = 0
+    _first = True
 
     for file_path in body.files:
+        if throttle_sec > 0 and not _first:
+            time.sleep(throttle_sec)
+        _first = False
         img, err_code = _load_image(file_path, None)
         if img is None:
             results.append({
@@ -719,3 +791,119 @@ async def detect_batch(body: BatchDetectRequest) -> JSONResponse:
     batch requests — no separate locking is needed here.
     """
     return await run_in_threadpool(_do_batch_sync, body)
+
+
+def _dedupe_video_faces(all_faces: list[dict]) -> list[dict]:
+    """Return one best face per unique identity across video frames.
+
+    Insightface embeddings are L2-normalised so the dot product equals
+    cosine similarity. Faces above the 0.50 threshold are considered the
+    same person; the candidate with the highest detection score is kept.
+    O(N²) over unique identities — in practice N ≤ a handful per video.
+    """
+    THRESHOLD = 0.50
+    unique_embs: list[np.ndarray] = []
+    unique_faces: list[dict] = []
+    for face in all_faces:
+        emb = np.array(face["embedding"], dtype=np.float32)
+        matched = False
+        for i, u_emb in enumerate(unique_embs):
+            if float(np.dot(emb, u_emb)) >= THRESHOLD:
+                if face["score"] > unique_faces[i]["score"]:
+                    unique_embs[i] = emb
+                    unique_faces[i] = face
+                matched = True
+                break
+        if not matched:
+            unique_embs.append(emb)
+            unique_faces.append(face)
+    return unique_faces
+
+
+def _do_detect_video_sync(body: VideoDetectRequest) -> JSONResponse:
+    """Synchronous inner implementation for video face detection."""
+    if last_error() is not None:
+        return _error(
+            f"model failed to load: {last_error()}",
+            code="model_load_failed",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    if not is_ready():
+        return _error(
+            "model is still loading, retry shortly",
+            code="model_loading",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    try:
+        frames = extract_video_frames(body.path, _allow_roots(), max_frames=body.max_frames)
+    except PathNotAllowedError:
+        return _error(
+            "path falls outside TGDL_FACES_ALLOW_ROOTS",
+            code="path_not_allowed",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+    except FileNotFoundError:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"faces": [], "error": "file_not_found", "image_w": 0, "image_h": 0},
+        )
+
+    if not frames:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"faces": [], "error": "no_frames", "image_w": 0, "image_h": 0},
+        )
+
+    kwargs: dict[str, Any] = {}
+    if body.min_score is not None:
+        kwargs["min_score"] = float(body.min_score)
+    if body.min_box_px is not None:
+        kwargs["min_box_px"] = int(body.min_box_px)
+    if body.ar_range is not None:
+        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
+
+    first_frame = frames[0]
+    image_h, image_w = int(first_frame.shape[0]), int(first_frame.shape[1])
+
+    throttle_sec = _resolve_throttle_ms() / 1000.0
+    all_faces_raw: list[dict] = []
+    for i, frame in enumerate(frames):
+        if throttle_sec > 0 and i > 0:
+            time.sleep(throttle_sec)
+        try:
+            face_dicts = detect_and_embed(frame, **kwargs)
+        except Exception:
+            _LOG.exception("detect_and_embed failed on frame %d of %s", i, body.path)
+            continue
+        all_faces_raw.extend(face_dicts)
+
+    unique_faces = _dedupe_video_faces(all_faces_raw)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=DetectResponse(
+            faces=[Face(**f) for f in unique_faces],
+            image_w=image_w,
+            image_h=image_h,
+        ).model_dump(),
+    )
+
+
+@app.post("/detect/video")
+async def detect_video(body: VideoDetectRequest) -> JSONResponse:
+    """Detect & embed faces from a video file.
+
+    Extracts evenly-spaced frames via cv2.VideoCapture (no temp files),
+    runs face detection on each frame, then deduplicates faces across
+    frames so the same person appearing in multiple frames produces only
+    one embedding — the one with the highest detection score.
+
+    Response shape matches ``/detect``: ``{faces, image_w, image_h}``.
+    Faces stored from this endpoint cluster with photo-source faces in
+    the same DBSCAN pass, so the same person in a video and a photo
+    lands in the same "Person" group automatically.
+    """
+    return await run_in_threadpool(_do_detect_video_sync, body)
+
+
+# ---------------------------------------------------------------------------

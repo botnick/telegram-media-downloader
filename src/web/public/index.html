@@ -799,37 +799,37 @@
                         <i class="ri-arrow-left-s-line"></i>
                     </a>
                     <div class="maintenance-tabs-scroll">
-                        <a class="maintenance-tab" data-mt-page="maintenance-duplicates" href="#/maintenance/duplicates" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-duplicates" href="#/maintenance/duplicates" role="tab" data-i18n-title="nav.maintenance.duplicates" title="Duplicates">
                             <i class="ri-file-copy-2-line"></i><span data-i18n="nav.maintenance.duplicates">Duplicates</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-thumbs" href="#/maintenance/thumbs" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-thumbs" href="#/maintenance/thumbs" role="tab" data-i18n-title="nav.maintenance.thumbs" title="Thumbnails">
                             <i class="ri-image-2-line"></i><span data-i18n="nav.maintenance.thumbs">Thumbnails</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-seekbar" href="#/maintenance/seekbar" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-seekbar" href="#/maintenance/seekbar" role="tab" data-i18n-title="nav.maintenance.seekbar" title="Seekbar previews">
                             <i class="ri-movie-line"></i><span data-i18n="nav.maintenance.seekbar">Seekbar previews</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-video" href="#/maintenance/video" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-video" href="#/maintenance/video" role="tab" data-i18n-title="nav.maintenance.video" title="Videos">
                             <i class="ri-film-line"></i><span data-i18n="nav.maintenance.video">Videos</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-nsfw" href="#/maintenance/nsfw" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-nsfw" href="#/maintenance/nsfw" role="tab" data-i18n-title="nav.maintenance.nsfw" title="NSFW">
                             <i class="ri-alarm-warning-line"></i><span data-i18n="nav.maintenance.nsfw">NSFW</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-ai" href="#/maintenance/ai" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-ai" href="#/maintenance/ai" role="tab" data-i18n-title="nav.maintenance.ai" title="AI">
                             <i class="ri-sparkling-2-line"></i><span data-i18n="nav.maintenance.ai">AI</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-backup" href="#/maintenance/backup" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-backup" href="#/maintenance/backup" role="tab" data-i18n-title="nav.maintenance.backup" title="Backup">
                             <i class="ri-cloud-line"></i><span data-i18n="nav.maintenance.backup">Backup</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab" data-i18n-title="nav.maintenance.cluster" title="Cluster">
                             <i class="ri-broadcast-line"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-recovery" href="#/maintenance/recovery" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-recovery" href="#/maintenance/recovery" role="tab" data-i18n-title="nav.maintenance.recovery" title="Recovery">
                             <i class="ri-first-aid-kit-line"></i><span data-i18n="nav.maintenance.recovery">Recovery</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-logs" href="#/maintenance/logs" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-logs" href="#/maintenance/logs" role="tab" data-i18n-title="nav.maintenance.logs" title="Logs">
                             <i class="ri-terminal-box-line"></i><span data-i18n="nav.maintenance.logs">Logs</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-updates" href="#/maintenance/updates" role="tab">
+                        <a class="maintenance-tab" data-mt-page="maintenance-updates" href="#/maintenance/updates" role="tab" data-i18n-title="nav.maintenance.updates" title="Updates">
                             <i class="ri-download-cloud-2-line"></i><span data-i18n="nav.maintenance.updates">Updates</span>
                         </a>
                     </div>
@@ -2273,6 +2273,15 @@
                             <div id="thumbs-progress-pct" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
                         </div>
                     </section>
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <div class="text-tg-text text-sm" data-i18n="maintenance.thumbs.auto_toggle_label">Auto-generate on download</div>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.thumbs.auto_toggle_help">When on, every new download gets a thumbnail in the background. Turn off to generate only via Build all above.</p>
+                            </div>
+                            <div id="setting-adv-thumbs-autoOnDownload" class="tg-toggle shrink-0 mt-0.5 active" role="switch" aria-checked="true" tabindex="0" data-a11y-toggle="1"></div>
+                        </div>
+                    </section>
                     <section class="bg-tg-panel rounded-xl p-4">
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                             <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
@@ -2472,13 +2481,15 @@
                             <div id="seekbar-progress-detail" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
                         </div>
 
-                        <!-- KPI strip — four tiles at the bottom of the
-                             header card so the operator sees footprint +
-                             ffmpeg status without scrolling. -->
+                        <!-- KPI strip -->
                         <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                             <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.indexed">Indexed videos</div>
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.sprites">Sprites</div>
                                 <div id="seekbar-kpi-indexed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.coverage">Coverage</div>
+                                <div id="seekbar-kpi-coverage" class="text-xl font-semibold text-tg-green tabular-nums">—</div>
                             </div>
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.disk">Disk usage</div>
@@ -2488,10 +2499,27 @@
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.last_scan">Last scan</div>
                                 <div id="seekbar-kpi-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
                             </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.kpi.ffmpeg">ffmpeg</div>
-                                <div id="seekbar-kpi-ffmpeg" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                        </div>
+                        <!-- Coverage bar — fills between KPI and close of
+                             header card; shows at a glance how much of the
+                             library has sprites. Hidden until stats load. -->
+                        <div id="seekbar-coverage-wrap" class="hidden mt-3">
+                            <div class="flex items-center justify-between text-[11px] text-tg-textSecondary mb-1">
+                                <span id="seekbar-coverage-label">—</span>
+                                <button id="seekbar-scan-cta" type="button"
+                                        class="hidden text-[11px] text-tg-blue hover:underline"
+                                        data-i18n="maintenance.seekbar.coverage.cta">Scan now to fill</button>
                             </div>
+                            <div class="h-1.5 bg-tg-bg/60 rounded-full overflow-hidden">
+                                <div id="seekbar-coverage-bar" class="h-full bg-tg-green transition-all duration-500 rounded-full" style="width:0%"></div>
+                            </div>
+                        </div>
+                        <!-- ffmpeg availability — low-priority, kept inside
+                             the header card but visually de-emphasised. -->
+                        <div id="seekbar-ffmpeg-line" class="hidden mt-2 text-[10.5px] text-tg-textSecondary flex items-center gap-1.5">
+                            <i class="ri-terminal-box-line"></i>
+                            <span data-i18n="maintenance.seekbar.kpi.ffmpeg">ffmpeg</span>:
+                            <span id="seekbar-kpi-ffmpeg" class="font-mono"></span>
                         </div>
                     </section>
 
@@ -2551,7 +2579,7 @@
                             <i class="ri-movie-line text-tg-blue"></i>
                             <span data-i18n="maintenance.seekbar.settings.title">Sprite settings</span>
                         </h3>
-                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.seekbar.settings.desc">Defaults are tuned for hover scrubbing on Telegram clips; tweak only if your library has very long files or very tight disk budget.</p>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.seekbar.settings.desc">Smart auto-sizing: frame density and budget scale automatically with video length (0.5 s/frame for ≤15 s clips → 12 s/frame for 2 h+ files). Leave interval and max tiles blank to use the auto tiers.</p>
 
                         <div class="space-y-3">
                             <!-- Master enable toggle. Auto-on default
@@ -2576,27 +2604,18 @@
                                 <div id="setting-adv-seekbar-autoOnDownload" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="true" tabindex="0"></div>
                             </div>
 
-                            <!-- Sprite tuning — a 2-col grid keeps numeric
-                                 inputs scannable without bloating the
-                                 page. Placeholders show the current
-                                 defaults so an empty field reads as
-                                 "use the default". -->
+                            <!-- Main quality knobs — 4 controls, nothing more.
+                                 Frame count and grid layout are fully automatic. -->
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                    <label for="setting-adv-seekbar-intervalSec" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.interval">Interval (s)</label>
-                                    <input id="setting-adv-seekbar-intervalSec" type="number" min="1" max="30" step="1" class="tg-input w-full text-sm" placeholder="4">
-                                </div>
                                 <div>
                                     <label for="setting-adv-seekbar-tileWidth" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.tile_width">Tile width (px)</label>
                                     <input id="setting-adv-seekbar-tileWidth" type="number" min="80" max="400" step="1" class="tg-input w-full text-sm" placeholder="160">
+                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.tile_width_help">Pixel width of each thumbnail tile. 160 is sharp on Retina; lower saves disk.</p>
                                 </div>
                                 <div>
-                                    <label for="setting-adv-seekbar-columns" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.columns">Columns</label>
-                                    <input id="setting-adv-seekbar-columns" type="number" min="2" max="20" step="1" class="tg-input w-full text-sm" placeholder="10">
-                                </div>
-                                <div>
-                                    <label for="setting-adv-seekbar-maxTiles" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.max_tiles">Max tiles</label>
-                                    <input id="setting-adv-seekbar-maxTiles" type="number" min="20" max="500" step="1" class="tg-input w-full text-sm" placeholder="240">
+                                    <label for="setting-adv-seekbar-quality" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.quality">Quality</label>
+                                    <input id="setting-adv-seekbar-quality" type="number" min="30" max="95" step="1" class="tg-input w-full text-sm" placeholder="75">
+                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.quality_help">WebP/JPEG encode quality 30–95. 75 balances sharpness and file size.</p>
                                 </div>
                                 <div>
                                     <label for="setting-adv-seekbar-format" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.format">Format</label>
@@ -2604,17 +2623,38 @@
                                         <option value="webp">WebP</option>
                                         <option value="jpeg">JPEG</option>
                                     </select>
+                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.format_help">WebP is ~30 % smaller. Use JPEG only if your browser or proxy strips WebP.</p>
                                 </div>
                                 <div>
-                                    <label for="setting-adv-seekbar-quality" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.quality">Quality</label>
-                                    <input id="setting-adv-seekbar-quality" type="number" min="30" max="95" step="1" class="tg-input w-full text-sm" placeholder="75">
-                                </div>
-                                <div class="sm:col-span-2">
-                                    <label for="setting-adv-seekbar-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.concurrency">Sidecar concurrency</label>
-                                    <input id="setting-adv-seekbar-concurrency" type="number" min="1" max="16" step="1" class="tg-input w-full text-sm sm:w-40" placeholder="4">
-                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.concurrency_help">How many sprite encodes the Go sidecar runs in parallel. 4 is the sweet spot on 4–8-core hosts.</p>
+                                    <label for="setting-adv-seekbar-concurrency" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.concurrency">Parallel encodes</label>
+                                    <input id="setting-adv-seekbar-concurrency" type="number" min="1" max="16" step="1" class="tg-input w-full text-sm" placeholder="4">
+                                    <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.concurrency_help">Simultaneous ffmpeg/sidecar jobs. 4 suits most 4–8-core hosts.</p>
                                 </div>
                             </div>
+
+                            <!-- Advanced overrides — collapsed by default.
+                                 Interval and max-tiles are handled automatically
+                                 by the duration tier system; expose them only for
+                                 operators who need a storage cap or a fixed density. -->
+                            <details class="mt-3 group">
+                                <summary class="cursor-pointer list-none flex items-center gap-1.5 text-[11px] text-tg-textSecondary hover:text-tg-text select-none">
+                                    <i class="ri-arrow-right-s-line text-xs transition-transform group-open:rotate-90"></i>
+                                    <span data-i18n="maintenance.seekbar.settings.advanced">Advanced overrides</span>
+                                    <span class="text-[10px] opacity-60" data-i18n="maintenance.seekbar.settings.advanced_hint">— leave blank for smart auto</span>
+                                </summary>
+                                <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 pl-4 border-l border-tg-border/30">
+                                    <div>
+                                        <label for="setting-adv-seekbar-intervalSec" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.interval">Frame interval (s)</label>
+                                        <input id="setting-adv-seekbar-intervalSec" type="number" min="1" max="60" step="1" class="tg-input w-full text-sm" placeholder="auto">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.interval_help">Force a fixed gap between frames. Auto tiers: 0.5 s (≤15 s) → 9 s (1 h) → 12 s (2 h).</p>
+                                    </div>
+                                    <div>
+                                        <label for="setting-adv-seekbar-maxTiles" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.settings.max_tiles">Max frames cap</label>
+                                        <input id="setting-adv-seekbar-maxTiles" type="number" min="20" max="1000" step="10" class="tg-input w-full text-sm" placeholder="auto">
+                                        <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.settings.max_tiles_help">Hard ceiling on frames per sprite — useful to cap disk usage. Auto: 30–720 by duration.</p>
+                                    </div>
+                                </div>
+                            </details>
 
                             <!-- Hardware acceleration sub-card — same
                                  nested-card shape as AI faces providers. -->
@@ -2665,16 +2705,26 @@
                         </div>
                     </section>
 
-                    <!-- Queue stats — live counts of pending / processing /
-                         completed / failed jobs from the seekbar worker queue.
-                         Hydrated on init and updated by the seekbar_progress WS
-                         event so operators can see backlog depth at a glance. -->
+                    <!-- Generation activity — shows live queue depth while
+                         a scan is running; collapses to a single idle line
+                         when nothing is in flight. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <h3 class="text-tg-text text-sm font-medium mb-3 flex items-center gap-2">
-                            <i class="ri-queue-line text-tg-blue"></i>
-                            <span data-i18n="maintenance.seekbar.queue.title">Queue stats</span>
-                        </h3>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
+                                <i class="ri-queue-line text-tg-blue"></i>
+                                <span data-i18n="maintenance.seekbar.queue.title">Generation activity</span>
+                            </h3>
+                            <!-- Idle badge — shown when not running -->
+                            <span id="seekbar-queue-idle-badge" class="text-[10px] text-tg-textSecondary bg-tg-bg/40 px-2 py-0.5 rounded-full hidden"
+                                  data-i18n="maintenance.seekbar.queue.idle">Idle</span>
+                            <!-- Live badge — shown while running -->
+                            <span id="seekbar-queue-live-badge" class="hidden text-[10px] text-tg-blue bg-tg-blue/10 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-tg-blue animate-pulse"></span>
+                                <span data-i18n="maintenance.seekbar.queue.running">Running</span>
+                            </span>
+                        </div>
+                        <!-- Active grid — visible while scan running -->
+                        <div id="seekbar-queue-active" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 text-center mb-2">
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.queued">Queued</div>
                                 <div id="seekbar-queue-queued" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
@@ -2684,7 +2734,7 @@
                                 <div id="seekbar-queue-processing" class="text-xl font-semibold text-tg-blue tabular-nums">—</div>
                             </div>
                             <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.completed">Completed</div>
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.generated">Generated</div>
                                 <div id="seekbar-queue-completed" class="text-xl font-semibold text-tg-green tabular-nums">—</div>
                             </div>
                             <div class="bg-tg-bg/40 rounded-lg p-3">
@@ -2692,6 +2742,8 @@
                                 <div id="seekbar-queue-failed" class="text-xl font-semibold text-red-400 tabular-nums">—</div>
                             </div>
                         </div>
+                        <!-- Idle line — visible when not running -->
+                        <p id="seekbar-queue-idle-line" class="text-[11px] text-tg-textSecondary">—</p>
                     </section>
                 </div>
 
@@ -2912,6 +2964,23 @@
                             <div id="setting-adv-nsfw-blocklist" class="tg-toggle shrink-0 mt-0.5"></div>
                         </div>
 
+                        <div class="flex items-start justify-between gap-3 py-2 border-t border-tg-border/30">
+                            <div class="min-w-0">
+                                <div class="text-tg-text text-sm" data-i18n="maintenance.nsfw.scan_videos">Scan videos</div>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.nsfw.scan_videos_help">Classify videos using their seekbar sprite sheet. Videos without a sprite are marked as scanned with no score.</p>
+                            </div>
+                            <div id="nsfw-ft-video" class="tg-toggle shrink-0 mt-0.5"></div>
+                        </div>
+
+                        <div class="flex items-start justify-between gap-3 py-2 border-t border-tg-border/30">
+                            <div class="min-w-0">
+                                <div class="text-tg-text text-sm" data-i18n="maintenance.nsfw.video_max_tiles">Tiles per video</div>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.nsfw.video_max_tiles_help">Frames sampled from the sprite sheet per video. Higher = more accurate, slower scan. Score is averaged from the top 3 highest-scoring tiles.</p>
+                            </div>
+                            <input id="setting-adv-nsfw-video-max-tiles" type="number" min="3" max="200" step="1"
+                                   class="w-16 bg-tg-input border border-tg-border rounded px-2 py-1 text-sm text-tg-text text-right shrink-0 mt-0.5">
+                        </div>
+
                         <div id="nsfw-blocklist-stats-row" class="hidden flex items-center justify-between gap-2 py-2 border-t border-tg-border/30">
                             <span class="text-[11px] text-tg-textSecondary" data-i18n="maintenance.nsfw.blocklist_count_label">Blocklisted hashes:</span>
                             <div class="flex items-center gap-2">
@@ -3003,6 +3072,17 @@
 
                     <!-- Photo grid (click a tile to open the lightbox) -->
                     <section class="bg-tg-panel rounded-xl p-3">
+                        <div class="flex items-center gap-1.5 mb-3">
+                            <button class="nsfw-media-kind tg-btn-secondary text-[11px] px-2.5 py-1 inline-flex items-center gap-1" data-kind="all" aria-pressed="true">
+                                <i class="ri-stack-line"></i><span data-i18n="maintenance.nsfw.kind_all">All</span>
+                            </button>
+                            <button class="nsfw-media-kind tg-btn-secondary text-[11px] px-2.5 py-1 inline-flex items-center gap-1" data-kind="photo">
+                                <i class="ri-image-line"></i><span data-i18n="maintenance.nsfw.kind_photo">Images</span>
+                            </button>
+                            <button class="nsfw-media-kind tg-btn-secondary text-[11px] px-2.5 py-1 inline-flex items-center gap-1" data-kind="video">
+                                <i class="ri-video-line"></i><span data-i18n="maintenance.nsfw.kind_video">Videos</span>
+                            </button>
+                        </div>
                         <div id="nsfw-list" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-[70vh] overflow-y-auto pr-1"></div>
                         <div id="nsfw-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary" data-i18n="maintenance.nsfw.empty">No candidates — the library is clean.</div>
                         <div class="mt-3 flex items-center justify-between gap-3 flex-wrap">
@@ -3071,10 +3151,19 @@
                                                 title="Run DBSCAN clustering only — uses existing face detections + the current threshold to surface People. Fast (seconds, not minutes).">
                                             <i class="ri-refresh-line text-tg-blue"></i><span data-i18n="maintenance.ai.recluster">Re-cluster</span>
                                         </button>
+                                        <button id="ai-quality-backfill-btn" type="button" class="hidden w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                title="Compute quality scores for older faces that were scanned before quality ranking was added.">
+                                            <i class="ri-medal-line text-emerald-400"></i><span>Score old faces</span>
+                                        </button>
                                         <button id="ai-reindex-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
                                                 data-i18n-title="maintenance.ai.reindex_tooltip"
                                                 title="Wipes every face detection and every cluster, then re-scans every photo.">
                                             <i class="ri-restart-line text-yellow-300"></i><span data-i18n="maintenance.ai.reindex">Reindex from scratch</span>
+                                        </button>
+                                        <button id="ai-restart-sidecar-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
+                                                data-i18n-title="maintenance.ai.restart_sidecar_title"
+                                                title="Kill the running faces sidecar and respawn it. Use after updating the sidecar binary or Python source.">
+                                            <i class="ri-restart-line text-yellow-300"></i><span data-i18n="maintenance.ai.restart_sidecar">Restart sidecar</span>
                                         </button>
                                         <div class="border-t border-tg-border/40 my-1"></div>
                                         <button id="ai-open-install-btn" type="button" class="w-full text-left px-3 py-2 text-xs text-tg-text hover:bg-tg-bg/40 inline-flex items-center gap-2"
@@ -3108,21 +3197,21 @@
                              last scan timestamp. 2-col on mobile,
                              4-col on sm+ so each stat stays readable. -->
                         <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                            <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_indexed">Indexed photos</div>
-                                <div id="ai-stat-indexed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 sm:p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary truncate" data-i18n="maintenance.ai.stat_indexed">Indexed photos</div>
+                                <div id="ai-stat-indexed" class="text-sm sm:text-xl font-semibold text-tg-text tabular-nums truncate">—</div>
                             </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_people">People clusters</div>
-                                <div id="ai-stat-people" class="text-xl font-semibold text-tg-blue tabular-nums">—</div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 sm:p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary truncate" data-i18n="maintenance.ai.stat_people">People clusters</div>
+                                <div id="ai-stat-people" class="text-base sm:text-xl font-semibold text-tg-blue tabular-nums">—</div>
                             </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_noise">Unclassified faces</div>
-                                <div id="ai-stat-noise" class="text-xl font-semibold text-tg-textSecondary tabular-nums" title="DBSCAN noise points — faces that didn't fit any cluster. Reduce ε or minPoints to include more.">—</div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 sm:p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary truncate" data-i18n="maintenance.ai.stat_noise">Unclassified faces</div>
+                                <div id="ai-stat-noise" class="text-base sm:text-xl font-semibold text-tg-textSecondary tabular-nums" title="DBSCAN noise points — faces that didn't fit any cluster. Reduce ε or minPoints to include more.">—</div>
                             </div>
-                            <div class="bg-tg-bg/40 rounded-lg p-3">
-                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_last">Last scan</div>
-                                <div id="ai-stat-last" class="text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
+                            <div class="bg-tg-bg/40 rounded-lg p-2 sm:p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary truncate" data-i18n="maintenance.ai.stat_last">Last scan</div>
+                                <div id="ai-stat-last" class="text-[11px] sm:text-xs text-tg-text tabular-nums leading-tight pt-1">—</div>
                             </div>
                         </div>
                     </section>
@@ -3232,6 +3321,18 @@
                                 <div id="ai-auto-toggle" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="false" tabindex="0"></div>
                             </div>
 
+                            <!-- Scan videos toggle — opt-in; off by default.
+                                 When on, Phase A also samples frames from
+                                 video files. Faces cluster with photo-source
+                                 faces in the same DBSCAN pass. -->
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <div class="text-tg-text text-sm" data-i18n="maintenance.ai.scan_videos_label">Include videos in face scan</div>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.scan_videos_help">Extract frames from video files and detect faces. Same person in a video and a photo lands in the same group. Off by default — videos take longer to process.</p>
+                                </div>
+                                <div id="ai-scan-videos-toggle" class="tg-toggle shrink-0 mt-0.5" role="switch" aria-checked="false" tabindex="0"></div>
+                            </div>
+
                             <!-- Detector model select. Switching the
                                  preset auto-restarts the sidecar +
                                  reminds the operator that the existing
@@ -3240,9 +3341,12 @@
                             <div>
                                 <label for="ai-faces-model" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.ai.faces.model">Detector model</label>
                                 <select id="ai-faces-model" class="tg-input w-full text-sm">
-                                    <option value="buffalo_l" data-i18n="maintenance.ai.faces.model_buffalo_l">buffalo_l — balanced (99.5% LFW, default)</option>
+                                    <option value="buffalo_l">buffalo_l — balanced, ResNet50 (default)</option>
+                                    <option value="antelopev2">antelopev2 — best accuracy, ResNet100</option>
+                                    <option value="buffalo_m">buffalo_m — faster, smaller ResNet50</option>
+                                    <option value="buffalo_s">buffalo_s — fastest, ResNet34</option>
                                 </select>
-                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.model_help">Switching the model requires a Re-cluster — embedding spaces differ across presets.</p>
+                                <p id="ai-faces-model-status" class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.model_help">Switching the model restarts the sidecar. Re-cluster recommended after switching.</p>
                             </div>
 
                             <!-- Sensitivity presets — one-click way to
@@ -3251,18 +3355,18 @@
                                  Advanced slider stays for power users. -->
                             <div>
                                 <div class="text-tg-text text-xs mb-2" data-i18n="maintenance.ai.faces.sensitivity">Match sensitivity</div>
-                                <div class="grid grid-cols-3 gap-1.5 mb-2">
-                                    <button class="ai-preset-btn tg-btn-secondary text-[11px] px-2 py-2.5 rounded-lg text-center leading-tight" data-preset="precise">
-                                        <div class="font-medium text-tg-text" data-i18n="maintenance.ai.faces.preset_precise">Precise</div>
-                                        <div class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.faces.preset_precise_desc">Strict, fewer false merges</div>
+                                <div class="grid grid-cols-1 min-[380px]:grid-cols-3 gap-1.5 mb-2">
+                                    <button class="ai-preset-btn tg-btn-secondary text-[11px] px-3 py-2.5 rounded-lg leading-tight min-w-0 flex items-center justify-between gap-2 text-left min-[380px]:flex-col min-[380px]:items-center min-[380px]:justify-center min-[380px]:text-center" data-preset="precise">
+                                        <div class="font-medium text-tg-text shrink-0" data-i18n="maintenance.ai.faces.preset_precise">Precise</div>
+                                        <div class="text-[10px] text-tg-textSecondary min-[380px]:mt-0.5" data-i18n="maintenance.ai.faces.preset_precise_desc">Strict, fewer false merges</div>
                                     </button>
-                                    <button class="ai-preset-btn tg-btn-secondary text-[11px] px-2 py-2.5 rounded-lg text-center leading-tight border-tg-blue bg-tg-blue/10" data-preset="balanced">
-                                        <div class="font-medium text-tg-text" data-i18n="maintenance.ai.faces.preset_balanced">Balanced</div>
-                                        <div class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.faces.preset_balanced_desc">Recommended default</div>
+                                    <button class="ai-preset-btn tg-btn-secondary text-[11px] px-3 py-2.5 rounded-lg leading-tight min-w-0 flex items-center justify-between gap-2 text-left min-[380px]:flex-col min-[380px]:items-center min-[380px]:justify-center min-[380px]:text-center border-tg-blue bg-tg-blue/10" data-preset="balanced">
+                                        <div class="font-medium text-tg-text shrink-0" data-i18n="maintenance.ai.faces.preset_balanced">Balanced</div>
+                                        <div class="text-[10px] text-tg-textSecondary min-[380px]:mt-0.5" data-i18n="maintenance.ai.faces.preset_balanced_desc">Recommended default</div>
                                     </button>
-                                    <button class="ai-preset-btn tg-btn-secondary text-[11px] px-2 py-2.5 rounded-lg text-center leading-tight" data-preset="sensitive">
-                                        <div class="font-medium text-tg-text" data-i18n="maintenance.ai.faces.preset_sensitive">Sensitive</div>
-                                        <div class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.faces.preset_sensitive_desc">More recall, group photos</div>
+                                    <button class="ai-preset-btn tg-btn-secondary text-[11px] px-3 py-2.5 rounded-lg leading-tight min-w-0 flex items-center justify-between gap-2 text-left min-[380px]:flex-col min-[380px]:items-center min-[380px]:justify-center min-[380px]:text-center" data-preset="sensitive">
+                                        <div class="font-medium text-tg-text shrink-0" data-i18n="maintenance.ai.faces.preset_sensitive">Sensitive</div>
+                                        <div class="text-[10px] text-tg-textSecondary min-[380px]:mt-0.5" data-i18n="maintenance.ai.faces.preset_sensitive_desc">More recall, group photos</div>
                                     </button>
                                 </div>
                                 <p class="text-[10px] text-tg-textSecondary mb-3" data-i18n="maintenance.ai.faces.preset_help">Click a preset to apply + re-cluster instantly — no full re-scan needed. Use <strong>Sensitive</strong> if People shows 0.</p>
@@ -3332,7 +3436,10 @@
                                 </div>
                                 <div class="min-w-0">
                                     <h3 class="text-tg-text text-sm font-semibold leading-none" data-i18n="maintenance.ai.people.heading">People</h3>
-                                    <p id="ai-people-count" class="text-[10px] text-tg-textSecondary mt-0.5 truncate"></p>
+                                    <p id="ai-people-count" class="text-[10px] text-tg-textSecondary mt-0.5 truncate">
+                                        <span id="ai-people-count-text"></span>
+                                        <span id="ai-quality-hint" class="hidden ml-1 text-emerald-400/70">· quality ranked</span>
+                                    </p>
                                 </div>
                             </div>
                             <button id="ai-people-refresh-btn" type="button"
@@ -3349,8 +3456,8 @@
                         </div>
 
                         <!-- Search + filter row -->
-                        <div class="flex items-center gap-2 mb-4">
-                            <div class="relative flex-1 min-w-0">
+                        <div class="flex flex-col gap-1.5 mb-2">
+                            <div class="relative">
                                 <i class="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-tg-textSecondary/50 text-[13px] pointer-events-none"></i>
                                 <input id="ai-people-search" type="search"
                                     class="tg-input w-full pl-7 pr-3 text-xs py-1.5"
@@ -3358,12 +3465,51 @@
                                     data-i18n-placeholder="maintenance.ai.people.search_placeholder"
                                     autocomplete="off" spellcheck="false">
                             </div>
-                            <label class="inline-flex items-center gap-1 text-[11px] text-tg-textSecondary cursor-pointer select-none flex-shrink-0">
-                                <input id="ai-people-unlabeled" type="checkbox" class="accent-tg-blue">
-                                <span data-i18n="maintenance.ai.people.unlabeled_only">Unlabeled</span>
-                            </label>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <button id="ai-people-unlabeled" type="button"
+                                    class="ai-filter-chip inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border border-tg-border/40 text-tg-textSecondary hover:border-tg-blue/50 hover:text-tg-blue transition-all select-none"
+                                    data-active="false">
+                                    <i class="ri-user-unfollow-line text-[11px]"></i>
+                                    <span data-i18n="maintenance.ai.people.unlabeled_only">Unlabeled</span>
+                                </button>
+                                <button id="ai-people-videos-only" type="button"
+                                    class="ai-filter-chip inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border border-tg-border/40 text-tg-textSecondary hover:border-amber-500/50 hover:text-amber-500 transition-all select-none"
+                                    data-active="false">
+                                    <i class="ri-film-line text-[11px]"></i>
+                                    <span data-i18n="maintenance.ai.people.videos_only">Video</span>
+                                </button>
+                                <button id="ai-people-hide-lq" type="button"
+                                    class="ai-filter-chip inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border border-tg-border/40 text-tg-textSecondary hover:border-red-500/50 hover:text-red-500 transition-all select-none"
+                                    data-active="false">
+                                    <i class="ri-filter-line text-[11px]"></i>
+                                    <span>Hide LQ</span>
+                                </button>
+                                <span class="w-px h-4 bg-tg-border/30 mx-0.5 hidden sm:block"></span>
+                                <div id="ai-people-sort-group" class="inline-flex items-center rounded-full border border-tg-border/30 overflow-hidden">
+                                    <button type="button" data-sort="face_count"
+                                        class="ai-sort-btn px-2.5 py-1 text-[11px] font-medium transition-all select-none bg-tg-blue/10 text-tg-blue border-r border-tg-border/20"
+                                        title="Sort by face count">
+                                        <i class="ri-group-line text-[10px]"></i>
+                                    </button>
+                                    <button type="button" data-sort="avg_quality"
+                                        class="ai-sort-btn px-2.5 py-1 text-[11px] font-medium text-tg-textSecondary hover:text-tg-blue transition-all select-none border-r border-tg-border/20"
+                                        title="Sort by quality score">
+                                        <i class="ri-medal-line text-[10px]"></i>
+                                    </button>
+                                    <button type="button" data-sort="name"
+                                        class="ai-sort-btn px-2.5 py-1 text-[11px] font-medium text-tg-textSecondary hover:text-tg-blue transition-all select-none"
+                                        title="Sort by name">
+                                        <i class="ri-sort-alphabet-asc text-[10px]"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Quality legend -->
+                            <div id="ai-quality-legend" class="hidden flex items-center gap-3 text-[10px] text-tg-textSecondary/70 mt-0.5">
+                                <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>HQ — sharp, frontal</span>
+                                <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>MQ — acceptable</span>
+                                <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500 inline-block"></span>LQ — blurry / angled</span>
+                            </div>
                         </div>
-
                         <!-- Empty state -->
                         <div id="ai-people-empty" class="hidden text-center py-12">
                             <div class="w-16 h-16 rounded-2xl bg-tg-bg/50 flex items-center justify-center mx-auto mb-3">
@@ -3392,7 +3538,7 @@
                         </div>
 
                         <!-- People grid -->
-                        <div id="ai-people-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2"></div>
+                        <div id="ai-people-grid" class="grid grid-cols-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 xl:grid-cols-11 gap-1.5 sm:gap-1"></div>
 
                         <!-- Person detail panel — shown when a person card is clicked -->
                         <div id="ai-people-photos" class="hidden mt-4 rounded-xl bg-tg-bg/30 border border-white/5 overflow-hidden">
@@ -3416,16 +3562,17 @@
                                 </div>
                                 <div class="flex items-center gap-1 flex-shrink-0">
                                     <button id="ai-person-merge-btn"
-                                        class="tg-btn-secondary text-[11px] px-2 py-1.5 inline-flex items-center gap-1.5"
+                                        class="tg-btn-secondary text-[11px] h-8 px-2 inline-flex items-center gap-1.5"
                                         title="Merge into another cluster">
                                         <i class="ri-git-merge-line"></i>
                                         <span class="hidden sm:inline" data-i18n="maintenance.ai.people.actions.merge">Merge</span>
                                     </button>
                                     <button id="ai-person-split-btn"
-                                        class="tg-btn-secondary text-[11px] px-2 py-1.5 inline-flex items-center gap-1.5"
-                                        title="Split cluster">
+                                        class="tg-btn-secondary text-[11px] h-8 px-2 inline-flex items-center gap-1.5"
+                                        data-i18n-title="maintenance.ai.split_btn_title"
+                                        title="Select photos to move into a new cluster">
                                         <i class="ri-scissors-cut-line"></i>
-                                        <span class="hidden sm:inline" data-i18n="maintenance.ai.people.actions.split">Split</span>
+                                        <span class="hidden sm:inline" data-i18n="maintenance.ai.people.actions.split">Split…</span>
                                     </button>
                                     <button id="ai-person-delete-btn"
                                         class="tg-btn-secondary text-[11px] w-8 h-8 p-0 inline-flex items-center justify-center text-red-300 hover:border-red-400/40"
@@ -3434,17 +3581,29 @@
                                     </button>
                                 </div>
                             </div>
+                            <!-- Split mode hint banner — only visible while split mode is active -->
+                            <div id="ai-split-hint" class="hidden items-center gap-2 px-3 py-2 bg-tg-blue/10 border-b border-tg-blue/20 text-xs text-tg-blue">
+                                <i class="ri-cursor-line shrink-0"></i>
+                                <span data-i18n="maintenance.ai.split_hint_banner">Tap photos below to select them — they will be moved to a new cluster when you click Split</span>
+                            </div>
                             <!-- Face photo grid -->
                             <div id="ai-people-photos-grid" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-1 p-1.5"></div>
+                            <!-- Split mode action bar — hidden until split mode is active -->
+                            <div id="ai-split-bar" class="hidden items-center justify-between gap-3 px-3 py-2.5 border-t border-tg-blue/20 bg-tg-blue/5">
+                                <span id="ai-split-count" class="text-xs text-tg-textSecondary" data-i18n="maintenance.ai.split_select_hint">Tap photos to select</span>
+                                <div class="flex gap-2">
+                                    <button id="ai-split-cancel-btn" class="tg-btn-secondary text-xs h-7 px-3" data-i18n="common.cancel">Cancel</button>
+                                    <button id="ai-split-commit-btn" class="tg-btn-secondary text-xs h-7 px-3 text-tg-blue border-tg-blue/40" disabled>
+                                        <i class="ri-scissors-cut-line mr-1"></i><span data-i18n="maintenance.ai.people.actions.split">Split…</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                     </section>
 
-                    <!-- Future capabilities footer — a single muted
-                         line so the page acknowledges the extensibility
-                         goal without spending a card on an empty
-                         placeholder. -->
-                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection · Face quality ranking</p>
+                    <!-- Future capabilities footer -->
+                    <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection</p>
 
                     <!-- Hidden hosts for legacy element ids referenced
                          by older bookmarklets / extensions. Empty + no-op
@@ -3854,6 +4013,10 @@
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.recovery.page_title">Recovery cleanup</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.recovery.subtitle">Resolve, disable, or delete groups that no loaded account can access.</p>
                             </div>
+                            <label class="inline-flex items-center gap-1.5 text-xs text-tg-textSecondary cursor-pointer shrink-0">
+                                <input id="recovery-show-ignored" type="checkbox" class="rounded border-tg-border bg-tg-bg accent-tg-blue">
+                                <span data-i18n="maintenance.recovery.show_ignored">Show ignored</span>
+                            </label>
                         </div>
                         <div id="recovery-empty" class="hidden text-center py-10">
                             <i class="ri-checkbox-circle-line text-4xl text-tg-green/60"></i>
@@ -3878,6 +4041,12 @@
                                 <select id="recovery-reassign-select" class="tg-input text-xs px-2 py-1 hidden">
                                     <option value="" data-i18n="maintenance.recovery.reassign_placeholder">Pin to account…</option>
                                 </select>
+                                <button id="recovery-ignore-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-eye-off-line"></i><span data-i18n="maintenance.recovery.ignore">Ignore</span>
+                                </button>
+                                <button id="recovery-unignore-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 hidden inline-flex items-center gap-1.5">
+                                    <i class="ri-eye-line"></i><span data-i18n="maintenance.recovery.unignore">Unignore</span>
+                                </button>
                                 <button id="recovery-delete-btn" type="button" class="px-3 py-1.5 rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs font-medium inline-flex items-center gap-1.5">
                                     <i class="ri-delete-bin-line"></i><span data-i18n="maintenance.recovery.delete">Delete</span>
                                 </button>
@@ -4076,9 +4245,9 @@
             <!-- Zoom Container for Image -->
             <div id="image-container"
                 class="relative w-full h-full flex items-center justify-center overflow-hidden hidden">
-                <div id="image-stage" class="relative inline-block max-w-full max-h-full">
+                <div id="image-stage" class="relative w-full h-full">
                     <img id="modal-image"
-                        class="max-w-full max-h-full object-contain transition-transform duration-75 origin-center cursor-move"
+                        class="w-full h-full object-contain block transition-transform duration-75 origin-center cursor-move"
                         draggable="false">
                     <!-- Face overlay layer — boxes drawn relative to the
                          actual rendered image bounding box so they track

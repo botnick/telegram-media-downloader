@@ -11,6 +11,7 @@ import { sanitizeName } from './downloader.js';
 import { markRescued } from './db.js';
 import { effectiveRescueMs } from './rescue.js';
 import { loadConfig, saveConfig, watchConfig } from '../config/manager.js';
+import { resolveConfigDownloadPath } from './paths.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -1186,7 +1187,7 @@ export class RealtimeMonitor extends EventEmitter {
     async flushUrls() {
         if (!this.urlBuffer || this.urlBuffer.size === 0) return;
 
-        const basePath = this.config.download?.path || './data/downloads';
+        const basePath = resolveConfigDownloadPath(this.config.download?.path);
 
         for (const [groupId, lines] of this.urlBuffer) {
             if (lines.length === 0) continue;

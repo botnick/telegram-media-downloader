@@ -6,7 +6,6 @@ import { EventEmitter } from 'events';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { Api } from 'telegram';
 import { DebugLogger } from './logger.js';
 import {
@@ -25,10 +24,10 @@ import { optimizeDownloadInBackground as faststartInBackground } from './faststa
 import { pregenerateNsfw } from './nsfw.js';
 import { pregenerateAi } from './ai/index.js';
 import { pregenerateSeekbar } from './seekbar/index.js';
+import { getDataDir, getDownloadsDir, resolveConfigDownloadPath } from './paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data');
-const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
+const DATA_DIR = getDataDir();
+const DOWNLOADS_DIR = getDownloadsDir();
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
 
 // Windows reserved device names — both bare and with any extension are
@@ -36,9 +35,35 @@ const LOGS_DIR = path.join(DATA_DIR, 'logs');
 // case-insensitively against the part BEFORE the first dot.
 const _WIN_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
 
+// Unicode invisible / zero-width / formatting chars that produce
+// ghost folder names or confuse filesystem tools. Stripped before
+// any other sanitisation so the result is always visually meaningful.
+// U+200D (ZWJ) is included — emoji ZWJ sequences aren't useful in
+// folder names and their components survive individually.
+const _INVISIBLE_RE = new RegExp(
+    '[' +
+    '­' +          // soft hyphen
+    '͏' +          // combining grapheme joiner
+    '؜' +          // Arabic letter mark
+    'ᅟᅠ' +    // Hangul fillers
+    '឴឵' +    // Khmer vowel inherent
+    '᠎' +          // Mongolian vowel separator
+    '​-‏' +   // ZW space, ZWNJ, ZWJ, LTR/RTL marks
+    '‪-‮' +   // bidi embedding/override
+    '⁠-⁯' +   // word joiner, invisible operators
+    '⠀' +          // Braille blank
+    'ㅤ' +          // Hangul filler ㅤ
+    '︀-️' +  // variation selectors
+    '﻿' +          // BOM / ZWNBS
+    'ﾠ' +          // halfwidth Hangul filler
+    ']',
+    'g',
+);
+
 /**
  * Shared folder + filename sanitizer.
  *
+ * - Strips invisible / zero-width Unicode chars that produce ghost names.
  * - Strips path / control / NUL chars and collapses whitespace.
  * - Prefixes Windows reserved names with `_` so a chat literally named
  *   `CON` or a file like `PRN.jpg` doesn't ENOENT on Windows hosts.
@@ -46,12 +71,22 @@ const _WIN_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
  *   (`.slice(80)` would silently corrupt multi-byte CJK / emoji at the
  *   boundary; we cut at a byte cap and back off to the last full
  *   codepoint).
+ * - Falls back to `_unnamed` when stripping leaves nothing.
  */
 export function sanitizeName(name) {
-    let s = String(name || '')
+    const raw = String(name || '');
+    let s = raw
+        .replace(_INVISIBLE_RE, '')
         .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
         .replace(/\s+/g, '_')
-        .replace(/_+/g, '_');
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '');
+    if (!s) {
+        if (!raw || !_INVISIBLE_RE.test(raw)) return '_unnamed';
+        let h = 0;
+        for (let i = 0; i < raw.length; i++) h = ((h << 5) - h + raw.charCodeAt(i)) | 0;
+        return `_unnamed_${(h >>> 0).toString(36)}`;
+    }
     if (_WIN_RESERVED.test(s)) s = '_' + s;
     return _truncUtf8(s, 80);
 }
@@ -116,6 +151,25 @@ export async function migrateFolders(downloadPath) {
                     }
                 }
             }
+
+            // Update DB file_path references so existing records
+            // point at the new sanitised folder, not the old one.
+            try {
+                const { getDb } = await import('./db.js');
+                const db = getDb();
+                const oldPrefix = dir.name + path.sep;
+                const newPrefix = sanitized + path.sep;
+                const oldPosix = dir.name + '/';
+                const newPosix = sanitized + '/';
+                db.prepare(`
+                    UPDATE downloads SET file_path = ? || substr(file_path, ?)
+                     WHERE file_path LIKE ? ESCAPE '\\'
+                `).run(newPosix, oldPosix.length + 1, oldPosix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%');
+                db.prepare(`
+                    UPDATE downloads SET file_path = ? || substr(file_path, ?)
+                     WHERE file_path LIKE ? ESCAPE '\\'
+                `).run(newPrefix, oldPrefix.length + 1, oldPrefix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%');
+            } catch { /* DB update is best-effort */ }
 
             // Remove old folder if empty
             try {
@@ -1003,11 +1057,9 @@ export class DownloadManager extends EventEmitter {
             // try again later.
             const newId = insertResult?.lastInsertRowid;
             if (newId) {
-                // Background, fire-and-forget. Both are no-ops when their
-                // respective features are disabled; thumbs is always-on,
-                // NSFW is opt-in via config.advanced.nsfw.enabled.
                 try {
-                    pregenerateThumb(newId);
+                    if (this._cfg?.advanced?.thumbs?.autoOnDownload !== false)
+                        pregenerateThumb(newId);
                 } catch {}
                 try {
                     pregenerateNsfw(newId);
@@ -1131,7 +1183,7 @@ export class DownloadManager extends EventEmitter {
     async scanDiskDeep() {
         let total = 0;
         let visited = 0;
-        const basePath = this.config.download?.path || './data/downloads';
+        const basePath = resolveConfigDownloadPath(this.config.download?.path);
         // Yield to the event loop every YIELD_EVERY entries so a tree with
         // hundreds of thousands of files doesn't starve WS broadcasts /
         // health probes / queue progress for the duration of the walk.
@@ -1186,7 +1238,7 @@ export class DownloadManager extends EventEmitter {
     }
 
     async buildPath(job) {
-        const basePath = this.config.download?.path || './data/downloads';
+        const basePath = resolveConfigDownloadPath(this.config.download?.path);
         const groupDir = this.sanitize(job.groupName || 'Unknown');
 
         let typeFolder = 'others';

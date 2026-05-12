@@ -231,3 +231,129 @@ describe('detectFaces retry behaviour', () => {
         expect(capturedBody.ar_range).toEqual([0.7, 1.4]);
     });
 });
+
+describe('detectFacesInVideo', () => {
+    it('returns null when sidecar URL is unset', async () => {
+        const out = await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(out).toBeNull();
+    });
+
+    it('calls POST /detect/video with correct body shape', async () => {
+        client.setSidecarUrl('http://host:8011');
+        let capturedUrl = null;
+        let capturedBody = null;
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+            capturedUrl = url;
+            capturedBody = JSON.parse(init.body);
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ faces: [], image_w: 0, image_h: 0 }),
+            };
+        });
+        await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(capturedUrl).toBe('http://host:8011/detect/video');
+        expect(capturedBody.path).toBe('/tmp/video.mp4');
+        expect(capturedBody.max_frames).toBe(120);
+        expect(Number.isFinite(capturedBody.min_score)).toBe(true);
+        expect(Number.isFinite(capturedBody.min_box_px)).toBe(true);
+        expect(Array.isArray(capturedBody.ar_range)).toBe(true);
+        expect(capturedBody.ar_range).toHaveLength(2);
+    });
+
+    it('returns Float32Array embeddings on success', async () => {
+        client.setSidecarUrl('http://host:8011');
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                faces: [
+                    {
+                        x: 10,
+                        y: 20,
+                        w: 80,
+                        h: 80,
+                        score: 0.92,
+                        embedding: new Array(512).fill(0.1),
+                    },
+                ],
+                image_w: 1280,
+                image_h: 720,
+            }),
+        });
+        const out = await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(out).toHaveLength(1);
+        expect(out[0].embedding).toBeInstanceOf(Float32Array);
+        expect(out[0].embedding.length).toBe(512);
+    });
+
+    it('returns null on 403 — no b64 fallback for video', async () => {
+        client.setSidecarUrl('http://host:8011');
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: false,
+            status: 403,
+            json: async () => ({ code: 'path_not_allowed', error: 'outside roots' }),
+        });
+        const out = await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(out).toBeNull();
+    });
+
+    it('returns [] on 200 + error: file_not_found (soft error)', async () => {
+        client.setSidecarUrl('http://host:8011');
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({ faces: [], error: 'file_not_found', image_w: 0, image_h: 0 }),
+        });
+        const out = await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(out).toEqual([]);
+    });
+
+    it('returns [] on 200 + error: no_frames (soft error)', async () => {
+        client.setSidecarUrl('http://host:8011');
+        vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({ faces: [], error: 'no_frames', image_w: 0, image_h: 0 }),
+        });
+        const out = await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(out).toEqual([]);
+    });
+
+    it('returns null on network error', async () => {
+        client.setSidecarUrl('http://host:8011');
+        vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+        const out = await client.detectFacesInVideo('/tmp/video.mp4', {});
+        expect(out).toBeNull();
+    });
+
+    it('respects cfg.faces.videoMaxFrames → sets max_frames in body', async () => {
+        client.setSidecarUrl('http://host:8011');
+        let capturedBody = null;
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+            capturedBody = JSON.parse(init.body);
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ faces: [], image_w: 0, image_h: 0 }),
+            };
+        });
+        await client.detectFacesInVideo('/tmp/video.mp4', { faces: { videoMaxFrames: 60 } });
+        expect(capturedBody.max_frames).toBe(60);
+    });
+
+    it('clamps max_frames to 500 max', async () => {
+        client.setSidecarUrl('http://host:8011');
+        let capturedBody = null;
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+            capturedBody = JSON.parse(init.body);
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ faces: [], image_w: 0, image_h: 0 }),
+            };
+        });
+        await client.detectFacesInVideo('/tmp/video.mp4', { faces: { videoMaxFrames: 9999 } });
+        expect(capturedBody.max_frames).toBe(500);
+    });
+});

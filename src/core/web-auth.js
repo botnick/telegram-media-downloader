@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import {
     insertSession,
     findSession,
+    extendSession,
     deleteSession,
     deleteAllSessions,
     deleteSessionsByRole,
@@ -22,9 +23,9 @@ import {
 } from './db.js';
 
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1, keylen: 64 };
-// Default 7-day cookie lifetime. Callers (server.js) may override per-issue
+// Default 30-day cookie lifetime. Callers (server.js) may override per-issue
 // via issueSession({ ttlMs }) — pulled from config.advanced.web.sessionTtlDays.
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const TOKEN_BYTES = 32;
 
 // ---- password hashing -----------------------------------------------------
@@ -146,7 +147,11 @@ export function validateSession(token) {
     if (!token || typeof token !== 'string') return false;
     const row = findSession(token);
     if (!row) return false;
-    return { role: row.role === 'guest' ? 'guest' : 'admin' };
+    return { role: row.role === 'guest' ? 'guest' : 'admin', expiresAt: row.expiresAt, issuedAt: row.issuedAt };
+}
+
+export function renewSession(token, newExpiresAt) {
+    extendSession(token, newExpiresAt);
 }
 
 export function revokeSession(token) {

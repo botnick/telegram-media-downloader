@@ -268,6 +268,15 @@ function initSchema() {
         );
         CREATE INDEX IF NOT EXISTS idx_faces_download ON faces(download_id);
         CREATE INDEX IF NOT EXISTS idx_faces_person   ON faces(person_id);
+
+        CREATE TRIGGER IF NOT EXISTS trg_purge_orphan_people
+        AFTER DELETE ON faces
+        WHEN OLD.person_id IS NOT NULL
+        BEGIN
+            DELETE FROM people
+             WHERE id = OLD.person_id
+               AND NOT EXISTS (SELECT 1 FROM faces WHERE person_id = OLD.person_id);
+        END;
     `);
     try {
         db.exec('ALTER TABLE downloads ADD COLUMN ai_indexed_at INTEGER');
@@ -287,6 +296,17 @@ function initSchema() {
     // looks wrong.
     try {
         db.exec('ALTER TABLE faces ADD COLUMN quality_score REAL');
+    } catch {
+        /* column already present */
+    }
+    // gender classification — 'male' | 'female' | null (from insightface genderage model).
+    try {
+        db.exec("ALTER TABLE faces ADD COLUMN gender TEXT");
+    } catch {
+        /* column already present */
+    }
+    try {
+        db.exec("ALTER TABLE people ADD COLUMN gender TEXT");
     } catch {
         /* column already present */
     }
@@ -1427,22 +1447,32 @@ export function getDownloadById(id) {
     return getDb().prepare('SELECT * FROM downloads WHERE id = ?').get(numId) || null;
 }
 
-/** Bulk-delete by ids (preferred) or file_paths. Returns the number removed. */
+/** Bulk-delete by ids (preferred) or file_paths. Returns the number removed.
+ *  Also purges orphaned people rows whose faces were cascade-deleted. */
 export function deleteDownloadsBy(opts) {
     const db = getDb();
+    let removed = 0;
     if (Array.isArray(opts?.ids) && opts.ids.length) {
         const stmt = db.prepare('DELETE FROM downloads WHERE id = ?');
         const tx = db.transaction(() => opts.ids.reduce((n, id) => n + stmt.run(id).changes, 0));
-        return tx();
-    }
-    if (Array.isArray(opts?.filePaths) && opts.filePaths.length) {
+        removed = tx();
+    } else if (Array.isArray(opts?.filePaths) && opts.filePaths.length) {
         const stmt = db.prepare('DELETE FROM downloads WHERE file_path = ?');
         const tx = db.transaction(() =>
             opts.filePaths.reduce((n, p) => n + stmt.run(p).changes, 0),
         );
-        return tx();
+        removed = tx();
     }
-    return 0;
+    if (removed > 0) _purgeOrphanPeople(db);
+    return removed;
+}
+
+function _purgeOrphanPeople(db) {
+    db.prepare(`
+        DELETE FROM people WHERE id NOT IN (
+            SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL
+        )
+    `).run();
 }
 
 export function getStats() {
@@ -1714,6 +1744,25 @@ export function setNsfwResult(id, score, now = Date.now()) {
 }
 
 /**
+ * Reset the NSFW check state for a video row that previously had no
+ * seekbar sprite when it was scanned (nsfw_score IS NULL but
+ * nsfw_checked_at was set). Called after a sprite is successfully
+ * generated so the next batch scan or pregenerateNsfw call can
+ * classify the video properly.
+ */
+export function resetNsfwVideoResult(id) {
+    return getDb()
+        .prepare(`
+        UPDATE downloads
+           SET nsfw_checked_at = NULL
+         WHERE id = ?
+           AND file_type = 'video'
+           AND nsfw_score IS NULL
+    `)
+        .run(Number(id)).changes;
+}
+
+/**
  * Deletion-candidate rows for the review sheet. Returns photos with a
  * LOW NSFW score (i.e. classifier thinks they're NOT 18+), which is
  * exactly what the admin wants to purge from a curated 18+ library.
@@ -1924,11 +1973,16 @@ export function getNsfwListByTier({
     includeWhitelisted = false,
     page = 1,
     limit = 50,
+    fileKind = null, // 'photo' | 'video' | null (all eligible types)
 }) {
     const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
     const placeholders = types.map(() => '?').join(',');
     const where = [`file_type IN (${placeholders})`, 'nsfw_score IS NOT NULL'];
     const params = [...types];
+    if (fileKind && fileKind !== 'all') {
+        where.push('file_type = ?');
+        params.push(String(fileKind));
+    }
     if (tier) {
         const bounds = _tierBounds(tier);
         if (bounds) {
@@ -2068,10 +2122,10 @@ export function unwhitelistNsfw(ids) {
 // streamed via `.iterate()` per `CLAUDE.md → Big-data patterns`.
 
 /**
- * Rows that haven't been visited yet by the AI indexer. Photos only — videos
- * + documents are out of scope for the v2.15 subsystem (frame extraction
- * comes later). Sorted oldest-first so a resumed scan picks up backlog
- * before newly-arrived rows.
+ * Rows that haven't been visited yet by the AI indexer. Supports both
+ * ``photo`` and ``video`` file types — scan-runner.js processes each in
+ * separate loops (batch for photos, one-at-a-time for videos). Sorted
+ * oldest-first so a resumed scan picks up backlog before newly-arrived rows.
  */
 export function getUnindexedAiBatch({ fileTypes = ['photo'], limit = 50 } = {}) {
     const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
@@ -2082,6 +2136,7 @@ export function getUnindexedAiBatch({ fileTypes = ['photo'], limit = 50 } = {}) 
           FROM downloads
          WHERE file_type IN (${placeholders})
            AND ai_indexed_at IS NULL
+           AND file_path NOT LIKE '%.part'
          ORDER BY created_at ASC, id ASC
          LIMIT ?
     `)
@@ -2238,11 +2293,11 @@ export function clearStaleEmbeddings(currentModelId) {
 
 // ---- Faces & people -------------------------------------------------------
 
-export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null }) {
+export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null, qualityScore = null }) {
     return getDb()
         .prepare(`
-        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id, quality_score)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
         .run(
             Number(downloadId),
@@ -2252,6 +2307,7 @@ export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = n
             Number(h),
             embeddingBlob,
             personId == null ? null : Number(personId),
+            qualityScore == null ? null : Number(qualityScore),
         );
 }
 
@@ -2284,7 +2340,7 @@ export function deleteFacesForDownload(downloadId) {
 export function* iterateAllFaces({ chunkSize = 1000 } = {}) {
     const db = getDb();
     const stmt = db.prepare(
-        `SELECT id, download_id, x, y, w, h, embedding, person_id FROM faces
+        `SELECT id, download_id, x, y, w, h, embedding, person_id, gender, quality_score FROM faces
          ORDER BY id LIMIT ? OFFSET ?`,
     );
     for (let offset = 0; ; offset += chunkSize) {
@@ -2503,7 +2559,7 @@ export function insertPerson({ label = null, centroidBlob, faceCount = 0 }) {
 }
 
 export function listPeople({ limit = 500, offset = 0 } = {}) {
-    const lim = Math.max(1, Math.min(1000, Number(limit) || 500));
+    const lim = Math.max(1, Math.min(2000, Number(limit) || 500));
     const off = Math.max(0, Number(offset) || 0);
     const db = getDb();
     const rows = db.prepare(`
@@ -2513,7 +2569,16 @@ export function listPeople({ limit = 500, offset = 0 } = {}) {
                f.x           AS cover_x,
                f.y           AS cover_y,
                f.w           AS cover_w,
-               f.h           AS cover_h
+               f.h           AS cover_h,
+               COALESCE((
+                   SELECT COUNT(*) FROM faces fv
+                    JOIN downloads dv ON dv.id = fv.download_id
+                   WHERE fv.person_id = p.id AND dv.file_type = 'video'
+               ), 0) AS video_face_count,
+               COALESCE((
+                   SELECT AVG(f3.quality_score) FROM faces f3
+                    WHERE f3.person_id = p.id AND f3.quality_score IS NOT NULL
+               ), 0) AS avg_quality
           FROM people p
           LEFT JOIN faces f ON f.id = (
             SELECT ff.id FROM faces ff
@@ -3031,6 +3096,14 @@ export function findSession(token) {
 
 export function touchSession(token) {
     _prep('UPDATE web_sessions SET last_seen = ? WHERE token = ?').run(Date.now(), String(token));
+}
+
+export function extendSession(token, newExpiresAt) {
+    _prep('UPDATE web_sessions SET expires_at = ?, last_seen = ? WHERE token = ?').run(
+        Number(newExpiresAt),
+        Date.now(),
+        String(token),
+    );
 }
 
 export function deleteSession(token) {

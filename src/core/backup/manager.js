@@ -13,7 +13,6 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import { EventEmitter } from 'events';
 import os from 'os';
-import { fileURLToPath } from 'url';
 
 import { getDb } from '../db.js';
 import { encryptConfig, decryptConfig } from './credentials.js';
@@ -27,12 +26,10 @@ import { FtpProvider } from './providers/ftp.js';
 import { GoogleDriveProvider } from './providers/gdrive.js';
 import { DropboxProvider } from './providers/dropbox.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, '../../..');
-const DATA_DIR = process.env.TGDL_DATA_DIR
-    ? path.resolve(process.env.TGDL_DATA_DIR)
-    : path.join(REPO_ROOT, 'data');
-const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
+import { getDataDir, getDownloadsDir } from '../paths.js';
+
+const DATA_DIR = getDataDir();
+const DOWNLOADS_DIR = getDownloadsDir();
 const SNAPSHOTS_DIR = path.join(DATA_DIR, 'backups');
 
 const PROVIDER_CLASSES = {

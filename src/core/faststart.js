@@ -38,13 +38,11 @@
 import path from 'path';
 import { existsSync, promises as fs } from 'fs';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { getDb, kvGet, kvSet } from './db.js';
 import { resolveFfmpegBin, hasFfmpeg, purgeThumbsForDownload } from './thumbs.js';
+import { getDownloadsDir } from './paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DOWNLOADS_DIR = path.resolve(PROJECT_ROOT, 'data', 'downloads');
+const DOWNLOADS_DIR = getDownloadsDir();
 
 // Container extensions where +faststart is meaningful. WebM / MKV use
 // their own indexing scheme (Cues atom, not moov) and don't benefit;

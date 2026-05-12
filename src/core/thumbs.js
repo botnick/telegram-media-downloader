@@ -41,16 +41,14 @@ import crypto from 'crypto';
 import path from 'path';
 import { existsSync, promises as fs } from 'fs';
 import { spawn, spawnSync } from 'child_process';
-import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import sharp from 'sharp';
 import { getDb } from './db.js';
 import { loadConfig } from '../config/manager.js';
+import { getDataDir, getDownloadsDir } from './paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DOWNLOADS_DIR = path.resolve(PROJECT_ROOT, 'data', 'downloads');
-const THUMBS_DIR = path.resolve(PROJECT_ROOT, 'data', 'thumbs');
+const DOWNLOADS_DIR = getDownloadsDir();
+const THUMBS_DIR = path.join(getDataDir(), 'thumbs');
 
 // Resolve the ffmpeg binary lazily and in priority order:
 //   1. FFMPEG_PATH env var (operator override).
@@ -545,6 +543,124 @@ export async function hwaccelPrefix(override) {
     return _hwaccelPrefix();
 }
 
+// ---- Full GPU pipeline helpers -------------------------------------------
+//
+// Three backends support a GPU scaler filter, enabling end-to-end GPU
+// acceleration (decode → scale on GPU, then download for SW encode):
+//
+//   vaapi  — scale_vaapi  (Intel/AMD on Linux/Docker, needs /dev/dri)
+//   cuda   — scale_cuda   (NVIDIA NVDEC + NVPP)
+//   qsv    — vpp_qsv      (Intel Quick Sync)
+//
+// The remaining backends (videotoolbox, d3d11va, dxva2) only accelerate
+// decode — ffmpeg has no GPU scaler filter for them. These fall back to
+// the software scale=... filter while keeping hardware-assisted decode.
+//
+// Two pipeline modes are exported:
+//
+//   hwaccelFullPipeline   — for single-frame jobs (video thumbs).
+//     Frames stay on GPU from decode through scale; no intermediate CPU
+//     copy. Fastest path. Requires no SW filter between decode and scale.
+//
+//   hwaccelUploadPipeline — for multi-frame jobs with SW filters (seekbar).
+//     GPU decode writes frames to CPU (fps + tile run on CPU), then
+//     hwupload → GPU scaler → hwdownload before the tile filter.
+//     Slightly slower than full pipeline due to the extra CPU↔GPU copies,
+//     but necessary when fps/tile are software-only.
+//
+// Both return { inputArgs, scaleVf } where scaleVf is null for decode-only
+// backends — callers fall back to `scale=…:flags=fast_bilinear`.
+
+const _GPU_SCALER_BACKEND_FILTERS = { vaapi: 'scale_vaapi', cuda: 'scale_cuda', qsv: 'vpp_qsv' };
+let _probed_gpu_scalers = null;
+function _gpuScalerAvailable(backend) {
+    if (!_GPU_SCALER_BACKEND_FILTERS[backend]) return false;
+    if (_probed_gpu_scalers === null) {
+        _probed_gpu_scalers = new Set();
+        try {
+            const r = spawnSync(_resolveFfmpegBin(), ['-filters', '-hide_banner'], {
+                encoding: 'utf8', timeout: 5000, windowsHide: true,
+            });
+            const out = r.stdout || '';
+            for (const [b, f] of Object.entries(_GPU_SCALER_BACKEND_FILTERS)) {
+                if (out.includes(f)) _probed_gpu_scalers.add(b);
+            }
+        } catch { /* probe failed — treat all as unavailable */ }
+    }
+    return _probed_gpu_scalers.has(backend);
+}
+
+function _activeBackend(override) {
+    if (override !== null && override !== undefined) {
+        const v = String(override).toLowerCase().trim();
+        if (v === '') return '';
+        if (_HWACCEL_ALLOW.has(v)) return v;
+        // Unknown override → cascade
+    }
+    const env = String(process.env.FFMPEG_HWACCEL || '').toLowerCase().trim();
+    if (env && _HWACCEL_ALLOW.has(env)) return env;
+    return _hwaccelFromConfig();
+}
+
+function _gpuFullScaleVf(backend, w) {
+    // Frames already on GPU — scale directly then download for SW encode.
+    if (backend === 'vaapi') return `scale_vaapi=w=${w}:h=-2,hwdownload,format=yuv420p`;
+    if (backend === 'cuda') return `scale_cuda=w=${w}:h=-2,hwdownload,format=yuv420p`;
+    if (backend === 'qsv') return `vpp_qsv=w=${w}:h=-2,hwdownload`;
+    return null;
+}
+
+function _gpuUploadScaleVf(backend, w) {
+    // Frames on CPU — upload to GPU, scale, download back.
+    if (backend === 'vaapi')
+        return `hwupload=extra_hw_frames=16,scale_vaapi=w=${w}:h=-2,hwdownload,format=yuv420p`;
+    if (backend === 'cuda')
+        return `hwupload,scale_cuda=w=${w}:h=-2,hwdownload,format=yuv420p`;
+    if (backend === 'qsv') return `hwupload,vpp_qsv=w=${w}:h=-2,hwdownload`;
+    return null;
+}
+
+/**
+ * Full GPU pipeline for single-frame video thumb generation.
+ * Frames decoded on GPU, kept in GPU memory through the scale step,
+ * then downloaded for software libwebp/JPEG encode.
+ *
+ * @param {string|null|undefined} override  explicit backend or null/undefined for cascade
+ * @returns {{ inputArgs: string[], scaleVf: ((w:number)=>string)|null }}
+ */
+export function hwaccelFullPipeline(override) {
+    const backend = _activeBackend(override);
+    if (!backend) return { inputArgs: [], scaleVf: null };
+    if (_gpuScalerAvailable(backend)) {
+        return {
+            inputArgs: ['-hwaccel', backend, '-hwaccel_output_format', backend],
+            scaleVf: (w) => _gpuFullScaleVf(backend, w),
+        };
+    }
+    // Decode-only backend — GPU accelerates decode, SW handles scale.
+    return { inputArgs: ['-hwaccel', backend], scaleVf: null };
+}
+
+/**
+ * Upload-then-scale GPU pipeline for seekbar sprite generation.
+ * GPU accelerates decode (frames land on CPU for fps/tile SW filters),
+ * then each frame is uploaded to GPU for scale and downloaded before tile.
+ *
+ * @param {string|null|undefined} override  explicit backend or null/undefined for cascade
+ * @returns {{ inputArgs: string[], scaleVf: ((w:number)=>string)|null }}
+ */
+export function hwaccelUploadPipeline(override) {
+    const backend = _activeBackend(override);
+    if (!backend) return { inputArgs: [], scaleVf: null };
+    if (_gpuScalerAvailable(backend)) {
+        return {
+            inputArgs: ['-hwaccel', backend],
+            scaleVf: (w) => _gpuUploadScaleVf(backend, w),
+        };
+    }
+    return { inputArgs: ['-hwaccel', backend], scaleVf: null };
+}
+
 // Public ffmpeg arg-runner. Exported so the seekbar module can spawn a
 // sprite encode without copy/pasting the stderr-capture wrapper.
 export function runFfmpegArgs(args) {
@@ -569,7 +685,14 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
     // The seek tries 1 s first (skips opening titles); a fallback to 0 s
     // handles ultra-short clips where seeking past the end yields no frame.
     const useSinglePass = _ffmpegHasLibwebp();
-    const hwa = await _hwaccelPrefix();
+    const { inputArgs: hwa, scaleVf } = hwaccelFullPipeline(undefined);
+    // GPU scaler backends (vaapi/cuda/qsv) use scale_vaapi/scale_cuda/vpp_qsv
+    // and keep frames on GPU between decode and scale, avoiding a CPU round-trip.
+    // Decode-only backends (videotoolbox/d3d11va/dxva2) and CPU fall back to
+    // the software scale filter with min() to prevent upscaling small sources.
+    const scaleFilter = scaleVf
+        ? scaleVf(width)
+        : `scale='min(${width},iw)':-2:flags=fast_bilinear`;
     const tryAt = useSinglePass
         ? async (sec) => {
               const args = [
@@ -585,7 +708,7 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
                   '1',
                   '-an',
                   '-vf',
-                  `scale='min(${width},iw)':-2:flags=fast_bilinear`,
+                  scaleFilter,
                   '-c:v',
                   'libwebp',
                   '-quality',
@@ -610,6 +733,7 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
                       '-hide_banner',
                       '-loglevel',
                       'error',
+                      ...hwa,
                       '-ss',
                       String(sec),
                       '-i',
@@ -618,7 +742,7 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
                       '1',
                       '-an',
                       '-vf',
-                      `scale='min(${width},iw)':-2:flags=fast_bilinear`,
+                      scaleFilter,
                       '-q:v',
                       '3',
                       '-y',

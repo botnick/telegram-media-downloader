@@ -34,6 +34,13 @@ if [ "$(id -u)" = "0" ]; then
             /app/data/backups
         chown -R node:node /app/data 2>/dev/null || true
         chmod -R u+rwX,g+rwX,o+rX /app/data 2>/dev/null || true
+        # When TGDL_DOWNLOADS_DIR points at a separate volume (e.g. HDD),
+        # create it and fix ownership so the node user can write to it.
+        if [ -n "${TGDL_DOWNLOADS_DIR:-}" ]; then
+            mkdir -p "${TGDL_DOWNLOADS_DIR}"
+            chown node:node "${TGDL_DOWNLOADS_DIR}" 2>/dev/null || true
+            chmod u+rwX,g+rwX,o+rX "${TGDL_DOWNLOADS_DIR}" 2>/dev/null || true
+        fi
     fi
 
     # ---- GPU passthrough: align in-container groups with host /dev/dri ----

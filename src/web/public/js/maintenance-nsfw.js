@@ -43,6 +43,7 @@ const TIER_COLOR = {
 // operator's filter context.
 const view = {
     tier: null, // null = all tiers
+    mediaKind: null, // null = all, 'photo' = images only, 'video' = videos only
     page: 1,
     limit: 50,
     totalPages: 1,
@@ -64,6 +65,7 @@ function _readHashState() {
     const qs = new URLSearchParams(raw.slice(qIdx + 1));
     const out = {};
     if (qs.has('tier')) out.tier = qs.get('tier') || null;
+    if (qs.has('kind')) out.mediaKind = qs.get('kind') || null;
     if (qs.has('page')) {
         const p = Number(qs.get('page'));
         if (Number.isFinite(p) && p >= 1) out.page = Math.floor(p);
@@ -78,6 +80,7 @@ function _writeHashState() {
     const path = qIdx >= 0 ? raw.slice(0, qIdx) : raw;
     const qs = new URLSearchParams();
     if (view.tier) qs.set('tier', view.tier);
+    if (view.mediaKind) qs.set('kind', view.mediaKind);
     if (view.page > 1) qs.set('page', String(view.page));
     if (view.includeWhitelisted) qs.set('whitelisted', '1');
     const nextHash = qs.toString() ? `${path || '#'}?${qs.toString()}` : path;
@@ -415,6 +418,10 @@ function _renderTile(file, index) {
     const wlPin = isWl
         ? `<span class="absolute top-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/85 text-white font-medium">WL</span>`
         : '';
+    const videoBadge =
+        file.file_type === 'video'
+            ? `<span class="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 rounded bg-black/60 text-white font-medium">▶</span>`
+            : '';
     return `
         <button type="button" data-tile-index="${index}" data-id="${file.id}"
                 class="nsfw-tile group relative aspect-square rounded-md overflow-hidden bg-tg-bg/40 focus:outline-none focus:ring-2 focus:ring-tg-blue">
@@ -426,6 +433,7 @@ function _renderTile(file, index) {
                   style="background:${tierColor}cc">${scorePct}%</span>
             <span class="block sm:hidden absolute inset-x-0 bottom-0 h-1" style="background:${tierColor}"></span>
             ${wlPin}
+            ${videoBadge}
             <span class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition flex items-end p-2 pointer-events-none">
                 <span class="text-[11px] text-white truncate w-full text-left">${escapeHtml(file.file_name || '')}</span>
             </span>
@@ -671,6 +679,7 @@ async function _loadList() {
         qs.set('page', String(view.page));
         qs.set('limit', String(view.limit));
         if (view.tier) qs.set('tier', view.tier);
+        if (view.mediaKind && view.mediaKind !== 'all') qs.set('kind', view.mediaKind);
         if (view.includeWhitelisted) qs.set('include_whitelisted', '1');
         const r = await api.get(`/api/maintenance/nsfw/v2/list?${qs.toString()}`);
         view.totalPages = r.totalPages || 1;
@@ -892,7 +901,10 @@ function _setBulkUi(running) {
 async function _bulkAction(kind) {
     if (!view.tier) return;
     const tierLabel = _tierLabel(view.tier);
-    const body = { tier: view.tier, fileTypes: ['photo'] };
+    const ftVideoEl = document.getElementById('nsfw-ft-video');
+    const activeFileTypes = ['photo'];
+    if (ftVideoEl?.classList.contains('active')) activeFileTypes.push('video');
+    const body = { tier: view.tier, fileTypes: activeFileTypes };
 
     let url, confirmOpts;
     if (kind === 'delete') {
@@ -1297,10 +1309,21 @@ async function _onCacheClearClick() {
 function _applyHashState() {
     const hash = _readHashState();
     view.tier = hash.tier !== undefined ? hash.tier : DEFAULT_TIER;
+    view.mediaKind = hash.mediaKind || null;
     view.page = hash.page || 1;
     view.includeWhitelisted = !!hash.includeWhitelisted;
     const wlToggle = $('nsfw-show-whitelisted');
     if (wlToggle) wlToggle.checked = view.includeWhitelisted;
+    _syncMediaKindButtons();
+}
+
+function _syncMediaKindButtons() {
+    document.querySelectorAll('.nsfw-media-kind').forEach((btn) => {
+        const active = (view.mediaKind || 'all') === (btn.dataset.kind || 'all');
+        btn.setAttribute('aria-pressed', String(active));
+        btn.classList.toggle('!bg-tg-blue/20', active);
+        btn.classList.toggle('!text-tg-blue', active);
+    });
 }
 
 export function init() {
@@ -1321,6 +1344,16 @@ export function init() {
                 _writeHashState();
                 _loadList();
             }
+        });
+        document.querySelectorAll('.nsfw-media-kind').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const k = btn.dataset.kind || 'all';
+                view.mediaKind = k === 'all' ? null : k;
+                view.page = 1;
+                _writeHashState();
+                _syncMediaKindButtons();
+                _loadList();
+            });
         });
         $('nsfw-bulk-delete-btn')?.addEventListener('click', () => _bulkAction('delete'));
         $('nsfw-bulk-whitelist-btn')?.addEventListener('click', () => _bulkAction('whitelist'));

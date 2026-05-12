@@ -21,7 +21,6 @@ import crypto from 'crypto';
 import { existsSync, statSync } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import sharp from 'sharp';
 
 import { loadConfig } from '../../config/manager.js';
@@ -29,18 +28,18 @@ import { upsertSeekbarSprite } from '../db.js';
 import {
     ffmpegHasLibwebp,
     hasFfmpeg,
-    hwaccelPrefix,
+    hwaccelUploadPipeline,
     resolveFfmpegBin,
     resolveFfprobeBin,
     runFfmpegArgs,
 } from '../thumbs.js';
 import { getSidecarUrl, submitOne as sidecarSubmitOne } from './client.js';
+import { resetNsfwVideoResult } from '../db.js';
+import { getDataDir, getDownloadsDir } from '../paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
-const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+const DATA_DIR = getDataDir();
 const SEEKBAR_DIR = path.join(DATA_DIR, 'seekbar');
-const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
+const DOWNLOADS_DIR = getDownloadsDir();
 
 export const SEEKBAR_DEFAULTS = Object.freeze({
     enabled: false,
@@ -132,30 +131,44 @@ function _ffprobeDuration(absPath) {
     });
 }
 
+// Duration-aware tiers: density = target seconds between frames, absoluteMax = frame budget.
+// Scales automatically so the seekbar is never sparse regardless of clip length.
+// User-configured maxTiles acts as a hard cap on top of these defaults.
+const _SPRITE_TIERS = [
+    { upTo: 15,       density: 0.5,  absoluteMax: 30  },
+    { upTo: 60,       density: 1.0,  absoluteMax: 60  },
+    { upTo: 300,      density: 3.0,  absoluteMax: 100 },
+    { upTo: 900,      density: 5.0,  absoluteMax: 180 },
+    { upTo: 1800,     density: 7.0,  absoluteMax: 300 },
+    { upTo: 3600,     density: 9.0,  absoluteMax: 450 },
+    { upTo: 7200,     density: 12.0, absoluteMax: 600 },
+    { upTo: Infinity, density: 18.0, absoluteMax: 720 },
+];
+
 /**
  * Compute the sprite layout for a given duration + config. Pure — exposed
  * for unit tests so the math can be verified without spawning ffmpeg.
  *
- * Adaptive: shorter clips deserve finer detail (a 90-second clip with a
- * 4-second interval only yields 22 frames, which makes the seekbar
- * preview feel coarse). The configured `intervalSec` is the *upper*
- * bound; we shrink it for shorter clips so frame count climbs toward
- * `maxTiles` without exploding it. Long clips fall back to the
- * configured interval and clamp to `maxTiles`.
+ * Dynamic tiers: each duration range gets its own frame density and budget
+ * so short clips are dense and long clips (1–2hr) still have full coverage
+ * without blank stretches. User-configured intervalSec / maxTiles override
+ * the tier defaults but cannot push below 0.5 s/frame minimum.
  */
 export function planSprite(durationSec, cfg) {
-    const target = Math.max(0.5, Number(cfg.intervalSec) || 5);
-    const minFrames = 12;
-    const maxFrames = Math.max(minFrames, Number(cfg.maxTiles) || 200);
+    const tier = _SPRITE_TIERS.find((t) => durationSec <= t.upTo) ?? _SPRITE_TIERS.at(-1);
 
-    // Adaptive sweet-spot: aim for roughly 60–120 frames on any clip
-    // long enough to support that, capped by the operator's maxTiles.
-    // Pick the configured interval OR a duration-derived one, whichever
-    // gives MORE frames (i.e. a shorter interval) up to the cap.
-    const adaptiveTarget = Math.min(target, Math.max(1, durationSec / 90));
-    let frames = Math.ceil(durationSec / adaptiveTarget);
-    if (!Number.isFinite(frames) || frames < minFrames) frames = minFrames;
-    if (frames > maxFrames) frames = maxFrames;
+    const userInterval = Math.max(0, Number(cfg.intervalSec) || 0);
+    const userMaxTiles = Math.max(0, Math.floor(Number(cfg.maxTiles) || 0));
+
+    // Effective density: user interval wins; floor at 0.5 s/frame
+    const density = userInterval > 0 ? Math.max(0.5, userInterval) : tier.density;
+
+    let frames = Math.ceil(durationSec / density);
+    if (!Number.isFinite(frames) || frames < 8) frames = 8;
+    // Tier cap first, then optional user hard cap
+    frames = Math.min(frames, tier.absoluteMax);
+    if (userMaxTiles > 0) frames = Math.min(frames, userMaxTiles);
+
     const interval = durationSec / frames;
     const cols = Math.max(2, Math.min(50, Number(cfg.columns) || 10));
     const rows = Math.max(1, Math.ceil(frames / cols));
@@ -172,9 +185,14 @@ async function _writeAtomic(absPath, body) {
 async function _runSpriteFfmpeg({ srcAbs, dstAbs, plan, cfg }) {
     const useWebp =
         (cfg.format === 'webp' || !cfg.format) && ffmpegHasLibwebp() && dstAbs.endsWith('.webp');
-    const hwa = await hwaccelPrefix(cfg.hwaccel ?? null);
+    // Upload pipeline: GPU accelerates decode (frames land on CPU for the fps
+    // SW filter), then each selected frame is uploaded to GPU for scale and
+    // downloaded before the tile SW filter. Falls back to pure SW scale when
+    // no GPU scaler is available for the configured backend.
+    const { inputArgs: hwa, scaleVf } = hwaccelUploadPipeline(cfg.hwaccel ?? null);
+    const swScale = `scale=${plan.tileW}:-2:flags=fast_bilinear`;
     const tmp = dstAbs + '.tmp.' + crypto.randomBytes(4).toString('hex');
-    const filterChain = `fps=1/${plan.intervalSec},scale=${plan.tileW}:-2:flags=fast_bilinear,tile=${plan.cols}x${plan.rows}`;
+    const filterChain = `fps=1/${plan.intervalSec},${scaleVf ? scaleVf(plan.tileW) : swScale},tile=${plan.cols}x${plan.rows}`;
     if (useWebp) {
         const args = [
             '-hide_banner',
@@ -251,6 +269,25 @@ async function _runSpriteFfmpeg({ srcAbs, dstAbs, plan, cfg }) {
         try {
             if (existsSync(tmp)) await fs.unlink(tmp);
         } catch {}
+    }
+}
+
+/**
+ * After a sprite is successfully written, reset the NSFW check state
+ * for this video (if it was previously marked as checked with a null
+ * score because the sprite didn't exist yet) and re-queue it for
+ * classification. Dynamic import of nsfw.js avoids a circular static
+ * dependency since nsfw.js imports this module.
+ */
+async function _notifyNsfwSpriteReady(downloadId) {
+    try {
+        const changed = resetNsfwVideoResult(downloadId);
+        if (changed > 0) {
+            const { pregenerateNsfw } = await import('../nsfw.js');
+            pregenerateNsfw(downloadId);
+        }
+    } catch {
+        /* best-effort — NSFW re-queue is non-critical */
     }
 }
 
@@ -372,6 +409,7 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
                     sourceMtime: sourceStat.mtime,
                     generatedAt: sidecarMeta.generated_at,
                 });
+                await _notifyNsfwSpriteReady(id);
                 return sidecarMeta;
             }
         } catch (e) {
@@ -450,6 +488,7 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
         sourceMtime: sourceStat.mtime,
         generatedAt: meta.generated_at,
     });
+    await _notifyNsfwSpriteReady(id);
 
     return meta;
 }

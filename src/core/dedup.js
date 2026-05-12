@@ -22,11 +22,12 @@ import fs from 'fs';
 import path from 'path';
 import { getDb } from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
+import { getDownloadsDir } from './paths.js';
 
-// Where the downloader writes by default (relative to the project root).
+// Where the downloader writes by default.
 // `safeResolveDownload`-style resolution lives in server.js; for the CLI
 // path we just rely on what the DB stored.
-const DEFAULT_DOWNLOAD_ROOT = path.resolve(process.cwd(), 'data/downloads');
+const DEFAULT_DOWNLOAD_ROOT = getDownloadsDir();
 
 /**
  * Resolve a stored file_path back to an absolute disk location, tolerant

@@ -7,8 +7,8 @@ import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import { getDataDir } from './paths.js';
 import { SecureSession } from './security.js';
 import { getOrGenerateSecret } from './secret.js';
 import { colorize } from '../cli/colors.js';
@@ -25,8 +25,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SESSIONS_DIR = path.join(__dirname, '../../data/sessions');
+const SESSIONS_DIR = path.join(getDataDir(), 'sessions');
 const SESSION_PASSWORD = getOrGenerateSecret();
 
 // Ensure sessions directory exists
@@ -223,7 +222,7 @@ export class AccountManager {
      * Migrate single legacy session (data/session.enc) to multi-account format
      */
     async migrateLegacy() {
-        const legacyPath = path.join(__dirname, '../../data/session.enc');
+        const legacyPath = path.join(getDataDir(), 'session.enc');
 
         // Only migrate if legacy file exists AND no sessions exist yet
         if (!fs.existsSync(legacyPath)) return;

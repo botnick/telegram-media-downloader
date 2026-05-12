@@ -20,23 +20,91 @@
  * old binary stays on disk but the new one is fetched and used.
  */
 
-import { existsSync, promises as fs, statSync } from 'fs';
+import { existsSync, promises as fs, readdirSync, statSync } from 'fs';
 import { createWriteStream } from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
 import net from 'net';
 import { spawn, spawnSync } from 'child_process';
-import { fileURLToPath } from 'url';
 
 import { setSidecarUrl, getSidecarUrl, applyFacesCfg } from './faces-client.js';
 import { resolveAllFaces } from './faces-config.js';
+import { getDataDir, getDownloadsDir, getRepoRoot } from '../paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
-const DATA_DIR = process.env.TGDL_DATA_DIR
-    ? path.resolve(process.env.TGDL_DATA_DIR)
-    : path.join(PROJECT_ROOT, 'data');
+const DATA_DIR = getDataDir();
+const PROJECT_ROOT = getRepoRoot();
+
+// Resolve CUDA 12.x + cuDNN bin directories on Windows so onnxruntime CUDA EP
+// can find cuBLAS / cuDNN DLLs without a system PATH change or reboot.
+// Scans three sources in order: CUDA Toolkit env vars, CUDA Toolkit filesystem,
+// and pip-installed nvidia-* packages (nvidia-cudnn-cu12, etc.).
+// pyBin — path to the Python executable being spawned; used to locate
+//         <site-packages>/nvidia/*/bin for pip-installed CUDA DLLs.
+function _resolveCudaBinDirs(pyBin) {
+    if (process.platform !== 'win32') return [];
+    const seen = new Set();
+    const dirs = [];
+    const addBin = (base) => {
+        if (!base) return;
+        const bin = path.join(String(base), 'bin');
+        if (!seen.has(bin) && existsSync(bin)) { seen.add(bin); dirs.push(bin); }
+    };
+
+    // 1. CUDA Toolkit env vars (set by installer — no reboot needed if process restarts).
+    addBin(process.env.CUDA_PATH);
+    for (const [k, v] of Object.entries(process.env)) {
+        if (/^CUDA_PATH_V12_\d+$/i.test(k)) addBin(v);
+    }
+
+    // 2. Filesystem scan for CUDA Toolkit v12.x (handles installer PATH gap).
+    const cudaBase = 'C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA';
+    if (existsSync(cudaBase)) {
+        try {
+            readdirSync(cudaBase)
+                .filter((d) => /^v12\.\d+$/i.test(d))
+                .sort((a, b) => Number(b.replace('v12.', '')) - Number(a.replace('v12.', '')))
+                .forEach((d) => addBin(path.join(cudaBase, d)));
+        } catch { /* non-fatal */ }
+    }
+
+    // 3. pip-installed nvidia-* packages (nvidia-cudnn-cu12, nvidia-cublas-cu12, …).
+    //    Standard CPython on Windows: <pyHome>\Lib\site-packages\nvidia\<pkg>\bin
+    //    pyBin may be a bare command name ('python') rather than an absolute path.
+    //    path.dirname('python') === '' which makes the site-packages probe miss.
+    //    Resolve to absolute path via `where.exe` before computing the home dir.
+    if (pyBin) {
+        // path.dirname('python') === '.' — not a useful home dir.
+        // Resolve bare command names to absolute paths via where.exe.
+        let pyHome = path.isAbsolute(pyBin) ? path.dirname(pyBin) : null;
+        if (!pyHome) {
+            try {
+                const r = spawnSync('where', [pyBin], {
+                    stdio: ['ignore', 'pipe', 'ignore'],
+                    timeout: 3000,
+                    windowsHide: true,
+                });
+                if (!r.error && r.status === 0) {
+                    const first = String(r.stdout).split(/\r?\n/).find(
+                        (l) => /\.exe$/i.test(l.trim()),
+                    );
+                    if (first) pyHome = path.dirname(first.trim());
+                }
+            } catch { /* non-fatal */ }
+        }
+        if (pyHome) {
+            const sitePackages = path.join(pyHome, 'Lib', 'site-packages');
+            const nvidiaDir = path.join(sitePackages, 'nvidia');
+            if (existsSync(nvidiaDir)) {
+                try {
+                    readdirSync(nvidiaDir).forEach((pkg) => addBin(path.join(nvidiaDir, pkg)));
+                } catch { /* non-fatal */ }
+            }
+        }
+    }
+
+    return dirs;
+}
 
 /**
  * Pinned sidecar release. Bumping this triggers a fresh binary download
@@ -389,7 +457,7 @@ async function _doStart() {
     if (!autoOptOut) {
         const port = await _pickAvailablePort().catch(() => null);
         if (port) {
-            const downloadsDir = path.resolve(DATA_DIR, 'downloads');
+            const downloadsDir = getDownloadsDir();
             const modelsDir = path.resolve(DATA_DIR, 'faces-service', 'models');
             try {
                 await fs.mkdir(downloadsDir, { recursive: true });
@@ -426,11 +494,16 @@ async function _doStart() {
                 pyChild.on('exit', (code, signal) => {
                     exited = true;
                     exitInfo = { code, signal };
-                    _log('warn', `python fallback exited code=${code} signal=${signal}`);
+                    // _killChild() clears _child before sending the signal, so
+                    // _child !== pyChild means we initiated the shutdown — log
+                    // at info. Unexpected exits (crash, OOM) keep _child intact
+                    // and warrant a warn.
+                    const unexpected = pyHealthy && _child === pyChild;
+                    _log(unexpected ? 'warn' : 'info', `python fallback exited code=${code} signal=${signal}`);
                     // Auto-restart: only when sidecar was confirmed healthy AND
                     // is still the current child (guard against stale events after
                     // a manual restart or stopSidecar()).
-                    if (pyHealthy && _child === pyChild) {
+                    if (unexpected) {
                         _child = null;
                         _childUrl = null;
                         _state = 'spawning';
@@ -632,8 +705,14 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
         }
     }
 
+    const cudaBinDirs = _resolveCudaBinDirs(pyBin);
     const env = {
         ...process.env,
+        // Prepend CUDA 12.x bin dirs so onnxruntime CUDA EP finds cuBLAS DLLs
+        // without requiring a system PATH change or reboot.
+        ...(cudaBinDirs.length > 0 && {
+            PATH: cudaBinDirs.join(path.delimiter) + path.delimiter + (process.env.PATH || ''),
+        }),
         TGDL_FACES_HOST: host,
         TGDL_FACES_PORT: String(port),
         TGDL_FACES_ALLOW_ROOTS: allowRoots,
@@ -1329,7 +1408,7 @@ function _readNulTerminated(buf, offset, length) {
 
 async function _spawnAndProbe(binPath) {
     const port = await _pickAvailablePort();
-    const downloadsDir = path.resolve(DATA_DIR, 'downloads');
+    const downloadsDir = getDownloadsDir();
     const modelsDir = path.resolve(DATA_DIR, 'faces-service', 'models');
     await fs.mkdir(downloadsDir, { recursive: true });
     await fs.mkdir(modelsDir, { recursive: true });

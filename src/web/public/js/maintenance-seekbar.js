@@ -15,6 +15,7 @@ import { formatBytes, showToast } from './utils.js';
 import { ws } from './ws.js';
 
 let _wsWired = false;
+let _buttonsWired = false;
 let _running = false;
 let _initDone = false;
 
@@ -127,8 +128,12 @@ async function _syncToggleState() {
 }
 
 function _wireButtons() {
+    if (_buttonsWired) return;
+    _buttonsWired = true;
     document.getElementById('seekbar-scan-btn')?.addEventListener('click', () => _startScan());
     document.getElementById('seekbar-cancel-btn')?.addEventListener('click', () => _cancelScan());
+    // Coverage bar CTA delegates to the main scan button.
+    document.getElementById('seekbar-scan-cta')?.addEventListener('click', () => _startScan());
     document.getElementById('seekbar-wipe-btn')?.addEventListener('click', () => _wipeCache());
     document
         .getElementById('seekbar-restart-btn')
@@ -158,14 +163,17 @@ async function _startScan() {
         if (r?.started) {
             _setBuildUi(true);
             showToast(i18nT('maintenance.seekbar.scan_started', 'Scan started'));
-        } else if (r?.code === 'ALREADY_RUNNING') {
+        }
+    } catch (e) {
+        // 409 = ALREADY_RUNNING — treat as info, not error
+        if (e?.status === 409 || e?.data?.code === 'ALREADY_RUNNING') {
             showToast(
                 i18nT('maintenance.seekbar.already_running', 'A scan is already running'),
                 'info',
             );
             _setBuildUi(true);
+            return;
         }
-    } catch (e) {
         showToast(e?.data?.error || e?.message || 'Failed to start scan', 'error');
     }
 }
@@ -251,13 +259,43 @@ function _renderHwaccelChips(r) {
 async function _refreshStats() {
     const r = await _safeGet('/api/maintenance/seekbar/stats');
     if (!r) return;
-    document.getElementById('seekbar-kpi-indexed').textContent = Number(
-        r.count || 0,
-    ).toLocaleString();
+    const count = Number(r.count || 0);
+    const total = Number(r.totalVideos || 0);
+
+    document.getElementById('seekbar-kpi-indexed').textContent = count.toLocaleString();
     document.getElementById('seekbar-kpi-disk').textContent = formatBytes(r.bytes || 0);
-    document.getElementById('seekbar-kpi-ffmpeg').textContent = r.ffmpegAvailable
-        ? i18nT('maintenance.seekbar.ffmpeg.ok', 'available')
-        : i18nT('maintenance.seekbar.ffmpeg.missing', 'missing');
+
+    // Coverage tile
+    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+    const covEl = document.getElementById('seekbar-kpi-coverage');
+    if (covEl) covEl.textContent = total > 0 ? `${pct}%` : '—';
+
+    // Coverage bar
+    const wrap = document.getElementById('seekbar-coverage-wrap');
+    const bar = document.getElementById('seekbar-coverage-bar');
+    const label = document.getElementById('seekbar-coverage-label');
+    const cta = document.getElementById('seekbar-scan-cta');
+    if (wrap && bar && label) {
+        wrap.classList.remove('hidden');
+        bar.style.width = `${pct}%`;
+        bar.className = `h-full transition-all duration-500 rounded-full ${pct >= 100 ? 'bg-tg-green' : pct >= 50 ? 'bg-tg-blue' : 'bg-yellow-400'}`;
+        label.textContent = total > 0
+            ? `${count.toLocaleString()} / ${total.toLocaleString()} videos have previews`
+            : i18nT('maintenance.seekbar.coverage.none', 'No videos yet');
+        if (cta) cta.classList.toggle('hidden', pct >= 100 || total === 0);
+    }
+
+    // ffmpeg line (de-emphasised)
+    const ffmpegLine = document.getElementById('seekbar-ffmpeg-line');
+    const ffmpegVal = document.getElementById('seekbar-kpi-ffmpeg');
+    if (ffmpegLine && ffmpegVal) {
+        ffmpegLine.classList.remove('hidden');
+        ffmpegVal.textContent = r.ffmpegAvailable
+            ? i18nT('maintenance.seekbar.ffmpeg.ok', 'available')
+            : i18nT('maintenance.seekbar.ffmpeg.missing', 'missing');
+        ffmpegVal.className = `font-mono ${r.ffmpegAvailable ? 'text-tg-green' : 'text-red-400'}`;
+    }
+
     if (r.sidecar) _renderSidecarStatus(r.sidecar);
 }
 
@@ -314,6 +352,7 @@ function _onProgress(p) {
 
 function _onDone(p) {
     _setBuildUi(false);
+    // Refresh stats + coverage bar now that sprites have been generated.
     _refreshStats().catch(() => {});
     _refreshLastBuild().catch(() => {});
     _refreshQueueStats().catch(() => {});
@@ -500,26 +539,61 @@ async function _rebuildGroup(groupId) {
             showToast(r.error, 'error');
         }
     } catch (e) {
-        showToast(e?.data?.error || e?.message || 'Rebuild failed', 'error');
+        if (e?.status === 409 || e?.data?.code === 'ALREADY_RUNNING') {
+            showToast(
+                i18nT('maintenance.seekbar.already_running', 'A scan is already running'),
+                'info',
+            );
+            _setBuildUi(true);
+        } else {
+            showToast(e?.data?.error || e?.message || 'Rebuild failed', 'error');
+        }
     } finally {
         if (btn) btn.disabled = false;
     }
 }
 
 /**
- * Refresh the queue stats tiles (queued / processing / completed / failed).
- * Falls back gracefully when the endpoint doesn't exist on older builds.
+ * Refresh the generation-activity section.
+ * When a scan is running: show the 4-tile grid with live counts.
+ * When idle: collapse to a single summary line.
  */
 async function _refreshQueueStats() {
     const r = await _safeGet('/api/maintenance/seekbar/queue/stats');
+    if (!r) return;
+
+    const running = Boolean(r.running);
     const set = (id, val) => {
         const el = document.getElementById(id);
         if (el) el.textContent = val != null ? Number(val).toLocaleString() : '—';
     };
-    set('seekbar-queue-queued', r?.queued ?? r?.pending);
-    set('seekbar-queue-processing', r?.processing ?? r?.running);
-    set('seekbar-queue-completed', r?.completed ?? r?.done);
-    set('seekbar-queue-failed', r?.failed ?? r?.errored);
+
+    // Toggle badges
+    const idleBadge = document.getElementById('seekbar-queue-idle-badge');
+    const liveBadge = document.getElementById('seekbar-queue-live-badge');
+    if (idleBadge) idleBadge.classList.toggle('hidden', running);
+    if (liveBadge) liveBadge.classList.toggle('hidden', !running);
+
+    // Toggle grid vs idle line
+    const activeGrid = document.getElementById('seekbar-queue-active');
+    const idleLine = document.getElementById('seekbar-queue-idle-line');
+    if (activeGrid) activeGrid.classList.toggle('hidden', !running);
+    if (idleLine) idleLine.classList.toggle('hidden', running);
+
+    if (running) {
+        set('seekbar-queue-queued', r.queued);
+        set('seekbar-queue-processing', r.processing);
+        set('seekbar-queue-completed', r.completed);
+        set('seekbar-queue-failed', r.failed);
+    } else {
+        // Idle: show a friendly summary using the DB total (completed = countSeekbarSprites)
+        const total = Number(r.completed || 0);
+        if (idleLine) {
+            idleLine.textContent = total > 0
+                ? `${total.toLocaleString()} sprites generated · no scan running`
+                : i18nT('maintenance.seekbar.queue.idle_none', 'No sprites yet — click Scan now to generate previews for your library.');
+        }
+    }
 }
 
 async function _safeGet(url) {
