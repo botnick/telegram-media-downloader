@@ -42,7 +42,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
 
-const ServiceVersion = "0.3.0"
+const ServiceVersion = "0.3.1"
 
 type Server struct {
 	cfg  *config.Config
