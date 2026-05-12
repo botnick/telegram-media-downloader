@@ -605,6 +605,7 @@
     "status.active": "ทำงาน:",
     "status.files": "ไฟล์:",
     "status.disk": "ดิสก์:",
+    "status.groups": "กลุ่ม:",
     "shortcuts.title": "คีย์ลัดบนแป้นพิมพ์",
     "shortcuts.cheatsheet": "เปิดรายการคีย์ลัด",
     "shortcuts.close_modal": "ปิด modal / sheet / drawer ใดก็ได้",

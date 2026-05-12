@@ -3838,44 +3838,52 @@
         </div>
     </div>
 
-    <!-- Status bar — visible to all roles. Admin-only items use
-         data-admin-only so body[data-role="guest"] CSS hides them
-         automatically. Guests see Files + Disk; admins see everything. -->
-    <footer id="status-bar" class="hidden md:flex fixed bottom-0 left-0 right-0 bg-tg-sidebar/96 backdrop-blur-sm border-t border-tg-border px-4 py-1.5 text-xs items-center gap-3 overflow-x-auto z-40" role="status" aria-live="polite">
-        <!-- Engine state (admin-only) -->
-        <span class="flex items-center gap-1.5 shrink-0" data-admin-only>
+    <!-- Status bar — visible to all roles on all screen sizes.
+         Admin-only sections carry data-admin-only so they auto-hide for
+         guests via the body[data-role="guest"] [data-admin-only] rule. -->
+    <footer id="status-bar" class="status-bar flex fixed left-0 right-0 bg-tg-sidebar border-t border-tg-border px-3 py-1 md:py-1.5 text-xs items-center gap-2 md:gap-3 overflow-x-auto z-40" role="status" aria-live="polite">
+        <!-- Guest-visible section: files · disk · groups -->
+        <span class="status-chip">
+            <i class="ri-file-3-line text-tg-textSecondary" aria-hidden="true"></i>
+            <span class="status-chip-val" id="status-files">0</span>
+        </span>
+        <span class="status-chip">
+            <i class="ri-hard-drive-2-line text-tg-textSecondary" aria-hidden="true"></i>
+            <span class="status-chip-val" id="status-disk">0 B</span>
+        </span>
+        <span class="status-chip" id="status-groups-chip">
+            <i class="ri-folder-3-line text-tg-textSecondary" aria-hidden="true"></i>
+            <span class="status-chip-val" id="status-groups">0</span>
+        </span>
+
+        <!-- Separator between guest and admin sections (hidden on mobile to save space) -->
+        <span class="hidden md:inline text-tg-textSecondary/40 select-none" data-admin-only aria-hidden="true">|</span>
+
+        <!-- Admin-only section: engine state · queue · active -->
+        <span class="flex items-center gap-1.5 status-chip" data-admin-only>
             <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-500 shrink-0"></span>
             <span id="status-state" class="text-tg-textSecondary" data-i18n="status.idle">Idle</span>
         </span>
-        <span class="text-tg-border shrink-0" aria-hidden="true" data-admin-only>·</span>
-        <!-- Queue + Active (admin-only) -->
-        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary" data-admin-only>
-            <i class="ri-list-ordered text-[11px]" aria-hidden="true"></i>
-            <span id="status-queue" class="text-tg-text font-medium tabular-nums">0</span>
+        <span class="status-chip hidden md:inline-flex" data-admin-only>
+            <i class="ri-download-cloud-2-line text-tg-textSecondary" aria-hidden="true"></i>
+            <span class="text-tg-textSecondary" data-i18n="status.queue">Q:</span>
+            <span class="status-chip-val" id="status-queue">0</span>
         </span>
-        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary" data-admin-only>
-            <i class="ri-loader-4-line text-[11px]" aria-hidden="true"></i>
-            <span id="status-active" class="text-tg-text font-medium tabular-nums">0</span>
+        <span class="status-chip hidden md:inline-flex" data-admin-only>
+            <i class="ri-loader-2-line text-tg-textSecondary" aria-hidden="true"></i>
+            <span class="text-tg-textSecondary" data-i18n="status.active">A:</span>
+            <span class="status-chip-val" id="status-active">0</span>
         </span>
-        <span class="text-tg-border shrink-0" aria-hidden="true" data-admin-only>·</span>
-        <!-- Files + Disk (always visible) -->
-        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary">
-            <i class="ri-file-list-2-line text-[11px]" aria-hidden="true"></i>
-            <span id="status-files" class="text-tg-text font-medium tabular-nums">0</span>
-        </span>
-        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary">
-            <i class="ri-hard-drive-2-line text-[11px]" aria-hidden="true"></i>
-            <span id="status-disk" class="text-tg-text font-medium tabular-nums">0 B</span>
-        </span>
-        <!-- Right cluster: WS + update badge + version (admin-only) -->
-        <span class="ml-auto flex items-center gap-2.5 shrink-0">
-            <span class="flex items-center gap-1 text-tg-textSecondary" data-admin-only>
-                <span id="status-ws" class="inline-block w-1.5 h-1.5 rounded-full bg-gray-500"></span>
-                <span class="text-[10px]">WS</span>
+
+        <!-- Right cluster: WS indicator · update badge · version (admin, desktop) -->
+        <span class="ml-auto flex items-center gap-2" data-admin-only>
+            <span class="status-chip hidden md:inline-flex" title="WebSocket connection">
+                <span id="status-ws" class="inline-block w-2 h-2 rounded-full bg-gray-500"></span>
+                <span class="text-tg-textSecondary">WS</span>
             </span>
-            <a id="status-update-badge" class="hidden text-[10px] px-1.5 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue hover:bg-tg-blue/25 font-medium whitespace-nowrap transition-colors" target="_blank" rel="noopener" data-admin-only></a>
-            <button id="status-update-dismiss" type="button" class="hidden text-[10px] text-tg-textSecondary/60 hover:text-tg-text transition-colors" title="Dismiss this update notice" aria-label="Dismiss update notice" data-admin-only>×</button>
-            <a id="status-version" class="text-[10px] text-tg-textSecondary/50 hover:text-tg-textSecondary font-mono whitespace-nowrap transition-colors" href="https://github.com/botnick/telegram-media-downloader" target="_blank" rel="noopener" title="Build version (commit SHA + build time)" data-admin-only></a>
+            <a id="status-update-badge" class="hidden text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/15 text-tg-blue hover:bg-tg-blue/25 font-medium whitespace-nowrap" target="_blank" rel="noopener"></a>
+            <button id="status-update-dismiss" type="button" class="hidden text-[10px] text-tg-textSecondary/70 hover:text-tg-text px-1" title="Dismiss this update notice" aria-label="Dismiss update notice">×</button>
+            <a id="status-version" class="hidden md:inline text-[10px] text-tg-textSecondary/70 hover:text-tg-text font-mono whitespace-nowrap" href="https://github.com/botnick/telegram-media-downloader" target="_blank" rel="noopener" title="Build version (commit SHA + build time)"></a>
         </span>
     </footer>
 
