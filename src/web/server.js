@@ -204,6 +204,8 @@ import { publishConfigChange } from '../core/cluster/config-sync.js';
 import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
 import { recordClusterAudit, listClusterAudit, listOwnDownloadsSince } from '../core/db.js';
+import { formatBytes, bestGroupName, nameLooksUnresolved } from './lib/format.js';
+import { readConfigSafe, invalidateConfigCache } from './lib/config-cache.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
 // gramJS opens a fresh DC connection per file download (different DCs host
@@ -781,16 +783,6 @@ app.use((req, res, next) => {
 // process alive on shutdown.
 startSessionGc();
 
-// Module-level config cache (definition; the `readConfigSafe` helper that
-// uses it is declared further down). Hoisted to ABOVE the share-secret
-// bootstrap IIFE because that IIFE awaits `readConfigSafe()` synchronously
-// up to its first internal await, and inside the helper we read
-// `_configCache.value` immediately — if the `let` below were still in its
-// original position (after the IIFE) it would be in TDZ at that read,
-// crashing module load with "Cannot access '_configCache' before
-// initialization". Logged in the wild as `[share] secret bootstrap deferred`.
-let _configCache = { at: 0, value: null };
-
 // Bootstrap the share-link HMAC secret + apply runtime limits from
 // config. Lazy-generated secret on first boot, persisted to
 // config.web.shareSecret. Done inside an async IIFE so a missing config
@@ -866,33 +858,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// In-process cache for the config tree. checkAuth + the force-https +
-// rate-limit middlewares all call readConfigSafe() on every request —
-// during a video playback, the browser issues many 64 KB range GETs to
-// /files/* and each one would otherwise hit the kv table. The 2-second
-// TTL is short enough that toggle changes feel instant in the settings
-// UI but long enough to fold the per-clip request burst into a single
-// read. (better-sqlite3 is fast, but a Map lookup is still cheaper.)
-//
-// Note: the `let _configCache` variable is declared further up (right
-// before the share-secret bootstrap IIFE) to dodge a temporal dead-zone
-// crash on module load. See the comment there for the why.
-async function readConfigSafe() {
-    const now = Date.now();
-    if (_configCache.value && now - _configCache.at < 2000) return _configCache.value;
-    try {
-        const value = loadConfig();
-        _configCache = { at: now, value };
-        return value;
-    } catch {
-        _configCache = { at: now, value: {} };
-        return {};
-    }
-}
-function invalidateConfigCache() {
-    _configCache = { at: 0, value: null };
-}
-
 // Atomic config writer. Backed by kv['config'] in SQLite — the SQLite
 // transaction inside saveConfig() gives us the same all-or-nothing
 // guarantee the previous tmp-file + rename pattern provided, with the
@@ -903,7 +868,7 @@ async function writeConfigAtomic(config) {
     // top-level keys to peers instead of replicating the whole config.
     let prev = null;
     try {
-        prev = _configCache?.value || loadConfig();
+        prev = loadConfig();
     } catch {
         prev = null;
     }
@@ -3942,32 +3907,6 @@ app.get('/api/dialogs', async (req, res) => {
 });
 
 // 3. Config Groups List (with Photo URLs)
-// Mirror of the SPA's `looksUnresolved`. If a name is empty / "Unknown" /
-// the bare numeric id / a "Group ..." placeholder, the caller should
-// prefer any other source instead of trusting it.
-function nameLooksUnresolved(name, id) {
-    if (!name) return true;
-    const s = String(name).trim();
-    if (!s) return true;
-    if (s === 'Unknown' || s === 'unknown') return true;
-    if (id != null && s === String(id)) return true;
-    if (/^-?\d{6,}$/.test(s)) return true;
-    if (/^Group\s/i.test(s)) return true;
-    return false;
-}
-
-// Best-available name for a group id. Resolution priority:
-//   1. Live Telegram dialogs name (same source the Browse-chats picker
-//      uses — most authoritative; reflects renames immediately).
-//   2. Config-set label.
-//   3. DB's most-recently-saved `group_name` for that id.
-//   4. Last-resort placeholder — never the bare numeric id.
-function bestGroupName(id, configName, dbName, dialogsName) {
-    if (!nameLooksUnresolved(dialogsName, id)) return dialogsName;
-    if (!nameLooksUnresolved(configName, id)) return configName;
-    if (!nameLooksUnresolved(dbName, id)) return dbName;
-    return `Unknown chat (#${id})`;
-}
 
 // Server-side cache of `id -> name` from every connected account's
 // dialog list. Refreshed on demand with a 5-minute TTL — Telegram
@@ -11182,14 +11121,6 @@ async function downloadProfilePhoto(groupId) {
 }
 
 // ============ SERVER START ============
-
-function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 // Trigger types that change footer/statusbar metrics. Touching any of these
 // pokes the debounced `broadcastStatsSoon()` so connected clients receive a
