@@ -2150,6 +2150,17 @@ class VideoPlayer {
             if (Number.isFinite(this.video.duration) && this.video.duration > 0) {
                 this.video.currentTime = Math.min(sec, this.video.duration);
             }
+            // Force-highlight the clicked thumb immediately — avoids the
+            // off-by-one where Math.floor(sec/interval) rounds down to the
+            // previous thumbnail when sec is stored with toFixed(2) precision.
+            const clickedIdx = parseInt(thumb.dataset.idx, 10);
+            if (Number.isInteger(clickedIdx)) {
+                const thumbs = track.children;
+                for (let i = 0; i < thumbs.length; i++) {
+                    thumbs[i].classList.toggle('current', i === clickedIdx);
+                }
+                this._filmstripLastIdx = clickedIdx;
+            }
         };
 
         // Scroll-arrow buttons.

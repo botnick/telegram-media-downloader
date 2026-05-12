@@ -648,6 +648,10 @@ html.theme-light .chat-row .status-pill-add {
     background: rgba(0, 0, 0, 0.06);
     color: #4b5563;
 }
+html.theme-light .chat-row .status-pill-suspended {
+    background: rgba(200, 35, 35, 0.14);
+    color: #b71c1c;
+}
 
 /* Loading skeletons — pure dark hex shimmer left a navy stripe on
    white pages. Lighten for the light theme. */
@@ -3036,6 +3040,10 @@ textarea:focus {
 .chat-row .status-pill-add {
     background: rgba(255, 255, 255, 0.06);
     color: var(--tg-textSecondary, #8b9baa);
+}
+.chat-row .status-pill-suspended {
+    background: rgba(229, 57, 53, 0.18);
+    color: #ef5350;
 }
 
 /* Account chips — shown under the title in Manage Groups when 2+
