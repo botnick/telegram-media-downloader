@@ -1,14 +1,19 @@
 // Maintenance — Cluster mode (admin page).
 //
-// Three sections:
-//   1. Identity — own peer_id, editable display name, cluster token
-//      (revealable, copyable, rotatable).
-//   2. Peers — list of paired remote peers, "Add peer" wizard (paste URL +
-//      token), per-peer Test / Edit / Revoke actions.
-//   3. Audit log — recent cluster events (handshake, signed-request fail,
-//      token rotation, etc).
+// Four sections:
+//   1. Pairing wizard — step-by-step inline card to add the first or
+//      subsequent peer (URL + token/code, spinner, success/error state).
+//   2. Identity — own peer_id (abbreviated + copy), display name
+//      (editable), cluster token (revealable/copyable/rotatable).
+//   3. Peers — list of paired remote peers with health chips, last-seen
+//      time, paired date, Ping / Edit / Remove actions.
+//      Self is ALWAYS filtered on the client side regardless of DB state.
+//   4. Cross-peer dedup + audit log (unchanged).
 //
-// Live updates arrive via WebSocket: peer_added, peer_removed, peer_status.
+// Live updates: server does not broadcast WS peer events yet, so the
+// peer list is polled every POLL_MS ms while the panel is mounted.
+// WS listeners for peer_added / peer_removed / peer_status are wired
+// so they take effect automatically if the server side adds them later.
 
 import { ws } from './ws.js';
 import { api } from './api.js';
@@ -24,21 +29,75 @@ let _peers = [];
 let _identity = null;
 let _tokenShown = false;
 let _lastSweepStats = null;
+let _pollTimer = null;
+
+const POLL_MS = 30_000;
+// Thresholds for status chip derivation from lastSeenAt timestamp.
+const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // < 2 min = Online
+const STALE_THRESHOLD_MS = 10 * 60 * 1000; // < 10 min = Stale
 
 // ---- Helpers --------------------------------------------------------------
 
-function _statusPill(status) {
-    const map = {
-        online: { key: 'cluster.peer.status.online', cls: 'bg-green-500/15 text-green-300' },
-        offline: { key: 'cluster.peer.status.offline', cls: 'bg-tg-bg/50 text-tg-textSecondary' },
-        paired_pending: {
-            key: 'cluster.peer.status.paired_pending',
+/**
+ * Derive a status label + CSS class from the peer's stored status field
+ * and lastSeenAt timestamp. Using lastSeenAt is more reliable than the
+ * stored "status" column which only updates on explicit test/handshake.
+ */
+function _healthPill(peer) {
+    const stored = peer.status;
+    const last = peer.lastSeenAt ? (typeof peer.lastSeenAt === 'number' ? peer.lastSeenAt : Date.parse(peer.lastSeenAt)) : null;
+    const age = last ? Date.now() - last : null;
+
+    // Revoked is always shown regardless of timestamps.
+    if (stored === 'revoked') {
+        return {
+            label: i18nT('cluster.peer.status.revoked', 'Revoked'),
+            cls: 'bg-red-500/15 text-red-300',
+            dot: 'bg-red-400',
+        };
+    }
+    if (stored === 'paired_pending') {
+        return {
+            label: i18nT('cluster.peer.status.paired_pending', 'Pairing pending'),
             cls: 'bg-yellow-500/15 text-yellow-300',
-        },
-        revoked: { key: 'cluster.peer.status.revoked', cls: 'bg-red-500/15 text-red-300' },
+            dot: 'bg-yellow-400',
+        };
+    }
+    // Derive from age when we have a timestamp.
+    if (age !== null) {
+        if (age < ONLINE_THRESHOLD_MS) {
+            return {
+                label: i18nT('cluster.peer.status.online', 'Online'),
+                cls: 'bg-green-500/15 text-green-300',
+                dot: 'bg-green-400',
+            };
+        }
+        if (age < STALE_THRESHOLD_MS) {
+            return {
+                label: i18nT('cluster.peer.status.stale', 'Stale'),
+                cls: 'bg-yellow-500/15 text-yellow-300',
+                dot: 'bg-yellow-400',
+            };
+        }
+        return {
+            label: i18nT('cluster.peer.status.offline', 'Offline'),
+            cls: 'bg-tg-bg/50 text-tg-textSecondary',
+            dot: 'bg-tg-textSecondary',
+        };
+    }
+    // No timestamp at all — show stored status or Unknown.
+    if (stored === 'online') {
+        return {
+            label: i18nT('cluster.peer.status.online', 'Online'),
+            cls: 'bg-green-500/15 text-green-300',
+            dot: 'bg-green-400',
+        };
+    }
+    return {
+        label: i18nT('cluster.peer.status.unknown', 'Unknown'),
+        cls: 'bg-tg-bg/50 text-tg-textSecondary',
+        dot: 'bg-tg-textSecondary',
     };
-    const m = map[status] || map.offline;
-    return { label: i18nT(m.key, status), cls: m.cls };
 }
 
 function _streamModeLabel(mode) {
@@ -47,31 +106,58 @@ function _streamModeLabel(mode) {
         : i18nT('cluster.peer.stream_mode.proxy', 'Proxy through this peer');
 }
 
-function _renderPeerRow(p) {
-    const pill = _statusPill(p.status);
+function _abbrevId(id) {
+    if (!id) return '—';
+    return id.length > 16 ? id.slice(0, 8) + '…' + id.slice(-4) : id;
+}
+
+function _renderPeerCard(p) {
+    const pill = _healthPill(p);
     const lastSeen = p.lastSeenAt
         ? i18nTf('cluster.peer.last_seen', { ago: formatRelativeTime(p.lastSeenAt) })
         : i18nT('cluster.peer.never_seen', 'Never');
+    const pairedDate = p.pairedAt
+        ? i18nTf('cluster.peer.paired_at', { date: new Date(p.pairedAt).toLocaleDateString() })
+        : '';
+    const abbrev = _abbrevId(p.peerId);
     return `
-        <div class="rounded-lg border border-tg-border/40 bg-tg-bg/30 p-3" data-peer-id="${escapeHtml(p.peerId)}">
+        <div class="rounded-xl border border-tg-border/40 bg-tg-bg/30 p-3 space-y-2" data-peer-id="${escapeHtml(p.peerId)}">
             <div class="flex items-start justify-between gap-2 flex-wrap">
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                         <h4 class="text-sm font-semibold text-tg-text">${escapeHtml(p.name)}</h4>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded ${pill.cls}">${escapeHtml(pill.label)}</span>
+                        <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${pill.cls}">
+                            <span class="w-1.5 h-1.5 rounded-full ${pill.dot}"></span>
+                            ${escapeHtml(pill.label)}
+                        </span>
                         <span class="text-[10px] px-1.5 py-0.5 rounded bg-tg-bg/50 text-tg-textSecondary">${escapeHtml(_streamModeLabel(p.streamMode))}</span>
                     </div>
-                    <div class="text-[11px] text-tg-textSecondary mt-1 truncate">${escapeHtml(p.url)}</div>
-                    <div class="text-[10px] text-tg-textSecondary/70 mt-0.5">
-                        <code class="break-all">${escapeHtml(p.peerId)}</code> · ${escapeHtml(lastSeen)}
-                    </div>
+                    <div class="text-[11px] text-tg-textSecondary mt-1 truncate" title="${escapeHtml(p.url)}">${escapeHtml(p.url)}</div>
                 </div>
                 <div class="flex gap-1 shrink-0">
-                    <button class="tg-btn-ghost text-xs px-2 py-1" data-act="test">${escapeHtml(i18nT('cluster.peer.test', 'Test'))}</button>
-                    <button class="tg-btn-ghost text-xs px-2 py-1" data-act="edit">${escapeHtml(i18nT('cluster.peer.edit', 'Edit'))}</button>
-                    <button class="tg-btn-ghost text-xs px-2 py-1 text-red-300" data-act="revoke">${escapeHtml(i18nT('cluster.peer.revoke', 'Revoke'))}</button>
+                    <button class="tg-btn-ghost text-xs px-2 py-1 inline-flex items-center gap-1" data-act="ping" title="${escapeHtml(i18nT('cluster.peer.ping.title', 'Check reachability now'))}">
+                        <i class="ri-radar-line"></i><span data-i18n="cluster.peer.ping">${escapeHtml(i18nT('cluster.peer.ping', 'Ping'))}</span>
+                    </button>
+                    <button class="tg-btn-ghost text-xs px-2 py-1 inline-flex items-center gap-1" data-act="edit">
+                        <i class="ri-pencil-line"></i><span data-i18n="cluster.peer.edit">${escapeHtml(i18nT('cluster.peer.edit', 'Edit'))}</span>
+                    </button>
+                    <button class="tg-btn-ghost text-xs px-2 py-1 inline-flex items-center gap-1 text-red-300" data-act="remove">
+                        <i class="ri-delete-bin-line"></i><span data-i18n="cluster.peer.remove">${escapeHtml(i18nT('cluster.peer.remove', 'Remove'))}</span>
+                    </button>
                 </div>
             </div>
+            <div class="flex items-center gap-3 flex-wrap text-[10px] text-tg-textSecondary/80">
+                <span class="inline-flex items-center gap-1 cursor-pointer hover:text-tg-text transition-colors" data-act="copy-id" title="${escapeHtml(i18nT('common.copy', 'Copy'))}">
+                    <i class="ri-fingerprint-line"></i>
+                    <code class="font-mono">${escapeHtml(abbrev)}</code>
+                    <i class="ri-file-copy-line text-[9px]"></i>
+                </span>
+                <span class="inline-flex items-center gap-1">
+                    <i class="ri-time-line"></i>${escapeHtml(lastSeen)}
+                </span>
+                ${pairedDate ? `<span class="inline-flex items-center gap-1"><i class="ri-link-m"></i>${escapeHtml(pairedDate)}</span>` : ''}
+            </div>
+            ${p.notes ? `<div class="text-[11px] text-tg-textSecondary italic border-t border-tg-border/20 pt-1.5">${escapeHtml(p.notes)}</div>` : ''}
         </div>`;
 }
 
@@ -79,21 +165,30 @@ function _renderPeers() {
     const list = $('cluster-peers-list');
     const empty = $('cluster-peers-empty');
     if (!list || !empty) return;
-    if (!_peers.length) {
+
+    // Client-side self guard: never render self regardless of DB state.
+    const selfId = _identity?.peerId;
+    const peers = selfId ? _peers.filter((p) => p.peerId !== selfId) : _peers;
+
+    if (!peers.length) {
         list.innerHTML = '';
         empty.classList.remove('hidden');
     } else {
         empty.classList.add('hidden');
-        list.innerHTML = _peers.map(_renderPeerRow).join('');
+        list.innerHTML = peers.map(_renderPeerCard).join('');
         list.querySelectorAll('[data-peer-id]').forEach((row) => {
-            row.querySelector('[data-act="test"]')?.addEventListener('click', () =>
-                _testPeer(row.dataset.peerId),
-            );
+            const pid = row.dataset.peerId;
+            row.querySelector('[data-act="ping"]')?.addEventListener('click', (e) => {
+                _pingPeer(pid, e.currentTarget);
+            });
             row.querySelector('[data-act="edit"]')?.addEventListener('click', () =>
-                _editPeer(row.dataset.peerId),
+                _editPeer(pid),
             );
-            row.querySelector('[data-act="revoke"]')?.addEventListener('click', () =>
-                _revokePeer(row.dataset.peerId),
+            row.querySelector('[data-act="remove"]')?.addEventListener('click', () =>
+                _removePeer(pid),
+            );
+            row.querySelector('[data-act="copy-id"]')?.addEventListener('click', () =>
+                _copyPeerId(pid),
             );
         });
     }
@@ -105,10 +200,15 @@ function _renderStats() {
     const onlineEl = $('cluster-stat-online');
     const conflictsEl = $('cluster-stat-conflicts');
     const sweepEl = $('cluster-stat-sweep');
-    if (peersEl) peersEl.textContent = String(_peers.length);
+    const selfId = _identity?.peerId;
+    const peers = selfId ? _peers.filter((p) => p.peerId !== selfId) : _peers;
+    if (peersEl) peersEl.textContent = String(peers.length);
     if (onlineEl) {
-        const online = _peers.filter((p) => p.status === 'online').length;
-        onlineEl.textContent = _peers.length ? `${online} / ${_peers.length}` : '0';
+        const online = peers.filter((p) => {
+            const pill = _healthPill(p);
+            return pill.label === i18nT('cluster.peer.status.online', 'Online');
+        }).length;
+        onlineEl.textContent = peers.length ? `${online} / ${peers.length}` : '0';
     }
     if (conflictsEl) {
         const n = _lastSweepStats?.conflicts ?? 0;
@@ -126,9 +226,11 @@ function _renderStats() {
 function _renderIdentity() {
     if (!_identity) return;
     const idEl = $('cluster-self-id');
+    const idAbbrevEl = $('cluster-self-id-abbrev');
     const nameEl = $('cluster-self-name');
     const nameDisplayEl = $('cluster-self-name-display');
     if (idEl) idEl.textContent = _identity.peerId;
+    if (idAbbrevEl) idAbbrevEl.textContent = _abbrevId(_identity.peerId);
     if (nameEl && document.activeElement !== nameEl) nameEl.value = _identity.name || '';
     if (nameDisplayEl)
         nameDisplayEl.textContent = _identity.name || _identity.peerId.slice(0, 12) || '—';
@@ -148,6 +250,15 @@ async function _copySelfId() {
     try {
         await navigator.clipboard.writeText(_identity.peerId);
         showToast(i18nT('cluster.identity.id.copied', 'Peer ID copied'));
+    } catch (e) {
+        showToast(e?.message || String(e));
+    }
+}
+
+async function _copyPeerId(peerId) {
+    try {
+        await navigator.clipboard.writeText(peerId);
+        showToast(i18nT('cluster.peer.id.copied', 'Peer ID copied'));
     } catch (e) {
         showToast(e?.message || String(e));
     }
@@ -182,6 +293,108 @@ async function _renderAudit() {
             </div>`;
         })
         .join('');
+}
+
+// ---- Pairing wizard (inline card) -----------------------------------------
+
+/**
+ * Render the inline pairing wizard card state.
+ * States: idle | pairing | success | error
+ */
+function _setPairingState(state, data = {}) {
+    const card = $('cluster-pair-card');
+    if (!card) return;
+
+    const idleEl = $('cluster-pair-idle');
+    const inProgressEl = $('cluster-pair-progress');
+    const successEl = $('cluster-pair-success');
+    const errorEl = $('cluster-pair-error');
+
+    [idleEl, inProgressEl, successEl, errorEl].forEach((el) => el?.classList.add('hidden'));
+
+    switch (state) {
+        case 'idle':
+            idleEl?.classList.remove('hidden');
+            break;
+        case 'pairing':
+            inProgressEl?.classList.remove('hidden');
+            break;
+        case 'success': {
+            successEl?.classList.remove('hidden');
+            const nameEl = $('cluster-pair-success-name');
+            if (nameEl) nameEl.textContent = data.name || '';
+            break;
+        }
+        case 'error': {
+            errorEl?.classList.remove('hidden');
+            const msgEl = $('cluster-pair-error-msg');
+            if (msgEl) msgEl.textContent = data.message || '';
+            break;
+        }
+    }
+}
+
+async function _submitPairing() {
+    const urlInput = $('cluster-pair-url');
+    const codeInput = $('cluster-pair-code');
+    if (!urlInput || !codeInput) return;
+
+    const url = urlInput.value.trim();
+    const tokenOrCode = codeInput.value.trim();
+
+    // Validate
+    if (!url) {
+        _setPairingState('error', { message: i18nT('cluster.error.bad_url', 'URL must start with http:// or https://') });
+        return;
+    }
+    if (!tokenOrCode) {
+        _setPairingState('error', {
+            message: i18nT('cluster.error.bad_token', 'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token'),
+        });
+        return;
+    }
+
+    let body;
+    if (/^[0-9a-f]{32,}$/i.test(tokenOrCode)) {
+        body = { url, token: tokenOrCode };
+    } else if (/^[A-Z0-9]{6,16}$/i.test(tokenOrCode)) {
+        body = { url, pairingCode: tokenOrCode.toUpperCase() };
+    } else {
+        _setPairingState('error', {
+            message: i18nT('cluster.error.bad_token', 'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token'),
+        });
+        return;
+    }
+
+    _setPairingState('pairing');
+
+    try {
+        const r = await api.post('/api/cluster/peers', body);
+        const peer = r?.peer;
+        if (peer) {
+            _setPairingState('success', { name: peer.name });
+            urlInput.value = '';
+            codeInput.value = '';
+            await _loadPeers();
+            _renderAudit();
+        } else {
+            _setPairingState('error', { message: i18nT('cluster.error.unknown', 'Unexpected response — try again') });
+        }
+    } catch (e) {
+        const code = e?.body?.code;
+        const map = {
+            bad_url: 'cluster.error.bad_url',
+            bad_token: 'cluster.error.bad_token',
+            unreachable: 'cluster.error.unreachable',
+            token_invalid: 'cluster.error.token_invalid',
+            self: 'cluster.error.self',
+            duplicate: 'cluster.error.duplicate',
+        };
+        const i18nKey = map[code];
+        _setPairingState('error', {
+            message: i18nKey ? i18nT(i18nKey, e?.message || String(e)) : (e?.message || String(e)),
+        });
+    }
 }
 
 // ---- Actions --------------------------------------------------------------
@@ -282,7 +495,6 @@ async function _setToken() {
             await api.post('/api/cluster/identity/set-token', { token });
             showToast(i18nT('cluster.identity.token.set.applied', 'Cluster token updated'));
             sheet.close?.();
-            // Re-reveal the new token if it was already showing.
             if (_tokenShown) {
                 _tokenShown = false;
                 await _toggleToken();
@@ -312,7 +524,6 @@ async function _rotateToken() {
                 'Token rotated. Re-pair every peer with the new value.',
             ),
         );
-        // Re-reveal the new token if it was already showing.
         if (_tokenShown) {
             _tokenShown = false;
             await _toggleToken();
@@ -342,107 +553,25 @@ async function _issuePairingCode() {
     }
 }
 
-function _addPeerWizard() {
-    const node = document.createElement('div');
-    node.innerHTML = `
-        <p class="text-xs text-tg-textSecondary mb-3" data-i18n="cluster.peer.add.help">
-            ${escapeHtml(i18nT('cluster.peer.add.help', 'Open Settings → Cluster on the remote instance and copy its URL + cluster token here.'))}
-        </p>
-        <div class="space-y-2">
-            <label class="block">
-                <span class="text-xs text-tg-textSecondary">${escapeHtml(i18nT('cluster.peer.url', 'Peer URL'))}</span>
-                <input id="add-peer-url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false"
-                       class="w-full bg-tg-bg/50 px-2 py-1.5 rounded text-sm mt-1"
-                       placeholder="${escapeHtml(i18nT('cluster.peer.url.placeholder', 'https://b.example.com'))}" />
-            </label>
-            <label class="block">
-                <span class="text-xs text-tg-textSecondary">${escapeHtml(i18nT('cluster.peer.token', 'Cluster token (from the remote peer)'))}</span>
-                <input id="add-peer-token" type="text" autocomplete="off" spellcheck="false"
-                       class="w-full bg-tg-bg/50 px-2 py-1.5 rounded text-sm mt-1 font-mono"
-                       placeholder="${escapeHtml(i18nT('cluster.peer.token.placeholder', '32+ hex chars'))}" />
-            </label>
-            <div class="flex justify-end gap-2 pt-1">
-                <button id="add-peer-submit" class="tg-btn text-sm px-3 py-1.5">${escapeHtml(i18nT('cluster.peer.pair', 'Pair'))}</button>
-            </div>
-            <div id="add-peer-status" class="text-xs text-tg-textSecondary"></div>
-        </div>`;
-    const sheet = openSheet({
-        title: i18nT('cluster.peer.add.title', 'Pair a remote peer'),
-        content: node,
-        size: 'md',
-    });
-    const status = node.querySelector('#add-peer-status');
-    const submit = node.querySelector('#add-peer-submit');
-    submit.addEventListener('click', async () => {
-        const url = node.querySelector('#add-peer-url').value.trim();
-        const tokenOrCode = node.querySelector('#add-peer-token').value.trim();
-        if (!url) {
-            status.textContent = i18nT(
-                'cluster.error.bad_url',
-                'URL must start with http:// or https://',
-            );
-            return;
-        }
-        // Accept either a per-peer pairing code (6-16 alphanumeric) OR a
-        // legacy 32+ hex cluster token.
-        let body;
-        if (/^[0-9a-f]{32,}$/i.test(tokenOrCode)) {
-            body = { url, token: tokenOrCode };
-        } else if (/^[A-Z0-9]{6,16}$/i.test(tokenOrCode)) {
-            body = { url, pairingCode: tokenOrCode.toUpperCase() };
-        } else {
-            status.textContent = i18nT(
-                'cluster.error.bad_token',
-                'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token',
-            );
-            return;
-        }
-        submit.disabled = true;
-        const restoreLabel = submit.textContent;
-        submit.textContent = i18nT('cluster.peer.pairing', 'Pairing…');
-        status.textContent = '';
-        try {
-            const r = await api.post('/api/cluster/peers', body);
-            const peer = r?.peer;
-            if (peer) {
-                showToast(i18nTf('cluster.peer.paired', { name: peer.name }));
-                sheet.close?.();
-                await _loadPeers();
-                _renderAudit();
-            }
-        } catch (e) {
-            const code = e?.body?.code;
-            const map = {
-                bad_url: 'cluster.error.bad_url',
-                bad_token: 'cluster.error.bad_token',
-                unreachable: 'cluster.error.unreachable',
-                token_invalid: 'cluster.error.token_invalid',
-                self: 'cluster.error.self',
-            };
-            const i18nKey = map[code];
-            status.textContent = i18nKey
-                ? i18nT(i18nKey, e?.message || String(e))
-                : e?.message || String(e);
-        } finally {
-            submit.disabled = false;
-            submit.textContent = restoreLabel;
-        }
-    });
-}
-
-async function _testPeer(peerId) {
+async function _pingPeer(peerId, btn) {
+    const origHtml = btn?.innerHTML || '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="ri-loader-4-line animate-spin"></i><span>${escapeHtml(i18nT('cluster.peer.pinging', 'Pinging…'))}</span>`;
+    }
     try {
         const r = await api.post(`/api/cluster/peers/${encodeURIComponent(peerId)}/test`);
         if (r?.ok && r?.payload) {
             showToast(
-                i18nTf('cluster.peer.test.ok', {
+                i18nTf('cluster.peer.ping.ok', {
                     name: r.payload.name || peerId,
-                    version: r.payload.version || 'unknown',
+                    version: r.payload.version || '?',
                 }),
+                'success',
             );
         } else {
             showToast(
-                i18nTf('cluster.peer.test.fail', {
+                i18nTf('cluster.peer.ping.fail', {
                     message: r?.code || r?.message || 'unreachable',
                 }),
             );
@@ -451,6 +580,11 @@ async function _testPeer(peerId) {
         _renderAudit();
     } catch (e) {
         showToast(e?.message || String(e));
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
     }
 }
 
@@ -526,22 +660,38 @@ function _editPeer(peerId) {
     });
 }
 
-async function _revokePeer(peerId) {
+async function _removePeer(peerId) {
     const peer = _peers.find((p) => p.peerId === peerId);
     const ok = await confirmSheet({
-        title: i18nT('cluster.peer.revoke', 'Revoke'),
-        message: i18nTf('cluster.peer.revoke.confirm', { name: peer?.name || peerId }),
-        confirmLabel: i18nT('cluster.peer.revoke', 'Revoke'),
+        title: i18nT('cluster.peer.remove', 'Remove'),
+        message: i18nTf('cluster.peer.remove.confirm', { name: peer?.name || peerId }),
+        confirmLabel: i18nT('cluster.peer.remove', 'Remove'),
         confirmKind: 'danger',
     });
     if (!ok) return;
     try {
         await api.delete(`/api/cluster/peers/${encodeURIComponent(peerId)}`);
-        showToast(i18nT('cluster.peer.revoked', 'Peer revoked'));
+        showToast(i18nT('cluster.peer.removed', 'Peer removed'));
         _loadPeers();
         _renderAudit();
     } catch (e) {
         showToast(e?.message || String(e));
+    }
+}
+
+// ---- Polling --------------------------------------------------------------
+
+function _startPolling() {
+    _stopPolling();
+    _pollTimer = setInterval(() => {
+        _loadPeers();
+    }, POLL_MS);
+}
+
+function _stopPolling() {
+    if (_pollTimer != null) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
     }
 }
 
@@ -550,6 +700,8 @@ async function _revokePeer(peerId) {
 function _wirePage() {
     if (_pageWired) return;
     _pageWired = true;
+
+    // Identity card
     $('cluster-self-name-edit')?.addEventListener('click', () => _showNameEditor(true));
     $('cluster-self-name-cancel')?.addEventListener('click', () => {
         _showNameEditor(false);
@@ -561,12 +713,30 @@ function _wirePage() {
         _renderIdentity();
     });
     $('cluster-self-id-copy')?.addEventListener('click', _copySelfId);
+    $('cluster-self-id-abbrev-copy')?.addEventListener('click', _copySelfId);
     $('cluster-token-toggle')?.addEventListener('click', _toggleToken);
     $('cluster-token-copy')?.addEventListener('click', _copyToken);
     $('cluster-token-rotate')?.addEventListener('click', _rotateToken);
     $('cluster-token-set')?.addEventListener('click', _setToken);
-    $('cluster-add-peer-btn')?.addEventListener('click', _addPeerWizard);
+
+    // Pairing code button (on identity card)
     $('cluster-pairing-code-btn')?.addEventListener('click', _issuePairingCode);
+
+    // Inline pairing wizard
+    $('cluster-pair-submit')?.addEventListener('click', _submitPairing);
+    $('cluster-pair-retry')?.addEventListener('click', () => _setPairingState('idle'));
+    $('cluster-pair-done')?.addEventListener('click', () => _setPairingState('idle'));
+    $('cluster-pair-url')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') $('cluster-pair-code')?.focus();
+    });
+    $('cluster-pair-code')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') _submitPairing();
+    });
+
+    // Legacy add-peer button (keep for compat if it still exists)
+    $('cluster-add-peer-btn')?.addEventListener('click', _addPeerWizardSheet);
+
+    // Sweep
     $('cluster-sweep-run')?.addEventListener('click', _runSweep);
 }
 
@@ -594,6 +764,86 @@ function _wireWs() {
     });
     ws.on('cluster_sweep_done', () => {
         _loadConflicts();
+    });
+}
+
+// Legacy sheet-based add wizard — still wired to #cluster-add-peer-btn if
+// that button exists in the HTML; retained so older saved bookmarks work.
+function _addPeerWizardSheet() {
+    const node = document.createElement('div');
+    node.innerHTML = `
+        <p class="text-xs text-tg-textSecondary mb-3" data-i18n="cluster.peer.add.help">
+            ${escapeHtml(i18nT('cluster.peer.add.help', 'Open Settings → Cluster on the remote instance and copy its URL + cluster token here.'))}
+        </p>
+        <div class="space-y-2">
+            <label class="block">
+                <span class="text-xs text-tg-textSecondary">${escapeHtml(i18nT('cluster.peer.url', 'Peer URL'))}</span>
+                <input id="add-peer-url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+                       class="w-full bg-tg-bg/50 px-2 py-1.5 rounded text-sm mt-1"
+                       placeholder="${escapeHtml(i18nT('cluster.peer.url.placeholder', 'https://b.example.com'))}" />
+            </label>
+            <label class="block">
+                <span class="text-xs text-tg-textSecondary">${escapeHtml(i18nT('cluster.peer.token', 'Cluster token (from the remote peer)'))}</span>
+                <input id="add-peer-token" type="text" autocomplete="off" spellcheck="false"
+                       class="w-full bg-tg-bg/50 px-2 py-1.5 rounded text-sm mt-1 font-mono"
+                       placeholder="${escapeHtml(i18nT('cluster.peer.token.placeholder', '32+ hex chars'))}" />
+            </label>
+            <div class="flex justify-end gap-2 pt-1">
+                <button id="add-peer-submit" class="tg-btn text-sm px-3 py-1.5">${escapeHtml(i18nT('cluster.peer.pair', 'Pair'))}</button>
+            </div>
+            <div id="add-peer-status" class="text-xs text-tg-textSecondary"></div>
+        </div>`;
+    const sheet = openSheet({
+        title: i18nT('cluster.peer.add.title', 'Pair a remote peer'),
+        content: node,
+        size: 'md',
+    });
+    const status = node.querySelector('#add-peer-status');
+    const submit = node.querySelector('#add-peer-submit');
+    submit.addEventListener('click', async () => {
+        const url = node.querySelector('#add-peer-url').value.trim();
+        const tokenOrCode = node.querySelector('#add-peer-token').value.trim();
+        if (!url) {
+            status.textContent = i18nT('cluster.error.bad_url', 'URL must start with http:// or https://');
+            return;
+        }
+        let body;
+        if (/^[0-9a-f]{32,}$/i.test(tokenOrCode)) {
+            body = { url, token: tokenOrCode };
+        } else if (/^[A-Z0-9]{6,16}$/i.test(tokenOrCode)) {
+            body = { url, pairingCode: tokenOrCode.toUpperCase() };
+        } else {
+            status.textContent = i18nT('cluster.error.bad_token', 'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token');
+            return;
+        }
+        submit.disabled = true;
+        const restoreLabel = submit.textContent;
+        submit.textContent = i18nT('cluster.peer.pairing', 'Pairing…');
+        status.textContent = '';
+        try {
+            const r = await api.post('/api/cluster/peers', body);
+            const peer = r?.peer;
+            if (peer) {
+                showToast(i18nTf('cluster.peer.paired', { name: peer.name }));
+                sheet.close?.();
+                await _loadPeers();
+                _renderAudit();
+            }
+        } catch (e) {
+            const code = e?.body?.code;
+            const map = {
+                bad_url: 'cluster.error.bad_url',
+                bad_token: 'cluster.error.bad_token',
+                unreachable: 'cluster.error.unreachable',
+                token_invalid: 'cluster.error.token_invalid',
+                self: 'cluster.error.self',
+            };
+            const i18nKey = map[code];
+            status.textContent = i18nKey ? i18nT(i18nKey, e?.message || String(e)) : e?.message || String(e);
+        } finally {
+            submit.disabled = false;
+            submit.textContent = restoreLabel;
+        }
     });
 }
 
@@ -704,4 +954,9 @@ export function init() {
     _loadPeers();
     _loadConflicts();
     _renderAudit();
+    _startPolling();
+}
+
+export function destroy() {
+    _stopPolling();
 }

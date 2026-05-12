@@ -3508,28 +3508,23 @@
                 <div id="page-maintenance-cluster" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
                      data-page-title-key="maintenance.cluster.page_title"
                      data-page-subtitle-key="maintenance.cluster.subtitle">
-                    <!-- Header card — matches duplicates/thumbs pattern: title + subtitle on the left,
-                         primary actions (Add peer / Run sweep) on the right, stats strip below. -->
+
+                    <!-- Header card — title + subtitle on the left,
+                         sweep button on the right, stats strip below. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <div class="flex items-start justify-between gap-3 flex-wrap">
                             <div class="min-w-0">
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="cluster.tab.title">Cluster</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="cluster.tab.subtitle">Federate multiple instances. Files, downloads, and dedup span every paired peer.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                                <button id="cluster-sweep-run" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
-                                        data-i18n-title="cluster.sweep.subtitle"
-                                        title="Finds files duplicated across peers (same hash + size).">
-                                    <i class="ri-search-line"></i><span data-i18n="cluster.sweep.run">Run sweep</span>
-                                </button>
-                                <button id="cluster-add-peer-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
-                                    <i class="ri-add-line"></i><span data-i18n="cluster.peer.add">Add peer</span>
-                                </button>
-                            </div>
+                            <button id="cluster-sweep-run" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0"
+                                    data-i18n-title="cluster.sweep.subtitle"
+                                    title="Finds files duplicated across peers (same hash + size).">
+                                <i class="ri-search-line"></i><span data-i18n="cluster.sweep.run">Run sweep</span>
+                            </button>
                         </div>
 
-                        <!-- Stats strip — peer count, online count, conflicts pending, library size.
-                             Populated by maintenance-cluster.js after _loadPeers / _loadConflicts. -->
+                        <!-- Stats strip — peer count, online count, conflicts pending, last sweep. -->
                         <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.stats.peers">Peers</div>
@@ -3551,13 +3546,11 @@
                         <div id="cluster-sweep-state" class="hidden mt-2 text-[11px] text-tg-textSecondary text-center"></div>
                     </section>
 
-                    <!-- This peer — identity card. Layout: stacked rows with a fixed-width
-                         label gutter so values + buttons align across rows. -->
-                    <!-- This-peer identity. Card built around a profile header
-                         (avatar + display name + status pill) with the technical
-                         bits (peer ID + cluster token) tucked into compact rows
-                         underneath so non-technical operators can read the page
-                         top-down: who am I → what's my secret. -->
+                    <!-- This-peer identity card.
+                         Shows who this instance is in the cluster: name (editable),
+                         abbreviated Peer ID (copy-on-click), and cluster token
+                         (hidden by default, revealable). Token actions are tucked
+                         into a collapsible row so the card stays scannable. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3" id="cluster-identity-card">
                         <!-- Profile header -->
                         <div class="flex items-start gap-3 mb-4">
@@ -3581,9 +3574,7 @@
                             </button>
                         </div>
 
-                        <!-- Inline name editor — hidden until the Edit button is clicked.
-                             Save commits via PUT /api/cluster/identity, Cancel restores
-                             the previous header view. -->
+                        <!-- Inline name editor — hidden until Edit is clicked. -->
                         <div id="cluster-self-name-editor" class="hidden mb-3 flex items-center gap-2">
                             <input id="cluster-self-name" type="text" maxlength="64"
                                    class="tg-input text-sm flex-1 min-w-0 py-1.5"
@@ -3593,22 +3584,30 @@
                             <button id="cluster-self-name-cancel" class="tg-btn-ghost text-xs px-3 py-1.5" data-i18n="common.cancel">Cancel</button>
                         </div>
 
-                        <!-- Peer ID row — short label + copyable code chip. -->
+                        <!-- Peer ID row — abbreviated + copy button.
+                             Full UUID is in the hidden <code> element so JS
+                             can always read it; only the abbreviation is shown. -->
                         <div class="bg-tg-bg/40 rounded-lg p-3 mb-2">
-                            <div class="flex items-center justify-between gap-2 mb-1">
+                            <div class="flex items-center justify-between gap-2">
                                 <span class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="cluster.identity.id">Peer ID</span>
                                 <button id="cluster-self-id-copy" type="button"
                                         class="tg-btn-ghost text-[11px] px-2 py-0.5 inline-flex items-center gap-1"
-                                        data-i18n-title="common.copy" title="Copy">
+                                        data-i18n-title="common.copy" title="Copy full peer ID">
                                     <i class="ri-file-copy-line"></i><span data-i18n="common.copy">Copy</span>
                                 </button>
                             </div>
-                            <code id="cluster-self-id" class="text-xs text-tg-text font-mono break-all select-all">—</code>
+                            <!-- Abbreviated display — updated by _renderIdentity() -->
+                            <div class="mt-1 flex items-center gap-2 cursor-pointer group" id="cluster-self-id-abbrev-copy" title="Click to copy full ID">
+                                <code id="cluster-self-id-abbrev" class="text-xs text-tg-text font-mono group-hover:text-tg-blue transition-colors">—</code>
+                                <i class="ri-file-copy-line text-[10px] text-tg-textSecondary/50 group-hover:text-tg-blue transition-colors"></i>
+                            </div>
+                            <!-- Full UUID hidden — used by JS only -->
+                            <code id="cluster-self-id" class="sr-only">—</code>
                         </div>
 
-                        <!-- Cluster token row — hidden by default, revealable. The
-                             actions row collapses on small screens so it never
-                             pushes the secret off-card. -->
+                        <!-- Cluster token row — hidden by default, revealable.
+                             Token is never auto-loaded; only fetched when operator
+                             explicitly clicks Show or Copy. -->
                         <div class="bg-tg-bg/40 rounded-lg p-3">
                             <div class="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                                 <span class="text-[10px] uppercase tracking-wide text-tg-textSecondary inline-flex items-center gap-1">
@@ -3625,7 +3624,8 @@
                                 </div>
                             </div>
                             <code id="cluster-self-token" class="block text-xs text-tg-text font-mono break-all select-all py-1">••••••••••••••••••••••••••••••••</code>
-                            <div class="mt-2 pt-2 border-t border-tg-border/30 flex items-center gap-1.5 flex-wrap">
+                            <p class="text-[11px] text-tg-textSecondary mt-1.5 mb-2" data-i18n="cluster.identity.token.help">Both sides of a pairing must hold the same token. Treat it like a password.</p>
+                            <div class="pt-2 border-t border-tg-border/30 flex items-center gap-1.5 flex-wrap">
                                 <button id="cluster-pairing-code-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
                                     <i class="ri-qr-code-line"></i><span data-i18n="cluster.pairing_code.issue">Issue pairing code</span>
                                 </button>
@@ -3634,23 +3634,103 @@
                                     <i class="ri-refresh-line"></i><span data-i18n="cluster.identity.token.rotate">Rotate</span>
                                 </button>
                             </div>
-                            <p class="text-[11px] text-tg-textSecondary mt-2" data-i18n="cluster.identity.token.help">Both sides of a pairing must hold the same token. Treat it like a password.</p>
                         </div>
                     </section>
 
-                    <!-- Connected peers list. The "Add peer" action is in the header,
-                         so this section only owns the list + empty state. -->
+                    <!-- Pairing wizard — inline step-by-step card.
+                         Three visible sub-states managed by JS:
+                           idle        → form (URL + token/code inputs)
+                           pairing     → spinner + "Pairing in progress…"
+                           success     → green checkmark + peer name
+                           error       → red X + error message + "Try again"
+                         JS in maintenance-cluster.js calls _setPairingState(). -->
+                    <section id="cluster-pair-card" class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h3 class="text-tg-text text-sm font-semibold mb-1 flex items-center gap-2">
+                            <i class="ri-link text-tg-textSecondary"></i>
+                            <span data-i18n="cluster.pair.title">Pair a new peer</span>
+                        </h3>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="cluster.pair.subtitle">Enter the remote server's URL and its pairing code (or cluster token) to connect. Both servers must be reachable from each other.</p>
+
+                        <!-- Step 1: idle / form -->
+                        <div id="cluster-pair-idle" class="space-y-2">
+                            <label class="block">
+                                <span class="text-xs text-tg-textSecondary" data-i18n="cluster.peer.url">Peer URL</span>
+                                <input id="cluster-pair-url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+                                       class="tg-input w-full text-sm mt-1 py-1.5"
+                                       data-i18n-placeholder="cluster.peer.url.placeholder"
+                                       placeholder="https://other-server.example.com" />
+                            </label>
+                            <label class="block">
+                                <span class="text-xs text-tg-textSecondary" data-i18n="cluster.pair.code_or_token">Pairing code or cluster token</span>
+                                <input id="cluster-pair-code" type="text" autocomplete="off" spellcheck="false"
+                                       class="tg-input w-full text-sm mt-1 py-1.5 font-mono"
+                                       data-i18n-placeholder="cluster.pair.code_placeholder"
+                                       placeholder="ABC123 or 32+ hex chars" />
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="cluster.pair.code_help">Issue a pairing code on the other server under its Cluster page, or paste both servers' cluster tokens if they match.</p>
+                            </label>
+                            <div class="flex justify-end pt-1">
+                                <button id="cluster-pair-submit" class="tg-btn text-sm px-4 py-1.5 inline-flex items-center gap-1.5">
+                                    <i class="ri-link"></i><span data-i18n="cluster.pair.connect">Connect</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: pairing in progress -->
+                        <div id="cluster-pair-progress" class="hidden py-6 flex flex-col items-center gap-3 text-center">
+                            <i class="ri-loader-4-line animate-spin text-2xl text-tg-blue"></i>
+                            <p class="text-sm text-tg-textSecondary" data-i18n="cluster.pair.in_progress">Pairing in progress…</p>
+                            <p class="text-[11px] text-tg-textSecondary/60" data-i18n="cluster.pair.in_progress_help">Contacting the remote server and exchanging identity. This may take a few seconds.</p>
+                        </div>
+
+                        <!-- Step 3a: success -->
+                        <div id="cluster-pair-success" class="hidden py-6 flex flex-col items-center gap-3 text-center">
+                            <div class="w-12 h-12 rounded-full bg-green-500/15 flex items-center justify-center">
+                                <i class="ri-checkbox-circle-fill text-2xl text-green-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-tg-text" data-i18n="cluster.pair.success">Successfully paired!</p>
+                                <p class="text-xs text-tg-textSecondary mt-0.5">
+                                    <span data-i18n="cluster.pair.success_with">Connected to</span>
+                                    <strong id="cluster-pair-success-name" class="text-tg-text"></strong>
+                                </p>
+                            </div>
+                            <button id="cluster-pair-done" class="tg-btn-secondary text-xs px-3 py-1.5" data-i18n="cluster.pair.pair_another">Pair another</button>
+                        </div>
+
+                        <!-- Step 3b: error -->
+                        <div id="cluster-pair-error" class="hidden py-6 flex flex-col items-center gap-3 text-center">
+                            <div class="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
+                                <i class="ri-close-circle-fill text-2xl text-red-400"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold text-tg-text" data-i18n="cluster.pair.failed">Pairing failed</p>
+                                <p id="cluster-pair-error-msg" class="text-xs text-red-300 mt-0.5 max-w-xs"></p>
+                            </div>
+                            <button id="cluster-pair-retry" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                <i class="ri-arrow-go-back-line"></i><span data-i18n="cluster.pair.try_again">Try again</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <!-- Connected peers list.
+                         Empty state is shown when no peers are paired; peer cards
+                         include health chip, last-seen time, paired date,
+                         and Ping / Edit / Remove actions. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <h3 class="text-tg-text text-sm font-semibold mb-2 flex items-center gap-2">
+                        <h3 class="text-tg-text text-sm font-semibold mb-3 flex items-center gap-2">
                             <i class="ri-links-line text-tg-textSecondary"></i>
                             <span data-i18n="cluster.peers.title">Connected peers</span>
                         </h3>
-                        <div id="cluster-peers-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary" data-i18n="cluster.peers.empty">No peers yet. Add one to begin federating.</div>
+                        <!-- Empty state — friendly CTA pointing at the wizard above -->
+                        <div id="cluster-peers-empty" class="hidden text-center py-10">
+                            <i class="ri-server-line text-3xl text-tg-textSecondary/40 mb-3 block"></i>
+                            <p class="text-sm text-tg-text font-medium mb-1" data-i18n="cluster.peers.empty_title">No paired peers yet</p>
+                            <p class="text-xs text-tg-textSecondary max-w-xs mx-auto" data-i18n="cluster.peers.empty_hint">Use the pairing form above to connect to another server running this app.</p>
+                        </div>
                         <div id="cluster-peers-list" class="space-y-2"></div>
                     </section>
 
-                    <!-- Cross-peer dedup conflicts. Sweep button moved to header,
-                         this section shows the result list + summary. -->
+                    <!-- Cross-peer dedup conflicts. Sweep button is in the header card. -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
                         <h3 class="text-tg-text text-sm font-semibold mb-1 flex items-center gap-2">
                             <i class="ri-file-copy-2-line text-tg-textSecondary"></i>
