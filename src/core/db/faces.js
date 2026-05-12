@@ -1065,3 +1065,144 @@ export function getTagCooccurrenceSuggestions({
     // Sort by cooccurrence rate DESC
     return suggestions.sort((a, b) => b.cooccurrence_rate - a.cooccurrence_rate);
 }
+
+// ---- Image Text (OCR) --------------------------------------------------
+
+export function setImageText(downloadId, text, language = null, confidence = null) {
+    if (!downloadId || !text) return 0;
+    return getDb()
+        .prepare(`
+        INSERT INTO image_text (download_id, text, language, confidence, scanned_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(download_id) DO UPDATE SET text = excluded.text, language = excluded.language, confidence = excluded.confidence, scanned_at = excluded.scanned_at
+    `)
+        .run(
+            Number(downloadId),
+            String(text).slice(0, 50000),
+            language,
+            confidence,
+            Math.floor(Date.now() / 1000),
+        ).changes;
+}
+
+export function getImageText(downloadId) {
+    return getDb()
+        .prepare(
+            `SELECT text, language, confidence, scanned_at FROM image_text WHERE download_id = ?`,
+        )
+        .get(Number(downloadId));
+}
+
+export function clearImageText(downloadId) {
+    return getDb().prepare('DELETE FROM image_text WHERE download_id = ?').run(Number(downloadId))
+        .changes;
+}
+
+export function getImagesWithText({ minLength = 10, limit = 50, offset = 0 } = {}) {
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const off = Math.max(0, Number(offset) || 0);
+    const minLen = Math.max(1, Number(minLength) || 10);
+
+    const rows = getDb()
+        .prepare(`
+        SELECT d.*, t.text, t.language, t.confidence
+          FROM image_text t
+          JOIN downloads d ON d.id = t.download_id
+         WHERE LENGTH(t.text) >= ?
+         ORDER BY t.scanned_at DESC
+         LIMIT ? OFFSET ?
+    `)
+        .all(minLen, lim, off);
+
+    const total = getDb()
+        .prepare('SELECT COUNT(*) AS n FROM image_text WHERE LENGTH(text) >= ?')
+        .get(minLen).n;
+
+    return { files: rows, total };
+}
+
+// ---- Image Objects (Detection) -----------------------------------------
+
+export function addImageObjects(downloadId, objects) {
+    if (!Array.isArray(objects) || !objects.length) return 0;
+    const db = getDb();
+    const ins = db.prepare(`
+        INSERT INTO image_objects (download_id, object, confidence, x, y, w, h, detected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const tx = db.transaction(() => {
+        let n = 0;
+        for (const obj of objects) {
+            if (!obj || !obj.object) continue;
+            ins.run(
+                Number(downloadId),
+                String(obj.object).slice(0, 80),
+                Number(obj.confidence) || 0,
+                obj.x ?? null,
+                obj.y ?? null,
+                obj.w ?? null,
+                obj.h ?? null,
+                Math.floor(Date.now() / 1000),
+            );
+            n += 1;
+        }
+        return n;
+    });
+    return tx();
+}
+
+export function getImageObjects(downloadId) {
+    return getDb()
+        .prepare(`
+        SELECT object, confidence, x, y, w, h
+          FROM image_objects
+         WHERE download_id = ?
+         ORDER BY confidence DESC
+    `)
+        .all(Number(downloadId));
+}
+
+export function clearImageObjects(downloadId) {
+    return getDb()
+        .prepare('DELETE FROM image_objects WHERE download_id = ?')
+        .run(Number(downloadId)).changes;
+}
+
+export function listDetectedObjects({ minConfidence = 0.5, limit = 50, offset = 0 } = {}) {
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const off = Math.max(0, Number(offset) || 0);
+    const minConf = Math.max(0, Math.min(1, Number(minConfidence) || 0.5));
+
+    return getDb()
+        .prepare(`
+        SELECT object, COUNT(DISTINCT download_id) AS count, AVG(confidence) AS avg_confidence
+          FROM image_objects
+         WHERE confidence >= ?
+         GROUP BY object
+         ORDER BY count DESC
+         LIMIT ?  OFFSET ?
+    `)
+        .all(minConf, lim, off);
+}
+
+export function getImagesWithObject(object, { limit = 50, offset = 0 } = {}) {
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    const off = Math.max(0, Number(offset) || 0);
+
+    const rows = getDb()
+        .prepare(`
+        SELECT d.*, o.confidence
+          FROM image_objects o
+          JOIN downloads d ON d.id = o.download_id
+         WHERE o.object = ?
+         ORDER BY o.confidence DESC, d.created_at DESC
+         LIMIT ? OFFSET ?
+    `)
+        .all(String(object), lim, off);
+
+    const total = getDb()
+        .prepare('SELECT COUNT(DISTINCT download_id) AS n FROM image_objects WHERE object = ?')
+        .get(String(object)).n;
+
+    return { files: rows, total };
+}

@@ -277,6 +277,43 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
         }
     });
 
+    router.get('/ai/text/:downloadId', async (req, res) => {
+        try {
+            const { getImageText } = await import('../../core/db/faces.js');
+            const result = getImageText(Number(req.params.downloadId));
+            res.json({ success: true, result });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.get('/ai/objects/:downloadId', async (req, res) => {
+        try {
+            const { getImageObjects } = await import('../../core/db/faces.js');
+            const objects = getImageObjects(Number(req.params.downloadId));
+            res.json({ success: true, objects });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    router.get('/ai/objects/list', async (req, res) => {
+        try {
+            const minConf = Math.max(0, Math.min(1, Number(req.query.minConfidence) || 0.5));
+            const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+            const offset = Math.max(0, Number(req.query.offset) || 0);
+            const { listDetectedObjects } = await import('../../core/db/faces.js');
+            const objects = listDetectedObjects({
+                minConfidence: minConf,
+                limit,
+                offset,
+            });
+            res.json({ success: true, objects });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     // ---- Scan controls -------------------------------------------------------
     //
     // Faces is the only feature left; the legacy `feature: 'embed' | 'tags'`
