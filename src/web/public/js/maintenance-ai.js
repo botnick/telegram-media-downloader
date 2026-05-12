@@ -542,7 +542,7 @@ function _renderSidecarBadge(status) {
     const state = String(faces.state || (faces.loaded ? 'healthy' : 'unknown')).toLowerCase();
     const provider = _resolveProvider(faces);
     let label;
-    let cls = 'text-tg-textSecondary';
+    let cls;
     let healthy = false;
     if (state === 'healthy' || state === 'ready' || faces.loaded === true) {
         label = i18nTf(

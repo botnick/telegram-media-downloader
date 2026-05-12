@@ -113,8 +113,7 @@ describe('resolveConflict', () => {
             url: 'http://b.example.com',
             status: 'online',
         });
-        const r = db
-            .getDb()
+        db.getDb()
             .prepare(
                 `INSERT INTO downloads (group_id, message_id, file_path, file_size, file_hash)
                  VALUES (?, ?, ?, ?, ?)`,

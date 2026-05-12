@@ -479,7 +479,7 @@ export async function runAutoUpdate(opts = {}) {
     }
 
     // 3. Snapshot.
-    let backup = { path: null, sizeBytes: 0 };
+    let backup;
     try {
         backup = await _snapshotDb();
     } catch (e) {

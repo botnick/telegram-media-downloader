@@ -84,7 +84,6 @@ function _sign(secret, type, ts, payload) {
         .digest('hex');
 }
 function _verify(secret, type, ts, payload, sig) {
-    if (!secret || !sig) return false;
     try {
         const expected = _sign(secret, type, ts, payload);
         const a = Buffer.from(sig, 'hex');

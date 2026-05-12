@@ -27,8 +27,6 @@ import {
 } from '../core/constants.js';
 import {
     getDb,
-    getDownloads,
-    getAllDownloads,
     getAllDownloadsFederated,
     getDownloadsForGroupFederated,
     searchDownloadsFederated,
@@ -39,7 +37,6 @@ import {
     getGroupStats,
     listGroupFiles,
     backfillGroupNames,
-    searchDownloads,
     deleteDownloadsBy,
     createShareLink,
     getShareLinkForServe,
@@ -101,7 +98,6 @@ import {
     getSpritePath as getSeekbarSpritePath,
     generateForDownload as generateSeekbarForDownload,
     purgeAllSeekbar,
-    purgeSeekbarForDownload,
 } from '../core/seekbar/index.js';
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
@@ -145,15 +141,11 @@ import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
 import {
     getAiCounts,
-    listAllTags,
-    listPhotosForTag,
     listPeople,
     listPhotosForPerson,
     renamePerson,
     deletePerson,
-    clearStaleEmbeddings,
     resetAllAiData,
-    listEmbeddingModels,
     getDb as aiGetDb,
 } from '../core/db.js';
 import * as backup from '../core/backup/index.js';
@@ -189,20 +181,14 @@ import { verifyRequest as verifyPeerHmac } from '../core/cluster/hmac.js';
 import {
     listPeers,
     getPeer,
-    upsertPeer,
     updatePeer,
     removePeer,
     markOnline,
     markOffline,
 } from '../core/cluster/peers.js';
 import { initiateHandshake, acceptHandshake, testPeerHealth } from '../core/cluster/handshake.js';
-import {
-    startSyncEngine,
-    stopSyncEngine,
-    syncAllOnce,
-    getSyncState,
-} from '../core/cluster/sync.js';
-import { findHashAcrossCluster, parseClusterRefPath } from '../core/cluster/dedup.js';
+import { startSyncEngine, syncAllOnce, getSyncState } from '../core/cluster/sync.js';
+import { parseClusterRefPath } from '../core/cluster/dedup.js';
 import {
     tryStartSweep,
     abortSweep,
@@ -210,22 +196,14 @@ import {
     listConflicts,
     resolveConflict,
 } from '../core/cluster/sweep.js';
-import { streamFromPeer, openPeerStream, requestSignedShareUrl } from '../core/cluster/proxy.js';
+import { streamFromPeer, requestSignedShareUrl } from '../core/cluster/proxy.js';
 import * as clusterWs from '../core/cluster/ws-channel.js';
 import * as clusterDiscovery from '../core/cluster/discovery.js';
 import { startFailoverWatcher, runFailoverPass } from '../core/cluster/failover.js';
 import { publishConfigChange } from '../core/cluster/config-sync.js';
 import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
-import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
-import {
-    recordClusterAudit,
-    listClusterAudit,
-    listOwnDownloadsSince,
-    listPeerDownloads,
-    setPeerCatalogBlob,
-    getPeerCatalogBlob,
-} from '../core/db.js';
+import { recordClusterAudit, listClusterAudit, listOwnDownloadsSince } from '../core/db.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
 // gramJS opens a fresh DC connection per file download (different DCs host
@@ -7337,13 +7315,6 @@ function _aiStarterFor(feature) {
 //   inner runFn returns a Promise that resolves on the scan-runner's
 //   onDone callback so tracker.success/failure semantics line up with
 //   the actual work.
-function _aiTrackerEventPrefix(feature) {
-    if (feature === 'embed') return 'ai_index';
-    if (feature === 'tags') return 'ai_tags';
-    if (feature === 'faces') return 'ai_people';
-    return 'ai';
-}
-
 app.post('/api/ai/scan/start', async (req, res) => {
     try {
         const cfg = _aiCfg();
@@ -7362,7 +7333,6 @@ app.post('/api/ai/scan/start', async (req, res) => {
         }
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
-        const prefix = _aiTrackerEventPrefix(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
             return new Promise((resolve, reject) => {
                 // Forward the runner's signal abort -> our internal

@@ -2410,7 +2410,7 @@ function setupGalleryGestures() {
         scroll.style.overscrollBehavior = 'contain';
         attachPullToRefresh(scroll, {
             onRefresh: async () => {
-                if (typeof refreshCurrentPage === 'function') refreshCurrentPage();
+                refreshCurrentPage();
                 await new Promise((r) => setTimeout(r, 400));
             },
         });
@@ -3433,7 +3433,6 @@ function _renderGroupFiles(rows) {
             const isImage = fileType === 'photo' || fileType === 'image' || fileType === 'sticker';
             const isVideo = fileType === 'video';
             const isAudio = fileType === 'audio';
-            const isDoc = !isImage && !isVideo && !isAudio;
             // Thumbnail container — `aspect-square rounded-md` with a subtle
             // ring on hover. Image/video share the same shape (12×12) so
             // rows align cleanly even when types are mixed. Audio + document
