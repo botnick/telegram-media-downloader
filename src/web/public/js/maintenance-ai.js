@@ -773,6 +773,15 @@ function _renderStatus(status) {
         const cur = Number(cfg.faces?.videoMaxFrames || 24);
         if (Number(videoMaxFramesEl.value) !== cur) videoMaxFramesEl.value = String(cur);
     }
+    const videoRuntimeEl = $('#ai-faces-video-runtime');
+    if (videoRuntimeEl) {
+        const on = cfg.faces?.includeVideos === true;
+        const interval = Number(cfg.faces?.videoFrameIntervalSec || 8);
+        const maxFrames = Number(cfg.faces?.videoMaxFrames || 24);
+        videoRuntimeEl.textContent = on
+            ? `video sampling: on · every ${interval}s · max ${maxFrames} frames/video`
+            : 'video sampling: off';
+    }
 
     // Image tagging card — toggle, model line, scan state, labels.
     const tagsToggle = $('#ai-tags-toggle');
