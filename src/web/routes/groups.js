@@ -719,7 +719,11 @@ export function createGroupsRouter({
         if (typeof id === 'string' && id.startsWith('unknown:')) {
             const folderName = id.slice('unknown:'.length);
             const safeKey = id.replace(/[^A-Za-z0-9_.-]/g, '_');
-            const synthPath = path.join(PHOTOS_DIR, `${safeKey}.jpg`);
+            const photosRoot = path.resolve(PHOTOS_DIR);
+            const synthPath = path.resolve(PHOTOS_DIR, `${safeKey}.jpg`);
+            if (synthPath !== photosRoot && !synthPath.startsWith(photosRoot + path.sep)) {
+                return res.status(400).send('Invalid id');
+            }
             if (existsSync(synthPath)) {
                 res.setHeader(
                     'Cache-Control',
