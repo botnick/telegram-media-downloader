@@ -11,8 +11,10 @@ import {
 import {
     startTagsScan as aiStartTagsScan,
     startOcrScan as aiStartOcrScan,
+    startObjectDetectionScan as aiStartObjectDetectionScan,
 } from '../../core/ai/scan-runner.js';
 import {
+    backfillMissingFaceQualityScores,
     getAiCounts,
     listPeople,
     listPhotosForPerson,
@@ -31,6 +33,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
         if (feature === 'faces') return jobTrackers.aiPeople;
         if (feature === 'tags') return jobTrackers.aiTags;
         if (feature === 'ocr') return jobTrackers.aiOcr;
+        if (feature === 'objects') return jobTrackers.aiObjects;
         return null;
     }
 
@@ -38,6 +41,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
         if (feature === 'faces') return aiStartFacesScan;
         if (feature === 'tags') return aiStartTagsScan;
         if (feature === 'ocr') return aiStartOcrScan;
+        if (feature === 'objects') return aiStartObjectDetectionScan;
         return null;
     }
 
@@ -234,6 +238,8 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
                 trackers: {
                     aiPeople: jobTrackers.aiPeople.getStatus(),
                     aiTags: jobTrackers.aiTags.getStatus(),
+                    aiOcr: jobTrackers.aiOcr.getStatus(),
+                    aiObjects: jobTrackers.aiObjects.getStatus(),
                 },
             });
         } catch (e) {
@@ -325,7 +331,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
     // branches have been removed. The handler still accepts a `feature`
     // field so older clients fail with a clear `unknown feature` error
     // rather than a silent no-op.
-    const AI_SCAN_FEATURES = new Set(['faces', 'tags', 'ocr']);
+    const AI_SCAN_FEATURES = new Set(['faces', 'tags', 'ocr', 'objects']);
 
     // JobTracker integration for AI scans:
     //   The scan-runner module already owns the per-feature state machine
@@ -575,6 +581,36 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
         }
     });
 
+    // Backfill missing `faces.quality_score` for legacy rows without
+    // re-running full detection. Uses bbox-only heuristics (size/aspect +
+    // confidence fallback) and writes only rows where score is currently NULL.
+    router.post('/ai/faces/backfill-quality', async (req, res) => {
+        try {
+            const chunkSize = Math.max(100, Math.min(5000, Number(req.body?.chunkSize) || 1000));
+            const minFaceSizePx = Math.max(
+                16,
+                Math.min(1024, Number(req.body?.minFaceSizePx) || 80),
+            );
+            const confidenceFallback = Math.max(
+                0,
+                Math.min(1, Number(req.body?.confidenceFallback) || 0.5),
+            );
+            const result = backfillMissingFaceQualityScores({
+                chunkSize,
+                minFaceSizePx,
+                confidenceFallback,
+            });
+            log({
+                source: 'ai',
+                level: 'info',
+                msg: `faces quality backfill complete: scanned=${result.scanned} updated=${result.updated}`,
+            });
+            res.json({ success: true, ...result });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     // ---- People (face clusters) ---------------------------------------------
 
     router.get('/ai/people', async (req, res) => {
@@ -819,7 +855,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
         try {
             // Cancel any in-flight scan before nuking the artefacts.
             let cancelled = 0;
-            for (const f of ['embed', 'tags', 'faces']) {
+            for (const f of ['embed', 'tags', 'faces', 'ocr', 'objects']) {
                 if (aiCancelScan(f)) cancelled += 1;
             }
             // Settle one tick so the scan loops see the abort signal.
@@ -828,7 +864,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
             log({
                 source: 'ai',
                 level: 'info',
-                msg: `re-index — wiped embeddings=${r.embeddings} tags=${r.tags} faces=${r.faces} people=${r.people}; re-queued=${r.requeued}; cancelled-scans=${cancelled}`,
+                msg: `re-index — wiped embeddings=${r.embeddings} tags=${r.tags} faces=${r.faces} people=${r.people} text=${r.text} objects=${r.objects}; re-queued=${r.requeued}; cancelled-scans=${cancelled}`,
             });
             try {
                 broadcast({ type: 'ai_reindex', ...r });

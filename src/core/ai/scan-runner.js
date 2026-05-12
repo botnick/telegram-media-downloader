@@ -34,6 +34,7 @@ import {
     setFacePerson,
     setImageTags,
 } from '../db.js';
+import { addImageObjects } from '../db/faces.js';
 import { clusterFaces, computeFaceQualityScore, detectFaces } from './faces.js';
 import { resolveFacesValue } from './faces-config.js';
 import { getSidecarUrl } from './faces-client.js';
@@ -787,6 +788,110 @@ async function _extractTextOne(sidecarUrl, absPath, log) {
     } catch (e) {
         log('warn', `ocr request failed for ${absPath}: ${e?.message || e}`);
         return null;
+    }
+}
+
+/**
+ * Start object detection scan. Processes unscanned images and stores
+ * detected objects in the `image_objects` table.
+ */
+export function startObjectDetectionScan(cfg, onProgress, onDone, onLog) {
+    return _runScan(
+        'objects',
+        cfg,
+        async (state, signal, bump, log) => {
+            const sidecarUrl = getSidecarUrl();
+            if (!sidecarUrl) {
+                throw new Error(
+                    'Python sidecar is not available — cannot detect objects. ' +
+                        'Check the AI maintenance page for sidecar status.',
+                );
+            }
+
+            const batchSize = Math.max(1, Math.min(50, Number(cfg.batchSize) || 16));
+            const minConfidence = Math.max(0, Math.min(1, Number(cfg.minConfidence) || 0.5));
+
+            while (!signal.aborted) {
+                const batch = getUnindexedAiBatch({ limit: batchSize });
+                if (!batch.length) {
+                    log('info', 'objects scan: no more unscanned images');
+                    break;
+                }
+                state.total = Math.max(state.total, state.scanned + batch.length * 2);
+                bump();
+
+                for (const row of batch) {
+                    if (signal.aborted) break;
+
+                    const absPath = _resolveAbs(row.file_path);
+                    if (!absPath) {
+                        log('warn', `objects: file not found: ${row.file_path}`);
+                        setAiIndexedAt(row.id);
+                        state.scanned += 1;
+                        bump();
+                        continue;
+                    }
+
+                    if (row.file_type !== 'photo') {
+                        log('debug', `objects: skipping non-photo: ${row.file_name}`);
+                        setAiIndexedAt(row.id);
+                        state.scanned += 1;
+                        bump();
+                        continue;
+                    }
+
+                    try {
+                        const objects = await _detectObjectsOne(
+                            sidecarUrl,
+                            absPath,
+                            minConfidence,
+                            log,
+                        );
+                        if (Array.isArray(objects) && objects.length > 0) {
+                            addImageObjects(row.id, objects);
+                        }
+                    } catch (e) {
+                        log(
+                            'warn',
+                            `objects detection failed for id=${row.id}: ${e?.message || e}`,
+                        );
+                    }
+                    setAiIndexedAt(row.id);
+                    state.scanned += 1;
+                    bump();
+                    await new Promise((r) => setImmediate(r));
+                }
+            }
+            log('info', `objects scan: finished — ${state.scanned} files scanned`);
+        },
+        onProgress,
+        onDone,
+        onLog,
+    );
+}
+
+/**
+ * Call the Python sidecar's ``POST /detect-objects`` for one image.
+ * Returns array of {object, confidence, x, y, w, h} or empty array on failure.
+ */
+async function _detectObjectsOne(sidecarUrl, absPath, confidence, log) {
+    const url = `${sidecarUrl.replace(/\/+$/, '')}/detect-objects`;
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: absPath, confidence }),
+            signal: AbortSignal.timeout(60000), // 60 s per file (inference can be slow)
+        });
+        if (!res.ok) {
+            log('warn', `detect-objects endpoint returned ${res.status} for ${absPath}`);
+            return [];
+        }
+        const data = await res.json();
+        return Array.isArray(data?.objects) ? data.objects : [];
+    } catch (e) {
+        log('warn', `detect-objects request failed for ${absPath}: ${e?.message || e}`);
+        return [];
     }
 }
 

@@ -1415,11 +1415,13 @@ const _jobTrackers = {
         log,
         eventPrefix: 'recovery_bulk',
     }),
-    // AI subsystem — three independent scans owned by the same page.
+    // AI subsystem — multiple independent scans owned by the same page.
     // Event prefixes match the WS contract used by maintenance-ai.js:
-    // ai_index_progress / ai_index_done, ai_tags_*, ai_people_*.
+    // ai_index_progress / ai_index_done, ai_tags_*, ai_people_*, ai_ocr_*, ai_objects_*.
     aiIndex: createJobTracker({ kind: 'aiIndex', broadcast, log, eventPrefix: 'ai_index' }),
     aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
+    aiOcr: createJobTracker({ kind: 'aiOcr', broadcast, log, eventPrefix: 'ai_ocr' }),
+    aiObjects: createJobTracker({ kind: 'aiObjects', broadcast, log, eventPrefix: 'ai_objects' }),
     aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
 };
 // ---- Router mounts (registered here so _jobTrackers + broadcast are in scope)

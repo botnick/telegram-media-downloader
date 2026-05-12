@@ -43,6 +43,11 @@ from .ocr import (
     is_ready as ocr_is_ready,
     last_error as ocr_last_error,
 )
+from .detection import (
+    detect_objects as detection_detect_objects,
+    is_ready as detection_is_ready,
+    last_error as detection_last_error,
+)
 from .insight import (
     DET_SIZE,
     EMBEDDING_DIM,
@@ -799,8 +804,15 @@ def detect_objects(body: Annotated[DetectObjectsRequest, ...]) -> JSONResponse:
     Returns ``{objects: [{object, confidence, x, y, w, h}]}``.
 
     Error codes: ``path_not_allowed`` (403), ``file_not_found`` (404),
-    ``image_decode_failed`` (415), ``detection_failed`` (500).
+    ``image_decode_failed`` (415), ``detection_not_ready`` (503), ``detection_failed`` (500).
     """
+    if not detection_is_ready():
+        return _error(
+            f"object detection not available: {detection_last_error()}",
+            code="detection_not_ready",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     try:
         if body.path:
             img = load_image_from_path(body.path, _allow_roots())
@@ -818,10 +830,7 @@ def detect_objects(body: Annotated[DetectObjectsRequest, ...]) -> JSONResponse:
                       status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     try:
-        # TODO: Implement object detection using YOLOv8-nano ONNX
-        # For now, return empty placeholder
-        objects = []
-
+        objects = detection_detect_objects(img, confidence=body.confidence)
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content=DetectObjectsResponse(

@@ -589,10 +589,12 @@ export function resetAllAiData() {
         const tags = db.prepare('DELETE FROM image_tags').run().changes;
         const faces = db.prepare('DELETE FROM faces').run().changes;
         const people = db.prepare('DELETE FROM people').run().changes;
+        const text = db.prepare('DELETE FROM image_text').run().changes;
+        const objects = db.prepare('DELETE FROM image_objects').run().changes;
         const requeued = db
             .prepare('UPDATE downloads SET ai_indexed_at = NULL WHERE ai_indexed_at IS NOT NULL')
             .run().changes;
-        return { embeddings, tags, faces, people, requeued };
+        return { embeddings, tags, faces, people, text, objects, requeued };
     });
     return tx();
 }
@@ -702,6 +704,53 @@ export function setFaceQualityScore(faceId, qualityScore) {
     return getDb()
         .prepare('UPDATE faces SET quality_score = ? WHERE id = ?')
         .run(Number(qualityScore), Number(faceId)).changes;
+}
+
+/**
+ * Backfill missing `faces.quality_score` rows using bbox-only heuristics.
+ *
+ * We don't have detector confidence persisted for legacy rows, so the
+ * confidence term falls back to 0.5 and we derive the rest from bbox size
+ * and aspect-ratio sanity.
+ */
+export function backfillMissingFaceQualityScores({
+    chunkSize = 1000,
+    minFaceSizePx = 80,
+    confidenceFallback = 0.5,
+} = {}) {
+    const db = getDb();
+    const lim = Math.max(1, Math.min(10000, Number(chunkSize) || 1000));
+    const minBox = Math.max(1, Number(minFaceSizePx) || 80);
+    const conf = Math.max(0, Math.min(1, Number(confidenceFallback) || 0.5));
+    const pick = db.prepare(
+        `SELECT id, w, h FROM faces WHERE quality_score IS NULL ORDER BY id ASC LIMIT ?`,
+    );
+    const upd = db.prepare(`UPDATE faces SET quality_score = ? WHERE id = ?`);
+    let scanned = 0;
+    let updated = 0;
+    while (true) {
+        const rows = pick.all(lim);
+        if (!rows.length) break;
+        const tx = db.transaction((batch) => {
+            let n = 0;
+            for (const r of batch) {
+                const w = Math.max(0, Number(r.w) || 0);
+                const h = Math.max(0, Number(r.h) || 0);
+                const sizeNorm = Math.max(0, Math.min(1, Math.min(w, h) / (minBox * 2.5)));
+                const ratio = w > 0 && h > 0 ? w / h : 1;
+                const aspectNorm = Math.max(
+                    0,
+                    Math.min(1, 1 - Math.min(1, Math.abs(Math.log(ratio)))),
+                );
+                const q = conf * 0.5 + sizeNorm * 0.35 + aspectNorm * 0.15;
+                n += upd.run(q, Number(r.id)).changes;
+            }
+            return n;
+        });
+        scanned += rows.length;
+        updated += tx(rows);
+    }
+    return { scanned, updated };
 }
 
 /**
