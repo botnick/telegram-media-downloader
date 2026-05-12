@@ -24,13 +24,14 @@
 
 import { spawn, spawnSync } from 'child_process';
 import crypto from 'crypto';
-import { createReadStream, createWriteStream, existsSync, promises as fsp, statSync } from 'fs';
+import { createWriteStream, existsSync, promises as fsp, statSync } from 'fs';
 import http from 'http';
 import https from 'https';
 import net from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { _hashFile, _parseChecksumFile, _verifyChecksum } from '../ai/faces-download.js';
 import { loadConfig } from '../../config/manager.js';
 import { health, setSidecarUrl } from './client.js';
 
@@ -124,77 +125,7 @@ function _isBinaryUsable(binPath) {
     }
 }
 
-// ---- Checksum verification ----------------------------------------------
-
-export async function _parseChecksumFile(text) {
-    const hex = text.trim().split(/\s/)[0];
-    if (!/^[0-9a-f]{64}$/i.test(hex)) throw new Error(`invalid checksum format: ${text.trim()}`);
-    return hex.toLowerCase();
-}
-
-export function _hashFile(filePath) {
-    return new Promise((resolve, reject) => {
-        const hash = crypto.createHash('sha256');
-        const stream = createReadStream(filePath);
-        stream.on('data', (chunk) => hash.update(chunk));
-        stream.on('end', () => resolve(hash.digest('hex')));
-        stream.on('error', reject);
-    });
-}
-
-function _fetchText(url, redirectsLeft = DOWNLOAD_REDIRECT_LIMIT) {
-    return new Promise((resolve, reject) => {
-        let parsed;
-        try {
-            parsed = new URL(url);
-        } catch {
-            return reject(new Error(`bad url: ${url}`));
-        }
-        const lib = parsed.protocol === 'http:' ? http : https;
-        const req = lib.get(
-            url,
-            { headers: { 'user-agent': 'tgdl-seekbar-spawn', accept: 'text/plain' } },
-            (res) => {
-                if (
-                    res.statusCode >= 300 &&
-                    res.statusCode < 400 &&
-                    res.headers.location &&
-                    redirectsLeft > 0
-                ) {
-                    res.resume();
-                    _fetchText(
-                        new URL(res.headers.location, url).toString(),
-                        redirectsLeft - 1,
-                    ).then(resolve, reject);
-                    return;
-                }
-                if (res.statusCode !== 200) {
-                    res.resume();
-                    return reject(new Error(`http ${res.statusCode} from ${url}`));
-                }
-                const chunks = [];
-                res.on('data', (c) => chunks.push(c));
-                res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-                res.on('error', reject);
-            },
-        );
-        req.on('error', reject);
-    });
-}
-
-export async function _verifyChecksum(tarballPath, tarUrl) {
-    const checksumUrl = `${tarUrl}.sha256`;
-    const text = await _fetchText(checksumUrl);
-    const expected = await _parseChecksumFile(text);
-    const actual = await _hashFile(tarballPath);
-    if (actual !== expected) {
-        throw new Error(
-            `checksum mismatch for ${path.basename(tarballPath)}: expected ${expected}, got ${actual}`,
-        );
-    }
-}
-
-// -------------------------------------------------------------------------
+// ---- Download helpers ---------------------------------------------------
 
 async function _autoDownloadBinary() {
     const slug = _platformSlug();
