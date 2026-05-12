@@ -4162,3 +4162,107 @@ html[data-contrast="more"] .media-item {
 #video-sprite-preview[data-state="disabled"] {
     display: none !important;
 }
+
+/* ── Seekbar filmstrip ─────────────────────────────────────────── */
+#video-filmstrip {
+    position: relative;
+    background: rgba(0,0,0,0.55);
+    border-top: 1px solid rgba(255,255,255,0.07);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.filmstrip-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+.filmstrip-time-float {
+    position: absolute;
+    top: -22px;
+    z-index: 10;
+    background: rgba(20,22,30,0.9);
+    color: #fff;
+    font-size: 10px;
+    font-family: ui-monospace, monospace;
+    padding: 2px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition: opacity 0.1s;
+    border: 1px solid rgba(255,255,255,0.12);
+}
+.filmstrip-time-float.visible {
+    opacity: 1;
+}
+.filmstrip-track {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 2px;
+    padding: 6px 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    flex: 1;
+}
+.filmstrip-track::-webkit-scrollbar { display: none; }
+.filmstrip-thumb {
+    flex-shrink: 0;
+    position: relative;
+    border-radius: 3px;
+    overflow: hidden;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: 0;
+    transition: outline-color 0.1s, filter 0.1s, transform 0.12s;
+    background: #0d0d0d;
+    scroll-snap-align: start;
+}
+@media (hover: hover) {
+    .filmstrip-thumb:hover {
+        outline-color: rgba(255,255,255,0.5);
+        filter: brightness(1.1);
+        z-index: 1;
+    }
+}
+.filmstrip-thumb.current {
+    outline-color: var(--tg-blue, #2aabee);
+    outline-width: 2.5px;
+    filter: brightness(1.18);
+    transform: scaleY(1.08);
+    transform-origin: bottom center;
+    z-index: 2;
+}
+.filmstrip-thumb-inner {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+.filmstrip-thumb-time {
+    display: none; /* Hidden — only current thumb gets a floating label via JS */
+}
+.filmstrip-arrow {
+    flex-shrink: 0;
+    width: 26px;
+    border: none;
+    background: rgba(0,0,0,0.5);
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.filmstrip-arrow:hover {
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+}
+@media (max-width: 480px) {
+    .filmstrip-arrow { display: none; } /* swipe on mobile */
+    .filmstrip-track { padding: 4px 2px; }
+}
