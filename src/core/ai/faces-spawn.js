@@ -720,6 +720,7 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
     const cudaBinDirs = _resolveCudaBinDirs(pyBin);
     const env = {
         ...process.env,
+        PYTHONUTF8: '1',
         // Prepend CUDA 12.x bin dirs so onnxruntime CUDA EP finds cuBLAS DLLs
         // without requiring a system PATH change or reboot.
         ...(cudaBinDirs.length > 0 && {
@@ -1427,6 +1428,7 @@ async function _spawnAndProbe(binPath) {
 
     const env = {
         ...process.env,
+        PYTHONUTF8: '1',
         TGDL_FACES_HOST: '127.0.0.1',
         TGDL_FACES_PORT: String(port),
         TGDL_FACES_ALLOW_ROOTS: downloadsDir,

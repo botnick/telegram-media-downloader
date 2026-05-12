@@ -325,6 +325,7 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 	// Build sprite.
 	tmpPath := ffmpeg.TempPath(dstPath)
 	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs, p.hwBackend)
+	cpuArgs := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, nil, cfg.FFmpeg.ExtraArgs, "")
 
 	var lastErr error
 	maxAttempts := cfg.Jobs.MaxRetries + 1
@@ -334,11 +335,12 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 			j.FinishedAt = time.Now().UnixMilli()
 			return
 		}
-		if err := ffmpeg.Run(ctx, cfg.FFmpeg.Path, args); err != nil {
+		useArgs := args
+		if attempt > 0 && len(p.hwArgs) > 0 {
+			useArgs = cpuArgs
+		}
+		if err := ffmpeg.Run(ctx, cfg.FFmpeg.Path, useArgs); err != nil {
 			lastErr = err
-			// Capped exponential back-off: 1s × (attempt+1), max 30s.
-			// Use select so a SIGTERM / context cancel wakes us immediately
-			// instead of blocking the worker goroutine for the full delay.
 			delay := time.Duration(attempt+1) * time.Second
 			if delay > 30*time.Second {
 				delay = 30 * time.Second
