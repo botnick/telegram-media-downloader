@@ -252,6 +252,105 @@ export async function detectFaces(absPath, cfg = {}, onLog = null) {
     }
 }
 
+/**
+ * Detect faces in a batch of images via the sidecar's `/detect/batch`
+ * endpoint — one HTTP round-trip for up to `batchSize` files.
+ *
+ * @param {string[]}  absPaths absolute paths to source images
+ * @param {object}    cfg      `advanced.ai` config slice
+ * @param {function?} onLog    optional `({source, level, msg}) => void`
+ * @returns {Promise<Array<Array|null>>} same order as input;
+ *   `null`  = sidecar error / path unresolvable
+ *   `[]`    = processed but no faces found
+ *   `[…]`  = detected faces
+ *   Items rejected with `path_not_allowed` (Docker sandbox) are retried
+ *   individually via the single-detect b64 fallback path.
+ */
+export async function detectFacesBatch(absPaths, cfg = {}, onLog = null) {
+    _bootstrapFromEnv();
+    if (!absPaths.length) return [];
+    const url = getSidecarUrl();
+    if (!url) {
+        _log(onLog, 'warn', 'sidecar URL unset — detectFacesBatch returning nulls');
+        return absPaths.map(() => null);
+    }
+
+    const facesCfg = cfg?.faces || cfg || {};
+    const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
+    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60);
+    const arRange =
+        Array.isArray(facesCfg.arRange) && facesCfg.arRange.length === 2
+            ? facesCfg.arRange
+            : [0.5, 2.0];
+
+    // Sidecar processes the batch sequentially — scale timeout with count.
+    const batchTimeoutMs = Math.max(absPaths.length * _requestTimeoutMs, 120_000);
+    const body = { files: absPaths, min_score: minScore, min_box_px: minBoxPx, ar_range: arRange };
+
+    let batchRes;
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), batchTimeoutMs);
+        try {
+            batchRes = await globalThis.fetch(`${url}/detect/batch`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: ctrl.signal,
+            });
+        } finally {
+            clearTimeout(timer);
+        }
+    } catch (e) {
+        _log(onLog, 'warn', `detectFacesBatch: network error — ${e?.message || e}`);
+        return absPaths.map(() => null);
+    }
+
+    if (!batchRes.ok) {
+        _log(onLog, 'warn', `detectFacesBatch: sidecar returned ${batchRes.status}`);
+        return absPaths.map(() => null);
+    }
+
+    let batchBody;
+    try {
+        batchBody = await batchRes.json();
+    } catch (e) {
+        _log(onLog, 'warn', `detectFacesBatch: invalid JSON — ${e?.message || e}`);
+        return absPaths.map(() => null);
+    }
+
+    const resultMap = new Map();
+    for (const item of batchBody?.results ?? []) {
+        resultMap.set(item.file, item);
+    }
+
+    const output = new Array(absPaths.length).fill(null);
+    const pathFallbacks = [];
+
+    for (let i = 0; i < absPaths.length; i++) {
+        const item = resultMap.get(absPaths[i]);
+        if (!item) continue; // path missing from response → null
+        if (item.error === 'path_not_allowed') {
+            pathFallbacks.push(i);
+            continue;
+        }
+        if (item.error) {
+            _log(onLog, 'warn', `batch detect ${absPaths[i]}: sidecar soft-error="${item.error}"`);
+            output[i] = []; // soft error → empty (sidecar reached the file)
+            continue;
+        }
+        output[i] = _parseFacesList(item.faces);
+    }
+
+    // Per-image b64 fallback for Docker/sandbox environments where the sidecar
+    // can't read host paths. Rare but required for correctness.
+    for (const idx of pathFallbacks) {
+        output[idx] = await detectFaces(absPaths[idx], cfg, onLog);
+    }
+
+    return output;
+}
+
 async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
     // Path mode first. If the sidecar rejects with `path_not_allowed`
     // (Docker sandbox, or operator chose strict allow-roots), fall back
@@ -306,7 +405,6 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
         return null;
     }
 
-    const faces = Array.isArray(body?.faces) ? body.faces : [];
     // The sidecar returns 200 + an `error` field for soft failures
     // (file_not_found, decode_failed). Log them so the scan summary
     // shows *why* a photo yielded 0 faces instead of silently moving on.
@@ -317,6 +415,13 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
             `detect ${absPath}: sidecar soft-error="${body.error}" — 0 faces stored`,
         );
     }
+    return _parseFacesList(Array.isArray(body?.faces) ? body.faces : []);
+}
+
+// Parse a raw faces array from the sidecar into typed Face objects.
+// Shared by both single-detect and batch paths.
+function _parseFacesList(faces) {
+    if (!Array.isArray(faces)) return [];
     return faces
         .map((f) => {
             // Embedding must be Float32Array — downstream (`_f32ToBlob`)
