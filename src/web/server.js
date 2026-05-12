@@ -7398,12 +7398,15 @@ app.get('/api/ai/status', async (_req, res) => {
                     // cached for 5 s so the page can poll without
                     // hammering the sidecar.
                     let providers = null;
+                    let sidecarVersion = null;
                     try {
                         const facesSpawn = await import('../core/ai/faces-spawn.js');
+                        sidecarVersion = facesSpawn.SIDECAR_VERSION;
                         const sidecarUrl = facesSpawn.getSidecarStatus()?.url;
                         if (sidecarUrl) {
                             const info = await _fetchSidecarInfo(sidecarUrl);
                             if (info?.providers) providers = info.providers;
+                            if (info?.version) sidecarVersion = info.version;
                         }
                     } catch {
                         /* sidecar offline / fetch failed — fall through */
@@ -7419,6 +7422,7 @@ app.get('/api/ai/status', async (_req, res) => {
                         bundled: !cfg.facesModel,
                         providers,
                         providersRequested: String(facesBlock.providers || 'auto'),
+                        version: sidecarVersion,
                     };
                 })(),
             },
@@ -8569,14 +8573,16 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
     //    operator sees "downloading…" / "starting up…" instead of a bare
     //    fail row while the binary is being fetched in the background.
     try {
-        const { getSidecarStatus } = await import('../core/ai/faces-spawn.js');
+        const { getSidecarStatus, SIDECAR_VERSION: facesVer } = await import(
+            '../core/ai/faces-spawn.js'
+        );
         const st = getSidecarStatus();
         if (st.state === 'healthy') {
             checks.push({
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'ok',
-                detail: `running at ${st.url}`,
+                detail: `v${facesVer} · running at ${st.url}`,
             });
         } else if (st.state === 'downloading') {
             checks.push({

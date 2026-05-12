@@ -643,7 +643,8 @@ function _renderSidecarBadge(status) {
                   .replace(/insightface\s*/i, '')
                   .trim()
             : '';
-        const parts = [providerTag, modelTag].filter(Boolean).join(' · ');
+        const ver = faces.version ? `v${faces.version}` : '';
+        const parts = [providerTag, modelTag, ver].filter(Boolean).join(' · ');
         label = i18nTf(
             'maintenance.ai.sidecar.healthy',
             { provider: parts },
