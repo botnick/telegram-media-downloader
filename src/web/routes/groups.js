@@ -9,12 +9,30 @@ import { writeConfigAtomic } from '../lib/config-writer.js';
 import { createJobTracker } from '../../core/job-tracker.js';
 import { bestGroupName } from '../lib/format.js';
 import { listPeers } from '../../core/cluster/peers.js';
+import { sanitizeName } from '../../core/downloader.js';
+import { getGroupStats, listGroupFiles, deleteGroupDownloads } from '../../core/db/groups.js';
+import {
+    historyJobs as _historyJobs,
+    activeBackfillsByGroup as _activeBackfillsByGroup,
+    saveHistoryJobsToStore,
+    scheduleHistoryJobCleanup,
+} from '../lib/history-state.js';
+import { BACKFILL_MAX_LIMIT } from '../../core/constants.js';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '../../../data');
 const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
+
+// Module-level ref set by factory — lets server.js call _spawnInternalBackfill
+// without an HTTP round-trip (used by the catch_up_needed runtime event).
+let _spawnBackfillFn = null;
+export function spawnBackfill(...args) {
+    if (!_spawnBackfillFn) throw new Error('groups router not initialized');
+    return _spawnBackfillFn(...args);
+}
 
 export function createGroupsRouter({
     broadcast,
@@ -24,6 +42,8 @@ export function createGroupsRouter({
     dialogsTypeFor,
     resolveEntityAcrossAccounts,
     downloadProfilePhoto,
+    jobTrackers,
+    getAccountManager,
 }) {
     const router = express.Router();
 
@@ -216,7 +236,7 @@ export function createGroupsRouter({
             if (existsSync(folderPath)) {
                 const countFiles = (dir) => {
                     let count = 0;
-                    const items = fsSync.readdirSync(dir, { withFileTypes: true });
+                    const items = fs.readdirSync(dir, { withFileTypes: true });
                     for (const item of items) {
                         if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
                         else count++;
@@ -330,7 +350,7 @@ export function createGroupsRouter({
             if (existsSync(folderPath)) {
                 const countFiles = (dir) => {
                     let count = 0;
-                    const items = fsSync.readdirSync(dir, { withFileTypes: true });
+                    const items = fs.readdirSync(dir, { withFileTypes: true });
                     for (const item of items) {
                         if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
                         else count++;
@@ -676,6 +696,7 @@ export function createGroupsRouter({
             });
         return jobId;
     }
+    _spawnBackfillFn = _spawnInternalBackfill;
 
     // 9. Profile Photos
     router.get('/groups/:id/photo', async (req, res) => {
@@ -745,8 +766,8 @@ export function createGroupsRouter({
         // its descendants is a symlink that points outside the data dir.
         const send = () => {
             try {
-                const real = fsSync.realpathSync(photoPath);
-                const realRoot = fsSync.realpathSync(PHOTOS_DIR);
+                const real = fs.realpathSync(photoPath);
+                const realRoot = fs.realpathSync(PHOTOS_DIR);
                 if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
                     return res.status(400).send('Path escape detected');
                 }
@@ -785,7 +806,7 @@ export function createGroupsRouter({
     // `groups_refresh_info_done`. The legacy `groups_refreshed` broadcast is
     // preserved for clients that already subscribe to it.
     router.post('/groups/refresh-info', async (req, res) => {
-        const tracker = _jobTrackers.groupsRefreshInfo;
+        const tracker = jobTrackers.groupsRefreshInfo;
         const r = tracker.tryStart(async ({ onProgress }) => {
             const config = loadConfig();
             const ids = new Set((config.groups || []).map((g) => String(g.id)));
@@ -859,11 +880,11 @@ export function createGroupsRouter({
     });
 
     router.get('/groups/refresh-info/status', async (req, res) => {
-        res.json(_jobTrackers.groupsRefreshInfo.getStatus());
+        res.json(jobTrackers.groupsRefreshInfo.getStatus());
     });
 
     router.post('/groups/refresh-photos', async (req, res) => {
-        const tracker = _jobTrackers.groupsRefreshPhotos;
+        const tracker = jobTrackers.groupsRefreshPhotos;
         const r = tracker.tryStart(async ({ onProgress }) => {
             const config = loadConfig();
             const groups = config.groups || [];
@@ -888,7 +909,7 @@ export function createGroupsRouter({
     });
 
     router.get('/groups/refresh-photos/status', async (req, res) => {
-        res.json(_jobTrackers.groupsRefreshPhotos.getStatus());
+        res.json(jobTrackers.groupsRefreshPhotos.getStatus());
     });
 
     return router;

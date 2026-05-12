@@ -9,13 +9,22 @@ import {
     getScanState as aiGetScanState,
     _bgQueueDepths as aiBgQueueDepths,
 } from '../../core/ai/index.js';
-import { getAiCounts, listPeople } from '../../core/db/faces.js';
+import {
+    getAiCounts,
+    listPeople,
+    listPhotosForPerson,
+    renamePerson,
+    deletePerson,
+    resetAllAiData,
+    getUnindexedAiBatch,
+} from '../../core/db/faces.js';
+import { pregenerateAi as aiPregenerateAi } from '../../core/ai/index.js';
 import { getNsfwDeleteCandidates } from '../../core/nsfw.js';
 
 export function createAiRouter({ broadcast, log, jobTrackers }) {
     const router = express.Router();
 
-    // Provide _jobTrackers-compatible access via the injected jobTrackers dep.
+    // Provide jobTrackers-compatible access via the injected jobTrackers dep.
     function _aiTrackerFor(feature) {
         if (feature === 'faces') return jobTrackers.aiPeople;
         if (feature === 'tags') return jobTrackers.aiTags;
@@ -216,8 +225,8 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
                     }
                 })(),
                 trackers: {
-                    aiPeople: _jobTrackers.aiPeople.getStatus(),
-                    aiTags: _jobTrackers.aiTags.getStatus(),
+                    aiPeople: jobTrackers.aiPeople.getStatus(),
+                    aiTags: jobTrackers.aiTags.getStatus(),
                 },
             });
         } catch (e) {
@@ -263,7 +272,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
     //   The scan-runner module already owns the per-feature state machine
     //   (running/scanned/total/abort) and broadcasts its own WS events; the
     //   tracker is wired in via a one-shot tryStart so re-mounted pages can
-    //   recover via `_jobTrackers.aiX.getStatus()` and so the "ai_index_done"
+    //   recover via `jobTrackers.aiX.getStatus()` and so the "ai_index_done"
     //   WS event still fires through the tracker's standard finish hook. The
     //   inner runFn returns a Promise that resolves on the scan-runner's
     //   onDone callback so tracker.success/failure semantics line up with
@@ -576,7 +585,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
             if (!Number.isFinite(downloadId) || downloadId <= 0) {
                 return res.status(400).json({ error: 'invalid download id' });
             }
-            const rows = aiGetDb()
+            const rows = getDb()
                 .prepare(`
                 SELECT f.id, f.x, f.y, f.w, f.h, f.person_id, f.quality_score,
                        p.label AS person_label
@@ -595,7 +604,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
     router.get('/ai/group-by-person', async (req, res) => {
         try {
             const limit = Math.max(1, Math.min(200, Number(req.query?.limit) || 50));
-            const rows = aiGetDb()
+            const rows = getDb()
                 .prepare(`
                 SELECT p.id, p.label, p.face_count,
                        (SELECT f.download_id FROM faces f WHERE f.person_id = p.id LIMIT 1) AS cover_download_id

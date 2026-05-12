@@ -1,11 +1,22 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import fs, { existsSync } from 'fs';
 import express from 'express';
 import { loadConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
+import {
+    getAllDownloadsFederated,
+    getDownloadsForGroupFederated,
+    searchDownloadsFederated,
+    getDownloadById,
+    setDownloadPinned,
+    deleteDownloadsBy,
+} from '../../core/db/downloads.js';
 import { safeResolveDownload } from '../lib/resolve-download.js';
 import { bestGroupName, formatBytes } from '../lib/format.js';
+import { sanitizeName } from '../../core/downloader.js';
+import { purgeThumbsForDownload } from '../../core/thumbs.js';
+import { listPeers } from '../../core/cluster/peers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

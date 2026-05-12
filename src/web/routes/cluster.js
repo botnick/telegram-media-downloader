@@ -46,6 +46,8 @@ import {
 } from '../../core/db.js';
 import { safeResolveDownload } from '../lib/resolve-download.js';
 import { readConfigSafe } from '../lib/config-cache.js';
+import { buildShareUrlPath } from '../../core/share.js';
+import { aggregateEgress, listFailoverLog } from '../../core/db/cluster.js';
 
 let _clusterWsInitialised = false;
 function _ensureClusterWsInit() {
@@ -813,19 +815,9 @@ export function createClusterRouter({ broadcast, log }) {
     router.get('/cluster/failover-log', (req, res) => {
         try {
             const limit = Number(req.query.limit) || 100;
-            const { listFailoverLog } = require('../../core/db.js');
             res.json({ entries: listFailoverLog({ limit }) });
-        } catch {
-            try {
-                // ESM dynamic import fallback
-                import('../../core/db.js').then((m) => {
-                    res.json({
-                        entries: m.listFailoverLog({ limit: Number(req.query.limit) || 100 }),
-                    });
-                });
-            } catch (e) {
-                res.status(500).json({ error: 'failover log unavailable' });
-            }
+        } catch (e) {
+            res.status(500).json({ error: 'failover log unavailable' });
         }
     });
 
@@ -833,7 +825,6 @@ export function createClusterRouter({ broadcast, log }) {
 
     router.get('/cluster/stats', async (_req, res) => {
         try {
-            const { aggregateEgress } = await import('../../core/db.js');
             const ownPid = getSelfPeerId();
             const peers = listPeers();
             const localBytes = (() => {

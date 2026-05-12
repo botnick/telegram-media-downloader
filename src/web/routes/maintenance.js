@@ -6,6 +6,69 @@ import { loadConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
 import { runtime } from '../../core/runtime.js';
 import { writeConfigAtomic } from '../lib/config-writer.js';
+import * as integrity from '../../core/integrity.js';
+import { kvGet, kvSet } from '../../core/db/kv.js';
+import {
+    getOrCreateThumb,
+    purgeThumbsForDownload,
+    hasCachedThumb,
+    DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
+    thumbKindTypes,
+    buildAllThumbnails,
+    purgeAllThumbs,
+} from '../../core/thumbs.js';
+import { buildAllSeekbar, purgeAllSeekbar } from '../../core/seekbar/scan-runner.js';
+import {
+    generateForDownload as generateSeekbarForDownload,
+    getSpritePath as getSeekbarSpritePath,
+} from '../../core/seekbar/generator.js';
+import {
+    getSeekbarCacheStats,
+    getMetaForDownload as getSeekbarMetaForDownload,
+    purgeSeekbarForDownload,
+} from '../../core/seekbar/index.js';
+import {
+    getSidecarStatus as getSeekbarSidecarStatus,
+    refreshSidecar as refreshSeekbarSidecar,
+} from '../../core/seekbar/spawn.js';
+import { probeHwaccel as probeSeekbarHwaccel } from '../../core/seekbar/client.js';
+import { getSeekbarSprite } from '../../core/db/seekbar.js';
+import {
+    NSFW_DEFAULTS,
+    startScan as nsfwStartScan,
+    cancelScan as nsfwCancelScan,
+    isScanRunning as nsfwIsScanRunning,
+} from '../../core/nsfw.js';
+import {
+    whitelistNsfw,
+    unwhitelistNsfw,
+    getNsfwDeleteCandidates,
+    NSFW_TIERS,
+} from '../../core/db/faces.js';
+import {
+    deleteByIds as dedupDeleteByIds,
+    findDuplicates as dedupFindDuplicates,
+} from '../../core/dedup.js';
+import { deleteGroupDownloads } from '../../core/db/groups.js';
+import {
+    getNsfwStats,
+    getNsfwTierCounts,
+    getNsfwHistogram,
+    getNsfwListByTier,
+    getNsfwIdsByTier,
+    reclassifyNsfw,
+} from '../../core/db/faces.js';
+import { getStats } from '../../core/db/downloads.js';
+import { getThumbsCacheStats, hasFfmpeg } from '../../core/thumbs.js';
+import { loginVerify, isAuthConfigured, revokeAllSessions } from '../../core/web-auth.js';
+import {
+    getScanState as nsfwGetScanState,
+    preloadClassifier as nsfwPreloadClassifier,
+    clearClassifierCache as nsfwClearCache,
+} from '../../core/nsfw.js';
+import { readConfigSafe } from '../lib/config-cache.js';
+import { saveConfig } from '../../config/manager.js';
+import { tgAuthErrorBody } from '../lib/tg-error.js';
 
 const fsSync = fs;
 
@@ -13,7 +76,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '../../../data');
 
-export function createMaintenanceRouter({ broadcast, log, jobTrackers, getAccountManager }) {
+export function createMaintenanceRouter({
+    broadcast,
+    log,
+    jobTrackers,
+    getAccountManager,
+    resolveEntityAcrossAccounts,
+    downloadProfilePhoto,
+}) {
     const router = express.Router();
 
     // ============ MAINTENANCE ENDPOINTS ===========================================

@@ -1,6 +1,21 @@
 import express from 'express';
 import { getDb } from '../../core/db.js';
 import { loadConfig } from '../../config/manager.js';
+import {
+    createShareLink,
+    listShareLinks,
+    countShareLinks,
+    revokeShareLink,
+} from '../../core/db/downloads.js';
+import { clampTtlSeconds, buildShareUrlPath } from '../../core/share.js';
+
+function _shareLinkPayload(req, row) {
+    const proto = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const base = `${proto}://${host}`;
+    const path = buildShareUrlPath(row.id, row.expires_at, row.label || null);
+    return { ...row, url: base + path };
+}
 
 export function createShareLinksRouter({ log }) {
     const router = express.Router();

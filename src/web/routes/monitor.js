@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fsSync, { existsSync } from 'fs';
 import { runtime } from '../../core/runtime.js';
+import { loadConfig } from '../../config/manager.js';
 import { tgAuthErrorBody } from '../lib/tg-error.js';
 import { readConfigSafe } from '../lib/config-cache.js';
 

@@ -3,8 +3,18 @@ import { loadConfig } from '../../config/manager.js';
 import { runtime } from '../../core/runtime.js';
 import { writeConfigAtomic } from '../lib/config-writer.js';
 import { getDb } from '../../core/db.js';
+import { getRescueStats } from '../../core/db/downloads.js';
+import { getRescueSweeper } from '../../core/rescue.js';
+import { applyShareLimits } from '../../core/share.js';
+import { getDiskRotator } from '../../core/disk-rotator.js';
+import { refreshSidecar as refreshSeekbarSidecar } from '../../core/seekbar/spawn.js';
 
-export function createConfigRouter({ broadcast, invalidateDialogsCache }) {
+export function createConfigRouter({
+    broadcast,
+    invalidateDialogsCache,
+    invalidateShareConfigCache,
+    refreshRateLimitConfig,
+}) {
     const router = express.Router();
 
     router.get('/config', async (req, res) => {
@@ -521,7 +531,7 @@ export function createConfigRouter({ broadcast, invalidateDialogsCache }) {
             // so a save takes effect immediately without a process restart.
             try {
                 applyShareLimits(newConfig.advanced?.share || {});
-                _invalidateShareConfigCache();
+                invalidateShareConfigCache();
             } catch {}
 
             // Reset the lazy AccountManager singleton if Telegram credentials

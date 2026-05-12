@@ -83,7 +83,7 @@ import { safeResolveDownload } from './lib/resolve-download.js';
 import { createBackupRouter } from './routes/backup.js';
 import { createShareLinksRouter } from './routes/share.js';
 import { createConfigRouter } from './routes/config.js';
-import { createGroupsRouter } from './routes/groups.js';
+import { createGroupsRouter, spawnBackfill } from './routes/groups.js';
 import { createDownloadsRouter } from './routes/downloads.js';
 import {
     createDialogsRouter,
@@ -1009,7 +1009,7 @@ runtime.on('catch_up_needed', ({ groupId, gap }) => {
     // long catch-ups).
     const ceiling = Number(histCfg.autoFirstLimit ?? 100);
     const limit = ceiling > 0 ? Math.min(ceiling * 10, BACKFILL_MAX_LIMIT) : null;
-    _spawnInternalBackfill({
+    spawnBackfill({
         groupId,
         limit,
         mode: 'catch-up',
@@ -1442,7 +1442,14 @@ app.use(
 app.use('/api', createAiRouter({ broadcast, log, jobTrackers: _jobTrackers }));
 app.use(
     '/api',
-    createMaintenanceRouter({ broadcast, log, jobTrackers: _jobTrackers, getAccountManager }),
+    createMaintenanceRouter({
+        broadcast,
+        log,
+        jobTrackers: _jobTrackers,
+        getAccountManager,
+        resolveEntityAcrossAccounts,
+        downloadProfilePhoto,
+    }),
 );
 app.use('/api', createClusterRouter({ broadcast, log }));
 app.use('/api', createBackupRouter({ log }));
@@ -1452,6 +1459,8 @@ app.use(
     createConfigRouter({
         broadcast,
         invalidateDialogsCache: _invalidateDialogsCache,
+        invalidateShareConfigCache: _invalidateShareConfigCache,
+        refreshRateLimitConfig,
     }),
 );
 app.use(
@@ -1464,6 +1473,8 @@ app.use(
         dialogsTypeFor,
         resolveEntityAcrossAccounts,
         downloadProfilePhoto,
+        jobTrackers: _jobTrackers,
+        getAccountManager,
     }),
 );
 
