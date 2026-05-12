@@ -22,6 +22,8 @@ export function createGroupsRouter({
     invalidateDialogsCache,
     getDialogsNameCache,
     dialogsTypeFor,
+    resolveEntityAcrossAccounts,
+    downloadProfilePhoto,
 }) {
     const router = express.Router();
 

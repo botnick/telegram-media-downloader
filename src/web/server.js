@@ -1811,6 +1811,8 @@ app.use(
         invalidateDialogsCache: _invalidateDialogsCache,
         getDialogsNameCache,
         dialogsTypeFor,
+        resolveEntityAcrossAccounts,
+        downloadProfilePhoto,
     }),
 );
 
