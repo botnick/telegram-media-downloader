@@ -157,15 +157,11 @@ import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
 import {
     getAiCounts,
-    listAllTags,
-    listPhotosForTag,
     listPeople,
     listPhotosForPerson,
     renamePerson,
     deletePerson,
-    clearStaleEmbeddings,
     resetAllAiData,
-    listEmbeddingModels,
     setFaceQualityScore,
     getDb as aiGetDb,
 } from '../core/db.js';
@@ -5208,7 +5204,8 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
         await writeConfigAtomic(config);
 
         // 5. Delete profile photo
-        const photoPath = path.join(PHOTOS_DIR, `${groupId}.jpg`);
+        const safeGroupId = String(groupId).replace(/[^A-Za-z0-9_.-]/g, '_');
+        const photoPath = path.join(PHOTOS_DIR, `${safeGroupId}.jpg`);
         if (existsSync(photoPath)) await fs.unlink(photoPath);
 
         // 6. Purge thumbnail + seekbar sprite cache for every deleted download.
@@ -7504,7 +7501,6 @@ app.post('/api/ai/scan/start', async (req, res) => {
         }
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
-        const prefix = _aiTrackerEventPrefix(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
             return new Promise((resolve, reject) => {
                 // Forward the runner's signal abort -> our internal
@@ -11409,8 +11405,8 @@ app.get('/api/groups/:id/photo', async (req, res) => {
                 }
             }
             if (matchId) {
-                // Reuse the numeric photo — fetch on demand if missing.
-                const numericPath = path.join(PHOTOS_DIR, `${matchId}.jpg`);
+                const safeMatchId = String(matchId).replace(/[^A-Za-z0-9_.-]/g, '_');
+                const numericPath = path.join(PHOTOS_DIR, `${safeMatchId}.jpg`);
                 if (!existsSync(numericPath)) await downloadProfilePhoto(matchId);
                 if (existsSync(numericPath)) {
                     try {

@@ -147,13 +147,9 @@ function _bindOnce() {
         if (statusEl) statusEl.textContent = `Preloading ${model}…`;
         try {
             await api.post(`/api/ai/preload-model/${model}`);
-            let ready = false;
-            for (let i = 0; i < 60 && !ready; i++) {
+            for (let i = 0; i < 60; i++) {
                 const s = await api.get(`/api/ai/preload-model/${model}/status`);
-                if (s?.status === 'ready') {
-                    ready = true;
-                    break;
-                }
+                if (s?.status === 'ready') break;
                 if (s?.status?.startsWith('error')) {
                     throw new Error(s.status);
                 }

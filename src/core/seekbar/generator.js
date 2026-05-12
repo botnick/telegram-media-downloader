@@ -29,7 +29,6 @@ import {
     ffmpegHasLibwebp,
     hasFfmpeg,
     hwaccelUploadPipeline,
-    resolveFfmpegBin,
     resolveFfprobeBin,
     runFfmpegArgs,
 } from '../thumbs.js';
@@ -99,7 +98,6 @@ async function _ensureSeekbarDir() {
     }
 }
 
-
 function _ffprobeDuration(absPath) {
     return new Promise((resolve) => {
         try {
@@ -135,13 +133,13 @@ function _ffprobeDuration(absPath) {
 // Scales automatically so the seekbar is never sparse regardless of clip length.
 // User-configured maxTiles acts as a hard cap on top of these defaults.
 const _SPRITE_TIERS = [
-    { upTo: 15,       density: 0.5,  absoluteMax: 30  },
-    { upTo: 60,       density: 1.0,  absoluteMax: 60  },
-    { upTo: 300,      density: 3.0,  absoluteMax: 100 },
-    { upTo: 900,      density: 5.0,  absoluteMax: 180 },
-    { upTo: 1800,     density: 7.0,  absoluteMax: 300 },
-    { upTo: 3600,     density: 9.0,  absoluteMax: 450 },
-    { upTo: 7200,     density: 12.0, absoluteMax: 600 },
+    { upTo: 15, density: 0.5, absoluteMax: 30 },
+    { upTo: 60, density: 1.0, absoluteMax: 60 },
+    { upTo: 300, density: 3.0, absoluteMax: 100 },
+    { upTo: 900, density: 5.0, absoluteMax: 180 },
+    { upTo: 1800, density: 7.0, absoluteMax: 300 },
+    { upTo: 3600, density: 9.0, absoluteMax: 450 },
+    { upTo: 7200, density: 12.0, absoluteMax: 600 },
     { upTo: Infinity, density: 18.0, absoluteMax: 720 },
 ];
 

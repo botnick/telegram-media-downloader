@@ -279,9 +279,10 @@ async function _refreshStats() {
         wrap.classList.remove('hidden');
         bar.style.width = `${pct}%`;
         bar.className = `h-full transition-all duration-500 rounded-full ${pct >= 100 ? 'bg-tg-green' : pct >= 50 ? 'bg-tg-blue' : 'bg-yellow-400'}`;
-        label.textContent = total > 0
-            ? `${count.toLocaleString()} / ${total.toLocaleString()} videos have previews`
-            : i18nT('maintenance.seekbar.coverage.none', 'No videos yet');
+        label.textContent =
+            total > 0
+                ? `${count.toLocaleString()} / ${total.toLocaleString()} videos have previews`
+                : i18nT('maintenance.seekbar.coverage.none', 'No videos yet');
         if (cta) cta.classList.toggle('hidden', pct >= 100 || total === 0);
     }
 
@@ -497,7 +498,6 @@ async function _loadGroupsSelector() {
         const r = await api.get('/api/groups?limit=200');
         const groups = Array.isArray(r?.groups) ? r.groups : Array.isArray(r) ? r : [];
         if (!groups.length) return;
-        const defaultOpt = sel.options[0];
         // Remove old dynamic options (keep the placeholder).
         while (sel.options.length > 1) sel.remove(1);
         for (const g of groups) {
@@ -589,9 +589,13 @@ async function _refreshQueueStats() {
         // Idle: show a friendly summary using the DB total (completed = countSeekbarSprites)
         const total = Number(r.completed || 0);
         if (idleLine) {
-            idleLine.textContent = total > 0
-                ? `${total.toLocaleString()} sprites generated · no scan running`
-                : i18nT('maintenance.seekbar.queue.idle_none', 'No sprites yet — click Scan now to generate previews for your library.');
+            idleLine.textContent =
+                total > 0
+                    ? `${total.toLocaleString()} sprites generated · no scan running`
+                    : i18nT(
+                          'maintenance.seekbar.queue.idle_none',
+                          'No sprites yet — click Scan now to generate previews for your library.',
+                      );
         }
     }
 }

@@ -3230,10 +3230,9 @@ async function saveGroupSettings() {
 
     const _editedGroup = state.groups.find((g) => String(g.id) === String(currentEditGroup.id));
     const _isSuspended = _editedGroup?.suspended === true;
-    const enabled =
-        _isSuspended
-            ? false
-            : (document.getElementById('group-enable-toggle')?.classList.contains('active') ?? true);
+    const enabled = _isSuspended
+        ? false
+        : (document.getElementById('group-enable-toggle')?.classList.contains('active') ?? true);
 
     // Collect filters
     const filters = {};
@@ -3475,7 +3474,6 @@ function _renderGroupFiles(rows) {
             const isImage = fileType === 'photo' || fileType === 'image' || fileType === 'sticker';
             const isVideo = fileType === 'video';
             const isAudio = fileType === 'audio';
-            const isDoc = !isImage && !isVideo && !isAudio;
             // Thumbnail container — `aspect-square rounded-md` with a subtle
             // ring on hover. Image/video share the same shape (12×12) so
             // rows align cleanly even when types are mixed. Audio + document

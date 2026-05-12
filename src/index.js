@@ -10,10 +10,9 @@ import fs from 'fs';
 import path from 'path';
 import net from 'net';
 import os from 'os';
-import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
-import { loadConfig, saveConfig, addGroup } from './config/manager.js';
+import { loadConfig, saveConfig } from './config/manager.js';
 import { getDataDir, getDownloadsDir, resolveConfigDownloadPath } from './core/paths.js';
 import { resolveFfmpegBin, resolveFfprobeBin } from './core/thumbs.js';
 import { hashPassword } from './core/web-auth.js';
@@ -685,7 +684,8 @@ async function configureGlobalSettings(config) {
             // Path selection
             console.log();
             console.log(
-                colorize('Current Path: ', 'yellow') + resolveConfigDownloadPath(config.download?.path),
+                colorize('Current Path: ', 'yellow') +
+                    resolveConfigDownloadPath(config.download?.path),
             );
             const val = await question(
                 colorize('Enter new path (or Enter to keep current): ', 'cyan'),
