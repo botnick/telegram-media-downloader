@@ -216,9 +216,6 @@ export function createGroupsRouter({
 
     router.delete('/groups/:id/purge', async (req, res) => {
         const groupId = req.params.id;
-        if (!/^[A-Za-z0-9_-]+$/.test(String(groupId))) {
-            return res.status(400).json({ error: 'Invalid group id' });
-        }
         const tracker = _groupPurgeTracker(groupId);
         const r = tracker.tryStart(async ({ onProgress }) => {
             const config = loadConfig();
@@ -721,11 +718,9 @@ export function createGroupsRouter({
         // synthetic id, so subsequent hits skip the resolve loop.
         if (typeof id === 'string' && id.startsWith('unknown:')) {
             const rawKey = id.slice('unknown:'.length);
-            if (!/^[A-Za-z0-9_.-]{1,128}$/.test(rawKey)) {
-                return res.status(400).send('Invalid id');
-            }
+            const safeKey = rawKey.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 128);
+            if (!safeKey) return res.status(400).send('Invalid id');
             const folderName = rawKey;
-            const safeKey = rawKey;
             const photosRoot = path.resolve(PHOTOS_DIR);
             const synthPath = path.resolve(PHOTOS_DIR, `${safeKey}.jpg`);
             if (synthPath !== photosRoot && !synthPath.startsWith(photosRoot + path.sep)) {

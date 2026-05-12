@@ -82,7 +82,10 @@ export function createLinkDownloadRouter({ getAccountManager }) {
                   .filter((h) => typeof h === 'string' && h.trim())
                   .map((h) => h.trim().toLowerCase())
             : [];
-        if (!allowedProxyTestHosts.includes(normalizedHost)) {
+        // If no allowlist is configured, fall back to the private-host
+        // check only (existing behaviour). The allowlist is an optional
+        // hard fence operators can enable for stricter control.
+        if (allowedProxyTestHosts.length > 0 && !allowedProxyTestHosts.includes(normalizedHost)) {
             return res.status(400).json({
                 error: 'host is not in allowedProxyTestHosts',
             });
