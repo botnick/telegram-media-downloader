@@ -125,6 +125,7 @@ import {
     preloadClassifier as nsfwPreloadClassifier,
     clearClassifierCache as nsfwClearCache,
     classifierReady as nsfwClassifierReady,
+    setBlocklistDeleteCallback as nsfwSetBlocklistDeleteCallback,
     NSFW_DEFAULTS,
     getNsfwStats,
     getNsfwDeleteCandidates,
@@ -7560,13 +7561,33 @@ app.post('/api/ai/faces/install-deps', async (req, res) => {
 // left off — same as clicking "Scan now".
 app.post('/api/ai/faces/recluster', async (_req, res) => {
     try {
-        if (aiIsScanRunning && aiIsScanRunning('faces')) {
+        const cfg = _aiCfg();
+        if (aiIsScanRunning('faces')) {
             return res.status(409).json({
                 error: 'scan_running',
                 message: 'A face scan is already in progress.',
             });
         }
-        res.json({ success: true });
+        const tracker = _aiTrackerFor('faces');
+        const claim = tracker.tryStart(({ onProgress, signal }) => {
+            return new Promise((resolve, reject) => {
+                if (signal?.addEventListener) {
+                    signal.addEventListener('abort', () => {
+                        try { aiCancelScan('faces'); } catch {}
+                    });
+                }
+                aiStartFacesScan(
+                    cfg,
+                    (p) => { try { onProgress(p); } catch {} },
+                    (p) => { if (p?.error) reject(new Error(p.error)); else resolve(p || {}); },
+                    (entry) => log(entry),
+                );
+            });
+        });
+        if (!claim.started) {
+            return res.status(409).json({ error: 'Tracker busy', code: claim.code });
+        }
+        res.json({ success: true, started: true });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
@@ -11797,6 +11818,17 @@ ${tip}
     } catch (e) {
         console.warn('[backup] init failed:', e.message);
     }
+
+    // Register the blocklist auto-delete callback so background deletes are
+    // visible in the realtime log and cause the downloads UI to remove the row.
+    nsfwSetBlocklistDeleteCallback((id) => {
+        try {
+            broadcast({ type: 'bulk_delete', ids: [id] });
+        } catch {}
+        try {
+            log({ source: 'nsfw', level: 'info', msg: `blocklist: auto-deleted id=${id}` });
+        } catch {}
+    });
 
     // Pre-fetch the NSFW classifier in the background when the operator
     // has enabled both `advanced.nsfw.enabled` and `advanced.nsfw.preload`.
