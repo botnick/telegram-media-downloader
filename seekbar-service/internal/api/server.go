@@ -21,6 +21,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -41,7 +42,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
 
-const ServiceVersion = "0.2.0"
+const ServiceVersion = "0.3.0"
 
 type Server struct {
 	cfg  *config.Config
@@ -164,14 +165,18 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 func (s *Server) requireToken(next http.Handler) http.Handler {
 	want := strings.TrimSpace(s.cfg.HTTP.APIToken)
 	if want == "" {
+		s.log.Warn("SEEKBAR_API_TOKEN is empty — all /v1 endpoints are unauthenticated")
 		return next
 	}
+	wantBytes := []byte(want)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("X-API-Token")
 		if got == "" {
-			got = r.URL.Query().Get("token")
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
 		}
-		if got != want {
+		gotBytes := []byte(got)
+		if len(gotBytes) != len(wantBytes) || subtle.ConstantTimeCompare(gotBytes, wantBytes) != 1 {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}

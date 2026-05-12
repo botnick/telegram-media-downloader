@@ -117,7 +117,10 @@ import {
     SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
     startSidecar as startSeekbarSidecar,
 } from '../core/seekbar/spawn.js';
-import { health as seekbarClientHealth, probeHwaccel as probeSeekbarHwaccel } from '../core/seekbar/client.js';
+import {
+    health as seekbarClientHealth,
+    probeHwaccel as probeSeekbarHwaccel,
+} from '../core/seekbar/client.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
 import {
     startScan as nsfwStartScan,
@@ -1453,11 +1456,19 @@ app.post('/api/auth/guest-password', async (req, res) => {
 // the token still gets bounced.
 const _resetTokens = new Map(); // token → expiresAt
 const RESET_TOKEN_TTL_MS = 10 * 60 * 1000;
+const RESET_TOKEN_MAX = 50;
 
 function _gcResetTokens() {
     const now = Date.now();
     for (const [tok, exp] of _resetTokens) if (exp <= now) _resetTokens.delete(tok);
+    // Hard cap — prevent memory growth from brute-force attempts.
+    if (_resetTokens.size > RESET_TOKEN_MAX) {
+        const excess = _resetTokens.size - RESET_TOKEN_MAX;
+        const it = _resetTokens.keys();
+        for (let i = 0; i < excess; i++) _resetTokens.delete(it.next().value);
+    }
 }
+setInterval(_gcResetTokens, 5 * 60 * 1000).unref();
 
 app.post('/api/auth/reset/request', loginLimiter, async (req, res) => {
     try {
@@ -2576,7 +2587,7 @@ app.post('/api/history', async (req, res) => {
         _historyJobs.set(jobId, job);
         _activeBackfillsByGroup.set(groupKey, jobId);
 
-        history.on('progress', (s) => {
+        const onProgress = (s) => {
             job.processed = s.processed;
             job.downloaded = s.downloaded;
             broadcast({
@@ -2589,12 +2600,19 @@ app.post('/api/history', async (req, res) => {
                 startedAt: job.startedAt,
                 mode: job.mode || 'pull-older',
             });
-        });
+        };
         // Mirror the chosen mode onto the job so the UI shows it ("pull
         // older" / "catch up" / "rescan") even after the worker exits.
-        history.on('start', (s) => {
+        const onStart = (s) => {
             if (s?.mode) job.mode = s.mode;
-        });
+        };
+        history.on('progress', onProgress);
+        history.on('start', onStart);
+
+        const _cleanupListeners = () => {
+            history.off('progress', onProgress);
+            history.off('start', onStart);
+        };
 
         history
             .downloadHistory(groupId, {
@@ -2603,6 +2621,7 @@ app.post('/api/history', async (req, res) => {
                 mode: mode === 'catch-up' || mode === 'rescan' ? mode : 'pull-older',
             })
             .then(() => {
+                _cleanupListeners();
                 job.state = job.cancelled ? 'cancelled' : 'done';
                 job.finishedAt = Date.now();
                 delete job._runner;
@@ -2622,6 +2641,7 @@ app.post('/api/history', async (req, res) => {
                 setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
             })
             .catch((err) => {
+                _cleanupListeners();
                 job.state = 'error';
                 job.error = err?.message || String(err);
                 job.finishedAt = Date.now();
@@ -4693,8 +4713,12 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         const dbDeleted = deleteDownloadsBy({ ids: allIds });
         onProgress({ processed: total, total, stage: 'purging_cache' });
         for (const id of allIds) {
-            try { await purgeThumbsForDownload(id); } catch {}
-            try { await purgeSeekbarForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
+            try {
+                await purgeSeekbarForDownload(id);
+            } catch {}
         }
         broadcast({ type: 'bulk_delete', unlinked, dbDeleted, ids: allIds });
         return { unlinked, dbDeleted, requested: total };
@@ -5191,8 +5215,12 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
         const CACHE_BATCH = 50;
         for (let i = 0; i < downloadIds.length; i += CACHE_BATCH) {
             for (const id of downloadIds.slice(i, i + CACHE_BATCH)) {
-                try { await purgeThumbsForDownload(id); } catch {}
-                try { await purgeSeekbarForDownload(id); } catch {}
+                try {
+                    await purgeThumbsForDownload(id);
+                } catch {}
+                try {
+                    await purgeSeekbarForDownload(id);
+                } catch {}
             }
             await new Promise((r) => setImmediate(r));
         }
@@ -5311,8 +5339,12 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
         const CACHE_BATCH = 50;
         for (let i = 0; i < downloadIds.length; i += CACHE_BATCH) {
             for (const id of downloadIds.slice(i, i + CACHE_BATCH)) {
-                try { await purgeThumbsForDownload(id); } catch {}
-                try { await purgeSeekbarForDownload(id); } catch {}
+                try {
+                    await purgeThumbsForDownload(id);
+                } catch {}
+                try {
+                    await purgeSeekbarForDownload(id);
+                } catch {}
             }
             await new Promise((r) => setImmediate(r));
         }
@@ -5952,8 +5984,12 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
             aggregate.freedBytes += part.freedBytes || 0;
             aggregate.missingFiles += part.missingFiles || 0;
             for (const id of slice) {
-                try { await purgeThumbsForDownload(id); } catch {}
-                try { await purgeSeekbarForDownload(id); } catch {}
+                try {
+                    await purgeThumbsForDownload(id);
+                } catch {}
+                try {
+                    await purgeSeekbarForDownload(id);
+                } catch {}
             }
             processed += slice.length;
             onProgress({ processed, total, stage: 'deleting' });
@@ -6415,7 +6451,7 @@ app.get('/api/maintenance/seekbar/queue/stats', (req, res) => {
         // When a scan is active: show live session counts.
         // When idle: completed = total sprites in DB so the card is meaningful
         // even when no scan has run in the current process lifetime.
-        const completed = running ? (p.generated || 0) : countSeekbarSprites();
+        const completed = running ? p.generated || 0 : countSeekbarSprites();
         const scanRemaining = running ? Math.max(0, (p.total || 0) - (p.processed || 0)) : 0;
         res.json({
             success: true,
@@ -6907,8 +6943,12 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
         }
         const r = dedupDeleteByIds(cleanIds);
         for (const id of cleanIds) {
-            try { await purgeThumbsForDownload(id); } catch {}
-            try { await purgeSeekbarForDownload(id); } catch {}
+            try {
+                await purgeThumbsForDownload(id);
+            } catch {}
+            try {
+                await purgeSeekbarForDownload(id);
+            } catch {}
         }
         try {
             broadcast({ type: 'bulk_delete', ids: cleanIds });
@@ -7091,8 +7131,12 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
             aggregate.freedBytes += part.freedBytes || 0;
             aggregate.missingFiles += part.missingFiles || 0;
             for (const id of slice) {
-                try { await purgeThumbsForDownload(id); } catch {}
-                try { await purgeSeekbarForDownload(id); } catch {}
+                try {
+                    await purgeThumbsForDownload(id);
+                } catch {}
+                try {
+                    await purgeSeekbarForDownload(id);
+                } catch {}
             }
             processed += slice.length;
             onProgress({ stage: 'deleting', op: 'delete', processed, total });
@@ -7386,8 +7430,13 @@ app.get('/api/ai/status', async (_req, res) => {
                 }
             })(),
             qualityBackfillPending: (() => {
-                try { return aiGetDb().prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL').get().n; }
-                catch { return 0; }
+                try {
+                    return aiGetDb()
+                        .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
+                        .get().n;
+                } catch {
+                    return 0;
+                }
             })(),
             trackers: {
                 aiPeople: _jobTrackers.aiPeople.getStatus(),
@@ -7634,13 +7683,22 @@ app.post('/api/ai/faces/recluster', async (_req, res) => {
             return new Promise((resolve, reject) => {
                 if (signal?.addEventListener) {
                     signal.addEventListener('abort', () => {
-                        try { aiCancelScan('faces'); } catch {}
+                        try {
+                            aiCancelScan('faces');
+                        } catch {}
                     });
                 }
                 aiStartFacesScan(
                     cfg,
-                    (p) => { try { onProgress(p); } catch {} },
-                    (p) => { if (p?.error) reject(new Error(p.error)); else resolve(p || {}); },
+                    (p) => {
+                        try {
+                            onProgress(p);
+                        } catch {}
+                    },
+                    (p) => {
+                        if (p?.error) reject(new Error(p.error));
+                        else resolve(p || {});
+                    },
                     (entry) => log(entry),
                 );
             });
@@ -7665,9 +7723,10 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
         const cfg = _aiCfg();
         const facesBlock = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
         const baseTypes = cfg.fileTypes || ['photo'];
-        const types = facesBlock.scanVideos === true && !baseTypes.includes('video')
-            ? [...baseTypes, 'video']
-            : baseTypes;
+        const types =
+            facesBlock.scanVideos === true && !baseTypes.includes('video')
+                ? [...baseTypes, 'video']
+                : baseTypes;
         const placeholders = types.map(() => '?').join(',');
         const db = getDb();
         const tx = db.transaction(() => {
@@ -7700,7 +7759,9 @@ app.post('/api/ai/detect-test', async (req, res) => {
             return res.status(400).json({ error: 'downloadId must be a positive integer' });
         }
         const db = getDb();
-        const row = db.prepare(`SELECT id, file_path, file_type FROM downloads WHERE id = ?`).get(id);
+        const row = db
+            .prepare(`SELECT id, file_path, file_type FROM downloads WHERE id = ?`)
+            .get(id);
         if (!row) {
             return res.status(404).json({ error: 'download not found', code: 'NOT_FOUND' });
         }
@@ -7748,11 +7809,17 @@ app.post('/api/ai/detect-test', async (req, res) => {
             absPath: abs,
             fileType: row.file_type,
             error: null,
-            raw: detected === null ? null : detected.map((f) => ({
-                x: f.x, y: f.y, w: f.w, h: f.h,
-                score: f.score,
-                embeddingDim: f.embedding?.length ?? 0,
-            })),
+            raw:
+                detected === null
+                    ? null
+                    : detected.map((f) => ({
+                          x: f.x,
+                          y: f.y,
+                          w: f.w,
+                          h: f.h,
+                          score: f.score,
+                          embeddingDim: f.embedding?.length ?? 0,
+                      })),
             rawCount: detected === null ? null : detected.length,
             warnings,
         });
@@ -7769,7 +7836,10 @@ app.post('/api/ai/preload-model/:name', async (_req, res) => {
         const facesSpawn = await import('../core/ai/faces-spawn.js');
         const url = facesSpawn.getSidecarStatus()?.url;
         if (!url) return res.status(503).json({ error: 'sidecar not running' });
-        const r = await fetch(`${url}/preload/${encodeURIComponent(name)}`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+        const r = await fetch(`${url}/preload/${encodeURIComponent(name)}`, {
+            method: 'POST',
+            signal: AbortSignal.timeout(5000),
+        });
         res.json(await r.json());
     } catch (e) {
         res.status(502).json({ error: e.message });
@@ -7782,7 +7852,9 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
         const facesSpawn = await import('../core/ai/faces-spawn.js');
         const url = facesSpawn.getSidecarStatus()?.url;
         if (!url) return res.status(503).json({ error: 'sidecar not running' });
-        const r = await fetch(`${url}/preload/${encodeURIComponent(name)}/status`, { signal: AbortSignal.timeout(3000) });
+        const r = await fetch(`${url}/preload/${encodeURIComponent(name)}/status`, {
+            signal: AbortSignal.timeout(3000),
+        });
         res.json(await r.json());
     } catch (e) {
         res.status(502).json({ error: e.message });
@@ -7978,7 +8050,11 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
     } catch (e) {
-        log({ source: 'ai', level: 'warn', msg: `face crop error for person ${req.params.id}: ${e.message}` });
+        log({
+            source: 'ai',
+            level: 'warn',
+            msg: `face crop error for person ${req.params.id}: ${e.message}`,
+        });
         res.status(404).json({ error: 'face crop failed' });
     }
 });
@@ -8030,7 +8106,11 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
     } catch (e) {
-        log({ source: 'ai', level: 'warn', msg: `face crop error for face ${req.params.id}: ${e.message}` });
+        log({
+            source: 'ai',
+            level: 'warn',
+            msg: `face crop error for face ${req.params.id}: ${e.message}`,
+        });
         res.status(404).json({ error: 'face crop failed' });
     }
 });
@@ -8174,9 +8254,11 @@ app.post('/api/ai/backfill-quality', async (req, res) => {
         const db = aiGetDb();
         const { detectFacesBatch } = await import('../core/ai/faces-client.js');
 
-        const downloadIds = db.prepare(
-            'SELECT DISTINCT f.download_id FROM faces f WHERE f.quality_score IS NULL ORDER BY f.download_id',
-        ).all();
+        const downloadIds = db
+            .prepare(
+                'SELECT DISTINCT f.download_id FROM faces f WHERE f.quality_score IS NULL ORDER BY f.download_id',
+            )
+            .all();
 
         let processed = 0;
         let updated = 0;
@@ -8187,21 +8269,32 @@ app.post('/api/ai/backfill-quality', async (req, res) => {
             if (signal.aborted) break;
 
             const dl = db.prepare('SELECT file_path FROM downloads WHERE id = ?').get(download_id);
-            if (!dl?.file_path) { processed++; continue; }
+            if (!dl?.file_path) {
+                processed++;
+                continue;
+            }
 
             const resolved = await safeResolveDownload(dl.file_path);
-            if (!resolved?.ok) { processed++; errors++; continue; }
+            if (!resolved?.ok) {
+                processed++;
+                errors++;
+                continue;
+            }
 
             let detected;
             try {
                 const batch = await detectFacesBatch([resolved.real], {});
                 detected = batch?.[0];
-            } catch { detected = null; }
+            } catch {
+                detected = null;
+            }
 
             if (Array.isArray(detected) && detected.length) {
-                const storedFaces = db.prepare(
-                    'SELECT id, x, y, w, h FROM faces WHERE download_id = ? AND quality_score IS NULL',
-                ).all(download_id);
+                const storedFaces = db
+                    .prepare(
+                        'SELECT id, x, y, w, h FROM faces WHERE download_id = ? AND quality_score IS NULL',
+                    )
+                    .all(download_id);
 
                 for (const sf of storedFaces) {
                     let bestIoU = 0;
@@ -8218,7 +8311,11 @@ app.post('/api/ai/backfill-quality', async (req, res) => {
                         const iou = union > 0 ? inter / union : 0;
                         if (iou > bestIoU && iou > 0.3) {
                             bestIoU = iou;
-                            bestQ = Number.isFinite(d.qualityScore) ? d.qualityScore : (Number.isFinite(d.score) ? d.score : null);
+                            bestQ = Number.isFinite(d.qualityScore)
+                                ? d.qualityScore
+                                : Number.isFinite(d.score)
+                                  ? d.score
+                                  : null;
                         }
                     }
                     if (bestQ != null) {
@@ -8330,9 +8427,10 @@ function _aiAutoScanTick() {
         }
         const facesBlk = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
         const baseFileTypes = cfg.fileTypes || ['photo'];
-        const fileTypes = facesBlk.scanVideos === true && !baseFileTypes.includes('video')
-            ? [...baseFileTypes, 'video']
-            : baseFileTypes;
+        const fileTypes =
+            facesBlk.scanVideos === true && !baseFileTypes.includes('video')
+                ? [...baseFileTypes, 'video']
+                : baseFileTypes;
         const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
         if (!batch.length) {
             _aiAutoScanLastTickAt = Date.now();
@@ -10949,12 +11047,14 @@ app.post('/api/config', async (req, res) => {
                     bodyAi.faceClustering !== undefined;
                 if (needsRestart && facesSpawnMod) {
                     facesSpawnMod.stopSidecar();
-                    facesSpawnMod.startSidecar().catch((e) =>
-                        console.warn(
-                            '[faces-sidecar] config-change restart failed:',
-                            e?.message || e,
-                        ),
-                    );
+                    facesSpawnMod
+                        .startSidecar()
+                        .catch((e) =>
+                            console.warn(
+                                '[faces-sidecar] config-change restart failed:',
+                                e?.message || e,
+                            ),
+                        );
                 }
                 broadcast({ type: 'ai_config_changed' });
             } catch (e) {
@@ -11203,7 +11303,7 @@ async function _spawnInternalBackfill({
     };
     _historyJobs.set(jobId, job);
     _activeBackfillsByGroup.set(groupKey, jobId);
-    history.on('progress', (s) => {
+    const onProgress = (s) => {
         job.processed = s.processed;
         job.downloaded = s.downloaded;
         broadcast({
@@ -11216,13 +11316,20 @@ async function _spawnInternalBackfill({
             startedAt: job.startedAt,
             mode: job.mode,
         });
-    });
-    history.on('start', (s) => {
+    };
+    const onStart = (s) => {
         if (s?.mode) job.mode = s.mode;
-    });
+    };
+    history.on('progress', onProgress);
+    history.on('start', onStart);
+    const _cleanupListeners = () => {
+        history.off('progress', onProgress);
+        history.off('start', onStart);
+    };
     history
         .downloadHistory(groupKey, { limit: lim ?? undefined, mode })
         .then(() => {
+            _cleanupListeners();
             job.state = job.cancelled ? 'cancelled' : 'done';
             job.finishedAt = Date.now();
             delete job._runner;
@@ -11235,6 +11342,7 @@ async function _spawnInternalBackfill({
             setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
         })
         .catch((err) => {
+            _cleanupListeners();
             job.state = 'error';
             job.error = err?.message || String(err);
             job.finishedAt = Date.now();
@@ -11779,9 +11887,9 @@ const _STATS_TRIGGER_TYPES = new Set([
 
 function broadcast(data) {
     const message = JSON.stringify(data);
-    clients.forEach((client) => {
+    for (const client of Array.from(clients)) {
         if (client.readyState === 1) client.send(message);
-    });
+    }
     // Side-channel: if the event meaningfully changed stats, schedule a
     // single recompute + push. Debounce inside broadcastStatsSoon() makes
     // a 50-row bulk delete still cost one stats broadcast, not fifty.
@@ -11931,7 +12039,12 @@ const _jobTrackers = {
     aiIndex: createJobTracker({ kind: 'aiIndex', broadcast, log, eventPrefix: 'ai_index' }),
     aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
     aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
-    qualityBackfill: createJobTracker({ kind: 'qualityBackfill', broadcast, log, eventPrefix: 'quality_backfill' }),
+    qualityBackfill: createJobTracker({
+        kind: 'qualityBackfill',
+        broadcast,
+        log,
+        eventPrefix: 'quality_backfill',
+    }),
 };
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's
