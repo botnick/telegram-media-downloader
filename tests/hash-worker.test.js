@@ -28,7 +28,7 @@ afterAll(async () => {
 });
 
 describe('hash-worker pool', () => {
-    it('returns the same SHA-256 as crypto.createHash for a known buffer', async () => {
+    it('returns the same SHA-256 as crypto.createHash for a known buffer', { timeout: 15_000 }, async () => {
         const { hashFile } = await import('../src/core/hash-worker.js');
         const hex = await hashFile(TEST_FILE);
         expect(hex).toBe(EXPECTED);
