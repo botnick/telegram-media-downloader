@@ -216,6 +216,9 @@ export function createGroupsRouter({
 
     router.delete('/groups/:id/purge', async (req, res) => {
         const groupId = req.params.id;
+        if (!/^[A-Za-z0-9_-]+$/.test(String(groupId))) {
+            return res.status(400).json({ error: 'Invalid group id' });
+        }
         const tracker = _groupPurgeTracker(groupId);
         const r = tracker.tryStart(async ({ onProgress }) => {
             const config = loadConfig();
