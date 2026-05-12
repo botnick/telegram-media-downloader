@@ -81,10 +81,14 @@ export async function findDuplicates(opts = {}) {
     // size > 0 only — zero-byte files would all collide on the empty hash
     // and aren't meaningful duplicates.
     //
-    // Stream rows via `.iterate()` so a 1M-row library doesn't allocate
-    // the full result set up-front. better-sqlite3 reuses one row buffer
-    // through the loop, capping JS heap pressure at a few KB regardless
-    // of table size — fixes the OOM crash inside `Statement::JS_all`.
+    // Use keyset-paginated `.all()` instead of `.iterate()`. A live
+    // `.iterate()` cursor holds the better-sqlite3 connection open for
+    // its entire lifetime; `await hashFile()` yields control while the
+    // cursor is open, which lets the download manager, kv flush timer, or
+    // AI pregenerate hook collide on the connection and throw
+    // "This database connection is busy executing a query".
+    // With keyset paging the `.all()` call opens and closes the statement
+    // synchronously, so the connection is free during the async hash work.
     const total = db
         .prepare(`
         SELECT COUNT(*) AS n FROM downloads
@@ -101,33 +105,47 @@ export async function findDuplicates(opts = {}) {
 
     if (onProgress) onProgress({ stage: 'hashing', processed, total, hashed, errored });
 
-    const iter = db
-        .prepare(`
+    // Keyset cursor over id DESC — keeps a stable window even as hashed
+    // rows are updated (file_hash no longer NULL, so they fall out of the
+    // WHERE clause naturally on the next page fetch).
+    const PAGE_SIZE = 50;
+    let beforeId = Number.MAX_SAFE_INTEGER;
+    const pageStmt = db.prepare(`
         SELECT id, file_path, file_size FROM downloads
          WHERE file_hash IS NULL
            AND file_path IS NOT NULL
            AND COALESCE(file_size, 0) > 0
-         ORDER BY file_size DESC
-    `)
-        .iterate();
-    for (const row of iter) {
+           AND id < ?
+         ORDER BY id DESC
+         LIMIT ?
+    `);
+    while (true) {
         if (signal?.aborted) break;
-        processed++;
-        const abs = resolveStoredPath(row.file_path);
-        if (!abs) {
-            errored++;
-            continue;
+        // `.all()` closes the statement before we hit any await below.
+        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        if (!page.length) break;
+        for (const row of page) {
+            if (signal?.aborted) break;
+            processed++;
+            const abs = resolveStoredPath(row.file_path);
+            if (!abs) {
+                errored++;
+                continue;
+            }
+            try {
+                const digest = await hashFile(abs);
+                update.run(digest, row.id);
+                hashed++;
+            } catch {
+                errored++;
+            }
+            if (onProgress && (processed % 25 === 0 || processed === total)) {
+                onProgress({ stage: 'hashing', processed, total, hashed, errored });
+            }
         }
-        try {
-            const digest = await hashFile(abs);
-            update.run(digest, row.id);
-            hashed++;
-        } catch {
-            errored++;
-        }
-        if (onProgress && (processed % 25 === 0 || processed === total)) {
-            onProgress({ stage: 'hashing', processed, total, hashed, errored });
-        }
+        beforeId = Number(page[page.length - 1].id);
+        await new Promise((r) => setImmediate(r));
+        if (page.length < PAGE_SIZE) break;
     }
 
     // Second pass: group by hash, return the duplicate sets ordered by the

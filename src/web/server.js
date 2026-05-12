@@ -2816,7 +2816,29 @@ function flushQueueHistorySoon() {
         try {
             kvSet(QUEUE_HISTORY_KV, _queueHistory.slice(0, QUEUE_HISTORY_CAP));
         } catch (e) {
-            console.error("kv['queue_history'] write failed:", e?.message || e);
+            const msg = String(e?.message || e);
+            const busy =
+                msg.includes('database connection is busy') ||
+                msg.includes('SQLITE_BUSY') ||
+                e?.code === 'SQLITE_BUSY';
+            if (busy) {
+                // A maintenance sweep (.iterate() + await) is holding the
+                // connection. Re-arm the debounce so we retry after 500 ms
+                // instead of losing the write entirely.
+                _queueHistoryDirty = true;
+                _queueHistoryFlushTimer = setTimeout(() => {
+                    _queueHistoryFlushTimer = null;
+                    if (!_queueHistoryDirty) return;
+                    _queueHistoryDirty = false;
+                    try {
+                        kvSet(QUEUE_HISTORY_KV, _queueHistory.slice(0, QUEUE_HISTORY_CAP));
+                    } catch (e2) {
+                        console.error("kv['queue_history'] write failed:", e2?.message || e2);
+                    }
+                }, 500).unref?.();
+            } else {
+                console.error("kv['queue_history'] write failed:", e?.message || e);
+            }
         }
     }, 1500).unref?.();
 }

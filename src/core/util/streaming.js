@@ -25,9 +25,22 @@
  *
  * Returns `{ processed: number }`.
  *
+ * IMPORTANT — connection safety: this helper uses `.all(batchSize, offset)`
+ * (LIMIT/OFFSET pagination) rather than `.iterate()`. A live `.iterate()`
+ * cursor holds the better-sqlite3 connection open for its full lifetime;
+ * when `onBatch` contains an `await`, other DB writers (download manager,
+ * kv flush timer, AI pregenerate) collide on the busy connection and throw
+ * "This database connection is busy executing a query". With LIMIT/OFFSET
+ * paging each `.all()` call opens and closes the statement synchronously
+ * before any async work begins.
+ *
+ * Callers whose SQL supports a stable ORDER BY column should prefer
+ * keyset pagination (see seekbar/scan-runner.js) over this helper's
+ * OFFSET approach to avoid O(N²) seeks on very large tables.
+ *
  * @param {object} opts
  * @param {import('better-sqlite3').Database} opts.db
- * @param {string} opts.sql
+ * @param {string} opts.sql       — must not already contain LIMIT/OFFSET
  * @param {any[]} [opts.args]
  * @param {number} [opts.batchSize]
  * @param {(rows: any[]) => Promise<void> | void} opts.onBatch
@@ -37,25 +50,24 @@ export async function streamRows({ db, sql, args = [], batchSize = 64, onBatch, 
     if (typeof onBatch !== 'function') {
         throw new TypeError('streamRows: onBatch is required');
     }
-    const stmt = db.prepare(sql);
-    const iter = stmt.iterate(...args);
-    let buf = [];
+    const lim = Math.max(1, Number(batchSize) || 64);
+    // Append LIMIT/OFFSET so the statement closes before any async work.
+    const stmt = db.prepare(`${sql} LIMIT ? OFFSET ?`);
     let processed = 0;
-    const drain = async () => {
-        if (!buf.length) return;
-        const slice = buf;
-        buf = [];
-        await onBatch(slice);
-        processed += slice.length;
+    let offset = 0;
+    while (true) {
+        if (signal?.aborted) break;
+        // `.all()` completes synchronously — cursor is closed before we
+        // hit the await inside onBatch.
+        const batch = stmt.all(...args, lim, offset);
+        if (!batch.length) break;
+        await onBatch(batch);
+        processed += batch.length;
+        offset += batch.length;
         // Yield to the event loop so WS broadcasts and other I/O can flush.
         await new Promise((r) => setImmediate(r));
-    };
-    for (const row of iter) {
-        if (signal?.aborted) break;
-        buf.push(row);
-        if (buf.length >= batchSize) await drain();
+        if (batch.length < lim) break;
     }
-    await drain();
     return { processed };
 }
 
