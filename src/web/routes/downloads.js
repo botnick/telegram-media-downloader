@@ -23,6 +23,12 @@ import { deleteAllDownloads } from '../../core/db/groups.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '../../../data');
+
+function sanitizeForLog(value, maxLen = 500) {
+    return String(value ?? '')
+        .replace(/[\x00-\x1F\x7F]/g, '_')
+        .slice(0, maxLen);
+}
 const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 
@@ -758,11 +764,7 @@ export function createDownloadsRouter({
             }
 
             await fs.unlink(r.real);
-            console.log(
-                `🗑️ Deleted: ${String(filePath)
-                    .replace(/[\n\r]/g, '_')
-                    .slice(0, 500)}`,
-            );
+            console.log(`🗑️ Deleted: ${sanitizeForLog(filePath)}`);
 
             // Remove from DB (by basename — the DB stores filenames, not paths).
             // Capture matching ids first so we can wipe their cached thumbnails;
