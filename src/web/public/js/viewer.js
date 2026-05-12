@@ -2174,6 +2174,133 @@ class VideoPlayer {
         this.errorOverlay.classList.add('hidden');
         this.errorOverlay.classList.remove('flex');
     }
+
+    /**
+     * Build the horizontal filmstrip from the loaded sprite sheet.
+     * Called once per clip when the sprite image load succeeds.
+     * Each cell is a background-position crop of the same sprite URL.
+     */
+    _renderFilmstrip() {
+        const track = this.filmstripTrack;
+        const wrap = this.filmstrip;
+        const sp = this._sprite;
+        if (!track || !wrap || !sp || this._spriteState !== 'ready') return;
+        const id = this._spriteFileId;
+        if (!id) return;
+        const frames = sp.frames || 0;
+        if (frames < 3) return; // not useful for very short clips
+        const tileW = sp.tile_w || 160;
+        const tileH = this._spriteTileH || sp.tile_h || 90;
+        const cols = sp.cols || 1;
+        const interval =
+            sp.interval_sec ||
+            (Number.isFinite(sp.duration_sec) && sp.frames > 0
+                ? sp.duration_sec / sp.frames
+                : 1);
+        const spriteUrl = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
+
+        // Thumbnail display size: responsive height, aspect-ratio width.
+        const thumbH = window.innerWidth <= 640 ? 44 : 56;
+        const thumbW = Math.max(60, Math.round(thumbH * (tileW / tileH)));
+        const scale = thumbH / tileH;
+        const bgsW = Math.round(tileW * cols * scale);
+        const bgsH = Math.round(tileH * Math.ceil(frames / cols) * scale);
+
+        // Cache float label ref for use in highlight updates.
+        if (!this._filmstripTimeFloat) {
+            this._filmstripTimeFloat = document.getElementById('filmstrip-time-float');
+        }
+
+        let html = '';
+        for (let i = 0; i < frames; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const bpX = -Math.round(col * tileW * scale);
+            const bpY = -Math.round(row * tileH * scale);
+            const sec = i * interval;
+            const timeStr = formatTime(sec);
+            html +=
+                `<div class="filmstrip-thumb" style="width:${thumbW}px;height:${thumbH}px" data-idx="${i}" data-sec="${sec.toFixed(2)}" role="option" aria-label="${timeStr}">` +
+                `<div class="filmstrip-thumb-inner" style="background-image:url(${spriteUrl});background-size:${bgsW}px ${bgsH}px;background-position:${bpX}px ${bpY}px"></div>` +
+                `</div>`;
+        }
+        track.innerHTML = html;
+        wrap.classList.remove('hidden');
+
+        // Click-to-seek (event delegation).
+        track.onclick = (e) => {
+            const thumb = e.target.closest?.('.filmstrip-thumb');
+            if (!thumb) return;
+            const sec = parseFloat(thumb.dataset.sec);
+            if (!Number.isFinite(sec)) return;
+            if (Number.isFinite(this.video.duration) && this.video.duration > 0) {
+                this.video.currentTime = Math.min(sec, this.video.duration);
+            }
+        };
+
+        // Scroll-arrow buttons.
+        if (this.filmstripPrev) {
+            this.filmstripPrev.onclick = () =>
+                track.scrollBy({ left: -Math.round(track.clientWidth * 0.8), behavior: 'smooth' });
+        }
+        if (this.filmstripNext) {
+            this.filmstripNext.onclick = () =>
+                track.scrollBy({ left: Math.round(track.clientWidth * 0.8), behavior: 'smooth' });
+        }
+
+        this._filmstripLastIdx = -1;
+        this._updateFilmstripHighlight();
+    }
+
+    /** Highlight the filmstrip cell that matches the current playback position. */
+    _updateFilmstripHighlight() {
+        if (!this.filmstripTrack || !this._sprite || this._spriteState !== 'ready') return;
+        if (this.filmstrip?.classList.contains('hidden')) return;
+        const sp = this._sprite;
+        const v = this.video;
+        if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+        const interval =
+            sp.interval_sec ||
+            (Number.isFinite(sp.duration_sec) && sp.frames > 0
+                ? sp.duration_sec / sp.frames
+                : 1);
+        const idx = Math.max(0, Math.min((sp.frames || 1) - 1, Math.floor(v.currentTime / interval)));
+        if (idx === this._filmstripLastIdx) return;
+        this._filmstripLastIdx = idx;
+        const thumbs = this.filmstripTrack.children;
+        for (let i = 0; i < thumbs.length; i++) {
+            thumbs[i].classList.toggle('current', i === idx);
+        }
+        // Scroll current thumb into view within the track (no page scroll).
+        const current = thumbs[idx];
+        if (current) {
+            const tLeft = this.filmstripTrack.scrollLeft;
+            const tW = this.filmstripTrack.clientWidth;
+            const cLeft = current.offsetLeft;
+            const cW = current.offsetWidth;
+            if (cLeft < tLeft + 30 || cLeft + cW > tLeft + tW - 30) {
+                this.filmstripTrack.scrollTo({
+                    left: Math.max(0, cLeft - tW / 2 + cW / 2),
+                    behavior: 'smooth',
+                });
+            }
+        }
+
+        // Update floating time label above current thumb.
+        // The float is absolutely positioned inside #video-filmstrip, so we
+        // measure `left` relative to the filmstrip container element.
+        const float = this._filmstripTimeFloat;
+        if (float && current && this.filmstrip) {
+            float.textContent = formatTime(idx * interval);
+            const stripRect = this.filmstrip.getBoundingClientRect();
+            const thumbRect = current.getBoundingClientRect();
+            const centerX = thumbRect.left - stripRect.left + thumbRect.width / 2;
+            float.style.left = `${centerX}px`;
+            float.classList.add('visible');
+        } else if (float) {
+            float.classList.remove('visible');
+        }
+    }
 }
 
 // ============================================================================
