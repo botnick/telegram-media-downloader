@@ -58,6 +58,7 @@ export async function initiateHandshake({
     url,
     token = null,
     pairingCode = null,
+    selfUrl = null,
     fetcher = globalThis.fetch,
 }) {
     const cleanUrl = String(url || '')
@@ -93,7 +94,10 @@ export async function initiateHandshake({
     const body = {
         peer_id: self.peerId,
         name: self.name,
-        url: '', // filled in by the route from req origin
+        // selfUrl is this initiator's own reachable URL so the receiver can
+        // record it as the callback URL for reverse calls. Falls back to ''
+        // which lets the receiver fall back to the inferred Host header.
+        url: selfUrl ? String(selfUrl).replace(/\/+$/, '') : '',
         version: _readPackageVersion(),
         shared_secret: sharedSecret,
         pairing_code: pairingCode ? String(pairingCode).toUpperCase() : null,
