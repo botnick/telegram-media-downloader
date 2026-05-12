@@ -1265,9 +1265,13 @@ const _STATS_TRIGGER_TYPES = new Set([
 
 function broadcast(data) {
     const message = JSON.stringify(data);
-    clients.forEach((client) => {
-        if (client.readyState === 1) client.send(message);
-    });
+    for (const client of clients) {
+        try {
+            if (client.readyState === 1) client.send(message);
+        } catch (err) {
+            // Ignore send failures (closed/dead connections)
+        }
+    }
     // Side-channel: if the event meaningfully changed stats, schedule a
     // single recompute + push. Debounce inside broadcastStatsSoon() makes
     // a 50-row bulk delete still cost one stats broadcast, not fifty.
