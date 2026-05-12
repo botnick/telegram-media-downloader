@@ -430,8 +430,11 @@ export function optimizeDownloadInBackground(id) {
  */
 export async function optimizeAll(opts = {}) {
     const { onProgress, signal } = opts;
-    // Stream — `.all()` over the full video list runs the box out of heap
-    // on libraries with 100k+ video rows.
+    // Keyset-paginated `.all()` instead of `.iterate()`. The old
+    // `.iterate()` cursor stayed open across every `await optimizeDownload`
+    // call (which spawns ffmpeg), blocking any concurrent DB write —
+    // download manager, kv flush timer, AI pregenerate — with
+    // "This database connection is busy executing a query".
     const db = getDb();
     const total = db
         .prepare(`
@@ -439,13 +442,15 @@ export async function optimizeAll(opts = {}) {
          WHERE file_type = 'video' AND file_path IS NOT NULL
     `)
         .get().n;
-    const iter = db
-        .prepare(`
+    const PAGE_SIZE = 50;
+    let beforeId = Number.MAX_SAFE_INTEGER;
+    const pageStmt = db.prepare(`
         SELECT id FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
+           AND id < ?
          ORDER BY id DESC
-    `)
-        .iterate();
+         LIMIT ?
+    `);
     let processed = 0,
         optimized = 0,
         already = 0,
@@ -466,19 +471,27 @@ export async function optimizeAll(opts = {}) {
     };
     tick();
 
-    for (const r of iter) {
+    while (true) {
         if (signal?.aborted) break;
-        processed++;
-        try {
-            const result = await optimizeDownload(r.id);
-            if (result.status === 'optimized') optimized++;
-            else if (result.status === 'already') already++;
-            else if (result.status === 'errored') errored++;
-            else skipped++;
-        } catch {
-            errored++;
+        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        if (!page.length) break;
+        for (const r of page) {
+            if (signal?.aborted) break;
+            processed++;
+            try {
+                const result = await optimizeDownload(r.id);
+                if (result.status === 'optimized') optimized++;
+                else if (result.status === 'already') already++;
+                else if (result.status === 'errored') errored++;
+                else skipped++;
+            } catch {
+                errored++;
+            }
+            if (processed % 5 === 0 || processed === total) tick();
         }
-        if (processed % 5 === 0 || processed === total) tick();
+        beforeId = Number(page[page.length - 1].id);
+        await new Promise((r) => setImmediate(r));
+        if (page.length < PAGE_SIZE) break;
     }
 
     if (onProgress)
@@ -501,34 +514,47 @@ export async function optimizeAll(opts = {}) {
  * second on SSD. Errors are silently coerced into the "unknown" bucket.
  */
 export async function getStats() {
-    // Stream — same OOM risk as optimizeAll on very large libraries.
-    const iter = getDb()
-        .prepare(`
+    // Keyset-paginated `.all()` — same connection-safety rationale as
+    // `optimizeAll`: `.iterate()` + `await _peekSecondAtom` holds the
+    // DB connection open across the async read, blocking concurrent writes.
+    const db = getDb();
+    const PAGE_SIZE = 100;
+    const pageStmt = db.prepare(`
         SELECT id, file_path FROM downloads
          WHERE file_type = 'video' AND file_path IS NOT NULL
-    `)
-        .iterate();
+           AND id < ?
+         ORDER BY id DESC
+         LIMIT ?
+    `);
     let total = 0,
         optimized = 0,
         pending = 0,
         missing = 0,
         unknown = 0;
-    for (const r of iter) {
-        total++;
-        const abs = _resolveAbs(r.file_path);
-        if (!abs) {
-            missing++;
-            continue;
+    let beforeId = Number.MAX_SAFE_INTEGER;
+    while (true) {
+        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        if (!page.length) break;
+        for (const r of page) {
+            total++;
+            const abs = _resolveAbs(r.file_path);
+            if (!abs) {
+                missing++;
+                continue;
+            }
+            const ext = path.extname(abs).toLowerCase();
+            if (!FASTSTART_EXTS.has(ext)) {
+                unknown++;
+                continue;
+            }
+            const which = await _peekSecondAtom(abs);
+            if (which === 'moov') optimized++;
+            else if (which === 'mdat' || which === 'other') pending++;
+            else unknown++;
         }
-        const ext = path.extname(abs).toLowerCase();
-        if (!FASTSTART_EXTS.has(ext)) {
-            unknown++;
-            continue;
-        }
-        const which = await _peekSecondAtom(abs);
-        if (which === 'moov') optimized++;
-        else if (which === 'mdat' || which === 'other') pending++;
-        else unknown++;
+        beforeId = Number(page[page.length - 1].id);
+        await new Promise((r) => setImmediate(r));
+        if (page.length < PAGE_SIZE) break;
     }
     return { total, optimized, pending, missing, unknown };
 }
