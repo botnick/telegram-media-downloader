@@ -309,7 +309,11 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
     // (file_not_found, decode_failed). Log them so the scan summary
     // shows *why* a photo yielded 0 faces instead of silently moving on.
     if (body?.error) {
-        _log(onLog, 'warn', `detect ${absPath}: sidecar soft-error="${body.error}" — 0 faces stored`);
+        _log(
+            onLog,
+            'warn',
+            `detect ${absPath}: sidecar soft-error="${body.error}" — 0 faces stored`,
+        );
     }
     return faces
         .map((f) => {
@@ -339,8 +343,10 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
  */
 async function _postWithRetry(url, body, onLog) {
     const maxRetries = Math.max(1, _maxRetries);
+    const base = _baseUrl(url);
     let lastErr = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+        let sidecarDown = false;
         try {
             const res = await _fetchWithTimeout(url, {
                 method: 'POST',
@@ -356,19 +362,64 @@ async function _postWithRetry(url, body, onLog) {
             }
         } catch (e) {
             lastErr = e;
+            // On a network-level error (not a client-side abort/timeout), the
+            // sidecar may have crashed. Quick single-attempt health probe —
+            // if it's confirmed down, bail immediately rather than burning
+            // remaining retries + sleeps against a dead process.
+            if (e?.name !== 'AbortError' && attempt < maxRetries - 1) {
+                sidecarDown = !(await _quickHealthProbe(base));
+                if (sidecarDown) _healthCache = null; // Force fresh answer on next health() call
+            }
         }
+        const hasMore = attempt < maxRetries - 1 && !sidecarDown;
         const backoff =
             _retryBackoffMs[attempt] ?? _retryBackoffMs[_retryBackoffMs.length - 1] ?? 300;
+        const suffix = sidecarDown
+            ? '— sidecar unreachable, aborting'
+            : hasMore
+              ? `— retrying in ${backoff} ms`
+              : '— giving up';
         _log(
             onLog,
             'warn',
             `sidecar POST ${url} attempt ${attempt + 1}/${maxRetries} failed: ${
                 lastErr?.message || lastErr
-            } — retrying in ${backoff} ms`,
+            } ${suffix}`,
         );
-        await _sleep(backoff);
+        if (sidecarDown) break;
+        if (hasMore) await _sleep(backoff);
     }
     throw lastErr || new Error('sidecar POST: retries exhausted');
+}
+
+/** Strip the endpoint path to get the sidecar base URL for health probing. */
+function _baseUrl(endpointUrl) {
+    try {
+        const u = new URL(endpointUrl);
+        return `${u.protocol}//${u.host}`;
+    } catch {
+        return endpointUrl.replace(/\/[^/]*$/, '');
+    }
+}
+
+/**
+ * Single-attempt health probe with a 1 s timeout. Used inside the retry
+ * loop to detect a crashed sidecar without waiting for the full
+ * `health()` cache TTL or its 3-retry budget.
+ */
+async function _quickHealthProbe(baseUrl) {
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 1000);
+        try {
+            const r = await globalThis.fetch(`${baseUrl}/health`, { signal: ctrl.signal });
+            return r.ok;
+        } finally {
+            clearTimeout(t);
+        }
+    } catch {
+        return false;
+    }
 }
 
 /** fetch() with a hard timeout via AbortController. */
