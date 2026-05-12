@@ -49,6 +49,218 @@ try {
     /* ws not available in tests */
 }
 
+// ---- Face overlay (image viewer) -----------------------------------------
+//
+// Per-download face metadata cached LRU-style so flipping back and forth
+// between photos in the gallery doesn't re-hit /api/ai/faces. Cache is
+// keyed by download_id, capped at 100 entries — the LRU drop is a Map
+// re-insert (delete + set), which keeps insertion order = recency.
+// `ai_faces_done` (broadcast after a scan) invalidates so a freshly
+// indexed photo picks up its faces on next open.
+const _facesCache = new Map();
+const _FACES_CACHE_CAP = 100;
+let _facesEnabledCache = null;
+let _facesEnabledFetch = null;
+let _facesOverlayHidden = false;
+try {
+    _facesOverlayHidden = localStorage.getItem('viewer-faces-overlay-off') === '1';
+} catch {
+    /* localStorage unavailable */
+}
+function _getFacesEnabled() {
+    if (_facesEnabledCache !== null) return Promise.resolve(_facesEnabledCache);
+    if (_facesEnabledFetch) return _facesEnabledFetch;
+    _facesEnabledFetch = fetch('/api/config', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((cfg) => {
+            const ai = cfg?.advanced?.ai;
+            _facesEnabledCache =
+                ai?.enabled !== false && (ai?.features?.faces ?? ai?.faces?.enabled) === true;
+            return _facesEnabledCache;
+        })
+        .catch(() => {
+            _facesEnabledCache = false;
+            return false;
+        })
+        .finally(() => {
+            _facesEnabledFetch = null;
+        });
+    return _facesEnabledFetch;
+}
+try {
+    ws.on('config_updated', () => {
+        _facesEnabledCache = null;
+    });
+    ws.on('ai_faces_done', (msg) => {
+        // A scan finished — drop matching cache entries so the next
+        // open re-fetches. We don't know the row ids the scan touched,
+        // so blow the whole cache (cheap; 100 entries max).
+        _facesCache.clear();
+        // If the modal is currently showing an image, force a refresh.
+        const id = msg?.download_id;
+        if (id != null) {
+            const cur = state.files[state.currentFileIndex];
+            if (cur && String(cur.id) === String(id) && _classifyFile(cur) === 'image') {
+                _refreshFacesForCurrent();
+            }
+        }
+    });
+} catch {
+    /* ws not available in tests */
+}
+
+async function _fetchFaces(downloadId) {
+    if (!Number.isFinite(downloadId) || downloadId <= 0) return null;
+    if (_facesCache.has(downloadId)) {
+        // Touch for LRU.
+        const v = _facesCache.get(downloadId);
+        _facesCache.delete(downloadId);
+        _facesCache.set(downloadId, v);
+        return v;
+    }
+    try {
+        const r = await fetch(`/api/ai/faces/by-download/${downloadId}`, {
+            credentials: 'same-origin',
+        });
+        if (!r.ok) return null;
+        const data = await r.json();
+        const faces = Array.isArray(data?.faces) ? data.faces : [];
+        if (_facesCache.size >= _FACES_CACHE_CAP) {
+            const firstKey = _facesCache.keys().next().value;
+            if (firstKey !== undefined) _facesCache.delete(firstKey);
+        }
+        _facesCache.set(downloadId, faces);
+        return faces;
+    } catch {
+        return null;
+    }
+}
+
+function _renderFaceOverlay(faces) {
+    const layer = document.getElementById('face-overlay-layer');
+    const toolbar = document.getElementById('face-toolbar');
+    const countEl = document.getElementById('face-count');
+    const toggleBtn = document.getElementById('face-toggle');
+    const img = document.getElementById('modal-image');
+    if (!layer || !toolbar || !img) return;
+    layer.innerHTML = '';
+    if (!Array.isArray(faces) || faces.length === 0 || !img.naturalWidth || !img.naturalHeight) {
+        toolbar.classList.add('hidden');
+        toolbar.classList.remove('flex');
+        layer.classList.add('hidden');
+        return;
+    }
+    // Position the layer over the actual rendered image bounding box —
+    // `object-contain` letterboxes inside the wrapper, so we compute
+    // the contained box manually rather than trust `inset:0`.
+    _positionFaceLayerToImage(layer, img);
+    const naturalW = img.naturalWidth;
+    const naturalH = img.naturalHeight;
+    let html = '';
+    for (const f of faces) {
+        const x = (Number(f.x) / naturalW) * 100;
+        const y = (Number(f.y) / naturalH) * 100;
+        const w = (Number(f.w) / naturalW) * 100;
+        const h = (Number(f.h) / naturalH) * 100;
+        if (![x, y, w, h].every(Number.isFinite)) continue;
+        const label = f.person_label
+            ? _escape(f.person_label)
+            : f.person_id
+              ? `#${f.person_id}`
+              : i18nT('viewer.faces.unlabeled', 'Unlabeled');
+        const cls = f.person_label || f.person_id ? 'face-label' : 'face-label unlabeled';
+        html += `<div class="face-box" style="left:${x.toFixed(3)}%;top:${y.toFixed(3)}%;width:${w.toFixed(3)}%;height:${h.toFixed(3)}%" title="${label}" tabindex="0">`;
+        html += `<span class="${cls}">${label}</span></div>`;
+    }
+    layer.innerHTML = html;
+    countEl.textContent = String(faces.length);
+    toolbar.classList.remove('hidden');
+    toolbar.classList.add('flex');
+    if (toggleBtn) {
+        const hidden = _facesOverlayHidden;
+        toggleBtn.textContent = hidden
+            ? i18nT('viewer.faces.show', 'Show')
+            : i18nT('viewer.faces.hide', 'Hide');
+        toggleBtn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+    }
+    layer.classList.toggle('hidden', _facesOverlayHidden);
+}
+
+function _positionFaceLayerToImage(layer, img) {
+    // The image stage is `inline-block max-w-full max-h-full` so the
+    // <img> already sizes itself to its rendered bbox under
+    // object-contain. We just match the layer to that bbox via
+    // offsetWidth / offsetHeight. Stage gives correct dims even on
+    // small phones in landscape.
+    const w = img.offsetWidth || img.clientWidth;
+    const h = img.offsetHeight || img.clientHeight;
+    if (!w || !h) return;
+    layer.style.width = `${w}px`;
+    layer.style.height = `${h}px`;
+    layer.style.left = `${img.offsetLeft}px`;
+    layer.style.top = `${img.offsetTop}px`;
+}
+
+let _facesResizeObserver = null;
+async function _refreshFacesForCurrent() {
+    const file = state.files[state.currentFileIndex];
+    if (!file || _classifyFile(file) !== 'image') {
+        _renderFaceOverlay(null);
+        return;
+    }
+    if (file.peer_id && file.peer_id !== 'self') {
+        _renderFaceOverlay(null);
+        return;
+    }
+    if (!Number.isFinite(Number(file.id))) {
+        _renderFaceOverlay(null);
+        return;
+    }
+    const enabled = await _getFacesEnabled();
+    if (!enabled) {
+        _renderFaceOverlay(null);
+        return;
+    }
+    const faces = await _fetchFaces(Number(file.id));
+    _renderFaceOverlay(faces);
+}
+
+function _wireFacesToolbarOnce() {
+    const toggleBtn = document.getElementById('face-toggle');
+    if (!toggleBtn || toggleBtn.dataset.wired === '1') return;
+    toggleBtn.dataset.wired = '1';
+    toggleBtn.addEventListener('click', () => {
+        _facesOverlayHidden = !_facesOverlayHidden;
+        try {
+            localStorage.setItem('viewer-faces-overlay-off', _facesOverlayHidden ? '1' : '0');
+        } catch {}
+        const layer = document.getElementById('face-overlay-layer');
+        if (layer) layer.classList.toggle('hidden', _facesOverlayHidden);
+        toggleBtn.textContent = _facesOverlayHidden
+            ? i18nT('viewer.faces.show', 'Show')
+            : i18nT('viewer.faces.hide', 'Hide');
+        toggleBtn.setAttribute('aria-pressed', _facesOverlayHidden ? 'false' : 'true');
+    });
+    // Track image resize so boxes stay aligned when the modal flips
+    // between portrait/landscape on rotate. ResizeObserver is widely
+    // available now — fall back to window resize otherwise.
+    const img = document.getElementById('modal-image');
+    const layer = document.getElementById('face-overlay-layer');
+    if (img && layer && typeof ResizeObserver === 'function' && !_facesResizeObserver) {
+        _facesResizeObserver = new ResizeObserver(() => {
+            if (!layer.classList.contains('hidden') && img.naturalWidth) {
+                _positionFaceLayerToImage(layer, img);
+            }
+        });
+        _facesResizeObserver.observe(img);
+    }
+    window.addEventListener('resize', () => {
+        if (img && layer && !layer.classList.contains('hidden') && img.naturalWidth) {
+            _positionFaceLayerToImage(layer, img);
+        }
+    });
+}
+
 // ============================================================================
 // Media Viewer
 // ----------------------------------------------------------------------------
@@ -349,6 +561,18 @@ function _resetAllPreviewContainers() {
             pdfFrame.src = 'about:blank';
         } catch {}
     }
+    // Clear the face overlay layer so switching to a non-image file
+    // doesn't leave stale boxes ghosting under the next preview.
+    const faceLayer = document.getElementById('face-overlay-layer');
+    if (faceLayer) {
+        faceLayer.innerHTML = '';
+        faceLayer.classList.add('hidden');
+    }
+    const faceToolbar = document.getElementById('face-toolbar');
+    if (faceToolbar) {
+        faceToolbar.classList.add('hidden');
+        faceToolbar.classList.remove('flex');
+    }
 }
 
 function _setTypeChip(file) {
@@ -394,6 +618,14 @@ export function openMediaViewer(index) {
             image.src = url;
             imageContainer.classList.remove('hidden');
             setupImageZoom();
+            _wireFacesToolbarOnce();
+            // Faces overlay refreshes after the image lays out so we
+            // know its rendered bounding box. We listen once per
+            // openMediaViewer call so the next image swap resets cleanly.
+            image.onload = () => _refreshFacesForCurrent();
+            // Cache hit + already-loaded path: <img> may resolve from
+            // memory cache before onload fires.
+            if (image.complete && image.naturalWidth > 0) _refreshFacesForCurrent();
             break;
         case 'video': {
             videoContainer.classList.remove('hidden');
@@ -648,18 +880,30 @@ class VideoPlayer {
         this.curTime = document.getElementById('video-current-time');
         this.durTime = document.getElementById('video-duration');
         this.progressBar = document.getElementById('video-progress-container');
+        this.progressHitzone =
+            document.getElementById('video-progress-hitzone') || this.progressBar;
         this.progressFill = document.getElementById('video-progress-fill');
         this.progressDot = document.getElementById('video-progress-dot');
         this.bufferedLayer = document.getElementById('video-buffered-layer');
+        this.chapterLayer = document.getElementById('video-chapter-layer');
         this.hoverTime = document.getElementById('video-hover-time');
         this.spritePreview = document.getElementById('video-sprite-preview');
         // Inner Netflix-style preview parts. The frame paints the sprite
         // background (size set inline per clip), the time pill labels it,
         // and the pending overlay surfaces the spinner while a sidecar
-        // generation is still in flight.
+        // generation is still in flight. The snapshot canvas is the
+        // live-frame fallback we render before the sidecar finishes.
         this.spriteFrame = document.getElementById('video-sprite-frame');
         this.spriteTime = document.getElementById('video-sprite-time');
         this.spritePending = document.getElementById('video-sprite-pending');
+        this.spriteSnapshot = document.getElementById('video-sprite-snapshot');
+        this.spriteProgress = document.getElementById('video-sprite-progress');
+        this.filmstrip = document.getElementById('video-filmstrip');
+        this.filmstripTrack = document.getElementById('filmstrip-track');
+        this.filmstripPrev = document.getElementById('filmstrip-prev');
+        this.filmstripNext = document.getElementById('filmstrip-next');
+        this._filmstripTimeFloat = document.getElementById('filmstrip-time-float');
+        this._filmstripLastIdx = -1;
         this.spinner = document.getElementById('video-spinner');
         this.errorOverlay = document.getElementById('video-error');
         this.errorMsg = document.getElementById('video-error-msg');
@@ -694,6 +938,13 @@ class VideoPlayer {
         this._lastDoubleTapAt = 0;
         this._lastTapAt = 0;
         this._lastTapX = 0;
+        // RAF throttle for hover preview — avoids forced layout on every
+        // pointermove event (typically 60+ fps). We record the latest X
+        // and render it once per animation frame.
+        this._rafPending = false;
+        this._lastMoveX = null;
+        // Cached progress-bar rect, invalidated on resize/fullscreen.
+        this._barRect = null;
 
         this._wireOnce();
     }
@@ -816,7 +1067,10 @@ class VideoPlayer {
         this.fsBtn.onclick = () => this.toggleFullscreen();
         // Keep a ref so unload() can detach — otherwise every viewer open
         // adds another listener and stale ones fire after the modal closes.
-        this._onFullscreenChange = () => this._refreshFsIcon();
+        this._onFullscreenChange = () => {
+            this._refreshFsIcon();
+            this._barRect = null; // layout shifts on fullscreen — force re-measure
+        };
         document.addEventListener('fullscreenchange', this._onFullscreenChange);
 
         // Retry button (error overlay).
@@ -1095,10 +1349,21 @@ class VideoPlayer {
         this._spriteRetry = null;
         this._spriteFileId = null;
         this._spriteState = 'disabled';
+        this._chaptersDur = 0;
+        this._barRect = null;
+        this._lastMoveX = null;
+        this._rafPending = false;
+        if (this.chapterLayer) this.chapterLayer.innerHTML = '';
+        if (this.spriteSnapshot) this.spriteSnapshot.classList.add('hidden');
+        if (this.spriteProgress) this.spriteProgress.classList.add('hidden');
         if (this.spritePreview) {
             this.spritePreview.classList.add('hidden');
             this.spritePreview.dataset.state = 'disabled';
         }
+        if (this.filmstrip) this.filmstrip.classList.add('hidden');
+        if (this.filmstripTrack) this.filmstripTrack.innerHTML = '';
+        if (this._filmstripTimeFloat) this._filmstripTimeFloat.classList.remove('visible');
+        this._filmstripLastIdx = -1;
         this.speedMenu.classList.add('hidden');
         this._hideError();
         this._showSpinner(false);
@@ -1205,45 +1470,120 @@ class VideoPlayer {
     // ----- internals ---------------------------------------------------------
 
     _wireSeekBar() {
+        // Pointer events fire on the wider hit-zone (24 px tall) so the
+        // user always finds the bar on touch — but we read geometry off
+        // the visual track so the played fraction is computed against
+        // what the eye actually sees.
+        const hit = this.progressHitzone;
         const bar = this.progressBar;
         const seekTo = (clientX) => {
             if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
             const rect = bar.getBoundingClientRect();
             const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
             this.video.currentTime = ratio * this.video.duration;
+            try {
+                hit.setAttribute('aria-valuenow', String(Math.round(ratio * 100)));
+            } catch {}
         };
-        bar.onpointerdown = (e) => {
+        hit.onpointerdown = (e) => {
             this._dragging = true;
             this._wasPlayingBeforeDrag = !this.video.paused;
             if (this._wasPlayingBeforeDrag) this.video.pause();
             try {
-                bar.setPointerCapture?.(e.pointerId);
+                hit.setPointerCapture?.(e.pointerId);
             } catch {}
+            hit.classList.add('is-active');
             seekTo(e.clientX);
+            this._renderHoverPreview(e.clientX);
             e.preventDefault();
         };
-        bar.onpointermove = (e) => {
+        hit.onpointermove = (e) => {
             if (this._dragging) {
                 seekTo(e.clientX);
+                this._renderHoverPreview(e.clientX);
+            } else {
+                // RAF-throttle hover preview when not dragging so we don't
+                // force a layout recalc on every native pointer event.
+                this._lastMoveX = e.clientX;
+                if (!this._rafPending) {
+                    this._rafPending = true;
+                    requestAnimationFrame(() => {
+                        this._rafPending = false;
+                        if (this._lastMoveX !== null) {
+                            this._renderHoverPreview(this._lastMoveX);
+                        }
+                    });
+                }
             }
-            this._renderHoverPreview(e.clientX);
         };
-        bar.onpointerleave = () => this._hideHoverPreview();
+        hit.onpointerleave = () => {
+            if (!this._dragging) this._hideHoverPreview();
+        };
         const endDrag = (e) => {
-            if (!this._dragging) return;
+            hit.classList.remove('is-active');
+            if (!this._dragging) {
+                this._hideHoverPreview();
+                return;
+            }
             this._dragging = false;
             try {
-                bar.releasePointerCapture?.(e.pointerId);
+                hit.releasePointerCapture?.(e.pointerId);
             } catch {}
+            // On touch the user has lifted — preview should retreat so
+            // the next tap shows it fresh. On mouse the cursor often
+            // lingers, so leave preview visible until pointerleave.
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                this._hideHoverPreview();
+            }
             if (this._wasPlayingBeforeDrag) this.video.play().catch(() => {});
         };
-        bar.onpointerup = endDrag;
-        bar.onpointercancel = endDrag;
+        hit.onpointerup = endDrag;
+        hit.onpointercancel = endDrag;
+        // Keyboard scrub: arrow / page / home / end while the bar has
+        // focus. Honours the same skip-step setting as the global
+        // shortcuts so power users get a consistent step everywhere.
+        hit.onkeydown = (e) => {
+            const dur = this.video.duration;
+            if (!Number.isFinite(dur) || dur <= 0) return;
+            const step = parseInt(localStorage.getItem('viewer-skip-step'), 10) || 5;
+            let delta = 0;
+            switch (e.key) {
+                case 'ArrowLeft':
+                    delta = -(e.shiftKey ? step * 2 : step);
+                    break;
+                case 'ArrowRight':
+                    delta = e.shiftKey ? step * 2 : step;
+                    break;
+                case 'PageDown':
+                    delta = -dur / 10;
+                    break;
+                case 'PageUp':
+                    delta = dur / 10;
+                    break;
+                case 'Home':
+                    this.video.currentTime = 0;
+                    e.preventDefault();
+                    return;
+                case 'End':
+                    this.video.currentTime = Math.max(0, dur - 0.5);
+                    e.preventDefault();
+                    return;
+                default:
+                    return;
+            }
+            if (delta) {
+                this.seekRelative(delta);
+                e.preventDefault();
+            }
+        };
     }
 
     _renderHoverPreview(clientX) {
         if (!Number.isFinite(this.video.duration) || this.video.duration <= 0) return;
-        const rect = this.progressBar.getBoundingClientRect();
+        // Cache the bar rect to avoid forced layout on every frame.
+        // Invalidated by unload(), fullscreen change, and resize observer.
+        if (!this._barRect) this._barRect = this.progressBar.getBoundingClientRect();
+        const rect = this._barRect;
         const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const x = clientX - rect.left;
         const sec = ratio * this.video.duration;
@@ -1266,22 +1606,34 @@ class VideoPlayer {
             return;
         }
 
-        // Sprite-aware path (Netflix-style). Hide the native time pill —
-        // the wrapper carries its own time chip below the frame so we
-        // never paint two tooltips at the same y.
+        // Sprite-aware path. Hide the native time pill — the wrapper
+        // carries its own time chip below the frame.
         this.hoverTime.classList.add('hidden');
         if (timeEl) timeEl.textContent = timeStr;
 
-        // Position the wrapper centered on the cursor x, but clamp into
-        // the progress-bar bounds so the tile never overhangs the player
-        // chrome. CSS owns the translateX(-50%); we only set `left`.
+        // Tile size: ready uses the real tile_w from sidecar meta;
+        // pending uses 160 (or 128 on tiny phones — CSS media query
+        // already shrinks the placeholder, but JS clamp uses 160 then
+        // re-clamps to viewport for safety).
         const tileW = state === 'ready' && sp ? sp.tile_w || 160 : 160;
         const halfW = tileW / 2;
-        const clampedX = Math.max(halfW + 4, Math.min(rect.width - halfW - 4, x));
+
+        // Clamp position to the VIEWPORT, not just the bar — this is
+        // what fixes fullscreen + landscape mobile overflow. We compute
+        // the cursor position in viewport coordinates, then clamp, then
+        // translate back to bar-relative `left:` (the wrapper is
+        // positioned relative to the seek-bar wrapper).
+        const viewportClientX = clientX;
+        const minClient = halfW + 8;
+        const maxClient = window.innerWidth - halfW - 8;
+        const clampedClient = Math.max(minClient, Math.min(maxClient, viewportClientX));
+        const clampedX = clampedClient - rect.left;
         wrap.style.left = `${clampedX}px`;
 
-        // State paint. `ready` swaps in the real sprite frame; `pending`
-        // keeps the CSS placeholder + shimmer.
+        // State paint. `ready` swaps in the real sprite frame.
+        // `pending` may either show the spinner (no <video> data yet)
+        // or paint a live snapshot from the playing video element so
+        // the user gets a real frame even before the sidecar finishes.
         if (state === 'ready' && sp && tileH && frame) {
             const interval =
                 sp.interval_sec ||
@@ -1298,10 +1650,168 @@ class VideoPlayer {
             frame.style.width = `${tileW}px`;
             frame.style.height = `${tileH}px`;
             frame.style.backgroundPosition = `-${col * tileW}px -${row * tileH}px`;
+            // Snapshot canvas was only used as the pending fallback —
+            // hide it now that the real sprite has arrived.
+            if (this.spriteSnapshot) this.spriteSnapshot.classList.add('hidden');
+        } else if (state === 'pending') {
+            this._paintLiveSnapshot(sec, tileW);
         }
-        // No data-state mutation here — it was set during fetch/poll. We
-        // just reveal the wrapper.
         wrap.classList.remove('hidden');
+    }
+
+    /**
+     * Build the horizontal filmstrip from the loaded sprite sheet.
+     * Called once per clip when the sprite image load succeeds.
+     * Each cell is a background-position crop of the same sprite URL.
+     */
+    _renderFilmstrip() {
+        const track = this.filmstripTrack;
+        const wrap = this.filmstrip;
+        const sp = this._sprite;
+        if (!track || !wrap || !sp || this._spriteState !== 'ready') return;
+        const id = this._spriteFileId;
+        if (!id) return;
+        const frames = sp.frames || 0;
+        if (frames < 3) return; // not useful for very short clips
+        const tileW = sp.tile_w || 160;
+        const tileH = this._spriteTileH || sp.tile_h || 90;
+        const cols = sp.cols || 1;
+        const interval =
+            sp.interval_sec ||
+            (Number.isFinite(sp.duration_sec) && sp.frames > 0
+                ? sp.duration_sec / sp.frames
+                : 1);
+        const spriteUrl = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
+
+        // Thumbnail display size: responsive height, aspect-ratio width.
+        const thumbH = window.innerWidth <= 640 ? 44 : 56;
+        const thumbW = Math.max(60, Math.round(thumbH * (tileW / tileH)));
+        const scale = thumbH / tileH;
+        const bgsW = Math.round(tileW * cols * scale);
+        const bgsH = Math.round(tileH * Math.ceil(frames / cols) * scale);
+
+        // Cache float label ref for use in highlight updates.
+        if (!this._filmstripTimeFloat) {
+            this._filmstripTimeFloat = document.getElementById('filmstrip-time-float');
+        }
+
+        let html = '';
+        for (let i = 0; i < frames; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const bpX = -Math.round(col * tileW * scale);
+            const bpY = -Math.round(row * tileH * scale);
+            const sec = i * interval;
+            const timeStr = formatTime(sec);
+            html +=
+                `<div class="filmstrip-thumb" style="width:${thumbW}px;height:${thumbH}px" data-idx="${i}" data-sec="${sec.toFixed(2)}" role="option" aria-label="${timeStr}">` +
+                `<div class="filmstrip-thumb-inner" style="background-image:url(${spriteUrl});background-size:${bgsW}px ${bgsH}px;background-position:${bpX}px ${bpY}px"></div>` +
+                `</div>`;
+        }
+        track.innerHTML = html;
+        wrap.classList.remove('hidden');
+
+        // Click-to-seek (event delegation).
+        track.onclick = (e) => {
+            const thumb = e.target.closest?.('.filmstrip-thumb');
+            if (!thumb) return;
+            const sec = parseFloat(thumb.dataset.sec);
+            if (!Number.isFinite(sec)) return;
+            if (Number.isFinite(this.video.duration) && this.video.duration > 0) {
+                this.video.currentTime = Math.min(sec, this.video.duration);
+            }
+        };
+
+        // Scroll-arrow buttons.
+        if (this.filmstripPrev) {
+            this.filmstripPrev.onclick = () =>
+                track.scrollBy({ left: -Math.round(track.clientWidth * 0.8), behavior: 'smooth' });
+        }
+        if (this.filmstripNext) {
+            this.filmstripNext.onclick = () =>
+                track.scrollBy({ left: Math.round(track.clientWidth * 0.8), behavior: 'smooth' });
+        }
+
+        this._filmstripLastIdx = -1;
+        this._updateFilmstripHighlight();
+    }
+
+    /** Highlight the filmstrip cell that matches the current playback position. */
+    _updateFilmstripHighlight() {
+        if (!this.filmstripTrack || !this._sprite || this._spriteState !== 'ready') return;
+        if (this.filmstrip?.classList.contains('hidden')) return;
+        const sp = this._sprite;
+        const v = this.video;
+        if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+        const interval =
+            sp.interval_sec ||
+            (Number.isFinite(sp.duration_sec) && sp.frames > 0
+                ? sp.duration_sec / sp.frames
+                : 1);
+        const idx = Math.max(0, Math.min((sp.frames || 1) - 1, Math.floor(v.currentTime / interval)));
+        if (idx === this._filmstripLastIdx) return;
+        this._filmstripLastIdx = idx;
+        const thumbs = this.filmstripTrack.children;
+        for (let i = 0; i < thumbs.length; i++) {
+            thumbs[i].classList.toggle('current', i === idx);
+        }
+        // Scroll current thumb into view within the track (no page scroll).
+        const current = thumbs[idx];
+        if (current) {
+            const tLeft = this.filmstripTrack.scrollLeft;
+            const tW = this.filmstripTrack.clientWidth;
+            const cLeft = current.offsetLeft;
+            const cW = current.offsetWidth;
+            if (cLeft < tLeft + 30 || cLeft + cW > tLeft + tW - 30) {
+                this.filmstripTrack.scrollTo({
+                    left: Math.max(0, cLeft - tW / 2 + cW / 2),
+                    behavior: 'smooth',
+                });
+            }
+        }
+
+        // Update floating time label above current thumb.
+        // The float is absolutely positioned inside #video-filmstrip, so we
+        // measure `left` relative to the filmstrip container element.
+        const float = this._filmstripTimeFloat;
+        if (float && current && this.filmstrip) {
+            float.textContent = formatTime(idx * interval);
+            const stripRect = this.filmstrip.getBoundingClientRect();
+            const thumbRect = current.getBoundingClientRect();
+            const centerX = thumbRect.left - stripRect.left + thumbRect.width / 2;
+            float.style.left = `${centerX}px`;
+            float.classList.add('visible');
+        } else if (float) {
+            float.classList.remove('visible');
+        }
+    }
+
+    /**
+     * Paint a live frame snapshot into the sprite tile while the
+     * sidecar is still pending. Best-effort: cross-origin / DRM /
+     * non-CORS sources will throw on `drawImage`; we catch and leave
+     * the spinner visible. Tile uses 16:9 default (160×90 / 128×72 on
+     * mobile) — same dimensions as the CSS placeholder.
+     */
+    _paintLiveSnapshot(_sec, tileW) {
+        const cv = this.spriteSnapshot;
+        if (!cv || this.video.readyState < 2) return;
+        const tileH = Math.round((tileW * 9) / 16);
+        cv.width = tileW;
+        cv.height = tileH;
+        try {
+            const ctx = cv.getContext('2d');
+            // We can't seek the playing element to `_sec` (would jump
+            // playback), so we draw the CURRENT frame as the
+            // placeholder — better than a spinner, still honest about
+            // "preview not ready". Sidecar arriving will swap us out.
+            ctx.drawImage(this.video, 0, 0, tileW, tileH);
+            cv.classList.remove('hidden');
+            if (this.spritePending) this.spritePending.classList.add('hidden');
+        } catch {
+            cv.classList.add('hidden');
+            if (this.spritePending) this.spritePending.classList.remove('hidden');
+        }
     }
 
     _hideHoverPreview() {
@@ -1398,6 +1908,7 @@ class VideoPlayer {
                         }
                         this._spriteState = 'ready';
                         if (wrap) wrap.dataset.state = 'ready';
+                        this._renderFilmstrip();
                     };
                     img.onerror = () => {
                         if (this._spriteReq !== req) return;
@@ -1450,6 +1961,7 @@ class VideoPlayer {
             const pct = Math.max(0, Math.min(100, (v.currentTime / v.duration) * 100));
             this.progressFill.style.width = `${pct}%`;
             this.progressDot.style.left = `${pct}%`;
+            this._updateFilmstripHighlight();
             // Save throttled progress; clear once we're past 95%.
             if (this._storageKey) {
                 if (v.currentTime / v.duration > 0.95) {
@@ -1474,9 +1986,42 @@ class VideoPlayer {
         for (let i = 0; i < v.buffered.length; i++) {
             const start = (v.buffered.start(i) / v.duration) * 100;
             const end = (v.buffered.end(i) / v.duration) * 100;
-            html += `<div class="absolute top-0 h-full bg-white/50 rounded-full" style="left:${start}%;width:${end - start}%"></div>`;
+            html += `<div class="buf" style="left:${start}%;width:${end - start}%"></div>`;
         }
         this.bufferedLayer.innerHTML = html;
+        this._renderChapters();
+    }
+
+    /**
+     * Render chapter ticks across the seekbar. We don't have real
+     * chapter metadata yet (no MP4 chapter parsing), so for clips
+     * ≥ 5 min we draw evenly-spaced subtle ticks at 10 % intervals
+     * to give the operator a sense of where they're scrubbing. When
+     * proper chapter parsing lands later, swap `marks` for the real
+     * timestamps.
+     */
+    _renderChapters() {
+        const layer = this.chapterLayer;
+        const v = this.video;
+        if (!layer || !Number.isFinite(v.duration) || v.duration <= 0) return;
+        // Skip clips under 5 min — ticks add noise on shorts. Cache by
+        // duration so we don't re-render on every progress event.
+        const dur = Math.floor(v.duration);
+        if (dur < 300) {
+            if (this._chaptersDur !== 0) {
+                layer.innerHTML = '';
+                this._chaptersDur = 0;
+            }
+            return;
+        }
+        if (this._chaptersDur === dur) return;
+        this._chaptersDur = dur;
+        // 10 evenly-spaced ticks; skip 0% (overlaps the dot at start).
+        let html = '';
+        for (let i = 1; i < 10; i++) {
+            html += `<div class="chapter-tick" style="left:${i * 10}%"></div>`;
+        }
+        layer.innerHTML = html;
     }
 
     _refreshPlayIcons() {

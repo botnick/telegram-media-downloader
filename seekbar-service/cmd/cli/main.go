@@ -83,15 +83,15 @@ func main() {
 	}
 	fmt.Fprintf(os.Stderr, "queued %d job(s)\n", submitted)
 
-	pool.SetProgressCallback(func(done, total, ok, errored int) {
-		fmt.Fprintf(os.Stderr, "  progress: %d/%d (ok=%d err=%d)\n", done, total, ok, errored)
+	pool.SetProgressCallback(func(done, total, ok, errored, queued int) {
+		fmt.Fprintf(os.Stderr, "  progress: %d/%d (ok=%d err=%d queued=%d)\n", done, total, ok, errored, queued)
 	})
-	pool.Start(ctx)
+	pool.Start(ctx, "")
 
 	statusTicker := time.NewTicker(time.Second)
 	defer statusTicker.Stop()
 	for {
-		total, done, _, _, queued := pool.Stats()
+		total, done, _, _, queued := pool.LegacyStats()
 		if total > 0 && done >= total && queued == 0 {
 			break
 		}
@@ -101,7 +101,7 @@ func main() {
 		<-statusTicker.C
 	}
 	pool.Stop()
-	total, done, ok, errored, _ := pool.Stats()
+	total, done, ok, errored, _ := pool.LegacyStats()
 	fmt.Fprintf(os.Stderr, "done: %d/%d (ok=%d err=%d)\n", done, total, ok, errored)
 }
 

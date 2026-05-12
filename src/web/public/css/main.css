@@ -1320,70 +1320,134 @@ html.theme-light .view-mode-menu button:hover {
     background: rgba(0, 0, 0, 0.04);
 }
 
-/* Notification bell dropdown — same chrome as view-mode-menu but
-   sized for a list of items. Width is wider on desktop (300px)
-   and clamped on mobile (calc(100vw - 16px)) so the menu never
-   clips the right edge of a 320px viewport. */
+/* ── Notification bell menu ──────────────────────────────────────── */
 .notify-menu {
-    min-width: 280px;
-    width: min(320px, calc(100vw - 16px));
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 300px;
+    width: min(340px, calc(100vw - 16px));
     max-width: calc(100vw - 16px);
     padding: 0;
+    background: var(--tg-sidebar, #17212b);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 50;
+    display: none;
+    overflow: hidden;
 }
-.notify-menu .notify-row {
+.notify-menu.open {
+    display: block;
+    animation: notify-open 0.18s cubic-bezier(0.34, 1.2, 0.64, 1);
+    transform-origin: top right;
+}
+@keyframes notify-open {
+    from { opacity: 0; transform: scale(0.94) translateY(-6px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .notify-menu.open { animation: none; }
+}
+
+/* Header */
+.notify-menu-header {
     display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 8px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Scrollable list */
+.notify-menu-list {
+    max-height: min(60vh, 420px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+    padding: 4px 0;
+}
+.notify-menu-list::-webkit-scrollbar { width: 4px; }
+.notify-menu-list::-webkit-scrollbar-track { background: transparent; }
+.notify-menu-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+/* Notification row */
+.notify-row {
+    display: flex;
+    gap: 10px;
     align-items: flex-start;
-    padding: 8px 10px;
-    border-radius: 6px;
+    padding: 10px 14px 10px 12px;
     cursor: default;
+    border-left: 2.5px solid transparent;
+    transition: background 0.1s;
+    position: relative;
 }
-.notify-menu .notify-row:hover {
-    background: rgba(255, 255, 255, 0.04);
+.notify-row:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 14px;
+    right: 14px;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.045);
 }
-.notify-menu .notify-row .notify-icon {
-    width: 22px;
-    height: 22px;
+.notify-row:hover { background: rgba(255, 255, 255, 0.05); }
+.notify-row[data-level="info"]  { border-left-color: var(--tg-blue,   #2aabee); }
+.notify-row[data-level="warn"]  { border-left-color: var(--tg-orange, #ff9800); }
+.notify-row[data-level="error"] { border-left-color: var(--tg-red,    #e53935); }
+
+/* Icon badge */
+.notify-icon {
+    width: 28px;
+    height: 28px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
+    border-radius: 8px;
     font-size: 13px;
+    margin-top: 1px;
 }
-.notify-menu .notify-row[data-level="info"] .notify-icon {
-    background: rgba(42, 171, 238, 0.18);
-    color: var(--tg-blue, #2aabee);
+.notify-row[data-level="info"]  .notify-icon { background: rgba(42,  171, 238, 0.16); color: var(--tg-blue,   #2aabee); }
+.notify-row[data-level="warn"]  .notify-icon { background: rgba(255, 152,   0, 0.16); color: var(--tg-orange, #ff9800); }
+.notify-row[data-level="error"] .notify-icon { background: rgba(229,  57,  53, 0.18); color: var(--tg-red,    #e53935); }
+.notify-row:not([data-level])   .notify-icon { background: rgba(255,255,255,0.07);    color: var(--tg-textSecondary); }
+
+/* Text body */
+.notify-body { flex: 1; min-width: 0; }
+.notify-msg  { font-size: 12.5px; line-height: 1.4; color: var(--tg-text, #e2e8f0); word-break: break-word; }
+.notify-meta { font-size: 10px; color: var(--tg-textSecondary, #93aac4); margin-top: 3px; display: flex; gap: 5px; align-items: center; }
+.notify-source-chip {
+    background: rgba(255,255,255,0.07);
+    padding: 0 4px;
+    border-radius: 3px;
+    font-size: 9.5px;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.notify-menu .notify-row[data-level="warn"] .notify-icon {
-    background: rgba(255, 152, 0, 0.18);
-    color: var(--tg-orange, #ff9800);
+
+/* Empty state */
+.notify-menu-empty {
+    padding: 28px 16px;
+    text-align: center;
 }
-.notify-menu .notify-row[data-level="error"] .notify-icon {
-    background: rgba(229, 57, 53, 0.2);
-    color: var(--tg-red, #e53935);
+.notify-empty-icon {
+    display: block;
+    font-size: 30px;
+    opacity: 0.22;
+    margin-bottom: 8px;
 }
-.notify-menu .notify-row .notify-body {
-    flex: 1;
-    min-width: 0;
+
+html.theme-light .notify-menu {
+    background: #ffffff;
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
 }
-.notify-menu .notify-row .notify-msg {
-    color: var(--tg-text, #e2e8f0);
-    font-size: 12px;
-    line-height: 1.35;
-    word-break: break-word;
-}
-.notify-menu .notify-row .notify-meta {
-    color: var(--tg-textSecondary, #93aac4);
-    font-size: 10px;
-    margin-top: 2px;
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-html.theme-light .notify-menu .notify-row:hover {
-    background: rgba(0, 0, 0, 0.04);
-}
+html.theme-light .notify-row:hover { background: rgba(0, 0, 0, 0.04); }
+html.theme-light .notify-source-chip { background: rgba(0,0,0,0.06); }
 
 /* Engine status pill: compact further on tiny screens (<400px) so
    it doesn't push the bell + select-mode + overflow trio into
@@ -2176,6 +2240,60 @@ html.theme-light .notify-menu .notify-row:hover {
 }
 #ai-master-badge[aria-checked="true"] {
     background: rgba(76, 175, 80, 0.15);
+}
+
+/* Person tile — name label becomes cursor:pointer to hint double-click rename. */
+.ai-person-name {
+    cursor: pointer;
+}
+.ai-person-name:hover {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+/* Face-box highlight overlay — positioned absolutely inside the photo tile
+   container (which is position:relative). Shows which face in the photo
+   belongs to the currently selected person. A 2px ring + slight fill so
+   it reads on both light and dark content. */
+.ai-face-box {
+    position: absolute;
+    border: 2px solid rgba(42, 171, 238, 0.85);
+    background: rgba(42, 171, 238, 0.10);
+    border-radius: 3px;
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+@media (max-width: 640px) {
+    .ai-face-box {
+        border-width: 1.5px;
+    }
+}
+
+/* Phase B clustering shimmer — applied to the progress bar when DBSCAN is
+   running. Overrides the transition to animate width-100% with a shimmer
+   sweep so the operator sees "indeterminate but almost done". */
+.ai-progress-clustering {
+    background: linear-gradient(
+        90deg,
+        var(--tg-blue, #2aabee) 0%,
+        rgba(42, 171, 238, 0.55) 50%,
+        var(--tg-blue, #2aabee) 100%
+    );
+    background-size: 200% 100%;
+    animation: ai-phase-b-shimmer 1.4s linear infinite;
+}
+@keyframes ai-phase-b-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ai-progress-clustering { animation: none; }
+}
+
+/* Sidecar status dot — tiny filled circle that colour-mirrors the pill. */
+#ai-sidecar-badge .ai-sidecar-dot {
+    flex-shrink: 0;
 }
 
 /* Maintenance → AI page: tab pills + result tile overlay. Three pills
@@ -3128,6 +3246,80 @@ body[data-page="maintenance-thumbs"] {
 body[data-page="maintenance-nsfw"] {
     --page-accent: #e53935;
 }
+
+/* ── NSFW Histogram ──────────────────────────────────────────────── */
+.nsfw-histogram-wrap {
+    position: relative;
+    overflow: visible;
+}
+.nsfw-histogram-svg {
+    display: block;
+    width: 100%;
+    height: 200px;
+    overflow: visible;
+}
+@media (max-width: 640px) {
+    .nsfw-histogram-svg {
+        height: 175px;
+    }
+}
+.nsfw-hist-bar {
+    transform-origin: bottom center;
+    transform-box: fill-box;
+    animation: nsfw-bar-grow 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    animation-delay: calc(var(--i, 0) * 16ms);
+    transition: opacity 0.12s;
+    cursor: crosshair;
+}
+.nsfw-hist-bar:hover { opacity: 0.78; }
+@keyframes nsfw-bar-grow {
+    from { transform: scaleY(0); }
+    to   { transform: scaleY(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .nsfw-hist-bar { animation: none; }
+}
+.nsfw-hist-tooltip {
+    display: none;
+    position: absolute;
+    z-index: 50;
+    padding: 5px 10px;
+    background: rgba(20, 22, 30, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    font-size: 11.5px;
+    color: #e8eaf0;
+    white-space: nowrap;
+    pointer-events: none;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    line-height: 1.5;
+}
+.nsfw-hist-tip-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+.nsfw-hist-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--tg-textSecondary, #8a9aaa);
+    white-space: nowrap;
+}
+.nsfw-hist-legend-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 body[data-page="maintenance-logs"] {
     --page-accent: #6e41e2;
 }
@@ -4099,17 +4291,85 @@ html[data-contrast="more"] .media-item {
     background: rgba(255, 255, 255, 0.04);
 }
 
-/* Seekbar hover sprite preview — Netflix/YouTube style. The wrapper is
- * absolutely positioned in JS via cursor x (kept inside the progressBar
- * bounds so it never overflows the player chrome). The inner `#video-
- * sprite-frame` paints the sprite background; size is set inline by JS
- * from the per-clip meta JSON. We do all the chrome (rounded corners,
- * ring, shadow, time pill) in CSS so JS only owns geometry.
- */
+/* ------------------------------------------------------------------
+ * Seekbar — premium scrub feel.
+ *
+ * Outer `#video-progress-hitzone` owns the 24 px touch target
+ * (matches iOS HIG / Material a11y baseline). The inner
+ * `#video-progress-container` holds the visual track which grows
+ * on hover/active so the bar reads "alive" without bloating the
+ * resting layout. The scrubber dot scales up + glows on active.
+ * Tuned to feel identical on mouse, pen, and touch.
+ * ------------------------------------------------------------------ */
+#video-progress-hitzone:focus {
+    outline: none;
+}
+#video-progress-hitzone:focus-visible .seekbar-track {
+    box-shadow: 0 0 0 2px rgba(80, 160, 255, 0.45);
+}
+.seekbar-track {
+    transition:
+        height 120ms ease-out,
+        transform 120ms ease-out;
+}
+/* Hover (desktop only) and active (any device) — grow the visual
+ * track from 4 px → 6 px so the played bar reads chunkier without
+ * shifting layout. The hit-zone height never changes. */
+@media (hover: hover) {
+    #video-progress-hitzone:hover .seekbar-track {
+        height: 0.375rem;
+    }
+}
+#video-progress-hitzone.is-active .seekbar-track {
+    height: 0.5rem;
+}
+.seekbar-dot {
+    width: 14px;
+    height: 14px;
+    margin-top: -7px;
+    margin-left: -7px;
+    transition:
+        transform 120ms ease-out,
+        box-shadow 160ms ease-out;
+}
+@media (hover: hover) {
+    #video-progress-hitzone:hover .seekbar-dot {
+        transform: scale(1.15);
+    }
+}
+#video-progress-hitzone.is-active .seekbar-dot {
+    transform: scale(1.45);
+    box-shadow:
+        0 0 0 6px rgba(80, 160, 255, 0.18),
+        0 2px 8px rgba(0, 0, 0, 0.4);
+}
+/* Chapter ticks — subtle vertical separators on the track, aligned
+ * to the layer width so they always sit at the right time fraction.
+ * 1 px wide, semi-transparent so they don't fight the played bar. */
+#video-chapter-layer .chapter-tick {
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.55);
+    pointer-events: none;
+}
+
+/* Buffered ranges — render as light overlay segments. */
+#video-buffered-layer .buf {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 9999px;
+}
+
+/* Seekbar hover sprite preview — Netflix/YouTube style. JS sets `left`
+ * (clamped to the viewport, not just the bar) and CSS owns the chrome
+ * (rounded corners, ring, shadow, time pill, pending shimmer). On
+ * mobile the tile shrinks via media query so it always fits portrait
+ * widths without overflow. */
 #video-sprite-preview {
-    /* Center the wrapper horizontally on the cursor. JS sets `left:` to
-     * the cursor x (clamped to the progress bar bounds) and we translate
-     * by 50% so the tile reads centered. */
     transform: translateX(-50%);
     z-index: 35;
     /* Smooth glide as the cursor moves. Short enough that scrubbing
@@ -4124,41 +4384,252 @@ html[data-contrast="more"] .media-item {
 }
 #video-sprite-preview.hidden {
     opacity: 0;
+    pointer-events: none;
 }
+
+/* Shimmer keyframes — used by the pending skeleton tile. */
+@keyframes seekbar-shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+}
+
 #video-sprite-frame {
     background-repeat: no-repeat;
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
-    /* When the sprite hasn't loaded yet (pending state), the inline
-     * width/height + bg-image are absent — show the placeholder gradient
-     * so the tile has a visible footprint instead of collapsing to 0×0. */
-    background-color: rgba(20, 22, 28, 0.85);
+    background-color: rgba(14, 16, 22, 0.92);
+    /* Default resting gradient — overridden inline with the real sprite
+     * when data-state="ready". */
     background-image: linear-gradient(
         135deg,
         rgba(255, 255, 255, 0.04) 0%,
-        rgba(255, 255, 255, 0.08) 50%,
+        rgba(255, 255, 255, 0.07) 50%,
         rgba(255, 255, 255, 0.04) 100%
     );
 }
-/* `data-state="pending"` — sidecar is still generating the sprite for
- * this clip OR the request 404'd. Surface the spinner overlay and keep
- * the tile at a sensible default size (16:9) so the operator sees the
- * "in progress" affordance, not an empty rectangle. */
+
+/* `data-state="pending"` — skeleton tile with animated shimmer so the
+ * user sees motion, not a frozen rectangle. Works on every platform
+ * (CSS animation, no JS required). */
 #video-sprite-preview[data-state="pending"] #video-sprite-frame {
     width: 160px;
     height: 90px;
+    background-image: linear-gradient(
+        100deg,
+        rgba(255, 255, 255, 0)    0%,
+        rgba(255, 255, 255, 0.06) 20%,
+        rgba(255, 255, 255, 0.12) 40%,
+        rgba(255, 255, 255, 0.06) 60%,
+        rgba(255, 255, 255, 0)    80%
+    );
+    background-size: 200% 100%;
+    animation: seekbar-shimmer 1.6s linear infinite;
 }
 #video-sprite-preview[data-state="pending"] #video-sprite-pending {
     display: flex;
 }
-/* `data-state="ready"` — sprite loaded successfully. Hide the pending
- * overlay so the actual frame paints through. */
+/* `data-state="ready"` — sprite loaded. Stop shimmer, hide spinner. */
+#video-sprite-preview[data-state="ready"] #video-sprite-frame {
+    background-image: none;
+    animation: none;
+}
 #video-sprite-preview[data-state="ready"] #video-sprite-pending {
     display: none !important;
 }
-/* `data-state="disabled"` — feature is off (advanced.seekbar.enabled=false)
- * OR the row is a peer/share with no sidecar entitlement. We hide the
- * tile entirely so the operator just sees the time-only tooltip. */
+/* `data-state="disabled"` — feature off or peer row. */
 #video-sprite-preview[data-state="disabled"] {
     display: none !important;
+}
+
+/* ── Seekbar filmstrip ─────────────────────────────────────────── */
+#video-filmstrip {
+    position: relative;
+    background: rgba(0,0,0,0.55);
+    border-top: 1px solid rgba(255,255,255,0.07);
+    user-select: none;
+    -webkit-user-select: none;
+}
+.filmstrip-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+}
+.filmstrip-time-float {
+    position: absolute;
+    top: -22px;
+    z-index: 10;
+    background: rgba(20,22,30,0.9);
+    color: #fff;
+    font-size: 10px;
+    font-family: ui-monospace, monospace;
+    padding: 2px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition: opacity 0.1s;
+    border: 1px solid rgba(255,255,255,0.12);
+}
+.filmstrip-time-float.visible {
+    opacity: 1;
+}
+.filmstrip-track {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 2px;
+    padding: 6px 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    flex: 1;
+}
+.filmstrip-track::-webkit-scrollbar { display: none; }
+.filmstrip-thumb {
+    flex-shrink: 0;
+    position: relative;
+    border-radius: 3px;
+    overflow: hidden;
+    cursor: pointer;
+    outline: 2px solid transparent;
+    outline-offset: 0;
+    transition: outline-color 0.1s, filter 0.1s, transform 0.12s;
+    background: #0d0d0d;
+    scroll-snap-align: start;
+}
+@media (hover: hover) {
+    .filmstrip-thumb:hover {
+        outline-color: rgba(255,255,255,0.5);
+        filter: brightness(1.1);
+        z-index: 1;
+    }
+}
+.filmstrip-thumb.current {
+    outline-color: var(--tg-blue, #2aabee);
+    outline-width: 2.5px;
+    filter: brightness(1.18);
+    transform: scaleY(1.08);
+    transform-origin: bottom center;
+    z-index: 2;
+}
+.filmstrip-thumb-inner {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-repeat: no-repeat;
+    pointer-events: none;
+}
+.filmstrip-thumb-time {
+    display: none; /* Hidden — only current thumb gets a floating label via JS */
+}
+.filmstrip-arrow {
+    flex-shrink: 0;
+    width: 26px;
+    border: none;
+    background: rgba(0,0,0,0.5);
+    color: rgba(255,255,255,0.7);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.filmstrip-arrow:hover {
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+}
+@media (max-width: 480px) {
+    .filmstrip-arrow { display: none; } /* swipe on mobile */
+    .filmstrip-track { padding: 4px 2px; }
+}
+
+/* ------------------------------------------------------------------
+ * Face overlay (image viewer)
+ *
+ * Boxes are absolutely positioned inside `#face-overlay-layer` which
+ * is `absolute inset-0` inside `#image-stage`. Coordinates come from
+ * JS as percentages of the natural image dimensions. CSS owns chrome.
+ * ------------------------------------------------------------------ */
+#face-overlay-layer {
+    position: absolute;
+    pointer-events: none;
+}
+#face-overlay-layer .face-box {
+    position: absolute;
+    border: 2px solid rgba(80, 160, 255, 0.9);
+    border-radius: 4px;
+    background: rgba(80, 160, 255, 0.05);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.3) inset,
+        0 1px 6px rgba(0, 0, 0, 0.25);
+    pointer-events: auto;
+    cursor: default;
+    transition:
+        background 100ms ease-out,
+        border-color 100ms ease-out,
+        box-shadow 100ms ease-out;
+}
+#face-overlay-layer .face-box:hover,
+#face-overlay-layer .face-box:focus-visible {
+    background: rgba(80, 160, 255, 0.18);
+    border-color: rgba(130, 200, 255, 1);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.3) inset,
+        0 0 12px rgba(80, 160, 255, 0.35);
+    outline: none;
+}
+#face-overlay-layer .face-label {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 3px);
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1.4;
+    font-weight: 500;
+    border-radius: 3px;
+    white-space: nowrap;
+    max-width: min(200px, 50vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    /* Fade in when the box is focused so the label doesn't clutter the
+     * default view on images with many faces. */
+    opacity: 0;
+    transition: opacity 80ms ease-out;
+}
+#face-overlay-layer .face-box:hover .face-label,
+#face-overlay-layer .face-box:focus-visible .face-label {
+    opacity: 1;
+}
+#face-overlay-layer .face-label.unlabeled {
+    background: rgba(0, 0, 0, 0.6);
+    color: rgba(255, 255, 255, 0.72);
+    font-style: italic;
+}
+
+/* Mobile — smaller tile and clamped label width. */
+@media (max-width: 480px) {
+    #video-sprite-preview[data-state="pending"] #video-sprite-frame {
+        width: 128px;
+        height: 72px;
+    }
+    #face-overlay-layer .face-label {
+        font-size: 9px;
+        padding: 1px 4px;
+    }
+}
+
+/* Live <video> snapshot canvas — shown while sprite is pending. */
+#video-sprite-snapshot {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
 }

@@ -28,6 +28,10 @@ let _selectedPersonName = '';
 let _peopleCache = []; // full people list (un-filtered) for client-side search
 const _peopleFilter = { query: '', unlabeledOnly: false };
 
+// Scan phase tracking — distinguishes Phase A (per-image detect) from
+// Phase B (DBSCAN clustering, runs after A completes, typically seconds).
+let _scanPhase = 'A'; // 'A' | 'B'
+
 /* ----------------------------------------------------------------------
  * Capability registry.
  *
@@ -256,8 +260,12 @@ function _bindOnce() {
     // build. ai_index_* / ai_tags_* were removed with the Search + Tags
     // pipelines. ai_faces_status surfaces sidecar lifecycle changes so the
     // header badge updates without a polling loop.
+    // ai_people_phase_b fires when Phase A (detection) is complete and Phase B
+    // (DBSCAN clustering) starts — the payload carries { faceCount } so the
+    // UI can switch to "Clustering N faces..." without a polling round-trip.
     ws.on('ai_people_progress', (m) => _onScanProgress('faces', m));
     ws.on('ai_people_done', (m) => _onScanDone('faces', m));
+    ws.on('ai_people_phase_b', (m) => _onScanPhaseB(m));
     ws.on('ai_faces_status', () => refreshStatus());
 
     // Auto-installer feedback. Streams stdout from `python -m
@@ -471,6 +479,14 @@ function _renderStatus(status) {
         lastEl.textContent =
             finishedAt > 0 ? new Date(finishedAt).toLocaleString() : i18nT('common.never', 'Never');
     }
+    // Noise / unclassified faces count — DBSCAN marks faces that don't fit
+    // any cluster as noise points. Surfacing this helps operators decide
+    // whether to lower minPoints or accept the noise level.
+    const noiseEl = $('#ai-stat-noise');
+    if (noiseEl) {
+        const noise = Number(counts.noiseFaces ?? counts.unclassified ?? 0);
+        noiseEl.textContent = noise.toLocaleString();
+    }
 
     // Toggles. Click handlers in `_bindOnce` flip the underlying flag
     // optimistically; this is the "render from server truth" pass that
@@ -545,10 +561,15 @@ function _renderSidecarBadge(status) {
     let cls = 'text-tg-textSecondary';
     let healthy = false;
     if (state === 'healthy' || state === 'ready' || faces.loaded === true) {
+        // Show both provider (GPU chip) and model id in the badge so operators
+        // can confirm which hardware + model is active without opening System health.
+        const providerTag = provider || 'CPU';
+        const modelTag = faces.id ? String(faces.id).replace(/insightface\s*/i, '').trim() : '';
+        const parts = [providerTag, modelTag].filter(Boolean).join(' · ');
         label = i18nTf(
             'maintenance.ai.sidecar.healthy',
-            { provider: provider || 'CPU' },
-            `Sidecar: healthy (${provider || 'CPU'})`,
+            { provider: parts },
+            `Sidecar: ready (${parts})`,
         );
         cls = 'text-green-300';
         healthy = true;
@@ -567,7 +588,7 @@ function _renderSidecarBadge(status) {
         label = i18nT('maintenance.ai.sidecar.idle', 'Sidecar: idle');
         cls = 'text-tg-textSecondary';
     } else {
-        label = i18nT('maintenance.ai.sidecar.down', 'Sidecar: unreachable');
+        label = i18nT('maintenance.ai.sidecar.down', 'Sidecar offline — start the faces service');
         cls = 'text-red-300';
     }
     text.textContent = label;
@@ -578,6 +599,21 @@ function _renderSidecarBadge(status) {
         'text-tg-textSecondary',
     );
     badge.classList.add(cls);
+
+    // Dot indicator — swap the icon class to reflect the health colour.
+    const dotIcon = badge.querySelector('.ai-sidecar-dot');
+    if (dotIcon) {
+        dotIcon.classList.remove(
+            'text-green-400',
+            'text-yellow-400',
+            'text-red-400',
+            'text-tg-textSecondary',
+        );
+        if (cls === 'text-green-300') dotIcon.classList.add('text-green-400');
+        else if (cls === 'text-yellow-300') dotIcon.classList.add('text-yellow-400');
+        else if (cls === 'text-red-300') dotIcon.classList.add('text-red-400');
+        else dotIcon.classList.add('text-tg-textSecondary');
+    }
 
     // Auto-surface the Install card when the sidecar isn't healthy and
     // we're not mid-installation already. Hide it once it's up so the
@@ -1269,6 +1305,10 @@ function _onScanProgress(feature, msg) {
     const progressBar = $('#ai-progress-bar');
     const progressPct = $('#ai-progress-pct');
     const progressStatus = $('#ai-progress-status');
+    const phaseTag = $('#ai-progress-phase');
+
+    // If progress is arriving we're in Phase A — Phase B has its own event.
+    if (running) _scanPhase = 'A';
 
     if (scanBtn) scanBtn.disabled = running;
     if (cancelBtn) cancelBtn.disabled = !running;
@@ -1284,14 +1324,78 @@ function _onScanProgress(feature, msg) {
     if (progressStatus && running) {
         progressStatus.textContent = i18nT('maintenance.ai.scanning', 'Scanning…');
     }
+    // Phase tag — shows "Phase 1: detection" during A; hidden when idle.
+    if (phaseTag) {
+        phaseTag.textContent = running
+            ? i18nT('maintenance.ai.scan_phase_a', 'Phase 1: face detection')
+            : '';
+        phaseTag.classList.toggle('hidden', !running);
+    }
+}
+
+/**
+ * Phase B starts once every photo has been detected. The payload carries
+ * { faceCount } — the total number of face embeddings about to be clustered.
+ * We swap the progress bar to indeterminate (pulse animation) and show a
+ * "Clustering N faces…" label. The bar stays full-width so the operator
+ * sees "almost done" at a glance.
+ */
+function _onScanPhaseB(msg) {
+    _scanPhase = 'B';
+    const progressWrap = $('#ai-progress');
+    const progressBar = $('#ai-progress-bar');
+    const progressPct = $('#ai-progress-pct');
+    const progressStatus = $('#ai-progress-status');
+    const phaseTag = $('#ai-progress-phase');
+
+    if (progressWrap) progressWrap.classList.remove('hidden');
+    // Full-width bar with shimmer class to signal "indeterminate but close".
+    if (progressBar) {
+        progressBar.style.width = '100%';
+        progressBar.classList.add('ai-progress-clustering');
+    }
+    const faceCount = Number(msg?.faceCount) || 0;
+    if (progressPct) progressPct.textContent = '';
+    if (progressStatus) {
+        progressStatus.textContent = faceCount > 0
+            ? i18nTf(
+                  'maintenance.ai.scan_phase_b_faces',
+                  { n: faceCount.toLocaleString() },
+                  `Clustering ${faceCount.toLocaleString()} faces…`,
+              )
+            : i18nT('maintenance.ai.scan_phase_b', 'Clustering faces…');
+    }
+    if (phaseTag) {
+        phaseTag.textContent = i18nT('maintenance.ai.scan_phase_b_tag', 'Phase 2: DBSCAN clustering');
+        phaseTag.classList.remove('hidden');
+    }
 }
 
 function _onScanDone(feature, msg) {
+    // Reset phase state + remove shimmer from the bar.
+    _scanPhase = 'A';
+    const progressBar = $('#ai-progress-bar');
+    if (progressBar) progressBar.classList.remove('ai-progress-clustering');
+    const phaseTag = $('#ai-progress-phase');
+    if (phaseTag) phaseTag.classList.add('hidden');
+
     _onScanProgress(feature, { ...msg, running: false });
     if (msg?.error) {
         showToast(`${feature}: ${msg.error}`, 'error');
     } else {
-        showToast(i18nT('maintenance.ai.scan_done', 'Scan complete'), 'success');
+        // Show "Found Y people in Z faces" summary on successful completion.
+        const people = Number(msg?.peopleCount ?? msg?.people) || 0;
+        const faces = Number(msg?.faceCount ?? msg?.faces) || 0;
+        if (people > 0 || faces > 0) {
+            const summary = i18nTf(
+                'maintenance.ai.scan_done_summary',
+                { people: people.toLocaleString(), faces: faces.toLocaleString() },
+                `Found ${people.toLocaleString()} people in ${faces.toLocaleString()} faces`,
+            );
+            showToast(summary, 'success');
+        } else {
+            showToast(i18nT('maintenance.ai.scan_done', 'Scan complete'), 'success');
+        }
     }
     refreshStatus();
     if (feature === 'faces') _loadPeople();
@@ -1313,6 +1417,8 @@ async function _loadPeople() {
 function _renderPeopleGrid() {
     const grid = $('#ai-people-grid');
     const empty = $('#ai-people-empty');
+    const emptyHelp = $('#ai-people-empty-help');
+    const epsilonWarn = $('#ai-epsilon-warning');
     const count = $('#ai-people-count');
     if (!grid) return;
 
@@ -1341,10 +1447,48 @@ function _renderPeopleGrid() {
 
     if (!filtered.length) {
         grid.innerHTML = '';
-        empty?.classList.remove('hidden');
+        if (empty) empty.classList.remove('hidden');
+        // Help message: "no faces detected" — only shown when the full
+        // (unfiltered) cache is also empty, i.e. not just a filter miss.
+        if (emptyHelp) {
+            if (_peopleCache.length === 0) {
+                // Determine whether the sidecar is reachable to give context.
+                const faces = _lastStatus?.models?.faces || {};
+                const sidecarUp = faces.loaded === true || faces.state === 'healthy' || faces.state === 'ready';
+                if (!sidecarUp) {
+                    emptyHelp.textContent = i18nT(
+                        'maintenance.ai.people_empty_sidecar_down',
+                        'No faces detected — ensure the faces sidecar is running and photos exist.',
+                    );
+                } else {
+                    emptyHelp.textContent = i18nT(
+                        'maintenance.ai.people_empty_no_faces',
+                        'No faces detected — run a scan above to index your photos.',
+                    );
+                }
+                emptyHelp.classList.remove('hidden');
+            } else {
+                emptyHelp.classList.add('hidden');
+            }
+        }
         return;
     }
-    empty?.classList.add('hidden');
+    if (empty) empty.classList.add('hidden');
+    if (emptyHelp) emptyHelp.classList.add('hidden');
+
+    // Epsilon warning — surface when a single cluster contains an unusually
+    // large share of all faces (>25%), which is the canonical symptom of
+    // the epsilon being too high and merging everyone together.
+    if (epsilonWarn) {
+        const totalFaces = _peopleCache.reduce((s, p) => s + (Number(p.face_count) || 0), 0);
+        const maxCluster = Math.max(..._peopleCache.map((p) => Number(p.face_count) || 0));
+        const dominance = totalFaces > 0 ? maxCluster / totalFaces : 0;
+        // Also warn when fewer than expected clusters exist — a common sign
+        // of over-merging is having 1–3 clusters for a large library.
+        const megaMerge = dominance > 0.25 && totalFaces > 20;
+        epsilonWarn.classList.toggle('hidden', !megaMerge);
+    }
+
     grid.innerHTML = filtered.map(_personTile).join('');
     grid.querySelectorAll('[data-person]').forEach((b) => {
         b.addEventListener('click', () => {
@@ -1352,45 +1496,98 @@ function _renderPeopleGrid() {
             _selectedPersonName = b.dataset.name || '';
             _showPersonPhotos();
         });
+        // Double-click on the name label → inline rename shortcut.
+        b.addEventListener('dblclick', (e) => {
+            // Only trigger if the click landed on the name area (not the image).
+            if (e.target.closest('.ai-person-name')) {
+                e.preventDefault();
+                e.stopPropagation();
+                _selectedPerson = Number(b.dataset.person);
+                _selectedPersonName = b.dataset.name || '';
+                _renameSelectedPerson();
+            }
+        });
     });
 }
 
 function _personTile(p) {
-    const name = p.label || `${i18nT('maintenance.ai.person_default', 'Person')} #${p.id}`;
-    const cover = p.cover_download_id ? `/api/thumbs/${p.cover_download_id}?w=320` : '';
+    const isUnclassified = p.id === -1 || p.noise === true;
+    const name = isUnclassified
+        ? i18nT('maintenance.ai.person_unclassified', 'Unclassified')
+        : p.label || `${i18nT('maintenance.ai.person_default', 'Person')} #${p.id}`;
+
+    // Centroid face thumbnail — prefer the dedicated /api/ai/person/{id}/face
+    // endpoint (returns the most-representative face crop). Fall back to the
+    // thumbnail of the cover download so an empty centroid doesn't leave a
+    // blank tile on old servers that don't yet expose the face endpoint.
+    const centroidUrl = !isUnclassified && p.id > 0
+        ? `/api/ai/person/${p.id}/face?w=320`
+        : '';
+    const fallbackUrl = p.cover_download_id ? `/api/thumbs/${p.cover_download_id}?w=320` : '';
     const faceCount = Number(p.face_count) || 0;
     const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).toLocaleDateString() : '';
     const safeName = escapeHtml(name);
+    const labeledCls = !p.label && !isUnclassified ? 'opacity-60' : '';
+
+    // Build the image HTML: centroid URL first; if that 404s the browser
+    // falls back to the `onerror` swap, then to the placeholder icon.
+    let imgHtml;
+    if (centroidUrl) {
+        // onerror chain: centroid fails → try cover thumb → fallback icon.
+        const fallback = fallbackUrl
+            ? `this.onerror=null;this.src='${fallbackUrl}'`
+            : "this.onerror=null;this.parentElement.innerHTML='<div class=\\'aspect-square w-full bg-tg-bg/40 flex items-center justify-center\\'><i class=\\'ri-user-line text-3xl text-tg-textSecondary/50\\'></i></div>'";
+        imgHtml = `<img src="${centroidUrl}" alt="${safeName}" loading="lazy" class="aspect-square w-full object-cover" onerror="${fallback}">`;
+    } else if (fallbackUrl) {
+        imgHtml = `<img src="${fallbackUrl}" alt="${safeName}" loading="lazy" class="aspect-square w-full object-cover">`;
+    } else {
+        imgHtml = '<div class="aspect-square w-full bg-tg-bg/40 flex items-center justify-center"><i class="ri-user-line text-3xl text-tg-textSecondary/50"></i></div>';
+    }
+
     return `<button type="button" data-person="${p.id}" data-name="${safeName}"
-        class="block group relative bg-tg-bg/30 rounded-lg overflow-hidden hover:ring-2 hover:ring-tg-blue/40 transition-shadow"
+        class="block group relative bg-tg-bg/30 rounded-lg overflow-hidden hover:ring-2 hover:ring-tg-blue/40 transition-shadow ${labeledCls}"
         title="${safeName}">
-        ${
-            cover
-                ? `<img src="${cover}" alt="${safeName}" loading="lazy" class="aspect-square w-full object-cover">`
-                : '<div class="aspect-square w-full bg-tg-bg/40 flex items-center justify-center"><i class="ri-user-line text-3xl text-tg-textSecondary/50"></i></div>'
-        }
+        ${imgHtml}
         <div class="absolute bottom-0 left-0 right-0 p-1 bg-gradient-to-t from-black/80 to-transparent text-left">
-            <div class="text-[11px] text-white truncate font-medium">${safeName}</div>
+            <div class="ai-person-name text-[11px] text-white truncate font-medium" title="${escapeHtml(i18nT('maintenance.ai.person_rename_hint', 'Double-click to rename'))}">${safeName}</div>
             <div class="text-[10px] text-white/70 flex items-center justify-between gap-1">
-                <span>${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}</span>
+                <span>${faceCount.toLocaleString()} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}</span>
                 ${lastSeen ? `<span class="opacity-70">${escapeHtml(lastSeen)}</span>` : ''}
             </div>
         </div>
+        ${isUnclassified ? '<div class="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-tg-bg/70 text-[9px] text-tg-textSecondary font-mono">noise</div>' : ''}
     </button>`;
 }
 
 async function _showPersonPhotos() {
     if (!_selectedPerson) return;
-    $('#ai-people-photos')?.classList.remove('hidden');
+    const photosPanel = $('#ai-people-photos');
+    if (photosPanel) photosPanel.classList.remove('hidden');
     const nameEl = $('#ai-people-photos-name');
     if (nameEl) nameEl.textContent = _selectedPersonName;
     const grid = $('#ai-people-photos-grid');
     if (!grid) return;
     grid.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-8">${escapeHtml(i18nT('common.loading', 'Loading…'))}</div>`;
+
+    // Scroll the panel into view on mobile so the operator doesn't miss it.
+    photosPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
     try {
-        const r = await api.get(`/api/ai/people/${_selectedPerson}/photos?limit=120`);
-        if (!r.success) throw new Error(r.error || 'load failed');
-        const files = r.files || [];
+        // Prefer /api/ai/person/{id}/downloads (singular "person") which may
+        // return richer face-box metadata. Fall back to the people endpoint.
+        let r = null;
+        let files = [];
+        try {
+            r = await api.get(`/api/ai/person/${_selectedPerson}/downloads?limit=120`);
+            if (r?.success) files = r.downloads || r.files || [];
+        } catch (_e) {
+            // Older backend — fall back to the people photos endpoint.
+        }
+        if (!files.length) {
+            r = await api.get(`/api/ai/people/${_selectedPerson}/photos?limit=120`);
+            if (!r?.success) throw new Error(r?.error || 'load failed');
+            files = r.files || [];
+        }
         if (!files.length) {
             grid.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-8">${escapeHtml(i18nT('maintenance.ai.no_photos', 'No photos in this cluster.'))}</div>`;
             return;
@@ -1405,10 +1602,30 @@ function _photoTile(row) {
     const id = row.download_id || row.id;
     const faceId = row.face_id || '';
     const name = escapeHtml(row.file_name || `#${id}`);
+
+    // Face-box highlight: when the API returns normalised bbox coordinates
+    // (x, y, w, h as 0–1 fractions of image dimensions), render a
+    // semi-transparent overlay ring so the operator can see which face
+    // in the photo belongs to this person.
+    // The box is positioned using inline %age values so it scales with
+    // the thumbnail — no JS measurement needed.
+    let boxHtml = '';
+    const box = row.bbox || row.face_box;
+    if (box && typeof box === 'object') {
+        const bx = Number(box.x ?? box[0] ?? 0);
+        const by = Number(box.y ?? box[1] ?? 0);
+        const bw = Number(box.w ?? box.width ?? box[2] ?? 0);
+        const bh = Number(box.h ?? box.height ?? box[3] ?? 0);
+        if (bw > 0 && bh > 0) {
+            boxHtml = `<div class="ai-face-box" style="left:${(bx * 100).toFixed(2)}%;top:${(by * 100).toFixed(2)}%;width:${(bw * 100).toFixed(2)}%;height:${(bh * 100).toFixed(2)}%;" aria-hidden="true"></div>`;
+        }
+    }
+
     return `
-        <a href="#/files/${id}" class="block group relative" data-face-id="${escapeHtml(String(faceId))}">
+        <a href="#/files/${id}" class="block group relative rounded-lg overflow-hidden" data-face-id="${escapeHtml(String(faceId))}">
             <img src="/api/thumbs/${id}?w=320" alt="${name}" loading="lazy"
-                class="aspect-square w-full object-cover rounded-lg bg-tg-bg/40">
+                class="aspect-square w-full object-cover bg-tg-bg/40">
+            ${boxHtml}
         </a>
     `;
 }

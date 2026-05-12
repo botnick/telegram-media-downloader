@@ -1,0 +1,16 @@
+# CPU-only requirements for tgdl-faces.
+# For GPU variants see requirements-cuda.txt / requirements-directml.txt.
+#
+# Pin strategy: lower bounds match pyproject.toml; upper bounds are kept
+# one major version ahead so Dependabot can bump them without manual edits.
+# Wheels are available for: win_amd64, manylinux_x86_64, manylinux_aarch64,
+# macosx_x86_64, macosx_arm64.
+
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1
+insightface>=0.7,<1
+onnxruntime>=1.20,<2
+opencv-python-headless>=4.10,<5
+numpy>=1.26,<3
+Pillow>=10,<12
+pydantic>=2,<3

@@ -53,7 +53,9 @@ export {
 
 const _bgQueueRealtime = [];
 const _bgQueueBackfill = [];
+const _inFlight = new Set();
 let _bgRunning = false;
+let _bgParallelCount = 0;
 const _BG_QUEUE_CAP = 200;
 
 /**
@@ -63,14 +65,22 @@ const _BG_QUEUE_CAP = 200;
  * the drain loop, so flipping the master toggle off stops new sprite
  * generation immediately (queued entries are dropped on the floor).
  *
+ * Dedupes against `_inFlight` AND the in-queue set so a burst of
+ * pregenerate calls for the same id (e.g. peer sync + local download
+ * racing) collapses to one ffmpeg pass.
+ *
  * `opts.priority`: 'realtime' jumps ahead of history backfill.
  */
 export function pregenerateSeekbar(downloadId, opts = {}) {
+    const id = Number(downloadId);
+    if (!Number.isInteger(id) || id <= 0) return;
     const priority = opts?.priority === 'realtime' ? 'realtime' : 'backfill';
     queueMicrotask(() => {
         const queue = priority === 'realtime' ? _bgQueueRealtime : _bgQueueBackfill;
         if (queue.length >= _BG_QUEUE_CAP) return;
-        queue.push(downloadId);
+        if (_inFlight.has(id)) return;
+        if (_bgQueueRealtime.includes(id) || _bgQueueBackfill.includes(id)) return;
+        queue.push(id);
         _drainBg();
     });
 }
@@ -83,6 +93,33 @@ function _nextQueuedId() {
 
 function _allQueuesEmpty() {
     return _bgQueueRealtime.length === 0 && _bgQueueBackfill.length === 0;
+}
+
+async function _processOne(id, lookupRow, cfg) {
+    _inFlight.add(id);
+    _bgParallelCount++;
+    try {
+        const row = lookupRow.get(Number(id));
+        if (!row || row.file_type !== 'video') return;
+        try {
+            const meta = await generateForDownload(row, cfg, { overwrite: 'if-changed' });
+            if (meta) {
+                try {
+                    const fn = globalThis.__tgdlBroadcast;
+                    if (typeof fn === 'function') {
+                        fn({ type: 'seekbar_sprite_ready', download_id: Number(id) });
+                    }
+                } catch {
+                    /* never crash the pregenerate drain on a broadcast error */
+                }
+            }
+        } catch (e) {
+            console.warn('[seekbar-pregenerate] failed for download', id, String(e?.message || e));
+        }
+    } finally {
+        _inFlight.delete(id);
+        _bgParallelCount--;
+    }
 }
 
 async function _drainBg() {
@@ -99,40 +136,24 @@ async function _drainBg() {
                 _bgQueueBackfill.length = 0;
                 break;
             }
-            const id = _nextQueuedId();
-            if (id === undefined) break;
-            const row = lookupRow.get(Number(id));
-            if (!row) continue;
-            if (row.file_type !== 'video') continue;
-            try {
-                const meta = await generateForDownload(row, cfg, { overwrite: 'if-changed' });
-                // Broadcast on each successful generation so the viewer's
-                // WS subscription (`seekbar_sprite_ready` in viewer.js)
-                // can refresh its hover tile mid-watch — important when
-                // a fresh download is opened in the player while the
-                // post-download pregenerate is still in flight. Skipped
-                // when no meta is returned ('never' / 'if-changed' hit a
-                // cached row); the viewer's existing tile is already
-                // current in that case.
-                if (meta) {
-                    try {
-                        const fn = globalThis.__tgdlBroadcast;
-                        if (typeof fn === 'function') {
-                            fn({ type: 'seekbar_sprite_ready', download_id: Number(id) });
-                        }
-                    } catch {
-                        /* never crash the pregenerate drain on a broadcast error */
-                    }
-                }
-            } catch (e) {
-                console.warn(
-                    '[seekbar-pregenerate] failed for download',
-                    id,
-                    String(e?.message || e),
-                );
+            const concurrency = Math.max(1, Number(cfg.concurrency) || 2);
+            // Collect a batch of IDs up to the concurrency limit, skipping
+            // anything already in-flight from a previous iteration.
+            const batch = [];
+            while (batch.length < concurrency && !_allQueuesEmpty()) {
+                const id = _nextQueuedId();
+                if (id === undefined) break;
+                if (_inFlight.has(id)) continue;
+                batch.push(id);
             }
-            // Yield so realtime downloads aren't blocked behind a long
-            // backfill of pregenerate work.
+            if (!batch.length) break;
+            // Fan out to the Go sidecar's worker pool — it handles its own
+            // internal concurrency, so sending N requests in parallel just
+            // keeps its queue fed rather than forcing a serial bottleneck
+            // on the Node side.
+            await Promise.all(batch.map((id) => _processOne(id, lookupRow, cfg)));
+            // Yield after every parallel batch so realtime downloads and DB
+            // writes can interleave between rounds of pregenerate work.
             await new Promise((r) => setImmediate(r));
         }
     } finally {
@@ -189,5 +210,7 @@ export async function getMetaForDownload(downloadId) {
 export function _resetForTests() {
     _bgQueueRealtime.length = 0;
     _bgQueueBackfill.length = 0;
+    _inFlight.clear();
     _bgRunning = false;
+    _bgParallelCount = 0;
 }

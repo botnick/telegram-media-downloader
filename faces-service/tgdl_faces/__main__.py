@@ -14,8 +14,9 @@ Environment
     TCP port. Defaults to ``8011``. The Node auto-spawn path overrides
     this with a random high port to avoid clashes on shared dev hosts.
 
-``TGDL_FACES_MODELS_DIR``
+``TGDL_FACES_MODEL_DIR`` / ``TGDL_FACES_MODELS_DIR``
     Directory under which insightface downloads / caches ``buffalo_l``.
+    Both forms are accepted; the plural form wins when both are set.
     Defaults to ``~/.cache/tgdl-faces/models``. The PyInstaller binary
     pre-bakes the model into this layout so the first ``/detect`` call
     doesn't touch the network.
@@ -26,6 +27,27 @@ Environment
     requests are rejected with ``403`` and callers must use the
     base64 mode. This is a defence-in-depth guard against the sidecar
     being coerced into reading arbitrary files via a forged request.
+
+``TGDL_FACES_PROVIDERS``
+    Comma-separated onnxruntime provider names or a shorthand alias
+    (``auto``, ``cpu``, ``cuda``, ``coreml``, ``directml``, ``openvino``).
+    Defaults to ``auto``, which picks the best provider for the current
+    platform: DirectML on Windows, CUDA on Linux, CoreML on macOS.
+
+``TGDL_FACES_MAX_CONCURRENCY``
+    Maximum number of detect requests processed in parallel. Defaults to
+    ``2``. Increase for multi-GPU hosts; decrease on memory-constrained
+    devices.
+
+``TGDL_FACES_DETECTOR_MODEL``
+    insightface model pack name. Defaults to ``buffalo_l``.
+
+``TGDL_FACES_DET_SIZE``
+    Detector input resolution (positive int). Defaults to ``640``.
+
+``TGDL_FACES_LOG_LEVEL``
+    Standard Python logging level (``DEBUG``, ``INFO``, ``WARNING``, …).
+    Defaults to ``INFO``.
 """
 
 from __future__ import annotations
@@ -168,6 +190,15 @@ def main() -> None:
         "allow_roots=%s",
         allow_roots if allow_roots else "[] (path mode disabled — base64 only)",
     )
+
+    # Pre-load the model in a background thread so the first /detect
+    # request doesn't pay the 0.5–5 s model-load cost. The sidecar
+    # becomes "ready" a few seconds after boot rather than on first use.
+    # Importing here (not at the top of the module) avoids paying the
+    # insightface import cost for `--help` / dry-run style invocations.
+    from tgdl_faces.insight import preload_model  # noqa: PLC0415
+
+    preload_model()
 
     # Import lazily so `python -m tgdl_faces --help` style commands that
     # uvicorn might add in future don't pay the heavy insightface import.

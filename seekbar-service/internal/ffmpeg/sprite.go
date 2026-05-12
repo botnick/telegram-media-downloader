@@ -27,9 +27,13 @@ type SpritePlan struct {
 }
 
 // Plan picks the tile grid for a given duration + thumb config.
-// Algorithm: clamp(ceil(duration / interval), 12, maxTiles), then
-// recompute interval = duration / frames so the final sample lands on
-// the clip's last second.
+//
+// Adaptive: shorter clips deserve finer detail — a 90-second clip at a
+// 4-second interval yields only 22 frames (coarse). We pick the
+// configured interval OR a duration-derived one, whichever gives more
+// frames, up to maxTiles. Long clips fall back to the operator interval.
+// The final interval is recomputed from frames so the last sample lands
+// exactly on the clip's final second.
 func Plan(durationSec float64, targetIntervalSec float64, columns, maxTiles, tileWidth int) SpritePlan {
 	if targetIntervalSec <= 0 {
 		targetIntervalSec = 5
@@ -38,7 +42,8 @@ func Plan(durationSec float64, targetIntervalSec float64, columns, maxTiles, til
 	if maxTiles < minFrames {
 		maxTiles = minFrames
 	}
-	frames := int(math.Ceil(durationSec / targetIntervalSec))
+	adaptiveTarget := math.Min(targetIntervalSec, math.Max(1.0, durationSec/90.0))
+	frames := int(math.Ceil(durationSec / adaptiveTarget))
 	if frames < minFrames {
 		frames = minFrames
 	}

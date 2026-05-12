@@ -1,0 +1,13 @@
+# DirectML (Windows GPU) requirements for tgdl-faces.
+# Works on any DX12-capable GPU (NVIDIA, AMD, Intel) on Windows x86_64.
+# Does NOT require a CUDA toolkit — the DirectML runtime ships with Windows.
+#
+# onnxruntime-directml replaces onnxruntime (they share the module name and
+# CANNOT coexist). Run `pip install -r requirements-directml.txt` on a fresh
+# venv or after `pip uninstall onnxruntime`.
+
+-r requirements.txt
+
+# Remove the CPU onnxruntime pulled in by requirements.txt and replace it
+# with the DirectML variant.
+onnxruntime-directml>=1.20,<2

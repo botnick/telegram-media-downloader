@@ -103,11 +103,11 @@ ENV PATH="/root/.local/bin:${PATH}" \
 
 EXPOSE 8011
 
-# 90s start_period leaves room for the first /detect to lazy-init
-# insightface — /health itself is cheap, but the prepare() call inside
-# get_app() on first detect can take a few seconds on arm64 / Pi.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD wget -qO- http://localhost:8011/health || exit 1
+# 60s start_period — model is pre-loaded at startup in a background thread,
+# so /health.ready flips to true within ~10s on modern hardware.
+# Kept at 60s to be safe on arm64/Pi where model load can be 20–30s.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD wget -qO- http://localhost:8011/health | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if d.get('ok') and d.get('ready') else 1)"
 
 LABEL org.opencontainers.image.title="tgdl-faces" \
       org.opencontainers.image.description="Face detection + 512-dim embedding sidecar for telegram-media-downloader" \

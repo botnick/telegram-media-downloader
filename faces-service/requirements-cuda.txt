@@ -1,0 +1,14 @@
+# CUDA (NVIDIA GPU) requirements for tgdl-faces.
+# Requires CUDA 12 + cuDNN 9 on the host. Tested on Linux x86_64 and
+# Windows x86_64. Not available for arm64 — use CPU on NVIDIA Jetson.
+#
+# onnxruntime-gpu replaces onnxruntime (they share the module name and
+# CANNOT coexist). Run `pip install -r requirements-cuda.txt` on a fresh
+# venv or after `pip uninstall onnxruntime`.
+
+-r requirements.txt
+
+# Remove the CPU onnxruntime pulled in by requirements.txt and replace it
+# with the GPU variant. pip resolves this correctly when onnxruntime-gpu
+# is listed after onnxruntime — pip will upgrade in-place.
+onnxruntime-gpu>=1.20,<2

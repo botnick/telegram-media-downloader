@@ -45,9 +45,17 @@ func main() {
 	defer cancel()
 
 	pool := worker.NewPool(cfg, log)
-	pool.Start(ctx)
+	// Start the pool; hwaccel detection runs inside Start and returns
+	// the resolved backend so we can share it with the HTTP server
+	// without probing twice.
+	resolvedHWA := pool.Start(ctx, "")
+	log.Info("hwaccel resolved", "backend", string(resolvedHWA))
 
 	srv := api.New(cfg, log, pool)
+	// Kick off background ffmpeg-version probe; pass the resolved hwaccel
+	// string so the server doesn't probe a second time.
+	srv.Init(string(resolvedHWA))
+
 	server := &http.Server{
 		Addr:         cfg.HTTP.Listen,
 		Handler:      srv.Routes(),
@@ -68,14 +76,19 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	select {
 	case sig := <-sigCh:
-		log.Info("shutdown signal", "signal", sig.String())
+		log.Info("shutdown signal received, draining (30s)", "signal", sig.String())
 	case err := <-errCh:
 		log.Error("http listener failed", "err", err)
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// 30-second drain: finish in-progress jobs, reject new HTTP requests.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 	_ = server.Shutdown(shutdownCtx)
+
+	// Cancel the worker pool context so idle goroutines exit, then
+	// wait for any in-flight ffmpeg processes to finish.
+	cancel()
 	pool.Stop()
 	log.Info("seekbar-service stopped")
 }

@@ -2,14 +2,13 @@
 
 Endpoints (see ``docs/AI.md`` on the Node side for the full contract):
 
-* ``GET /health`` — liveness; never returns 500 so the Node-side
-  polling loop stays cheap.
-* ``GET /info`` — model card (name, dim, providers, det_size, version).
-* ``POST /detect`` — detect & embed faces from a path or base64 blob.
-* ``POST /detect-embed`` — alias of ``/detect``. The Node side calls
-  this name because it advertises "single combined call" semantics
-  to the rest of the codebase; keeping both names lets either side be
-  refactored without breaking the other.
+* ``GET /health``         — liveness + readiness; matches seekbar health format.
+* ``GET /config``         — effective configuration (model, providers, concurrency).
+* ``GET /info``           — model card (name, dim, providers, det_size, version).
+* ``GET /providers``      — probe every onnxruntime backend and report usability.
+* ``POST /detect``        — detect & embed faces from a path or base64 blob.
+* ``POST /detect-embed``  — alias of ``/detect``.
+* ``POST /detect/batch``  — batch variant accepting multiple file paths.
 
 Error payload shape (used by every non-2xx response):
 
@@ -36,14 +35,21 @@ from .insight import (
     DET_SIZE,
     EMBEDDING_DIM,
     MODEL_NAME,
+    arch_tag,
     detect_and_embed,
     get_app,
+    get_stats,
+    gpu_available,
+    gpu_provider,
     is_ready,
     last_error,
     platform_tag,
     python_version,
     requested_providers,
     resolved_providers,
+    uptime_sec,
+    _resolve_max_concurrency,
+    _resolve_models_dir,
 )
 from .io import (
     ImageDecodeError,
@@ -113,6 +119,33 @@ class DetectRequest(BaseModel):
         return self
 
 
+class BatchDetectRequest(BaseModel):
+    """Body for ``POST /detect/batch``.
+
+    ``files`` is a list of absolute paths on disk. All paths are subject to
+    the same ``TGDL_FACES_ALLOW_ROOTS`` allow-list as the single-path
+    ``/detect`` endpoint. Invalid or unreadable entries produce per-item
+    ``error`` fields rather than aborting the whole batch.
+    """
+
+    files: list[str] = Field(
+        ...,
+        min_length=1,
+        description="List of absolute paths to process.",
+    )
+    min_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_box_px: int | None = Field(default=None, ge=1)
+    ar_range: tuple[float, float] | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _validate_ar_range(self) -> BatchDetectRequest:
+        if self.ar_range is not None:
+            lo, hi = float(self.ar_range[0]), float(self.ar_range[1])
+            if lo <= 0 or hi <= 0 or lo >= hi:
+                raise ValueError("ar_range must be (lo, hi) with 0 < lo < hi")
+        return self
+
+
 class Face(BaseModel):
     """Single-face response record. Coordinates are integer pixel offsets."""
 
@@ -137,45 +170,20 @@ class DetectResponse(BaseModel):
     image_h: int
 
 
-class HealthOk(BaseModel):
-    """Successful ``/health`` payload.
+class BatchDetectItem(BaseModel):
+    """Single result entry within a ``/detect/batch`` response."""
 
-    Beyond the original ``{ok, version, model, dim, ready}`` we now
-    surface the providers actually picked at boot, the platform tag, the
-    bundled Python version, and the resolved det_size. The AI maintenance
-    card uses these to render real state ("CoreML on darwin/arm64,
-    det_size 640") rather than a generic green dot.
-    """
-
-    ok: bool = True
-    version: str = __version__
-    model: str = MODEL_NAME
-    dim: int = EMBEDDING_DIM
-    ready: bool = False
-    providers_resolved: list[str] = Field(default_factory=list)
-    providers_requested: str = "auto"
-    det_size: int = int(DET_SIZE[0])
-    platform: str = ""
-    python: str = ""
+    file: str
+    faces: list[Face] = Field(default_factory=list)
+    image_w: int = 0
+    image_h: int = 0
+    error: str | None = None
 
 
-class HealthErr(BaseModel):
-    ok: bool = False
-    error: str
-    version: str = __version__
-    platform: str = ""
-    python: str = ""
-
-
-class InfoResponse(BaseModel):
-    model: str = MODEL_NAME
-    dim: int = EMBEDDING_DIM
-    providers: list[str]
-    providers_requested: str = "auto"
-    det_size: int
-    version: str = __version__
-    platform: str = ""
-    python: str = ""
+class BatchDetectResponse(BaseModel):
+    results: list[BatchDetectItem]
+    total_files: int
+    total_faces: int
 
 
 # --- FastAPI app ------------------------------------------------------------
@@ -253,38 +261,84 @@ async def _validation_handler(
 
 @app.get("/health")
 def health() -> JSONResponse:
-    """Cheap liveness probe.
+    """Liveness + readiness probe matching the seekbar health response format.
 
-    Returns 200 even when the model failed to load — the Node side
-    polls this every 60s and we don't want 500s spammed into the
-    operator's log. The ``ok`` flag carries the real verdict; consumers
-    must check it (not just the HTTP status).
+    Always returns HTTP 200 — the Node-side polling loop must inspect
+    the ``ok`` flag rather than the HTTP status to determine real health.
+    The ``stats`` block surfaces request counters and average latency.
     """
     err = last_error()
     if err is not None:
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content=HealthErr(
-                error=f"{type(err).__name__}: {err}",
-                platform=platform_tag(),
-                python=python_version(),
-            ).model_dump(),
+            content={
+                "ok": False,
+                "service": "faces-service",
+                "version": __version__,
+                "platform": platform_tag(),
+                "arch": arch_tag(),
+                "ready": False,
+                "model": MODEL_NAME,
+                "gpu_provider": gpu_provider(),
+                "gpu_available": gpu_available(),
+                "providers": resolved_providers(),
+                "uptime_sec": uptime_sec(),
+                "error": f"{type(err).__name__}: {err}",
+                "stats": get_stats(),
+            },
         )
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        content=HealthOk(
-            ready=is_ready(),
-            providers_resolved=resolved_providers(),
-            providers_requested=requested_providers(),
-            det_size=int(DET_SIZE[0]),
-            platform=platform_tag(),
-            python=python_version(),
-        ).model_dump(),
+        content={
+            "ok": True,
+            "service": "faces-service",
+            "version": __version__,
+            "platform": platform_tag(),
+            "arch": arch_tag(),
+            "ready": is_ready(),
+            "model": MODEL_NAME,
+            "gpu_provider": gpu_provider(),
+            "gpu_available": gpu_available(),
+            "providers": resolved_providers(),
+            "uptime_sec": uptime_sec(),
+            "stats": get_stats(),
+        },
+    )
+
+
+@app.get("/config")
+def config() -> JSONResponse:
+    """Return the effective runtime configuration.
+
+    Useful for operators to verify env vars are applied correctly without
+    digging into the process environment. The ``model_dir`` field shows
+    where the buffalo_l weights are cached.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "model": MODEL_NAME,
+            "det_size": int(DET_SIZE[0]),
+            "providers_requested": requested_providers(),
+            "providers_resolved": resolved_providers(),
+            "gpu_provider": gpu_provider(),
+            "gpu_available": gpu_available(),
+            "max_concurrency": _resolve_max_concurrency(),
+            "model_dir": str(_resolve_models_dir()),
+            "allow_roots": _allow_roots(),
+            "host": os.environ.get("TGDL_FACES_HOST", "127.0.0.1"),
+            "port": int(os.environ.get("TGDL_FACES_PORT", "8011")),
+            "log_level": os.environ.get("TGDL_FACES_LOG_LEVEL", "INFO").upper(),
+            "version": __version__,
+            "python": python_version(),
+            "platform": platform_tag(),
+            "arch": arch_tag(),
+        },
     )
 
 
 @app.get("/info")
-def info() -> InfoResponse:
+def info() -> JSONResponse:
     """Static model card. Cheap; used by the Node side at boot."""
     providers = resolved_providers()
     # If the model has already been loaded, prefer the live FaceAnalysis
@@ -298,12 +352,19 @@ def info() -> InfoResponse:
                 providers = list(real)
         except Exception:  # pragma: no cover — defensive
             pass
-    return InfoResponse(
-        providers=providers,
-        providers_requested=requested_providers(),
-        det_size=int(DET_SIZE[0]),
-        platform=platform_tag(),
-        python=python_version(),
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "model": MODEL_NAME,
+            "dim": EMBEDDING_DIM,
+            "providers": providers,
+            "providers_requested": requested_providers(),
+            "det_size": int(DET_SIZE[0]),
+            "version": __version__,
+            "platform": platform_tag(),
+            "arch": arch_tag(),
+            "python": python_version(),
+        },
     )
 
 
@@ -432,24 +493,65 @@ def providers() -> JSONResponse:
     )
 
 
-def _do_detect(body: DetectRequest) -> JSONResponse:
-    # Resolve the image first so we can return 403 / 415 before paying
-    # the FaceAnalysis warm-up cost on first request.
+def _load_image(body_path: str | None, body_b64: str | None) -> tuple[Any, str | None]:
+    """Load an image from path or base64, returning (img, error_code).
+
+    Returns ``(None, error_code)`` on any load failure so callers can
+    produce well-typed error responses without catching exceptions.
+    ``error_code`` is one of ``file_not_found``, ``decode_failed``,
+    ``path_not_allowed``.
+    """
     try:
-        if body.path:
-            img = load_image_from_path(body.path, _allow_roots())
+        if body_path:
+            img = load_image_from_path(body_path, _allow_roots())
         else:
-            assert body.image_b64 is not None  # guarded by validator
-            img = load_image_from_b64(body.image_b64)
-    except PathNotAllowedError as exc:
-        return _error(str(exc), code="path_not_allowed",
-                      status_code=status.HTTP_403_FORBIDDEN)
-    except FileNotFoundError as exc:
-        return _error(str(exc), code="file_not_found",
-                      status_code=status.HTTP_404_NOT_FOUND)
-    except ImageDecodeError as exc:
-        return _error(str(exc), code="image_decode_failed",
-                      status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+            assert body_b64 is not None
+            img = load_image_from_b64(body_b64)
+        return img, None
+    except PathNotAllowedError:
+        return None, "path_not_allowed"
+    except FileNotFoundError:
+        return None, "file_not_found"
+    except ImageDecodeError:
+        return None, "decode_failed"
+
+
+def _do_detect(body: DetectRequest) -> JSONResponse:
+    # Guard: model must be loaded (or at least attempted). Return 503
+    # during the brief window while preload_model() is still running.
+    if last_error() is not None:
+        return _error(
+            f"model failed to load: {last_error()}",
+            code="model_load_failed",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    if not is_ready():
+        # Still loading in the background.
+        return _error(
+            "model is still loading, retry shortly",
+            code="model_loading",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    img, err_code = _load_image(body.path, body.image_b64)
+    if img is None:
+        assert err_code is not None
+        if err_code == "path_not_allowed":
+            return _error(
+                "path falls outside TGDL_FACES_ALLOW_ROOTS",
+                code="path_not_allowed",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        if err_code == "file_not_found":
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"faces": [], "error": "file_not_found"},
+            )
+        # decode_failed
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"faces": [], "error": "decode_failed"},
+        )
 
     # Build the filter kwargs without overwriting defaults when the
     # caller didn't supply them — keeps the wire format compact for the
@@ -498,3 +600,85 @@ def detect_embed(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     lets either side be refactored without breaking the other.
     """
     return _do_detect(body)
+
+
+@app.post("/detect/batch")
+def detect_batch(body: BatchDetectRequest) -> JSONResponse:
+    """Detect faces in multiple files in a single HTTP round-trip.
+
+    Accepts ``{"files": ["/abs/path/img1.jpg", ...]}`` and returns a
+    ``results`` list with one entry per input file. Per-file errors
+    (file not found, decode failure, path outside allow-roots) are
+    surfaced in the ``error`` field rather than aborting the batch.
+
+    Model-not-ready and model-load-failed conditions are still returned
+    as top-level 503 errors because no results can be produced.
+    """
+    if last_error() is not None:
+        return _error(
+            f"model failed to load: {last_error()}",
+            code="model_load_failed",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    if not is_ready():
+        return _error(
+            "model is still loading, retry shortly",
+            code="model_loading",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    kwargs: dict[str, Any] = {}
+    if body.min_score is not None:
+        kwargs["min_score"] = float(body.min_score)
+    if body.min_box_px is not None:
+        kwargs["min_box_px"] = int(body.min_box_px)
+    if body.ar_range is not None:
+        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
+
+    results: list[dict[str, Any]] = []
+    total_faces = 0
+
+    for file_path in body.files:
+        img, err_code = _load_image(file_path, None)
+        if img is None:
+            results.append({
+                "file": file_path,
+                "faces": [],
+                "image_w": 0,
+                "image_h": 0,
+                "error": err_code,
+            })
+            continue
+
+        try:
+            faces = detect_and_embed(img, **kwargs)
+        except Exception as exc:
+            _LOG.exception("detect_and_embed failed for %s", file_path)
+            results.append({
+                "file": file_path,
+                "faces": [],
+                "image_w": 0,
+                "image_h": 0,
+                "error": f"detect_failed: {type(exc).__name__}",
+            })
+            continue
+
+        h_img, w_img = int(img.shape[0]), int(img.shape[1])
+        face_objs = [Face(**f).model_dump() for f in faces]
+        total_faces += len(face_objs)
+        results.append({
+            "file": file_path,
+            "faces": face_objs,
+            "image_w": w_img,
+            "image_h": h_img,
+            "error": None,
+        })
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "results": results,
+            "total_files": len(results),
+            "total_faces": total_faces,
+        },
+    )

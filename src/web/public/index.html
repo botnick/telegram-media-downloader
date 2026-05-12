@@ -632,24 +632,34 @@
 
                     <div class="relative" data-admin-only>
                         <button id="notify-bell-btn" type="button"
-                            class="w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center relative"
+                            class="notify-bell-btn w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center relative"
                             aria-haspopup="menu" aria-expanded="false"
                             data-i18n-aria-label="header.notifications" aria-label="Notifications">
                             <i class="ri-notification-3-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
-                            <span id="notify-bell-badge" class="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-tg-red text-white text-[10px] font-medium leading-[18px] text-center hidden">0</span>
+                            <span id="notify-bell-badge" class="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-tg-red text-white text-[9px] font-bold leading-4 text-center hidden">0</span>
                         </button>
-                        <div id="notify-bell-menu" class="view-mode-menu notify-menu" role="menu" aria-labelledby="notify-bell-btn">
-                            <div class="notify-header flex items-center justify-between gap-2 px-3 py-2 border-b border-tg-border mb-1">
-                                <span class="text-xs font-semibold tracking-wide uppercase text-tg-textSecondary" data-i18n="header.notifications">Notifications</span>
+                        <div id="notify-bell-menu" class="notify-menu" role="menu" aria-labelledby="notify-bell-btn">
+                            <!-- Header -->
+                            <div class="notify-menu-header">
+                                <div class="flex items-center gap-2">
+                                    <i class="ri-notification-3-fill text-tg-blue text-[15px]" aria-hidden="true"></i>
+                                    <span class="font-semibold text-[13px] text-tg-text" data-i18n="header.notifications">Notifications</span>
+                                    <span id="notify-count" class="ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-tg-border/60 text-tg-textSecondary font-medium hidden"></span>
+                                </div>
                                 <button id="notify-clear-btn" type="button"
-                                    class="w-7 h-7 rounded-full inline-flex items-center justify-center text-tg-textSecondary hover:text-tg-text hover:bg-tg-hover transition-colors"
+                                    class="w-7 h-7 flex items-center justify-center rounded-md text-tg-textSecondary hover:text-tg-red hover:bg-red-500/10 transition-colors"
                                     data-i18n-title="header.notifications.clear" title="Clear all"
                                     data-i18n-aria-label="header.notifications.clear" aria-label="Clear all">
-                                    <i class="ri-eraser-line text-[14px]"></i>
+                                    <i class="ri-delete-bin-4-line text-[14px]"></i>
                                 </button>
                             </div>
-                            <div id="notify-list" class="max-h-[60vh] overflow-y-auto"></div>
-                            <div id="notify-empty" class="px-3 py-6 text-center text-xs text-tg-textSecondary" data-i18n="header.notifications.empty">No notifications yet.</div>
+                            <!-- List -->
+                            <div id="notify-list" class="notify-menu-list"></div>
+                            <!-- Empty state -->
+                            <div id="notify-empty" class="notify-menu-empty">
+                                <i class="ri-notification-off-line notify-empty-icon" aria-hidden="true"></i>
+                                <div class="text-xs text-tg-textSecondary" data-i18n="header.notifications.empty">No notifications yet.</div>
+                            </div>
                         </div>
                     </div>
 
@@ -2632,6 +2642,58 @@
                             </div>
                         </div>
                     </section>
+
+                    <!-- Rebuild for group — targeted rebuild for a single
+                         group rather than the full library. Populated with
+                         monitored groups by maintenance-seekbar.js on init.
+                         The "Rebuild" button fires POST /api/maintenance/seekbar/build-group
+                         with { groupId }. Progress lands on the same
+                         seekbar_progress / seekbar_done WS events as the
+                         full rebuild so the progress bar above re-uses. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h3 class="text-tg-text text-sm font-medium mb-1 flex items-center gap-2">
+                            <i class="ri-folder-video-line text-tg-blue"></i>
+                            <span data-i18n="maintenance.seekbar.rebuild_group.title">Rebuild for a group</span>
+                        </h3>
+                        <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.seekbar.rebuild_group.desc">Regenerate sprites only for videos in a specific group — faster than a full rebuild when one group was recently backfilled.</p>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <select id="seekbar-group-select" class="tg-input flex-1 min-w-[180px] text-sm">
+                                <option value="" data-i18n="maintenance.seekbar.rebuild_group.pick">Select a group…</option>
+                            </select>
+                            <button id="seekbar-rebuild-group-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled>
+                                <i class="ri-play-fill"></i><span data-i18n="maintenance.seekbar.rebuild_group.action">Rebuild group</span>
+                            </button>
+                        </div>
+                    </section>
+
+                    <!-- Queue stats — live counts of pending / processing /
+                         completed / failed jobs from the seekbar worker queue.
+                         Hydrated on init and updated by the seekbar_progress WS
+                         event so operators can see backlog depth at a glance. -->
+                    <section class="bg-tg-panel rounded-xl p-4 mb-3">
+                        <h3 class="text-tg-text text-sm font-medium mb-3 flex items-center gap-2">
+                            <i class="ri-queue-line text-tg-blue"></i>
+                            <span data-i18n="maintenance.seekbar.queue.title">Queue stats</span>
+                        </h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.queued">Queued</div>
+                                <div id="seekbar-queue-queued" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.processing">Processing</div>
+                                <div id="seekbar-queue-processing" class="text-xl font-semibold text-tg-blue tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.completed">Completed</div>
+                                <div id="seekbar-queue-completed" class="text-xl font-semibold text-tg-green tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.seekbar.queue.failed">Failed</div>
+                                <div id="seekbar-queue-failed" class="text-xl font-semibold text-red-400 tabular-nums">—</div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Maintenance / Video faststart optimiser (admin-only) -->
@@ -2900,8 +2962,13 @@
 
                     <!-- Histogram -->
                     <section class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <div class="text-xs uppercase tracking-wide text-tg-textSecondary mb-2" data-i18n="maintenance.nsfw.histogram_heading">Score distribution</div>
-                        <svg id="nsfw-histogram" class="w-full h-32 text-tg-textSecondary" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
+                        <div class="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                            <div class="text-xs uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.nsfw.histogram_heading">Score distribution</div>
+                            <div id="nsfw-hist-legend" class="flex items-center gap-x-3 gap-y-1 flex-wrap"></div>
+                        </div>
+                        <div class="nsfw-histogram-wrap">
+                            <svg id="nsfw-histogram" class="nsfw-histogram-svg text-tg-textSecondary" viewBox="0 0 580 200" preserveAspectRatio="none" overflow="visible"></svg>
+                        </div>
                     </section>
 
                     <!-- Bulk actions toolbar (only when a tier is selected) -->
@@ -2957,10 +3024,11 @@
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.subtitle">Face clustering — recognise people across your library using a local Python service.</p>
                                 <!-- Sidecar status pill — always visible
                                      so operators can see whether the
-                                     Python service is reachable. Hydrated
-                                     by `_renderSidecarBadge()`. -->
+                                     Python service is reachable, which
+                                     GPU backend is active, and the model
+                                     id. Hydrated by `_renderSidecarBadge()`. -->
                                 <div id="ai-sidecar-badge" class="mt-2 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-tg-bg/40 text-tg-textSecondary" role="status">
-                                    <i class="ri-flashlight-line"></i><span id="ai-sidecar-badge-text" data-i18n="maintenance.ai.sidecar.unknown">Sidecar: probing…</span>
+                                    <i class="ri-circle-fill text-[7px] ai-sidecar-dot text-tg-textSecondary"></i><span id="ai-sidecar-badge-text" data-i18n="maintenance.ai.sidecar.unknown">Sidecar: probing…</span>
                                 </div>
                             </div>
                             <!-- Action cluster — primary Scan + Cancel
@@ -3006,13 +3074,15 @@
                         </div>
 
                         <!-- Progress bar — only visible while a scan is
-                             active. Status text + spinner + bar +
-                             percentage match the thumbs page exactly so
-                             muscle memory transfers. -->
+                             active. Two-phase: Phase A shows per-photo
+                             progress; Phase B (DBSCAN) switches to an
+                             indeterminate "Clustering N faces…" label
+                             via the ai_people_phase_b WS event. -->
                         <div id="ai-progress" class="hidden mt-3" role="status" aria-live="polite">
-                            <div class="text-sm text-tg-text mb-1.5 flex items-center gap-1.5 font-medium">
-                                <i class="ri-loader-4-line animate-spin text-tg-blue"></i>
+                            <div class="text-sm text-tg-text mb-1 flex items-center gap-1.5 font-medium flex-wrap">
+                                <i class="ri-loader-4-line animate-spin text-tg-blue shrink-0"></i>
                                 <span id="ai-progress-status" data-i18n="maintenance.ai.scanning">Scanning…</span>
+                                <span id="ai-progress-phase" class="hidden ml-auto text-[10px] font-normal text-tg-textSecondary tabular-nums"></span>
                             </div>
                             <div class="h-2 bg-tg-bg/60 rounded overflow-hidden">
                                 <div id="ai-progress-bar" class="h-full bg-tg-blue transition-all" style="width:0%"></div>
@@ -3020,10 +3090,11 @@
                             <div id="ai-progress-pct" class="text-[11px] text-tg-textSecondary mt-1 tabular-nums text-right"></div>
                         </div>
 
-                        <!-- KPI strip — three tiles. Indexed photos
-                             (faces walked / eligible photos), people
-                             clusters surfaced, last scan timestamp. -->
-                        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                        <!-- KPI strip — four tiles: indexed photos,
+                             people clusters, unclassified/noise faces,
+                             last scan timestamp. 2-col on mobile,
+                             4-col on sm+ so each stat stays readable. -->
+                        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_indexed">Indexed photos</div>
                                 <div id="ai-stat-indexed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
@@ -3031,6 +3102,10 @@
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_people">People clusters</div>
                                 <div id="ai-stat-people" class="text-xl font-semibold text-tg-blue tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_noise">Unclassified faces</div>
+                                <div id="ai-stat-noise" class="text-xl font-semibold text-tg-textSecondary tabular-nums" title="DBSCAN noise points — faces that didn't fit any cluster. Reduce ε or minPoints to include more.">—</div>
                             </div>
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_last">Last scan</div>
@@ -3220,15 +3295,25 @@
                          Search box + Unlabeled-only chip + refresh on
                          top, then the cluster grid. Clicking a tile
                          opens the details panel (photos + Rename /
-                         Merge / Split / Delete). -->
+                         Merge / Split / Delete). Double-clicking the
+                         name label on any tile opens the rename prompt. -->
                     <section id="ai-pane-people" class="bg-tg-panel rounded-xl p-4 mb-3" role="region" aria-label="Face clusters">
-                        <div class="flex items-center gap-2 mb-3">
+                        <div class="flex items-center gap-2 mb-3 flex-wrap">
                             <i class="ri-group-line text-tg-blue"></i>
                             <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.people.heading">People</h3>
                             <span id="ai-people-count" class="text-[10.5px] text-tg-textSecondary"></span>
                         </div>
+
+                        <!-- Epsilon mega-merge warning — shown by JS when one
+                             cluster dominates >25% of all faces, which signals
+                             ε is too high. Hidden by default. -->
+                        <div id="ai-epsilon-warning" class="hidden mb-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-xs">
+                            <i class="ri-error-warning-line shrink-0 mt-0.5"></i>
+                            <span data-i18n="maintenance.ai.epsilon_warning">One cluster contains an unusually large share of all faces — the DBSCAN ε threshold may be too high, causing different people to merge. Try lowering ε and running Re-cluster.</span>
+                        </div>
+
                         <div class="flex items-center gap-2 flex-wrap mb-3">
-                            <input id="ai-people-search" type="search" class="tg-input flex-1 min-w-[160px] text-xs py-1.5"
+                            <input id="ai-people-search" type="search" class="tg-input flex-1 min-w-[140px] text-xs py-1.5"
                                 placeholder="Search names or IDs…" data-i18n-placeholder="maintenance.ai.people.search_placeholder"
                                 autocomplete="off" spellcheck="false">
                             <label class="inline-flex items-center gap-1 text-[11px] text-tg-textSecondary cursor-pointer select-none">
@@ -3244,18 +3329,34 @@
                             <i class="ri-user-search-line text-3xl block mb-2 text-tg-textSecondary/60"></i>
                             <div data-i18n="maintenance.ai.people_empty">No people clustered yet. Run a scan above.</div>
                         </div>
+                        <!-- Context-aware help — shown only when the cache is fully
+                             empty (not just filtered). Text is set by JS based on
+                             sidecar health to distinguish "sidecar offline" vs
+                             "sidecar up but no scan yet". -->
+                        <div id="ai-people-empty-help" class="hidden mt-2 text-center text-[11px] text-tg-textSecondary/80 max-w-sm mx-auto"></div>
+
+                        <!-- People gallery grid: 2 cols on mobile, 3 on sm, 4 on lg. -->
                         <div id="ai-people-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+
+                        <!-- Person face browser — revealed when a person card is
+                             clicked. Photos shown in a 4-col grid (2 on mobile).
+                             Each photo may show a face-box highlight if the API
+                             returns bbox data with the download row. -->
                         <div id="ai-people-photos" class="hidden mt-4 pt-3 border-t border-tg-border/30">
                             <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                                <div class="text-xs text-tg-textSecondary"><span data-i18n="maintenance.ai.people_photos_for">Photos for</span> <span id="ai-people-photos-name" class="text-tg-text font-medium"></span></div>
+                                <div class="text-xs text-tg-textSecondary">
+                                    <span data-i18n="maintenance.ai.people_photos_for">Photos for</span>
+                                    <span id="ai-people-photos-name" class="text-tg-text font-medium ml-1"></span>
+                                </div>
                                 <div class="flex items-center gap-1.5 flex-wrap">
-                                    <button id="ai-person-rename-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-edit-line"></i><span data-i18n="maintenance.ai.people.actions.rename">Rename</span></button>
+                                    <button id="ai-person-rename-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1" title="Rename (or double-click name on tile)"><i class="ri-edit-line"></i><span data-i18n="maintenance.ai.people.actions.rename">Rename</span></button>
                                     <button id="ai-person-merge-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-git-merge-line"></i><span data-i18n="maintenance.ai.people.actions.merge">Merge…</span></button>
                                     <button id="ai-person-split-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-scissors-cut-line"></i><span data-i18n="maintenance.ai.people.actions.split">Split…</span></button>
                                     <button id="ai-person-delete-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1 text-red-300"><i class="ri-delete-bin-line"></i><span data-i18n="maintenance.ai.people.actions.delete">Delete</span></button>
                                 </div>
                             </div>
-                            <div id="ai-people-photos-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2"></div>
+                            <!-- 2 cols on mobile (<640px), 4 cols on sm+. -->
+                            <div id="ai-people-photos-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
                         </div>
                     </section>
 
@@ -3732,21 +3833,45 @@
         </div>
     </div>
 
-    <!-- Status bar -->
-    <footer id="status-bar" data-admin-only class="hidden md:flex fixed bottom-0 left-0 right-0 bg-tg-sidebar border-t border-tg-border px-3 py-1.5 text-xs items-center gap-3 overflow-x-auto z-40" role="status" aria-live="polite">
-        <span class="flex items-center gap-1.5">
-            <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-500"></span>
+    <!-- Status bar — visible to all roles. Admin-only items use
+         data-admin-only so body[data-role="guest"] CSS hides them
+         automatically. Guests see Files + Disk; admins see everything. -->
+    <footer id="status-bar" class="hidden md:flex fixed bottom-0 left-0 right-0 bg-tg-sidebar/96 backdrop-blur-sm border-t border-tg-border px-4 py-1.5 text-xs items-center gap-3 overflow-x-auto z-40" role="status" aria-live="polite">
+        <!-- Engine state (admin-only) -->
+        <span class="flex items-center gap-1.5 shrink-0" data-admin-only>
+            <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-500 shrink-0"></span>
             <span id="status-state" class="text-tg-textSecondary" data-i18n="status.idle">Idle</span>
         </span>
-        <span class="text-tg-textSecondary">·</span>
-        <span class="text-tg-textSecondary"><span data-i18n="status.queue">Queue:</span> <span id="status-queue" class="text-tg-text">0</span></span>
-        <span class="text-tg-textSecondary"><span data-i18n="status.active">Active:</span> <span id="status-active" class="text-tg-text">0</span></span>
-        <span class="text-tg-textSecondary"><span data-i18n="status.files">Files:</span> <span id="status-files" class="text-tg-text">0</span></span>
-        <span class="text-tg-textSecondary"><span data-i18n="status.disk">Disk:</span> <span id="status-disk" class="text-tg-text">0 B</span></span>
-        <span class="ml-auto text-tg-textSecondary"><span id="status-ws" class="inline-block w-2 h-2 rounded-full bg-gray-500 mr-1"></span>WS</span>
-        <a id="status-update-badge" class="hidden text-[10px] px-1.5 py-0.5 rounded bg-tg-blue/15 text-tg-blue hover:bg-tg-blue/25 font-medium whitespace-nowrap" target="_blank" rel="noopener"></a>
-        <button id="status-update-dismiss" type="button" class="hidden text-[10px] text-tg-textSecondary/70 hover:text-tg-text px-1" title="Dismiss this update notice" aria-label="Dismiss update notice">×</button>
-        <a id="status-version" class="text-[10px] text-tg-textSecondary/70 hover:text-tg-text font-mono whitespace-nowrap" href="https://github.com/botnick/telegram-media-downloader" target="_blank" rel="noopener" title="Build version (commit SHA + build time)"></a>
+        <span class="text-tg-border shrink-0" aria-hidden="true" data-admin-only>·</span>
+        <!-- Queue + Active (admin-only) -->
+        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary" data-admin-only>
+            <i class="ri-list-ordered text-[11px]" aria-hidden="true"></i>
+            <span id="status-queue" class="text-tg-text font-medium tabular-nums">0</span>
+        </span>
+        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary" data-admin-only>
+            <i class="ri-loader-4-line text-[11px]" aria-hidden="true"></i>
+            <span id="status-active" class="text-tg-text font-medium tabular-nums">0</span>
+        </span>
+        <span class="text-tg-border shrink-0" aria-hidden="true" data-admin-only>·</span>
+        <!-- Files + Disk (always visible) -->
+        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary">
+            <i class="ri-file-list-2-line text-[11px]" aria-hidden="true"></i>
+            <span id="status-files" class="text-tg-text font-medium tabular-nums">0</span>
+        </span>
+        <span class="flex items-center gap-1 shrink-0 text-tg-textSecondary">
+            <i class="ri-hard-drive-2-line text-[11px]" aria-hidden="true"></i>
+            <span id="status-disk" class="text-tg-text font-medium tabular-nums">0 B</span>
+        </span>
+        <!-- Right cluster: WS + update badge + version (admin-only) -->
+        <span class="ml-auto flex items-center gap-2.5 shrink-0">
+            <span class="flex items-center gap-1 text-tg-textSecondary" data-admin-only>
+                <span id="status-ws" class="inline-block w-1.5 h-1.5 rounded-full bg-gray-500"></span>
+                <span class="text-[10px]">WS</span>
+            </span>
+            <a id="status-update-badge" class="hidden text-[10px] px-1.5 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue hover:bg-tg-blue/25 font-medium whitespace-nowrap transition-colors" target="_blank" rel="noopener" data-admin-only></a>
+            <button id="status-update-dismiss" type="button" class="hidden text-[10px] text-tg-textSecondary/60 hover:text-tg-text transition-colors" title="Dismiss this update notice" aria-label="Dismiss update notice" data-admin-only>×</button>
+            <a id="status-version" class="text-[10px] text-tg-textSecondary/50 hover:text-tg-textSecondary font-mono whitespace-nowrap transition-colors" href="https://github.com/botnick/telegram-media-downloader" target="_blank" rel="noopener" title="Build version (commit SHA + build time)" data-admin-only></a>
+        </span>
     </footer>
 
     <!-- Media Modal -->
@@ -3783,9 +3908,32 @@
             <!-- Zoom Container for Image -->
             <div id="image-container"
                 class="relative w-full h-full flex items-center justify-center overflow-hidden hidden">
-                <img id="modal-image"
-                    class="max-w-full max-h-full object-contain transition-transform duration-75 origin-center cursor-move"
-                    draggable="false">
+                <div id="image-stage" class="relative inline-block max-w-full max-h-full">
+                    <img id="modal-image"
+                        class="max-w-full max-h-full object-contain transition-transform duration-75 origin-center cursor-move"
+                        draggable="false">
+                    <!-- Face overlay layer — boxes drawn relative to the
+                         actual rendered image bounding box so they track
+                         resize / device-pixel-ratio without re-rendering.
+                         Hidden until /api/ai/faces/by-download returns ≥1
+                         face AND the user hasn't toggled overlay off. -->
+                    <div id="face-overlay-layer"
+                        class="absolute inset-0 pointer-events-none hidden"
+                        aria-hidden="true"></div>
+                </div>
+                <!-- Faces toolbar — appears top-right of the image when
+                     ≥1 face is detected. Toggle hides/shows the overlay;
+                     count chip surfaces "N people". -->
+                <div id="face-toolbar"
+                    class="absolute top-3 right-3 hidden items-center gap-2 px-2 py-1 rounded-full bg-black/55 backdrop-blur text-white text-xs shadow-lg z-20">
+                    <i class="ri-user-smile-line text-tg-blue"></i>
+                    <span id="face-count" class="font-medium tabular-nums">0</span>
+                    <button id="face-toggle"
+                        class="ml-1 px-2 py-0.5 rounded-full bg-white/15 hover:bg-white/25 transition text-[11px]"
+                        type="button"
+                        data-i18n="viewer.faces.toggle"
+                        aria-pressed="true">Hide</button>
+                </div>
             </div>
 
             <!-- Custom Video Player Container -->
@@ -3839,20 +3987,34 @@
                      hover-only behaviour on touch devices. -->
                 <div id="video-controls"
                     class="video-controls absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-opacity duration-200 z-40">
-                    <!-- Seek bar with hover preview -->
+                    <!-- Seek bar with hover preview. Outer hit-zone is
+                         24 px tall so a finger always finds it (matches iOS
+                         HIG / Material a11y target). The visual track lives
+                         centred inside; bar grows on hover/active for the
+                         "premium" YouTube/Netflix scrub feel. -->
                     <div class="px-3 pt-6 relative">
-                        <div id="video-progress-container"
-                            class="relative w-full h-1.5 cursor-pointer group/progress touch-none select-none">
-                            <!-- Track -->
-                            <div class="absolute inset-0 bg-white/30 rounded-full"></div>
-                            <!-- Buffered ranges (multiple inserted by JS). -->
-                            <div id="video-buffered-layer" class="absolute inset-0 pointer-events-none"></div>
-                            <!-- Played -->
-                            <div id="video-progress-fill" class="absolute left-0 top-0 h-full bg-tg-blue rounded-full" style="width: 0%"></div>
-                            <!-- Scrubber dot -->
-                            <div id="video-progress-dot"
-                                class="absolute top-1/2 w-3 h-3 -mt-1.5 -ml-1.5 bg-white rounded-full z-30 pointer-events-none shadow ring-2 ring-tg-blue/60"
-                                style="left: 0%"></div>
+                        <div id="video-progress-hitzone"
+                            class="relative w-full h-6 cursor-pointer group/progress touch-none select-none flex items-center"
+                            tabindex="0"
+                            role="slider"
+                            aria-label="Video progress"
+                            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <div id="video-progress-container"
+                                class="seekbar-track relative w-full h-1 rounded-full overflow-visible">
+                                <!-- Track -->
+                                <div class="absolute inset-0 bg-white/25 rounded-full"></div>
+                                <!-- Buffered ranges (multiple inserted by JS). -->
+                                <div id="video-buffered-layer" class="absolute inset-0 pointer-events-none"></div>
+                                <!-- Chapter markers (rendered by JS for clips ≥ 5 min). -->
+                                <div id="video-chapter-layer" class="absolute inset-0 pointer-events-none"></div>
+                                <!-- Played -->
+                                <div id="video-progress-fill" class="absolute left-0 top-0 h-full bg-tg-blue rounded-full" style="width: 0%"></div>
+                                <!-- Scrubber dot — bigger touch target,
+                                     scales up on active via CSS. -->
+                                <div id="video-progress-dot"
+                                    class="seekbar-dot absolute top-1/2 bg-white rounded-full z-30 pointer-events-none shadow ring-2 ring-tg-blue/70"
+                                    style="left: 0%"></div>
+                            </div>
                         </div>
                         <!-- Hover preview tooltip -->
                         <div id="video-hover-time"
@@ -3874,17 +4036,25 @@
                             aria-hidden="true">
                             <div id="video-sprite-tile"
                                 class="relative overflow-hidden rounded-md ring-1 ring-white/15 shadow-2xl bg-black/70 backdrop-blur-sm">
+                                <!-- Live <video> snapshot fallback —
+                                     painted by JS while the sprite is
+                                     still pending so the user gets a
+                                     real frame even before the sidecar
+                                     finishes. Hidden when sprite
+                                     arrives. -->
+                                <canvas id="video-sprite-snapshot"
+                                    class="hidden absolute inset-0 w-full h-full"></canvas>
                                 <!-- The sprite frame paints into this div
                                      via background-image + background-position. -->
                                 <div id="video-sprite-frame" class="block"></div>
                                 <!-- Generating shimmer — surfaced when
-                                     data-state="pending". Two layers: a
-                                     subtle moving sheen and a small
-                                     status row at the bottom. -->
+                                     data-state="pending" AND the
+                                     snapshot canvas isn't covering it. -->
                                 <div id="video-sprite-pending"
                                     class="hidden absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55">
                                     <i class="ri-loader-4-line text-tg-blue text-xl animate-spin"></i>
                                     <span class="text-[10px] uppercase tracking-wide text-white/80" data-i18n="viewer.video.sprite_generating">Generating preview…</span>
+                                    <span id="video-sprite-progress" class="text-[9px] text-white/55 font-mono tabular-nums hidden"></span>
                                 </div>
                             </div>
                             <!-- Centered time chip below the tile. -->
@@ -3942,6 +4112,25 @@
                             data-i18n-title="viewer.video.fullscreen" title="Fullscreen">
                             <i class="ri-fullscreen-line text-lg"></i>
                         </button>
+                    </div>
+
+                    <!-- Timeline filmstrip — horizontal strip of sprite
+                         thumbnails that appears below the controls bar
+                         when sprite data is ready. Each cell is a crop
+                         from the same WebP sprite used by hover previews.
+                         Clicking a cell seeks to that timestamp.
+                         JS: _renderFilmstrip() in viewer.js. -->
+                    <div id="video-filmstrip" class="hidden" aria-label="Timeline thumbnails">
+                        <div class="filmstrip-time-float" id="filmstrip-time-float"></div>
+                        <div class="filmstrip-wrap">
+                            <button id="filmstrip-prev" type="button" class="filmstrip-arrow" aria-label="Scroll left" tabindex="-1">
+                                <i class="ri-arrow-left-s-line text-base" aria-hidden="true"></i>
+                            </button>
+                            <div id="filmstrip-track" class="filmstrip-track" role="listbox"></div>
+                            <button id="filmstrip-next" type="button" class="filmstrip-arrow" aria-label="Scroll right" tabindex="-1">
+                                <i class="ri-arrow-right-s-line text-base" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

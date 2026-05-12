@@ -110,7 +110,7 @@ import {
     SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
     startSidecar as startSeekbarSidecar,
 } from '../core/seekbar/spawn.js';
-import { probeHwaccel as probeSeekbarHwaccel } from '../core/seekbar/client.js';
+import { health as seekbarClientHealth, probeHwaccel as probeSeekbarHwaccel } from '../core/seekbar/client.js';
 import { getSeekbarSprite } from '../core/db.js';
 import {
     startScan as nsfwStartScan,
@@ -6322,7 +6322,27 @@ app.get('/api/maintenance/seekbar/health', async (req, res) => {
     try {
         const sidecar = getSeekbarSidecarStatus();
         let hwaccel = null;
+        let richHealth = null;
         if (sidecar?.ok) {
+            // Pull the rich health payload directly from the sidecar so the
+            // UI can display version, platform, hwaccel_resolved, gpu_provider,
+            // and stats without a second round-trip. Older sidecars may not
+            // ship these fields — callers must handle null.
+            try {
+                const h = await seekbarClientHealth();
+                if (h && h.ok) {
+                    richHealth = {
+                        ok: true,
+                        version: h.version ?? null,
+                        platform: h.platform ?? null,
+                        hwaccel_resolved: h.hwaccel_resolved ?? null,
+                        gpu_provider: h.gpu_provider ?? null,
+                        stats: h.stats ?? null,
+                    };
+                }
+            } catch {
+                /* sidecar health probe is best-effort */
+            }
             try {
                 hwaccel = await probeSeekbarHwaccel();
             } catch (e) {
@@ -6332,6 +6352,7 @@ app.get('/api/maintenance/seekbar/health', async (req, res) => {
         res.json({
             success: true,
             sidecar,
+            richHealth,
             hwaccel,
             ffmpegAvailable: hasFfmpeg(),
             version: SEEKBAR_SIDECAR_VERSION,
@@ -7108,8 +7129,8 @@ app.get('/api/ai/status', async (_req, res) => {
                 faceClustering: cfg.faceClustering !== false,
                 federateFaces: cfg.federateFaces === true,
                 fileTypes: cfg.fileTypes || ['photo'],
-                facesEpsilon: Number.isFinite(cfg.facesEpsilon) ? cfg.facesEpsilon : 0.5,
-                facesMinPoints: Number.isFinite(cfg.facesMinPoints) ? cfg.facesMinPoints : 3,
+                facesEpsilon: Number.isFinite(cfg.facesEpsilon) ? cfg.facesEpsilon : 1.05,
+                facesMinPoints: Number.isFinite(cfg.facesMinPoints) ? cfg.facesMinPoints : 2,
                 facesDetector: cfg.facesDetector || 'tiny',
                 facesDetectorModel: String(
                     facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
@@ -8050,10 +8071,28 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
     //    providers list lives on `/info` (set after the model loads).
     //    Merging both keeps the doctor card aligned with the sidecar's
     //    wire format without forcing a Python-side change.
+    let richFacesHealth = null;
     try {
         const facesClient = await import('../core/ai/faces-client.js');
         const url = facesClient.getSidecarUrl();
         const h = await facesClient.health();
+        // Capture the full parsed health response so the top-level
+        // `richHealth` field exposes version/platform/python/providers
+        // to callers without forcing a separate request.
+        if (h) {
+            richFacesHealth = {
+                ok: h.ok === true,
+                version: h.version ?? null,
+                model: h.model ?? null,
+                dim: h.dim ?? null,
+                ready: h.ready === true,
+                providersResolved: h.providersResolved ?? null,
+                providersRequested: h.providersRequested ?? null,
+                detSize: h.detSize ?? null,
+                platform: h.platform ?? null,
+                python: h.python ?? null,
+            };
+        }
         if (h.ok) {
             let providers = [];
             if (url) {
@@ -8144,7 +8183,7 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
         });
     }
 
-    res.json({ success: true, checks });
+    res.json({ success: true, checks, richHealth: richFacesHealth });
 });
 
 // ====== Recovery cleanup ====================================================

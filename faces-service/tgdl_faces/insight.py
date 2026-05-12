@@ -1,6 +1,6 @@
 """Thin wrapper around :class:`insightface.app.FaceAnalysis`.
 
-The ``buffalo_l`` model bundle is loaded lazily on first use and cached
+The ``buffalo_l`` model bundle is loaded eagerly at startup and cached
 for the lifetime of the process. ``FaceAnalysis.prepare`` is *not* cheap
 (~0.5 s on a modern desktop, several seconds on a Pi), so we keep the
 singleton alive rather than re-creating it per request.
@@ -29,15 +29,25 @@ Tunables (environment variables):
     swaps the operator must click Re-cluster manually).
 
 ``TGDL_FACES_PROVIDERS``
-    onnxruntime execution-provider hint. One of ``auto`` (default),
-    ``cpu``, ``cuda``, ``coreml``, ``directml``. The sidecar resolves
-    the requested chain against whatever providers ``onnxruntime``
-    reports as available on this platform and falls back to CPU if
-    nothing else matches.
+    onnxruntime execution-provider hint. Comma-separated provider names
+    (e.g. ``CUDAExecutionProvider,CPUExecutionProvider``) or one of the
+    shorthand aliases: ``auto`` (default), ``cpu``, ``cuda``,
+    ``coreml``, ``directml``, ``openvino``. The sidecar resolves the
+    requested chain against whatever providers ``onnxruntime`` reports
+    as available on this platform and falls back to CPU if nothing else
+    matches.
 
 ``TGDL_FACES_DET_SIZE``
     Detector input size (positive int). Default 640; 480 is the Pi 4
     sweet spot at a small recall cost.
+
+``TGDL_FACES_MODEL_DIR``
+    Alias for ``TGDL_FACES_MODELS_DIR`` (singular form accepted for
+    compatibility with the Node-side env var docs).
+
+``TGDL_FACES_MAX_CONCURRENCY``
+    Maximum number of detection requests processed in parallel (default 2).
+    Prevents OOM on burst traffic by serialising excess requests.
 """
 
 from __future__ import annotations
@@ -48,6 +58,7 @@ import os
 import platform
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +74,24 @@ _APP_ERROR: Exception | None = None
 _LOCK = threading.Lock()
 _RESOLVED_PROVIDERS: list[str] | None = None
 _REQUESTED_PROVIDERS: str = "auto"
+_GPU_PROVIDER: str = "cpu"  # short name reported in /health
+
+# Process start time for uptime_sec calculation.
+_START_TIME: float = time.monotonic()
+
+# Stats counters — updated under _STATS_LOCK.
+_STATS_LOCK = threading.Lock()
+_STATS: dict[str, Any] = {
+    "requests": 0,
+    "faces_detected": 0,
+    "errors": 0,
+    "_total_ms": 0.0,  # private accumulator for avg_ms
+}
+
+# Semaphore controlling max parallel detections.  Initialised lazily from
+# env so test code that never calls get_app() doesn't need a working value.
+_CONCURRENCY_SEM: threading.Semaphore | None = None
+_CONCURRENCY_LOCK = threading.Lock()
 
 # Defaults that match the values the Node-side defaults pin in
 # `manager.js`. The env layer reads `TGDL_FACES_DETECTOR_MODEL` /
@@ -108,10 +137,35 @@ DET_SIZE = _resolve_det_size()
 
 
 def _resolve_models_dir() -> Path:
-    raw = os.environ.get("TGDL_FACES_MODELS_DIR", "").strip()
+    # Accept both singular (TGDL_FACES_MODEL_DIR) and plural forms for
+    # compatibility; plural wins when both are set.
+    raw = (
+        os.environ.get("TGDL_FACES_MODELS_DIR", "").strip()
+        or os.environ.get("TGDL_FACES_MODEL_DIR", "").strip()
+    )
     if raw:
         return Path(raw).expanduser().resolve()
     return (Path.home() / ".cache" / "tgdl-faces" / "models").resolve()
+
+
+def _resolve_max_concurrency() -> int:
+    raw = os.environ.get("TGDL_FACES_MAX_CONCURRENCY", "2").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        return 2
+    return max(1, n)
+
+
+def _get_concurrency_sem() -> threading.Semaphore:
+    """Return (and lazily create) the concurrency-limiting semaphore."""
+    global _CONCURRENCY_SEM
+    if _CONCURRENCY_SEM is not None:
+        return _CONCURRENCY_SEM
+    with _CONCURRENCY_LOCK:
+        if _CONCURRENCY_SEM is None:
+            _CONCURRENCY_SEM = threading.Semaphore(_resolve_max_concurrency())
+    return _CONCURRENCY_SEM
 
 
 _PROVIDER_CHAINS = {
@@ -126,6 +180,7 @@ _PROVIDER_CHAINS = {
     "cuda": ["CUDAExecutionProvider", "CPUExecutionProvider"],
     "coreml": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
     "directml": ["DmlExecutionProvider", "CPUExecutionProvider"],
+    "openvino": ["OpenVINOExecutionProvider", "CPUExecutionProvider"],
 }
 
 
@@ -146,18 +201,70 @@ def _available_providers() -> list[str]:
         return ["CPUExecutionProvider"]
 
 
+def _platform_aware_auto_chain() -> list[str]:
+    """Return provider preference order tuned to the current platform.
+
+    - Windows: DirectML first (works on any DX12 GPU), then CUDA, then CPU.
+    - Linux:   CUDA first (check nvidia-smi), then OpenVINO, then CPU.
+    - macOS:   CoreML first, then CPU.
+    - Other:   generic order.
+    """
+    sysname = platform.system().lower()
+    if sysname == "windows":
+        return [
+            "DmlExecutionProvider",
+            "CUDAExecutionProvider",
+            "OpenVINOExecutionProvider",
+            "CPUExecutionProvider",
+        ]
+    if sysname == "darwin":
+        return [
+            "CoreMLExecutionProvider",
+            "CPUExecutionProvider",
+        ]
+    # Linux / other
+    return [
+        "CUDAExecutionProvider",
+        "OpenVINOExecutionProvider",
+        "CoreMLExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+
+
 def _resolve_providers(requested: str = "auto") -> list[str]:
     """Resolve a requested provider chain against this binary's runtime.
 
-    ``requested`` is case-insensitive. Unknown values are treated as
-    ``auto``. The resolved chain is always non-empty — at minimum
+    ``requested`` can be:
+    - A shorthand alias (``auto``, ``cpu``, ``cuda``, ``coreml``,
+      ``directml``, ``openvino``).
+    - A comma-separated list of full onnxruntime provider names
+      (e.g. ``CUDAExecutionProvider,CPUExecutionProvider``).
+    - ``auto`` (default) — uses a platform-aware heuristic.
+
+    The resolved chain is always non-empty — at minimum
     ``CPUExecutionProvider`` is appended, because every onnxruntime build
     ships it and the sidecar must boot even on the most stripped-down
     runtime.
     """
-    key = (requested or "auto").strip().lower() or "auto"
-    chain = _PROVIDER_CHAINS.get(key) or _PROVIDER_CHAINS["auto"]
+    raw = (requested or "auto").strip() or "auto"
     available = set(_available_providers())
+
+    # If the value looks like explicit provider names (contains "Provider"),
+    # treat it as a direct comma-separated list.
+    if "Provider" in raw or "," in raw:
+        chain = [p.strip() for p in raw.split(",") if p.strip()]
+        resolved = [p for p in chain if p in available]
+        if not resolved:
+            resolved = ["CPUExecutionProvider"]
+        return resolved
+
+    key = raw.lower()
+    if key == "auto":
+        chain = _platform_aware_auto_chain()
+    else:
+        chain = _PROVIDER_CHAINS.get(key) or _platform_aware_auto_chain()
+
     resolved = [p for p in chain if p in available]
     if not resolved:
         resolved = ["CPUExecutionProvider"]
@@ -184,24 +291,101 @@ def requested_providers() -> str:
     return _REQUESTED_PROVIDERS
 
 
+def gpu_provider() -> str:
+    """Return a short lowercase name for the active GPU provider.
+
+    Maps the first non-CPU resolved provider to a compact label:
+    ``cuda``, ``coreml``, ``directml``, ``openvino``, or ``cpu``.
+    """
+    return _GPU_PROVIDER
+
+
+def gpu_available() -> bool:
+    """Return True iff a non-CPU execution provider is active."""
+    return _GPU_PROVIDER != "cpu"
+
+
 def platform_tag() -> str:
-    """Short ``<sys>/<arch>`` tag for the `/health` payload."""
-    return f"{platform.system().lower()}/{platform.machine().lower()}"
+    """Short platform string matching seekbar format (e.g. ``linux``)."""
+    return platform.system().lower()
+
+
+def arch_tag() -> str:
+    """Machine architecture string (e.g. ``x86_64``, ``aarch64``)."""
+    machine = platform.machine().lower()
+    # Normalise common aliases.
+    if machine in ("amd64",):
+        return "x86_64"
+    if machine in ("arm64",):
+        return "aarch64"
+    return machine
 
 
 def python_version() -> str:
     return f"{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}"
 
 
-def get_app() -> Any:
-    """Return the lazily-initialised :class:`FaceAnalysis` instance.
+def uptime_sec() -> float:
+    """Seconds since the module was first imported (proxy for process age)."""
+    return round(time.monotonic() - _START_TIME, 1)
 
-    First call pays the model-load cost. Subsequent calls reuse the
-    same instance. Errors during initialisation are cached so callers
-    get a fast 500 instead of repeatedly retrying a broken load.
+
+def get_stats() -> dict[str, Any]:
+    """Return a snapshot of request counters and average latency."""
+    with _STATS_LOCK:
+        reqs = _STATS["requests"]
+        avg = (
+            round(_STATS["_total_ms"] / reqs, 1)
+            if reqs > 0
+            else 0.0
+        )
+        return {
+            "requests": reqs,
+            "faces_detected": _STATS["faces_detected"],
+            "errors": _STATS["errors"],
+            "avg_ms": avg,
+        }
+
+
+def _record_request(faces_found: int, elapsed_ms: float, *, error: bool = False) -> None:
+    """Update stats counters after a detection call."""
+    with _STATS_LOCK:
+        _STATS["requests"] += 1
+        _STATS["faces_detected"] += faces_found
+        _STATS["_total_ms"] += elapsed_ms
+        if error:
+            _STATS["errors"] += 1
+
+
+def _derive_gpu_provider(providers: list[str]) -> str:
+    """Derive the short GPU-provider label from the resolved provider list."""
+    _PROVIDER_SHORT: dict[str, str] = {
+        "CUDAExecutionProvider": "cuda",
+        "CoreMLExecutionProvider": "coreml",
+        "DmlExecutionProvider": "directml",
+        "OpenVINOExecutionProvider": "openvino",
+        "TensorrtExecutionProvider": "tensorrt",
+    }
+    for p in providers:
+        short = _PROVIDER_SHORT.get(p)
+        if short:
+            return short
+    return "cpu"
+
+
+def get_app() -> Any:
+    """Return the (eagerly pre-loaded) :class:`FaceAnalysis` instance.
+
+    Model loading happens at startup via :func:`preload_model` called from
+    ``__main__.py``. This function still guards against the lazy-load case
+    (e.g. tests that call /detect directly) but in production the model is
+    already loaded before the first request arrives.
+
+    Errors during initialisation are cached so callers get a fast 503
+    instead of repeatedly retrying a broken load.
     """
 
-    global _APP, _APP_ERROR, _RESOLVED_PROVIDERS, _REQUESTED_PROVIDERS
+    global _APP, _APP_ERROR, _RESOLVED_PROVIDERS, _REQUESTED_PROVIDERS, _GPU_PROVIDER
 
     if _APP is not None:
         return _APP
@@ -270,10 +454,17 @@ def get_app() -> Any:
                 providers=providers,
             )
             # ctx_id picks the GPU index when CUDA is in play (0 = first
-            # GPU); -1 forces CPU. We use 0 whenever CUDA is in the
-            # resolved chain because onnxruntime ignores ctx_id when the
-            # provider isn't available, so this is safe on CPU-only too.
-            ctx_id = 0 if "CUDAExecutionProvider" in providers else -1
+            # GPU); -1 forces CPU. We use 0 whenever a GPU provider is in
+            # the resolved chain because onnxruntime ignores ctx_id when
+            # the provider isn't available, so this is safe on CPU-only.
+            gpu_providers = {
+                "CUDAExecutionProvider",
+                "DmlExecutionProvider",
+                "CoreMLExecutionProvider",
+                "OpenVINOExecutionProvider",
+                "TensorrtExecutionProvider",
+            }
+            ctx_id = 0 if any(p in gpu_providers for p in providers) else -1
             app.prepare(ctx_id=ctx_id, det_size=det_size)
             _APP = app
             try:
@@ -282,17 +473,38 @@ def get_app() -> Any:
                     _RESOLVED_PROVIDERS = list(live)
             except Exception:  # pragma: no cover — defensive
                 pass
+            # Derive the short GPU-provider label from the final resolved list.
+            _GPU_PROVIDER = _derive_gpu_provider(_RESOLVED_PROVIDERS or providers)
             _LOG.info(
-                "%s ready (dim=%d, providers=%s)",
+                "%s ready (dim=%d, providers=%s gpu_provider=%s)",
                 MODEL_NAME,
                 EMBEDDING_DIM,
                 _RESOLVED_PROVIDERS,
+                _GPU_PROVIDER,
             )
             return _APP
         except Exception as exc:  # pragma: no cover - exercised in prod
             _APP_ERROR = exc
             _LOG.exception("failed to initialise FaceAnalysis")
             raise
+
+
+def preload_model() -> None:
+    """Eagerly load the model in a background thread at startup.
+
+    Called from ``__main__.py`` so the first ``/detect`` request doesn't
+    pay the 0.5–5 s model-load cost. Errors are captured to ``_APP_ERROR``
+    and surfaced via ``/health`` — they do not crash the process.
+    """
+    def _load() -> None:
+        try:
+            get_app()
+        except Exception:
+            # Already logged + stored in _APP_ERROR inside get_app().
+            pass
+
+    t = threading.Thread(target=_load, name="faces-preload", daemon=True)
+    t.start()
 
 
 def is_ready() -> bool:
@@ -330,6 +542,7 @@ def detect_and_embed(
     min_score: float = 0.5,
     min_box_px: int = 80,
     ar_range: tuple[float, float] = (0.5, 2.0),
+    _track_stats: bool = True,
 ) -> list[dict[str, Any]]:
     """Detect every face in ``image_bgr`` and return cleaned-up records.
 
@@ -370,77 +583,94 @@ def detect_and_embed(
     if image_bgr.ndim != 3 or image_bgr.shape[2] != 3:
         raise ValueError("image_bgr must be H×W×3 (BGR)")
 
-    app = get_app()
-    raw = app.get(image_bgr)  # list[insightface.app.common.Face]
-
-    h_img, w_img = int(image_bgr.shape[0]), int(image_bgr.shape[1])
-    ar_lo, ar_hi = float(ar_range[0]), float(ar_range[1])
+    _t0 = time.monotonic()
+    _sem = _get_concurrency_sem()
+    _sem.acquire()
+    _error_flag = False
     out: list[dict[str, Any]] = []
+    try:
+        app = get_app()
+        raw = app.get(image_bgr)  # list[insightface.app.common.Face]
 
-    for face in raw or []:
-        # `bbox` is [x1, y1, x2, y2] in float32.
-        bbox = getattr(face, "bbox", None)
-        if bbox is None or len(bbox) < 4:
-            continue
-        x1, y1, x2, y2 = (float(v) for v in bbox[:4])
-        x = max(0, int(round(x1)))
-        y = max(0, int(round(y1)))
-        w = max(0, int(round(x2 - x1)))
-        h = max(0, int(round(y2 - y1)))
-        # Clamp to image so downstream crop code can't read out of bounds.
-        if x + w > w_img:
-            w = max(0, w_img - x)
-        if y + h > h_img:
-            h = max(0, h_img - y)
+        h_img, w_img = int(image_bgr.shape[0]), int(image_bgr.shape[1])
+        ar_lo, ar_hi = float(ar_range[0]), float(ar_range[1])
 
-        score = float(getattr(face, "det_score", 0.0) or 0.0)
-        if score < float(min_score):
-            continue
-        if min(w, h) < int(min_box_px):
-            continue
-        ratio = (w / h) if h > 0 else 0.0
-        if ratio < ar_lo or ratio > ar_hi:
-            continue
+        for face in raw or []:
+            # `bbox` is [x1, y1, x2, y2] in float32.
+            bbox = getattr(face, "bbox", None)
+            if bbox is None or len(bbox) < 4:
+                continue
+            x1, y1, x2, y2 = (float(v) for v in bbox[:4])
+            x = max(0, int(round(x1)))
+            y = max(0, int(round(y1)))
+            w = max(0, int(round(x2 - x1)))
+            h = max(0, int(round(y2 - y1)))
+            # Clamp to image so downstream crop code can't read out of bounds.
+            if x + w > w_img:
+                w = max(0, w_img - x)
+            if y + h > h_img:
+                h = max(0, h_img - y)
 
-        # Prefer the pre-normalised embedding when insightface provides
-        # it; otherwise fall back to the raw `embedding` field.
-        emb_raw = getattr(face, "normed_embedding", None)
-        if emb_raw is None:
-            emb_raw = getattr(face, "embedding", None)
-        if emb_raw is None:
-            # No descriptor — useless for clustering; skip.
-            continue
-        emb = _l2_normalise(np.asarray(emb_raw, dtype=np.float32))
-        if emb.shape[0] != EMBEDDING_DIM:
-            # Defensive: if a future model swap returns a different
-            # dim, refuse rather than silently mixing dimensions in the
-            # downstream DBSCAN.
-            raise RuntimeError(
-                f"embedding dim mismatch: got {emb.shape[0]}, expected {EMBEDDING_DIM}"
+            score = float(getattr(face, "det_score", 0.0) or 0.0)
+            if score < float(min_score):
+                continue
+            if min(w, h) < int(min_box_px):
+                continue
+            ratio = (w / h) if h > 0 else 0.0
+            if ratio < ar_lo or ratio > ar_hi:
+                continue
+
+            # Prefer the pre-normalised embedding when insightface provides
+            # it; otherwise fall back to the raw `embedding` field.
+            emb_raw = getattr(face, "normed_embedding", None)
+            if emb_raw is None:
+                emb_raw = getattr(face, "embedding", None)
+            if emb_raw is None:
+                # No descriptor — useless for clustering; skip.
+                continue
+            emb = _l2_normalise(np.asarray(emb_raw, dtype=np.float32))
+            if emb.shape[0] != EMBEDDING_DIM:
+                # Defensive: if a future model swap returns a different
+                # dim, refuse rather than silently mixing dimensions in the
+                # downstream DBSCAN.
+                raise RuntimeError(
+                    f"embedding dim mismatch: got {emb.shape[0]}, expected {EMBEDDING_DIM}"
+                )
+
+            # 5-point landmarks (eye-L, eye-R, nose, mouth-L, mouth-R).
+            kps = getattr(face, "kps", None)
+            if kps is None:
+                kps = getattr(face, "landmark_2d_106", None)  # fallback
+            landmarks: list[list[float]] = []
+            if kps is not None:
+                try:
+                    kps_arr = np.asarray(kps, dtype=np.float32).reshape(-1, 2)
+                    landmarks = [[float(p[0]), float(p[1])] for p in kps_arr]
+                except (ValueError, TypeError):
+                    landmarks = []
+
+            out.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                    "score": score,
+                    "embedding": emb.tolist(),
+                    "landmarks": landmarks,
+                }
             )
 
-        # 5-point landmarks (eye-L, eye-R, nose, mouth-L, mouth-R).
-        kps = getattr(face, "kps", None)
-        if kps is None:
-            kps = getattr(face, "landmark_2d_106", None)  # fallback
-        landmarks: list[list[float]] = []
-        if kps is not None:
-            try:
-                kps_arr = np.asarray(kps, dtype=np.float32).reshape(-1, 2)
-                landmarks = [[float(p[0]), float(p[1])] for p in kps_arr]
-            except (ValueError, TypeError):
-                landmarks = []
-
-        out.append(
-            {
-                "x": x,
-                "y": y,
-                "w": w,
-                "h": h,
-                "score": score,
-                "embedding": emb.tolist(),
-                "landmarks": landmarks,
-            }
-        )
+    except Exception:
+        _error_flag = True
+        raise
+    finally:
+        _sem.release()
+        if _track_stats:
+            _record_request(
+                0 if _error_flag else len(out),
+                (time.monotonic() - _t0) * 1000,
+                error=_error_flag,
+            )
 
     return out

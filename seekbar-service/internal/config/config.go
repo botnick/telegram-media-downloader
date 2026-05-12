@@ -41,6 +41,9 @@ type HTTPConfig struct {
 	// the metadata JSON. Defaults to "" (same-origin); set to e.g.
 	// "/seekbar" if the parent app reverse-proxies on a subpath.
 	BasePath string `yaml:"base_path"`
+	// CORSOrigins is a list of allowed CORS origins. Stored for future
+	// use; not yet enforced by the server middleware.
+	CORSOrigins []string `yaml:"cors_origins"`
 }
 
 type StorageConfig struct {
@@ -166,6 +169,9 @@ func (c *Config) Validate() error {
 	if c.Thumb.MaxTiles < 4 {
 		c.Thumb.MaxTiles = 200
 	}
+	if c.Thumb.Quality < 1 || c.Thumb.Quality > 100 {
+		return fmt.Errorf("thumb.quality must be 1–100, got %d", c.Thumb.Quality)
+	}
 	switch c.Thumb.Format {
 	case "webp", "jpeg", "jpg":
 	default:
@@ -177,7 +183,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("storage.overwrite must be never|if-changed|always")
 	}
 	switch c.FFmpeg.HWAccel {
-	case "auto", "none", "cpu", "cuda", "nvdec", "qsv", "vaapi", "videotoolbox", "v4l2m2m":
+	case "auto", "none", "cpu", "cuda", "nvdec", "qsv", "vaapi", "videotoolbox", "v4l2m2m", "d3d11va":
 	default:
 		return fmt.Errorf("ffmpeg.hwaccel: unknown mode %q", c.FFmpeg.HWAccel)
 	}
@@ -213,6 +219,7 @@ func applyEnv(c *Config) {
 	setStr(&c.HTTP.Listen, "VTS_HTTP__LISTEN", "SEEKBAR_HTTP_LISTEN")
 	setStr(&c.HTTP.APIToken, "VTS_HTTP__API_TOKEN", "SEEKBAR_API_TOKEN")
 	setStr(&c.HTTP.BasePath, "VTS_HTTP__BASE_PATH", "SEEKBAR_BASE_PATH")
+	setStrSlice(&c.HTTP.CORSOrigins, "VTS_HTTP__CORS_ORIGINS", "SEEKBAR_CORS_ORIGINS")
 
 	setStr(&c.Storage.OutputDir, "VTS_STORAGE__OUTPUT_DIR", "SEEKBAR_OUTPUT_DIR")
 	setStr(&c.Storage.TempDir, "VTS_STORAGE__TEMP_DIR", "SEEKBAR_TEMP_DIR")
@@ -265,6 +272,26 @@ func setFloat(dst *float64, keys ...string) {
 		if v := os.Getenv(k); v != "" {
 			if f, err := strconv.ParseFloat(v, 64); err == nil {
 				*dst = f
+				return
+			}
+		}
+	}
+}
+
+// setStrSlice reads a comma-separated env var and splits it into a slice.
+// A blank env var is silently ignored.
+func setStrSlice(dst *[]string, keys ...string) {
+	for _, k := range keys {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			parts := strings.Split(v, ",")
+			out := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if t := strings.TrimSpace(p); t != "" {
+					out = append(out, t)
+				}
+			}
+			if len(out) > 0 {
+				*dst = out
 				return
 			}
 		}
