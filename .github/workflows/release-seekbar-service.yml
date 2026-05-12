@@ -31,6 +31,11 @@ jobs:
             goarch: amd64
             slug: tgdl-seekbar-win-x64
             target: seekbar-server.exe
+          - os: windows-2022
+            goos: windows
+            goarch: arm64
+            slug: tgdl-seekbar-win-arm64
+            target: seekbar-server.exe
           - os: ubuntu-22.04
             goos: linux
             goarch: amd64
@@ -40,6 +45,11 @@ jobs:
             goos: linux
             goarch: arm64
             slug: tgdl-seekbar-linux-arm64
+            target: seekbar-server
+          - os: ubuntu-22.04
+            goos: linux
+            goarch: '386'
+            slug: tgdl-seekbar-linux-x86
             target: seekbar-server
           - os: macos-13
             goos: darwin

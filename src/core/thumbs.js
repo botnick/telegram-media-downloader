@@ -90,6 +90,42 @@ export function resolveFfmpegBin() {
     return _resolveFfmpegBin();
 }
 
+// Resolve ffprobe in the same priority order as ffmpeg:
+//   1. FFPROBE_PATH env var
+//   2. System /usr/bin/ffprobe (Docker / apt)
+//   3. Sibling of the resolved ffmpeg binary (e.g. Gyan builds ship both)
+//   4. @ffprobe-installer/ffprobe bundled binary
+//   5. Plain `ffprobe` and let PATH resolve it.
+let _ffprobeBinResolved = null;
+function _resolveFfprobeBin() {
+    if (_ffprobeBinResolved !== null) return _ffprobeBinResolved;
+    if (process.env.FFPROBE_PATH && existsSync(process.env.FFPROBE_PATH)) {
+        return (_ffprobeBinResolved = process.env.FFPROBE_PATH);
+    }
+    if (existsSync('/usr/bin/ffprobe')) return (_ffprobeBinResolved = '/usr/bin/ffprobe');
+    if (existsSync('/usr/local/bin/ffprobe')) return (_ffprobeBinResolved = '/usr/local/bin/ffprobe');
+    try {
+        const ffmpeg = _resolveFfmpegBin();
+        if (ffmpeg && ffmpeg !== 'ffmpeg') {
+            const sibling = ffmpeg.endsWith('.exe')
+                ? ffmpeg.slice(0, -'ffmpeg.exe'.length) + 'ffprobe.exe'
+                : ffmpeg.slice(0, -'ffmpeg'.length) + 'ffprobe';
+            if (existsSync(sibling)) return (_ffprobeBinResolved = sibling);
+        }
+    } catch {}
+    try {
+        const inst = _localRequire('@ffprobe-installer/ffprobe');
+        if (inst?.path && existsSync(inst.path)) return (_ffprobeBinResolved = inst.path);
+    } catch {
+        /* package missing or wrong arch — fall through */
+    }
+    return (_ffprobeBinResolved = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+}
+
+export function resolveFfprobeBin() {
+    return _resolveFfprobeBin();
+}
+
 // hwaccel candidates the dropdown allows. Kept aligned with the
 // HWACCEL_ALLOW set in server.js POST /api/config so a probe result
 // always maps to a value the dropdown will accept.

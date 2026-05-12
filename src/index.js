@@ -14,6 +14,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { loadConfig, saveConfig, addGroup } from './config/manager.js';
+import { resolveFfmpegBin, resolveFfprobeBin } from './core/thumbs.js';
 import { hashPassword } from './core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from './core/logger.js';
 import { RateLimiter, SecureSession } from './core/security.js';
@@ -85,14 +86,21 @@ function checkPortAvailable(port) {
 }
 
 function checkFfmpeg() {
-    const cmd = process.platform === 'win32' ? 'where' : 'which';
-    const r = spawnSync(cmd, ['ffmpeg'], { encoding: 'utf8' });
-    if (r.status === 0 && r.stdout.trim()) {
-        return { ok: true, detail: r.stdout.trim().split(/\r?\n/)[0] };
-    }
+    // Report the binary the app will actually use — same resolver as
+    // thumbs.js / faststart.js / seekbar. Bare PATH check is misleading
+    // because @ffmpeg-installer provides a bundled binary even when system
+    // ffmpeg isn't installed.
+    const bin = resolveFfmpegBin();
+    const probe = resolveFfprobeBin();
+    const isBundled = (b) => b.includes('@ffmpeg-installer') || b.includes('@ffprobe-installer');
+    const label = (b, bare) => {
+        if (b === bare) return 'system PATH';
+        if (isBundled(b)) return 'bundled (@ffmpeg-installer)';
+        return 'operator FFMPEG_PATH';
+    };
     return {
-        ok: false,
-        detail: 'not on PATH (video thumbs will use bundled @ffmpeg-installer fallback)',
+        ok: true,
+        detail: `ffmpeg=${bin} (${label(bin, 'ffmpeg')})  ffprobe=${probe} (${label(probe, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')})`,
     };
 }
 
