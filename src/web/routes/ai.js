@@ -3,12 +3,12 @@ import { loadConfig, watchConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
 import {
     startFacesScan as aiStartFacesScan,
-    startTagsScan as aiStartTagsScan,
     cancelScan as aiCancelScan,
     isScanRunning as aiIsScanRunning,
     getScanState as aiGetScanState,
     _bgQueueDepths as aiBgQueueDepths,
 } from '../../core/ai/index.js';
+import { startTagsScan as aiStartTagsScan } from '../../core/ai/scan-runner.js';
 import {
     getAiCounts,
     listPeople,

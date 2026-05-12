@@ -65,7 +65,6 @@ function _blobToF32(blob) {
 // Per-feature state.
 const _scans = {
     faces: _emptyState(),
-    tags: _emptyState(),
 };
 
 function _emptyState() {
