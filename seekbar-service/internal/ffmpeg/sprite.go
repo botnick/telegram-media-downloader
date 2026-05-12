@@ -91,16 +91,32 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 	}
 
 	// Build the hwdownload prefix for GPU-decoded pixel data.
+	//
+	// VAAPI: hwdownload transfers the VAAPI surface to system memory.
+	// We follow with format=yuv420p to normalise driver-specific surface
+	// formats (Intel outputs NV12, AMD/Mesa may output YUV420P, Rockchip
+	// may output NV12 or YUV420P depending on the kernel version). The
+	// scale filter that follows accepts any planar YUV format.
+	//
+	// CUDA / D3D11VA: hwdownload without a format pin; ffmpeg selects the
+	// appropriate pixel format for the NVDEC / D3D11VA decode surface, and
+	// the scale filter converts as needed.
 	var hwDownload string
 	switch hwBackend {
 	case HWVAAPI:
-		hwDownload = "hwdownload,format=nv12,"
+		hwDownload = "hwdownload,format=yuv420p,"
 	case HWCUDA, HWD3D11:
 		hwDownload = "hwdownload,"
 	}
 
+	// scale=W:-2 preserves aspect ratio while snapping height to a
+	// multiple of 2 (required by most codecs). The :flags=fast_bilinear
+	// chooses the fastest scaling algorithm — quality is irrelevant for
+	// small sprite thumbnails. force_original_aspect_ratio=decrease would
+	// be redundant here (since -2 already handles AR) and can cause
+	// "width not divisible" errors in older ffmpeg builds, so we omit it.
 	filter := fmt.Sprintf(
-		"%sfps=1/%s,scale=%d:-2:flags=fast_bilinear:force_original_aspect_ratio=decrease,tile=%dx%d",
+		"%sfps=1/%s,scale=%d:-2:flags=fast_bilinear,tile=%dx%d",
 		hwDownload,
 		strconv.FormatFloat(plan.IntervalSec, 'f', 6, 64),
 		plan.TileW, plan.Cols, plan.Rows,
@@ -111,6 +127,10 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		"-i", srcAbs,
 		"-frames:v", "1",
 		"-an",
+		// Use all available CPU threads for the decode+scale pipeline.
+		// ffmpeg interprets 0 as "auto" (one thread per logical CPU up
+		// to the internal cap).
+		"-threads", "0",
 		"-vf", filter,
 	)
 	switch strings.ToLower(format) {
@@ -125,10 +145,17 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		}
 		args = append(args, "-q:v", strconv.Itoa(qv))
 	default:
+		// libwebp encoder flags:
+		//   -deadline realtime -cpu-used 8 → fastest encode path; the
+		//   quality/compression_level pair still controls output fidelity.
+		//   For sprite sheets where speed matters more than last-drop
+		//   compression efficiency this is a significant throughput win.
 		args = append(args,
 			"-c:v", "libwebp",
 			"-quality", strconv.Itoa(quality),
 			"-compression_level", "6",
+			"-deadline", "realtime",
+			"-cpu-used", "8",
 			"-f", "webp",
 		)
 	}
@@ -265,7 +292,12 @@ func ReadImageDims(path string) (w, h int, err error) {
 				return imgW, imgH, nil
 			}
 			// Skip over this segment using its length field.
-			if i+3 < len(data) {
+			// The length field is a big-endian uint16 at [i+2]..[i+3]
+			// and includes its own 2 bytes but not the 2-byte marker
+			// prefix. Total segment = 2 (marker) + segLen bytes.
+			// After i += segLen the loop's i++ brings us to the next
+			// segment's 0xFF byte (i += segLen+1 == 2+segLen-1 advance).
+			if i+4 <= len(data) {
 				segLen := int(data[i+2])<<8 | int(data[i+3])
 				if segLen >= 2 {
 					i += segLen // loop increment adds 1 more

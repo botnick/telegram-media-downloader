@@ -41,7 +41,7 @@ import (
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
 
-const ServiceVersion = "0.1.0"
+const ServiceVersion = "0.2.0"
 
 type Server struct {
 	cfg  *config.Config
@@ -311,7 +311,12 @@ func (s *Server) handleSubmitOne(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			case <-time.After(150 * time.Millisecond):
-				if j.Status == "done" || j.Status == "failed" || j.Status == "cancelled" {
+				// Read Status under the server lock to avoid a data race:
+				// pool workers write j.Status without holding s.mu.
+				s.mu.RLock()
+				status := j.Status
+				s.mu.RUnlock()
+				if status == "done" || status == "failed" || status == "cancelled" {
 					writeJSON(w, http.StatusOK, j)
 					return
 				}

@@ -53,7 +53,8 @@ RUN useradd --system --create-home --uid 1000 --user-group seekbar
 COPY --from=build /out/seekbar-server /usr/local/bin/seekbar-server
 COPY --from=build /out/seekbar-cli    /usr/local/bin/seekbar-cli
 
-ENV SEEKBAR_OUTPUT_DIR=/data/output \
+ENV SEEKBAR_VERSION=0.2.0 \
+    SEEKBAR_OUTPUT_DIR=/data/output \
     SEEKBAR_TEMP_DIR=/data/tmp \
     SEEKBAR_HTTP_LISTEN=:8089 \
     SEEKBAR_HWACCEL=auto \
