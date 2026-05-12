@@ -22,7 +22,14 @@
 import path from 'path';
 import { existsSync, promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
-import { getDb, getUnscannedNsfwBatch, setNsfwResult, getNsfwStats } from './db.js';
+import {
+    getDb,
+    getUnscannedNsfwBatch,
+    setNsfwResult,
+    getNsfwStats,
+    checkNsfwBlocklistHashes,
+} from './db.js';
+import { sha256OfFile } from './checksum.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
@@ -539,30 +546,39 @@ async function _drainBg() {
         let cfg;
         try {
             const live = loadConfig();
+            const ns = live.advanced?.nsfw || {};
             cfg = {
                 ...NSFW_DEFAULTS,
-                ...(live.advanced?.nsfw || {}),
-                enabled: live.advanced?.nsfw?.enabled === true,
+                ...ns,
+                enabled: ns.enabled === true,
+                blocklistEnabled: ns.blocklistEnabled === true,
             };
         } catch {
-            cfg = { ...NSFW_DEFAULTS, enabled: false };
+            cfg = { ...NSFW_DEFAULTS, enabled: false, blocklistEnabled: false };
         }
-        if (!cfg.enabled) {
+        if (!cfg.enabled && !cfg.blocklistEnabled) {
             _bgQueue.length = 0;
             return;
         }
 
-        let classifier;
-        try {
-            classifier = await _loadClassifier(cfg);
-        } catch {
-            _bgQueue.length = 0;
-            return;
+        // Only load classifier when scan is enabled; blocklist check can run
+        // without it.
+        let classifier = null;
+        if (cfg.enabled) {
+            try {
+                classifier = await _loadClassifier(cfg);
+            } catch {
+                if (!cfg.blocklistEnabled) {
+                    _bgQueue.length = 0;
+                    return;
+                }
+                // Classifier failed but blocklist still works — continue.
+            }
         }
 
         const db = getDb();
         const lookupRow = db.prepare(`
-            SELECT id, file_path, file_type, nsfw_checked_at
+            SELECT id, file_path, file_type, file_hash, nsfw_checked_at
               FROM downloads
              WHERE id = ?
         `);
@@ -592,6 +608,43 @@ async function _drainBg() {
                     else if (existsSync(row.file_path)) abs = row.file_path;
                 }
             }
+
+            // Hash-blocklist check — runs even when the classifier is off.
+            // If the file's SHA-256 matches a previously-deleted NSFW file,
+            // auto-delete it without re-scoring.
+            if (cfg.blocklistEnabled) {
+                let hash = row.file_hash;
+                if (!hash && abs) {
+                    try {
+                        hash = await sha256OfFile(abs);
+                        // Persist so future checks skip the file I/O.
+                        try {
+                            db.prepare(
+                                'UPDATE downloads SET file_hash = ? WHERE id = ? AND file_hash IS NULL',
+                            ).run(hash, Number(id));
+                        } catch {}
+                    } catch {
+                        hash = null;
+                    }
+                }
+                if (hash) {
+                    const blocked = checkNsfwBlocklistHashes([hash]);
+                    if (blocked.has(hash)) {
+                        if (abs) {
+                            try {
+                                await fs.unlink(abs);
+                            } catch {}
+                        }
+                        try {
+                            db.prepare('DELETE FROM downloads WHERE id = ?').run(Number(id));
+                        } catch {}
+                        continue;
+                    }
+                }
+            }
+
+            // Skip scoring if classifier is not loaded (scan disabled or failed).
+            if (!classifier) continue;
 
             let score = null;
             if (abs) {

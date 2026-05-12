@@ -933,6 +933,7 @@ export function loadAdvanced(config) {
     };
     wireToggle('setting-adv-nsfw-enabled', ns.enabled === true);
     wireToggle('setting-adv-nsfw-preload', ns.preload === true);
+    wireToggle('setting-adv-nsfw-blocklist', ns.blocklistEnabled === true);
     set(
         'setting-adv-nsfw-model',
         typeof ns.model === 'string' && ns.model.trim()
@@ -1103,6 +1104,10 @@ function gatherAdvanced() {
             preload:
                 document
                     .getElementById('setting-adv-nsfw-preload')
+                    ?.classList.contains('active') === true,
+            blocklistEnabled:
+                document
+                    .getElementById('setting-adv-nsfw-blocklist')
                     ?.classList.contains('active') === true,
             model:
                 String(get('setting-adv-nsfw-model') || '').trim() ||
