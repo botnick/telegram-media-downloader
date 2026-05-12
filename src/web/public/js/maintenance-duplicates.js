@@ -26,6 +26,7 @@ const $ = (id) => document.getElementById(id);
 let _wsWired = false;
 let _pageWired = false;
 let _sets = []; // last scan result
+let _stopRequested = false; // true while waiting for scan to wind down after Stop
 
 function _formatBytes(bytes) {
     const n = Number(bytes) || 0;
@@ -358,20 +359,44 @@ function _applyDefaultSelection(setsSlice) {
     }
 }
 
-function _setScanUi(running) {
+// _setScanUi(running, opts)
+//   running — true while scan is in flight, false otherwise.
+//   opts.resume — when true and not running, labels the Scan button as
+//     "Resume scan" so the operator sees that prior partial hashing won't
+//     be repeated.
+//   opts.stopRequested — transient state while waiting for the stop to
+//     propagate (button shows "Stopping…" and is disabled).
+function _setScanUi(running, opts = {}) {
     const btn = $('dup-scan-btn');
+    const stopBtn = $('dup-stop-btn');
     const progress = $('dup-progress');
     const bar = $('dup-progress-bar');
     const pct = $('dup-progress-pct');
     if (btn) {
         // Preserve the icon — only swap the label span. textContent on
         // the whole button blew away the <i class="ri-search-line">.
-        btn.disabled = !!running;
+        btn.disabled = !!running || !!opts.stopRequested;
+        btn.classList.toggle('hidden', !!running);
         const labelSpan = btn.querySelector('span[data-i18n]');
         if (labelSpan) {
-            labelSpan.textContent = running
-                ? i18nT('maintenance.dedup.scanning', 'Scanning…')
-                : i18nT('maintenance.duplicates.scan', 'Scan');
+            if (!running && opts.resume) {
+                labelSpan.textContent = i18nT(
+                    'maintenance.duplicates.resume_scan',
+                    'Resume scan',
+                );
+            } else {
+                labelSpan.textContent = i18nT('maintenance.duplicates.scan', 'Scan');
+            }
+        }
+    }
+    if (stopBtn) {
+        stopBtn.classList.toggle('hidden', !running);
+        stopBtn.disabled = !!opts.stopRequested;
+        const stopLabel = stopBtn.querySelector('span[data-i18n]');
+        if (stopLabel) {
+            stopLabel.textContent = opts.stopRequested
+                ? i18nT('maintenance.duplicates.stopping', 'Stopping…')
+                : i18nT('maintenance.duplicates.stop_scan', 'Stop');
         }
     }
     if (progress) progress.classList.toggle('hidden', !running);
@@ -386,6 +411,8 @@ function _setScanUi(running) {
 // can never bite, and a 50 GB library hashing for minutes doesn't hold
 // the request open. Result lands via `dedup_done` WS event; status
 // recovery on re-mount via GET /dedup/status.
+// When a previous scan was stopped partway through the server will
+// naturally skip already-hashed rows, so "Resume" = "Scan again".
 async function _runScan() {
     _setScanUi(true);
     try {
@@ -415,6 +442,28 @@ async function _runScan() {
     }
 }
 
+// Stop the running dedup scan. The server signals the abort controller;
+// the scan finishes the current file then breaks cleanly. The `dedup_done`
+// WS event fires shortly after with whatever partial result was accumulated.
+async function _stopScan() {
+    // Show "Stopping…" immediately so the operator gets feedback while
+    // waiting for the current file hash to finish (could be a few seconds
+    // on a very large file).
+    _stopRequested = true;
+    _setScanUi(true, { stopRequested: true });
+    try {
+        await api.post('/api/maintenance/dedup/scan/stop', {});
+        // Don't change UI here — wait for `dedup_done` which fires when
+        // the scan actually stops. If the scan wasn't running, dedup_done
+        // won't fire but the next _refreshStats will update the panel.
+    } catch (e) {
+        _stopRequested = false;
+        showToast(e?.data?.error || e.message || 'Failed to stop', 'error');
+        // Revert to plain running state — scan may still be going.
+        _setScanUi(true);
+    }
+}
+
 // Recover live state on (re-)entry — the scan keeps running on the
 // server even after a tab close, so we re-paint the running UI + the
 // last completed result if any. Also hydrates the bulk-delete + reindex
@@ -423,8 +472,29 @@ async function _runScan() {
 async function _recoverScanState() {
     try {
         const r = await api.get('/api/maintenance/dedup/status');
-        if (r?.running) _setScanUi(true);
-        if (r?.result?.duplicateSets) _renderSets(r.result.duplicateSets);
+        if (r?.running) {
+            _setScanUi(true);
+        } else if (r?.result?.duplicateSets) {
+            // Last run finished with results — show them and check if it
+            // was a partial run so the Resume label appears.
+            const wasAborted = !!r.result.aborted;
+            _setScanUi(false, { resume: wasAborted });
+            _renderSets(r.result.duplicateSets);
+        }
+    } catch {
+        /* non-fatal */
+    }
+    // If the scan was stopped and the server restarted (result cleared),
+    // check for persisted partial-progress from the stats endpoint.
+    try {
+        const stats = await api.get('/api/maintenance/dedup/stats');
+        if (stats?.partialProgress?.partial) {
+            // Only show resume label if not already in running/result state.
+            const scanBtn = $('dup-scan-btn');
+            if (scanBtn && !scanBtn.classList.contains('hidden')) {
+                _setScanUi(false, { resume: true });
+            }
+        }
     } catch {
         /* non-fatal */
     }
@@ -579,7 +649,7 @@ function _wireWs() {
     ws.on('dedup_progress', (m) => {
         // Make sure the running UI is visible — handles the case where a
         // sibling client started the scan and we're seeing it second-hand.
-        _setScanUi(true);
+        _setScanUi(true, { stopRequested: _stopRequested });
         const bar = $('dup-progress-bar');
         const stage = $('dup-progress-stage');
         const pctEl = $('dup-progress-pct');
@@ -622,8 +692,9 @@ function _wireWs() {
     });
 
     ws.on('dedup_done', (m) => {
-        _setScanUi(false);
+        _stopRequested = false;
         if (m?.error) {
+            _setScanUi(false);
             showToast(
                 i18nTf(
                     'maintenance.dedup.scan_failed',
@@ -634,9 +705,28 @@ function _wireWs() {
             );
             return;
         }
+        // `aborted:true` means the scan was stopped mid-run. Already-hashed
+        // files are persisted in the DB — the next scan skips them — so "Scan"
+        // and "Resume" are identical in behaviour. We just label the button
+        // "Resume scan" to make that clear to the operator.
+        const wasAborted = !!m?.aborted;
+        _setScanUi(false, { resume: wasAborted });
         const sets = Array.isArray(m?.duplicateSets) ? m.duplicateSets : [];
-        _renderSets(sets);
-        if (!sets.length) {
+        if (sets.length) {
+            // Partial scans may surface duplicate sets from files hashed in
+            // prior runs — render them so results aren't lost.
+            _renderSets(sets);
+        }
+        if (wasAborted) {
+            showToast(
+                i18nTf(
+                    'maintenance.duplicates.scan_stopped',
+                    { hashed: m?.hashed ?? 0 },
+                    `Scan stopped — ${m?.hashed ?? 0} file(s) hashed. Click Resume scan to continue.`,
+                ),
+                'info',
+            );
+        } else if (!sets.length) {
             showToast(
                 i18nTf(
                     'maintenance.dedup.none',
@@ -848,6 +938,7 @@ export function init() {
     if (!_pageWired) {
         _pageWired = true;
         $('dup-scan-btn')?.addEventListener('click', _runScan);
+        $('dup-stop-btn')?.addEventListener('click', _stopScan);
         $('dup-delete-btn')?.addEventListener('click', _deleteSelected);
         $('dup-reindex-btn')?.addEventListener('click', _runReindex);
         $('dup-verify-btn')?.addEventListener('click', _runVerify);
