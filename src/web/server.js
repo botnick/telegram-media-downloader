@@ -22,7 +22,6 @@ import { getOrGenerateSecret } from '../core/secret.js';
 import {
     BACKFILL_MAX_LIMIT,
     DIALOG_CACHE_TTL_MS,
-    HISTORY_JOB_TTL_MS,
     BACKPRESSURE_CAP_DEFAULT,
 } from '../core/constants.js';
 import {
@@ -214,6 +213,15 @@ import { writeConfigAtomic } from './lib/config-writer.js';
 import { tgAuthErrorBody } from './lib/tg-error.js';
 import { createAccountsRouter } from './routes/accounts.js';
 import { createMonitorRouter } from './routes/monitor.js';
+import { createHistoryRouter } from './routes/history.js';
+import {
+    historyJobs as _historyJobs,
+    activeBackfillsByGroup as _activeBackfillsByGroup,
+    loadHistoryJobsFromStore,
+    saveHistoryJobsToStore,
+    scheduleHistoryJobCleanup,
+    HISTORY_JOBS_KV,
+} from './lib/history-state.js';
 import {
     cookieParser,
     checkAuth,
@@ -1269,407 +1277,6 @@ async function _buildMonitorStatusSnapshot() {
 // restarts. The map below holds active jobs (with the live HistoryDownloader
 // instance attached) plus a hot copy of recent finished ones; the kv row
 // is the source of truth for anything older.
-
-// History jobs persist to kv['history_jobs'] in SQLite — the JSON file
-// at data/history-jobs.json was migrated alongside config / disk_usage
-// in the v2.7 state migration. Legacy files on disk are still picked up
-// once on first boot by state-migration.js, then archived.
-const HISTORY_JOBS_KV = 'history_jobs';
-
-// Resolved from config.advanced.history.retentionDays at every call so a
-// `config_updated` save changes the prune cutoff without a restart.
-// Spec default = 30 days.
-function historyRetentionMs() {
-    try {
-        const days = Number(loadConfig().advanced?.history?.retentionDays);
-        if (Number.isFinite(days) && days >= 1 && days <= 3650) {
-            return days * 24 * 60 * 60 * 1000;
-        }
-    } catch {}
-    return 30 * 24 * 60 * 60 * 1000;
-}
-
-// jobId → { id, state, processed, downloaded, error, group, groupId, limit,
-//           startedAt, finishedAt, cancelled, _runner }
-// `_runner` is stripped before serialising (it's the live downloader).
-const _historyJobs = new Map();
-
-function loadHistoryJobsFromStore() {
-    const stored = kvGet(HISTORY_JOBS_KV);
-    if (!Array.isArray(stored)) return [];
-    const cutoff = Date.now() - historyRetentionMs();
-    return stored.filter((j) => j && (j.finishedAt || j.startedAt || 0) >= cutoff);
-}
-
-function saveHistoryJobsToStore() {
-    // Snapshot finished jobs (state !== running) without the _runner ref.
-    const finished = Array.from(_historyJobs.values())
-        .filter((j) => j.state !== 'running')
-        .map(({ _runner, ...rest }) => rest);
-    // Merge with anything still in the store that isn't in memory
-    // (older history older than process start).
-    const onDisk = loadHistoryJobsFromStore();
-    const byId = new Map();
-    for (const j of onDisk) byId.set(j.id, j);
-    for (const j of finished) byId.set(j.id, j);
-    const cutoff = Date.now() - historyRetentionMs();
-    const all = Array.from(byId.values())
-        .filter((j) => (j.finishedAt || j.startedAt || 0) >= cutoff)
-        .sort((a, b) => (b.finishedAt || b.startedAt || 0) - (a.finishedAt || a.startedAt || 0));
-    try {
-        kvSet(HISTORY_JOBS_KV, all);
-    } catch (e) {
-        console.error("kv['history_jobs'] write failed:", e?.message || e);
-    }
-}
-
-// Module-level guard: at most ONE backfill per groupId at any time.
-// Without this, a fast double-click on Backfill spawns two HistoryDownloader
-// instances against the same group → two parallel iterations of the same
-// Telegram timeline, two streams of `getMessages` calls, doubled FloodWait
-// risk. The instances would still produce no duplicate downloads (the DB's
-// UNIQUE(group_id, message_id) catches them), but the API churn is wasted.
-const _activeBackfillsByGroup = new Map(); // groupId(string) → jobId(string)
-
-app.post('/api/history', async (req, res) => {
-    try {
-        const { groupId, limit = 100, offsetId = 0, mode } = req.body || {};
-        if (!groupId) return res.status(400).json({ error: 'groupId required' });
-        const groupKey = String(groupId);
-        if (_activeBackfillsByGroup.has(groupKey)) {
-            return res.status(409).json({
-                error: 'A backfill is already running for this group',
-                code: 'ALREADY_RUNNING',
-                jobId: _activeBackfillsByGroup.get(groupKey),
-            });
-        }
-        // limit === 0 (or "0") means "no limit" → backfill the entire history.
-        // Anything else is clamped into a sane positive range.
-        const limRaw = parseInt(limit, 10);
-        const lim =
-            limRaw === 0
-                ? null
-                : Math.max(1, Math.min(BACKFILL_MAX_LIMIT, Number.isFinite(limRaw) ? limRaw : 100));
-
-        const am = await getAccountManager();
-        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
-
-        const config = loadConfig();
-        let group = (config.groups || []).find((g) => String(g.id) === String(groupId));
-        // Sidebar surfaces "download-only" groups — rows that have files
-        // in `downloads` but never made it into `config.groups` (e.g.
-        // imported from a peer, restored from a backup, or seeded by an
-        // older build that wrote the row before registering the group).
-        // Clicking such a row deep-links to #/backfill/<id>; without
-        // auto-registration the operator just sees "Group not configured"
-        // and has no obvious next step. Auto-register here when we can
-        // resolve the dialog from any connected account, then continue.
-        if (!group) {
-            let resolved = null;
-            try {
-                const probe = await import('../core/dialogs-resolver.js').catch(() => null);
-                if (probe?.resolveDialogName) {
-                    resolved = await probe.resolveDialogName(String(groupId)).catch(() => null);
-                }
-            } catch {}
-            // Fall back to the DB's best-known name so the auto-added entry
-            // isn't called "Unknown" forever.
-            let dbName = null;
-            try {
-                const row = getDb()
-                    .prepare(
-                        "SELECT group_name FROM downloads WHERE group_id = ? AND group_name IS NOT NULL AND group_name != '' AND group_name != 'Unknown' LIMIT 1",
-                    )
-                    .get(String(groupId));
-                if (row?.group_name) dbName = row.group_name;
-            } catch {}
-            const idForConfig =
-                String(groupId).startsWith('-') &&
-                Number.isSafeInteger(parseInt(String(groupId), 10))
-                    ? parseInt(String(groupId), 10)
-                    : groupId;
-            group = {
-                id: idForConfig,
-                name: resolved || dbName || `Group ${groupId}`,
-                enabled: false,
-                filters: {
-                    photos: true,
-                    videos: true,
-                    files: true,
-                    links: true,
-                    voice: false,
-                    gifs: false,
-                    stickers: false,
-                },
-                autoForward: {
-                    enabled: false,
-                    destination: null,
-                    deleteAfterForward: false,
-                    keepImages: false,
-                    keepVideos: false,
-                },
-                trackUsers: { enabled: false, users: [] },
-                topics: { enabled: false, ids: [] },
-            };
-            config.groups = config.groups || [];
-            config.groups.push(group);
-            try {
-                await writeConfigAtomic(config);
-                _dialogsResponseCache = { at: 0, body: null };
-                broadcast({ type: 'config_updated' });
-                log({
-                    source: 'history',
-                    level: 'info',
-                    msg: `auto-registered group ${groupId} ("${group.name}") before backfill — was present in downloads but missing from config`,
-                });
-            } catch (e) {
-                console.warn('[history] auto-register failed:', e.message);
-                return res.status(404).json({
-                    error: 'Group not configured — add it from Manage Groups first',
-                    code: 'GROUP_NOT_CONFIGURED',
-                });
-            }
-        }
-
-        const { HistoryDownloader } = await import('../core/history.js');
-        const { DownloadManager } = await import('../core/downloader.js');
-        const { RateLimiter } = await import('../core/security.js');
-
-        const standalone = !runtime._downloader;
-        const downloader =
-            runtime._downloader ||
-            new DownloadManager(am.getDefaultClient(), config, new RateLimiter(config.rateLimits));
-        if (standalone) {
-            await downloader.init();
-            downloader.start();
-        }
-
-        const history = new HistoryDownloader(am.getDefaultClient(), downloader, config, am);
-
-        const jobId = crypto.randomBytes(6).toString('hex');
-        const job = {
-            id: jobId,
-            state: 'running',
-            processed: 0,
-            downloaded: 0,
-            error: null,
-            group: group.name,
-            groupId: String(group.id),
-            limit: lim, // null = "all"
-            startedAt: Date.now(),
-            finishedAt: null,
-            cancelled: false,
-            _runner: history,
-        };
-        _historyJobs.set(jobId, job);
-        _activeBackfillsByGroup.set(groupKey, jobId);
-
-        history.on('progress', (s) => {
-            job.processed = s.processed;
-            job.downloaded = s.downloaded;
-            broadcast({
-                type: 'history_progress',
-                jobId,
-                ...s,
-                group: group.name,
-                groupId: job.groupId,
-                limit: job.limit,
-                startedAt: job.startedAt,
-                mode: job.mode || 'pull-older',
-            });
-        });
-        // Mirror the chosen mode onto the job so the UI shows it ("pull
-        // older" / "catch up" / "rescan") even after the worker exits.
-        history.on('start', (s) => {
-            if (s?.mode) job.mode = s.mode;
-        });
-
-        history
-            .downloadHistory(groupId, {
-                limit: lim ?? undefined,
-                offsetId: parseInt(offsetId, 10) || 0,
-                mode: mode === 'catch-up' || mode === 'rescan' ? mode : 'pull-older',
-            })
-            .then(() => {
-                job.state = job.cancelled ? 'cancelled' : 'done';
-                job.finishedAt = Date.now();
-                delete job._runner;
-                // Two distinct terminal events so the dashboard can flash
-                // green for natural completions and amber for user cancels
-                // without sniffing payload fields.
-                const evt = job.cancelled ? 'history_cancelled' : 'history_done';
-                broadcast({ type: evt, jobId, group: group.name, ...job });
-                if (standalone) downloader.stop().catch(() => {});
-                saveHistoryJobsToStore();
-                // Release the per-group lock so a new backfill can spawn.
-                if (_activeBackfillsByGroup.get(groupKey) === jobId) {
-                    _activeBackfillsByGroup.delete(groupKey);
-                }
-                // Drop the in-memory entry after a grace window so the UI has
-                // time to grab it via /api/history/jobs.
-                setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
-            })
-            .catch((err) => {
-                job.state = 'error';
-                job.error = err?.message || String(err);
-                job.finishedAt = Date.now();
-                delete job._runner;
-                broadcast({
-                    type: 'history_error',
-                    jobId,
-                    error: job.error,
-                    group: group.name,
-                    groupId: job.groupId,
-                });
-                // Surface the failure on the realtime log channel so the
-                // operator sees WHY a backfill flashed red instead of just
-                // "it failed". Hint when the message points at account
-                // access — easy to misread as "downloader is broken" when
-                // the real fix is "log in to a Telegram account that's a
-                // member of the group". Common causes hit by this branch:
-                // session expired, account left the group, FloodWait
-                // bouncing all retries, group went private.
-                const hint = /no available account/i.test(job.error)
-                    ? ' (no logged-in account can read this group — check Settings → Telegram Accounts and make sure at least one is a member)'
-                    : '';
-                log({
-                    source: 'backfill',
-                    level: 'error',
-                    msg: `backfill failed for "${group.name}" (${group.id}): ${job.error}${hint}`,
-                });
-                if (standalone) downloader.stop().catch(() => {});
-                saveHistoryJobsToStore();
-                if (_activeBackfillsByGroup.get(groupKey) === jobId) {
-                    _activeBackfillsByGroup.delete(groupKey);
-                }
-            });
-
-        log({
-            source: 'backfill',
-            level: 'info',
-            msg: `backfill started for "${group.name}" (${group.id}) — limit=${lim} mode=${job.mode || 'pull-older'}`,
-        });
-        res.json({
-            success: true,
-            jobId,
-            group: group.name,
-            limit: lim,
-            mode: job.mode || 'pull-older',
-        });
-    } catch (e) {
-        console.error('POST /api/history:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// New endpoints powering the Backfill page.
-//
-// /api/history/jobs returns BOTH the live + recent finished jobs combined.
-// MUST be mounted before /api/history/:jobId so :jobId doesn't swallow "/jobs".
-// /api/history/:jobId/cancel flips the cancel flag on the live runner so the
-// iteration loop bails out gracefully.
-
-app.get('/api/history/jobs', async (req, res) => {
-    try {
-        const onDisk = loadHistoryJobsFromStore();
-        const live = Array.from(_historyJobs.values()).map(({ _runner, ...rest }) => rest);
-        const byId = new Map();
-        for (const j of onDisk) byId.set(j.id, j);
-        for (const j of live) byId.set(j.id, j); // live overrides disk (same id)
-        const all = Array.from(byId.values()).sort(
-            (a, b) => (b.startedAt || 0) - (a.startedAt || 0),
-        );
-        const recent = all.filter((j) => j.state !== 'running').slice(0, 30);
-        res.json({
-            active: all.filter((j) => j.state === 'running'),
-            // `recent` is the canonical key the dashboard reads; `past` is
-            // kept as an alias for any older client still in flight.
-            recent,
-            past: recent,
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/history/:jobId/cancel', (req, res) => {
-    const job = _historyJobs.get(req.params.jobId);
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-    if (job.state !== 'running') {
-        return res.status(409).json({ error: `Job is ${job.state}, cannot cancel` });
-    }
-    try {
-        job.cancelled = true;
-        if (typeof job._runner?.cancel === 'function') job._runner.cancel();
-        broadcast({ type: 'history_cancelling', jobId: job.id, group: job.group });
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/api/history/:jobId', (req, res) => {
-    const job = _historyJobs.get(req.params.jobId);
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-    const { _runner, ...safe } = job;
-    res.json(safe);
-});
-
-// Remove a single finished history entry from the Recent backfills list.
-// Running jobs cannot be deleted — they have to be cancelled first.
-app.delete('/api/history/:jobId', async (req, res) => {
-    try {
-        const id = req.params.jobId;
-        const inMem = _historyJobs.get(id);
-        if (inMem && inMem.state === 'running') {
-            return res.status(409).json({ error: 'Cannot delete a running job — cancel first.' });
-        }
-        if (inMem) _historyJobs.delete(id);
-
-        // Drop from the kv store too. kvSet runs the upsert in a SQLite
-        // transaction so a partial write can never land.
-        const onDisk = loadHistoryJobsFromStore();
-        const filtered = onDisk.filter((j) => j.id !== id);
-        try {
-            kvSet(HISTORY_JOBS_KV, filtered);
-        } catch (e) {
-            console.error("kv['history_jobs'] write failed:", e?.message || e);
-        }
-
-        broadcast({ type: 'history_deleted', jobId: id });
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Clear every finished entry from the Recent backfills list. Running jobs
-// are preserved — same posture as the per-row delete (cancel first).
-app.delete('/api/history', async (req, res) => {
-    try {
-        let removed = 0;
-        for (const [id, job] of Array.from(_historyJobs.entries())) {
-            if (job.state !== 'running') {
-                _historyJobs.delete(id);
-                removed++;
-            }
-        }
-        // Wipe the kv-backed store of finished jobs.
-        try {
-            kvSet(HISTORY_JOBS_KV, []);
-        } catch (e) {
-            console.error("kv['history_jobs'] wipe failed:", e?.message || e);
-        }
-        broadcast({ type: 'history_cleared' });
-        res.json({ success: true, removed });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/api/history', (req, res) => {
-    res.json(Array.from(_historyJobs.values()).map(({ _runner, ...rest }) => rest));
-});
 
 // Capture finishes/failures off the runtime event stream so the snapshot
 // always has a populated "recent" tail even after a server restart.
@@ -9221,7 +8828,7 @@ async function _spawnInternalBackfill({
             saveHistoryJobsToStore();
             if (_activeBackfillsByGroup.get(groupKey) === jobId)
                 _activeBackfillsByGroup.delete(groupKey);
-            setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
+            scheduleHistoryJobCleanup(jobId);
         })
         .catch((err) => {
             job.state = 'error';
@@ -9928,6 +9535,17 @@ app.use('/api', createAccountsRouter({ getAccountManager }));
 app.use(
     '/api',
     createMonitorRouter({ getAccountManager, buildSnapshot: _buildMonitorStatusSnapshot }),
+);
+app.use(
+    '/api',
+    createHistoryRouter({
+        getAccountManager,
+        broadcast,
+        log,
+        invalidateDialogsCache: () => {
+            _dialogsResponseCache = { at: 0, body: null };
+        },
+    }),
 );
 
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
