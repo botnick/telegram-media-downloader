@@ -1641,7 +1641,7 @@
     "cluster.pairing_code.title": "Pairing code",
     "cluster.pairing_code.help": "Show this code to the operator on the other peer. Valid for 5 minutes — single use.",
     "cluster.pairing_code.expires": "Expires in 5 minutes",
-    "cluster.peers.title": "Paired peers",
+    "cluster.peers.title": "Connected peers",
     "cluster.peers.empty": "No peers yet. Add one to begin federating.",
     "cluster.peer.add": "Add peer",
     "cluster.peer.add.title": "Pair a remote peer",
