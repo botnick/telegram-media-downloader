@@ -3054,10 +3054,14 @@
                         <!-- KPI strip — three tiles. Indexed photos
                              (faces walked / eligible photos), people
                              clusters surfaced, last scan timestamp. -->
-                        <div class="mt-3 grid grid-cols-3 gap-2 text-center">
+                        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_indexed">Indexed photos</div>
                                 <div id="ai-stat-indexed" class="text-xl font-semibold text-tg-text tabular-nums">—</div>
+                            </div>
+                            <div class="bg-tg-bg/40 rounded-lg p-3">
+                                <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_tagged">Tagged photos</div>
+                                <div id="ai-stat-tagged" class="text-xl font-semibold text-tg-orange tabular-nums">—</div>
                             </div>
                             <div class="bg-tg-bg/40 rounded-lg p-3">
                                 <div class="text-[10px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.ai.stat_people">People clusters</div>
@@ -3295,6 +3299,26 @@
                          goal without spending a card on an empty
                          placeholder. -->
                     <p class="text-[11px] text-tg-textSecondary text-center my-3" data-i18n="maintenance.ai.coming_soon.list">More capabilities coming: OCR · Object detection · Face quality scoring · Smart albums</p>
+
+                    <!-- Tag browser -- populated by maintenance-ai.js when
+                         image tagging is enabled. Shows all detected tags
+                         as chips; clicking a chip shows matching photos. -->
+                    <section id="ai-tag-browser" class="hidden bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
+                            <div class="min-w-0">
+                                <h3 class="text-tg-text text-sm font-semibold" data-i18n="maintenance.ai.tags.browser_title">Tag browser</h3>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.tags.browser_desc">Browse photos by detected tag. Customise tags in the Image tagging card above.</p>
+                            </div>
+                            <button id="ai-tag-browser-refresh" type="button" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1">
+                                <i class="ri-refresh-line"></i><span data-i18n="common.refresh">Refresh</span>
+                            </button>
+                        </div>
+                        <div id="ai-tag-chips" class="flex flex-wrap gap-1.5 mb-3"></div>
+                        <div id="ai-tag-photos" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                            <p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6">Select a tag above to browse photos.</p>
+                        </div>
+                        <p id="ai-tag-empty" class="text-[11px] text-tg-textSecondary text-center py-3 hidden">No tags yet — run a tag scan to populate.</p>
+                    </section>
 
                     <!-- Hidden hosts for legacy element ids referenced
                          by older bookmarklets / extensions. Empty + no-op

@@ -421,6 +421,10 @@ export function startTagsScan(cfg, onProgress, onDone, onLog) {
                 );
             }
 
+            // Resolve custom tag labels from config. Falls back to the
+            // sidecar's default vocabulary when empty.
+            const tagLabels = Array.isArray(cfg.tagLabels) ? cfg.tagLabels.filter(Boolean) : [];
+
             const batchSize = Math.max(1, Math.min(50, Number(cfg.batchSize) || 16));
 
             while (!signal.aborted) {
@@ -433,7 +437,7 @@ export function startTagsScan(cfg, onProgress, onDone, onLog) {
                     let tags = [];
                     if (abs) {
                         try {
-                            tags = await _tagOne(sidecarUrl, abs, log);
+                            tags = await _tagOne(sidecarUrl, abs, tagLabels, log);
                         } catch (e) {
                             log('warn', `tagging failed for id=${row.id}: ${e?.message || e}`);
                         }
@@ -463,10 +467,16 @@ export function startTagsScan(cfg, onProgress, onDone, onLog) {
 /**
  * Call the Python sidecar's ``POST /tag`` for one image.
  * Returns ``[{tag, score}, …]`` or an empty array on failure.
+ *
+ * If ``tagLabels`` is non-empty, it overrides the sidecar's default
+ * vocabulary for this request.
  */
-async function _tagOne(sidecarUrl, absPath, log) {
+async function _tagOne(sidecarUrl, absPath, tagLabels, log) {
     const url = `${sidecarUrl.replace(/\/+$/, '')}/tag`;
     const body = { path: absPath };
+    if (Array.isArray(tagLabels) && tagLabels.length) {
+        body.vocabulary = tagLabels;
+    }
     try {
         const res = await fetch(url, {
             method: 'POST',

@@ -176,6 +176,13 @@ class TagRequest(BaseModel):
         le=100,
         description="Max tags to return. Defaults to env or 10.",
     )
+    vocabulary: list[str] | None = Field(
+        default=None,
+        description=(
+            "Custom tag labels overriding the sidecar's default vocabulary. "
+            "If empty/omitted, the sidecar's built-in vocabulary is used."
+        ),
+    )
 
     @model_validator(mode="after")
     def _exactly_one_source(self) -> TagRequest:
@@ -648,6 +655,7 @@ def tag_image(body: Annotated[TagRequest, ...]) -> JSONResponse:
             img,
             threshold=body.threshold,
             top_k=body.top_k,
+            vocabulary=body.vocabulary,
         )
     except Exception as exc:
         _LOG.exception("tag_image failed")
@@ -657,10 +665,13 @@ def tag_image(body: Annotated[TagRequest, ...]) -> JSONResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
+    # Determine which vocabulary was actually used
+    used_vocabulary = body.vocabulary or list(tagger.vocabulary)
+
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content=TagResponse(
             tags=[TagResult(**t) for t in tags],
-            vocabulary=list(tagger.vocabulary),
+            vocabulary=list(used_vocabulary),
         ).model_dump(),
     )

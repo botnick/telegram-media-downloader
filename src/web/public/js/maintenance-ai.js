@@ -159,9 +159,104 @@ const CAPABILITIES = [
         statusKey: 'models.tags',
         scanFeature: 'tags',
         autoToggleKey: 'imageTagging',
-        controls: [],
+        customHtml: true, // renders extra tag-labels editor + tag browser
+        controls: [
+            {
+                type: 'custom',
+                cfgKey: 'tagLabels',
+                labelKey: 'maintenance.ai.tags.labels',
+                labelDefault: 'Custom tags (comma-separated, leave empty for defaults)',
+                placeholder: 'e.g. cat, dog, sunset, document, screenshot',
+            },
+        ],
     },
 ];
+
+// ---- Tag browser ----------------------------------------------------------
+
+/**
+ * Fetch all detected tags from the server and render chip buttons.
+ * Shows the tag browser section when tags exist, hides it otherwise.
+ */
+async function _renderTagBrowser() {
+    const section = $('#ai-tag-browser');
+    const chips = $('#ai-tag-chips');
+    const photos = $('#ai-tag-photos');
+    const empty = $('#ai-tag-empty');
+    if (!section || !chips) return;
+
+    try {
+        const r = await api.get('/api/ai/tags/list');
+        const tags = Array.isArray(r?.tags) ? r.tags : [];
+        if (!tags.length) {
+            section.classList.add('hidden');
+            return;
+        }
+        section.classList.remove('hidden');
+        if (empty) empty.classList.add('hidden');
+
+        chips.innerHTML = tags
+            .map(
+                (t) =>
+                    `<button type="button" class="tg-btn-input text-[11px] px-2.5 py-1 inline-flex items-center gap-1 tag-chip" data-tag="${escapeHtml(t.tag)}">
+                        ${escapeHtml(t.tag)}
+                        <span class="text-[10px] text-tg-textSecondary tabular-nums">${t.count}</span>
+                    </button>`,
+            )
+            .join('');
+
+        // Wire chip clicks — load photos for the selected tag
+        chips.querySelectorAll('.tag-chip').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                chips.querySelectorAll('.tag-chip').forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tag = btn.dataset.tag;
+                if (tag) _loadTagPhotos(tag);
+            });
+        });
+
+        // Auto-select the first chip
+        const first = chips.querySelector('.tag-chip');
+        if (first) {
+            first.classList.add('active');
+            _loadTagPhotos(first.dataset.tag);
+        }
+    } catch (e) {
+        console.warn('tag browser:', e);
+        section.classList.add('hidden');
+    }
+}
+
+/**
+ * Load photos for a specific tag and render them as a grid.
+ */
+async function _loadTagPhotos(tag) {
+    const photos = $('#ai-tag-photos');
+    if (!photos) return;
+    photos.innerHTML =
+        '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6"><i class="ri-loader-4-line animate-spin mr-1"></i>Loading…</p>';
+    try {
+        const r = await api.get(`/api/ai/tags/photos?tag=${encodeURIComponent(tag)}&limit=50`);
+        const files = Array.isArray(r?.files) ? r.files : [];
+        if (!files.length) {
+            photos.innerHTML =
+                '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6">No photos with this tag.</p>';
+            return;
+        }
+        photos.innerHTML = files
+            .map((f) => {
+                const thumb = `/api/thumbs/${encodeURIComponent(f.id)}?w=320`;
+                const score = f.tag_score ? Math.round(f.tag_score * 100) + '%' : '';
+                return `<div class="relative aspect-square rounded-md overflow-hidden bg-tg-bg/40 group cursor-pointer" onclick="navigateTo('viewer/${encodeURIComponent(f.group_name || '')}')">
+                    <img loading="lazy" class="absolute inset-0 w-full h-full object-cover" src="${escapeHtml(thumb)}" onerror="this.style.display='none'">
+                    <span class="absolute bottom-1 right-1 text-[10px] px-1 py-0.5 rounded bg-black/60 text-white tabular-nums">${escapeHtml(score)}</span>
+                </div>`;
+            })
+            .join('');
+    } catch (e) {
+        photos.innerHTML = `<p class="text-[11px] text-red-400 col-span-full text-center py-6">Failed: ${escapeHtml(e?.message || 'unknown')}</p>`;
+    }
+}
 
 export async function init() {
     if (!_initOnce) {
@@ -171,6 +266,7 @@ export async function init() {
     await refreshStatus();
     _refreshDoctor().catch(() => {});
     _loadPeople().catch(() => {});
+    _renderTagBrowser().catch(() => {});
 }
 
 // Public refresher — exported so the SPA shell can poke us after a
@@ -181,6 +277,7 @@ export async function refreshStatus() {
         if (!r.success) return;
         _lastStatus = r;
         _renderStatus(r);
+        _renderTagBrowser().catch(() => {});
     } catch (e) {
         console.warn('ai/status:', e);
     }
@@ -265,6 +362,9 @@ function _bindOnce() {
         _renderPeopleGrid();
     });
     $('#ai-people-refresh-btn')?.addEventListener('click', () => _loadPeople());
+
+    // Tag browser — refresh + chip clicks.
+    $('#ai-tag-browser-refresh')?.addEventListener('click', () => _renderTagBrowser());
 
     // Person action buttons.
     $('#ai-person-rename-btn')?.addEventListener('click', _renameSelectedPerson);
@@ -487,6 +587,10 @@ function _renderStatus(status) {
     }
     const peopleEl = $('#ai-stat-people');
     if (peopleEl) peopleEl.textContent = String(counts.peopleCount ?? counts.withFaces ?? 0);
+    const taggedEl = $('#ai-stat-tagged');
+    if (taggedEl) {
+        taggedEl.textContent = String(counts.withTags ?? 0);
+    }
     const lastEl = $('#ai-stat-last');
     if (lastEl) {
         const finishedAt = Number(scans?.faces?.finishedAt) || 0;
@@ -1087,6 +1191,19 @@ function _renderControl(ctrl, cfg) {
             </label>
         `;
     }
+    if (ctrl.type === 'custom') {
+        const curVal = Array.isArray(rawCur)
+            ? rawCur.join(', ')
+            : String(rawCur || '').trim() || '';
+        const placeholder = escapeHtml(ctrl.placeholder || '');
+        return `
+            <label class="block sm:col-span-2">
+                <span class="text-[11px] text-tg-textSecondary">${label}</span>
+                <textarea class="tg-input text-xs py-1 mt-1 w-full" rows="3" data-cap-ctrl="${escapeHtml(ctrl.cfgKey)}" placeholder="${placeholder}">${escapeHtml(curVal)}</textarea>
+                <p class="text-[10px] text-tg-textSecondary mt-1">${escapeHtml(i18nT('maintenance.ai.tags.labels_help', "One tag per line or comma-separated. Leave empty to use the sidecar's built-in vocabulary."))}</p>
+            </label>
+        `;
+    }
     return '';
 }
 
@@ -1137,12 +1254,23 @@ const _CTRL_SAVE_PATHS = {
 
 async function _saveControl(ctrl, inp) {
     const raw = inp.value;
+    let v;
     // Numeric controls (slider / number) save the parsed number; select
     // controls keep the value as a string — `_CTRL_SAVE_PATHS` carries
-    // the alias mapping for both.
-    const isStringCtrl = ctrl.type === 'select';
-    const v = isStringCtrl ? String(raw || '') : Number(raw);
-    if (!isStringCtrl && !Number.isFinite(v)) return;
+    // the alias mapping for both. Custom controls (textarea) save
+    // comma-separated strings parsed into arrays.
+    if (ctrl.type === 'custom') {
+        const parts = String(raw || '')
+            .split(/[,\n]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        v = parts.length ? parts : [];
+    } else if (ctrl.type === 'select') {
+        v = String(raw || '');
+    } else {
+        v = Number(raw);
+        if (!Number.isFinite(v)) return;
+    }
     try {
         // Build a payload that updates BOTH the legacy flat key AND
         // the nested faces.* path so the merger picks up the new value

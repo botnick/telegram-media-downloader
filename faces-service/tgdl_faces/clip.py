@@ -337,6 +337,7 @@ class CLIPTagger:
         *,
         threshold: float | None = None,
         top_k: int | None = None,
+        vocabulary: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Score ``image_bgr`` against the tag vocabulary.
 
@@ -349,6 +350,10 @@ class CLIPTagger:
             Minimum score (0..1). Defaults to the env var or 0.20.
         top_k
             Max tags to return. Defaults to the env var or 10.
+        vocabulary
+            Custom tag list. If provided, text embeddings are computed
+            on the fly for these tags. If omitted, the tagger's default
+            vocabulary is used.
 
         Returns
         -------
@@ -359,6 +364,14 @@ class CLIPTagger:
         threshold = threshold if threshold is not None else self._threshold
         top_k = top_k if top_k is not None else self._top_k
 
+        # Resolve vocabulary — custom or default
+        if vocabulary is not None and len(vocabulary) > 0:
+            vocab = vocabulary
+            text_embeddings = self._encode_texts(vocab)
+        else:
+            vocab = self._vocabulary
+            text_embeddings = self._text_embeddings
+
         # Preprocess image
         image = self._preprocess(image_bgr)
 
@@ -368,17 +381,17 @@ class CLIPTagger:
         emb = emb / max(float(np.linalg.norm(emb)), 1e-9)
 
         # Cosine similarity against every tag embedding
-        scores = np.dot(self._text_embeddings, emb)
+        scores = np.dot(text_embeddings, emb)
         # Softmax over the vocabulary to get probability-like scores
         scores = np.exp(scores - scores.max())
         scores = scores / scores.sum()
 
         # Build result list
         results: list[dict[str, Any]] = []
-        for i in range(len(self._vocabulary)):
+        for i in range(len(vocab)):
             s = float(scores[i])
             if s >= threshold:
-                results.append({"tag": self._vocabulary[i], "score": round(s, 4)})
+                results.append({"tag": vocab[i], "score": round(s, 4)})
 
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]

@@ -6500,6 +6500,32 @@ app.get('/api/ai/status', async (_req, res) => {
     }
 });
 
+// ---- Tag browsing ---------------------------------------------------------
+
+app.get('/api/ai/tags/list', async (req, res) => {
+    try {
+        const { listAllTags } = await import('../core/db/faces.js');
+        const tags = listAllTags({ minCount: 1 });
+        res.json({ success: true, tags });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/ai/tags/photos', async (req, res) => {
+    try {
+        const tag = String(req.query.tag || '').trim();
+        if (!tag) return res.status(400).json({ error: 'tag query param required' });
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+        const offset = Math.max(0, Number(req.query.offset) || 0);
+        const { listPhotosForTag } = await import('../core/db/faces.js');
+        const result = listPhotosForTag(tag, { limit, offset });
+        res.json({ success: true, ...result });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ---- Scan controls -------------------------------------------------------
 //
 // Faces is the only feature left; the legacy `feature: 'embed' | 'tags'`
