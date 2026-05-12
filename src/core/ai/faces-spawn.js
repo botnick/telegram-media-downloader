@@ -48,7 +48,10 @@ function _resolveCudaBinDirs(pyBin) {
     const addBin = (base) => {
         if (!base) return;
         const bin = path.join(String(base), 'bin');
-        if (!seen.has(bin) && existsSync(bin)) { seen.add(bin); dirs.push(bin); }
+        if (!seen.has(bin) && existsSync(bin)) {
+            seen.add(bin);
+            dirs.push(bin);
+        }
     };
 
     // 1. CUDA Toolkit env vars (set by installer — no reboot needed if process restarts).
@@ -65,7 +68,9 @@ function _resolveCudaBinDirs(pyBin) {
                 .filter((d) => /^v12\.\d+$/i.test(d))
                 .sort((a, b) => Number(b.replace('v12.', '')) - Number(a.replace('v12.', '')))
                 .forEach((d) => addBin(path.join(cudaBase, d)));
-        } catch { /* non-fatal */ }
+        } catch {
+            /* non-fatal */
+        }
     }
 
     // 3. pip-installed nvidia-* packages (nvidia-cudnn-cu12, nvidia-cublas-cu12, …).
@@ -85,12 +90,14 @@ function _resolveCudaBinDirs(pyBin) {
                     windowsHide: true,
                 });
                 if (!r.error && r.status === 0) {
-                    const first = String(r.stdout).split(/\r?\n/).find(
-                        (l) => /\.exe$/i.test(l.trim()),
-                    );
+                    const first = String(r.stdout)
+                        .split(/\r?\n/)
+                        .find((l) => /\.exe$/i.test(l.trim()));
                     if (first) pyHome = path.dirname(first.trim());
                 }
-            } catch { /* non-fatal */ }
+            } catch {
+                /* non-fatal */
+            }
         }
         if (pyHome) {
             const sitePackages = path.join(pyHome, 'Lib', 'site-packages');
@@ -98,7 +105,9 @@ function _resolveCudaBinDirs(pyBin) {
             if (existsSync(nvidiaDir)) {
                 try {
                     readdirSync(nvidiaDir).forEach((pkg) => addBin(path.join(nvidiaDir, pkg)));
-                } catch { /* non-fatal */ }
+                } catch {
+                    /* non-fatal */
+                }
             }
         }
     }
@@ -111,7 +120,7 @@ function _resolveCudaBinDirs(pyBin) {
  * on next boot — release `faces-v<X>` on the GitHub repo must exist with
  * the matching `tgdl-faces-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.2.0';
+export const SIDECAR_VERSION = '0.3.0';
 
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/faces-v${SIDECAR_VERSION}`;
 
@@ -499,7 +508,10 @@ async function _doStart() {
                     // at info. Unexpected exits (crash, OOM) keep _child intact
                     // and warrant a warn.
                     const unexpected = pyHealthy && _child === pyChild;
-                    _log(unexpected ? 'warn' : 'info', `python fallback exited code=${code} signal=${signal}`);
+                    _log(
+                        unexpected ? 'warn' : 'info',
+                        `python fallback exited code=${code} signal=${signal}`,
+                    );
                     // Auto-restart: only when sidecar was confirmed healthy AND
                     // is still the current child (guard against stale events after
                     // a manual restart or stopSidecar()).

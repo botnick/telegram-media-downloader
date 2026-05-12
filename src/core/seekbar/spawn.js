@@ -46,7 +46,7 @@ const DATA_DIR = process.env.TGDL_DATA_DIR
  * on next boot — the matching GitHub Release `seekbar-v<VER>` must exist
  * with `tgdl-seekbar-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.2.0';
+export const SIDECAR_VERSION = '0.3.0';
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/seekbar-v${SIDECAR_VERSION}`;
 const DOWNLOAD_CONNECT_TIMEOUT_MS = 30_000;
 const DOWNLOAD_REDIRECT_LIMIT = 5;
@@ -321,7 +321,7 @@ function _envFromConfig(cfg, port, token) {
     const extraDirs = _extraBinDirs();
     const envPath = extraDirs.length
         ? `${extraDirs.join(path.delimiter)}${path.delimiter}${process.env.PATH || ''}`
-        : (process.env.PATH || '');
+        : process.env.PATH || '';
     // Resolve explicit binary paths so the Go sidecar gets the exact binary
     // rather than relying on PATH ordering. Honour any operator-set
     // SEEKBAR_FFMPEG / SEEKBAR_FFPROBE first, then fall back to the Node
@@ -391,7 +391,10 @@ async function _spawnLocal(cfg) {
         if (!_broadcast) return;
         for (const line of text.split('\n')) {
             const l = line.trim();
-            if (l) try { _broadcast({ type: 'log', source: 'seekbar-sidecar', level, msg: l }); } catch {}
+            if (l)
+                try {
+                    _broadcast({ type: 'log', source: 'seekbar-sidecar', level, msg: l });
+                } catch {}
         }
     };
     thisChild.stdout.on('data', (c) => _pipeLog('info', c));
@@ -421,7 +424,9 @@ async function _spawnLocal(cfg) {
     // Guard: a concurrent refreshSidecar() may have replaced _child already.
     if (_child !== thisChild) return false;
     if (!healthy) {
-        try { thisChild.kill('SIGTERM'); } catch {}
+        try {
+            thisChild.kill('SIGTERM');
+        } catch {}
         _child = null;
         _setState({ ok: false, url, mode: 'unhealthy', error: 'health probe failed', pid: null });
         return false;
