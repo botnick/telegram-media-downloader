@@ -57,7 +57,11 @@ import {
     getNsfwIdsByTier,
     reclassifyNsfw,
 } from '../../core/db/faces.js';
-import { getThumbsCacheStats, hasFfmpeg } from '../../core/thumbs.js';
+import {
+    ALLOWED_WIDTHS as THUMB_WIDTHS,
+    getThumbsCacheStats,
+    hasFfmpeg,
+} from '../../core/thumbs.js';
 import { loginVerify, isAuthConfigured, revokeAllSessions } from '../../core/web-auth.js';
 import {
     getScanState as nsfwGetScanState,
