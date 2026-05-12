@@ -1427,7 +1427,7 @@ const _jobTrackers = {
 app.use('/api', createVersionRouter({ broadcast, autoUpdateTracker: _jobTrackers.autoUpdate }));
 app.use('/api', createStoriesRouter({ getAccountManager }));
 app.use('/api', createQueueRouter({ broadcast }));
-app.use('/', createAuthRouter({ broadcast }));
+app.use('/api', createAuthRouter({ broadcast }));
 app.use('/api', createAccountsRouter({ getAccountManager }));
 app.use('/api', createMonitorRouter({ getAccountManager }));
 app.use(
