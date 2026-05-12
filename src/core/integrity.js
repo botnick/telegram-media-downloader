@@ -278,6 +278,17 @@ function resolveGroupId(folderName, configGroups) {
 
 let _reindexRunning = false;
 
+function _isCatalogJunkFile(name) {
+    const n = String(name || '');
+    if (!n) return true;
+    if (n === '.DS_Store') return true;
+    if (n === 'Thumbs.db') return true;
+    if (n === 'desktop.ini') return true;
+    // AppleDouble sidecars created on network / non-HFS filesystems.
+    if (n.startsWith('._')) return true;
+    return false;
+}
+
 /**
  * Walk `data/downloads/` and INSERT rows for files that the catalogue
  * doesn't already know about. Idempotent: existing `(group_id, message_id)`
@@ -309,6 +320,22 @@ export async function reindexFromDisk(configGroups, onProgress) {
         startedAt: Date.now(),
     };
     try {
+        // Prune known OS metadata rows that should never be part of the
+        // media catalogue (legacy rows from earlier reindex passes).
+        try {
+            getDb()
+                .prepare(
+                    `DELETE FROM downloads
+                      WHERE file_name = '.DS_Store'
+                         OR file_name = 'Thumbs.db'
+                         OR file_name = 'desktop.ini'
+                         OR file_name LIKE '._%'`,
+                )
+                .run();
+        } catch {
+            /* best-effort cleanup */
+        }
+
         let topEntries = [];
         try {
             topEntries = await fs.readdir(DOWNLOADS_DIR, { withFileTypes: true });
@@ -344,6 +371,10 @@ export async function reindexFromDisk(configGroups, onProgress) {
                     }
                     for (const f of files) {
                         if (!f.isFile()) continue;
+                        if (_isCatalogJunkFile(f.name)) {
+                            result.skipped += 1;
+                            continue;
+                        }
                         const fullAbs = path.join(DOWNLOADS_DIR, folderName, typeFolder, f.name);
                         const relPath = path.posix
                             .join(folderName, typeFolder, f.name)
@@ -360,6 +391,10 @@ export async function reindexFromDisk(configGroups, onProgress) {
                         });
                     }
                 } else if (sub.isFile()) {
+                    if (_isCatalogJunkFile(sub.name)) {
+                        result.skipped += 1;
+                        continue;
+                    }
                     const fullAbs = path.join(DOWNLOADS_DIR, folderName, sub.name);
                     const relPath = path.posix.join(folderName, sub.name).replace(/\\/g, '/');
                     await _ingestOne({
