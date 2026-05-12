@@ -600,6 +600,7 @@
     "status.active": "Active:",
     "status.files": "Files:",
     "status.disk": "Disk:",
+    "status.groups": "Groups:",
     "shortcuts.title": "Keyboard shortcuts",
     "shortcuts.cheatsheet": "Open this shortcuts cheatsheet",
     "shortcuts.close_modal": "Close any modal / sheet / drawer",
