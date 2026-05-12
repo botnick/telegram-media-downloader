@@ -406,23 +406,41 @@ async function _doStart() {
                     'info',
                     `starting via python fallback (no prebuilt binary): ${fallback.pyBin}`,
                 );
-                _child = fallback.child;
-                _wirePipeLogging(fallback.child.stdout, 'info');
+                const pyChild = fallback.child;
+                _child = pyChild;
+                _wirePipeLogging(pyChild.stdout, 'info');
                 // Python's `logging.basicConfig(stream=sys.stderr)` is the
                 // standard config; uvicorn likewise writes INFO/access to
                 // stderr. Default unparseable lines to 'info' (not 'error')
                 // so a clean boot doesn't paint the log feed red.
                 // `_inferPyLevel` still upgrades any line containing
                 // ERROR / CRITICAL / WARNING to the matching level.
-                _wirePipeLogging(fallback.child.stderr, 'info');
+                _wirePipeLogging(pyChild.stderr, 'info');
                 let exited = false;
                 let exitInfo = null;
-                fallback.child.on('exit', (code, signal) => {
+                // `pyHealthy` is true only after the initial health probe succeeds.
+                // The exit handler uses it to distinguish a crash-during-startup
+                // (let _doStart's cleanup run) from a crash-while-running
+                // (trigger auto-restart).
+                let pyHealthy = false;
+                pyChild.on('exit', (code, signal) => {
                     exited = true;
                     exitInfo = { code, signal };
                     _log('warn', `python fallback exited code=${code} signal=${signal}`);
+                    // Auto-restart: only when sidecar was confirmed healthy AND
+                    // is still the current child (guard against stale events after
+                    // a manual restart or stopSidecar()).
+                    if (pyHealthy && _child === pyChild) {
+                        _child = null;
+                        _childUrl = null;
+                        _state = 'spawning';
+                        _broadcast({ type: 'ai_faces_status', ok: false, state: 'relaunching' });
+                        setTimeout(() => {
+                            if (!_starting) startSidecar().catch(() => {});
+                        }, 5000);
+                    }
                 });
-                fallback.child.on('error', (e) => {
+                pyChild.on('error', (e) => {
                     exited = true;
                     exitInfo = { error: e };
                     _log('error', `python fallback error: ${e?.message || e}`);
@@ -442,11 +460,7 @@ async function _doStart() {
                         setSidecarUrl(url);
                         _log('info', `sidecar healthy at ${url} (pid=${_child?.pid}, mode=python)`);
                         _firstBoot = false;
-                        // No health monitor for the Python fallback — the
-                        // operator's Python install is the source of truth;
-                        // we don't try to relaunch it from a separate binary
-                        // path. The standard `_scheduleHealthMonitor` would
-                        // try to re-spawn from `binPath` (which is missing).
+                        pyHealthy = true; // Enable auto-restart for future unexpected exits.
                         await _maybeMigrateDim(url);
                         _broadcast({
                             type: 'ai_faces_status',
