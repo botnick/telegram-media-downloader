@@ -8,7 +8,7 @@ from PIL import Image
 
 _LOG = logging.getLogger(__name__)
 
-_TESSERACT_AVAILABLE = False
+_TESSERACT_AVAILABLE = None
 _TESSERACT_ERROR = None
 
 
@@ -20,17 +20,20 @@ def _check_tesseract():
     try:
         pytesseract.pytesseract.get_tesseract_version()
         _TESSERACT_AVAILABLE = True
+        _LOG.info("Tesseract OCR is available")
         return True
     except Exception as e:
-        _TESSERACT_ERROR = str(e)
-        _LOG.warning(f"Tesseract not available: {e}")
+        _TESSERACT_ERROR = str(e) or f"{type(e).__name__}: tesseract binary not found in PATH"
+        _LOG.warning(f"Tesseract not available: {_TESSERACT_ERROR}")
         _TESSERACT_AVAILABLE = False
         return False
 
 
 def is_ready() -> bool:
     """Check if OCR is ready to use."""
-    return _check_tesseract()
+    result = _check_tesseract()
+    _LOG.info(f"OCR is_ready check: {result}, error: {_TESSERACT_ERROR}")
+    return result
 
 
 def last_error() -> str | None:
