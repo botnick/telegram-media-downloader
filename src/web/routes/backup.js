@@ -1,4 +1,5 @@
 import express from 'express';
+import * as backup from '../../core/backup/index.js';
 
 export function createBackupRouter({ log }) {
     const router = express.Router();

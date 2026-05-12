@@ -1,6 +1,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs, { existsSync } from 'fs';
+import fs from 'fs/promises';
+import { existsSync, readdirSync } from 'fs';
 import express from 'express';
 import { loadConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
@@ -1020,7 +1021,7 @@ export function createDownloadsRouter({
         const r = tracker.tryStart(async ({ onProgress }) => {
             let totalFiles = 0;
             const dirs = existsSync(DOWNLOADS_DIR)
-                ? fs.readdirSync(DOWNLOADS_DIR, { withFileTypes: true })
+                ? readdirSync(DOWNLOADS_DIR, { withFileTypes: true })
                 : [];
             const groupDirs = dirs.filter((d) => d.isDirectory());
             const totalGroups = groupDirs.length;
@@ -1029,7 +1030,7 @@ export function createDownloadsRouter({
             for (const dir of groupDirs) {
                 const dirPath = path.join(DOWNLOADS_DIR, dir.name);
                 try {
-                    totalFiles += fs.readdirSync(dirPath, { recursive: true }).length;
+                    totalFiles += readdirSync(dirPath, { recursive: true }).length;
                 } catch {}
                 await fs.rm(dirPath, { recursive: true, force: true });
                 processed += 1;
@@ -1044,7 +1045,7 @@ export function createDownloadsRouter({
             await writeConfigAtomic(config);
 
             if (existsSync(PHOTOS_DIR)) {
-                const photos = fs.readdirSync(PHOTOS_DIR);
+                const photos = readdirSync(PHOTOS_DIR);
                 for (const photo of photos) {
                     await fs.unlink(path.join(PHOTOS_DIR, photo)).catch(() => {});
                 }

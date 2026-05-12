@@ -1,6 +1,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs, { existsSync } from 'fs';
+import fs from 'fs/promises';
+import { existsSync, readdirSync, realpathSync } from 'fs';
 import express from 'express';
 import { loadConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
@@ -236,7 +237,7 @@ export function createGroupsRouter({
             if (existsSync(folderPath)) {
                 const countFiles = (dir) => {
                     let count = 0;
-                    const items = fs.readdirSync(dir, { withFileTypes: true });
+                    const items = readdirSync(dir, { withFileTypes: true });
                     for (const item of items) {
                         if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
                         else count++;
@@ -350,7 +351,7 @@ export function createGroupsRouter({
             if (existsSync(folderPath)) {
                 const countFiles = (dir) => {
                     let count = 0;
-                    const items = fs.readdirSync(dir, { withFileTypes: true });
+                    const items = readdirSync(dir, { withFileTypes: true });
                     for (const item of items) {
                         if (item.isDirectory()) count += countFiles(path.join(dir, item.name));
                         else count++;
@@ -772,8 +773,8 @@ export function createGroupsRouter({
         // its descendants is a symlink that points outside the data dir.
         const send = () => {
             try {
-                const real = fs.realpathSync(photoPath);
-                const realRoot = fs.realpathSync(PHOTOS_DIR);
+                const real = realpathSync(photoPath);
+                const realRoot = realpathSync(PHOTOS_DIR);
                 if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
                     return res.status(400).send('Path escape detected');
                 }
