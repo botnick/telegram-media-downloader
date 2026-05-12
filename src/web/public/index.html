@@ -3321,90 +3321,123 @@
                         </div>
                     </section>
 
-                    <!-- People (face clusters) — the surface today.
-                         Search box + Unlabeled-only chip + refresh on
-                         top, then the cluster grid. Clicking a tile
-                         opens the details panel (photos + Rename /
-                         Merge / Split / Delete). Double-clicking the
-                         name label on any tile opens the rename prompt. -->
+                    <!-- People — face clusters grid -->
                     <section id="ai-pane-people" class="bg-tg-panel rounded-xl p-4 mb-3" role="region" aria-label="Face clusters">
-                        <div class="flex items-center gap-2 mb-3 flex-wrap">
-                            <i class="ri-group-line text-tg-blue"></i>
-                            <h3 class="text-tg-text text-sm font-medium" data-i18n="maintenance.ai.people.heading">People</h3>
-                            <span id="ai-people-count" class="text-[10.5px] text-tg-textSecondary"></span>
+
+                        <!-- Header row -->
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <div class="w-8 h-8 rounded-xl bg-tg-blue/15 flex items-center justify-center flex-shrink-0">
+                                    <i class="ri-group-2-line text-tg-blue"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 class="text-tg-text text-sm font-semibold leading-none" data-i18n="maintenance.ai.people.heading">People</h3>
+                                    <p id="ai-people-count" class="text-[10px] text-tg-textSecondary mt-0.5 truncate"></p>
+                                </div>
+                            </div>
+                            <button id="ai-people-refresh-btn" type="button"
+                                class="tg-btn-secondary w-7 h-7 p-0 inline-flex items-center justify-center flex-shrink-0"
+                                title="Refresh people grid">
+                                <i class="ri-refresh-line text-sm"></i>
+                            </button>
                         </div>
 
-                        <!-- Epsilon mega-merge warning — shown by JS when one
-                             cluster dominates >25% of all faces, which signals
-                             ε is too high. Hidden by default. -->
-                        <div id="ai-epsilon-warning" class="hidden mb-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 text-xs">
-                            <i class="ri-error-warning-line shrink-0 mt-0.5"></i>
+                        <!-- Epsilon over-merge warning (hidden by default) -->
+                        <div id="ai-epsilon-warning" class="hidden mb-3 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-400/20 text-amber-300 text-xs">
+                            <i class="ri-alert-line shrink-0 mt-px"></i>
                             <span data-i18n="maintenance.ai.epsilon_warning">One cluster contains an unusually large share of all faces — the DBSCAN ε threshold may be too high, causing different people to merge. Try lowering ε and running Re-cluster.</span>
                         </div>
 
-                        <div class="flex items-center gap-2 flex-wrap mb-3">
-                            <input id="ai-people-search" type="search" class="tg-input flex-1 min-w-[140px] text-xs py-1.5"
-                                placeholder="Search names or IDs…" data-i18n-placeholder="maintenance.ai.people.search_placeholder"
-                                autocomplete="off" spellcheck="false">
-                            <label class="inline-flex items-center gap-1 text-[11px] text-tg-textSecondary cursor-pointer select-none">
+                        <!-- Search + filter row -->
+                        <div class="flex items-center gap-2 mb-4">
+                            <div class="relative flex-1 min-w-0">
+                                <i class="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-tg-textSecondary/50 text-[13px] pointer-events-none"></i>
+                                <input id="ai-people-search" type="search"
+                                    class="tg-input w-full pl-7 pr-3 text-xs py-1.5"
+                                    placeholder="Search people…"
+                                    data-i18n-placeholder="maintenance.ai.people.search_placeholder"
+                                    autocomplete="off" spellcheck="false">
+                            </div>
+                            <label class="inline-flex items-center gap-1 text-[11px] text-tg-textSecondary cursor-pointer select-none flex-shrink-0">
                                 <input id="ai-people-unlabeled" type="checkbox" class="accent-tg-blue">
-                                <span data-i18n="maintenance.ai.people.unlabeled_only">Unlabeled only</span>
+                                <span data-i18n="maintenance.ai.people.unlabeled_only">Unlabeled</span>
                             </label>
-                            <button id="ai-people-refresh-btn" type="button" class="tg-btn-secondary text-[11px] px-2 py-1 inline-flex items-center gap-1"
-                                title="Refresh the people grid">
-                                <i class="ri-refresh-line"></i>
-                            </button>
                         </div>
-                        <div id="ai-people-empty" class="hidden text-center py-8 text-sm text-tg-textSecondary">
-                            <i class="ri-user-search-line text-3xl block mb-2 text-tg-textSecondary/60"></i>
-                            <div data-i18n="maintenance.ai.people_empty">No people clustered yet. Run a scan above.</div>
-                        </div>
-                        <!-- Context-aware help — text set by JS based on sidecar
-                             state / scan result. Shows "Try Sensitive preset" hint
-                             when scan ran but 0 people were found. -->
-                        <div id="ai-people-empty-help" class="hidden mt-2 text-center text-[11px] text-tg-textSecondary/80 max-w-sm mx-auto leading-relaxed"></div>
 
-                        <!-- Test-detection form — shown in empty state when sidecar is up + scan ran.
-                             Enter a download ID to run a single detect call and see the raw result. -->
+                        <!-- Empty state -->
+                        <div id="ai-people-empty" class="hidden text-center py-12">
+                            <div class="w-16 h-16 rounded-2xl bg-tg-bg/50 flex items-center justify-center mx-auto mb-3">
+                                <i class="ri-user-search-line text-3xl text-tg-textSecondary/40"></i>
+                            </div>
+                            <p class="text-sm text-tg-textSecondary font-medium mb-1" data-i18n="maintenance.ai.people_empty">No people clustered yet.</p>
+                            <p class="text-[11px] text-tg-textSecondary/60">Run a scan above to get started.</p>
+                        </div>
+                        <div id="ai-people-empty-help" class="hidden mt-2 text-center text-[11px] text-tg-textSecondary/70 max-w-xs mx-auto leading-relaxed"></div>
+
+                        <!-- Test-detection diagnostic (shown only after scan with 0 people) -->
                         <div id="ai-detect-test-form" class="hidden mt-4 text-center">
-                            <div class="text-[11px] text-tg-textSecondary/70 mb-2" data-i18n="maintenance.ai.detect_test_hint">Diagnose: enter a Download ID to test detection on that photo:</div>
+                            <p class="text-[11px] text-tg-textSecondary/70 mb-2" data-i18n="maintenance.ai.detect_test_hint">Diagnose: enter a Download ID to test detection on that photo:</p>
                             <div class="flex items-center gap-2 justify-center">
                                 <input id="ai-detect-test-id" type="number" min="1"
-                                       class="tg-input text-xs px-2 py-1.5 w-28 text-center"
-                                       data-i18n-placeholder="maintenance.ai.detect_test_placeholder"
-                                       placeholder="Download ID" />
+                                    class="tg-input text-xs px-2 py-1.5 w-28 text-center"
+                                    data-i18n-placeholder="maintenance.ai.detect_test_placeholder"
+                                    placeholder="Download ID">
                                 <button id="ai-detect-test-btn" type="button"
-                                        class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                    class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
                                     <i class="ri-test-tube-line"></i>
                                     <span data-i18n="maintenance.ai.detect_test_run">Test</span>
                                 </button>
                             </div>
-                            <div id="ai-detect-test-result" class="hidden mt-3 text-[11px] text-left bg-tg-bg/50 border border-white/10 rounded-lg p-3 max-w-sm mx-auto font-mono whitespace-pre-wrap break-all leading-relaxed"></div>
+                            <div id="ai-detect-test-result" class="hidden mt-3 text-[11px] text-left bg-tg-bg/50 border border-white/10 rounded-xl p-3 max-w-sm mx-auto font-mono whitespace-pre-wrap break-all leading-relaxed"></div>
                         </div>
 
-                        <!-- People gallery grid: 3 cols on mobile, 4 on sm, 5 on md, 6 on lg. -->
-                        <div id="ai-people-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5"></div>
+                        <!-- People grid -->
+                        <div id="ai-people-grid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2"></div>
 
-                        <!-- Person face browser — revealed when a person card is
-                             clicked. Photos shown in a 4-col grid (2 on mobile).
-                             Each photo may show a face-box highlight if the API
-                             returns bbox data with the download row. -->
-                        <div id="ai-people-photos" class="hidden mt-4 pt-3 border-t border-tg-border/30">
-                            <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                                <div class="text-xs text-tg-textSecondary">
-                                    <span data-i18n="maintenance.ai.people_photos_for">Photos for</span>
-                                    <span id="ai-people-photos-name" class="text-tg-text font-medium ml-1"></span>
+                        <!-- Person detail panel — shown when a person card is clicked -->
+                        <div id="ai-people-photos" class="hidden mt-4 rounded-xl bg-tg-bg/30 border border-white/5 overflow-hidden">
+                            <!-- Person header -->
+                            <div class="flex items-center justify-between gap-3 px-3 py-3 border-b border-white/5">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div id="ai-person-detail-avatar"
+                                        class="w-10 h-10 rounded-full overflow-hidden bg-tg-bg/60 flex items-center justify-center flex-shrink-0 ring-2 ring-tg-blue/30">
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-1.5 min-w-0">
+                                            <span id="ai-people-photos-name" class="text-sm font-semibold text-tg-text truncate max-w-[160px] sm:max-w-none"></span>
+                                            <button id="ai-person-rename-btn"
+                                                class="text-tg-textSecondary/40 hover:text-tg-blue transition-colors flex-shrink-0"
+                                                title="Rename (or double-click name on tile)">
+                                                <i class="ri-edit-line text-[13px]"></i>
+                                            </button>
+                                        </div>
+                                        <p id="ai-person-photo-count" class="text-[11px] text-tg-textSecondary/70 mt-0.5"></p>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-1.5 flex-wrap">
-                                    <button id="ai-person-rename-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1" title="Rename (or double-click name on tile)"><i class="ri-edit-line"></i><span data-i18n="maintenance.ai.people.actions.rename">Rename</span></button>
-                                    <button id="ai-person-merge-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-git-merge-line"></i><span data-i18n="maintenance.ai.people.actions.merge">Merge…</span></button>
-                                    <button id="ai-person-split-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"><i class="ri-scissors-cut-line"></i><span data-i18n="maintenance.ai.people.actions.split">Split…</span></button>
-                                    <button id="ai-person-delete-btn" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1 text-red-300"><i class="ri-delete-bin-line"></i><span data-i18n="maintenance.ai.people.actions.delete">Delete</span></button>
+                                <div class="flex items-center gap-1 flex-shrink-0">
+                                    <button id="ai-person-merge-btn"
+                                        class="tg-btn-secondary text-[11px] px-2 py-1.5 inline-flex items-center gap-1.5"
+                                        title="Merge into another cluster">
+                                        <i class="ri-git-merge-line"></i>
+                                        <span class="hidden sm:inline" data-i18n="maintenance.ai.people.actions.merge">Merge</span>
+                                    </button>
+                                    <button id="ai-person-split-btn"
+                                        class="tg-btn-secondary text-[11px] px-2 py-1.5 inline-flex items-center gap-1.5"
+                                        title="Split cluster">
+                                        <i class="ri-scissors-cut-line"></i>
+                                        <span class="hidden sm:inline" data-i18n="maintenance.ai.people.actions.split">Split</span>
+                                    </button>
+                                    <button id="ai-person-delete-btn"
+                                        class="tg-btn-secondary text-[11px] w-8 h-8 p-0 inline-flex items-center justify-center text-red-300 hover:border-red-400/40"
+                                        title="Delete cluster">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
                                 </div>
                             </div>
-                            <!-- 3 cols on mobile, 5 on sm, 6 on md, 8 on lg. -->
-                            <div id="ai-people-photos-grid" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-1.5"></div>
+                            <!-- Face photo grid -->
+                            <div id="ai-people-photos-grid" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-1 p-1.5"></div>
                         </div>
+
                     </section>
 
                     <!-- Future capabilities footer — a single muted

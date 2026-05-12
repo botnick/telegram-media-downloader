@@ -1179,8 +1179,17 @@ function _renderPeopleGrid() {
     }
 
     grid.innerHTML = filtered.map(_personTile).join('');
+    // Restore selection highlight after re-render.
+    if (_selectedPerson) {
+        const sel = grid.querySelector(`[data-person="${_selectedPerson}"]`);
+        if (sel) sel.classList.add('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10');
+    }
     grid.querySelectorAll('[data-person]').forEach((b) => {
         b.addEventListener('click', () => {
+            grid.querySelectorAll('.ai-person-card').forEach((el) =>
+                el.classList.remove('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10'),
+            );
+            b.classList.add('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10');
             _selectedPerson = Number(b.dataset.person);
             _selectedPersonName = b.dataset.name || '';
             _showPersonPhotos();
@@ -1206,35 +1215,37 @@ function _personTile(p) {
         : p.label || `Person #${p.id}`;
     const faceCount = Number(p.face_count) || 0;
     const safeName = escapeHtml(name);
-    const dimCls = !p.label && !isUnclassified ? 'opacity-50' : '';
 
-    const faceUrl =
-        !isUnclassified && p.id > 0 ? `/api/ai/person/${p.id}/face?w=128` : '';
-    const fallbackUrl = p.cover_download_id
-        ? `/api/thumbs/${p.cover_download_id}?w=128`
-        : '';
+    const faceUrl = !isUnclassified && p.id > 0 ? `/api/ai/person/${p.id}/face?w=128` : '';
+    const fallbackUrl = p.cover_download_id ? `/api/thumbs/${p.cover_download_id}?w=128` : '';
 
     let imgHtml;
     if (faceUrl) {
         const fb = fallbackUrl
             ? `this.onerror=null;this.src='${fallbackUrl}'`
-            : `this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-xl text-tg-textSecondary/40\\'></i>'`;
+            : `this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-2xl text-tg-textSecondary/40\\'></i>'`;
         imgHtml = `<img src="${faceUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="${fb}">`;
     } else if (fallbackUrl) {
         imgHtml = `<img src="${fallbackUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover">`;
     } else {
-        imgHtml = `<i class="ri-user-line text-xl text-tg-textSecondary/40"></i>`;
+        imgHtml = `<i class="ri-user-line text-2xl text-tg-textSecondary/40"></i>`;
     }
+
+    const badge = faceCount > 0
+        ? `<span class="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-tg-blue text-white text-[9px] font-bold flex items-center justify-center leading-none border-2 border-tg-panel">${faceCount}</span>`
+        : '';
 
     return `<button type="button" data-person="${p.id}" data-name="${safeName}"
         title="${safeName} · ${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}"
-        class="flex flex-col items-center gap-1.5 px-1 py-2 rounded-xl hover:bg-tg-bg/50 active:scale-95 transition-all group text-center select-none ${dimCls}">
-        <div class="w-[52px] h-[52px] rounded-full overflow-hidden ring-2 ring-tg-border/30 group-hover:ring-tg-blue/60 transition-shadow flex items-center justify-center bg-tg-bg/40 flex-shrink-0">
-            ${imgHtml}
+        class="ai-person-card flex flex-col items-center gap-1.5 px-1 py-2.5 rounded-xl hover:bg-tg-blue/5 active:scale-95 transition-all group text-center select-none">
+        <div class="relative flex-shrink-0">
+            <div class="w-16 h-16 rounded-full overflow-hidden ring-2 ring-tg-border/30 group-hover:ring-tg-blue/60 transition-all flex items-center justify-center bg-tg-bg/40">
+                ${imgHtml}
+            </div>
+            ${badge}
         </div>
-        <div class="w-full min-w-0 space-y-0.5">
+        <div class="w-full min-w-0">
             <div class="ai-person-name text-[10.5px] font-medium text-tg-text leading-tight line-clamp-2 break-words px-0.5">${safeName}</div>
-            <div class="text-[10px] text-tg-textSecondary tabular-nums">${faceCount}</div>
         </div>
     </button>`;
 }
@@ -1245,6 +1256,17 @@ async function _showPersonPhotos() {
     if (photosPanel) photosPanel.classList.remove('hidden');
     const nameEl = $('#ai-people-photos-name');
     if (nameEl) nameEl.textContent = _selectedPersonName;
+
+    // Populate detail avatar immediately from the face crop endpoint.
+    const detailAvatar = $('#ai-person-detail-avatar');
+    if (detailAvatar) {
+        if (_selectedPerson > 0) {
+            detailAvatar.innerHTML = `<img src="/api/ai/person/${_selectedPerson}/face?w=80" alt="${escapeHtml(_selectedPersonName)}" loading="lazy" class="w-full h-full object-cover" onerror="this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-lg text-tg-textSecondary/40\\'></i>'">`;
+        } else {
+            detailAvatar.innerHTML = `<i class="ri-user-line text-lg text-tg-textSecondary/40"></i>`;
+        }
+    }
+
     const grid = $('#ai-people-photos-grid');
     if (!grid) return;
     grid.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-8">${escapeHtml(i18nT('common.loading', 'Loading…'))}</div>`;
@@ -1270,7 +1292,13 @@ async function _showPersonPhotos() {
         }
         if (!files.length) {
             grid.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-8">${escapeHtml(i18nT('maintenance.ai.no_photos', 'No photos in this cluster.'))}</div>`;
+            const photoCount = $('#ai-person-photo-count');
+            if (photoCount) photoCount.textContent = '';
             return;
+        }
+        const photoCount = $('#ai-person-photo-count');
+        if (photoCount) {
+            photoCount.textContent = `${files.length.toLocaleString()} ${i18nT('maintenance.ai.faces_short', 'appearances')}`;
         }
         grid.innerHTML = files.map(_photoTile).join('');
     } catch (e) {
@@ -1297,10 +1325,10 @@ function _photoTile(row) {
     const onerrorAttr = onerror ? ` onerror="${onerror}"` : '';
 
     return `
-        <a href="#/files/${id}" class="block group relative rounded-lg overflow-hidden" title="${name}">
+        <a href="#/files/${id}" class="block group relative rounded-lg overflow-hidden" title="${name}" data-face-id="${faceId}">
             <img src="${imgSrc}" alt="${name}" loading="lazy"${onerrorAttr}
-                class="aspect-square w-full object-cover bg-tg-bg/40">
-            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
+                class="aspect-square w-full object-cover bg-tg-bg/40 transition-transform duration-200 group-hover:scale-105">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
         </a>
     `;
 }
