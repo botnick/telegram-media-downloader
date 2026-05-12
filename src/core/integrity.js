@@ -260,6 +260,19 @@ function resolveGroupId(folderName, configGroups) {
             return { id: String(g.id), name: g.name };
         }
     }
+    // 3. Comment-group folder — strip trailing `_(comments)` or ` (comments)`,
+    //    match the parent group, and return a `comment:<parentId>` id so
+    //    reindex doesn't create a new `unknown:` entry for these folders.
+    const commentSuffix = /[_ ]\(comments\)$/i;
+    if (commentSuffix.test(folderName)) {
+        const parentFolder = folderName.replace(commentSuffix, '');
+        for (const g of configGroups) {
+            const sanitised = sanitizeName(g.name || '');
+            if ((sanitised && sanitised === parentFolder) || String(g.id) === parentFolder) {
+                return { id: `comment:${g.id}`, name: `${g.name} (comments)` };
+            }
+        }
+    }
     return null;
 }
 

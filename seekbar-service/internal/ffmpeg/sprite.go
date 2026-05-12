@@ -99,7 +99,9 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		if qv > 31 {
 			qv = 31
 		}
-		args = append(args, "-q:v", strconv.Itoa(qv))
+		// Temp file extension (.jpg.tmp.XXXX) is not a known ffmpeg format,
+		// so declare the codec and muxer explicitly.
+		args = append(args, "-c:v", "mjpeg", "-f", "image2", "-q:v", strconv.Itoa(qv))
 	default:
 		args = append(args,
 			"-c:v", "libwebp",
