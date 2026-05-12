@@ -20,7 +20,7 @@ import { escapeHtml, formatBytes, showToast } from './utils.js';
 import { confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { loadAdvanced, setupAutoSave } from './settings.js';
-import { openMediaViewerSingle } from './viewer.js';
+import { openMediaViewerForReview } from './viewer.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -522,6 +522,17 @@ function _tileToViewerFile(tile) {
     };
 }
 
+// Open the clicked tile inside the viewer with the full visible page list so
+// the < > arrows navigate across all tiles — not just the single clicked one.
+function _openTileInViewer(grid, clickedTile) {
+    const allTiles = Array.from(grid.querySelectorAll('.thumbs-gallery-tile:not(.is-skeleton)'));
+    const files = allTiles.map(_tileToViewerFile).filter(Boolean);
+    const clickedFile = _tileToViewerFile(clickedTile);
+    if (!clickedFile) return;
+    const idx = files.findIndex((f) => f.fullPath === clickedFile.fullPath);
+    openMediaViewerForReview(files, Math.max(0, idx));
+}
+
 // Pre-paint skeleton placeholders so the operator sees motion immediately
 // rather than an empty card while the first page is in flight.
 function _paintSkeletons(n = SKELETON_INITIAL_COUNT) {
@@ -766,12 +777,9 @@ function _wireGallery() {
                 _retryTile(tile);
                 return;
             }
-            // Open in the in-app lightbox (same widget the NSFW review
-            // and gallery viewer share) instead of `window.open()`. The
-            // viewer handles images / videos / future preview kinds; the
-            // file shape it expects is built by `_tileToViewerFile`.
-            const file = _tileToViewerFile(tile);
-            if (file) openMediaViewerSingle(file);
+            // Open in the in-app lightbox with the full page list so the
+            // < > navigation arrows work across all visible tiles.
+            _openTileInViewer(grid, tile);
         });
         // Keyboard activation — Space and Enter both open the lightbox so
         // operators driving with a screen reader get the same affordance.
@@ -784,8 +792,7 @@ function _wireGallery() {
                 _retryTile(tile);
                 return;
             }
-            const file = _tileToViewerFile(tile);
-            if (file) openMediaViewerSingle(file);
+            _openTileInViewer(grid, tile);
         });
     }
     // Empty-state CTA — start a build right from the empty placeholder so

@@ -43,7 +43,7 @@ const DATA_DIR = process.env.TGDL_DATA_DIR
  * on next boot — release `faces-v<X>` on the GitHub repo must exist with
  * the matching `tgdl-faces-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.1.0';
+export const SIDECAR_VERSION = '0.2.0';
 
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/faces-v${SIDECAR_VERSION}`;
 
@@ -316,14 +316,29 @@ async function _doStart() {
             downloadError = 'autoDownload=false and binary missing';
             _log('info', `${downloadError} — skipping download, will try Python fallback`);
         } else {
-            _state = 'downloading';
-            _broadcast({ type: 'ai_faces_status', ok: false, state: 'downloading' });
-            try {
-                await _downloadAndExtract(target);
-                binaryReady = _isBinaryUsable(target.binPath);
-            } catch (e) {
-                downloadError = `binary download failed: ${e?.message || e}`;
-                _log('warn', `${downloadError} — will try Python fallback`);
+            // Preflight: verify the release asset is actually published before
+            // showing a "downloading…" spinner. On dev builds (and before a
+            // GitHub Release tag is cut) the URL returns 404 — skip straight
+            // to the Python fallback rather than flooding the log with failed
+            // download attempts.
+            const primaryUrl =
+                Array.isArray(target.tarUrls) && target.tarUrls.length
+                    ? target.tarUrls[0]
+                    : target.tarUrl;
+            const published = await _releaseAvailable(primaryUrl);
+            if (!published) {
+                downloadError = `release faces-v${SIDECAR_VERSION} not published at ${primaryUrl} — skipping download`;
+                _log('info', `${downloadError} — will try Python fallback`);
+            } else {
+                _state = 'downloading';
+                _broadcast({ type: 'ai_faces_status', ok: false, state: 'downloading' });
+                try {
+                    await _downloadAndExtract(target);
+                    binaryReady = _isBinaryUsable(target.binPath);
+                } catch (e) {
+                    downloadError = `binary download failed: ${e?.message || e}`;
+                    _log('warn', `${downloadError} — will try Python fallback`);
+                }
             }
         }
     }
@@ -931,6 +946,43 @@ function _verifyBinary(binPath) {
 }
 
 // ---- Download + extract -------------------------------------------------
+
+/**
+ * Quick HEAD preflight — check whether the first candidate URL resolves to a
+ * real asset before committing to the full download. Returns true when the
+ * server responds with a 2xx or 3xx (GitHub CDN redirect); false on 404 or
+ * any network/timeout error.
+ *
+ * This avoids showing a confusing "downloading…" spinner on dev builds where
+ * the `faces-v<X>` GitHub Release tag hasn't been published yet.
+ */
+async function _releaseAvailable(url) {
+    return new Promise((resolve) => {
+        const proto = url.startsWith('https:') ? https : http;
+        let settled = false;
+        const done = (v) => {
+            if (!settled) {
+                settled = true;
+                resolve(v);
+            }
+        };
+        try {
+            const req = proto.request(url, { method: 'HEAD' }, (res) => {
+                res.resume();
+                // 2xx or 3xx (GitHub CDN redirect) = asset exists; 404 = not published
+                done(res.statusCode < 400);
+            });
+            req.on('error', () => done(false));
+            req.setTimeout(5000, () => {
+                req.destroy();
+                done(false);
+            });
+            req.end();
+        } catch {
+            done(false);
+        }
+    });
+}
 
 async function _downloadAndExtract(target) {
     await fs.mkdir(target.binDir, { recursive: true });

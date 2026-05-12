@@ -44,6 +44,13 @@ export {
     purgeAllSeekbar,
 };
 
+export function getSeekbarQueueDepths() {
+    return {
+        queued: _bgQueueRealtime.length + _bgQueueBackfill.length,
+        processing: _bgParallelCount,
+    };
+}
+
 // ---- Background pregenerate ----------------------------------------------
 //
 // Two queues — same shape as `src/core/ai/index.js`. Realtime downloads
