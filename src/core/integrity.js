@@ -48,39 +48,51 @@ export async function sweep(onProgress) {
         } catch {}
     };
     try {
-        // Stream rows via `.iterate()` instead of materialising the full
-        // result set with `.all()`. On a 1M-row library `.all()` allocates
-        // ~250 MB of JS objects up-front, which on a Synology / small VM
-        // crashes the process with `FATAL ERROR: Reached heap limit
-        // Allocation failed - JavaScript heap out of memory` inside
-        // better-sqlite3's `JS_all`. Iterator mode reuses one row buffer.
+        // Use keyset-paginated `.all()` instead of `.iterate()`. A live
+        // `.iterate()` cursor holds the better-sqlite3 connection open for
+        // its entire lifetime — if an `await` (fs.stat, Promise.all) yields
+        // control while the cursor is open, any concurrent DB write from
+        // the download manager, kv flush timer, or AI pregenerate hook
+        // lands on a busy connection and throws
+        // "This database connection is busy executing a query".
+        // Keyset paging avoids this: each `.all()` call opens and closes
+        // the statement immediately, so the connection is free during the
+        // async stat checks that follow.
         const db = getDb();
         const total = db
             .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_path IS NOT NULL`)
             .get().n;
-        const iter = db
-            .prepare(
-                `SELECT id, file_path, file_name, group_id, file_size FROM downloads WHERE file_path IS NOT NULL`,
-            )
-            .iterate();
         result.scanned = total;
         _emit({ processed: 0, total, stage: 'scanning' });
 
         // Limit concurrency so a 100k-row DB doesn't fork 100k stat() calls.
         // Tunable via config.advanced.integrity.batchSize (read at start()).
         const BATCH = Math.max(1, _batchSize | 0) || 64;
+        const PAGE_SIZE = BATCH;
         const deleteIds = [];
         // [{id, size}, ...] — rows whose actual on-disk size differs from
         // the stored value (or whose stored value is null/0). Backfilled
         // in one transaction at the end.
         const sizeFixes = [];
         let processed = 0;
-        let buf = [];
-        const drain = async () => {
-            const slice = buf;
-            buf = [];
+        // Keyset cursor — walk id DESC so newly inserted rows don't shift
+        // the window mid-scan. Start above the highest possible id.
+        let beforeId = Number.MAX_SAFE_INTEGER;
+        const pageStmt = db.prepare(
+            `SELECT id, file_path, file_name, group_id, file_size
+               FROM downloads
+              WHERE file_path IS NOT NULL
+                AND id < ?
+              ORDER BY id DESC
+              LIMIT ?`,
+        );
+        while (true) {
+            // `.all()` opens + closes the statement synchronously; the
+            // connection is free by the time the async stat checks run.
+            const page = pageStmt.all(beforeId, PAGE_SIZE);
+            if (!page.length) break;
             const checks = await Promise.all(
-                slice.map(async (r) => {
+                page.map(async (r) => {
                     let rel = String(r.file_path || '').replace(/\\/g, '/');
                     if (!rel) return null;
                     // Tolerate the legacy `data/downloads/` prefix that some
@@ -107,14 +119,12 @@ export async function sweep(onProgress) {
                 }),
             );
             for (const id of checks) if (id) deleteIds.push(id);
-            processed += slice.length;
+            processed += page.length;
+            beforeId = Number(page[page.length - 1].id);
             _emit({ processed, total, stage: 'scanning' });
-        };
-        for (const r of iter) {
-            buf.push(r);
-            if (buf.length >= BATCH) await drain();
+            await new Promise((r) => setImmediate(r));
+            if (page.length < PAGE_SIZE) break;
         }
-        if (buf.length) await drain();
 
         if (sizeFixes.length) {
             _emit({ processed, total, stage: 'fixing_sizes' });
