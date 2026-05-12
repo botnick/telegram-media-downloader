@@ -31,6 +31,7 @@ import {
     hasFfmpeg,
     hwaccelPrefix,
     resolveFfmpegBin,
+    resolveFfprobeBin,
     runFfmpegArgs,
 } from '../thumbs.js';
 import { getSidecarUrl, submitOne as sidecarSubmitOne } from './client.js';
@@ -99,31 +100,11 @@ async function _ensureSeekbarDir() {
     }
 }
 
-function _resolveFfprobeBin() {
-    // The bundled `@ffmpeg-installer` only ships `ffmpeg.exe` — sister
-    // `ffprobe` is in the parallel `@ffprobe-installer` package OR on
-    // PATH (Gyan / system-installed builds, every Linux distro). Try the
-    // installer's location first, then the shell's PATH lookup.
-    try {
-        const ffmpeg = resolveFfmpegBin();
-        if (ffmpeg) {
-            const probe = ffmpeg.endsWith('ffmpeg.exe')
-                ? ffmpeg.slice(0, -10) + 'ffprobe.exe'
-                : ffmpeg.endsWith('ffmpeg')
-                  ? ffmpeg.slice(0, -6) + 'ffprobe'
-                  : '';
-            if (probe && existsSync(probe)) return probe;
-        }
-    } catch {
-        /* fall through */
-    }
-    return process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
-}
 
 function _ffprobeDuration(absPath) {
     return new Promise((resolve) => {
         try {
-            const probe = _resolveFfprobeBin();
+            const probe = resolveFfprobeBin();
             const args = [
                 '-v',
                 'error',

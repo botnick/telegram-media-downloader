@@ -79,6 +79,7 @@
     },
     "optionalDependencies": {
         "@ffmpeg-installer/ffmpeg": "^1.1.0",
+        "@ffprobe-installer/ffprobe": "^2.1.2",
         "basic-ftp": "^5.0.5",
         "dropbox": "^10.34.0",
         "googleapis": "^144.0.0"
