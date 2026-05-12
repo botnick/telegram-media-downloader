@@ -2881,6 +2881,10 @@ async function openGroupSettings(groupId, groupName) {
     if (fwdDeleteToggle)
         fwdDeleteToggle.classList.toggle('active', fwd.deleteAfterForward === true);
 
+    // Comment media tracking
+    const commentsToggle = document.getElementById('track-comments-toggle');
+    if (commentsToggle) commentsToggle.classList.toggle('active', group?.trackComments === true);
+
     // Topics
     const topics = group?.topics || {};
     const topicsToggle = document.getElementById('topics-enable-toggle');
@@ -3197,6 +3201,10 @@ async function saveGroupSettings() {
         ? document.getElementById('group-backup-peer')?.value || ''
         : null;
 
+    // Comment media tracking
+    const trackComments =
+        document.getElementById('track-comments-toggle')?.classList.contains('active') ?? false;
+
     // Topics
     const topicsEnabled =
         document.getElementById('topics-enable-toggle')?.classList.contains('active') ?? false;
@@ -3225,6 +3233,7 @@ async function saveGroupSettings() {
             destination: fwdDest,
             deleteAfterForward: fwdDelete,
         },
+        trackComments,
         topics: {
             enabled: topicsEnabled,
             // When the user enables the filter and supplies a list, treat it

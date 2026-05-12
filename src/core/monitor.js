@@ -33,6 +33,7 @@ export class RealtimeMonitor extends EventEmitter {
             urls: 0,
         };
         this.spamGuard = new SpamGuard(); // Active Defense System
+        this.linkedChatMap = new Map(); // normalized linkedChatId -> { group, rawId }
 
         // Per-group failure reason from the most recent resolver pass.
         // Populated inside `_resolveUnknownGroup` + the discoverClientForGroup
@@ -607,6 +608,47 @@ export class RealtimeMonitor extends EventEmitter {
             }
         }
 
+        // ---- Comment tracking: discover linked discussion groups --------
+        // For groups with trackComments: true, fetch the channel's linked
+        // discussion group ID via GetFullChannel. Messages from that group
+        // are routed back through handleEvent using the parent group config.
+        this.linkedChatMap = new Map();
+        for (const group of enabledGroups) {
+            if (!group.enabled || !group.trackComments) continue;
+            try {
+                const client = this.getClientForGroup(group);
+                const result = await client.invoke(
+                    new Api.channels.GetFullChannel({ channel: group.id }),
+                );
+                const linkedId = result?.fullChat?.linkedChatId;
+                if (linkedId) {
+                    const normalizeId = (id) => String(id).replace(/^-100/, '').replace(/^-/, '');
+                    const normalizedLinkedId = normalizeId(linkedId);
+                    this.linkedChatMap.set(normalizedLinkedId, {
+                        group,
+                        rawId: linkedId,
+                    });
+                    // Seed poll cursor for linked chat
+                    try {
+                        const history = await client.getMessages(linkedId, { limit: 1 });
+                        if (history && history.length > 0) {
+                            this.lastIds.set(`comment:${group.id}`, history[0].id);
+                        }
+                    } catch {
+                        /* non-fatal */
+                    }
+                    console.log(
+                        colorize(
+                            `${new Date().toLocaleString()} 💬 Comment tracking active for "${group.name}" (linked chat: ${linkedId})`,
+                            'cyan',
+                        ),
+                    );
+                }
+            } catch (e) {
+                // Channel has no linked discussion group — skip silently
+            }
+        }
+
         // ---- Catch-up backfill (v2.3.34) -------------------------------
         //
         // For every monitored group whose newest stored message_id lags
@@ -766,6 +808,34 @@ export class RealtimeMonitor extends EventEmitter {
                 // Silent fail
             }
         }
+
+        // Poll linked discussion groups for comment media
+        if (this.linkedChatMap && this.linkedChatMap.size > 0) {
+            for (const [, { group: parentGroup, rawId }] of this.linkedChatMap) {
+                if (!parentGroup.enabled) continue;
+                await new Promise((r) => setTimeout(r, 1000));
+                try {
+                    const lastIdKey = `comment:${parentGroup.id}`;
+                    const lastId = this.lastIds.get(lastIdKey) || 0;
+                    const pollClient = this.getClientForGroup(parentGroup);
+                    const messages = await pollClient.getMessages(rawId, {
+                        minId: lastId,
+                        limit: 10,
+                    });
+                    if (messages && messages.length > 0) {
+                        messages.reverse();
+                        for (const msg of messages) {
+                            await this.handleEvent({ message: msg, client: pollClient });
+                            if (msg.id > lastId) {
+                                this.lastIds.set(lastIdKey, msg.id);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Silent fail
+                }
+            }
+        }
     }
 
     async stop() {
@@ -857,19 +927,23 @@ export class RealtimeMonitor extends EventEmitter {
 
             const targetId = normalizeId(chatId);
 
-            const group = this.config.groups.find(
-                (g) => normalizeId(g.id) === targetId && g.enabled,
-            );
+            let group = this.config.groups.find((g) => normalizeId(g.id) === targetId && g.enabled);
 
             if (!group) {
-                // Helpful log for users wondering why it's ignored
-                // Only log once per group per session to avoid spam
-                if (!this._unknownGroups) this._unknownGroups = new Set();
-                if (!this._unknownGroups.has(chatId)) {
-                    // console.log(`⚠️  Ignored message from Group ID: ${chatId} (Not enabled in Config)`);
-                    this._unknownGroups.add(chatId);
+                // Check if this is a linked discussion group (comment tracking)
+                const linkedEntry = this.linkedChatMap?.get(targetId);
+                if (linkedEntry) {
+                    group = linkedEntry.group;
+                } else {
+                    // Helpful log for users wondering why it's ignored
+                    // Only log once per group per session to avoid spam
+                    if (!this._unknownGroups) this._unknownGroups = new Set();
+                    if (!this._unknownGroups.has(chatId)) {
+                        // console.log(`⚠️  Ignored message from Group ID: ${chatId} (Not enabled in Config)`);
+                        this._unknownGroups.add(chatId);
+                    }
+                    return;
                 }
-                return;
             }
 
             // DEBUG: Matched Group

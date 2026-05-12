@@ -406,6 +406,19 @@
                             </p>
                             <input id="topics-ids" type="text" class="tg-input w-full text-sm" data-i18n-placeholder="group.topics.ids_placeholder" placeholder="e.g., 12, 34, 56">
                         </div>
+
+                        <!-- Comment media tracking — channels with a linked
+                             discussion group can download media from comments
+                             alongside post media. Opt-in per group. -->
+                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40">
+                            <label class="flex items-center justify-between">
+                                <div>
+                                    <span class="text-white text-sm font-medium" data-i18n="group.comments.title">Track comment media</span>
+                                    <p class="text-[11px] text-tg-textSecondary mt-0.5 leading-snug" data-i18n="group.comments.help">Download media posted in the comments section of this channel's posts.</p>
+                                </div>
+                                <div class="tg-toggle ml-4 shrink-0" id="track-comments-toggle" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
+                            </label>
+                        </div>
                     </div>
 
                     <!-- Routing tab — Auto-Forward + per-role account

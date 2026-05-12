@@ -336,6 +336,36 @@ export class HistoryDownloader extends EventEmitter {
                     await new Promise((r) => setTimeout(r, delay));
                 }
             }
+
+            // ---- Comment backfill (trackComments: true) -----------------
+            // After the main group pass, iterate the linked discussion group
+            // and process comment media using the same parent group config.
+            if (group.trackComments && !this.cancelFlag) {
+                try {
+                    const fullResult = await workingClient.invoke(
+                        new Api.channels.GetFullChannel({ channel: groupId }),
+                    );
+                    const linkedId = fullResult?.fullChat?.linkedChatId;
+                    if (linkedId) {
+                        this.emit('log', `💬 Backfilling comment media for "${group.name}"…`);
+                        for await (const msg of workingClient.iterMessages(linkedId, {
+                            limit: iterOpts.limit,
+                        })) {
+                            if (!this.running || this.cancelFlag) break;
+                            this.stats.processed++;
+                            await this.processMessage(msg, group, workingClient);
+                            if (this.stats.processed % 10 === 0) {
+                                this.emit('progress', {
+                                    ...this.stats,
+                                    currentId: msg.id,
+                                });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Linked chat unavailable or no comments — non-fatal
+                }
+            }
         } catch (error) {
             this.emit('error', error);
             // Re-throw so the Promise returned by downloadHistory rejects.

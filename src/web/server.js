@@ -10386,6 +10386,14 @@ app.put('/api/groups/:id', async (req, res) => {
                 };
         }
 
+        // Comment media tracking — when enabled, the real-time monitor
+        // and history backfill also poll the channel's linked discussion
+        // group for comment media. These are stored with a 'comment:'
+        // prefix in their group_id to distinguish them from the main channel.
+        if (req.body.trackComments !== undefined) {
+            group.trackComments = !!req.body.trackComments;
+        }
+
         // Multi-Account assignments
         if (req.body.monitorAccount !== undefined) {
             if (!req.body.monitorAccount) delete group.monitorAccount;
