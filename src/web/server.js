@@ -17,6 +17,7 @@ import { createRequire } from 'module';
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import crypto from 'crypto';
+import sharp from 'sharp';
 
 import { getOrGenerateSecret } from '../core/secret.js';
 import {
@@ -4679,11 +4680,10 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         // thumb purge loop hits every removed download.
         const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
         const dbDeleted = deleteDownloadsBy({ ids: allIds });
-        onProgress({ processed: total, total, stage: 'purging_thumbs' });
+        onProgress({ processed: total, total, stage: 'purging_cache' });
         for (const id of allIds) {
-            try {
-                await purgeThumbsForDownload(id);
-            } catch {}
+            try { await purgeThumbsForDownload(id); } catch {}
+            try { await purgeSeekbarForDownload(id); } catch {}
         }
         broadcast({ type: 'bulk_delete', unlinked, dbDeleted, ids: allIds });
         return { unlinked, dbDeleted, requested: total };
@@ -5158,17 +5158,33 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
             });
         }
 
-        // 2. Delete DB records
+        // 2. Collect download IDs before wiping rows so we can purge per-file caches.
+        const downloadIds = getDb()
+            .prepare('SELECT id FROM downloads WHERE group_id = ?')
+            .all(String(groupId))
+            .map((r) => r.id);
+
+        // 3. Delete DB records
         onProgress({ stage: 'deleting_rows', groupId });
         const dbResult = deleteGroupDownloads(groupId);
 
-        // 3. Remove from config
+        // 4. Remove from config
         config.groups = (config.groups || []).filter((g) => String(g.id) !== String(groupId));
         await writeConfigAtomic(config);
 
-        // 4. Delete profile photo
+        // 5. Delete profile photo
         const photoPath = path.join(PHOTOS_DIR, `${groupId}.jpg`);
         if (existsSync(photoPath)) await fs.unlink(photoPath);
+
+        // 6. Purge thumbnail + seekbar sprite cache for every deleted download.
+        const CACHE_BATCH = 50;
+        for (let i = 0; i < downloadIds.length; i += CACHE_BATCH) {
+            for (const id of downloadIds.slice(i, i + CACHE_BATCH)) {
+                try { await purgeThumbsForDownload(id); } catch {}
+                try { await purgeSeekbarForDownload(id); } catch {}
+            }
+            await new Promise((r) => setImmediate(r));
+        }
 
         console.log(
             `PURGED: ${groupName} — ${filesDeleted} files, ${dbResult.deletedDownloads} DB records`,
@@ -5271,8 +5287,25 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
                 processed: filesDeleted,
             });
         }
+        // Collect IDs before wiping rows so we can purge per-file caches.
+        const downloadIds = getDb()
+            .prepare('SELECT id FROM downloads WHERE group_id = ?')
+            .all(String(groupId))
+            .map((r) => r.id);
+
         onProgress({ stage: 'deleting_rows', groupId });
         const dbResult = deleteGroupDownloads(groupId);
+
+        // Purge thumbnail + seekbar sprite cache for every deleted download.
+        const CACHE_BATCH = 50;
+        for (let i = 0; i < downloadIds.length; i += CACHE_BATCH) {
+            for (const id of downloadIds.slice(i, i + CACHE_BATCH)) {
+                try { await purgeThumbsForDownload(id); } catch {}
+                try { await purgeSeekbarForDownload(id); } catch {}
+            }
+            await new Promise((r) => setImmediate(r));
+        }
+
         onProgress({ stage: 'done', groupId });
         try {
             broadcast({
@@ -5328,6 +5361,10 @@ app.delete('/api/purge/all', async (req, res) => {
 
         onProgress({ stage: 'deleting_rows' });
         const dbResult = deleteAllDownloads();
+
+        onProgress({ stage: 'purging_cache' });
+        await purgeAllThumbs();
+        await purgeAllSeekbar();
 
         const config = loadConfig();
         config.groups = [];
@@ -5904,9 +5941,8 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
             aggregate.freedBytes += part.freedBytes || 0;
             aggregate.missingFiles += part.missingFiles || 0;
             for (const id of slice) {
-                try {
-                    await purgeThumbsForDownload(id);
-                } catch {}
+                try { await purgeThumbsForDownload(id); } catch {}
+                try { await purgeSeekbarForDownload(id); } catch {}
             }
             processed += slice.length;
             onProgress({ processed, total, stage: 'deleting' });
@@ -6853,9 +6889,8 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
         }
         const r = dedupDeleteByIds(cleanIds);
         for (const id of cleanIds) {
-            try {
-                await purgeThumbsForDownload(id);
-            } catch {}
+            try { await purgeThumbsForDownload(id); } catch {}
+            try { await purgeSeekbarForDownload(id); } catch {}
         }
         try {
             broadcast({ type: 'bulk_delete', ids: cleanIds });
@@ -7037,9 +7072,8 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
             aggregate.freedBytes += part.freedBytes || 0;
             aggregate.missingFiles += part.missingFiles || 0;
             for (const id of slice) {
-                try {
-                    await purgeThumbsForDownload(id);
-                } catch {}
+                try { await purgeThumbsForDownload(id); } catch {}
+                try { await purgeSeekbarForDownload(id); } catch {}
             }
             processed += slice.length;
             onProgress({ stage: 'deleting', op: 'delete', processed, total });
@@ -7794,6 +7828,111 @@ app.get('/api/ai/group-by-person', async (req, res) => {
             `)
             .all(limit);
         res.json({ success: true, groups: rows });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Face crop for person avatar — best (highest-quality/largest) face for this person.
+// Used by the People grid as the circle avatar. Sharp-crops with 40% padding so the
+// face is framed, not cut tight.
+app.get('/api/ai/person/:id/face', async (req, res) => {
+    try {
+        const personId = Number(req.params.id);
+        if (!Number.isFinite(personId) || personId <= 0)
+            return res.status(400).json({ error: 'invalid person id' });
+        const size = Math.max(64, Math.min(512, Number(req.query.w) || 160));
+
+        const row = aiGetDb()
+            .prepare(
+                `SELECT f.x, f.y, f.w, f.h, d.file_path
+                   FROM faces f
+                   JOIN downloads d ON d.id = f.download_id
+                  WHERE f.person_id = ?
+                  ORDER BY COALESCE(f.quality_score, 0) DESC, f.w * f.h DESC
+                  LIMIT 1`,
+            )
+            .get(personId);
+        if (!row) return res.status(404).json({ error: 'no face found' });
+
+        const resolved = await safeResolveDownload(row.file_path);
+        if (!resolved.ok)
+            return res
+                .status(resolved.reason === 'missing' ? 404 : 403)
+                .json({ error: resolved.reason });
+
+        const pad = 0.4;
+        const meta = await sharp(resolved.real, { failOn: 'none' }).metadata();
+        const imgW = meta.width || 9999;
+        const imgH = meta.height || 9999;
+
+        const left = Math.max(0, Math.round(row.x - row.w * pad));
+        const top = Math.max(0, Math.round(row.y - row.h * pad));
+        const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
+        const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
+        const width = Math.max(1, right - left);
+        const height = Math.max(1, bottom - top);
+
+        const buf = await sharp(resolved.real, { failOn: 'none' })
+            .extract({ left, top, width, height })
+            .resize(size, size, { fit: 'cover', position: 'centre' })
+            .jpeg({ quality: 82, progressive: true })
+            .toBuffer();
+
+        res.set('content-type', 'image/jpeg');
+        res.set('cache-control', 'public, max-age=604800, immutable');
+        res.send(buf);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Face crop for an individual face (used in the per-person photo gallery).
+// Crops the face bbox from the source image with the same 40% padding.
+app.get('/api/ai/faces/:id/crop', async (req, res) => {
+    try {
+        const faceId = Number(req.params.id);
+        if (!Number.isFinite(faceId) || faceId <= 0)
+            return res.status(400).json({ error: 'invalid face id' });
+        const size = Math.max(64, Math.min(512, Number(req.query.w) || 128));
+
+        const row = aiGetDb()
+            .prepare(
+                `SELECT f.x, f.y, f.w, f.h, d.file_path
+                   FROM faces f
+                   JOIN downloads d ON d.id = f.download_id
+                  WHERE f.id = ?`,
+            )
+            .get(faceId);
+        if (!row) return res.status(404).json({ error: 'face not found' });
+
+        const resolved = await safeResolveDownload(row.file_path);
+        if (!resolved.ok)
+            return res
+                .status(resolved.reason === 'missing' ? 404 : 403)
+                .json({ error: resolved.reason });
+
+        const pad = 0.4;
+        const meta = await sharp(resolved.real, { failOn: 'none' }).metadata();
+        const imgW = meta.width || 9999;
+        const imgH = meta.height || 9999;
+
+        const left = Math.max(0, Math.round(row.x - row.w * pad));
+        const top = Math.max(0, Math.round(row.y - row.h * pad));
+        const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
+        const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
+        const width = Math.max(1, right - left);
+        const height = Math.max(1, bottom - top);
+
+        const buf = await sharp(resolved.real, { failOn: 'none' })
+            .extract({ left, top, width, height })
+            .resize(size, size, { fit: 'cover', position: 'centre' })
+            .jpeg({ quality: 82, progressive: true })
+            .toBuffer();
+
+        res.set('content-type', 'image/jpeg');
+        res.set('cache-control', 'public, max-age=604800, immutable');
+        res.send(buf);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -11828,6 +11967,8 @@ ${tip}
         try {
             log({ source: 'nsfw', level: 'info', msg: `blocklist: auto-deleted id=${id}` });
         } catch {}
+        purgeThumbsForDownload(id).catch(() => {});
+        purgeSeekbarForDownload(id).catch(() => {});
     });
 
     // Pre-fetch the NSFW classifier in the background when the operator

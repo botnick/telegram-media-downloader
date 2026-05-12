@@ -2505,16 +2505,26 @@ export function insertPerson({ label = null, centroidBlob, faceCount = 0 }) {
 export function listPeople({ limit = 500, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(1000, Number(limit) || 500));
     const off = Math.max(0, Number(offset) || 0);
-    const rows = getDb()
-        .prepare(`
+    const db = getDb();
+    const rows = db.prepare(`
         SELECT p.id, p.label, p.face_count, p.created_at, p.updated_at,
-               (SELECT f.download_id FROM faces f WHERE f.person_id = p.id LIMIT 1) AS cover_download_id
+               f.download_id AS cover_download_id,
+               f.id          AS cover_face_id,
+               f.x           AS cover_x,
+               f.y           AS cover_y,
+               f.w           AS cover_w,
+               f.h           AS cover_h
           FROM people p
+          LEFT JOIN faces f ON f.id = (
+            SELECT ff.id FROM faces ff
+             WHERE ff.person_id = p.id
+             ORDER BY COALESCE(ff.quality_score, 0) DESC, ff.w * ff.h DESC
+             LIMIT 1
+          )
          ORDER BY p.face_count DESC, p.id ASC
          LIMIT ? OFFSET ?
-    `)
-        .all(lim, off);
-    const total = getDb().prepare('SELECT COUNT(*) AS n FROM people').get().n;
+    `).all(lim, off);
+    const total = db.prepare('SELECT COUNT(*) AS n FROM people').get().n;
     return { people: rows, total };
 }
 
@@ -2533,19 +2543,29 @@ export function deletePerson(id) {
 export function listPhotosForPerson(personId, { limit = 50, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(500, Number(limit) || 50));
     const off = Math.max(0, Number(offset) || 0);
-    const rows = getDb()
-        .prepare(`
-        SELECT DISTINCT d.*
-          FROM faces f
+    const db = getDb();
+    const rows = db.prepare(`
+        SELECT d.id, d.file_name, d.file_path, d.file_type, d.file_size,
+               d.created_at, d.group_id, d.group_name, d.message_id,
+               f.id AS face_id,
+               f.x AS face_x, f.y AS face_y, f.w AS face_w, f.h AS face_h
+          FROM (
+            SELECT f2.download_id, f2.id, f2.x, f2.y, f2.w, f2.h,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY f2.download_id
+                       ORDER BY COALESCE(f2.quality_score, 0) DESC, f2.w * f2.h DESC
+                   ) AS rn
+              FROM faces f2
+             WHERE f2.person_id = ?
+          ) f
           JOIN downloads d ON d.id = f.download_id
-         WHERE f.person_id = ?
+         WHERE f.rn = 1
          ORDER BY d.created_at DESC, d.id DESC
          LIMIT ? OFFSET ?
-    `)
-        .all(Number(personId), lim, off);
-    const total = getDb()
-        .prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces WHERE person_id = ?`)
-        .get(Number(personId)).n;
+    `).all(Number(personId), lim, off);
+    const total = db.prepare(
+        `SELECT COUNT(DISTINCT download_id) AS n FROM faces WHERE person_id = ?`
+    ).get(Number(personId)).n;
     return { files: rows, total };
 }
 

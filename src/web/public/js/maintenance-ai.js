@@ -1203,48 +1203,39 @@ function _personTile(p) {
     const isUnclassified = p.id === -1 || p.noise === true;
     const name = isUnclassified
         ? i18nT('maintenance.ai.person_unclassified', 'Unclassified')
-        : p.label || `${i18nT('maintenance.ai.person_default', 'Person')} #${p.id}`;
-
-    // Centroid face thumbnail — prefer the dedicated /api/ai/person/{id}/face
-    // endpoint (returns the most-representative face crop). Fall back to the
-    // thumbnail of the cover download so an empty centroid doesn't leave a
-    // blank tile on old servers that don't yet expose the face endpoint.
-    const centroidUrl = !isUnclassified && p.id > 0
-        ? `/api/ai/person/${p.id}/face?w=320`
-        : '';
-    const fallbackUrl = p.cover_download_id ? `/api/thumbs/${p.cover_download_id}?w=320` : '';
+        : p.label || `Person #${p.id}`;
     const faceCount = Number(p.face_count) || 0;
-    const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).toLocaleDateString() : '';
     const safeName = escapeHtml(name);
-    const labeledCls = !p.label && !isUnclassified ? 'opacity-60' : '';
+    const dimCls = !p.label && !isUnclassified ? 'opacity-50' : '';
 
-    // Build the image HTML: centroid URL first; if that 404s the browser
-    // falls back to the `onerror` swap, then to the placeholder icon.
+    const faceUrl =
+        !isUnclassified && p.id > 0 ? `/api/ai/person/${p.id}/face?w=128` : '';
+    const fallbackUrl = p.cover_download_id
+        ? `/api/thumbs/${p.cover_download_id}?w=128`
+        : '';
+
     let imgHtml;
-    if (centroidUrl) {
-        // onerror chain: centroid fails → try cover thumb → fallback icon.
-        const fallback = fallbackUrl
+    if (faceUrl) {
+        const fb = fallbackUrl
             ? `this.onerror=null;this.src='${fallbackUrl}'`
-            : "this.onerror=null;this.parentElement.innerHTML='<div class=\\'aspect-square w-full bg-tg-bg/40 flex items-center justify-center\\'><i class=\\'ri-user-line text-3xl text-tg-textSecondary/50\\'></i></div>'";
-        imgHtml = `<img src="${centroidUrl}" alt="${safeName}" loading="lazy" class="aspect-square w-full object-cover" onerror="${fallback}">`;
+            : `this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-xl text-tg-textSecondary/40\\'></i>'`;
+        imgHtml = `<img src="${faceUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="${fb}">`;
     } else if (fallbackUrl) {
-        imgHtml = `<img src="${fallbackUrl}" alt="${safeName}" loading="lazy" class="aspect-square w-full object-cover">`;
+        imgHtml = `<img src="${fallbackUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover">`;
     } else {
-        imgHtml = '<div class="aspect-square w-full bg-tg-bg/40 flex items-center justify-center"><i class="ri-user-line text-3xl text-tg-textSecondary/50"></i></div>';
+        imgHtml = `<i class="ri-user-line text-xl text-tg-textSecondary/40"></i>`;
     }
 
     return `<button type="button" data-person="${p.id}" data-name="${safeName}"
-        class="block group relative bg-tg-bg/30 rounded-lg overflow-hidden hover:ring-2 hover:ring-tg-blue/40 transition-shadow ${labeledCls}"
-        title="${safeName}">
-        ${imgHtml}
-        <div class="absolute bottom-0 left-0 right-0 p-1 bg-gradient-to-t from-black/80 to-transparent text-left">
-            <div class="ai-person-name text-[11px] text-white truncate font-medium" title="${escapeHtml(i18nT('maintenance.ai.person_rename_hint', 'Double-click to rename'))}">${safeName}</div>
-            <div class="text-[10px] text-white/70 flex items-center justify-between gap-1">
-                <span>${faceCount.toLocaleString()} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}</span>
-                ${lastSeen ? `<span class="opacity-70">${escapeHtml(lastSeen)}</span>` : ''}
-            </div>
+        title="${safeName} · ${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}"
+        class="flex flex-col items-center gap-1.5 px-1 py-2 rounded-xl hover:bg-tg-bg/50 active:scale-95 transition-all group text-center select-none ${dimCls}">
+        <div class="w-[52px] h-[52px] rounded-full overflow-hidden ring-2 ring-tg-border/30 group-hover:ring-tg-blue/60 transition-shadow flex items-center justify-center bg-tg-bg/40 flex-shrink-0">
+            ${imgHtml}
         </div>
-        ${isUnclassified ? '<div class="absolute top-1 right-1 px-1.5 py-0.5 rounded bg-tg-bg/70 text-[9px] text-tg-textSecondary font-mono">noise</div>' : ''}
+        <div class="w-full min-w-0 space-y-0.5">
+            <div class="ai-person-name text-[10.5px] font-medium text-tg-text leading-tight line-clamp-2 break-words px-0.5">${safeName}</div>
+            <div class="text-[10px] text-tg-textSecondary tabular-nums">${faceCount}</div>
+        </div>
     </button>`;
 }
 
@@ -1292,29 +1283,24 @@ function _photoTile(row) {
     const faceId = row.face_id || '';
     const name = escapeHtml(row.file_name || `#${id}`);
 
-    // Face-box highlight: when the API returns normalised bbox coordinates
-    // (x, y, w, h as 0–1 fractions of image dimensions), render a
-    // semi-transparent overlay ring so the operator can see which face
-    // in the photo belongs to this person.
-    // The box is positioned using inline %age values so it scales with
-    // the thumbnail — no JS measurement needed.
-    let boxHtml = '';
-    const box = row.bbox || row.face_box;
-    if (box && typeof box === 'object') {
-        const bx = Number(box.x ?? box[0] ?? 0);
-        const by = Number(box.y ?? box[1] ?? 0);
-        const bw = Number(box.w ?? box.width ?? box[2] ?? 0);
-        const bh = Number(box.h ?? box.height ?? box[3] ?? 0);
-        if (bw > 0 && bh > 0) {
-            boxHtml = `<div class="ai-face-box" style="left:${(bx * 100).toFixed(2)}%;top:${(by * 100).toFixed(2)}%;width:${(bw * 100).toFixed(2)}%;height:${(bh * 100).toFixed(2)}%;" aria-hidden="true"></div>`;
-        }
-    }
+    // Prefer the face-cropped thumbnail — shows exactly which face was matched.
+    // Falls back to full-photo thumb when no face_id (legacy API).
+    const imgSrc = faceId
+        ? `/api/ai/faces/${faceId}/crop?w=160`
+        : `/api/thumbs/${id}?w=160`;
+    const fallbackSrc = `/api/thumbs/${id}?w=160`;
+
+    const onerror = faceId
+        ? `this.onerror=null;this.src='${fallbackSrc}'`
+        : '';
+
+    const onerrorAttr = onerror ? ` onerror="${onerror}"` : '';
 
     return `
-        <a href="#/files/${id}" class="block group relative rounded-lg overflow-hidden" data-face-id="${escapeHtml(String(faceId))}">
-            <img src="/api/thumbs/${id}?w=320" alt="${name}" loading="lazy"
+        <a href="#/files/${id}" class="block group relative rounded-lg overflow-hidden" title="${name}">
+            <img src="${imgSrc}" alt="${name}" loading="lazy"${onerrorAttr}
                 class="aspect-square w-full object-cover bg-tg-bg/40">
-            ${boxHtml}
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors"></div>
         </a>
     `;
 }
