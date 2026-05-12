@@ -500,10 +500,20 @@ def get_app() -> Any:
             ctx_id = 0 if any(p in gpu_providers for p in providers) else -1
             app.prepare(ctx_id=ctx_id, det_size=det_size)
             _APP = app
+            # Read the *actual* providers from the first loaded ONNX session.
+            # app.providers (insightface) stores the requested chain, not what
+            # onnxruntime ended up using after silent fallbacks (e.g. CUDA
+            # requested but cublasLt64_12.dll missing → falls back to CPU with
+            # "Applied providers: ['CPUExecutionProvider']" in the log).
+            # Per-session get_providers() reflects the real runtime state.
             try:
-                live = getattr(app, "providers", None)
-                if live:
-                    _RESOLVED_PROVIDERS = list(live)
+                for _m in app.models.values():
+                    _sess = getattr(_m, "session", None)
+                    if _sess and hasattr(_sess, "get_providers"):
+                        live = _sess.get_providers()
+                        if live:
+                            _RESOLVED_PROVIDERS = list(live)
+                            break
             except Exception:  # pragma: no cover — defensive
                 pass
             # Derive the short GPU-provider label from the final resolved list.
@@ -515,6 +525,22 @@ def get_app() -> Any:
                 _RESOLVED_PROVIDERS,
                 _GPU_PROVIDER,
             )
+            # Warn when a GPU provider was requested but onnxruntime silently
+            # fell back to CPU — the most common cause is missing CUDA Toolkit.
+            requested_gpu = any(
+                p in {"CUDAExecutionProvider", "DmlExecutionProvider",
+                      "CoreMLExecutionProvider", "OpenVINOExecutionProvider"}
+                for p in providers
+            )
+            if requested_gpu and _GPU_PROVIDER == "cpu":
+                _LOG.warning(
+                    "GPU provider was requested (%s) but onnxruntime fell back "
+                    "to CPUExecutionProvider — likely missing runtime libraries. "
+                    "For CUDA: install CUDA Toolkit 12.x + cuDNN 9 from "
+                    "https://developer.nvidia.com/cuda-downloads, then restart "
+                    "the sidecar. See docs/AI.md#gpu-acceleration for details.",
+                    providers,
+                )
             return _APP
         except Exception as exc:  # pragma: no cover - exercised in prod
             _APP_ERROR = exc
