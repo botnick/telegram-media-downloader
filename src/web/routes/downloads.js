@@ -17,6 +17,8 @@ import { bestGroupName, formatBytes } from '../lib/format.js';
 import { sanitizeName } from '../../core/downloader.js';
 import { purgeThumbsForDownload } from '../../core/thumbs.js';
 import { listPeers } from '../../core/cluster/peers.js';
+import { writeConfigAtomic } from '../lib/config-writer.js';
+import { deleteAllDownloads } from '../../core/db/groups.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1001,6 +1003,72 @@ export function createDownloadsRouter({
     // allows multi-flight across distinct groups while preventing a
     // double-click on the same row from firing twice. Status endpoint:
     // `GET /api/groups/:id/purge/status`.
+
+    // 6c. Purge All Data (Factory Reset)
+    //
+    // Deletes every file on disk + every row in the DB + every group from
+    // config + photos. Fire-and-forget via the `purgeAll` job tracker.
+    // Single-flight — a second call returns 409.
+    router.delete('/purge/all', async (req, res) => {
+        const tracker = jobTrackers.purgeAll;
+        const r = tracker.tryStart(async ({ onProgress }) => {
+            let totalFiles = 0;
+            const dirs = existsSync(DOWNLOADS_DIR)
+                ? fs.readdirSync(DOWNLOADS_DIR, { withFileTypes: true })
+                : [];
+            const groupDirs = dirs.filter((d) => d.isDirectory());
+            const totalGroups = groupDirs.length;
+            let processed = 0;
+            onProgress({ processed: 0, total: totalGroups, stage: 'deleting_files' });
+            for (const dir of groupDirs) {
+                const dirPath = path.join(DOWNLOADS_DIR, dir.name);
+                try {
+                    totalFiles += fs.readdirSync(dirPath, { recursive: true }).length;
+                } catch {}
+                await fs.rm(dirPath, { recursive: true, force: true });
+                processed += 1;
+                onProgress({ processed, total: totalGroups, stage: 'deleting_files' });
+            }
+
+            onProgress({ stage: 'deleting_rows' });
+            const dbResult = deleteAllDownloads();
+
+            const config = loadConfig();
+            config.groups = [];
+            await writeConfigAtomic(config);
+
+            if (existsSync(PHOTOS_DIR)) {
+                const photos = fs.readdirSync(PHOTOS_DIR);
+                for (const photo of photos) {
+                    await fs.unlink(path.join(PHOTOS_DIR, photo)).catch(() => {});
+                }
+            }
+
+            log({
+                source: 'purgeAll',
+                level: 'info',
+                msg: `PURGE ALL: ${totalFiles} files, ${dbResult.deletedDownloads} DB records`,
+            });
+            broadcast({ type: 'purge_all' });
+            return {
+                deleted: {
+                    files: totalFiles,
+                    dbRecords: dbResult.deletedDownloads,
+                    queueRecords: dbResult.deletedQueue,
+                },
+            };
+        });
+        if (!r.started) {
+            return res
+                .status(409)
+                .json({ error: 'A factory reset is already running', code: 'ALREADY_RUNNING' });
+        }
+        res.json({ success: true, started: true });
+    });
+
+    router.get('/purge/all/status', async (req, res) => {
+        res.json(jobTrackers.purgeAll.getStatus());
+    });
 
     return router;
 }
