@@ -54,6 +54,10 @@ import {
     reclassifyNsfw,
     unwhitelistNsfw,
     NSFW_TIERS,
+    addNsfwBlocklistBatch,
+    getNsfwBlocklistCount,
+    clearNsfwBlocklist,
+    getDownloadHashesForIds,
     setDownloadPinned,
     getDownloadById,
     kvGet,
@@ -6614,6 +6618,7 @@ function _nsfwCfg() {
         const cfg = loadConfig().advanced?.nsfw || {};
         return {
             enabled: cfg.enabled === true,
+            blocklistEnabled: cfg.blocklistEnabled === true,
             model: cfg.model || NSFW_DEFAULTS.model,
             threshold: Number.isFinite(cfg.threshold) ? cfg.threshold : NSFW_DEFAULTS.threshold,
             concurrency: Number.isFinite(cfg.concurrency)
@@ -6627,7 +6632,7 @@ function _nsfwCfg() {
             cacheDir: cfg.cacheDir || NSFW_DEFAULTS.cacheDir,
         };
     } catch {
-        return { ...NSFW_DEFAULTS, enabled: false };
+        return { ...NSFW_DEFAULTS, enabled: false, blocklistEnabled: false };
     }
 }
 
@@ -6830,6 +6835,21 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
         if (!cleanIds.length) {
             return res.status(400).json({ error: 'No valid ids supplied' });
         }
+        // Collect hashes before deleting rows so the blocklist can be updated.
+        if (_nsfwCfg().blocklistEnabled) {
+            try {
+                const hashRows = getDownloadHashesForIds(cleanIds);
+                if (hashRows.length) {
+                    addNsfwBlocklistBatch(
+                        hashRows.map((r) => ({
+                            fileHash: r.file_hash,
+                            fileName: r.file_name,
+                            source: 'manual',
+                        })),
+                    );
+                }
+            } catch {}
+        }
         const r = dedupDeleteByIds(cleanIds);
         for (const id of cleanIds) {
             try {
@@ -6984,6 +7004,21 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
         onProgress({ stage: 'resolving', op: 'delete' });
         const ids = await _resolveBulkIds(body);
         if (!ids.length) return { op: 'delete', deleted: 0, ids: [] };
+        // Collect hashes before deleting rows so the blocklist is updated.
+        if (_nsfwCfg().blocklistEnabled) {
+            try {
+                const hashRows = getDownloadHashesForIds(ids);
+                if (hashRows.length) {
+                    addNsfwBlocklistBatch(
+                        hashRows.map((r) => ({
+                            fileHash: r.file_hash,
+                            fileName: r.file_name,
+                            source: 'bulk',
+                        })),
+                    );
+                }
+            } catch {}
+        }
         log({ source: 'nsfw', level: 'warn', msg: `bulk-delete starting: ${ids.length} rows` });
         const total = ids.length;
         const BATCH = 50;
@@ -7118,6 +7153,26 @@ app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
 
 app.get('/api/maintenance/nsfw/v2/bulk/status', async (req, res) => {
     res.json(_jobTrackers.nsfwBulk.getStatus());
+});
+
+// ── NSFW hash blocklist management ──────────────────────────────────────────
+
+app.get('/api/maintenance/nsfw/blocklist/stats', (req, res) => {
+    try {
+        res.json({ count: getNsfwBlocklistCount() });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/maintenance/nsfw/blocklist', (req, res) => {
+    if (!_requireConfirm(req, res)) return;
+    try {
+        const removed = clearNsfwBlocklist();
+        res.json({ success: true, removed });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // ====== AI subsystem (semantic search + auto-tag + face clustering) =========
@@ -10160,6 +10215,7 @@ app.post('/api/config', async (req, res) => {
             // model id, threshold, or concurrency in code.
             const ns = merged.nsfw;
             ns.enabled = ns.enabled === true; // explicit opt-in only
+            ns.blocklistEnabled = ns.blocklistEnabled === true;
             // Threshold is on a 0-1 score axis; clamped via integer math by
             // multiplying through so the same clampInt helper works.
             const tInt = Math.round((Number(ns.threshold) || NSFW_DEFAULTS.threshold) * 1000);
@@ -10228,9 +10284,9 @@ app.post('/api/config', async (req, res) => {
             ai.minTagScore =
                 clampInt(Math.round((Number(ai.minTagScore) || 0.2) * 1000), 0, 1000, 200) / 1000;
             ai.facesEpsilon =
-                clampInt(Math.round((Number(ai.facesEpsilon) || 0.5) * 1000), 100, 1500, 500) /
+                clampInt(Math.round((Number(ai.facesEpsilon) || 1.05) * 1000), 100, 1500, 1050) /
                 1000;
-            ai.facesMinPoints = clampInt(ai.facesMinPoints, 2, 50, 3);
+            ai.facesMinPoints = clampInt(ai.facesMinPoints, 2, 50, 2);
             const AI_FILE_TYPES = ['photo'];
             ai.fileTypes = (Array.isArray(ai.fileTypes) ? ai.fileTypes : ['photo'])
                 .map((s) => String(s).toLowerCase())

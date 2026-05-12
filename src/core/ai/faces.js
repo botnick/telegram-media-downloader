@@ -138,7 +138,7 @@ export function qualityFilter(detections, cfg = {}) {
     const minScore = Number.isFinite(cfg.minDetectionScore)
         ? cfg.minDetectionScore
         : FACE_DEFAULTS.minDetectionScore;
-    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 80;
+    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 60;
     return detections.filter((d) => {
         if (!d) return false;
         if (Number.isFinite(d.score) && d.score < minScore) return false;

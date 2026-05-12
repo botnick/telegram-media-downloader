@@ -225,7 +225,7 @@ export async function detectFaces(absPath, cfg = {}, onLog = null) {
     // already-flattened `cfg`), so we probe both shapes.
     const facesCfg = cfg?.faces || cfg || {};
     const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
-    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 80);
+    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60);
     const arRange =
         Array.isArray(facesCfg.arRange) && facesCfg.arRange.length === 2
             ? facesCfg.arRange
