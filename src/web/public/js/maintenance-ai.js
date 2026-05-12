@@ -540,6 +540,7 @@ function _bindOnce() {
     $('#ai-scan-btn')?.addEventListener('click', () => _startScan('faces'));
     $('#ai-cancel-btn')?.addEventListener('click', () => _cancelScan('faces'));
     $('#ai-reindex-btn')?.addEventListener('click', _reindexFromScratch);
+    $('#ai-backfill-quality-btn')?.addEventListener('click', _backfillFaceQuality);
     // Re-cluster button — runs Phase B only (DBSCAN over existing
     // embeddings, no re-detect). Fast (seconds, not minutes) — useful
     // for tweaking ε / minPoints + seeing the new cluster count
@@ -1781,6 +1782,30 @@ async function _reindexFromScratch() {
     } catch (e) {
         const msg = e?.data?.error || e?.message || 'unknown';
         showToast(`${i18nT('maintenance.ai.reindex_failed', 'Reindex failed')}: ${msg}`, 'error');
+    }
+}
+
+async function _backfillFaceQuality() {
+    const ok = await confirmSheet({
+        title: 'Backfill face quality?',
+        body: 'This computes quality scores for existing face detections that are missing one. No detections are deleted and no full re-scan is run.',
+        confirmLabel: 'Backfill',
+        cancelLabel: i18nT('common.cancel', 'Cancel'),
+        danger: false,
+    });
+    if (!ok) return;
+    try {
+        const r = await api.post('/api/ai/faces/backfill-quality', {});
+        if (!r.success) throw new Error(r.error || 'backfill failed');
+        showToast(`Backfill complete: ${r.updated || 0} updated`, 'success');
+        await refreshStatus();
+        if (_selectedPerson) await _showPersonPhotos();
+    } catch (e) {
+        const msg = e?.data?.error || e?.message || 'unknown';
+        showToast(`Backfill failed: ${msg}`, 'error');
+    } finally {
+        const menu = document.getElementById('ai-more-menu');
+        if (menu instanceof HTMLDetailsElement) menu.open = false;
     }
 }
 
