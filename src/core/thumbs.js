@@ -811,26 +811,35 @@ export async function purgeNonStandardThumbs() {
     let removed = 0;
     let bytes = 0;
     const db = getDb();
-    const iter = db.prepare('SELECT id FROM downloads').iterate();
-    let n = 0;
-    for (const row of iter) {
-        for (const w of _LEGACY_WIDTHS) {
-            const p = _cachePath(row.id, w);
-            if (existsSync(p)) {
-                try {
-                    const st = await fs.stat(p);
-                    await fs.unlink(p);
-                    removed++;
-                    bytes += st.size || 0;
-                } catch {
-                    /* best-effort */
+    // Keyset-paginated `.all()` — same connection-safety rationale as
+    // `purgeAllThumbs`: `.iterate()` + `await fs.stat/unlink` holds the
+    // DB connection open across async I/O, blocking concurrent writes.
+    const PAGE_SIZE = 200;
+    const pageStmt = db.prepare(
+        'SELECT id FROM downloads WHERE id < ? ORDER BY id DESC LIMIT ?',
+    );
+    let beforeId = Number.MAX_SAFE_INTEGER;
+    while (true) {
+        const page = pageStmt.all(beforeId, PAGE_SIZE);
+        if (!page.length) break;
+        for (const row of page) {
+            for (const w of _LEGACY_WIDTHS) {
+                const p = _cachePath(row.id, w);
+                if (existsSync(p)) {
+                    try {
+                        const st = await fs.stat(p);
+                        await fs.unlink(p);
+                        removed++;
+                        bytes += st.size || 0;
+                    } catch {
+                        /* best-effort */
+                    }
                 }
             }
         }
-        // Yield to the event loop every 200 rows on a million-row library
-        // so the WS / HTTP loop stays responsive during the sweep. Same
-        // pattern as `purgeAllThumbs` and the dedup delete sweep.
-        if (++n % 200 === 0) await new Promise((r) => setImmediate(r));
+        beforeId = Number(page[page.length - 1].id);
+        await new Promise((r) => setImmediate(r));
+        if (page.length < PAGE_SIZE) break;
     }
     return { removed, bytes };
 }
@@ -889,16 +898,29 @@ export async function purgeAllThumbs(opts = {}) {
     const types = thumbKindTypes(kind);
     if (!types || !types.length) return 0;
     const placeholders = types.map(() => '?').join(',');
-    const iter = getDb()
-        .prepare(`SELECT id FROM downloads WHERE file_type IN (${placeholders})`)
-        .iterate(...types);
+    // Keyset-paginated `.all()` — `.iterate()` + `await purgeThumbsForDownload`
+    // held the connection open across async unlink calls, blocking concurrent
+    // DB writes with "This database connection is busy executing a query".
+    const db = getDb();
+    const PAGE_SIZE = 200;
+    const pageStmt = db.prepare(
+        `SELECT id FROM downloads
+          WHERE file_type IN (${placeholders})
+            AND id < ?
+          ORDER BY id DESC
+          LIMIT ?`,
+    );
     let removed = 0;
-    let n = 0;
-    for (const row of iter) {
-        removed += await purgeThumbsForDownload(row.id);
-        // Yield every 200 rows so the WS / HTTP loop stays responsive on
-        // a million-row library. Same pattern as the dedup delete sweep.
-        if (++n % 200 === 0) await new Promise((r) => setImmediate(r));
+    let beforeId = Number.MAX_SAFE_INTEGER;
+    while (true) {
+        const page = pageStmt.all(...types, beforeId, PAGE_SIZE);
+        if (!page.length) break;
+        for (const row of page) {
+            removed += await purgeThumbsForDownload(row.id);
+        }
+        beforeId = Number(page[page.length - 1].id);
+        await new Promise((r) => setImmediate(r));
+        if (page.length < PAGE_SIZE) break;
     }
     return removed;
 }
@@ -922,33 +944,32 @@ export async function purgeAllThumbs(opts = {}) {
  */
 export async function buildAllThumbnails(opts = {}) {
     const { onProgress, signal, kind = 'all' } = opts;
-    // Stream — `.all()` over a 1M-row downloads table allocates the entire
-    // result set in JS heap before the loop body sees its first row, which
-    // OOMs the process inside `Statement::JS_all`. `.iterate()` reuses one
-    // row buffer through the iteration so heap pressure stays flat.
+    // Keyset-paginated `.all()` — `.iterate()` + `await getOrCreateThumb`
+    // held the connection open across async sharp/ffmpeg calls, blocking
+    // concurrent DB writes with "This database connection is busy".
+    // ORDER BY id DESC is equivalent for this scan: the goal is to
+    // prefer recent rows, and id correlates with created_at.
     const db = getDb();
     const types = thumbKindTypes(kind);
     const typeFilter =
         types && types.length ? `AND file_type IN (${types.map(() => '?').join(',')})` : '';
-    const args = types && types.length ? types : [];
-    // Exclude WebP source files at the SQL level — they are already web-native
-    // images and getOrCreateThumb returns null for them (no-op). Filtering here
-    // keeps the scanned count accurate (WebPs are not counted) and avoids a
-    // redundant DB round-trip + cache-key stat per WebP row.
+    const typeArgs = types && types.length ? types : [];
+    // Exclude WebP source files at the SQL level — browser renders them natively.
     const webpFilter = "AND (file_path IS NULL OR LOWER(file_path) NOT LIKE '%.webp')";
     const total = db
         .prepare(`
         SELECT COUNT(*) AS n FROM downloads
          WHERE file_path IS NOT NULL ${typeFilter} ${webpFilter}
     `)
-        .get(...args).n;
-    const iter = db
-        .prepare(`
+        .get(...typeArgs).n;
+    const PAGE_SIZE = 50;
+    const pageStmt = db.prepare(`
         SELECT id FROM downloads
          WHERE file_path IS NOT NULL ${typeFilter} ${webpFilter}
-         ORDER BY created_at DESC
-    `)
-        .iterate(...args);
+           AND id < ?
+         ORDER BY id DESC
+         LIMIT ?
+    `);
     let processed = 0,
         built = 0,
         skipped = 0,
@@ -960,23 +981,32 @@ export async function buildAllThumbnails(opts = {}) {
     };
     tick();
 
-    for (const r of iter) {
+    let beforeId = Number.MAX_SAFE_INTEGER;
+    while (true) {
         if (signal?.aborted) break;
-        processed++;
-        const cacheAbs = _cachePath(r.id, DEFAULT_WIDTH);
-        if (existsSync(cacheAbs)) {
-            skipped++;
-            if (processed % 25 === 0 || processed === total) tick();
-            continue;
+        const page = pageStmt.all(...typeArgs, beforeId, PAGE_SIZE);
+        if (!page.length) break;
+        for (const r of page) {
+            if (signal?.aborted) break;
+            processed++;
+            const cacheAbs = _cachePath(r.id, DEFAULT_WIDTH);
+            if (existsSync(cacheAbs)) {
+                skipped++;
+                if (processed % 25 === 0 || processed === total) tick();
+                continue;
+            }
+            try {
+                const thumb = await getOrCreateThumb(r.id, DEFAULT_WIDTH);
+                if (thumb) built++;
+                else skipped++;
+            } catch {
+                errored++;
+            }
+            if (processed % 10 === 0 || processed === total) tick();
         }
-        try {
-            const thumb = await getOrCreateThumb(r.id, DEFAULT_WIDTH);
-            if (thumb) built++;
-            else skipped++;
-        } catch {
-            errored++;
-        }
-        if (processed % 10 === 0 || processed === total) tick();
+        beforeId = Number(page[page.length - 1].id);
+        await new Promise((r) => setImmediate(r));
+        if (page.length < PAGE_SIZE) break;
     }
 
     if (onProgress) onProgress({ stage: 'done', processed, total, built, skipped, errored });
