@@ -15,6 +15,8 @@ import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { getExpiredPending, deleteDownloadsBy, setRescueLastSweep } from './db.js';
+import { purgeThumbsForDownload } from './thumbs.js';
+import { purgeSeekbarForDownload } from './seekbar/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
@@ -133,6 +135,8 @@ export class RescueSweeper {
                 const removed = deleteDownloadsBy({ ids: [row.id] });
                 if (removed > 0) {
                     swept += 1;
+                    purgeThumbsForDownload(row.id).catch(() => {});
+                    purgeSeekbarForDownload(row.id).catch(() => {});
                     try {
                         // `file_deleted` is the canonical "a row's file went
                         // away" event — gallery, stats footer, and the
