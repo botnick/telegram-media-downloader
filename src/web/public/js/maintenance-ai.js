@@ -1591,7 +1591,7 @@ function _renderPeopleGrid() {
         b.addEventListener('click', () => {
             _selectedPerson = Number(b.dataset.person);
             _selectedPersonName = b.dataset.name || '';
-            _showPersonPhotos();
+            _showPersonPhotos({ scrollIntoSection: true });
         });
     });
 }
@@ -1620,9 +1620,13 @@ function _personTile(p) {
     </button>`;
 }
 
-async function _showPersonPhotos() {
+async function _showPersonPhotos({ scrollIntoSection = false } = {}) {
     if (!_selectedPerson) return;
-    $('#ai-people-photos')?.classList.remove('hidden');
+    const section = $('#ai-people-photos');
+    section?.classList.remove('hidden');
+    if (scrollIntoSection && section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     const nameEl = $('#ai-people-photos-name');
     if (nameEl) nameEl.textContent = _selectedPersonName;
     const grid = $('#ai-people-photos-grid');
