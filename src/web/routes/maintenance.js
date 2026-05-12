@@ -1,6 +1,7 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs, { existsSync } from 'fs';
+import fs from 'fs/promises';
+import fsSync, { existsSync } from 'fs';
 import express from 'express';
 import { loadConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
@@ -72,8 +73,6 @@ import {
 import { readConfigSafe } from '../lib/config-cache.js';
 import { saveConfig } from '../../config/manager.js';
 import { tgAuthErrorBody } from '../lib/tg-error.js';
-
-const fsSync = fs;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
