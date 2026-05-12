@@ -394,6 +394,7 @@ export function optimizeDownloadInBackground(id) {
         const errBit = status === 'errored' ? ` error=${String(error).slice(0, 160)}` : '';
         const line = `[faststart] id=${id} result=${status}${detail}${sizeBit}${errBit}`;
         if (status === 'errored') console.warn(line);
+        else if (status === 'skipped' && reason === 'not video/document') { /* expected — suppress */ }
         else console.log(line);
         // Persist running counters even for skipped rows — the
         // operator's mental model is "how many downloads did the auto

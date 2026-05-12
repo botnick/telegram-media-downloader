@@ -98,6 +98,7 @@ import {
     buildAllSeekbar,
     getMetaForDownload as getSeekbarMetaForDownload,
     getSeekbarCacheStats,
+    getSeekbarQueueDepths,
     getSpritePath as getSeekbarSpritePath,
     generateForDownload as generateSeekbarForDownload,
     purgeAllSeekbar,
@@ -6342,6 +6343,25 @@ app.get('/api/maintenance/seekbar/stats', async (req, res) => {
         const stats = getSeekbarCacheStats();
         const sidecar = getSeekbarSidecarStatus();
         res.json({ success: true, sidecar, ffmpegAvailable: hasFfmpeg(), ...stats });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+app.get('/api/maintenance/seekbar/queue/stats', (req, res) => {
+    try {
+        const tracker = _jobTrackers.seekbarBuild;
+        const status = tracker.getStatus();
+        const p = status.progress || {};
+        const depths = getSeekbarQueueDepths();
+        res.json({
+            success: true,
+            queued: depths.queued + Math.max(0, (p.total || 0) - (p.processed || 0)),
+            processing: depths.processing,
+            completed: p.generated || 0,
+            failed: p.errored || 0,
+            running: status.running || false,
+        });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
