@@ -30,7 +30,11 @@ export async function safeResolveDownload(userPath) {
     }
     if (path.isAbsolute(normalized)) return { ok: false, reason: 'forbidden' };
     if (normalized.split(path.sep).includes('..')) return { ok: false, reason: 'forbidden' };
-    const candidate = path.join(DOWNLOADS_DIR, normalized);
+    const candidate = path.resolve(DOWNLOADS_DIR, normalized);
+    const rel = path.relative(DOWNLOADS_DIR, candidate);
+    if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
+        return { ok: false, reason: 'forbidden' };
+    }
     const rootReal = await fs.realpath(DOWNLOADS_DIR).catch(() => path.resolve(DOWNLOADS_DIR));
     let real;
     try {
