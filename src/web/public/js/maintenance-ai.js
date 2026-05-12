@@ -339,19 +339,11 @@ function _bindOnce() {
     $('#ai-faces-min-points')?.addEventListener('change', (e) =>
         _saveSetting('facesMinPoints', Number(e.target.value || 3)),
     );
-    $('#ai-faces-include-videos')?.addEventListener('click', () => {
-        const el = $('#ai-faces-include-videos');
-        if (!el) return;
-        const cur = el.classList.contains('active');
-        const next = !cur;
-        el.classList.toggle('active', next);
-        el.setAttribute('aria-checked', String(next));
-        _saveSetting('includeVideos', next);
-    });
+    $('#ai-faces-include-videos')?.addEventListener('click', _onIncludeVideosToggle);
     $('#ai-faces-include-videos')?.addEventListener('keydown', (e) => {
         if (e.key === ' ' || e.key === 'Enter') {
             e.preventDefault();
-            $('#ai-faces-include-videos')?.click();
+            _onIncludeVideosToggle();
         }
     });
     $('#ai-faces-video-interval')?.addEventListener('change', (e) => {
@@ -599,6 +591,39 @@ async function _onAutoToggle() {
     try {
         const r = await api.post('/api/config', {
             advanced: { ai: { faceClustering: next } },
+        });
+        if (!r.success) throw new Error(r.error || 'save failed');
+        showToast(i18nT('common.saved', 'Saved'), 'success');
+        await refreshStatus();
+    } catch (e) {
+        // Roll back optimistic flip.
+        el.classList.toggle('active', cur);
+        el.setAttribute('aria-checked', String(cur));
+        showToast(
+            `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
+            'error',
+        );
+    }
+}
+
+async function _onIncludeVideosToggle() {
+    const el = $('#ai-faces-include-videos');
+    if (!el) return;
+    const cur = el.classList.contains('active');
+    const next = !cur;
+    // Optimistic flip so the click feels instant.
+    el.classList.toggle('active', next);
+    el.setAttribute('aria-checked', String(next));
+    try {
+        const r = await api.post('/api/config', {
+            advanced: {
+                ai: {
+                    includeVideos: next,
+                    faces: {
+                        includeVideos: next,
+                    },
+                },
+            },
         });
         if (!r.success) throw new Error(r.error || 'save failed');
         showToast(i18nT('common.saved', 'Saved'), 'success');
