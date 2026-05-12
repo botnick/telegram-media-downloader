@@ -200,16 +200,18 @@ def main() -> None:
 
     preload_model()
 
-    # Import the app object directly — the string form "tgdl_faces.app:app"
-    # causes uvicorn to use importlib at runtime, which PyInstaller cannot
-    # detect at analysis time and therefore never bundles tgdl_faces into
-    # the frozen binary (→ ModuleNotFoundError inside the .exe).
-    # Direct static import lets PyInstaller include the package automatically.
-    from tgdl_faces.app import get_app  # noqa: PLC0415
+    # Import the FastAPI app object directly — the string form
+    # "tgdl_faces.app:app" causes uvicorn to use importlib at runtime, which
+    # PyInstaller cannot detect at analysis time and therefore never bundles
+    # tgdl_faces into the frozen binary (→ ModuleNotFoundError inside the
+    # .exe). Direct static import lets PyInstaller include the package.
+    # NOTE: app.py also exports get_app from insight (returns FaceAnalysis),
+    # so we must import `app` (the FastAPI instance) not `get_app`.
+    from tgdl_faces.app import app as _fastapi_app  # noqa: PLC0415
     import uvicorn  # noqa: PLC0415
 
     uvicorn.run(
-        get_app(),
+        _fastapi_app,
         host=host,
         port=port,
         log_level="info",
