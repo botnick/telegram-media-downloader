@@ -794,6 +794,35 @@ async function _refreshStats() {
     }
 }
 
+async function _refreshBlocklistStats() {
+    try {
+        const r = await api.get('/api/maintenance/nsfw/blocklist/stats');
+        const countEl = $('nsfw-blocklist-count');
+        const row = $('nsfw-blocklist-stats-row');
+        if (countEl) countEl.textContent = String(r.count ?? 0);
+        // Show the row only when blocklist is enabled.
+        if (row) {
+            const enabled =
+                document
+                    .getElementById('setting-adv-nsfw-blocklist')
+                    ?.classList.contains('active') === true;
+            row.classList.toggle('hidden', !enabled);
+        }
+    } catch {
+        // non-fatal
+    }
+}
+
+async function _clearBlocklist() {
+    try {
+        await api.delete('/api/maintenance/nsfw/blocklist', { confirm: true });
+        showToast(i18nT('maintenance.nsfw.blocklist_cleared', 'Blocklist cleared'), 'success');
+        await _refreshBlocklistStats();
+    } catch (e) {
+        showToast(e.message || 'Clear failed', 'error');
+    }
+}
+
 async function _toggleScan() {
     const btn = $('nsfw-scan-btn');
     if (!btn) return;
@@ -1298,6 +1327,7 @@ export function init() {
         $('nsfw-bulk-reclassify-btn')?.addEventListener('click', () => _bulkAction('reclassify'));
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
+        $('nsfw-blocklist-clear-btn')?.addEventListener('click', _clearBlocklist);
         $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {
             view.includeWhitelisted = !!ev.target.checked;
             view.page = 1;
@@ -1405,6 +1435,7 @@ export function init() {
             _refreshStats(),
             _refreshHistogram(),
             _refreshModelStatus(),
+            _refreshBlocklistStats(),
             (async () => {
                 try {
                     const s = await api.get('/api/maintenance/nsfw/v2/bulk/status');

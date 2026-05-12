@@ -213,6 +213,18 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_nsfw_tier ON downloads(file_type, nsfw_whitelist, nsfw_score) WHERE nsfw_score IS NOT NULL',
         );
     } catch {}
+    // NSFW hash blocklist — stores SHA-256 fingerprints of files deleted via
+    // NSFW review so re-downloads can be auto-deleted without rescanning.
+    try {
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS nsfw_hash_blocklist (
+                file_hash  TEXT    PRIMARY KEY,
+                file_name  TEXT,
+                deleted_at INTEGER NOT NULL,
+                source     TEXT    DEFAULT 'manual'
+            )
+        `);
+    } catch {}
     // v2.15 — AI subsystem re-add (semantic search + auto-tags + face
     // clustering). Tables are opt-in; rows only land here once the operator
     // turns a capability on in `config.advanced.ai` and runs a scan. Every
@@ -3654,4 +3666,60 @@ export function countVideoDownloads() {
                 .get().n,
         ) || 0
     );
+}
+
+// ── NSFW hash blocklist ─────────────────────────────────────────────────────
+
+export function addNsfwBlocklistBatch(entries) {
+    if (!entries?.length) return 0;
+    const db = getDb();
+    const stmt = db.prepare(
+        'INSERT OR IGNORE INTO nsfw_hash_blocklist (file_hash, file_name, deleted_at, source) VALUES (?, ?, ?, ?)',
+    );
+    const now = Date.now();
+    const tx = db.transaction(() => {
+        let n = 0;
+        for (const e of entries) {
+            if (!e.fileHash) continue;
+            stmt.run(e.fileHash, e.fileName || null, now, e.source || 'manual');
+            n++;
+        }
+        return n;
+    });
+    return tx();
+}
+
+export function checkNsfwBlocklistHashes(hashes) {
+    if (!hashes?.length) return new Set();
+    const db = getDb();
+    const ph = hashes.map(() => '?').join(',');
+    const rows = db
+        .prepare(`SELECT file_hash FROM nsfw_hash_blocklist WHERE file_hash IN (${ph})`)
+        .all(...hashes);
+    return new Set(rows.map((r) => r.file_hash));
+}
+
+export function getNsfwBlocklistCount() {
+    return Number(getDb().prepare('SELECT COUNT(*) AS n FROM nsfw_hash_blocklist').get()?.n) || 0;
+}
+
+export function clearNsfwBlocklist() {
+    return getDb().prepare('DELETE FROM nsfw_hash_blocklist').run().changes;
+}
+
+export function getDownloadHashesForIds(ids) {
+    if (!ids?.length) return [];
+    const db = getDb();
+    const results = [];
+    for (let i = 0; i < ids.length; i += 500) {
+        const slice = ids.slice(i, i + 500);
+        const ph = slice.map(() => '?').join(',');
+        const rows = db
+            .prepare(
+                `SELECT id, file_hash, file_name FROM downloads WHERE id IN (${ph}) AND file_hash IS NOT NULL`,
+            )
+            .all(...slice);
+        for (const r of rows) results.push(r);
+    }
+    return results;
 }
