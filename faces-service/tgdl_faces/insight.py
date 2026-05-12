@@ -157,6 +157,25 @@ def _resolve_max_concurrency() -> int:
     return max(1, n)
 
 
+def _resolve_max_image_dim() -> int:
+    """Return the maximum image dimension (longest edge) before downscaling.
+
+    Set ``TGDL_FACES_MAX_IMAGE_DIM=0`` to disable the cap entirely (not
+    recommended on memory-constrained devices).  Default is 2048.
+    """
+    raw = os.environ.get("TGDL_FACES_MAX_IMAGE_DIM", "2048").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        _LOG.warning(
+            "TGDL_FACES_MAX_IMAGE_DIM=%r is not an integer; using 2048", raw
+        )
+        return 2048
+    if n < 0:
+        return 2048
+    return n  # 0 means disabled
+
+
 def _get_concurrency_sem() -> threading.Semaphore:
     """Return (and lazily create) the concurrency-limiting semaphore."""
     global _CONCURRENCY_SEM
@@ -204,12 +223,17 @@ def _available_providers() -> list[str]:
 def _platform_aware_auto_chain() -> list[str]:
     """Return provider preference order tuned to the current platform.
 
-    - Windows: DirectML first (works on any DX12 GPU), then CUDA, then CPU.
-    - Linux:   CUDA first (check nvidia-smi), then OpenVINO, then CPU.
-    - macOS:   CoreML first, then CPU.
-    - Other:   generic order.
+    - Windows:       DirectML first (works on any DX12 GPU), then CUDA, then CPU.
+    - Linux x86_64:  CUDA first, then OpenVINO, then CPU.
+    - Linux aarch64: Skip CUDA (no CUDA wheels for ARM64); use OpenVINO or CPU.
+    - macOS:         CoreML first, then CPU.
+    - Other:         generic order.
     """
     sysname = platform.system().lower()
+    machine = platform.machine().lower()
+    # Normalise ARM64 aliases so the aarch64 guard below matches everywhere.
+    if machine in ("arm64", "aarch64"):
+        machine = "aarch64"
     if sysname == "windows":
         return [
             "DmlExecutionProvider",
@@ -222,7 +246,14 @@ def _platform_aware_auto_chain() -> list[str]:
             "CoreMLExecutionProvider",
             "CPUExecutionProvider",
         ]
-    # Linux / other
+    if sysname == "linux" and machine == "aarch64":
+        # CUDA is not available on ARM64 Linux (no NVIDIA wheels).
+        # OpenVINO ARM plug-in exists but is rare; CPU is the safe fallback.
+        return [
+            "OpenVINOExecutionProvider",
+            "CPUExecutionProvider",
+        ]
+    # Linux x86_64 / other
     return [
         "CUDAExecutionProvider",
         "OpenVINOExecutionProvider",
@@ -590,17 +621,42 @@ def detect_and_embed(
     out: list[dict[str, Any]] = []
     try:
         app = get_app()
-        raw = app.get(image_bgr)  # list[insightface.app.common.Face]
 
-        h_img, w_img = int(image_bgr.shape[0]), int(image_bgr.shape[1])
+        # --- Dimension cap: resize large images before detection to prevent OOM ---
+        # When TGDL_FACES_MAX_IMAGE_DIM > 0, images with a longest edge exceeding
+        # the cap are downscaled proportionally. Bboxes and landmarks are scaled
+        # back to the original image coordinates before being returned, so callers
+        # always receive pixel offsets relative to the original image.
+        h_orig, w_orig = int(image_bgr.shape[0]), int(image_bgr.shape[1])
+        max_dim = _resolve_max_image_dim()
+        scale: float = 1.0
+        detect_img = image_bgr
+        if max_dim > 0 and max(h_orig, w_orig) > max_dim:
+            scale = max_dim / max(h_orig, w_orig)
+            new_w = max(1, int(round(w_orig * scale)))
+            new_h = max(1, int(round(h_orig * scale)))
+            import cv2 as _cv2  # noqa: PLC0415
+            detect_img = _cv2.resize(image_bgr, (new_w, new_h), interpolation=_cv2.INTER_AREA)
+            _LOG.debug(
+                "resized %dx%d → %dx%d (scale=%.4f) for detection",
+                w_orig, h_orig, new_w, new_h, scale,
+            )
+
+        raw = app.get(detect_img)  # list[insightface.app.common.Face]
+
+        h_img, w_img = h_orig, w_orig  # report original dimensions
         ar_lo, ar_hi = float(ar_range[0]), float(ar_range[1])
 
         for face in raw or []:
-            # `bbox` is [x1, y1, x2, y2] in float32.
+            # `bbox` is [x1, y1, x2, y2] in float32 (in detect_img coords).
             bbox = getattr(face, "bbox", None)
             if bbox is None or len(bbox) < 4:
                 continue
-            x1, y1, x2, y2 = (float(v) for v in bbox[:4])
+            # Scale bbox back to original image coordinates when a resize occurred.
+            x1 = float(bbox[0]) / scale
+            y1 = float(bbox[1]) / scale
+            x2 = float(bbox[2]) / scale
+            y2 = float(bbox[3]) / scale
             x = max(0, int(round(x1)))
             y = max(0, int(round(y1)))
             w = max(0, int(round(x2 - x1)))
@@ -638,6 +694,7 @@ def detect_and_embed(
                 )
 
             # 5-point landmarks (eye-L, eye-R, nose, mouth-L, mouth-R).
+            # Scale back to original image coordinates when a resize occurred.
             kps = getattr(face, "kps", None)
             if kps is None:
                 kps = getattr(face, "landmark_2d_106", None)  # fallback
@@ -645,7 +702,10 @@ def detect_and_embed(
             if kps is not None:
                 try:
                     kps_arr = np.asarray(kps, dtype=np.float32).reshape(-1, 2)
-                    landmarks = [[float(p[0]), float(p[1])] for p in kps_arr]
+                    landmarks = [
+                        [float(p[0]) / scale, float(p[1]) / scale]
+                        for p in kps_arr
+                    ]
                 except (ValueError, TypeError):
                     landmarks = []
 

@@ -170,6 +170,7 @@ pyinstaller \
     --specpath /tmp \
     "${HIDDEN[@]}" \
     "${ADD_DATA_FLAGS[@]}" \
+    --collect-all tgdl_faces \
     --collect-all insightface \
     --collect-all onnxruntime \
     -m "$SCRIPT_DIR/tgdl_faces/__main__.py"

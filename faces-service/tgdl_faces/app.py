@@ -26,6 +26,7 @@ from typing import Annotated, Any
 
 import numpy as np
 from fastapi import FastAPI, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
@@ -37,7 +38,7 @@ from .insight import (
     MODEL_NAME,
     arch_tag,
     detect_and_embed,
-    get_app,
+    get_app,  # returns the FaceAnalysis singleton — used only in /info to read live providers
     get_stats,
     gpu_available,
     gpu_provider,
@@ -52,6 +53,7 @@ from .insight import (
     _resolve_models_dir,
 )
 from .io import (
+    Base64DecodeError,
     ImageDecodeError,
     PathNotAllowedError,
     load_image_from_b64,
@@ -254,6 +256,14 @@ async def _validation_handler(
     except (IndexError, KeyError, AttributeError):
         msg = "validation error"
     return _error(msg, code="bad_request", status_code=status.HTTP_400_BAD_REQUEST)
+
+
+@app.exception_handler(Base64DecodeError)
+async def _base64_decode_handler(
+    _request: Request, exc: Base64DecodeError
+) -> JSONResponse:
+    """Invalid base64 syntax from the caller — 415 Unsupported Media Type."""
+    return _error(str(exc), code="image_decode_failed", status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
 
 # --- routes -----------------------------------------------------------------
@@ -500,6 +510,11 @@ def _load_image(body_path: str | None, body_b64: str | None) -> tuple[Any, str |
     produce well-typed error responses without catching exceptions.
     ``error_code`` is one of ``file_not_found``, ``decode_failed``,
     ``path_not_allowed``.
+
+    ``Base64DecodeError`` is intentionally *not* caught here — it
+    propagates to the global exception handler which returns 415, matching
+    the test contract: invalid base64 syntax is a client error (415),
+    while valid-bytes-but-not-an-image is a soft error (200 + decode_failed).
     """
     try:
         if body_path:
@@ -512,11 +527,18 @@ def _load_image(body_path: str | None, body_b64: str | None) -> tuple[Any, str |
         return None, "path_not_allowed"
     except FileNotFoundError:
         return None, "file_not_found"
+    except Base64DecodeError:
+        raise  # let the global 415 handler deal with it
     except ImageDecodeError:
         return None, "decode_failed"
 
 
-def _do_detect(body: DetectRequest) -> JSONResponse:
+def _do_detect_sync(body: DetectRequest) -> JSONResponse:
+    """Synchronous inner implementation — called via run_in_threadpool.
+
+    Separated from the async route handler so the CPU-bound work runs in
+    uvicorn's thread pool instead of blocking the event loop.
+    """
     # Guard: model must be loaded (or at least attempted). Return 503
     # during the brief window while preload_model() is still running.
     if last_error() is not None:
@@ -586,34 +608,30 @@ def _do_detect(body: DetectRequest) -> JSONResponse:
 
 
 @app.post("/detect")
-def detect(body: Annotated[DetectRequest, ...]) -> JSONResponse:
-    """Detect & embed faces. Returns ``{faces, image_w, image_h}``."""
-    return _do_detect(body)
+async def detect(body: Annotated[DetectRequest, ...]) -> JSONResponse:
+    """Detect & embed faces. Returns ``{faces, image_w, image_h}``.
+
+    Offloads the CPU-bound detection work to uvicorn's thread pool via
+    ``run_in_threadpool`` so the async event loop remains unblocked and
+    other requests (``/health``, concurrent ``/detect``) are served
+    promptly while a detection is in flight.
+    """
+    return await run_in_threadpool(_do_detect_sync, body)
 
 
 @app.post("/detect-embed")
-def detect_embed(body: Annotated[DetectRequest, ...]) -> JSONResponse:
+async def detect_embed(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     """Alias of :func:`detect` — same body, same response.
 
     The Node side prefers this name because it advertises "single
     combined detect + embed call" semantics; keeping both endpoints
     lets either side be refactored without breaking the other.
     """
-    return _do_detect(body)
+    return await run_in_threadpool(_do_detect_sync, body)
 
 
-@app.post("/detect/batch")
-def detect_batch(body: BatchDetectRequest) -> JSONResponse:
-    """Detect faces in multiple files in a single HTTP round-trip.
-
-    Accepts ``{"files": ["/abs/path/img1.jpg", ...]}`` and returns a
-    ``results`` list with one entry per input file. Per-file errors
-    (file not found, decode failure, path outside allow-roots) are
-    surfaced in the ``error`` field rather than aborting the batch.
-
-    Model-not-ready and model-load-failed conditions are still returned
-    as top-level 503 errors because no results can be produced.
-    """
+def _do_batch_sync(body: BatchDetectRequest) -> JSONResponse:
+    """Synchronous inner implementation for batch detection."""
     if last_error() is not None:
         return _error(
             f"model failed to load: {last_error()}",
@@ -682,3 +700,22 @@ def detect_batch(body: BatchDetectRequest) -> JSONResponse:
             "total_faces": total_faces,
         },
     )
+
+
+@app.post("/detect/batch")
+async def detect_batch(body: BatchDetectRequest) -> JSONResponse:
+    """Detect faces in multiple files in a single HTTP round-trip.
+
+    Accepts ``{"files": ["/abs/path/img1.jpg", ...]}`` and returns a
+    ``results`` list with one entry per input file. Per-file errors
+    (file not found, decode failure, path outside allow-roots) are
+    surfaced in the ``error`` field rather than aborting the batch.
+
+    Model-not-ready and model-load-failed conditions are still returned
+    as top-level 503 errors because no results can be produced.
+
+    The entire batch runs in a single threadpool slot so the semaphore
+    in :func:`detect_and_embed` governs concurrency across simultaneous
+    batch requests — no separate locking is needed here.
+    """
+    return await run_in_threadpool(_do_batch_sync, body)

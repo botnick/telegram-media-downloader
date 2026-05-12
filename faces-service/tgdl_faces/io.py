@@ -22,11 +22,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import os
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+
+_LOG = logging.getLogger(__name__)
 
 
 class PathNotAllowedError(PermissionError):
@@ -37,9 +41,19 @@ class PathNotAllowedError(PermissionError):
 
 
 class ImageDecodeError(ValueError):
-    """Raised when the bytes can't be decoded as an image.
+    """Raised when bytes are valid but can't be decoded as an image format.
 
-    The FastAPI layer maps this to a ``415`` (Unsupported Media Type).
+    The FastAPI layer maps this to a soft 200 with ``{"error": "decode_failed"}``
+    so the Node retry loop doesn't crash on a single corrupt frame.
+    """
+
+
+class Base64DecodeError(ImageDecodeError):
+    """Raised when the ``image_b64`` string is not valid base64.
+
+    Distinct from :class:`ImageDecodeError` so the FastAPI layer can
+    return ``415 Unsupported Media Type`` (the client sent garbage, not an
+    image in an unexpected format).
     """
 
 
@@ -70,6 +84,49 @@ def _is_under(path: str, root: str) -> bool:
         # "not under".
         return False
     return common == root
+
+
+def _apply_exif_orientation(bgr: np.ndarray, raw_bytes: bytes) -> np.ndarray:
+    """Rotate/flip ``bgr`` to match the EXIF orientation tag in ``raw_bytes``.
+
+    ``cv2.imdecode`` ignores EXIF rotation tags (orientations 3, 6, 8),
+    which causes portrait photos taken on phones to appear sideways or
+    upside-down when fed directly to the face detector.  Pillow reads EXIF
+    reliably on all platforms (including Windows where libjpeg-turbo can
+    behave differently), so we use it as the authority for the rotation.
+
+    Orientations:
+      1 — normal (no-op)
+      3 — 180° rotation
+      6 — 90° clockwise (270° counter-clockwise)
+      8 — 90° counter-clockwise (270° clockwise)
+
+    All other values are treated as no-op to avoid breaking unusual EXIF
+    data.
+    """
+    try:
+        from PIL import Image  # noqa: PLC0415
+        import io as _io  # noqa: PLC0415
+
+        with Image.open(_io.BytesIO(raw_bytes)) as pil_img:
+            exif = pil_img.getexif() if hasattr(pil_img, "getexif") else {}
+            # Tag 0x0112 is Orientation
+            orientation = exif.get(0x0112, 1) if exif else 1
+    except Exception:
+        # Pillow not importable, image has no EXIF, or EXIF is unreadable —
+        # return the image as-is so we don't silently break non-JPEG inputs.
+        return bgr
+
+    if orientation == 3:
+        # 180° rotation
+        return cv2.rotate(bgr, cv2.ROTATE_180)
+    if orientation == 6:
+        # 90° clockwise
+        return cv2.rotate(bgr, cv2.ROTATE_90_CLOCKWISE)
+    if orientation == 8:
+        # 90° counter-clockwise
+        return cv2.rotate(bgr, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return bgr
 
 
 def load_image_from_path(path: str, allow_roots: list[str]) -> np.ndarray:
@@ -120,7 +177,7 @@ def load_image_from_path(path: str, allow_roots: list[str]) -> np.ndarray:
     if img is None:
         # File exists but bytes are not a recognisable image format.
         raise ImageDecodeError(f"failed to decode image at {path!r}")
-    return img
+    return _apply_exif_orientation(img, raw)
 
 
 def load_image_from_b64(data: str) -> np.ndarray:
@@ -136,7 +193,7 @@ def load_image_from_b64(data: str) -> np.ndarray:
         format.
     """
     if not data or not isinstance(data, str):
-        raise ImageDecodeError("image_b64 must be a non-empty string")
+        raise Base64DecodeError("image_b64 must be a non-empty string")
 
     payload = data.strip()
     if payload.startswith("data:") and ";base64," in payload:
@@ -145,13 +202,13 @@ def load_image_from_b64(data: str) -> np.ndarray:
     try:
         raw = base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError) as exc:
-        raise ImageDecodeError(f"image_b64 is not valid base64: {exc}") from exc
+        raise Base64DecodeError(f"image_b64 is not valid base64: {exc}") from exc
 
     if not raw:
-        raise ImageDecodeError("image_b64 decoded to zero bytes")
+        raise Base64DecodeError("image_b64 decoded to zero bytes")
 
     buf = np.frombuffer(raw, dtype=np.uint8)
     img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
     if img is None:
         raise ImageDecodeError("image_b64 bytes could not be decoded as an image")
-    return img
+    return _apply_exif_orientation(img, raw)

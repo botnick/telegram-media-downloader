@@ -111,6 +111,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 
 LABEL org.opencontainers.image.title="tgdl-faces" \
       org.opencontainers.image.description="Face detection + 512-dim embedding sidecar for telegram-media-downloader" \
+      org.opencontainers.image.version="0.2.0" \
       org.opencontainers.image.source="https://github.com/botnick/telegram-media-downloader" \
       org.opencontainers.image.licenses="MIT" \
       com.centurylinklabs.watchtower.enable="true"
