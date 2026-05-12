@@ -6,7 +6,6 @@
 import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import net from 'net';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import fs from 'fs/promises';
@@ -16,118 +15,35 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
-import crypto from 'crypto';
 
 import { getOrGenerateSecret } from '../core/secret.js';
-import {
-    BACKFILL_MAX_LIMIT,
-    DIALOG_CACHE_TTL_MS,
-    BACKPRESSURE_CAP_DEFAULT,
-} from '../core/constants.js';
+import { BACKFILL_MAX_LIMIT } from '../core/constants.js';
 import {
     getDb,
-    getAllDownloadsFederated,
-    getDownloadsForGroupFederated,
-    searchDownloadsFederated,
-    getStatsFederated,
-    getStats as getDbStats,
-    deleteGroupDownloads,
-    deleteAllDownloads,
-    getGroupStats,
-    listGroupFiles,
     backfillGroupNames,
-    deleteDownloadsBy,
-    createShareLink,
     getShareLinkForServe,
     bumpShareLinkAccess,
-    revokeShareLink,
-    listShareLinks,
-    countShareLinks,
-    getNsfwTierCounts,
-    getNsfwHistogram,
-    getNsfwListByTier,
-    getNsfwIdsByTier,
-    reclassifyNsfw,
-    unwhitelistNsfw,
-    NSFW_TIERS,
-    setDownloadPinned,
-    getDownloadById,
     kvGet,
     kvSet,
-    recordUpdateAttempt,
-    recordUpdateFailure,
-    listUpdateHistory,
-    getUnindexedAiBatch,
 } from '../core/db.js';
-import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager } from '../core/accounts.js';
-import { loadConfig, saveConfig } from '../config/manager.js';
+import { loadConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
 import {
-    findDuplicates as dedupFindDuplicates,
-    deleteByIds as dedupDeleteByIds,
-} from '../core/dedup.js';
-import {
     ensureShareSecret,
     verifyShareToken,
     buildShareUrlPath,
-    clampTtlSeconds,
     applyShareLimits,
 } from '../core/share.js';
+import { purgeNonStandardThumbs } from '../core/thumbs.js';
 import {
-    getOrCreateThumb,
-    purgeThumbsForDownload,
-    purgeAllThumbs,
-    purgeNonStandardThumbs,
-    getThumbsCacheStats,
-    buildAllThumbnails,
-    hasFfmpeg,
-    ALLOWED_WIDTHS as THUMB_WIDTHS,
-    DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
-    thumbKindTypes,
-    hasCachedThumb,
-} from '../core/thumbs.js';
-import {
-    buildAllSeekbar,
-    getMetaForDownload as getSeekbarMetaForDownload,
-    getSeekbarCacheStats,
-    getSpritePath as getSeekbarSpritePath,
-    generateForDownload as generateSeekbarForDownload,
-    purgeAllSeekbar,
-} from '../core/seekbar/index.js';
-import {
-    getSidecarStatus as getSeekbarSidecarStatus,
-    refreshSidecar as refreshSeekbarSidecar,
     setBroadcast as setSeekbarBroadcast,
-    SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
     startSidecar as startSeekbarSidecar,
 } from '../core/seekbar/spawn.js';
-import { probeHwaccel as probeSeekbarHwaccel } from '../core/seekbar/client.js';
-import { getSeekbarSprite } from '../core/db.js';
-import {
-    startScan as nsfwStartScan,
-    cancelScan as nsfwCancelScan,
-    isScanRunning as nsfwIsScanRunning,
-    getScanState as nsfwGetScanState,
-    preloadClassifier as nsfwPreloadClassifier,
-    clearClassifierCache as nsfwClearCache,
-    classifierReady as nsfwClassifierReady,
-    NSFW_DEFAULTS,
-    getNsfwStats,
-    getNsfwDeleteCandidates,
-    whitelistNsfw,
-} from '../core/nsfw.js';
-import {
-    startFacesScan as aiStartFacesScan,
-    startTagsScan as aiStartTagsScan,
-    cancelScan as aiCancelScan,
-    isScanRunning as aiIsScanRunning,
-    getScanState as aiGetScanState,
-    _bgQueueDepths as aiBgQueueDepths,
-} from '../core/ai/index.js';
+import { preloadClassifier as nsfwPreloadClassifier } from '../core/nsfw.js';
 // Search + Auto-tag + vector index were removed in this release. Stubs
 // below keep the existing route handlers compiling until the bigger
 // "drop endpoints" cleanup lands. Each stub responds 410 Gone so the SPA
@@ -136,68 +52,15 @@ import {
 // survives. The stub constants that used to live here (aiStartEmbedScan,
 // aiStartTagsScan, aiEmbedText, aiTopK, aiLoadVecOnce, AI_EMBED_DEFAULTS,
 // …) were deleted along with the routes that called them.
-import { runAutoUpdate, autoUpdateStatus } from '../core/updater.js';
 import { getRescueSweeper } from '../core/rescue.js';
-import { getRescueStats } from '../core/db.js';
-import {
-    getAiCounts,
-    listPeople,
-    listPhotosForPerson,
-    renamePerson,
-    deletePerson,
-    resetAllAiData,
-    getDb as aiGetDb,
-} from '../core/db.js';
 import * as backup from '../core/backup/index.js';
-import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
 import { metrics } from '../core/metrics.js';
-import {
-    loginVerify,
-    isAuthConfigured,
-    validateSession,
-    revokeAllSessions,
-    startSessionGc,
-} from '../core/web-auth.js';
+import { isAuthConfigured, validateSession, startSessionGc } from '../core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from '../core/logger.js';
 import { createJobTracker } from '../core/job-tracker.js';
-import {
-    getSelfPeerId,
-    getSelfPeerName,
-    setSelfPeerName,
-    getClusterToken,
-    rotateClusterToken,
-    setClusterToken,
-    getSelfIdentity,
-    issuePairingCode,
-} from '../core/cluster/identity.js';
-import { verifyRequest as verifyPeerHmac } from '../core/cluster/hmac.js';
-import {
-    listPeers,
-    getPeer,
-    updatePeer,
-    removePeer,
-    markOnline,
-    markOffline,
-} from '../core/cluster/peers.js';
-import { initiateHandshake, acceptHandshake, testPeerHealth } from '../core/cluster/handshake.js';
-import { startSyncEngine, syncAllOnce, getSyncState } from '../core/cluster/sync.js';
-import { parseClusterRefPath } from '../core/cluster/dedup.js';
-import {
-    tryStartSweep,
-    abortSweep,
-    getSweepStatus,
-    listConflicts,
-    resolveConflict,
-} from '../core/cluster/sweep.js';
-import { streamFromPeer, requestSignedShareUrl } from '../core/cluster/proxy.js';
+import { getSelfPeerId, getClusterToken } from '../core/cluster/identity.js';
 import * as clusterWs from '../core/cluster/ws-channel.js';
-import * as clusterDiscovery from '../core/cluster/discovery.js';
-import { startFailoverWatcher, runFailoverPass } from '../core/cluster/failover.js';
-import { listDiscoveredPeers } from '../core/db.js';
-import WebSocketLib from 'ws';
-import { recordClusterAudit, listClusterAudit, listOwnDownloadsSince } from '../core/db.js';
-import { formatBytes, bestGroupName, nameLooksUnresolved } from './lib/format.js';
-import { readConfigSafe, invalidateConfigCache } from './lib/config-cache.js';
+import { readConfigSafe } from './lib/config-cache.js';
 import {
     createVersionRouter,
     readCurrentVersion as _readCurrentVersion,
@@ -210,7 +73,6 @@ import {
     failedJobMeta as _failedJobMeta,
 } from './lib/queue-state.js';
 import { writeConfigAtomic } from './lib/config-writer.js';
-import { tgAuthErrorBody } from './lib/tg-error.js';
 import { createAccountsRouter } from './routes/accounts.js';
 import { createMonitorRouter } from './routes/monitor.js';
 import { createHistoryRouter } from './routes/history.js';
@@ -232,23 +94,7 @@ import {
 import { createStatsRouter, broadcastStatsSoon } from './routes/stats.js';
 import { createLinkDownloadRouter } from './routes/link-download.js';
 import { createFileServingMiddleware } from './middleware/files.js';
-import {
-    historyJobs as _historyJobs,
-    activeBackfillsByGroup as _activeBackfillsByGroup,
-    loadHistoryJobsFromStore,
-    saveHistoryJobsToStore,
-    scheduleHistoryJobCleanup,
-    HISTORY_JOBS_KV,
-} from './lib/history-state.js';
-import {
-    cookieParser,
-    checkAuth,
-    guestGate,
-    isLocalRequest,
-    isPublicPath,
-    PUBLIC_API_PATHS,
-    CLUSTER_PREFIX_HMAC_ONLY,
-} from './middleware/auth.js';
+import { cookieParser, checkAuth, guestGate } from './middleware/auth.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
 // gramJS opens a fresh DC connection per file download (different DCs host
