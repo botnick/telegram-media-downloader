@@ -32,6 +32,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from . import __version__
+from .clip import (
+    CLIPTagger,
+    get_tagger as get_clip_tagger,
+    is_ready as clip_is_ready,
+    last_error as clip_last_error,
+)
 from .insight import (
     DET_SIZE,
     EMBEDDING_DIM,
@@ -137,6 +143,68 @@ class DetectResponse(BaseModel):
     image_h: int
 
 
+class TagRequest(BaseModel):
+    """Body for ``/tag`` — zero-shot CLIP tagging.
+
+    Exactly one of ``path`` and ``image_b64`` must be set, mirroring
+    ``DetectRequest``.
+    """
+
+    path: str | None = Field(
+        default=None,
+        description=(
+            "Absolute path to an image on disk. Must resolve under "
+            "TGDL_FACES_ALLOW_ROOTS or the request 403s."
+        ),
+    )
+    image_b64: str | None = Field(
+        default=None,
+        description=(
+            "Base64-encoded image bytes. Tolerates a leading "
+            "`data:image/...;base64,` prefix. Mutually exclusive with `path`."
+        ),
+    )
+    threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum tag score (0..1). Defaults to env or 0.20.",
+    )
+    top_k: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description="Max tags to return. Defaults to env or 10.",
+    )
+    vocabulary: list[str] | None = Field(
+        default=None,
+        description=(
+            "Custom tag labels overriding the sidecar's default vocabulary. "
+            "If empty/omitted, the sidecar's built-in vocabulary is used."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> TagRequest:
+        has_path = bool(self.path and self.path.strip())
+        has_b64 = bool(self.image_b64 and self.image_b64.strip())
+        if has_path == has_b64:
+            raise ValueError(
+                "exactly one of `path` or `image_b64` is required"
+            )
+        return self
+
+
+class TagResult(BaseModel):
+    tag: str
+    score: float
+
+
+class TagResponse(BaseModel):
+    tags: list[TagResult]
+    vocabulary: list[str]
+
+
 class HealthOk(BaseModel):
     """Successful ``/health`` payload.
 
@@ -157,6 +225,9 @@ class HealthOk(BaseModel):
     det_size: int = int(DET_SIZE[0])
     platform: str = ""
     python: str = ""
+    clip_ready: bool = False
+    clip_model: str = ""
+    clip_vocabulary_size: int = 0
 
 
 class HealthErr(BaseModel):
@@ -165,6 +236,9 @@ class HealthErr(BaseModel):
     version: str = __version__
     platform: str = ""
     python: str = ""
+    clip_ready: bool = False
+    clip_model: str = ""
+    clip_vocabulary_size: int = 0
 
 
 class InfoResponse(BaseModel):
@@ -176,6 +250,9 @@ class InfoResponse(BaseModel):
     version: str = __version__
     platform: str = ""
     python: str = ""
+    clip_ready: bool = False
+    clip_model: str = ""
+    clip_vocabulary_size: int = 0
 
 
 # --- FastAPI app ------------------------------------------------------------
@@ -261,6 +338,19 @@ def health() -> JSONResponse:
     must check it (not just the HTTP status).
     """
     err = last_error()
+    clip_ready = clip_is_ready()
+    clip_model = ""
+    clip_vocabulary_size = 0
+    if clip_ready:
+        try:
+            tagger = get_clip_tagger()
+            clip_model = tagger.model_id
+            clip_vocabulary_size = len(tagger.vocabulary)
+        except Exception:
+            pass
+    elif clip_last_error() is not None:
+        clip_model = "error"
+
     if err is not None:
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -268,6 +358,9 @@ def health() -> JSONResponse:
                 error=f"{type(err).__name__}: {err}",
                 platform=platform_tag(),
                 python=python_version(),
+                clip_ready=clip_ready,
+                clip_model=clip_model,
+                clip_vocabulary_size=clip_vocabulary_size,
             ).model_dump(),
         )
     return JSONResponse(
@@ -279,6 +372,9 @@ def health() -> JSONResponse:
             det_size=int(DET_SIZE[0]),
             platform=platform_tag(),
             python=python_version(),
+            clip_ready=clip_ready,
+            clip_model=clip_model,
+            clip_vocabulary_size=clip_vocabulary_size,
         ).model_dump(),
     )
 
@@ -298,12 +394,28 @@ def info() -> InfoResponse:
                 providers = list(real)
         except Exception:  # pragma: no cover — defensive
             pass
+    clip_ready = clip_is_ready()
+    clip_model = ""
+    clip_vocabulary_size = 0
+    if clip_ready:
+        try:
+            tagger = get_clip_tagger()
+            clip_model = tagger.model_id
+            clip_vocabulary_size = len(tagger.vocabulary)
+        except Exception:
+            pass
+    elif clip_last_error() is not None:
+        clip_model = "error"
+
     return InfoResponse(
         providers=providers,
         providers_requested=requested_providers(),
         det_size=int(DET_SIZE[0]),
         platform=platform_tag(),
         python=python_version(),
+        clip_ready=clip_ready,
+        clip_model=clip_model,
+        clip_vocabulary_size=clip_vocabulary_size,
     )
 
 
@@ -498,3 +610,68 @@ def detect_embed(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     lets either side be refactored without breaking the other.
     """
     return _do_detect(body)
+
+
+@app.post("/tag")
+def tag_image(body: Annotated[TagRequest, ...]) -> JSONResponse:
+    """Zero-shot CLIP tagging — score an image against the tag vocabulary.
+
+    Returns ``{tags: [{tag, score}], vocabulary: [str]}``.
+
+    Error codes mirror the ``/detect`` endpoint: ``path_not_allowed`` (403),
+    ``file_not_found`` (404), ``image_decode_failed`` (415), and
+    ``tagger_not_ready`` (503) when the CLIP model hasn't loaded yet or
+    failed to load.
+    """
+    try:
+        tagger = get_clip_tagger()
+    except Exception as exc:
+        return _error(
+            f"tagger not ready: {type(exc).__name__}: {exc}",
+            code="tagger_not_ready",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    # Resolve the image first so we can return 403 / 415 before paying
+    # the CLIP inference cost on invalid input.
+    try:
+        if body.path:
+            img = load_image_from_path(body.path, _allow_roots())
+        else:
+            assert body.image_b64 is not None  # guarded by validator
+            img = load_image_from_b64(body.image_b64)
+    except PathNotAllowedError as exc:
+        return _error(str(exc), code="path_not_allowed",
+                      status_code=status.HTTP_403_FORBIDDEN)
+    except FileNotFoundError as exc:
+        return _error(str(exc), code="file_not_found",
+                      status_code=status.HTTP_404_NOT_FOUND)
+    except ImageDecodeError as exc:
+        return _error(str(exc), code="image_decode_failed",
+                      status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+    try:
+        tags = tagger.tag_image(
+            img,
+            threshold=body.threshold,
+            top_k=body.top_k,
+            vocabulary=body.vocabulary,
+        )
+    except Exception as exc:
+        _LOG.exception("tag_image failed")
+        return _error(
+            f"tagging failed: {type(exc).__name__}: {exc}",
+            code="tagging_failed",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    # Determine which vocabulary was actually used
+    used_vocabulary = body.vocabulary or list(tagger.vocabulary)
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content=TagResponse(
+            tags=[TagResult(**t) for t in tags],
+            vocabulary=list(used_vocabulary),
+        ).model_dump(),
+    )

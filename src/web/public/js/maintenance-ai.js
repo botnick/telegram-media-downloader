@@ -141,7 +141,121 @@ const CAPABILITIES = [
             desc: 'Object detection · OCR · Face quality ranking · Smart albums',
         },
     },
+    {
+        id: 'tags',
+        icon: 'ri-price-tag-3-line',
+        i18n: {
+            title: 'maintenance.ai.tags.title',
+            desc: 'maintenance.ai.tags.desc',
+            scanLabel: 'maintenance.ai.tags.scan',
+            cancelLabel: 'common.cancel',
+        },
+        defaults: {
+            title: 'Image tagging',
+            desc: 'Zero-shot CLIP tagging — detects objects, scenes, concepts in every photo. Runs via the Python sidecar.',
+            scanLabel: 'Tag all',
+            cancelLabel: 'Cancel',
+        },
+        statusKey: 'models.tags',
+        scanFeature: 'tags',
+        autoToggleKey: 'imageTagging',
+        customHtml: true, // renders extra tag-labels editor + tag browser
+        controls: [
+            {
+                type: 'custom',
+                cfgKey: 'tagLabels',
+                labelKey: 'maintenance.ai.tags.labels',
+                labelDefault: 'Custom tags (comma-separated, leave empty for defaults)',
+                placeholder: 'e.g. cat, dog, sunset, document, screenshot',
+            },
+        ],
+    },
 ];
+
+// ---- Tag browser ----------------------------------------------------------
+
+/**
+ * Fetch all detected tags from the server and render chip buttons.
+ * Shows the tag browser section when tags exist, hides it otherwise.
+ */
+async function _renderTagBrowser() {
+    const section = $('#ai-tag-browser');
+    const chips = $('#ai-tag-chips');
+    const empty = $('#ai-tag-empty');
+    if (!section || !chips) return;
+
+    try {
+        const r = await api.get('/api/ai/tags/list');
+        const tags = Array.isArray(r?.tags) ? r.tags : [];
+        if (!tags.length) {
+            section.classList.add('hidden');
+            return;
+        }
+        section.classList.remove('hidden');
+        if (empty) empty.classList.add('hidden');
+
+        chips.innerHTML = tags
+            .map(
+                (t) =>
+                    `<button type="button" class="tg-btn-input text-[11px] px-2.5 py-1 inline-flex items-center gap-1 tag-chip" data-tag="${escapeHtml(t.tag)}">
+                        ${escapeHtml(t.tag)}
+                        <span class="text-[10px] text-tg-textSecondary tabular-nums">${t.count}</span>
+                    </button>`,
+            )
+            .join('');
+
+        // Wire chip clicks — load photos for the selected tag
+        chips.querySelectorAll('.tag-chip').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                chips.querySelectorAll('.tag-chip').forEach((b) => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tag = btn.dataset.tag;
+                if (tag) _loadTagPhotos(tag);
+            });
+        });
+
+        // Auto-select the first chip
+        const first = chips.querySelector('.tag-chip');
+        if (first) {
+            first.classList.add('active');
+            _loadTagPhotos(first.dataset.tag);
+        }
+    } catch (e) {
+        console.warn('tag browser:', e);
+        section.classList.add('hidden');
+    }
+}
+
+/**
+ * Load photos for a specific tag and render them as a grid.
+ */
+async function _loadTagPhotos(tag) {
+    const photos = $('#ai-tag-photos');
+    if (!photos) return;
+    photos.innerHTML =
+        '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6"><i class="ri-loader-4-line animate-spin mr-1"></i>Loading…</p>';
+    try {
+        const r = await api.get(`/api/ai/tags/photos?tag=${encodeURIComponent(tag)}&limit=50`);
+        const files = Array.isArray(r?.files) ? r.files : [];
+        if (!files.length) {
+            photos.innerHTML =
+                '<p class="text-[11px] text-tg-textSecondary col-span-full text-center py-6">No photos with this tag.</p>';
+            return;
+        }
+        photos.innerHTML = files
+            .map((f) => {
+                const thumb = `/api/thumbs/${encodeURIComponent(f.id)}?w=320`;
+                const score = f.tag_score ? Math.round(f.tag_score * 100) + '%' : '';
+                return `<div class="relative aspect-square rounded-md overflow-hidden bg-tg-bg/40 group cursor-pointer" onclick="navigateTo('viewer/${encodeURIComponent(f.group_name || '')}')">
+                    <img loading="lazy" class="absolute inset-0 w-full h-full object-cover" src="${escapeHtml(thumb)}" onerror="this.style.display='none'">
+                    <span class="absolute bottom-1 right-1 text-[10px] px-1 py-0.5 rounded bg-black/60 text-white tabular-nums">${escapeHtml(score)}</span>
+                </div>`;
+            })
+            .join('');
+    } catch (e) {
+        photos.innerHTML = `<p class="text-[11px] text-red-400 col-span-full text-center py-6">Failed: ${escapeHtml(e?.message || 'unknown')}</p>`;
+    }
+}
 
 export async function init() {
     if (!_initOnce) {
@@ -151,6 +265,7 @@ export async function init() {
     await refreshStatus();
     _refreshDoctor().catch(() => {});
     _loadPeople().catch(() => {});
+    _renderTagBrowser().catch(() => {});
 }
 
 // Public refresher — exported so the SPA shell can poke us after a
@@ -161,6 +276,7 @@ export async function refreshStatus() {
         if (!r.success) return;
         _lastStatus = r;
         _renderStatus(r);
+        _renderTagBrowser().catch(() => {});
     } catch (e) {
         console.warn('ai/status:', e);
     }
@@ -228,6 +344,59 @@ function _bindOnce() {
     $('#ai-faces-provider-probe-btn')?.addEventListener('click', _runFacesProviderProbe);
     $('#ai-faces-provider')?.addEventListener('change', _onFacesProviderChange);
 
+    // Image tagging card — toggle, labels textarea, scan + cancel.
+    $('#ai-tags-toggle')?.addEventListener('click', async () => {
+        const el = $('#ai-tags-toggle');
+        if (!el) return;
+        const cur = el.classList.contains('active');
+        const next = !cur;
+        el.classList.toggle('active', next);
+        el.setAttribute('aria-checked', String(next));
+        try {
+            const r = await api.post('/api/config', {
+                advanced: { ai: { imageTagging: next } },
+            });
+            if (!r.success) throw new Error(r.error || 'save failed');
+            showToast(i18nT('common.saved', 'Saved'), 'success');
+            await refreshStatus();
+        } catch (e) {
+            el.classList.toggle('active', cur);
+            el.setAttribute('aria-checked', String(cur));
+            showToast(
+                `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
+                'error',
+            );
+        }
+    });
+    $('#ai-tags-toggle')?.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            $('#ai-tags-toggle')?.click();
+        }
+    });
+    $('#ai-tags-labels')?.addEventListener('change', async (e) => {
+        const raw = String(e.target?.value || '');
+        const parts = raw
+            .split(/[,\n]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        const value = parts.length ? parts : [];
+        try {
+            const r = await api.post('/api/config', {
+                advanced: { ai: { tagLabels: value } },
+            });
+            if (!r.success) throw new Error(r.error || 'save failed');
+            showToast(i18nT('common.saved', 'Saved'), 'success');
+        } catch (e) {
+            showToast(
+                `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
+                'error',
+            );
+        }
+    });
+    $('#ai-tags-scan-btn')?.addEventListener('click', () => _startScan('tags'));
+    $('#ai-tags-cancel-btn')?.addEventListener('click', () => _cancelScan('tags'));
+
     // Doctor refresh
     $('#ai-doctor-refresh-btn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -246,6 +415,9 @@ function _bindOnce() {
     });
     $('#ai-people-refresh-btn')?.addEventListener('click', () => _loadPeople());
 
+    // Tag browser — refresh + chip clicks.
+    $('#ai-tag-browser-refresh')?.addEventListener('click', () => _renderTagBrowser());
+
     // Person action buttons.
     $('#ai-person-rename-btn')?.addEventListener('click', _renameSelectedPerson);
     $('#ai-person-merge-btn')?.addEventListener('click', _mergeSelectedPerson);
@@ -258,6 +430,8 @@ function _bindOnce() {
     // header badge updates without a polling loop.
     ws.on('ai_people_progress', (m) => _onScanProgress('faces', m));
     ws.on('ai_people_done', (m) => _onScanDone('faces', m));
+    ws.on('ai_tags_progress', (m) => _onScanProgress('tags', m));
+    ws.on('ai_tags_done', (m) => _onScanDone('tags', m));
     ws.on('ai_faces_status', () => refreshStatus());
 
     // Auto-installer feedback. Streams stdout from `python -m
@@ -465,6 +639,10 @@ function _renderStatus(status) {
     }
     const peopleEl = $('#ai-stat-people');
     if (peopleEl) peopleEl.textContent = String(counts.peopleCount ?? counts.withFaces ?? 0);
+    const taggedEl = $('#ai-stat-tagged');
+    if (taggedEl) {
+        taggedEl.textContent = String(counts.withTags ?? 0);
+    }
     const lastEl = $('#ai-stat-last');
     if (lastEl) {
         const finishedAt = Number(scans?.faces?.finishedAt) || 0;
@@ -528,6 +706,34 @@ function _renderStatus(status) {
     if (provSel) {
         const cur = String(cfg.faces?.providers || 'auto').toLowerCase();
         if (provSel.value !== cur) provSel.value = cur;
+    }
+
+    // Image tagging card — toggle, model line, scan state, labels.
+    const tagsToggle = $('#ai-tags-toggle');
+    if (tagsToggle) {
+        const on = cfg.imageTagging !== false;
+        tagsToggle.classList.toggle('active', on);
+        tagsToggle.setAttribute('aria-checked', String(on));
+    }
+    const tagsModel = models.tags || {};
+    const tagsModelId = tagsModel.id || (tagsModel.loaded ? 'CLIP loaded' : '—');
+    const tagsVocab = tagsModel.vocabularySize ? `${tagsModel.vocabularySize} tags` : '';
+    const tagsModelLineEl = $('#ai-tags-model-line');
+    if (tagsModelLineEl) {
+        const parts = [tagsModelId, tagsVocab].filter(Boolean);
+        tagsModelLineEl.textContent = parts.join(' · ') || '—';
+        tagsModelLineEl.title = tagsModelId;
+    }
+    const tagsRunning = !!scans?.tags?.running;
+    const tagsScanBtn = $('#ai-tags-scan-btn');
+    const tagsCancelBtn = $('#ai-tags-cancel-btn');
+    if (tagsScanBtn) tagsScanBtn.disabled = tagsRunning;
+    if (tagsCancelBtn) tagsCancelBtn.disabled = !tagsRunning;
+    // Hydrate tag labels textarea from config.
+    const tagsLabelsEl = $('#ai-tags-labels');
+    if (tagsLabelsEl) {
+        const cur = Array.isArray(cfg.tagLabels) ? cfg.tagLabels.join(', ') : '';
+        if (tagsLabelsEl.value !== cur) tagsLabelsEl.value = cur;
     }
 }
 
@@ -1065,6 +1271,19 @@ function _renderControl(ctrl, cfg) {
             </label>
         `;
     }
+    if (ctrl.type === 'custom') {
+        const curVal = Array.isArray(rawCur)
+            ? rawCur.join(', ')
+            : String(rawCur || '').trim() || '';
+        const placeholder = escapeHtml(ctrl.placeholder || '');
+        return `
+            <label class="block sm:col-span-2">
+                <span class="text-[11px] text-tg-textSecondary">${label}</span>
+                <textarea class="tg-input text-xs py-1 mt-1 w-full" rows="3" data-cap-ctrl="${escapeHtml(ctrl.cfgKey)}" placeholder="${placeholder}">${escapeHtml(curVal)}</textarea>
+                <p class="text-[10px] text-tg-textSecondary mt-1">${escapeHtml(i18nT('maintenance.ai.tags.labels_help', "One tag per line or comma-separated. Leave empty to use the sidecar's built-in vocabulary."))}</p>
+            </label>
+        `;
+    }
     return '';
 }
 
@@ -1115,12 +1334,23 @@ const _CTRL_SAVE_PATHS = {
 
 async function _saveControl(ctrl, inp) {
     const raw = inp.value;
+    let v;
     // Numeric controls (slider / number) save the parsed number; select
     // controls keep the value as a string — `_CTRL_SAVE_PATHS` carries
-    // the alias mapping for both.
-    const isStringCtrl = ctrl.type === 'select';
-    const v = isStringCtrl ? String(raw || '') : Number(raw);
-    if (!isStringCtrl && !Number.isFinite(v)) return;
+    // the alias mapping for both. Custom controls (textarea) save
+    // comma-separated strings parsed into arrays.
+    if (ctrl.type === 'custom') {
+        const parts = String(raw || '')
+            .split(/[,\n]+/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+        v = parts.length ? parts : [];
+    } else if (ctrl.type === 'select') {
+        v = String(raw || '');
+    } else {
+        v = Number(raw);
+        if (!Number.isFinite(v)) return;
+    }
     try {
         // Build a payload that updates BOTH the legacy flat key AND
         // the nested faces.* path so the merger picks up the new value
@@ -1255,23 +1485,29 @@ async function _cancelScan(feature) {
 }
 
 function _onScanProgress(feature, msg) {
-    // Faces is the only feature today — `feature` arg kept for future
-    // OCR / object detection drops that reuse this WS handler.
-    if (feature !== 'faces') return;
     const running = !!msg.running;
     const scanned = Number(msg.scanned) || 0;
     const total = Number(msg.total) || 0;
     const pct = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
 
-    const scanBtn = $('#ai-scan-btn');
-    const cancelBtn = $('#ai-cancel-btn');
+    if (feature === 'faces') {
+        const scanBtn = $('#ai-scan-btn');
+        const cancelBtn = $('#ai-cancel-btn');
+        if (scanBtn) scanBtn.disabled = running;
+        if (cancelBtn) cancelBtn.disabled = !running;
+    } else if (feature === 'tags') {
+        const scanBtn = $('#ai-tags-scan-btn');
+        const cancelBtn = $('#ai-tags-cancel-btn');
+        if (scanBtn) scanBtn.disabled = running;
+        if (cancelBtn) cancelBtn.disabled = !running;
+    }
+
+    // Shared progress bar — shows whichever scan is currently running.
     const progressWrap = $('#ai-progress');
     const progressBar = $('#ai-progress-bar');
     const progressPct = $('#ai-progress-pct');
     const progressStatus = $('#ai-progress-status');
 
-    if (scanBtn) scanBtn.disabled = running;
-    if (cancelBtn) cancelBtn.disabled = !running;
     if (progressWrap) progressWrap.classList.toggle('hidden', !running);
     if (progressBar) progressBar.style.width = `${pct}%`;
     if (progressPct) {
@@ -1282,7 +1518,11 @@ function _onScanProgress(feature, msg) {
             : '';
     }
     if (progressStatus && running) {
-        progressStatus.textContent = i18nT('maintenance.ai.scanning', 'Scanning…');
+        const label =
+            feature === 'faces'
+                ? i18nT('maintenance.ai.scanning', 'Scanning…')
+                : i18nT('maintenance.ai.scanning_tags', 'Tagging photos…');
+        progressStatus.textContent = label;
     }
 }
 
@@ -1295,6 +1535,7 @@ function _onScanDone(feature, msg) {
     }
     refreshStatus();
     if (feature === 'faces') _loadPeople();
+    if (feature === 'tags') _renderTagBrowser();
 }
 
 // ---- People (face clusters) ----------------------------------------------

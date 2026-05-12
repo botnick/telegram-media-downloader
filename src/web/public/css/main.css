@@ -3099,6 +3099,7 @@ body[data-page="maintenance-ai"] #maintenance-tabs,
 body[data-page="maintenance-backup"] #maintenance-tabs,
 body[data-page="maintenance-cluster"] #maintenance-tabs,
 body[data-page="maintenance-recovery"] #maintenance-tabs,
+body[data-page="maintenance-db-stats"] #maintenance-tabs,
 body[data-page="maintenance-updates"] #maintenance-tabs,
 body[data-page="maintenance-logs"] #maintenance-tabs {
     display: flex;
