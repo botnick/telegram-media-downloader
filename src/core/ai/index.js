@@ -19,14 +19,12 @@
 
 import { existsSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 import { deleteFacesForDownload, getDb, insertFace, setAiIndexedAt } from '../db.js';
 import { detectFaces } from './faces.js';
+import { getDataDir } from '../paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
-const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+const DATA_DIR = getDataDir();
 
 // Float32Array → Buffer. Used to be in vector-store.js (deleted); kept
 // inline because the only remaining caller is the face pre-generate hook.

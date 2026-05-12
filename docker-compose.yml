@@ -22,6 +22,9 @@ services:
       - "${TGDL_PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
+      # Example split-disk setup (uncomment + adjust paths):
+      # - /mnt/ssd/tgdl/data:/app/data
+      # - /mnt/hdd/tgdl/downloads:/mnt/hdd/downloads
     environment:
       - NODE_ENV=production
       - TZ=${TZ:-UTC}
@@ -80,6 +83,11 @@ services:
       # service. See seekbar-service/README.md for the standalone setup.
       - SEEKBAR_SIDECAR_URL=${SEEKBAR_SIDECAR_URL:-}
       - SEEKBAR_API_TOKEN=${SEEKBAR_API_TOKEN:-}
+      # Split-disk setup: store downloads on a separate volume (e.g. HDD)
+      # while keeping db.sqlite, sessions, and backups on a faster disk (SSD).
+      # Set TGDL_DATA_DIR to the SSD path and TGDL_DOWNLOADS_DIR to the HDD
+      # path, then add a second bind-mount under volumes: below.
+      # - TGDL_DOWNLOADS_DIR=/mnt/hdd/downloads
     # GPU passthrough — uncomment the matching block for your host.
     #
     # Synology (DSM 6 / 7 with Intel iGPU): the device is at /dev/dri/renderD128
@@ -197,6 +205,11 @@ services:
       # falls back to base64.
       - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
       - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+      # Inter-image sleep on CPU-only hosts. Set to 50–200 (ms) to cap
+      # sustained CPU load between images in a batch so other processes
+      # (downloader, OS) get breathing room. Leave at 0 (default) when a
+      # GPU provider is active — GPU inference already leaves the CPU idle.
+      - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
@@ -265,6 +278,9 @@ services:
       - TGDL_FACES_PROVIDERS=${TGDL_FACES_PROVIDERS:-auto}
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Throttle: 0 (default) is correct for GPU — CPU is idle between
+      # kernel dispatches. Only raise this if falling back to CPU.
+      - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
@@ -326,6 +342,7 @@ services:
       - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
       - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
       - TGDL_FACES_PROVIDERS=${TGDL_FACES_PROVIDERS:-auto}
+      - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]

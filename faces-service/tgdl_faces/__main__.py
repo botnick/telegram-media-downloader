@@ -45,6 +45,14 @@ Environment
 ``TGDL_FACES_DET_SIZE``
     Detector input resolution (positive int). Defaults to ``640``.
 
+``TGDL_FACES_THROTTLE_MS``
+    Milliseconds to sleep between consecutive images inside a
+    ``/detect/batch`` request. Defaults to ``0`` (no pause). Set to
+    ``50``–``200`` on CPU-only hosts to cap sustained CPU load and give
+    other processes (Telegram downloader, OS scheduler) breathing room.
+    Has no effect when a GPU execution provider is active (GPU inference
+    is async; the CPU is mostly idle between kernel dispatches).
+
 ``TGDL_FACES_LOG_LEVEL``
     Standard Python logging level (``DEBUG``, ``INFO``, ``WARNING``, …).
     Defaults to ``INFO``.
@@ -165,6 +173,34 @@ def _configure_logging() -> None:
 
 def main() -> None:
     _configure_logging()
+
+    # Suppress onnxruntime C++ provider-probe noise at startup.
+    # TensorRT / CUDA DLL errors write directly to stderr at fd level,
+    # bypassing set_default_logger_severity. Redirect fd 2 → devnull for
+    # the import window, then restore before any Python-level logging fires.
+    import os as _os
+    _saved_fd: int | None = None
+    _null_fd: int | None = None
+    try:
+        _saved_fd = _os.dup(2)
+        _null_fd = _os.open(_os.devnull, _os.O_WRONLY)
+        _os.dup2(_null_fd, 2)
+    except OSError:
+        _saved_fd = None
+        _null_fd = None
+    try:
+        import onnxruntime as _ort_early  # noqa: PLC0415
+        _ort_early.set_default_logger_severity(4)
+        import logging as _lg  # noqa: PLC0415
+        _lg.getLogger("onnxruntime").setLevel(_lg.CRITICAL)
+    except Exception:
+        pass
+    finally:
+        if _saved_fd is not None:
+            _os.dup2(_saved_fd, 2)
+            _os.close(_saved_fd)
+        if _null_fd is not None:
+            _os.close(_null_fd)
 
     host = _resolve_host()
     port = _resolve_port()

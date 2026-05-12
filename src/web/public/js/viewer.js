@@ -187,18 +187,24 @@ function _renderFaceOverlay(faces) {
 }
 
 function _positionFaceLayerToImage(layer, img) {
-    // The image stage is `inline-block max-w-full max-h-full` so the
-    // <img> already sizes itself to its rendered bbox under
-    // object-contain. We just match the layer to that bbox via
-    // offsetWidth / offsetHeight. Stage gives correct dims even on
-    // small phones in landscape.
-    const w = img.offsetWidth || img.clientWidth;
-    const h = img.offsetHeight || img.clientHeight;
-    if (!w || !h) return;
-    layer.style.width = `${w}px`;
-    layer.style.height = `${h}px`;
-    layer.style.left = `${img.offsetLeft}px`;
-    layer.style.top = `${img.offsetTop}px`;
+    // img is w-full h-full object-contain — the element fills the stage
+    // but the actual image content is letterboxed inside it. Compute the
+    // rendered content rect manually so face boxes track the image.
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    if (!nw || !nh) return;
+    const cw = img.offsetWidth || img.clientWidth;
+    const ch = img.offsetHeight || img.clientHeight;
+    if (!cw || !ch) return;
+    const scale = Math.min(cw / nw, ch / nh);
+    const rw = Math.round(nw * scale);
+    const rh = Math.round(nh * scale);
+    const left = Math.round((cw - rw) / 2);
+    const top = Math.round((ch - rh) / 2);
+    layer.style.width = `${rw}px`;
+    layer.style.height = `${rh}px`;
+    layer.style.left = `${left}px`;
+    layer.style.top = `${top}px`;
 }
 
 let _facesResizeObserver = null;
@@ -1643,7 +1649,10 @@ class VideoPlayer {
                 (Number.isFinite(sp.duration_sec) && sp.frames > 0
                     ? sp.duration_sec / sp.frames
                     : 1);
-            const sourceSec = ratio * (sp.duration_sec || this.video.duration);
+            // Use actual video.duration (not sp.duration_sec) so the hover
+            // index tracks the seekbar's real timeline — ffprobe and the
+            // browser sometimes disagree by a fraction of a second.
+            const sourceSec = ratio * (this.video.duration || sp.duration_sec);
             const idx = Math.max(
                 0,
                 Math.min((sp.frames || 1) - 1, Math.round(sourceSec / interval)),
@@ -1776,8 +1785,14 @@ class VideoPlayer {
                     const img = new Image();
                     img.onload = () => {
                         if (this._spriteReq !== req) return;
-                        this._spriteTileH =
-                            meta.tile_h || (meta.rows > 0 ? img.naturalHeight / meta.rows : 0);
+                        // Floor to integer — fractional tileH accumulates sub-pixel
+                        // errors in backgroundPosition for rows past the first.
+                        this._spriteTileH = Math.max(
+                            1,
+                            Math.floor(
+                                meta.tile_h || (meta.rows > 0 ? img.naturalHeight / meta.rows : 0),
+                            ),
+                        );
                         if (this.spriteFrame) {
                             this.spriteFrame.style.backgroundImage = `url(/api/seekbar/sprite/${encodeURIComponent(id)})`;
                             this.spriteFrame.style.backgroundSize = `${img.naturalWidth}px ${img.naturalHeight}px`;
@@ -2064,9 +2079,11 @@ class VideoPlayer {
         const id = this._spriteFileId;
         if (!id) return;
         const frames = sp.frames || 0;
-        if (frames < 3) return; // not useful for very short clips
+        if (frames < 2) return;
         const tileW = sp.tile_w || 160;
-        const tileH = this._spriteTileH || sp.tile_h || 90;
+        // tileH: integer pixels per tile row — floor avoids sub-pixel bleed
+        // between rows when backgroundPosition accumulates fractional offsets.
+        const tileH = Math.max(1, Math.floor(this._spriteTileH || sp.tile_h || 90));
         const cols = sp.cols || 1;
         const interval =
             sp.interval_sec ||
@@ -2076,55 +2093,47 @@ class VideoPlayer {
         // Responsive thumb height.
         const thumbH = window.innerWidth <= 640 ? 44 : 56;
         const rows = Math.max(1, Math.ceil(frames / cols));
-        // Natural width = tile aspect ratio × display height (pixel-perfect fit).
+        // Natural width = tile aspect ratio × display height.
         const naturalThumbW = Math.max(28, Math.round((tileW / Math.max(1, tileH)) * thumbH));
 
         // Reveal wrap now so clientWidth reflects the real layout.
         wrap.classList.remove('hidden');
         const arrowsW =
             (this.filmstripPrev?.offsetWidth ?? 26) + (this.filmstripNext?.offsetWidth ?? 26);
-        const GAP = 2; // px gap between thumbs (matches CSS gap: 2px)
-        const PAD = 8; // track side padding (4px × 2)
+        const GAP = 2;
+        const PAD = 8;
+        // Few frames: trackW = displayWidth so fillW stretches thumbs to fill.
+        // Many frames: trackW = frames×natural so thumbs stay close to natural
+        // size and the strip scrolls. Either way fillW = track/frames with no
+        // space-between gaps — blank stretches never appear in the timeline.
         const trackW = Math.max(
             frames * naturalThumbW,
             (wrap.clientWidth || window.innerWidth) - arrowsW - PAD,
         );
-        // Per-thumb fill width: exactly fills the track with no empty space.
         const fillW = (trackW - GAP * (frames - 1)) / frames;
-
-        // Above 2.5× natural the image starts looking noticeably distorted.
-        // Cap there and let CSS space-between spread any remainder as gaps —
-        // this turns a short clip into evenly-spaced chapter markers instead
-        // of grotesquely wide blobs.
-        const MAX_RATIO = 2.5;
-        let thumbW, distribute;
-        if (fillW >= naturalThumbW * MAX_RATIO) {
-            thumbW = Math.round(naturalThumbW * MAX_RATIO);
-            distribute = true;
-        } else {
-            thumbW = Math.max(28, Math.round(fillW));
-            distribute = false;
-        }
+        const thumbW = Math.max(28, Math.round(fillW));
 
         // Object-fit: cover semantics for the sprite.
         // Scale so one sprite tile exactly fills thumbW; the tile will then be
         // renderedTileH pixels tall — possibly taller than thumbH, in which case
         // the excess is cropped symmetrically top and bottom (center crop).
-        // This prevents horizontal stretch: the image widens naturally rather
-        // than distorting.  When thumbW === naturalThumbW it degenerates to the
-        // exact pixel-perfect fit (no crop needed).
         const coverScale = thumbW / Math.max(1, tileW);
-        const renderedTileH = tileH * coverScale;
-        const vCrop = Math.round((renderedTileH - thumbH) / 2);
+        const renderedTileH = Math.round(tileH * coverScale);
+        const vCrop = Math.max(0, Math.round((renderedTileH - thumbH) / 2));
         const bgW = Math.round(thumbW * cols);
         const bgH = Math.round(renderedTileH * rows);
 
-        track.style.justifyContent = distribute ? 'space-between' : '';
+        track.style.justifyContent = '';
         track.style.removeProperty('--filmstrip-thumb-natural-w');
 
         if (!this._filmstripTimeFloat) {
             this._filmstripTimeFloat = document.getElementById('filmstrip-time-float');
         }
+
+        // Show timestamp chips at regular intervals when thumbs are wide enough.
+        // Always label first + last; fill interior every ~10% of total frames.
+        const showLabels = thumbW >= 48;
+        const labelStep = showLabels ? Math.max(1, Math.round(frames / 10)) : frames + 1;
 
         let html = '';
         for (let i = 0; i < frames; i++) {
@@ -2134,9 +2143,11 @@ class VideoPlayer {
             const bpY = -(Math.round(row * renderedTileH) + vCrop);
             const sec = i * interval;
             const timeStr = formatTime(sec);
+            const isLabelled = showLabels && (i === 0 || i === frames - 1 || i % labelStep === 0);
             html +=
-                `<div class="filmstrip-thumb" style="width:${thumbW}px;height:${thumbH}px" data-idx="${i}" data-sec="${sec.toFixed(2)}" role="option" aria-label="${timeStr}">` +
+                `<div class="filmstrip-thumb${isLabelled ? ' has-label' : ''}" style="width:${thumbW}px;height:${thumbH}px" data-idx="${i}" data-sec="${sec.toFixed(2)}" role="option" aria-label="${timeStr}">` +
                 `<div class="filmstrip-thumb-inner" style="background-image:url(${spriteUrl});background-size:${bgW}px ${bgH}px;background-position:${bpX}px ${bpY}px"></div>` +
+                `<span class="filmstrip-thumb-time">${timeStr}</span>` +
                 `</div>`;
         }
         track.innerHTML = html;
@@ -2176,6 +2187,19 @@ class VideoPlayer {
 
         this._filmstripLastIdx = -1;
         this._updateFilmstripHighlight();
+        // Scroll filmstrip to current playback position on first render so
+        // the user lands on the right chapter marker, not always frame 0.
+        if (Number.isFinite(this.video.currentTime) && this.video.currentTime > 0) {
+            const sp = this._sprite;
+            const ivl = sp.interval_sec || (sp.duration_sec > 0 ? sp.duration_sec / frames : 1);
+            const startIdx = Math.max(0, Math.min(frames - 1, Math.round(this.video.currentTime / ivl)));
+            const startThumb = track.children[startIdx];
+            if (startThumb) {
+                requestAnimationFrame(() => {
+                    startThumb.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                });
+            }
+        }
     }
 
     /** Highlight the filmstrip cell that matches the current playback position. */

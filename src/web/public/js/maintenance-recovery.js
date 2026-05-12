@@ -24,6 +24,7 @@ let _accounts = [];
 let _wsWired = false;
 let _pageWired = false;
 let _refreshing = false;
+let _showIgnored = false;
 
 const REASON_LABELS = {
     index_miss: 'maintenance.recovery.reason.index_miss',
@@ -93,6 +94,9 @@ function _renderRow(it) {
     const synthBadge = it.isSynthetic
         ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-tg-orange/15 text-tg-orange ml-1" title="${escapeHtml(i18nT('maintenance.recovery.synthetic_tip', 'Synthetic unknown:* id'))}">synthetic</span>`
         : '';
+    const ignoredBadge = it.recoveryIgnored
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-600/30 text-gray-400 ml-1" title="${escapeHtml(i18nT('maintenance.recovery.ignored_tip', 'Suppressed from this list'))}"><i class="ri-eye-off-line"></i> ${escapeHtml(i18nT('maintenance.recovery.ignored_badge', 'ignored'))}</span>`
+        : '';
     const accountBadge = it.monitorAccount
         ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue ml-1"><i class="ri-user-3-line"></i> ${escapeHtml(it.monitorAccount)}</span>`
         : '';
@@ -103,7 +107,7 @@ function _renderRow(it) {
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-sm text-tg-text font-medium truncate">${escapeHtml(it.name)}</span>
-                        ${enabledPill}${synthBadge}${accountBadge}
+                        ${enabledPill}${synthBadge}${ignoredBadge}${accountBadge}
                     </div>
                     <p class="text-[11px] text-tg-textSecondary mt-0.5">${escapeHtml(_reasonText(it))}</p>
                     <div class="text-[11px] text-tg-textSecondary/70 mt-1 inline-flex items-center gap-2 flex-wrap">
@@ -128,6 +132,13 @@ function _renderStats() {
     const synthetic = _items.filter((i) => i.isSynthetic).length;
     const totalFiles = _items.reduce((s, i) => s + (Number(i.fileCount) || 0), 0);
     const enabled = _items.filter((i) => i.enabled).length;
+    const ignored = _items.filter((i) => i.recoveryIgnored).length;
+    const ignoredStat = _showIgnored && ignored > 0
+        ? `<div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="maintenance.recovery.stat.ignored">Ignored</div>
+            <div class="text-xl font-semibold text-gray-400 tabular-nums">${ignored}</div>
+        </div>`
+        : '';
     host.innerHTML = `
         <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
             <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="maintenance.recovery.stat.total">Unresolved</div>
@@ -144,7 +155,8 @@ function _renderStats() {
         <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
             <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="maintenance.recovery.stat.files">Files</div>
             <div class="text-xl font-semibold text-tg-text tabular-nums">${totalFiles.toLocaleString()}</div>
-        </div>`;
+        </div>
+        ${ignoredStat}`;
 }
 
 function _renderList() {
@@ -197,7 +209,7 @@ async function _refresh() {
     if (_refreshing) return;
     _refreshing = true;
     try {
-        const r = await api.get('/api/maintenance/recovery/list');
+        const r = await api.get(`/api/maintenance/recovery/list${_showIgnored ? '?showIgnored=1' : ''}`);
         _items = Array.isArray(r?.items) ? r.items : [];
         // Drop stale selections.
         const ids = new Set(_items.map((i) => i.id));
@@ -317,6 +329,50 @@ function _wireActions() {
                     { n: r.removed || 0 },
                     `Removed ${r.removed || 0} group(s)`,
                 ),
+                'success',
+            );
+            _selected.clear();
+            await _refresh();
+        } catch (e) {
+            showToast(e?.data?.error || e.message || 'Failed', 'error');
+        }
+    });
+    $('recovery-show-ignored')?.addEventListener('change', async (e) => {
+        _showIgnored = e.target.checked;
+        const unignoreBtn = $('recovery-unignore-btn');
+        const ignoreBtn = $('recovery-ignore-btn');
+        if (unignoreBtn) unignoreBtn.classList.toggle('hidden', !_showIgnored);
+        if (ignoreBtn) ignoreBtn.classList.toggle('hidden', _showIgnored);
+        await _refresh();
+    });
+    $('recovery-ignore-btn')?.addEventListener('click', async () => {
+        const ids = _selectedIds();
+        if (!ids.length) {
+            showToast(i18nT('maintenance.recovery.nothing_selected', 'Nothing selected'), 'info');
+            return;
+        }
+        try {
+            const r = await api.post('/api/maintenance/recovery/ignore', { ids });
+            showToast(
+                i18nTf('maintenance.recovery.ignored_n', { n: r.ignored || 0 }, `Ignored ${r.ignored || 0} group(s)`),
+                'success',
+            );
+            _selected.clear();
+            await _refresh();
+        } catch (e) {
+            showToast(e?.data?.error || e.message || 'Failed', 'error');
+        }
+    });
+    $('recovery-unignore-btn')?.addEventListener('click', async () => {
+        const ids = _selectedIds();
+        if (!ids.length) {
+            showToast(i18nT('maintenance.recovery.nothing_selected', 'Nothing selected'), 'info');
+            return;
+        }
+        try {
+            const r = await api.post('/api/maintenance/recovery/unignore', { ids });
+            showToast(
+                i18nTf('maintenance.recovery.unignored_n', { n: r.unignored || 0 }, `Unignored ${r.unignored || 0} group(s)`),
                 'success',
             );
             _selected.clear();

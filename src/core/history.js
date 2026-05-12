@@ -9,6 +9,7 @@ import fsSync from 'fs';
 import { Api } from 'telegram';
 import { getMessageIdRange } from './db.js';
 import { BACKPRESSURE_CAP_DEFAULT } from './constants.js';
+import { resolveConfigDownloadPath } from './paths.js';
 
 export class HistoryDownloader extends EventEmitter {
     constructor(client, downloader, config, accountManager = null) {
@@ -494,7 +495,7 @@ export class HistoryDownloader extends EventEmitter {
         if (!urls?.length) return;
 
         try {
-            const basePath = this.config.download?.path || './data/downloads';
+            const basePath = resolveConfigDownloadPath(this.config.download?.path);
             const groupDir = path.join(basePath, this.sanitize(group.name));
 
             if (!fsSync.existsSync(groupDir)) {

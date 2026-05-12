@@ -13,13 +13,12 @@
  */
 import path from 'path';
 import fs from 'fs/promises';
-import { fileURLToPath } from 'url';
 import { getExpiredPending, deleteDownloadsBy, setRescueLastSweep } from './db.js';
 import { purgeThumbsForDownload } from './thumbs.js';
 import { purgeSeekbarForDownload } from './seekbar/index.js';
+import { getDownloadsDir } from './paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
+const DOWNLOADS_DIR = getDownloadsDir();
 
 const DEFAULT_SWEEP_MIN = 10;
 const MIN_SWEEP_MIN = 1;

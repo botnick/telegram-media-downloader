@@ -14,12 +14,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { getDb, insertDownload } from './db.js';
 import { sanitizeName } from './downloader.js';
+import { getDownloadsDir } from './paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
+const DOWNLOADS_DIR = getDownloadsDir();
 
 let _running = false;
 let _timer = null;

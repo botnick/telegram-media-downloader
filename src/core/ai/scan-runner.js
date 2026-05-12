@@ -15,7 +15,6 @@
 
 import { existsSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 import {
     clearAllPeople,
@@ -29,18 +28,27 @@ import {
     setFacePerson,
 } from '../db.js';
 import { clusterFaces, FACE_DEFAULTS } from './faces.js';
-import { detectFacesBatch } from './faces-client.js';
+import { detectFacesBatch, detectFacesInVideo } from './faces-client.js';
 import { resolveFacesValue } from './faces-config.js';
+import { getDataDir } from '../paths.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
-const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
+const DATA_DIR = getDataDir();
 
 // Float32Array <-> Buffer helpers. Previously came from vector-store.js
 // (deleted with Search/Tags); inlined because clustering is now the only
 // remaining caller.
 function _f32ToBlob(f) {
     return Buffer.from(new Uint8Array(f.buffer, f.byteOffset, f.byteLength));
+}
+
+// Duty-cycle throttle: sleep for `ratio * elapsedMs` after a detection call
+// so the CPU gets proportional rest between work bursts. Dynamic by design —
+// slow hardware (long elapsed) gets longer rests; fast GPU barely notices it.
+// Capped at 5 000 ms so a single stalled video doesn't freeze the loop.
+async function _throttleSleep(elapsedMs, ratio) {
+    if (!ratio || ratio <= 0) return;
+    const sleepMs = Math.min(Math.round(elapsedMs * ratio), 5000);
+    if (sleepMs >= 10) await new Promise((r) => setTimeout(r, sleepMs));
 }
 
 // Pick the first finite number from a list of candidates; fall back to
@@ -74,6 +82,10 @@ function _emptyState() {
         startedAt: null,
         finishedAt: null,
         error: null,
+        phase: 'A',       // 'A' = detection, 'B' = clustering
+        faceCount: 0,     // total face embeddings found in phase A
+        peopleCount: 0,   // clusters produced by phase B
+        noiseFaces: 0,    // faces not assigned to any cluster
         abort: null,
     };
 }
@@ -158,7 +170,7 @@ async function _runScan(feature, cfg, worker, onProgress, onDone, onLog) {
 
     (async () => {
         try {
-            await worker(state, ctrl.signal, bump, log, cfg);
+            await worker(state, ctrl.signal, bump, log, cfg, bcast);
         } catch (e) {
             state.error = e?.message || String(e);
             log('error', `${feature} scan crashed: ${state.error}`);
@@ -184,7 +196,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
     return _runScan(
         'faces',
         cfg,
-        async (state, signal, bump, log, cfg) => {
+        async (state, signal, bump, log, cfg, bcast) => {
             // Resolve `fileTypes` with the same precedence as the cluster
             // knobs: new path > legacy flat alias > env override > default.
             const facesCfgIn = cfg?.faces || {};
@@ -208,15 +220,44 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                        AND ai_indexed_at IS NULL
                 `)
                 .get(...fileTypes).n;
-            state.total = phaseATotal;
+            const scanVideos = facesCfgIn.scanVideos === true;
+            const videoTotal = scanVideos
+                ? db.prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type = 'video' AND ai_indexed_at IS NULL`).get().n
+                : 0;
+            state.total = phaseATotal + videoTotal;
             bump();
-            log('info', `faces scan: ${phaseATotal} photos to scan in phase A`);
+            log('info', `faces scan: ${phaseATotal} photos${videoTotal ? ` + ${videoTotal} videos` : ''} to scan in phase A`);
 
             // `batchSize` precedence (same model as fileTypes above).
             const envBatch = resolveFacesValue('batchSize', facesCfgIn);
             const batchSizeRaw = _pickNumber([facesCfgIn.batchSize, cfg?.batchSize, envBatch], 16);
             const batchSize = Math.max(1, Math.min(200, Number(batchSizeRaw) || 16));
+
+            // Duty-cycle CPU throttle ratio (0 = off, default 0.5 = rest for
+            // half the time spent on detection). Configurable so GPU users
+            // can set it to 0 and run at full speed.
+            const envThrottle = resolveFacesValue('cpuThrottleRatio', facesCfgIn);
+            const throttleRatioRaw = _pickNumber(
+                [facesCfgIn.cpuThrottleRatio, cfg?.cpuThrottleRatio, envThrottle],
+                0.5,
+            );
+            const throttleRatio = Math.max(0, Math.min(5, Number(throttleRatioRaw) || 0.5));
+
+            // Extensions to skip without sending to the sidecar — stamped as
+            // indexed immediately so they don't appear in future scans.
+            // Useful for animated WebP stickers that reliably decode_failed.
+            const envExclude = resolveFacesValue('excludeExtensions', facesCfgIn);
+            const excludeExtsRaw = Array.isArray(facesCfgIn.excludeExtensions)
+                ? facesCfgIn.excludeExtensions
+                : Array.isArray(envExclude)
+                  ? envExclude
+                  : [];
+            const excludeExts = new Set(
+                excludeExtsRaw.map((e) => String(e).toLowerCase().replace(/^\.?/, '.')),
+            );
+
             let _statNull = 0; // detectFaces returned null (sidecar error / file missing)
+            let _statSkip = 0; // skipped by excludeExtensions
             let _statEmpty = 0; // detectFaces returned [] (processed but no faces detected)
             let _statFaces = 0; // total face embeddings stored
             let _statPhotos = 0; // photos with ≥1 face
@@ -231,7 +272,22 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 // to a CPU-only sidecar, causing queue build-up and timeouts.
                 const items = batch.map((row) => ({ row, abs: _resolveAbs(row.file_path) }));
                 const nullItems = items.filter((i) => !i.abs);
-                const validItems = items.filter((i) => i.abs);
+                const skipItems = excludeExts.size
+                    ? items.filter(
+                          (i) =>
+                              i.abs &&
+                              excludeExts.has(path.extname(i.abs).toLowerCase()),
+                      )
+                    : [];
+                const skipSet = new Set(skipItems.map((i) => i.row.id));
+                const validItems = items.filter((i) => i.abs && !skipSet.has(i.row.id));
+
+                for (const { row } of skipItems) {
+                    _statSkip++;
+                    setAiIndexedAt(row.id);
+                    state.scanned += 1;
+                    bump();
+                }
 
                 for (const { row } of nullItems) {
                     _statNull++;
@@ -244,6 +300,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
 
                 let batchResults = [];
                 if (validItems.length) {
+                    const _t0 = Date.now();
                     try {
                         batchResults = await detectFacesBatch(
                             validItems.map((i) => i.abs),
@@ -254,6 +311,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         log('warn', `detectFacesBatch threw: ${e?.message || e}`);
                         batchResults = validItems.map(() => null);
                     }
+                    await _throttleSleep(Date.now() - _t0, throttleRatio);
                 }
 
                 for (let bi = 0; bi < validItems.length; bi++) {
@@ -278,6 +336,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                 w: f.w,
                                 h: f.h,
                                 embeddingBlob: _f32ToBlob(f.embedding),
+                                qualityScore: Number.isFinite(f.qualityScore) ? f.qualityScore : (Number.isFinite(f.score) ? f.score : null),
                             });
                         }
                     }
@@ -290,7 +349,8 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         'info',
                         `faces scan progress: ${state.scanned}/${phaseATotal} — ` +
                             `${_statPhotos} with faces (${_statFaces} total), ` +
-                            `${_statEmpty} no-face, ${_statNull} errors`,
+                            `${_statEmpty} no-face, ${_statNull} errors` +
+                            (_statSkip ? `, ${_statSkip} ext-skipped` : ''),
                     );
                     _nextStatLog = state.scanned + 200;
                 }
@@ -298,23 +358,98 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             }
             log(
                 'info',
-                `faces scan: phase A done — ${_statPhotos} photos had faces ` +
+                `faces scan: phase A (photos) done — ${_statPhotos} photos had faces ` +
                     `(${_statFaces} total embeddings), ` +
-                    `${_statEmpty} no-face, ${_statNull} sidecar errors`,
+                    `${_statEmpty} no-face, ${_statNull} sidecar errors` +
+                    (_statSkip ? `, ${_statSkip} ext-skipped` : ''),
             );
+
+            // Phase A (videos) — same faces table, same DBSCAN pass in Phase B.
+            // One video at a time: each can produce many frames so we don't want
+            // to hold a large batch in memory. Faces stored here cluster with
+            // photo-source faces automatically because the embedding space is
+            // identical regardless of whether the frame came from a photo or video.
+            // Gated by cfg.faces.scanVideos — off by default, opt-in via UI toggle.
+            if (!signal.aborted && scanVideos) {
+                if (videoTotal > 0) {
+                    log('info', `faces scan: starting video phase — ${videoTotal} videos`);
+                    let _vNull = 0, _vEmpty = 0, _vFaces = 0, _vVids = 0;
+                    while (!signal.aborted) {
+                        const [row] = getUnindexedAiBatch({ fileTypes: ['video'], limit: 1 });
+                        if (!row) break;
+                        const abs = _resolveAbs(row.file_path);
+                        if (!abs) {
+                            _vNull++;
+                            setAiIndexedAt(row.id);
+                            state.scanned += 1;
+                            bump();
+                            continue;
+                        }
+                        let detected = null;
+                        const _tv0 = Date.now();
+                        try {
+                            detected = await detectFacesInVideo(abs, cfg, log);
+                        } catch (e) {
+                            log('warn', `detectFacesInVideo threw for ${abs}: ${e?.message || e}`);
+                        }
+                        await _throttleSleep(Date.now() - _tv0, throttleRatio);
+                        if (detected === null) {
+                            _vNull++;
+                        } else if (detected.length === 0) {
+                            _vEmpty++;
+                        } else {
+                            _vFaces += detected.length;
+                            _vVids++;
+                        }
+                        if (Array.isArray(detected) && detected.length) {
+                            deleteFacesForDownload(row.id);
+                            for (const f of detected) {
+                                if (!f.embedding || !f.embedding.length) continue;
+                                insertFace({
+                                    downloadId: row.id,
+                                    x: f.x,
+                                    y: f.y,
+                                    w: f.w,
+                                    h: f.h,
+                                    embeddingBlob: _f32ToBlob(f.embedding),
+                                    qualityScore: Number.isFinite(f.qualityScore) ? f.qualityScore : (Number.isFinite(f.score) ? f.score : null),
+                                });
+                            }
+                        }
+                        setAiIndexedAt(row.id);
+                        state.scanned += 1;
+                        bump();
+                        await new Promise((r) => setImmediate(r));
+                    }
+                    log(
+                        'info',
+                        `faces scan: phase A (videos) done — ${_vVids} videos had faces ` +
+                            `(${_vFaces} total embeddings), ${_vEmpty} no-face, ${_vNull} errors`,
+                    );
+                }
+            }
 
             // Phase B — DBSCAN over every face embedding. Always re-runs
             // (clusters drift as new faces land).
             if (signal.aborted) return;
             log('info', 'faces scan: starting clustering pass');
             const faces = [];
+            // Collect faces first so we know faceCount before clustering.
             for (const r of iterateAllFaces()) {
-                faces.push({ id: r.id, embedding: _blobToF32(r.embedding) });
+                faces.push({
+                    id: r.id,
+                    embedding: _blobToF32(r.embedding),
+                    qualityScore: Number.isFinite(r.quality_score) ? r.quality_score : null,
+                });
             }
             if (!faces.length) {
                 log('info', 'faces scan: no faces detected — clustering skipped');
                 return;
             }
+            // Signal phase transition so the frontend can swap to Phase B UI.
+            state.phase = 'B';
+            state.faceCount = faces.length;
+            bcast(true);
             if (faces.length > 50000) {
                 log(
                     'warn',
@@ -342,7 +477,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 'info',
                 `faces scan: clustering ${faces.length} faces (eps=${epsForCluster}, minPts=${minPointsForCluster})`,
             );
-            const { clusters } = clusterFaces(faces, {
+            const { clusters, noise } = clusterFaces(faces, {
                 eps: epsForCluster,
                 minPts: minPointsForCluster,
             });
@@ -426,6 +561,8 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 i += 1;
                 if (i % 100 === 0) await new Promise((r) => setImmediate(r));
             }
+            state.peopleCount = clusters.length;
+            state.noiseFaces = noise.length;
             log(
                 'info',
                 `faces scan: clustered ${faces.length} faces into ${clusters.length} groups (${preservedCount}/${labelSnapshot.length} labels preserved across re-cluster, eps=${matchEps.toFixed(3)})`,

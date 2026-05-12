@@ -472,6 +472,7 @@ async function init() {
     // the page or the badge, so skip the snapshot fetch.
     if (isAdmin) initQueue();
     router.start();
+    initMaintenanceTabs();
 
     // Window bindings that depend on functions defined LATER in the
     // module. Pulled out from the main `window.*` block above (which
@@ -1341,6 +1342,33 @@ const PAGE_HEADER_ICON = {
     'maintenance-updates': 'ri-download-cloud-2-line',
 };
 
+// Sync the scroll-left / scroll-right fade classes on the tab strip.
+function _syncTabScrollFades(scrollEl) {
+    const atLeft = scrollEl.scrollLeft <= 2;
+    const atRight = scrollEl.scrollLeft >= scrollEl.scrollWidth - scrollEl.clientWidth - 2;
+    scrollEl.classList.toggle('scroll-left', !atLeft);
+    scrollEl.classList.toggle('scroll-right', !atRight);
+}
+
+// Wire scroll-fade hints, wheel→horizontal, and ResizeObserver for the tab strip.
+function initMaintenanceTabs() {
+    const scrollEl = document.querySelector('.maintenance-tabs-scroll');
+    if (!scrollEl) return;
+    scrollEl.addEventListener('scroll', () => _syncTabScrollFades(scrollEl), { passive: true });
+    new ResizeObserver(() => _syncTabScrollFades(scrollEl)).observe(scrollEl);
+    // Desktop: vertical wheel → horizontal scroll (trackpad native deltaX passes through).
+    scrollEl.addEventListener(
+        'wheel',
+        (e) => {
+            if (Math.abs(e.deltaX) > 4) return;
+            e.preventDefault();
+            scrollEl.scrollLeft += e.deltaY;
+        },
+        { passive: false },
+    );
+    _syncTabScrollFades(scrollEl);
+}
+
 // Repaint the active state on the maintenance tab strip. CSS hides the
 // strip when not on a per-feature maintenance page, but we still set
 // the data-active attr to reflect the current page so the active style
@@ -1352,8 +1380,26 @@ function setActiveMaintenanceTab(page) {
     tabs.forEach((t) => {
         const isActive = t.dataset.mtPage === page;
         t.dataset.active = isActive ? '1' : '0';
-        if (isActive) t.setAttribute('aria-selected', 'true');
-        else t.removeAttribute('aria-selected');
+        if (isActive) {
+            t.setAttribute('aria-selected', 'true');
+            // Scroll the active tab into view within the strip (without moving the page).
+            const scrollEl = t.closest('.maintenance-tabs-scroll');
+            if (scrollEl) {
+                requestAnimationFrame(() => {
+                    const pad = 8;
+                    const tLeft = t.offsetLeft - scrollEl.offsetLeft;
+                    const tRight = tLeft + t.offsetWidth;
+                    if (tLeft - pad < scrollEl.scrollLeft) {
+                        scrollEl.scrollLeft = tLeft - pad;
+                    } else if (tRight + pad > scrollEl.scrollLeft + scrollEl.clientWidth) {
+                        scrollEl.scrollLeft = tRight + pad - scrollEl.clientWidth;
+                    }
+                    _syncTabScrollFades(scrollEl);
+                });
+            }
+        } else {
+            t.removeAttribute('aria-selected');
+        }
     });
 }
 

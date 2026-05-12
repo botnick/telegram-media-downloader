@@ -20,6 +20,7 @@ import crypto from 'crypto';
 import sharp from 'sharp';
 
 import { getOrGenerateSecret } from '../core/secret.js';
+import { getDataDir, getDownloadsDir } from '../core/paths.js';
 import {
     BACKFILL_MAX_LIMIT,
     DIALOG_CACHE_TTL_MS,
@@ -117,7 +118,7 @@ import {
     startSidecar as startSeekbarSidecar,
 } from '../core/seekbar/spawn.js';
 import { health as seekbarClientHealth, probeHwaccel as probeSeekbarHwaccel } from '../core/seekbar/client.js';
-import { getSeekbarSprite } from '../core/db.js';
+import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
 import {
     startScan as nsfwStartScan,
     cancelScan as nsfwCancelScan,
@@ -162,6 +163,7 @@ import {
     clearStaleEmbeddings,
     resetAllAiData,
     listEmbeddingModels,
+    setFaceQualityScore,
     getDb as aiGetDb,
 } from '../core/db.js';
 import * as backup from '../core/backup/index.js';
@@ -176,6 +178,7 @@ import {
     isGuestEnabled,
     issueSession,
     validateSession,
+    renewSession,
     revokeSession,
     revokeAllSessions,
     revokeAllGuestSessions,
@@ -345,8 +348,8 @@ process.on('uncaughtException', (err) => {
 });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data');
-const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
+const DATA_DIR = getDataDir();
+const DOWNLOADS_DIR = getDownloadsDir();
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const SESSION_PATH = path.join(DATA_DIR, 'session.enc');
 const SESSION_PASSWORD = getOrGenerateSecret();
@@ -1080,6 +1083,14 @@ async function checkAuth(req, res, next) {
     const session = validateSession(token);
     if (session) {
         req.role = session.role;
+        // Sliding renewal: extend if less than 25% of the original TTL remains.
+        const originalTtl = session.expiresAt - session.issuedAt;
+        const remaining = session.expiresAt - Date.now();
+        if (originalTtl > 0 && remaining < originalTtl * 0.25) {
+            const newExpiry = Date.now() + originalTtl;
+            renewSession(token, newExpiry);
+            res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: originalTtl });
+        }
         return next();
     }
 
@@ -1165,7 +1176,7 @@ function sessionTtlMsFromConfig(config) {
     if (Number.isFinite(days) && days >= 1 && days <= 365) {
         return Math.floor(days * 24 * 60 * 60 * 1000);
     }
-    return 7 * 24 * 60 * 60 * 1000;
+    return 30 * 24 * 60 * 60 * 1000;
 }
 
 app.post('/api/login', loginLimiter, async (req, res) => {
@@ -6387,7 +6398,8 @@ app.get('/api/maintenance/seekbar/stats', async (req, res) => {
     try {
         const stats = getSeekbarCacheStats();
         const sidecar = getSeekbarSidecarStatus();
-        res.json({ success: true, sidecar, ffmpegAvailable: hasFfmpeg(), ...stats });
+        const totalVideos = countVideoDownloads();
+        res.json({ success: true, sidecar, ffmpegAvailable: hasFfmpeg(), totalVideos, ...stats });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
@@ -6399,13 +6411,19 @@ app.get('/api/maintenance/seekbar/queue/stats', (req, res) => {
         const status = tracker.getStatus();
         const p = status.progress || {};
         const depths = getSeekbarQueueDepths();
+        const running = status.running || false;
+        // When a scan is active: show live session counts.
+        // When idle: completed = total sprites in DB so the card is meaningful
+        // even when no scan has run in the current process lifetime.
+        const completed = running ? (p.generated || 0) : countSeekbarSprites();
+        const scanRemaining = running ? Math.max(0, (p.total || 0) - (p.processed || 0)) : 0;
         res.json({
             success: true,
-            queued: depths.queued + Math.max(0, (p.total || 0) - (p.processed || 0)),
+            queued: depths.queued + scanRemaining,
             processing: depths.processing,
-            completed: p.generated || 0,
+            completed,
             failed: p.errored || 0,
-            running: status.running || false,
+            running,
         });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
@@ -6988,6 +7006,7 @@ app.get('/api/maintenance/nsfw/v2/list', async (req, res) => {
             includeWhitelisted: req.query.include_whitelisted === '1',
             page: Number(req.query.page) || 1,
             limit: Number(req.query.limit) || 50,
+            fileKind: req.query.kind || null,
         });
         res.json(list);
     } catch (e) {
@@ -7277,19 +7296,19 @@ async function _fetchSidecarInfo(url) {
 app.get('/api/ai/status', async (_req, res) => {
     try {
         const cfg = _aiCfg();
+        const facesBlock = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
         const counts = (() => {
             try {
-                return getAiCounts({ fileTypes: cfg.fileTypes || ['photo'] });
+                const baseTypes = cfg.fileTypes || ['photo'];
+                const fileTypes =
+                    facesBlock.scanVideos === true && !baseTypes.includes('video')
+                        ? [...baseTypes, 'video']
+                        : baseTypes;
+                return getAiCounts({ fileTypes });
             } catch {
                 return { totalEligible: 0, indexed: 0, withFaces: 0 };
             }
         })();
-        // Surface the nested `faces` block too so the AI maintenance
-        // page can hydrate the provider dropdown without a second
-        // /api/config call. Keeping the flat `facesEpsilon` / etc.
-        // siblings preserves backward compat with any in-flight code
-        // that still reads the legacy shape.
-        const facesBlock = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
         res.json({
             success: true,
             config: {
@@ -7308,6 +7327,7 @@ app.get('/api/ai/status', async (_req, res) => {
                     detectorModel: String(
                         facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
                     ),
+                    scanVideos: facesBlock.scanVideos === true,
                 },
             },
             counts,
@@ -7365,7 +7385,14 @@ app.get('/api/ai/status', async (_req, res) => {
                     return { realtime: 0, backfill: 0 };
                 }
             })(),
-            trackers: { aiPeople: _jobTrackers.aiPeople.getStatus() },
+            qualityBackfillPending: (() => {
+                try { return aiGetDb().prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL').get().n; }
+                catch { return 0; }
+            })(),
+            trackers: {
+                aiPeople: _jobTrackers.aiPeople.getStatus(),
+                qualityBackfill: _jobTrackers.qualityBackfill.getStatus(),
+            },
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -7636,7 +7663,11 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
             });
         }
         const cfg = _aiCfg();
-        const types = cfg.fileTypes || ['photo'];
+        const facesBlock = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
+        const baseTypes = cfg.fileTypes || ['photo'];
+        const types = facesBlock.scanVideos === true && !baseTypes.includes('video')
+            ? [...baseTypes, 'video']
+            : baseTypes;
         const placeholders = types.map(() => '?').join(',');
         const db = getDb();
         const tx = db.transaction(() => {
@@ -7730,11 +7761,39 @@ app.post('/api/ai/detect-test', async (req, res) => {
     }
 });
 
+// ---- Model preload (proxy to sidecar) ------------------------------------
+
+app.post('/api/ai/preload-model/:name', async (_req, res) => {
+    const name = _req.params.name;
+    try {
+        const facesSpawn = await import('../core/ai/faces-spawn.js');
+        const url = facesSpawn.getSidecarStatus()?.url;
+        if (!url) return res.status(503).json({ error: 'sidecar not running' });
+        const r = await fetch(`${url}/preload/${encodeURIComponent(name)}`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+        res.json(await r.json());
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
+app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
+    const name = _req.params.name;
+    try {
+        const facesSpawn = await import('../core/ai/faces-spawn.js');
+        const url = facesSpawn.getSidecarStatus()?.url;
+        if (!url) return res.status(503).json({ error: 'sidecar not running' });
+        const r = await fetch(`${url}/preload/${encodeURIComponent(name)}/status`, { signal: AbortSignal.timeout(3000) });
+        res.json(await r.json());
+    } catch (e) {
+        res.status(502).json({ error: e.message });
+    }
+});
+
 // ---- People (face clusters) ---------------------------------------------
 
 app.get('/api/ai/people', async (req, res) => {
     try {
-        const limit = Math.max(1, Math.min(500, Number(req.query?.limit) || 100));
+        const limit = Math.max(1, Math.min(2000, Number(req.query?.limit) || 100));
         const offset = Math.max(0, Number(req.query?.offset) || 0);
         const scope = String(req.query?.scope || 'local').toLowerCase();
         const local = listPeople({ limit, offset });
@@ -7833,9 +7892,47 @@ app.get('/api/ai/group-by-person', async (req, res) => {
     }
 });
 
+// Extract a single frame from a video file as a raw image buffer using ffmpeg.
+// Used by the face crop endpoints when the source is a video file.
+async function _extractVideoFrame(videoPath) {
+    const { execFile } = await import('child_process');
+    const { resolveFfmpegBin } = await import('../core/thumbs.js');
+    const ffmpeg = resolveFfmpegBin();
+    return new Promise((resolve, reject) => {
+        execFile(
+            ffmpeg,
+            ['-i', videoPath, '-vframes', '1', '-f', 'image2', '-vcodec', 'png', 'pipe:1'],
+            { encoding: 'buffer', maxBuffer: 20 * 1024 * 1024, timeout: 10000 },
+            (err, stdout) => {
+                if (err) return reject(err);
+                resolve(stdout);
+            },
+        );
+    });
+}
+
+// Crop a face from an image buffer (or file path) with padding.
+async function _cropFace(source, row, size) {
+    const pad = 0.4;
+    const meta = await sharp(source, { failOn: 'none' }).metadata();
+    const imgW = meta.width || 9999;
+    const imgH = meta.height || 9999;
+    const left = Math.max(0, Math.round(row.x - row.w * pad));
+    const top = Math.max(0, Math.round(row.y - row.h * pad));
+    const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
+    const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
+    const width = Math.max(1, right - left);
+    const height = Math.max(1, bottom - top);
+    return sharp(source, { failOn: 'none' })
+        .extract({ left, top, width, height })
+        .resize(size, size, { fit: 'cover', position: 'centre' })
+        .jpeg({ quality: 82, progressive: true })
+        .toBuffer();
+}
+
 // Face crop for person avatar — best (highest-quality/largest) face for this person.
 // Used by the People grid as the circle avatar. Sharp-crops with 40% padding so the
-// face is framed, not cut tight.
+// face is framed, not cut tight. For video-sourced faces, extracts a frame via ffmpeg.
 app.get('/api/ai/person/:id/face', async (req, res) => {
     try {
         const personId = Number(req.params.id);
@@ -7845,11 +7942,12 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path
+                `SELECT f.x, f.y, f.w, f.h, d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.person_id = ?
-                  ORDER BY COALESCE(f.quality_score, 0) DESC, f.w * f.h DESC
+                  ORDER BY CASE WHEN d.file_type = 'photo' THEN 0 ELSE 1 END,
+                           COALESCE(f.quality_score, 0) DESC, f.w * f.h DESC
                   LIMIT 1`,
             )
             .get(personId);
@@ -7861,29 +7959,27 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        const pad = 0.4;
-        const meta = await sharp(resolved.real, { failOn: 'none' }).metadata();
-        const imgW = meta.width || 9999;
-        const imgH = meta.height || 9999;
-
-        const left = Math.max(0, Math.round(row.x - row.w * pad));
-        const top = Math.max(0, Math.round(row.y - row.h * pad));
-        const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-        const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-        const width = Math.max(1, right - left);
-        const height = Math.max(1, bottom - top);
-
-        const buf = await sharp(resolved.real, { failOn: 'none' })
-            .extract({ left, top, width, height })
-            .resize(size, size, { fit: 'cover', position: 'centre' })
-            .jpeg({ quality: 82, progressive: true })
-            .toBuffer();
+        let buf;
+        if (row.file_type === 'video') {
+            const frameBuf = await _extractVideoFrame(resolved.real);
+            try {
+                buf = await _cropFace(frameBuf, row, size);
+            } catch {
+                buf = await sharp(frameBuf, { failOn: 'none' })
+                    .resize(size, size, { fit: 'cover', position: 'attention' })
+                    .jpeg({ quality: 82, progressive: true })
+                    .toBuffer();
+            }
+        } else {
+            buf = await _cropFace(resolved.real, row, size);
+        }
 
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        log({ source: 'ai', level: 'warn', msg: `face crop error for person ${req.params.id}: ${e.message}` });
+        res.status(404).json({ error: 'face crop failed' });
     }
 });
 
@@ -7934,7 +8030,8 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        log({ source: 'ai', level: 'warn', msg: `face crop error for face ${req.params.id}: ${e.message}` });
+        res.status(404).json({ error: 'face crop failed' });
     }
 });
 
@@ -8067,6 +8164,86 @@ app.delete('/api/ai/people/:id', async (req, res) => {
     }
 });
 
+// Quality backfill — walk faces with NULL quality_score, re-detect via
+// the sidecar, match by IoU, and persist the composite quality score.
+// Uses the standard JobTracker pattern so the UI shows progress.
+
+app.post('/api/ai/backfill-quality', async (req, res) => {
+    const tracker = _jobTrackers.qualityBackfill;
+    const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        const db = aiGetDb();
+        const { detectFacesBatch } = await import('../core/ai/faces-client.js');
+
+        const downloadIds = db.prepare(
+            'SELECT DISTINCT f.download_id FROM faces f WHERE f.quality_score IS NULL ORDER BY f.download_id',
+        ).all();
+
+        let processed = 0;
+        let updated = 0;
+        let errors = 0;
+        const total = downloadIds.length;
+
+        for (const { download_id } of downloadIds) {
+            if (signal.aborted) break;
+
+            const dl = db.prepare('SELECT file_path FROM downloads WHERE id = ?').get(download_id);
+            if (!dl?.file_path) { processed++; continue; }
+
+            const resolved = await safeResolveDownload(dl.file_path);
+            if (!resolved?.ok) { processed++; errors++; continue; }
+
+            let detected;
+            try {
+                const batch = await detectFacesBatch([resolved.real], {});
+                detected = batch?.[0];
+            } catch { detected = null; }
+
+            if (Array.isArray(detected) && detected.length) {
+                const storedFaces = db.prepare(
+                    'SELECT id, x, y, w, h FROM faces WHERE download_id = ? AND quality_score IS NULL',
+                ).all(download_id);
+
+                for (const sf of storedFaces) {
+                    let bestIoU = 0;
+                    let bestQ = null;
+                    for (const d of detected) {
+                        const ix1 = Math.max(sf.x, d.x);
+                        const iy1 = Math.max(sf.y, d.y);
+                        const ix2 = Math.min(sf.x + sf.w, d.x + d.w);
+                        const iy2 = Math.min(sf.y + sf.h, d.y + d.h);
+                        const iw = Math.max(0, ix2 - ix1);
+                        const ih = Math.max(0, iy2 - iy1);
+                        const inter = iw * ih;
+                        const union = sf.w * sf.h + d.w * d.h - inter;
+                        const iou = union > 0 ? inter / union : 0;
+                        if (iou > bestIoU && iou > 0.3) {
+                            bestIoU = iou;
+                            bestQ = Number.isFinite(d.qualityScore) ? d.qualityScore : (Number.isFinite(d.score) ? d.score : null);
+                        }
+                    }
+                    if (bestQ != null) {
+                        setFaceQualityScore(sf.id, bestQ);
+                        updated++;
+                    }
+                }
+            }
+
+            processed++;
+            if (processed % 20 === 0 || processed === total) {
+                onProgress({ processed, total, updated, errors });
+                await new Promise((r) => setImmediate(r));
+            }
+        }
+        return { processed, total, updated, errors };
+    });
+    if (!r.started) return res.status(409).json(r);
+    res.json(r);
+});
+
+app.get('/api/ai/backfill-quality/status', (req, res) => {
+    res.json(_jobTrackers.qualityBackfill.getStatus());
+});
+
 // Re-index — full reset. Drops every AI artefact (embeddings, tags,
 // faces, people) and clears `ai_indexed_at` on every download so the
 // next scan starts from scratch. Use after changing model/dtype/label
@@ -8151,7 +8328,11 @@ function _aiAutoScanTick() {
             _aiAutoScanLastEnqueued = 0;
             return;
         }
-        const fileTypes = cfg.fileTypes || ['photo'];
+        const facesBlk = cfg.faces && typeof cfg.faces === 'object' ? cfg.faces : {};
+        const baseFileTypes = cfg.fileTypes || ['photo'];
+        const fileTypes = facesBlk.scanVideos === true && !baseFileTypes.includes('video')
+            ? [...baseFileTypes, 'video']
+            : baseFileTypes;
         const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
         if (!batch.length) {
             _aiAutoScanLastTickAt = Date.now();
@@ -8391,9 +8572,7 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
     //    TGDL_DATA_DIR overrides used in tests).
     try {
         const { promises: fs } = await import('node:fs');
-        const dataDir = process.env.TGDL_DATA_DIR
-            ? path.resolve(process.env.TGDL_DATA_DIR)
-            : DATA_DIR;
+        const dataDir = DATA_DIR;
         const plat =
             process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux';
         const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
@@ -8523,14 +8702,19 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
         });
     }
 
-    // 6. Photos indexed — kept from the prior probe set. Drives the
-    //    operator's sense of progress; cheap (single SQL aggregate).
+    // 6. Files indexed — respects scanVideos flag so the progress
+    //    number matches what the status page + scan show.
     try {
-        const c = getAiCounts({ fileTypes: ['photo'] });
+        const dcfg = _aiCfg();
+        const dfb = dcfg.faces && typeof dcfg.faces === 'object' ? dcfg.faces : {};
+        const dbt = dcfg.fileTypes || ['photo'];
+        const dft = dfb.scanVideos === true && !dbt.includes('video') ? [...dbt, 'video'] : dbt;
+        const c = getAiCounts({ fileTypes: dft });
         const pct = c.totalEligible ? Math.floor((c.indexed / c.totalEligible) * 100) : 0;
+        const lbl = dfb.scanVideos ? 'Files indexed' : 'Photos indexed';
         checks.push({
             id: 'indexed',
-            label: 'Photos indexed',
+            label: lbl,
             status: 'ok',
             detail: `${c.indexed}/${c.totalEligible} (${pct}%) · with faces ${c.withFaces || 0}`,
         });
@@ -8570,6 +8754,7 @@ function _classifyRecoveryGroup(g, dbStats) {
         monitorAccount: g.monitorAccount || null,
         fileCount: stats.files || 0,
         lastSeenAt: stats.lastSeen || null,
+        recoveryIgnored: !!g._recoveryIgnored,
     };
 }
 
@@ -8597,10 +8782,13 @@ app.get('/api/maintenance/recovery/list', async (req, res) => {
         } catch {
             /* fresh install — no rows */
         }
+        const showIgnored = req.query.showIgnored === '1';
         const items = [];
         for (const g of groups) {
             const it = _classifyRecoveryGroup(g, dbStats);
-            if (it) items.push(it);
+            if (!it) continue;
+            if (!showIgnored && it.recoveryIgnored) continue;
+            items.push(it);
         }
         if (req.query.countOnly === '1') {
             return res.json({ success: true, total: items.length });
@@ -8771,6 +8959,48 @@ app.post('/api/maintenance/recovery/reassign', async (req, res) => {
 
 app.get('/api/maintenance/recovery/status', async (req, res) => {
     res.json(_jobTrackers.recoveryBulk.getStatus());
+});
+
+// Suppress a group from the recovery list without deleting or disabling it.
+// The group stays in kv['config'] and keeps receiving downloads if enabled;
+// it just stops showing up on the Recovery cleanup page.
+app.post('/api/maintenance/recovery/ignore', (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)) : [];
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    try {
+        const cfg = loadConfig();
+        let n = 0;
+        for (const g of cfg.groups || []) {
+            if (ids.includes(String(g.id))) {
+                g._recoveryIgnored = true;
+                n += 1;
+            }
+        }
+        if (n) saveConfig(cfg);
+        res.json({ success: true, ignored: n });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Lift the suppression — group reappears on the Recovery cleanup page.
+app.post('/api/maintenance/recovery/unignore', (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x) => String(x)) : [];
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    try {
+        const cfg = loadConfig();
+        let n = 0;
+        for (const g of cfg.groups || []) {
+            if (ids.includes(String(g.id))) {
+                delete g._recoveryIgnored;
+                n += 1;
+            }
+        }
+        if (n) saveConfig(cfg);
+        res.json({ success: true, unignored: n });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // ====== Backup destinations ================================================
@@ -10334,6 +10564,7 @@ app.post('/api/config', async (req, res) => {
             // so a hand-edited string ("yes", 1) doesn't quietly disable
             // the helpful warning.
             merged.thumbs.warnMisses = merged.thumbs.warnMisses !== false;
+            merged.thumbs.autoOnDownload = merged.thumbs.autoOnDownload !== false;
             // Clamp every numeric so a typo can't ban the user from logging
             // in (sessionTtlDays=0) or hose the downloader (minConcurrency=0).
             const d = merged.downloader;
@@ -10517,7 +10748,7 @@ app.post('/api/config', async (req, res) => {
             it.batchSize = clampInt(it.batchSize, 1, 1024, 64);
 
             const w = merged.web;
-            w.sessionTtlDays = clampInt(w.sessionTtlDays, 1, 365, 7);
+            w.sessionTtlDays = clampInt(w.sessionTtlDays, 1, 365, 30);
 
             // Seekbar sprite-sheet generator. Every knob clamps to a safe
             // range so a hand-edited config can't OOM the Go sidecar
@@ -11700,6 +11931,7 @@ const _jobTrackers = {
     aiIndex: createJobTracker({ kind: 'aiIndex', broadcast, log, eventPrefix: 'ai_index' }),
     aiTags: createJobTracker({ kind: 'aiTags', broadcast, log, eventPrefix: 'ai_tags' }),
     aiPeople: createJobTracker({ kind: 'aiPeople', broadcast, log, eventPrefix: 'ai_people' }),
+    qualityBackfill: createJobTracker({ kind: 'qualityBackfill', broadcast, log, eventPrefix: 'quality_backfill' }),
 };
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's

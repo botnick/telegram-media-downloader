@@ -335,7 +335,11 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null) {
             continue;
         }
         if (item.error) {
-            _log(onLog, 'warn', `batch detect ${absPaths[i]}: sidecar soft-error="${item.error}"`);
+            // decode_failed is expected for animated/compressed non-image files
+            // (e.g. gzip-wrapped Telegram sticker documents with a .webp extension).
+            // Log at info to keep the log feed clean; other soft errors stay at warn.
+            const lvl = item.error === 'decode_failed' ? 'info' : 'warn';
+            _log(onLog, lvl, `batch detect ${absPaths[i]}: sidecar soft-error="${item.error}"`);
             output[i] = []; // soft error → empty (sidecar reached the file)
             continue;
         }
@@ -349,6 +353,96 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null) {
     }
 
     return output;
+}
+
+/**
+ * Detect faces in a video file via the sidecar's `/detect/video` endpoint.
+ * Frames are extracted and deduplicated server-side — no temp files on disk.
+ * The returned faces land in the same `faces` table as photo-source faces,
+ * so DBSCAN Phase B clusters them together automatically.
+ *
+ * @param {string}    absPath absolute path to the video file
+ * @param {object}    cfg     `advanced.ai` config slice
+ * @param {function?} onLog   optional `({source, level, msg}) => void`
+ * @returns {Promise<Array | null>}
+ *   `null` = sidecar error / file unresolvable
+ *   `[]`   = processed but no faces found
+ *   `[…]` = detected unique faces (one embedding per person per video)
+ */
+export async function detectFacesInVideo(absPath, cfg = {}, onLog = null) {
+    _bootstrapFromEnv();
+    const url = getSidecarUrl();
+    if (!url) {
+        _log(onLog, 'warn', 'sidecar URL unset — detectFacesInVideo returning null');
+        return null;
+    }
+
+    const facesCfg = cfg?.faces || cfg || {};
+    const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
+    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60);
+    const arRange =
+        Array.isArray(facesCfg.arRange) && facesCfg.arRange.length === 2
+            ? facesCfg.arRange
+            : [0.5, 2.0];
+    const maxFrames = _pickNumber([facesCfg.videoMaxFrames, cfg?.videoMaxFrames], 120);
+
+    const body = {
+        path: absPath,
+        min_score: minScore,
+        min_box_px: minBoxPx,
+        ar_range: arRange,
+        max_frames: Math.max(1, Math.min(500, maxFrames)),
+    };
+
+    // Video detection is much slower than a single image — scale timeout
+    // by max_frames so a 2-hour video (120 frames) doesn't time out on
+    // slow CPU-only hardware.
+    const videoTimeoutMs = Math.max(body.max_frames * _requestTimeoutMs, 300_000);
+
+    let res;
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), videoTimeoutMs);
+        try {
+            res = await globalThis.fetch(`${url}/detect/video`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: ctrl.signal,
+            });
+        } finally {
+            clearTimeout(timer);
+        }
+    } catch (e) {
+        _log(onLog, 'warn', `detectFacesInVideo: network error for ${absPath} — ${e?.message || e}`);
+        return null;
+    }
+
+    if (res.status === 403) {
+        _log(onLog, 'warn', `detectFacesInVideo: path_not_allowed for ${absPath} — no b64 fallback for video`);
+        return null;
+    }
+
+    if (!res.ok) {
+        _log(onLog, 'warn', `detectFacesInVideo: sidecar returned ${res.status} for ${absPath}`);
+        return null;
+    }
+
+    let resBody;
+    try {
+        resBody = await res.json();
+    } catch (e) {
+        _log(onLog, 'warn', `detectFacesInVideo: invalid JSON from sidecar: ${e?.message || e}`);
+        return null;
+    }
+
+    if (resBody?.error) {
+        const lvl = resBody.error === 'file_not_found' ? 'warn' : 'info';
+        _log(onLog, lvl, `detectFacesInVideo ${absPath}: sidecar soft-error="${resBody.error}"`);
+        return [];
+    }
+
+    return _parseFacesList(Array.isArray(resBody?.faces) ? resBody.faces : []);
 }
 
 async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
@@ -435,6 +529,7 @@ function _parseFacesList(faces) {
                 w: Number(f.w) || 0,
                 h: Number(f.h) || 0,
                 score: Number.isFinite(f.score) ? Number(f.score) : 0,
+                qualityScore: Number.isFinite(f.quality_score) ? Number(f.quality_score) : null,
                 embedding: emb,
             };
             if (f.landmarks != null) out.landmarks = f.landmarks;

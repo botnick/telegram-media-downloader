@@ -178,7 +178,9 @@ Opt-in face detection + clustering, backed by the Python sidecar in `faces-servi
 | `POST`   | `/api/ai/faces/install-deps`        | Stream `python -m tgdl_faces.install` over `ai_faces_install_progress` / `ai_faces_install_done`. Accepts `{force?:'cpu'\|'gpu'\|'directml'\|'openvino', dryRun?:bool, noUninstall?:bool}`. |
 | `POST`   | `/api/ai/faces/recluster`           | Re-run DBSCAN over the existing `faces` table without re-detecting (cheap; preserves labels via centroid match). |
 | `POST`   | `/api/ai/faces/reindex`             | Confirm-sheet gated — wipes every detection + cluster and re-scans every photo. Use after switching detector model. Broadcasts `ai_faces_reindexed`. |
-| `GET`    | `/api/ai/people`                    | Cluster list with cover-face + face count. `?page=&limit=`. |
+| `POST`   | `/api/ai/preload-model/:name`       | Trigger background download of a face detection model. Proxies to sidecar `POST /preload/:name`. Returns `{model, status}`. `status` ∈ `not_downloaded`, `downloading`, `ready`, `error:…`. |
+| `GET`    | `/api/ai/preload-model/:name/status`| Check model download status. Returns `{model, status}`. |
+| `GET`    | `/api/ai/people`                    | Cluster list with cover-face + face count + `video_face_count` per person. `?page=&limit=`. |
 | `GET`    | `/api/ai/people/:id/photos`         | Paginated photos in this cluster. |
 | `PATCH`  | `/api/ai/people/:id`                | `{label}` — rename. |
 | `DELETE` | `/api/ai/people/:id`                | Drop cluster; faces become unassigned. |
@@ -187,6 +189,15 @@ Opt-in face detection + clustering, backed by the Python sidecar in `faces-servi
 | `POST`   | `/api/ai/faces/:id/reassign`        | `{personId}` — move a single face to another cluster. |
 | `GET`    | `/api/ai/faces/by-download/:id`     | Face boxes for the gallery viewer overlay. |
 | `GET`    | `/api/ai/group-by-person`           | Maintenance grid grouped by cluster — drives the People tab. |
+
+### Faces sidecar (direct)
+
+The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidecar also exposes them on its own port (default `:7555`).
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/preload/{model_name}`        | Download model files without switching the active model. Allowed models: `buffalo_l`, `antelopev2`, `buffalo_m`, `buffalo_s`, `buffalo_sc`. Returns `{model, status}`. |
+| `GET`  | `/preload/{model_name}/status` | Check model download status. Returns `{model, status}`. `status` ∈ `not_downloaded`, `downloading`, `ready`, `error:…`. |
 
 ## Auto-update
 

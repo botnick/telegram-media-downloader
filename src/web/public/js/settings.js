@@ -946,6 +946,8 @@ export function loadAdvanced(config) {
     );
     set('setting-adv-nsfw-threshold', Number.isFinite(ns.threshold) ? ns.threshold : 0.6);
     set('setting-adv-nsfw-concurrency', Number.isFinite(ns.concurrency) ? ns.concurrency : 1);
+    wireToggle('nsfw-ft-video', Array.isArray(ns.fileTypes) && ns.fileTypes.includes('video'));
+    set('setting-adv-nsfw-video-max-tiles', Number.isFinite(ns.videoMaxTiles) ? ns.videoMaxTiles : 48);
 
     // ffmpeg hardware acceleration — written to `advanced.thumbs.hwaccel`.
     // Empty string = off (default); `vaapi` / `qsv` / `cuda` / etc.
@@ -957,6 +959,7 @@ export function loadAdvanced(config) {
     // server falls back to true when the key is absent so first-run
     // installs see the helpful warning until they explicitly silence it.
     wireToggle('setting-adv-thumbs-warn-misses', adv.thumbs?.warnMisses !== false);
+    wireToggle('setting-adv-thumbs-autoOnDownload', adv.thumbs?.autoOnDownload !== false);
 
     // Seekbar — sprite-sheet generator for the video hover preview.
     // Numeric inputs + format <select> live on the Maintenance → Seekbar
@@ -1115,15 +1118,22 @@ function gatherAdvanced() {
             dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
             threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
             concurrency: num('setting-adv-nsfw-concurrency', 1),
+            videoMaxTiles: num('setting-adv-nsfw-video-max-tiles', 48),
+            fileTypes: (() => {
+                const t = ['photo'];
+                if (document.getElementById('nsfw-ft-video')?.classList.contains('active')) t.push('video');
+                return t;
+            })(),
         },
         thumbs: {
-            // Empty string = CPU (off). Validated server-side against an
-            // allow-list so a hand-edited config can't pass arbitrary
-            // values through to the ffmpeg process.
             hwaccel: String(get('setting-adv-ffmpeg-hwaccel') || ''),
             warnMisses:
                 document
                     .getElementById('setting-adv-thumbs-warn-misses')
+                    ?.classList.contains('active') !== false,
+            autoOnDownload:
+                document
+                    .getElementById('setting-adv-thumbs-autoOnDownload')
                     ?.classList.contains('active') !== false,
         },
     };
@@ -1372,6 +1382,10 @@ function _gatherScopedPayload(page) {
                         document
                             .getElementById('setting-adv-thumbs-warn-misses')
                             ?.classList.contains('active') !== false,
+                    autoOnDownload:
+                        document
+                            .getElementById('setting-adv-thumbs-autoOnDownload')
+                            ?.classList.contains('active') !== false,
                 },
             },
         };
@@ -1398,6 +1412,12 @@ function _gatherScopedPayload(page) {
                     dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
                     threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
                     concurrency: num('setting-adv-nsfw-concurrency', 1),
+                    videoMaxTiles: num('setting-adv-nsfw-video-max-tiles', 48),
+                    fileTypes: (() => {
+                        const t = ['photo'];
+                        if (document.getElementById('nsfw-ft-video')?.classList.contains('active')) t.push('video');
+                        return t;
+                    })(),
                 },
             },
         };

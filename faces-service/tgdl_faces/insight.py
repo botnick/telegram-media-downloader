@@ -67,6 +67,34 @@ import numpy as np
 
 _LOG = logging.getLogger(__name__)
 
+
+def _register_nvidia_dll_dirs() -> bool:
+    """On Windows, register pip-installed nvidia-* package DLL directories.
+
+    nvidia-cudnn-cu12 and nvidia-cublas-cu12 are namespace packages whose
+    __file__ is None. We walk nvidia.__path__ and register every ``bin/``
+    subdirectory that exists so onnxruntime can find cudnn64_9.dll,
+    cublas64_12.dll, etc. without requiring a system-wide CUDA install.
+    """
+    if platform.system().lower() != "windows" or not hasattr(os, "add_dll_directory"):
+        return False
+    try:
+        import nvidia  # noqa: PLC0415
+        nvidia_root = Path(list(nvidia.__path__)[0])
+        registered = False
+        for sub in nvidia_root.iterdir():
+            bin_dir = sub / "bin"
+            if bin_dir.is_dir():
+                os.add_dll_directory(str(bin_dir))
+                registered = True
+        return registered
+    except Exception:
+        pass
+    return False
+
+
+_NVIDIA_DLLS_REGISTERED = _register_nvidia_dll_dirs()
+
 # Module-level singleton state — guarded by `_LOCK` so two parallel
 # requests on uvicorn's thread pool don't double-initialise the model.
 _APP: Any | None = None
@@ -467,38 +495,72 @@ def get_app() -> Any:
                     pass
 
             requested = os.environ.get("TGDL_FACES_PROVIDERS", "auto").strip() or "auto"
-            providers = _resolve_providers(requested)
-            _REQUESTED_PROVIDERS = requested
-            _RESOLVED_PROVIDERS = list(providers)
-
             det_size = _resolve_det_size()
 
             _LOG.info(
-                "loading %s from %s (providers=%s requested=%s det_size=%s)",
+                "loading %s from %s (requested=%s det_size=%s)",
                 MODEL_NAME,
                 models_dir,
-                providers,
                 requested,
                 det_size,
             )
-            app = FaceAnalysis(
-                name=MODEL_NAME,
-                root=str(models_dir),
-                providers=providers,
-            )
-            # ctx_id picks the GPU index when CUDA is in play (0 = first
-            # GPU); -1 forces CPU. We use 0 whenever a GPU provider is in
-            # the resolved chain because onnxruntime ignores ctx_id when
-            # the provider isn't available, so this is safe on CPU-only.
-            gpu_providers = {
-                "CUDAExecutionProvider",
-                "DmlExecutionProvider",
-                "CoreMLExecutionProvider",
-                "OpenVINOExecutionProvider",
-                "TensorrtExecutionProvider",
-            }
-            ctx_id = 0 if any(p in gpu_providers for p in providers) else -1
-            app.prepare(ctx_id=ctx_id, det_size=det_size)
+
+            # Suppress onnxruntime/insightface noise during provider probe +
+            # model load by redirecting both fd 1 (stdout) and fd 2 (stderr)
+            # to devnull. This catches:
+            #   - C++ DLL-load errors (TensorRT/CUDA) on stderr
+            #   - insightface "Applied providers:" / "find model:" on stdout
+            # _LOG calls before/after are safe — they flush to the restored fd.
+            try:
+                import onnxruntime as _ort  # noqa: PLC0415
+                _ort.set_default_logger_severity(4)
+            except Exception:
+                _ort = None
+            _saved_1: int | None = None
+            _saved_2: int | None = None
+            _null_fd: int | None = None
+            try:
+                _null_fd = os.open(os.devnull, os.O_WRONLY)
+                _saved_1 = os.dup(1)
+                os.dup2(_null_fd, 1)
+                _saved_2 = os.dup(2)
+                os.dup2(_null_fd, 2)
+            except OSError:
+                _saved_1 = None
+                _saved_2 = None
+                _null_fd = None
+            try:
+                providers = _resolve_providers(requested)
+                app = FaceAnalysis(
+                    name=MODEL_NAME,
+                    root=str(models_dir),
+                    providers=providers,
+                )
+                gpu_providers = {
+                    "CUDAExecutionProvider",
+                    "DmlExecutionProvider",
+                    "CoreMLExecutionProvider",
+                    "OpenVINOExecutionProvider",
+                    "TensorrtExecutionProvider",
+                }
+                ctx_id = 0 if any(p in gpu_providers for p in providers) else -1
+                app.prepare(ctx_id=ctx_id, det_size=det_size)
+            finally:
+                if _saved_1 is not None:
+                    os.dup2(_saved_1, 1)
+                    os.close(_saved_1)
+                if _saved_2 is not None:
+                    os.dup2(_saved_2, 2)
+                    os.close(_saved_2)
+                if _null_fd is not None:
+                    os.close(_null_fd)
+                if _ort is not None:
+                    try:
+                        _ort.set_default_logger_severity(2)
+                    except Exception:
+                        pass
+            _REQUESTED_PROVIDERS = requested
+            _RESOLVED_PROVIDERS = list(providers)
             _APP = app
             # Read the *actual* providers from the first loaded ONNX session.
             # app.providers (insightface) stores the requested chain, not what
@@ -525,20 +587,15 @@ def get_app() -> Any:
                 _RESOLVED_PROVIDERS,
                 _GPU_PROVIDER,
             )
-            # Warn when a GPU provider was requested but onnxruntime silently
-            # fell back to CPU — the most common cause is missing CUDA Toolkit.
-            requested_gpu = any(
+            if _GPU_PROVIDER == "cpu" and any(
                 p in {"CUDAExecutionProvider", "DmlExecutionProvider",
                       "CoreMLExecutionProvider", "OpenVINOExecutionProvider"}
                 for p in providers
-            )
-            if requested_gpu and _GPU_PROVIDER == "cpu":
+            ):
                 _LOG.warning(
-                    "GPU provider was requested (%s) but onnxruntime fell back "
-                    "to CPUExecutionProvider — likely missing runtime libraries. "
-                    "For CUDA: install CUDA Toolkit 12.x + cuDNN 9 from "
-                    "https://developer.nvidia.com/cuda-downloads, then restart "
-                    "the sidecar. See docs/AI.md#gpu-acceleration for details.",
+                    "GPU provider requested (%s) but onnxruntime fell back to "
+                    "CPUExecutionProvider — check that the required runtime "
+                    "libraries are installed and visible to this process.",
                     providers,
                 )
             return _APP
@@ -564,6 +621,67 @@ def preload_model() -> None:
 
     t = threading.Thread(target=_load, name="faces-preload", daemon=True)
     t.start()
+
+
+_PRELOAD_STATUS: dict[str, str] = {}
+
+
+def preload_named_model(name: str) -> None:
+    """Download model files without loading into memory.
+
+    Called from ``POST /preload`` so the operator can pre-download a model
+    before switching to it (avoids a long wait on the first startup).
+    """
+    ALLOWED = {"buffalo_l", "antelopev2", "buffalo_m", "buffalo_s", "buffalo_sc"}
+    if name not in ALLOWED:
+        _PRELOAD_STATUS[name] = "invalid"
+        return
+
+    models_dir = _resolve_models_dir()
+    target = models_dir / "models" / name
+    if target.is_dir() and any(target.glob("*.onnx")):
+        _PRELOAD_STATUS[name] = "ready"
+        return
+
+    _PRELOAD_STATUS[name] = "downloading"
+
+    def _download() -> None:
+        try:
+            from insightface.app import FaceAnalysis  # noqa: PLC0415
+
+            models_dir.mkdir(parents=True, exist_ok=True)
+            FaceAnalysis(
+                name=name,
+                root=str(models_dir),
+                allowed_modules=["detection", "recognition"],
+                providers=["CPUExecutionProvider"],
+            )
+            nested = target / name
+            if nested.is_dir():
+                for child in nested.iterdir():
+                    dst = target / child.name
+                    if not dst.exists():
+                        child.rename(dst)
+                try:
+                    nested.rmdir()
+                except OSError:
+                    pass
+            _PRELOAD_STATUS[name] = "ready"
+            _LOG.info("preload %s complete", name)
+        except Exception as exc:
+            _PRELOAD_STATUS[name] = f"error: {exc}"
+            _LOG.exception("preload %s failed", name)
+
+    t = threading.Thread(target=_download, name=f"preload-{name}", daemon=True)
+    t.start()
+
+
+def preload_status(name: str) -> str:
+    models_dir = _resolve_models_dir()
+    target = models_dir / "models" / name
+    if target.is_dir() and any(target.glob("*.onnx")):
+        return "ready"
+    return _PRELOAD_STATUS.get(name, "not_downloaded")
 
 
 def is_ready() -> bool:
@@ -593,6 +711,86 @@ def _l2_normalise(vec: np.ndarray) -> np.ndarray:
     if norm <= 1e-9 or not math.isfinite(norm):
         return arr
     return (arr / norm).astype(np.float32, copy=False)
+
+
+def _compute_quality_score(
+    face: Any,
+    image_bgr: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    scale: float = 1.0,
+) -> float:
+    """Composite face quality score in [0.0, 1.0].
+
+    Five factors, each normalised to [0, 1]:
+      det_score (0.30) + face_size (0.20) + sharpness (0.20)
+      + landmark_regularity (0.15) + pose_frontalness (0.15)
+    """
+    import cv2 as _cv2  # noqa: PLC0415
+
+    h_img, w_img = image_bgr.shape[:2]
+
+    # 1. Detection confidence
+    det = float(getattr(face, "det_score", 0.0) or 0.0)
+    det = max(0.0, min(1.0, det))
+
+    # 2. Face size relative to image
+    shorter_img = min(h_img, w_img) or 1
+    shorter_face = min(w, h)
+    size_norm = min(1.0, shorter_face / (shorter_img * 0.5))
+
+    # 3. Sharpness via Laplacian variance of face crop
+    crop_y1, crop_y2 = max(0, y), min(h_img, y + h)
+    crop_x1, crop_x2 = max(0, x), min(w_img, x + w)
+    if crop_y2 > crop_y1 and crop_x2 > crop_x1:
+        grey = _cv2.cvtColor(
+            image_bgr[crop_y1:crop_y2, crop_x1:crop_x2], _cv2.COLOR_BGR2GRAY
+        )
+        lap_var = float(_cv2.Laplacian(grey, _cv2.CV_64F).var()) if grey.size else 0.0
+        sharpness = min(1.0, lap_var / 100.0)
+    else:
+        sharpness = 0.0
+
+    # 4. Landmark regularity (eye symmetry, nose/mouth centering)
+    # face.kps is in detect_img coords; scale back to original
+    kps = getattr(face, "kps", None)
+    if kps is not None:
+        try:
+            pts = np.asarray(kps, dtype=np.float32).reshape(-1, 2) / scale
+            if len(pts) >= 5:
+                eye_l, eye_r, nose = pts[0], pts[1], pts[2]
+                mouth_l, mouth_r = pts[3], pts[4]
+                eye_dy = abs(float(eye_l[1] - eye_r[1])) / max(1, h)
+                eye_cx = (float(eye_l[0]) + float(eye_r[0])) / 2
+                nose_dx = abs(float(nose[0]) - eye_cx) / max(1, w)
+                mouth_cx = (float(mouth_l[0]) + float(mouth_r[0])) / 2
+                mouth_dx = abs(mouth_cx - eye_cx) / max(1, w)
+                regularity = max(0.0, 1.0 - (eye_dy + nose_dx + mouth_dx) * 3.0)
+            else:
+                regularity = 0.5
+        except (ValueError, TypeError):
+            regularity = 0.5
+    else:
+        regularity = 0.5
+
+    # 5. Pose frontalness (insightface pose = [pitch, yaw, roll] degrees)
+    pose = getattr(face, "pose", None)
+    if pose is not None and len(pose) >= 3:
+        angle_sum = abs(float(pose[0])) + abs(float(pose[1])) + abs(float(pose[2]))
+        pose_factor = max(0.0, 1.0 - angle_sum / 90.0)
+    else:
+        pose_factor = 0.5
+
+    composite = (
+        0.30 * det
+        + 0.20 * size_norm
+        + 0.20 * sharpness
+        + 0.15 * regularity
+        + 0.15 * pose_factor
+    )
+    return round(max(0.0, min(1.0, composite)), 4)
 
 
 def detect_and_embed(
@@ -737,6 +935,8 @@ def detect_and_embed(
                 except (ValueError, TypeError):
                     landmarks = []
 
+            quality = _compute_quality_score(face, image_bgr, x, y, w, h, scale)
+
             out.append(
                 {
                     "x": x,
@@ -744,6 +944,7 @@ def detect_and_embed(
                     "w": w,
                     "h": h,
                     "score": score,
+                    "quality_score": quality,
                     "embedding": emb.tolist(),
                     "landmarks": landmarks,
                 }

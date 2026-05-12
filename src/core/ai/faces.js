@@ -164,16 +164,21 @@ export function euclidean(a, b) {
     return Math.sqrt(sum);
 }
 
-/** Mean of a set of equal-length vectors. */
-export function centroid(vecs) {
+/** Weighted mean of a set of equal-length vectors. */
+export function centroid(vecs, weights = null) {
     if (!Array.isArray(vecs) || !vecs.length) return null;
     const dim = vecs[0].length;
     const out = new Float32Array(dim);
-    for (const v of vecs) {
+    let totalW = 0;
+    for (let vi = 0; vi < vecs.length; vi++) {
+        const v = vecs[vi];
         if (!v || v.length !== dim) continue;
-        for (let i = 0; i < dim; i++) out[i] += v[i];
+        const w = weights && Number.isFinite(weights[vi]) && weights[vi] > 0 ? weights[vi] : 1.0;
+        totalW += w;
+        for (let i = 0; i < dim; i++) out[i] += v[i] * w;
     }
-    for (let i = 0; i < dim; i++) out[i] /= vecs.length;
+    if (totalW <= 0) totalW = 1;
+    for (let i = 0; i < dim; i++) out[i] /= totalW;
     return out;
 }
 
@@ -260,11 +265,17 @@ export function clusterFaces(faces, opts = {}) {
         groups.get(label).push(idx);
     });
     const clusters = [...groups.values()]
-        .map((memberIdxs) => ({
-            memberIdxs,
-            centroid: centroid(memberIdxs.map((i) => points[i])),
-            faceCount: memberIdxs.length,
-        }))
+        .map((memberIdxs) => {
+            const memberVecs = memberIdxs.map((i) => points[i]);
+            const memberWeights = memberIdxs.map((i) =>
+                Number.isFinite(faces[i].qualityScore) ? faces[i].qualityScore : 1.0,
+            );
+            return {
+                memberIdxs,
+                centroid: centroid(memberVecs, memberWeights),
+                faceCount: memberIdxs.length,
+            };
+        })
         .sort((a, b) => b.faceCount - a.faceCount);
     return { clusters, noise };
 }

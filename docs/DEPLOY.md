@@ -39,6 +39,7 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `TGDL_RUN`                      | `monitor`           | Watchdog subcommand for `runner.js` / `runner.sh` / `watchdog.ps1`. |
 | `TGDL_DEBUG`                    | unset               | Set to any truthy value to surface gramJS reconnect noise on stderr. |
 | `TGDL_DATA_DIR`                 | `<repo>/data`       | Override the on-disk data root (`db.sqlite`, `downloads/`, sessions). Used by the test suite to point at an isolated tmpdir; also useful for Docker / multi-instance deploys that want the data on a different mount without symlinks. |
+| `TGDL_DOWNLOADS_DIR`            | `<TGDL_DATA_DIR>/downloads` | Override the downloads directory independently of the main data root. See **Split-disk setup** below. |
 | `TRUST_PROXY`                   | unset               | `1`, `loopback`, or any value Express's `trust proxy` understands; needed for accurate IPs behind a reverse proxy. |
 | `FFMPEG_PATH`                   | auto-detect         | Override the resolved ffmpeg binary used by `core/thumbs.js`. Resolver order: this var → `/usr/bin/ffmpeg` → `/usr/local/bin/ffmpeg` → `@ffmpeg-installer/ffmpeg` → bare `ffmpeg`. |
 | `THUMBS_IMG_CONCURRENCY`        | `8`                 | Parallel image-thumb jobs. |
@@ -269,3 +270,51 @@ Memory cap, log rotation, and healthcheck timing all live in the same compose fi
 - `healthcheck.start_period: 30s` — gives the cold-start path room for state-migration + first WAL checkpoint on slow disks.
 
 Bare-metal users get equivalent coverage from `ecosystem.config.cjs`: `max_memory_restart: 1500M`, `max_restarts: 10` with a `restart_delay: 2000` ms backoff, `min_uptime: 10s` to surface crash-loops as a stopped process instead of a CPU-pinning restart storm.
+
+## Split-disk setup
+
+Store `db.sqlite`, sessions, logs, and backups on a fast SSD while large media files live on a cheaper, bigger HDD.
+
+**Which paths go where:**
+
+| Path | Recommended disk | Why |
+|---|---|---|
+| `db.sqlite` + WAL files | SSD | Random read/write, small |
+| `sessions/` | SSD | Small, accessed on every reconnect |
+| `backups/` | SSD | Verified before each update |
+| `logs/` | Either | Sequential write, small |
+| `downloads/` | HDD | Large sequential writes, rarely random |
+| `models/` (NSFW / faces) | Either | Read-once then cached |
+
+**Docker (two bind-mounts):**
+
+```yaml
+# docker-compose.yml — volumes section
+volumes:
+  - /mnt/ssd/tgdl/data:/app/data          # SSD: DB + sessions + backups
+  - /mnt/hdd/tgdl/downloads:/mnt/hdd/downloads  # HDD: media files
+
+# docker-compose.yml — environment section
+environment:
+  - TGDL_DOWNLOADS_DIR=/mnt/hdd/downloads
+```
+
+The container entrypoint creates and permissions `TGDL_DOWNLOADS_DIR` automatically on boot.
+
+**Bare metal / Synology native:**
+
+```bash
+export TGDL_DATA_DIR=/mnt/ssd/tgdl/data
+export TGDL_DOWNLOADS_DIR=/mnt/hdd/tgdl/downloads
+npm start
+```
+
+**Windows:**
+
+```powershell
+$env:TGDL_DATA_DIR = "D:\tgdl\data"
+$env:TGDL_DOWNLOADS_DIR = "E:\tgdl\downloads"
+npm start
+```
+
+When `TGDL_DOWNLOADS_DIR` is unset, behaviour is identical to previous versions — downloads go to `<TGDL_DATA_DIR>/downloads`.

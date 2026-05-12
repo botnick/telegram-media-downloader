@@ -14,9 +14,26 @@ import { api } from './api.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { showToast, escapeHtml } from './utils.js';
 import { ws } from './ws.js';
-import { confirmSheet, promptSheet } from './sheet.js';
+import { confirmSheet, promptSheet, openSheet } from './sheet.js';
+import { openMediaViewerForReview } from './viewer.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+const _CHIP_STYLES = {
+    'tg-blue':   ['border-tg-blue', 'bg-tg-blue/10', 'text-tg-blue'],
+    'amber-500': ['border-amber-500', 'bg-amber-500/10', 'text-amber-500'],
+};
+function _applyFilterChipStyle(btn, active, color) {
+    btn.dataset.active = active ? 'true' : 'false';
+    const on = _CHIP_STYLES[color] || [];
+    if (active) {
+        btn.classList.remove('border-tg-border/40', 'text-tg-textSecondary');
+        btn.classList.add(...on);
+    } else {
+        btn.classList.remove(...on);
+        btn.classList.add('border-tg-border/40', 'text-tg-textSecondary');
+    }
+}
 
 // Module state.
 let _initOnce = false;
@@ -24,17 +41,32 @@ let _lastStatus = null;
 let _selectedPerson = null;
 let _selectedPersonName = '';
 let _peopleCache = []; // full people list (un-filtered) for client-side search
-const _peopleFilter = { query: '', unlabeledOnly: false };
+let _photoGridClickHandler = null;
+const _peopleFilter = { query: '', unlabeledOnly: false, videosOnly: false, hideLowQuality: false, sortBy: 'face_count' };
 
 // Scan phase tracking — distinguishes Phase A (per-image detect) from
 // Phase B (DBSCAN clustering, runs after A completes, typically seconds).
 let _scanPhase = 'A'; // 'A' | 'B'
+
+// Split mode — set when the user clicks "Split" on a cluster. While active
+// the photo grid swaps its click handler from viewer-open to face-select.
+// Selection is keyed by download ID (always available) rather than face_id
+// (which may be absent on some API paths). Face IDs are collected from the
+// tiles' data-face-id at commit time.
+let _splitModeActive = false;
+const _splitSelectedDlIds = new Set();
+
+// Running render token — incremented on every _renderPeopleGrid call so
+// stale async chunks abort when a newer render starts (e.g. typing in
+// the search box while the previous chunk render is still in flight).
+let _peopleRenderToken = 0;
 
 export async function init() {
     if (!_initOnce) {
         _bindOnce();
         _initOnce = true;
     }
+    _setActionButtonsEnabled(false);
     await refreshStatus();
     _refreshDoctor().catch(() => {});
     _loadPeople().catch(() => {});
@@ -66,6 +98,7 @@ function _bindOnce() {
     $('#ai-cancel-btn')?.addEventListener('click', () => _cancelScan('faces'));
     $('#ai-reindex-btn')?.addEventListener('click', _reindexFromScratch);
     $('#ai-recluster-btn')?.addEventListener('click', _recluster);
+    $('#ai-restart-sidecar-btn')?.addEventListener('click', _restartSidecar);
     $('#ai-detect-test-btn')?.addEventListener('click', _runDetectTest);
 
     // Sensitivity preset buttons — one-click apply ε + minPoints, then
@@ -92,14 +125,37 @@ function _bindOnce() {
             _onAutoToggle();
         }
     });
+    $('#ai-scan-videos-toggle')?.addEventListener('click', _onScanVideosToggle);
+    $('#ai-scan-videos-toggle')?.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            _onScanVideosToggle();
+        }
+    });
 
     // Settings inputs — model / threshold / minPoints / provider.
     // `change` (not `input`) so dragging the slider doesn't spam saves.
-    $('#ai-faces-model')?.addEventListener('change', (e) =>
-        _saveSetting('facesDetectorModel', String(e.target.value || 'buffalo_l'), {
-            restartSidecar: true,
-        }),
-    );
+    $('#ai-faces-model')?.addEventListener('change', async (e) => {
+        const model = String(e.target.value || 'buffalo_l');
+        const statusEl = $('#ai-faces-model-status');
+        if (statusEl) statusEl.textContent = `Preloading ${model}…`;
+        try {
+            await api.post(`/api/ai/preload-model/${model}`);
+            let ready = false;
+            for (let i = 0; i < 60 && !ready; i++) {
+                const s = await api.get(`/api/ai/preload-model/${model}/status`);
+                if (s?.status === 'ready') { ready = true; break; }
+                if (s?.status?.startsWith('error')) { throw new Error(s.status); }
+                await new Promise((r) => setTimeout(r, 2000));
+                if (statusEl) statusEl.textContent = `Downloading ${model}…`;
+            }
+        } catch (err) {
+            if (statusEl) statusEl.textContent = `Preload failed: ${err.message}`;
+        }
+        if (statusEl) statusEl.textContent = `Switching to ${model}…`;
+        await _saveSetting('facesDetectorModel', model, { restartSidecar: true });
+        if (statusEl) statusEl.textContent = 'Sidecar restarting with new model…';
+    });
     const epsInp = $('#ai-faces-epsilon');
     const epsOut = $('#ai-faces-epsilon-out');
     if (epsInp) {
@@ -128,11 +184,42 @@ function _bindOnce() {
     // People — search + filter chip + refresh.
     $('#ai-people-search')?.addEventListener('input', (e) => {
         _peopleFilter.query = String(e.target.value || '').toLowerCase();
-        _renderPeopleGrid();
+        _renderPeopleGrid().catch(() => {});
     });
-    $('#ai-people-unlabeled')?.addEventListener('change', (e) => {
-        _peopleFilter.unlabeledOnly = !!e.target.checked;
-        _renderPeopleGrid();
+    $('#ai-people-unlabeled')?.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        _peopleFilter.unlabeledOnly = !_peopleFilter.unlabeledOnly;
+        _applyFilterChipStyle(btn, _peopleFilter.unlabeledOnly, 'tg-blue');
+        _renderPeopleGrid().catch(() => {});
+    });
+    $('#ai-people-videos-only')?.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        _peopleFilter.videosOnly = !_peopleFilter.videosOnly;
+        _applyFilterChipStyle(btn, _peopleFilter.videosOnly, 'amber-500');
+        _renderPeopleGrid().catch(() => {});
+    });
+    $('#ai-people-hide-lq')?.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        _peopleFilter.hideLowQuality = !_peopleFilter.hideLowQuality;
+        _applyFilterChipStyle(btn, _peopleFilter.hideLowQuality, 'red-500');
+        _renderPeopleGrid().catch(() => {});
+    });
+    $('#ai-people-sort-group')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.ai-sort-btn');
+        if (!btn) return;
+        const sortBy = btn.dataset.sort;
+        if (!sortBy || sortBy === _peopleFilter.sortBy) return;
+        _peopleFilter.sortBy = sortBy;
+        for (const b of document.querySelectorAll('#ai-people-sort-group .ai-sort-btn')) {
+            if (b.dataset.sort === sortBy) {
+                b.classList.remove('text-tg-textSecondary');
+                b.classList.add('bg-tg-blue/10', 'text-tg-blue');
+            } else {
+                b.classList.remove('bg-tg-blue/10', 'text-tg-blue');
+                b.classList.add('text-tg-textSecondary');
+            }
+        }
+        _renderPeopleGrid().catch(() => {});
     });
     $('#ai-people-refresh-btn')?.addEventListener('click', () => _loadPeople());
 
@@ -141,6 +228,8 @@ function _bindOnce() {
     $('#ai-person-merge-btn')?.addEventListener('click', _mergeSelectedPerson);
     $('#ai-person-split-btn')?.addEventListener('click', _splitSelectedPerson);
     $('#ai-person-delete-btn')?.addEventListener('click', _deleteSelectedPerson);
+    $('#ai-split-cancel-btn')?.addEventListener('click', _exitSplitMode);
+    $('#ai-split-commit-btn')?.addEventListener('click', _commitSplit);
 
     // WebSocket — only the people / scan events survive in the faces-only
     // build. ai_index_* / ai_tags_* were removed with the Search + Tags
@@ -153,7 +242,12 @@ function _bindOnce() {
     ws.on('ai_people_done', (m) => _onScanDone('faces', m));
     ws.on('ai_people_phase_b', (m) => _onScanPhaseB(m));
     ws.on('ai_faces_status', () => refreshStatus());
-
+    ws.on('quality_backfill_progress', () => refreshStatus());
+    ws.on('quality_backfill_done', () => { refreshStatus(); _loadPeople().catch(() => {}); });
+    $('#ai-quality-backfill-btn')?.addEventListener('click', async () => {
+        try { await api.post('/api/ai/backfill-quality'); } catch {}
+        refreshStatus();
+    });
     // Auto-installer feedback. Streams stdout from `python -m
     // tgdl_faces.install` line-by-line so the operator sees pip progress
     // (downloading wheels, resolving deps, etc.) without leaving the
@@ -320,6 +414,30 @@ async function _onAutoToggle() {
     }
 }
 
+async function _onScanVideosToggle() {
+    const el = $('#ai-scan-videos-toggle');
+    if (!el) return;
+    const cur = el.classList.contains('active');
+    const next = !cur;
+    el.classList.toggle('active', next);
+    el.setAttribute('aria-checked', String(next));
+    try {
+        const r = await api.post('/api/config', {
+            advanced: { ai: { faces: { scanVideos: next } } },
+        });
+        if (!r.success) throw new Error(r.error || 'save failed');
+        showToast(i18nT('common.saved', 'Saved'), 'success');
+        await refreshStatus();
+    } catch (e) {
+        el.classList.toggle('active', cur);
+        el.setAttribute('aria-checked', String(cur));
+        showToast(
+            `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
+            'error',
+        );
+    }
+}
+
 // ---- Status / settings ----------------------------------------------------
 
 function _renderStatus(status) {
@@ -385,6 +503,37 @@ function _renderStatus(status) {
         noiseEl.textContent = noise.toLocaleString();
     }
 
+    // Quality backfill — show only when faces lack quality scores
+    const backfillBtn = $('#ai-quality-backfill-btn');
+    if (backfillBtn) {
+        const pending = Number(status.qualityBackfillPending) || 0;
+        const tracker = status.trackers?.qualityBackfill || {};
+        const running = !!tracker.running;
+        const done = !running && tracker.result != null;
+        const show = (pending > 0 && !done) || running;
+        backfillBtn.classList.toggle('hidden', !show);
+        backfillBtn.disabled = running;
+        const label = backfillBtn.querySelector('span');
+        if (label) {
+            if (running) {
+                const p = tracker.progress || {};
+                const pct = (p.total > 0) ? Math.round((p.processed / p.total) * 100) : 0;
+                label.textContent = `Scoring… ${pct}% (${(p.updated || 0).toLocaleString()} updated)`;
+            } else if (pending > 0) {
+                label.textContent = `Score ${pending.toLocaleString()} faces`;
+            }
+        }
+    }
+
+    // Quality legend — show when some faces have quality scores
+    const legend = $('#ai-quality-legend');
+    if (legend) {
+        const pending = Number(status.qualityBackfillPending) || 0;
+        const totalFaces = Number(counts.totalFaces ?? 0);
+        const hasQuality = totalFaces > 0 && pending < totalFaces;
+        legend.classList.toggle('hidden', !hasQuality);
+    }
+
     // Toggles. Click handlers in `_bindOnce` flip the underlying flag
     // optimistically; this is the "render from server truth" pass that
     // runs on init + after every save round-trip.
@@ -399,6 +548,12 @@ function _renderStatus(status) {
         const on = cfg.faceClustering !== false;
         autoToggle.classList.toggle('active', on);
         autoToggle.setAttribute('aria-checked', String(on));
+    }
+    const scanVideosToggle = $('#ai-scan-videos-toggle');
+    if (scanVideosToggle) {
+        const on = cfg.faces?.scanVideos === true;
+        scanVideosToggle.classList.toggle('active', on);
+        scanVideosToggle.setAttribute('aria-checked', String(on));
     }
 
     // Model line — id + dim + provider, served by /api/ai/status.
@@ -647,9 +802,14 @@ function _applyProbeToProviderSelect(probe) {
             opt.disabled = false;
             const star = v === recommendedShort ? '★ ' : '✓ ';
             opt.textContent = `${star}${baseLabel}`;
+            opt.title = '';
         } else {
             opt.disabled = true;
-            opt.textContent = `✗ ${baseLabel} — ${i18nT('maintenance.ai.faces.providers.driver_missing', 'driver missing')}`;
+            const hint = d.error
+                ? i18nT('maintenance.ai.faces.providers.unavailable', 'unavailable')
+                : i18nT('maintenance.ai.faces.providers.driver_missing', 'driver / libraries missing');
+            opt.textContent = `✗ ${baseLabel} — ${hint}`;
+            opt.title = d.error || '';
         }
     }
 
@@ -807,6 +967,20 @@ async function _applyPreset(name) {
     }
 }
 
+async function _restartSidecar() {
+    try {
+        await api.post('/api/ai/faces/restart', {});
+        showToast(
+            i18nT('maintenance.ai.restart_sidecar', 'Restart sidecar') + '…',
+            'success',
+        );
+        await refreshStatus();
+    } catch (e) {
+        const msg = e?.data?.error || e?.message || 'unknown';
+        showToast(`Restart failed: ${msg}`, 'error');
+    }
+}
+
 async function _recluster() {
     // Phase B only — keeps the existing face embeddings, just re-runs
     // DBSCAN with the current ε / minPoints. The /api/ai/faces/recluster
@@ -856,7 +1030,9 @@ async function _reindexFromScratch() {
         // scan progress events will refresh both as the run rebuilds them.
         _peopleCache = [];
         _selectedPerson = null;
-        _renderPeopleGrid();
+        _selectedPersonName = '';
+        $('#ai-people-photos')?.classList.add('hidden');
+        _renderPeopleGrid().catch(() => {});
         await refreshStatus();
     } catch (e) {
         const msg = e?.data?.error || e?.message || 'unknown';
@@ -964,6 +1140,18 @@ function _onScanProgress(feature, msg) {
     const total = Number(msg.total) || 0;
     const pct = total > 0 ? Math.min(100, Math.round((scanned / total) * 100)) : 0;
 
+    // Phase B transition: scan-runner emits running=true + phase='B' when
+    // detection is complete and DBSCAN is about to start. Hand off to the
+    // Phase B handler and skip the Phase A progress-bar update.
+    if (running && msg.phase === 'B') {
+        _onScanPhaseB({ faceCount: msg.faceCount });
+        const scanBtn = $('#ai-scan-btn');
+        const cancelBtn = $('#ai-cancel-btn');
+        if (scanBtn) scanBtn.disabled = true;
+        if (cancelBtn) cancelBtn.disabled = false;
+        return;
+    }
+
     const scanBtn = $('#ai-scan-btn');
     const cancelBtn = $('#ai-cancel-btn');
     const progressWrap = $('#ai-progress');
@@ -995,6 +1183,16 @@ function _onScanProgress(feature, msg) {
             ? i18nT('maintenance.ai.scan_phase_a', 'Phase 1: face detection')
             : '';
         phaseTag.classList.toggle('hidden', !running);
+    }
+    // Update "Indexed photos" KPI tile in realtime during Phase A so the
+    // operator sees progress without waiting for the full scan to finish.
+    if (running && scanned > 0) {
+        const indexedEl = $('#ai-stat-indexed');
+        if (indexedEl) {
+            indexedEl.textContent = total > 0
+                ? `${scanned.toLocaleString()} / ${total.toLocaleString()}`
+                : scanned.toLocaleString();
+        }
     }
 }
 
@@ -1070,16 +1268,16 @@ function _onScanDone(feature, msg) {
 
 async function _loadPeople() {
     try {
-        const r = await api.get('/api/ai/people?limit=500');
+        const r = await api.get('/api/ai/people?limit=2000');
         if (!r.success) return;
         _peopleCache = Array.isArray(r.people) ? r.people : [];
-        _renderPeopleGrid();
+        await _renderPeopleGrid();
     } catch (e) {
         console.warn('ai/people:', e);
     }
 }
 
-function _renderPeopleGrid() {
+async function _renderPeopleGrid() {
     const grid = $('#ai-people-grid');
     const empty = $('#ai-people-empty');
     const emptyHelp = $('#ai-people-empty-help');
@@ -1087,27 +1285,42 @@ function _renderPeopleGrid() {
     const count = $('#ai-people-count');
     if (!grid) return;
 
-    // Apply filters client-side. The list is bounded at 500 by the
-    // API request limit; a >500-cluster library is rare and would
-    // be addressed by a server-side filter param later (paginate +
-    // search).
+    // Apply filters client-side. The list is bounded at 2000 by the
+    // API request limit; a >2000-cluster library would need server-side
+    // pagination.
     const q = _peopleFilter.query;
     const unlabeled = _peopleFilter.unlabeledOnly;
+    const videosOnly = _peopleFilter.videosOnly;
+    const hideLQ = _peopleFilter.hideLowQuality;
+    const sortBy = _peopleFilter.sortBy || 'face_count';
     const filtered = _peopleCache.filter((p) => {
         if (unlabeled && p.label) return false;
+        if (videosOnly && !(Number(p.video_face_count) > 0)) return false;
+        if (hideLQ && (Number(p.avg_quality) || 0) < 0.3 && (Number(p.avg_quality) || 0) > 0) return false;
         if (q) {
             const hay = `${p.label || ''} ${p.id}`.toLowerCase();
             if (!hay.includes(q)) return false;
         }
         return true;
     });
+    if (sortBy === 'avg_quality') {
+        filtered.sort((a, b) => (Number(b.avg_quality) || 0) - (Number(a.avg_quality) || 0));
+    } else if (sortBy === 'name') {
+        filtered.sort((a, b) => (a.label || `zzz${a.id}`).localeCompare(b.label || `zzz${b.id}`));
+    }
 
-    if (count) {
-        count.textContent = filtered.length
+    const countText = $('#ai-people-count-text') || count;
+    if (countText) {
+        countText.textContent = filtered.length
             ? `(${filtered.length}${
                   filtered.length !== _peopleCache.length ? `/${_peopleCache.length}` : ''
               })`
             : '';
+    }
+    const qualityHint = $('#ai-quality-hint');
+    if (qualityHint) {
+        const hasQ = _peopleCache.some((p) => Number(p.avg_quality) > 0);
+        qualityHint.classList.toggle('hidden', !hasQ);
     }
 
     const testForm = $('#ai-detect-test-form');
@@ -1178,14 +1391,13 @@ function _renderPeopleGrid() {
         epsilonWarn.classList.toggle('hidden', !megaMerge);
     }
 
-    grid.innerHTML = filtered.map(_personTile).join('');
-    // Restore selection highlight after re-render.
-    if (_selectedPerson) {
-        const sel = grid.querySelector(`[data-person="${_selectedPerson}"]`);
-        if (sel) sel.classList.add('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10');
-    }
-    grid.querySelectorAll('[data-person]').forEach((b) => {
+    const INITIAL_RENDER = 60;
+    const LOAD_MORE_SIZE = 80;
+    const token = ++_peopleRenderToken;
+
+    const attachCard = (b) => {
         b.addEventListener('click', () => {
+            if (_splitModeActive) _exitSplitMode();
             grid.querySelectorAll('.ai-person-card').forEach((el) =>
                 el.classList.remove('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10'),
             );
@@ -1194,9 +1406,7 @@ function _renderPeopleGrid() {
             _selectedPersonName = b.dataset.name || '';
             _showPersonPhotos();
         });
-        // Double-click on the name label → inline rename shortcut.
         b.addEventListener('dblclick', (e) => {
-            // Only trigger if the click landed on the name area (not the image).
             if (e.target.closest('.ai-person-name')) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1205,7 +1415,53 @@ function _renderPeopleGrid() {
                 _renameSelectedPerson();
             }
         });
-    });
+    };
+
+    const renderChunk = (start, count) => {
+        const end = Math.min(start + count, filtered.length);
+        const frag = document.createDocumentFragment();
+        for (let j = start; j < end; j++) {
+            const div = document.createElement('div');
+            div.innerHTML = _personTile(filtered[j]);
+            const card = div.firstElementChild;
+            attachCard(card);
+            frag.appendChild(card);
+        }
+        grid.appendChild(frag);
+        if (_selectedPerson) {
+            const sel = grid.querySelector(`[data-person="${_selectedPerson}"]`);
+            if (sel) sel.classList.add('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10');
+        }
+        return end;
+    };
+
+    grid.innerHTML = '';
+    let rendered = renderChunk(0, INITIAL_RENDER);
+
+    // "Load more" button for progressive loading
+    const existing = grid.parentElement?.querySelector('.ai-load-more-btn');
+    if (existing) existing.remove();
+
+    if (rendered < filtered.length) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ai-load-more-btn w-full py-2.5 mt-2 rounded-xl text-xs font-medium text-tg-textSecondary border border-tg-border/30 hover:border-tg-blue/50 hover:text-tg-blue hover:bg-tg-blue/5 transition-all';
+        const updateLabel = () => {
+            const remaining = filtered.length - rendered;
+            btn.textContent = `Show more (${remaining.toLocaleString()} remaining)`;
+        };
+        updateLabel();
+        btn.addEventListener('click', () => {
+            if (token !== _peopleRenderToken) return;
+            rendered = renderChunk(rendered, LOAD_MORE_SIZE);
+            if (rendered >= filtered.length) {
+                btn.remove();
+            } else {
+                updateLabel();
+            }
+        });
+        grid.after(btn);
+    }
 }
 
 function _personTile(p) {
@@ -1231,21 +1487,36 @@ function _personTile(p) {
         imgHtml = `<i class="ri-user-line text-2xl text-tg-textSecondary/40"></i>`;
     }
 
+    const videoFaceCount = Number(p.video_face_count) || 0;
+    const avgQ = Number(p.avg_quality) || 0;
     const badge = faceCount > 0
         ? `<span class="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-tg-blue text-white text-[9px] font-bold flex items-center justify-center leading-none border-2 border-tg-panel">${faceCount}</span>`
         : '';
+    const videoBadge = videoFaceCount > 0
+        ? `<span class="absolute -top-0.5 -right-0.5 w-[14px] h-[14px] rounded-full bg-amber-500 flex items-center justify-center border border-tg-panel" title="${videoFaceCount} from video"><i class="ri-film-line text-white" style="font-size:8px"></i></span>`
+        : '';
+    let qualityBadge = '';
+    if (avgQ > 0) {
+        const qTier = avgQ >= 0.7 ? 'high' : avgQ >= 0.4 ? 'mid' : 'low';
+        const qColor = { high: 'bg-emerald-500', mid: 'bg-amber-400', low: 'bg-red-500' }[qTier];
+        const qLabel = { high: 'HQ', mid: 'MQ', low: 'LQ' }[qTier];
+        const qTip = { high: 'High quality — sharp, frontal faces', mid: 'Medium quality — some blur or angle', low: 'Low quality — blurry or side-angle' }[qTier];
+        qualityBadge = `<span class="absolute -bottom-0.5 -left-0.5 w-[16px] h-[16px] rounded-full ${qColor} text-white text-[7px] font-bold flex items-center justify-center border border-tg-panel" title="${qTip} (${(avgQ * 100).toFixed(0)}%)">${qLabel}</span>`;
+    }
 
     return `<button type="button" data-person="${p.id}" data-name="${safeName}"
-        title="${safeName} · ${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}"
-        class="ai-person-card flex flex-col items-center gap-1.5 px-1 py-2.5 rounded-xl hover:bg-tg-blue/5 active:scale-95 transition-all group text-center select-none">
-        <div class="relative flex-shrink-0">
-            <div class="w-16 h-16 rounded-full overflow-hidden ring-2 ring-tg-border/30 group-hover:ring-tg-blue/60 transition-all flex items-center justify-center bg-tg-bg/40">
+        title="${safeName} · ${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}${videoFaceCount > 0 ? ` (${videoFaceCount} from video)` : ''}${avgQ > 0 ? ` · Quality: ${(avgQ * 100).toFixed(0)}%` : ''}"
+        class="ai-person-card flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-tg-blue/5 active:scale-95 transition-all group text-center select-none">
+        <div class="relative w-full">
+            <div class="w-full aspect-square rounded-full overflow-hidden ring-2 ring-tg-border/30 group-hover:ring-tg-blue/60 transition-all flex items-center justify-center bg-tg-bg/40">
                 ${imgHtml}
             </div>
             ${badge}
+            ${videoBadge}
+            ${qualityBadge}
         </div>
-        <div class="w-full min-w-0">
-            <div class="ai-person-name text-[10.5px] font-medium text-tg-text leading-tight line-clamp-2 break-words px-0.5">${safeName}</div>
+        <div class="w-full min-w-0 px-0.5">
+            <div class="ai-person-name text-[9.5px] font-medium text-tg-text leading-tight truncate">${safeName}</div>
         </div>
     </button>`;
 }
@@ -1275,21 +1546,9 @@ async function _showPersonPhotos() {
     photosPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     try {
-        // Prefer /api/ai/person/{id}/downloads (singular "person") which may
-        // return richer face-box metadata. Fall back to the people endpoint.
-        let r = null;
-        let files = [];
-        try {
-            r = await api.get(`/api/ai/person/${_selectedPerson}/downloads?limit=120`);
-            if (r?.success) files = r.downloads || r.files || [];
-        } catch (_e) {
-            // Older backend — fall back to the people photos endpoint.
-        }
-        if (!files.length) {
-            r = await api.get(`/api/ai/people/${_selectedPerson}/photos?limit=120`);
-            if (!r?.success) throw new Error(r?.error || 'load failed');
-            files = r.files || [];
-        }
+        const r = await api.get(`/api/ai/people/${_selectedPerson}/photos?limit=120`);
+        if (!r?.success) throw new Error(r?.error || 'load failed');
+        let files = r.files || [];
         if (!files.length) {
             grid.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-8">${escapeHtml(i18nT('maintenance.ai.no_photos', 'No photos in this cluster.'))}</div>`;
             const photoCount = $('#ai-person-photo-count');
@@ -1301,8 +1560,55 @@ async function _showPersonPhotos() {
             photoCount.textContent = `${files.length.toLocaleString()} ${i18nT('maintenance.ai.faces_short', 'appearances')}`;
         }
         grid.innerHTML = files.map(_photoTile).join('');
+        if (_photoGridClickHandler) grid.removeEventListener('click', _photoGridClickHandler);
+        if (_splitModeActive) {
+            // Grid was refreshed while split mode is active — reinstall the
+            // split click handler so the new tiles are selectable.
+            _enterSplitMode();
+        } else {
+            _photoGridClickHandler = (e) => {
+                const tile = e.target.closest('[data-meta]');
+                if (!tile) return;
+                const allTiles = Array.from(grid.querySelectorAll('[data-meta]'));
+                const viewerFiles = allTiles.map(_personPhotoToViewerFile).filter(Boolean);
+                const idx = allTiles.indexOf(tile);
+                if (viewerFiles.length) {
+                    openMediaViewerForReview(viewerFiles, Math.max(0, idx));
+                }
+            };
+            grid.addEventListener('click', _photoGridClickHandler);
+        }
     } catch (e) {
         grid.innerHTML = `<div class="col-span-full text-center text-xs text-red-300 py-8">${escapeHtml(e.message)}</div>`;
+    }
+}
+
+function _personPhotoToViewerFile(tile) {
+    try {
+        const meta = JSON.parse(decodeURIComponent(tile.dataset.meta || '%7B%7D'));
+        const filePath = String(meta.file_path || '').replace(/\\/g, '/');
+        const fileType = String(meta.file_type || '');
+        const type =
+            fileType === 'photo' || fileType === 'image' || fileType === 'sticker'
+                ? 'images'
+                : fileType === 'video'
+                  ? 'videos'
+                  : fileType === 'audio'
+                    ? 'audio'
+                    : 'files';
+        return {
+            id: Number(meta.id) || 0,
+            name: meta.file_name || '',
+            path: filePath,
+            fullPath: filePath,
+            type,
+            file_type: fileType,
+            size: Number(meta.file_size) || 0,
+            sizeFormatted: '',
+            modified: null,
+        };
+    } catch {
+        return null;
     }
 }
 
@@ -1311,25 +1617,31 @@ function _photoTile(row) {
     const faceId = row.face_id || '';
     const name = escapeHtml(row.file_name || `#${id}`);
 
-    // Prefer the face-cropped thumbnail — shows exactly which face was matched.
-    // Falls back to full-photo thumb when no face_id (legacy API).
-    const imgSrc = faceId
-        ? `/api/ai/faces/${faceId}/crop?w=160`
-        : `/api/thumbs/${id}?w=160`;
-    const fallbackSrc = `/api/thumbs/${id}?w=160`;
-
-    const onerror = faceId
-        ? `this.onerror=null;this.src='${fallbackSrc}'`
-        : '';
-
-    const onerrorAttr = onerror ? ` onerror="${onerror}"` : '';
+    const meta = encodeURIComponent(
+        JSON.stringify({
+            id,
+            file_name: row.file_name || '',
+            file_type: row.file_type || '',
+            file_path: String(row.file_path || '').replace(/\\/g, '/'),
+            file_size: Number(row.file_size) || 0,
+        }),
+    );
 
     return `
-        <a href="#/files/${id}" class="block group relative rounded-lg overflow-hidden" title="${name}" data-face-id="${faceId}">
-            <img src="${imgSrc}" alt="${name}" loading="lazy"${onerrorAttr}
-                class="aspect-square w-full object-cover bg-tg-bg/40 transition-transform duration-200 group-hover:scale-105">
-            <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        </a>
+        <button type="button" class="block group relative rounded-xl overflow-hidden cursor-pointer shadow-sm hover:shadow-lg transition-all duration-200" title="${name}" data-dl-id="${id}" data-face-id="${faceId}" data-meta="${meta}">
+            <img src="/api/thumbs/${id}?w=320" alt="${name}" loading="lazy"
+                class="aspect-square w-full object-cover bg-tg-bg/40 transition-transform duration-300 group-hover:scale-105">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-end p-1.5">
+                <span class="text-white text-[10px] leading-tight line-clamp-2 font-medium drop-shadow">${name}</span>
+            </div>
+            <!-- Split-mode selection overlay — hidden until split mode is active -->
+            <div class="split-overlay absolute inset-0 hidden pointer-events-none">
+                <div class="absolute inset-0 ring-2 ring-inset ring-tg-blue/60 rounded-xl transition-all"></div>
+                <div class="absolute top-1 right-1 w-5 h-5 rounded-full bg-tg-blue flex items-center justify-center shadow">
+                    <i class="ri-check-line text-white text-[11px]"></i>
+                </div>
+            </div>
+        </button>
     `;
 }
 
@@ -1357,42 +1669,103 @@ async function _renameSelectedPerson() {
 
 async function _mergeSelectedPerson() {
     if (!_selectedPerson) return;
-    const candidates = _peopleCache.filter((p) => p.id !== _selectedPerson);
+    const candidates = _peopleCache.filter((p) => p.id !== _selectedPerson && p.id !== -1);
     if (!candidates.length) {
-        showToast(
-            i18nT('maintenance.ai.merge_no_other', 'No other clusters to merge with.'),
-            'info',
-        );
+        showToast(i18nT('maintenance.ai.merge_no_other', 'No other clusters to merge with.'), 'info');
         return;
     }
-    const lines = candidates
-        .map((p) => `  ${p.id}: ${p.label || `Person #${p.id}`} (${p.face_count} faces)`)
-        .join('\n');
-    const targetIdRaw = await promptSheet({
-        title: i18nT('maintenance.ai.person_merge', 'Merge…'),
-        message: `${i18nT('maintenance.ai.merge_prompt', 'Type the cluster id of the target — every face in this cluster moves there.')}\n\n${lines}`,
-        confirmLabel: i18nT('maintenance.ai.person_merge', 'Merge'),
+
+    // Visual person-picker with search — build lazily so 1000+ candidates
+    // don't cause a multi-second innerHTML freeze on open.
+    const makeMergeCard = (p) => {
+        const name = escapeHtml(p.label || `Person #${p.id}`);
+        const faceUrl = p.id > 0 ? `/api/ai/person/${p.id}/face?w=64` : '';
+        const imgHtml = faceUrl
+            ? `<img src="${faceUrl}" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-base text-tg-textSecondary/40\\'></i>'">`
+            : `<i class="ri-user-line text-base text-tg-textSecondary/40"></i>`;
+        return `<button type="button" data-pid="${p.id}"
+            class="ai-merge-card flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-xl hover:bg-tg-blue/10 active:bg-tg-blue/20 transition-colors">
+            <div class="w-10 h-10 rounded-full overflow-hidden ring-1 ring-tg-border/30 flex-shrink-0 bg-tg-bg/40 flex items-center justify-center">
+                ${imgHtml}
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-tg-text truncate">${name}</div>
+                <div class="text-[11px] text-tg-textSecondary">${p.face_count} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}</div>
+            </div>
+            <i class="ri-arrow-right-s-line text-tg-textSecondary/50 flex-shrink-0"></i>
+        </button>`;
+    };
+
+    const pickerContent = `
+        <div class="px-1 mb-3">
+            <input type="search" id="ai-merge-search" placeholder="${escapeHtml(i18nT('common.search', 'Search…'))}"
+                class="tg-input w-full text-sm" autocomplete="off">
+        </div>
+        <div id="ai-merge-list" class="flex flex-col gap-0.5 max-h-64 overflow-y-auto"></div>
+        <p id="ai-merge-empty" class="hidden text-center text-xs text-tg-textSecondary py-4">${escapeHtml(i18nT('common.no_results', 'No matches'))}</p>`;
+
+    const targetId = await new Promise((resolve) => {
+        const entry = openSheet({
+            title: i18nT('maintenance.ai.person_merge', 'Merge into…'),
+            content: pickerContent,
+            size: 'md',
+            onClose: () => resolve(null),
+        });
+
+        const listEl = entry.body.querySelector('#ai-merge-list');
+        const emptyEl = entry.body.querySelector('#ai-merge-empty');
+        const searchEl = entry.body.querySelector('#ai-merge-search');
+
+        const renderList = (list) => {
+            if (!listEl) return;
+            // Cap at 80 visible rows — search narrows results quickly.
+            listEl.innerHTML = list.slice(0, 80).map(makeMergeCard).join('');
+            const empty = list.length === 0;
+            if (emptyEl) emptyEl.classList.toggle('hidden', !empty);
+            listEl.querySelectorAll('.ai-merge-card').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    entry.close();
+                    resolve(Number(btn.dataset.pid));
+                });
+            });
+        };
+
+        renderList(candidates);
+
+        if (searchEl) {
+            searchEl.addEventListener('input', (e) => {
+                const q = String(e.target.value || '').toLowerCase().trim();
+                renderList(
+                    q
+                        ? candidates.filter((p) =>
+                              (p.label || `Person #${p.id}`).toLowerCase().includes(q),
+                          )
+                        : candidates,
+                );
+            });
+            setTimeout(() => searchEl.focus(), 60);
+        }
     });
-    if (targetIdRaw == null) return;
-    const targetId = Number(String(targetIdRaw).trim());
-    if (!Number.isFinite(targetId) || !candidates.some((p) => p.id === targetId)) {
-        showToast(i18nT('maintenance.ai.merge_invalid', 'Invalid cluster id.'), 'error');
-        return;
-    }
+
+    if (!targetId) return;
+    const target = candidates.find((p) => p.id === targetId);
+    const targetName = target ? (target.label || `Person #${target.id}`) : `#${targetId}`;
+
     const ok = await confirmSheet({
         title: i18nT('maintenance.ai.person_merge', 'Merge'),
-        message: i18nT(
-            'maintenance.ai.merge_confirm',
-            'This cluster will be deleted and its faces will move to the target cluster. Cannot be undone.',
+        message: i18nTf(
+            'maintenance.ai.merge_confirm_named',
+            { target: targetName },
+            `All faces from this cluster will move into "${targetName}". This cluster will be deleted. Cannot be undone.`,
         ),
-        destructive: true,
-        confirmText: i18nT('maintenance.ai.person_merge', 'Merge'),
+        confirmLabel: i18nT('maintenance.ai.person_merge', 'Merge'),
+        cancelLabel: i18nT('common.cancel', 'Cancel'),
+        danger: true,
     });
     if (!ok) return;
+
     try {
-        const res = await api.post(`/api/ai/people/${targetId}/merge`, {
-            otherId: _selectedPerson,
-        });
+        const res = await api.post(`/api/ai/people/${targetId}/merge`, { otherId: _selectedPerson });
         if (!res.success) throw new Error(res.error || 'merge failed');
         showToast(
             `${i18nT('maintenance.ai.merge_done', 'Merged')} — ${res.moved || 0} ${i18nT('maintenance.ai.faces_short', 'faces')}`,
@@ -1408,53 +1781,9 @@ async function _mergeSelectedPerson() {
     }
 }
 
-async function _splitSelectedPerson() {
+function _splitSelectedPerson() {
     if (!_selectedPerson) return;
-    // Simple split flow: ask the operator for a comma-separated list of
-    // face ids to peel into a new cluster. The face ids are surfaced in
-    // the photo tile's `data-face-id` so power users can read them off
-    // the DOM. A future upgrade would replace this with a click-to-mark
-    // grid; today's interaction matches merge() in pattern.
-    const raw = await promptSheet({
-        title: i18nT('maintenance.ai.person_split', 'Split…'),
-        message: i18nT(
-            'maintenance.ai.split_prompt',
-            'Comma-separated face ids to move into a new cluster. Find them in the photos grid (inspect element → data-face-id).',
-        ),
-        confirmLabel: i18nT('maintenance.ai.person_split', 'Split'),
-    });
-    if (raw == null) return;
-    const faceIds = String(raw)
-        .split(/[,\s]+/)
-        .map((s) => Number(s.trim()))
-        .filter((n) => Number.isFinite(n) && n > 0);
-    if (!faceIds.length) {
-        showToast(i18nT('maintenance.ai.split_invalid', 'No valid face ids supplied.'), 'error');
-        return;
-    }
-    const newLabel = await promptSheet({
-        title: i18nT('maintenance.ai.person_split', 'Split'),
-        message: i18nT(
-            'maintenance.ai.split_label_prompt',
-            'Label for the new cluster (optional):',
-        ),
-        confirmLabel: i18nT('common.save', 'Save'),
-    });
-    try {
-        const res = await api.post(`/api/ai/people/${_selectedPerson}/split`, {
-            faceIds,
-            newLabel: newLabel || undefined,
-        });
-        if (!res.success) throw new Error(res.error || 'split failed');
-        showToast(
-            `${i18nT('maintenance.ai.split_done', 'Split complete')} — ${faceIds.length} ${i18nT('maintenance.ai.faces_short', 'faces')}`,
-            'success',
-        );
-        _loadPeople();
-        await refreshStatus();
-    } catch (e) {
-        showToast(e.message, 'error');
-    }
+    _enterSplitMode();
 }
 
 async function _deleteSelectedPerson() {
@@ -1482,6 +1811,147 @@ async function _deleteSelectedPerson() {
     }
 }
 
+// ---- Split mode -----------------------------------------------------------
+//
+// When split mode is active, the photo grid's click handler switches from
+// "open viewer" to "toggle face selection". The split action bar at the
+// bottom of the panel shows how many faces are selected and lets the
+// operator commit (peel into a new cluster) or cancel.
+
+function _enterSplitMode() {
+    _splitModeActive = true;
+    _splitSelectedDlIds.clear();
+
+    const hint = $('#ai-split-hint');
+    if (hint) { hint.classList.remove('hidden'); hint.classList.add('flex'); }
+    const bar = $('#ai-split-bar');
+    if (bar) {
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+    }
+    const countEl = $('#ai-split-count');
+    if (countEl) countEl.textContent = i18nT('maintenance.ai.split_select_hint', 'Tap photos to select');
+    const commitBtn = $('#ai-split-commit-btn');
+    if (commitBtn) commitBtn.disabled = true;
+
+    const grid = $('#ai-people-photos-grid');
+    if (!grid) return;
+    grid.classList.add('split-mode');
+
+    if (_photoGridClickHandler) grid.removeEventListener('click', _photoGridClickHandler);
+    _photoGridClickHandler = (e) => {
+        // Use data-dl-id (download ID — always populated) as the selection key.
+        // Face IDs are looked up from data-face-id at commit time.
+        const tile = e.target.closest('[data-dl-id]');
+        if (!tile) return;
+        const dlId = Number(tile.dataset.dlId);
+        if (!dlId) return;
+
+        const overlay = tile.querySelector('.split-overlay');
+        if (_splitSelectedDlIds.has(dlId)) {
+            _splitSelectedDlIds.delete(dlId);
+            overlay?.classList.add('hidden');
+        } else {
+            _splitSelectedDlIds.add(dlId);
+            overlay?.classList.remove('hidden');
+        }
+
+        const n = _splitSelectedDlIds.size;
+        const countEl2 = $('#ai-split-count');
+        if (countEl2) {
+            countEl2.textContent = n === 0
+                ? i18nT('maintenance.ai.split_select_hint', 'Tap photos to select')
+                : i18nTf('maintenance.ai.split_n_selected', { n }, `${n} selected`);
+        }
+        const commitBtn2 = $('#ai-split-commit-btn');
+        if (commitBtn2) commitBtn2.disabled = n < 1;
+    };
+    grid.addEventListener('click', _photoGridClickHandler);
+}
+
+function _exitSplitMode() {
+    _splitModeActive = false;
+    _splitSelectedDlIds.clear();
+
+    const hint = $('#ai-split-hint');
+    if (hint) { hint.classList.add('hidden'); hint.classList.remove('flex'); }
+    const bar = $('#ai-split-bar');
+    if (bar) {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+
+    const grid = $('#ai-people-photos-grid');
+    if (!grid) return;
+    grid.classList.remove('split-mode');
+    grid.querySelectorAll('.split-overlay').forEach((ov) => ov.classList.add('hidden'));
+    grid.querySelectorAll('[data-dl-id]').forEach((tile) =>
+        tile.classList.remove('ring-2', 'ring-tg-blue/60'),
+    );
+
+    // Restore the viewer click handler.
+    if (_photoGridClickHandler) grid.removeEventListener('click', _photoGridClickHandler);
+    _photoGridClickHandler = (e) => {
+        const tile = e.target.closest('[data-meta]');
+        if (!tile) return;
+        const allTiles = Array.from(grid.querySelectorAll('[data-meta]'));
+        const viewerFiles = allTiles.map(_personPhotoToViewerFile).filter(Boolean);
+        const idx = allTiles.indexOf(tile);
+        if (viewerFiles.length) openMediaViewerForReview(viewerFiles, Math.max(0, idx));
+    };
+    grid.addEventListener('click', _photoGridClickHandler);
+}
+
+async function _commitSplit() {
+    if (!_splitSelectedDlIds.size || !_selectedPerson) return;
+
+    // Resolve face IDs from the tiles — the data-face-id attribute is written
+    // by _photoTile from the DB-returned face_id. Using download IDs for
+    // selection state (data-dl-id is always populated) and face IDs for the
+    // API call decouples selection from face_id availability.
+    const grid = $('#ai-people-photos-grid');
+    const faceIds = [];
+    if (grid) {
+        for (const dlId of _splitSelectedDlIds) {
+            const tile = grid.querySelector(`[data-dl-id="${dlId}"]`);
+            const faceId = Number(tile?.dataset?.faceId);
+            if (faceId > 0) faceIds.push(faceId);
+        }
+    }
+    if (!faceIds.length) {
+        showToast(
+            i18nT('maintenance.ai.split_no_face_ids', 'Selected photos have no face data — run a scan first.'),
+            'error',
+        );
+        return;
+    }
+
+    const newLabel = await promptSheet({
+        title: i18nT('maintenance.ai.person_split', 'Split'),
+        message: i18nT('maintenance.ai.split_label_prompt', 'Label for the new cluster (optional):'),
+        confirmLabel: i18nT('maintenance.ai.person_split', 'Split'),
+        cancelLabel: i18nT('common.cancel', 'Cancel'),
+    });
+    if (newLabel === null) return; // cancelled
+
+    try {
+        const res = await api.post(`/api/ai/people/${_selectedPerson}/split`, {
+            faceIds,
+            newLabel: newLabel || undefined,
+        });
+        if (!res.success) throw new Error(res.error || 'split failed');
+        showToast(
+            `${i18nT('maintenance.ai.split_done', 'Split complete')} — ${faceIds.length} ${i18nT('maintenance.ai.faces_short', 'faces')}`,
+            'success',
+        );
+        _exitSplitMode();
+        _loadPeople();
+        await refreshStatus();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
 // ---- Doctor (system-health card) -----------------------------------------
 
 async function _refreshDoctor() {
@@ -1494,7 +1964,6 @@ async function _refreshDoctor() {
         const r = await api.get('/api/ai/doctor');
         if (!r.success) throw new Error(r.error || 'doctor failed');
         const checks = Array.isArray(r.checks) ? r.checks : [];
-        // Summary chip — colour reflects the worst-state check.
         const fails = checks.filter((c) => c.status === 'fail').length;
         const warns = checks.filter((c) => c.status === 'warn').length;
         if (sumEl) {
@@ -1511,6 +1980,7 @@ async function _refreshDoctor() {
             }
             sumEl.textContent = text;
         }
+        _setActionButtonsEnabled(fails === 0);
         const iconFor = (s) => (s === 'ok' ? '✓' : s === 'warn' ? '⚠' : s === 'fail' ? '✗' : 'ℹ');
         el.innerHTML = checks
             .map(
@@ -1527,6 +1997,23 @@ async function _refreshDoctor() {
         if (sumEl) {
             sumEl.className = 'text-[10.5px] text-red-300';
             sumEl.textContent = `· ${i18nT('common.error', 'Error')}`;
+        }
+        _setActionButtonsEnabled(false);
+    }
+}
+
+function _setActionButtonsEnabled(enabled) {
+    const ids = ['ai-scan-btn', 'ai-reindex-btn', 'ai-recluster-btn'];
+    for (const id of ids) {
+        const btn = $(`#${id}`) || document.getElementById(id);
+        if (!btn) continue;
+        btn.disabled = !enabled;
+        if (enabled) {
+            btn.classList.remove('opacity-40', 'pointer-events-none');
+            btn.removeAttribute('title');
+        } else {
+            btn.classList.add('opacity-40', 'pointer-events-none');
+            btn.title = i18nT('maintenance.ai.doctor_must_pass', 'Fix health checks before scanning');
         }
     }
 }

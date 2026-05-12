@@ -21,6 +21,7 @@ import { createJobTracker } from '../job-tracker.js';
 import { getSelfPeerId } from './identity.js';
 import fs from 'fs/promises';
 import path from 'path';
+import { getDownloadsDir } from '../paths.js';
 
 const CONFLICTS_KV_KEY = 'cluster_sweep_conflicts';
 const STATS_KV_KEY = 'cluster_sweep_stats';
@@ -150,7 +151,7 @@ export async function resolveConflict(conflictId, keep) {
         throw e;
     }
     const conflict = conflicts[idx];
-    const { downloadsDir } = _resolveDataDir();
+    const downloadsDir = getDownloadsDir();
     const losers = conflict.owners.filter(
         (o) => !(o.peerId === keep.peerId && Number(o.remoteId) === Number(keep.remoteId)),
     );
@@ -230,15 +231,6 @@ async function _attemptRemoteDelete(loser) {
     }
 }
 
-function _resolveDataDir() {
-    const dataRoot = process.env.TGDL_DATA_DIR
-        ? path.resolve(process.env.TGDL_DATA_DIR)
-        : path.resolve(process.cwd(), 'data');
-    return {
-        dataRoot,
-        downloadsDir: path.join(dataRoot, 'downloads'),
-    };
-}
 
 /**
  * JobTracker-style tryStart so the express route can respond in <500ms

@@ -28,30 +28,62 @@ type SpritePlan struct {
 	TileH       int // 0 = unknown (computed from final image dims)
 }
 
+// durationTier maps a duration ceiling to a target frame density and
+// absolute frame budget. Longer clips get more frames automatically so
+// the seekbar is never sparse, while very short clips stay dense too.
+type durationTier struct {
+	upTo        float64 // inclusive ceiling in seconds
+	density     float64 // target seconds per frame
+	absoluteMax int     // frame budget for this tier
+}
+
+var spriteTiers = []durationTier{
+	{15, 0.5, 30},
+	{60, 1.0, 60},
+	{300, 3.0, 100},
+	{900, 5.0, 180},
+	{1800, 7.0, 300},
+	{3600, 9.0, 450},
+	{7200, 12.0, 600},
+	{math.MaxFloat64, 18.0, 720},
+}
+
 // Plan picks the tile grid for a given duration + thumb config.
 //
-// Adaptive: shorter clips deserve finer detail — a 90-second clip at a
-// 4-second interval yields only 22 frames (coarse). We pick the
-// configured interval OR a duration-derived one, whichever gives more
-// frames, up to maxTiles. Long clips fall back to the operator interval.
-// The final interval is recomputed from frames so the last sample lands
-// exactly on the clip's final second.
+// Dynamic tiers: each duration range gets its own density and frame budget,
+// so a 1-second clip and a 2-hour clip both get full seekbar coverage with
+// no blank stretches. The user-supplied targetIntervalSec overrides the tier
+// density; maxTiles acts as a hard cap on top of the tier budget.
+// The final intervalSec is recomputed so the last sample lands on the
+// clip's final second.
 func Plan(durationSec float64, targetIntervalSec float64, columns, maxTiles, tileWidth int) SpritePlan {
-	if targetIntervalSec <= 0 {
-		targetIntervalSec = 5
+	// Pick tier
+	tier := spriteTiers[len(spriteTiers)-1]
+	for _, t := range spriteTiers {
+		if durationSec <= t.upTo {
+			tier = t
+			break
+		}
 	}
-	const minFrames = 12
-	if maxTiles < minFrames {
-		maxTiles = minFrames
+
+	// Effective density: user interval wins; floor at 0.5 s/frame
+	density := tier.density
+	if targetIntervalSec > 0 {
+		density = math.Max(0.5, targetIntervalSec)
 	}
-	adaptiveTarget := math.Min(targetIntervalSec, math.Max(1.0, durationSec/90.0))
-	frames := int(math.Ceil(durationSec / adaptiveTarget))
-	if frames < minFrames {
-		frames = minFrames
+
+	frames := int(math.Ceil(durationSec / density))
+	if frames < 8 {
+		frames = 8
 	}
-	if frames > maxTiles {
+	// Tier cap first, then optional user hard cap
+	if frames > tier.absoluteMax {
+		frames = tier.absoluteMax
+	}
+	if maxTiles > 0 && frames > maxTiles {
 		frames = maxTiles
 	}
+
 	interval := durationSec / float64(frames)
 	if columns < 2 {
 		columns = 10

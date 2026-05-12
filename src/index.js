@@ -14,6 +14,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { loadConfig, saveConfig, addGroup } from './config/manager.js';
+import { getDataDir, getDownloadsDir, resolveConfigDownloadPath } from './core/paths.js';
 import { resolveFfmpegBin, resolveFfprobeBin } from './core/thumbs.js';
 import { hashPassword } from './core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from './core/logger.js';
@@ -154,7 +155,7 @@ async function runDoctor() {
         });
     }
 
-    const dataDir = path.join(__dirname, '../data');
+    const dataDir = getDataDir();
     try {
         if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
         const probe = path.join(dataDir, '.doctor-write-probe');
@@ -587,7 +588,7 @@ async function configureGlobalSettings(config) {
             {
                 label: 'Download Path',
                 value: '4',
-                desc: `Current: ${config.download?.path || './data/downloads'}`,
+                desc: `Current: ${resolveConfigDownloadPath(config.download?.path)}`,
             },
             {
                 label: 'Rate Limit (Req/Min)',
@@ -684,7 +685,7 @@ async function configureGlobalSettings(config) {
             // Path selection
             console.log();
             console.log(
-                colorize('Current Path: ', 'yellow') + (config.download.path || './data/downloads'),
+                colorize('Current Path: ', 'yellow') + resolveConfigDownloadPath(config.download?.path),
             );
             const val = await question(
                 colorize('Enter new path (or Enter to keep current): ', 'cyan'),
@@ -1906,8 +1907,8 @@ async function manageAccounts(accountManager, config) {
 
 // ============ Purge Data ============
 async function purgeData(client, config) {
-    const DOWNLOADS_DIR = path.join(__dirname, '../data/downloads');
-    const PHOTOS_DIR = path.join(__dirname, '../data/photos');
+    const DOWNLOADS_DIR = getDownloadsDir();
+    const PHOTOS_DIR = path.join(getDataDir(), 'photos');
 
     while (true) {
         // Build options from configured groups + download folders

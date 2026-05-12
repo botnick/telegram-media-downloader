@@ -3216,14 +3216,41 @@ body[data-page="settings"] {
     flex: 1;
     border-left: 1px solid var(--tg-border, #303d4f);
     padding-left: 6px;
+    padding-right: 4px;
+    scroll-behavior: smooth;
 }
 .maintenance-tabs-scroll::-webkit-scrollbar {
     display: none;
 }
+/* Edge-fade hints — toggled by JS when there's overflow to the left/right */
+.maintenance-tabs-scroll.scroll-left {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 28px);
+    mask-image: linear-gradient(to right, transparent, black 28px);
+}
+.maintenance-tabs-scroll.scroll-right {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+}
+.maintenance-tabs-scroll.scroll-left.scroll-right {
+    -webkit-mask-image: linear-gradient(
+        to right,
+        transparent,
+        black 28px,
+        black calc(100% - 28px),
+        transparent
+    );
+    mask-image: linear-gradient(
+        to right,
+        transparent,
+        black 28px,
+        black calc(100% - 28px),
+        transparent
+    );
+}
 .maintenance-tab {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 0;
     padding: 6px 12px;
     border-radius: 8px;
     color: var(--tg-textSecondary, #8b9baa);
@@ -3236,12 +3263,35 @@ body[data-page="settings"] {
         color 120ms ease;
     flex-shrink: 0;
 }
+/* Label hidden on inactive tabs — expands smoothly when a tab becomes active */
+.maintenance-tab span {
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    margin-left: 0;
+    transition:
+        max-width 180ms ease,
+        opacity 180ms ease,
+        margin-left 180ms ease;
+}
+.maintenance-tab[data-active="1"] span {
+    max-width: 160px;
+    opacity: 1;
+    margin-left: 6px;
+}
 .maintenance-tab i {
     font-size: 15px;
 }
 .maintenance-tab:hover {
     background: var(--tg-hover, #2b5278);
     color: var(--tg-text, #f5f5f5);
+}
+@media (hover: hover) {
+    .maintenance-tab:not([data-active="1"]):hover span {
+        max-width: 160px;
+        opacity: 1;
+        margin-left: 6px;
+    }
 }
 .maintenance-tab[data-active="1"] {
     background: var(--tg-blue, #2aabee);
@@ -3269,14 +3319,11 @@ body[data-page="maintenance-logs"] #maintenance-tabs {
 }
 @media (max-width: 480px) {
     .maintenance-tab {
-        padding: 6px 10px;
+        padding: 6px 8px;
         font-size: 12px;
     }
-    .maintenance-tab span {
-        display: none;
-    }
     .maintenance-tab i {
-        font-size: 18px;
+        font-size: 16px;
     }
 }
 
@@ -4441,8 +4488,8 @@ html[data-contrast="more"] .media-item {
 
 #video-sprite-frame {
     background-repeat: no-repeat;
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
+    image-rendering: auto;
+    will-change: background-position;
     background-color: rgba(14, 16, 22, 0.92);
     /* Default resting gradient — overridden inline with the real sprite
      * when data-state="ready". */
@@ -4567,7 +4614,24 @@ html[data-contrast="more"] .media-item {
     pointer-events: none;
 }
 .filmstrip-thumb-time {
-    display: none; /* Hidden — only current thumb gets a floating label via JS */
+    display: none;
+}
+/* Visible timestamp chip on labelled thumbs (JS adds class .has-label) */
+.filmstrip-thumb.has-label .filmstrip-thumb-time {
+    display: block;
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    font-family: ui-monospace, monospace;
+    color: rgba(255,255,255,0.9);
+    background: rgba(0,0,0,0.65);
+    padding: 1px 4px;
+    border-radius: 3px;
+    pointer-events: none;
+    white-space: nowrap;
+    line-height: 1.4;
 }
 .filmstrip-arrow {
     flex-shrink: 0;

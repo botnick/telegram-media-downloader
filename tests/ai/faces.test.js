@@ -35,9 +35,8 @@ describe('centroid', () => {
     it('skips mismatched-dim entries gracefully', () => {
         const c = faces.centroid([F(0, 0), F(1, 1), F(99)]);
         expect(c.length).toBe(2);
-        // 3rd entry skipped, but divisor is still 3 — caller's contract
-        // is "homogeneous input or skipped", so this asserts skip behaviour
-        expect(c[0]).toBeCloseTo((0 + 1) / 3, 5);
+        // 3rd entry skipped — divisor is 2 (valid entries only)
+        expect(c[0]).toBeCloseTo((0 + 1) / 2, 5);
     });
 });
 

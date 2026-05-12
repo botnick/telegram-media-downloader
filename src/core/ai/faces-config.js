@@ -53,7 +53,7 @@ const NUMBER_KEYS = new Set([
     'downloadRedirectCap',
 ]);
 
-const BOOL_KEYS = new Set(['autoDownload', 'federate']);
+const BOOL_KEYS = new Set(['autoDownload', 'federate', 'qualityWeightedCentroid']);
 
 const STRING_KEYS = new Set(['backend', 'sidecarUrl', 'detectorModel', 'providers', 'detector']);
 
@@ -62,7 +62,7 @@ const STRING_KEYS = new Set(['backend', 'sidecarUrl', 'detectorModel', 'provider
 const NUMBER_ARRAY_KEYS = new Set(['arRange', 'retryBackoffMs', 'portRange']);
 
 // Keys whose value is an array of strings.
-const STRING_ARRAY_KEYS = new Set(['fileTypes', 'downloadMirrors']);
+const STRING_ARRAY_KEYS = new Set(['fileTypes', 'downloadMirrors', 'excludeExtensions']);
 
 // Map each faces.* key to its TGDL_FACES_<UPPER_SNAKE> env name. Explicit so
 // renames are caught at code-review time, not at first 3am Pi reboot.
@@ -83,6 +83,7 @@ const ENV_MAP = Object.freeze({
     detector: 'TGDL_FACES_DETECTOR',
     batchSize: 'TGDL_FACES_BATCH_SIZE',
     fileTypes: 'TGDL_FACES_FILE_TYPES',
+    excludeExtensions: 'TGDL_FACES_EXCLUDE_EXTENSIONS',
     sidecarMaxConcurrency: 'TGDL_FACES_MAX_CONCURRENCY',
     healthCacheTtlMs: 'TGDL_FACES_HEALTH_CACHE_TTL_MS',
     requestTimeoutMs: 'TGDL_FACES_REQUEST_TIMEOUT_MS',
@@ -97,6 +98,7 @@ const ENV_MAP = Object.freeze({
     downloadRedirectCap: 'TGDL_FACES_DOWNLOAD_REDIRECT_CAP',
     downloadMirrors: 'TGDL_FACES_DOWNLOAD_MIRRORS',
     federate: 'TGDL_FACES_FEDERATE',
+    qualityWeightedCentroid: 'TGDL_FACES_QUALITY_WEIGHTED_CENTROID',
 });
 
 /**

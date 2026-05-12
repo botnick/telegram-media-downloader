@@ -216,7 +216,9 @@ should read the nested path.
 | `arRange` | `TGDL_FACES_AR_RANGE` | `0.5,2.0` | Aspect-ratio window for valid boxes |
 | `detSize` | `TGDL_FACES_DET_SIZE` | `640` | Sidecar input size; smaller = faster, lower recall |
 | `embedDim` | `TGDL_FACES_EMBED_DIM` | `512` | buffalo_l native (informational only) |
-| `detectorModel` | `TGDL_FACES_DETECTOR_MODEL` | `buffalo_l` | Future-proof; currently only buffalo_l is shipped |
+| `detectorModel` | `TGDL_FACES_DETECTOR_MODEL` | `buffalo_l` | Detector model preset (see [Detector model options](#detector-model-options) below) |
+| `scanVideos` | — | `false` | Include videos in face scan (see [Video face scanning](#video-face-scanning)) |
+| `cpuThrottleRatio` | `TGDL_FACES_CPU_THROTTLE_RATIO` | `0.5` | Duty-cycle rest ratio after each detection call (0 = off, see [CPU throttle](#cpu-throttle)) |
 | `providers` | `TGDL_FACES_PROVIDERS` | `auto` | `auto` / `cpu` / `cuda` / `coreml` / `directml` |
 | `epsilon` | `TGDL_FACES_EPSILON` | `0.5` | DBSCAN radius |
 | `minPoints` | `TGDL_FACES_MIN_POINTS` | `3` | Smallest cluster surfaced as a person |
@@ -286,6 +288,94 @@ successful download. When `cfg.faceClustering === true` it runs face
 detection on the new row and writes the embeddings into `faces`. The
 clustering pass is a batch operation — kick it off explicitly from the
 maintenance page when you want it.
+
+### Video face scanning
+
+When `advanced.ai.faces.scanVideos` is `true`, the scan runner includes
+`file_type = 'video'` rows in the phase A total alongside photos.
+Videos are processed one at a time after the photo batch finishes.
+
+For each video the sidecar's `POST /detect/video` endpoint extracts
+evenly-spaced frames via `cv2.VideoCapture` (no temp files written to
+disk). Frame count adapts to video duration — short clips get at least
+one frame, long videos are capped at `max_frames` (default 120, roughly
+1 frame/min for a 2-hour file). Detection runs on every extracted frame;
+a deduplication pass then collapses faces with cosine similarity above
+0.50 so only one best-score instance per identity is kept.
+
+Embeddings from video frames land in the same `faces` table and use the
+same 512-dim ArcFace space as photo-sourced faces. Phase B DBSCAN
+clusters them together — the same person in a photo and a video ends up
+in the same People group automatically.
+
+Off by default; toggle via the AI maintenance page or set
+`advanced.ai.faces.scanVideos = true` in the config.
+
+### CPU throttle
+
+The `cpuThrottleRatio` knob controls a duty-cycle rest inserted after
+each detection call. The scanner sleeps for `ratio * elapsedMs` after
+every sidecar round-trip, giving the CPU proportional breathing room
+between work bursts. The sleep is dynamic — slow hardware (longer
+elapsed time) gets longer rests; fast GPU inference barely notices it.
+Single-call rest is capped at 5 000 ms so a stalled video frame cannot
+freeze the entire loop.
+
+| Value | Effect |
+|---|---|
+| `0` | No throttle — full speed. Recommended for GPU users. |
+| `0.5` (default) | Rest for half the detection time. |
+| `1.0` | Rest equal to detection time (50 % duty cycle). |
+| `2.0` | Sleep 2x the detection time. Keeps CPU cool on Pi / NAS. |
+
+Range is clamped to `[0, 5]`. Set via `advanced.ai.faces.cpuThrottleRatio`
+in config or `TGDL_FACES_CPU_THROTTLE_RATIO` env var.
+
+### Detector model options
+
+The `detectorModel` config key selects the insightface model pack loaded
+by the sidecar. All presets produce 512-dim L2-normalised ArcFace
+embeddings and are clustering-compatible with each other — switching
+models does not require a re-scan of already-indexed photos, but a
+re-cluster is triggered automatically on the next scan because the
+embedding distributions differ slightly across backbones.
+
+| Preset | Backbone | LFW accuracy | Relative CPU speed | Notes |
+|---|---|---|---|---|
+| `buffalo_l` | ResNet50 | 99.5 % | 1.0x (baseline) | Default. Best balance of speed and accuracy. |
+| `antelopev2` | ResNet100 + Glint360K | 99.6 % | ~2.3x slower | Best accuracy. Worth it on GPU; heavy on CPU. |
+| `buffalo_m` | ResNet50 (smaller) | 99.3 % | faster | Lighter than `buffalo_l`. |
+| `buffalo_s` | ResNet34 | 99.0 % | fastest | Minimal resource footprint. |
+
+Set via `advanced.ai.faces.detectorModel` or
+`TGDL_FACES_DETECTOR_MODEL` env var. The AI maintenance page also
+exposes a dropdown. Changing the model restarts the sidecar
+automatically.
+
+### Model preload
+
+Switching `detectorModel` to a preset that has not been downloaded yet
+causes a potentially long delay on the first sidecar boot while
+insightface fetches the model pack. The preload endpoints let you
+trigger the download in advance without changing the active model:
+
+| Method | Sidecar path | Node proxy | Purpose |
+|---|---|---|---|
+| `POST` | `/preload/{model}` | `/api/ai/preload-model/:name` | Start background download |
+| `GET` | `/preload/{model}/status` | `/api/ai/preload-model/:name/status` | Check download status |
+
+Status values: `downloading`, `ready`, `invalid`, `failed`. The
+download runs in a background thread; the sidecar continues serving
+detection requests on the current model while the new one downloads.
+
+### Orphan cleanup
+
+A SQLite trigger (`trg_purge_orphan_people`) automatically deletes a
+`people` row when all its linked `faces` rows have been cascade-deleted.
+This fires on `DELETE FROM faces` when the deleted row's `person_id` is
+not null and no other faces reference the same person. The effect is
+that deleting a download (which cascade-deletes its faces) transparently
+prunes empty people entries — no manual cleanup needed.
 
 ## Offline install
 
@@ -402,10 +492,48 @@ WARNING GPU provider was requested ... but onnxruntime fell back to CPUExecution
 Check that `cublasLt64_12.dll` (Windows) / `libcublasLt.so.12` (Linux)
 is in the system library path.
 
+#### TensorRT EP (optional — CUDA EP already gives full GPU speed)
+
+When `onnxruntime-gpu` is installed it also ships a TensorRT execution
+provider (`onnxruntime_providers_tensorrt.dll` / `.so`). At startup
+onnxruntime probes every available EP; if TensorRT's runtime DLLs are
+missing you will see a harmless warning in the log:
+
+```
+EP Error ... onnxruntime_providers_tensorrt.dll ... "nvinfer_10.dll" ... missing (Error 126)
+```
+
+**This is not a failure.** onnxruntime skips TensorRT EP and uses CUDA EP
+instead — inference speed is unaffected for the face models used here.
+You can safely ignore the warning.
+
+If you *do* want TensorRT EP (marginal gain for buffalo_l, larger gain for
+higher-res models):
+
+1. Download **TensorRT 10.x** from <https://developer.nvidia.com/tensorrt>
+   (requires a free NVIDIA developer account).
+2. Extract the archive and add its `lib\` folder to the system `PATH`:
+   - Windows: `setx PATH "%PATH%;C:\path\to\TensorRT-10.x.x.x\lib"`
+     — or copy `nvinfer_10.dll`, `nvinfer_builder_resource_10.dll`,
+     `nvonnxparser_10.dll` into the CUDA Toolkit `bin\` folder
+     (`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x\bin\`).
+   - Linux: add the lib path to `LD_LIBRARY_PATH` or run
+     `ldconfig` after copying the `.so` files to `/usr/local/lib`.
+3. Install the Python TensorRT wheel (must match TRT version):
+   ```bash
+   pip install tensorrt==10.*
+   ```
+4. Restart the sidecar. Set `providers=tensorrt` (or leave on `auto` —
+   onnxruntime will pick TRT first automatically now that the DLLs are
+   present). Boot log should show:
+   ```
+   Applied providers: ['TensorrtExecutionProvider', 'CUDAExecutionProvider']
+   ```
+
 The prebuilt binary (`tgdl-faces-*.exe`) ships the CPU onnxruntime and
-cannot switch to CUDA. GPU acceleration requires either the Python
-fallback path (`pip install -e faces-service/[gpu]`) or a custom Docker
-image built with `Dockerfile.cuda`.
+cannot switch to CUDA or TensorRT. GPU acceleration requires either the
+Python fallback path (`pip install -e faces-service/[gpu]`) or a custom
+Docker image built with `Dockerfile.cuda`.
 
 ## API surface
 
@@ -425,6 +553,8 @@ All endpoints are admin-only.
 | POST   | `/api/ai/people/:id/split`          | `{ faceIds, newLabel? }` — create a new cluster        |
 | POST   | `/api/ai/faces/:id/reassign`        | `{ personId }` — move a single face to another cluster |
 | GET    | `/api/ai/faces/by-download/:id`     | face boxes for the gallery viewer overlay              |
+| POST   | `/api/ai/preload-model/:name`       | trigger background model download (proxy to sidecar)   |
+| GET    | `/api/ai/preload-model/:name/status`| check model download status                            |
 
 ## Sidecar wire format
 
@@ -434,10 +564,50 @@ All endpoints are admin-only.
 | `GET` | `/info` | — | `{ model, dim, providers, providers_requested, det_size, platform, python, version }` |
 | `POST` | `/detect` | `{ path \| image_b64, min_score?, min_box_px?, ar_range? }` | `{ faces[], image_w, image_h }` |
 | `POST` | `/detect-embed` | _alias of `/detect`_ | — |
+| `POST` | `/detect/batch` | `{ files[] }` | `{ results: [{ file, faces[], image_w, image_h }] }` |
+| `POST` | `/detect/video` | `{ path, max_frames? }` | `{ faces[], image_w, image_h }` (deduplicated across frames) |
+| `POST` | `/preload/{model}` | — | `{ model, status }` — trigger background model download |
+| `GET`  | `/preload/{model}/status` | — | `{ model, status }` — `downloading` / `ready` / `invalid` / `failed` |
 
 Path mode requires the path to resolve inside `TGDL_FACES_ALLOW_ROOTS`
 (set by the spawn module to `data/downloads`). Base64 mode works without
 an allow-root and is used automatically when path mode 403s.
+
+## Related subsystem knobs
+
+### Thumbs auto-generate toggle
+
+`advanced.thumbs.autoOnDownload` (default `true`) controls whether a
+WebP thumbnail is generated immediately after each successful download.
+When `true`, the downloader calls `pregenerateThumb(id)` inline so the
+first gallery scroll already finds the thumbnail in cache. Set to
+`false` to defer generation to the on-demand path (the viewer creates
+the thumb lazily on first request). The toggle has no effect on
+bulk-regeneration from the Maintenance page.
+
+### GPU scaler probe
+
+The thumbnail and seekbar generators share a runtime probe that tests
+whether the active ffmpeg binary supports GPU-resident scaling filters.
+On first use the probe runs `ffmpeg -filters` and checks for
+`scale_cuda` (NVIDIA), `scale_vaapi` (Intel/AMD on Linux), and
+`vpp_qsv` (Intel Quick Sync). The result is cached for the process
+lifetime.
+
+When a GPU scaler filter is present, the full pipeline keeps decoded
+frames on the GPU through the scale step (`-hwaccel <backend>
+-hwaccel_output_format <backend>` + `scale_cuda=w=…` or
+`scale_vaapi=w=…`), downloading to CPU only for the final software
+WebP/JPEG encode. When the filter is absent — common in minimal ffmpeg
+builds (Alpine/musl, Windows static binaries) or decode-only backends
+like `videotoolbox` / `d3d11va` — the pipeline falls back to software
+`scale=…:flags=fast_bilinear` while still using GPU-accelerated decode
+where available.
+
+No configuration is needed; the probe is transparent. The seekbar
+module uses a variant pipeline (`hwaccelUploadPipeline`) that uploads
+CPU-decoded frames to the GPU for scaling, necessary because fps/tile
+filters run in software between decode and scale.
 
 ## Troubleshooting
 
@@ -474,6 +644,16 @@ hasn't run, or every face is below `minPoints`. Confirm by checking
 `SELECT COUNT(*) FROM faces` vs `SELECT COUNT(*) FROM people`; if faces
 exist but people don't, drop `minPoints` to 2 or click **Detect &
 cluster** again to force phase B.
+
+**`EP Error … nvinfer_10.dll … missing (Error 126)`** — the TensorRT
+runtime DLLs are not installed. This is a **non-fatal warning**; inference
+continues on CUDA EP or CPU EP. Install TensorRT 10.x only if you
+specifically need TRT EP (see [TensorRT EP (optional)](#tensorrt-ep-optional--cuda-ep-already-gives-full-gpu-speed) above). To suppress the
+warning entirely, pin the provider explicitly:
+```
+TGDL_FACES_PROVIDERS=cuda    # or: cpu
+```
+or via **Maintenance → AI → Inference provider** → select **CUDA** or **CPU**.
 
 **`Statement::JS_all` OOM** — should never happen for the faces table;
 the scan-runner flows through streamed iterators. If you see one, it's
