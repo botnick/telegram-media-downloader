@@ -54,6 +54,8 @@ let _state = { ok: false, url: '', mode: 'idle', error: null, pid: null, checked
 let _child = null;
 let _broadcast = null;
 let _startingPromise = null;
+// Set true by stopSidecar() so the exit handler knows not to auto-restart.
+let _stopped = false;
 
 export function setBroadcast(fn) {
     _broadcast = typeof fn === 'function' ? fn : null;
@@ -335,19 +337,23 @@ async function _spawnLocal(cfg) {
     const url = `http://127.0.0.1:${port}`;
     setSidecarUrl(url, token);
 
-    _child = spawn(bin, [], {
+    const thisChild = spawn(bin, [], {
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: PROJECT_ROOT,
         windowsHide: true,
     });
-    _child.stdout.on('data', (c) => {
+    _child = thisChild;
+    thisChild.stdout.on('data', (c) => {
         process.stderr.write(`[seekbar-sidecar] ${c.toString()}`);
     });
-    _child.stderr.on('data', (c) => {
+    thisChild.stderr.on('data', (c) => {
         process.stderr.write(`[seekbar-sidecar] ${c.toString()}`);
     });
-    _child.on('exit', (code, sig) => {
+    thisChild.on('exit', (code, sig) => {
+        // Guard: if _child already points to a newer child (from refreshSidecar),
+        // this is a stale exit from the previously-killed process — ignore it.
+        if (_child !== thisChild) return;
         _child = null;
         _setState({
             ok: false,
@@ -355,9 +361,15 @@ async function _spawnLocal(cfg) {
             error: `exit code=${code} signal=${sig || ''}`,
             pid: null,
         });
+        // Auto-restart on unexpected exit (not when stopSidecar() was called).
+        if (!_stopped) {
+            setTimeout(() => {
+                if (!_child && !_startingPromise) startSidecar().catch(() => {});
+            }, 3000);
+        }
     });
 
-    _setState({ ok: false, url, mode: 'starting', error: null, pid: _child.pid });
+    _setState({ ok: false, url, mode: 'starting', error: null, pid: thisChild.pid });
 
     const healthy = await _probeHealth(url);
     if (!healthy) {
@@ -424,16 +436,19 @@ export async function startSidecar() {
 
 /** Re-probe the sidecar. Called by the config-change handler. */
 export async function refreshSidecar() {
+    _stopped = false; // We want the sidecar running after refresh.
+    _startingPromise = null; // Cancel any in-flight start so startSidecar() below runs fresh.
     if (_child) {
         try {
             _child.kill('SIGTERM');
         } catch {}
-        _child = null;
+        _child = null; // Null before startSidecar() so the old exit event is treated as stale.
     }
     return startSidecar();
 }
 
 export function stopSidecar() {
+    _stopped = true; // Tell the exit handler not to auto-restart.
     if (_child) {
         try {
             _child.kill('SIGTERM');
