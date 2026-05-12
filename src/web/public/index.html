@@ -3217,6 +3217,29 @@
                                 <input id="ai-faces-min-points" type="number" min="2" max="20" step="1" value="3" class="tg-input text-sm w-full sm:w-32">
                             </div>
 
+                            <!-- Optional video sampling for face clustering. -->
+                            <div class="bg-tg-bg/20 rounded-lg p-3 border border-tg-border/30">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-tg-text text-xs">Include videos in face grouping</div>
+                                        <p class="text-[10px] text-tg-textSecondary mt-0.5">
+                                            Samples video frames and runs face detection on those frames. Off by default.
+                                        </p>
+                                    </div>
+                                    <input id="ai-faces-include-videos" type="checkbox" class="accent-tg-blue mt-0.5">
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                                    <div>
+                                        <label for="ai-faces-video-interval" class="text-tg-text text-[11px] block mb-1">Frame interval (sec)</label>
+                                        <input id="ai-faces-video-interval" type="number" min="1" max="120" step="1" value="8" class="tg-input text-sm w-full">
+                                    </div>
+                                    <div>
+                                        <label for="ai-faces-video-max-frames" class="text-tg-text text-[11px] block mb-1">Max frames per video</label>
+                                        <input id="ai-faces-video-max-frames" type="number" min="1" max="200" step="1" value="24" class="tg-input text-sm w-full">
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Hardware acceleration sub-card. Same
                                  structure as Build thumbnails'
                                  hwaccel-probe block so operators see one

@@ -339,6 +339,19 @@ function _bindOnce() {
     $('#ai-faces-min-points')?.addEventListener('change', (e) =>
         _saveSetting('facesMinPoints', Number(e.target.value || 3)),
     );
+    $('#ai-faces-include-videos')?.addEventListener('change', (e) =>
+        _saveSetting('includeVideos', !!e.target.checked),
+    );
+    $('#ai-faces-video-interval')?.addEventListener('change', (e) => {
+        const v = Number(e.target.value || 8);
+        if (!Number.isFinite(v)) return;
+        _saveSetting('videoFrameIntervalSec', Math.max(1, Math.min(120, Math.round(v))));
+    });
+    $('#ai-faces-video-max-frames')?.addEventListener('change', (e) => {
+        const v = Number(e.target.value || 24);
+        if (!Number.isFinite(v)) return;
+        _saveSetting('videoMaxFrames', Math.max(1, Math.min(200, Math.round(v))));
+    });
 
     // Hardware-acceleration sub-card — same UX as the thumbs page.
     $('#ai-faces-provider-probe-btn')?.addEventListener('click', _runFacesProviderProbe);
@@ -706,6 +719,20 @@ function _renderStatus(status) {
     if (provSel) {
         const cur = String(cfg.faces?.providers || 'auto').toLowerCase();
         if (provSel.value !== cur) provSel.value = cur;
+    }
+    const includeVideosEl = $('#ai-faces-include-videos');
+    if (includeVideosEl) {
+        includeVideosEl.checked = cfg.faces?.includeVideos === true;
+    }
+    const videoIntervalEl = $('#ai-faces-video-interval');
+    if (videoIntervalEl) {
+        const cur = Number(cfg.faces?.videoFrameIntervalSec || 8);
+        if (Number(videoIntervalEl.value) !== cur) videoIntervalEl.value = String(cur);
+    }
+    const videoMaxFramesEl = $('#ai-faces-video-max-frames');
+    if (videoMaxFramesEl) {
+        const cur = Number(cfg.faces?.videoMaxFrames || 24);
+        if (Number(videoMaxFramesEl.value) !== cur) videoMaxFramesEl.value = String(cur);
     }
 
     // Image tagging card — toggle, model line, scan state, labels.
@@ -1330,6 +1357,9 @@ const _CTRL_SAVE_PATHS = {
     facesEpsilon: ['facesEpsilon', 'faces', 'epsilon'],
     facesMinPoints: ['facesMinPoints', 'faces', 'minPoints'],
     facesDetectorModel: ['facesDetectorModel', 'faces', 'detectorModel'],
+    includeVideos: ['includeVideos', 'faces', 'includeVideos'],
+    videoFrameIntervalSec: ['videoFrameIntervalSec', 'faces', 'videoFrameIntervalSec'],
+    videoMaxFrames: ['videoMaxFrames', 'faces', 'videoMaxFrames'],
 };
 
 async function _saveControl(ctrl, inp) {
