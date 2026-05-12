@@ -8,13 +8,21 @@ import { runtime } from '../../core/runtime.js';
 import { writeConfigAtomic } from '../lib/config-writer.js';
 import { createJobTracker } from '../../core/job-tracker.js';
 import { bestGroupName } from '../lib/format.js';
+import { listPeers } from '../../core/cluster/peers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '../../../data');
 const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
+const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 
-export function createGroupsRouter({ broadcast, log, invalidateDialogsCache }) {
+export function createGroupsRouter({
+    broadcast,
+    log,
+    invalidateDialogsCache,
+    getDialogsNameCache,
+    dialogsTypeFor,
+}) {
     const router = express.Router();
 
     // Per-group purge tracker — lazily created, capped at 32 live entries.

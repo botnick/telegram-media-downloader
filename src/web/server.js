@@ -3609,6 +3609,8 @@ app.use(
         invalidateDialogsCache: () => {
             _dialogsResponseCache = { at: 0, body: null };
         },
+        getDialogsNameCache,
+        dialogsTypeFor,
     }),
 );
 
@@ -3844,7 +3846,8 @@ ${tip}
     // has enabled both `advanced.nsfw.enabled` and `advanced.nsfw.preload`.
     // Fire-and-forget — boot is never blocked by the model download.
     try {
-        const cfg = _nsfwCfg();
+        const _nsfw = loadConfig().advanced?.nsfw || {};
+        const cfg = { enabled: _nsfw.enabled === true, preload: _nsfw.preload, ..._nsfw };
         if (cfg.enabled && cfg.preload === true) {
             nsfwPreloadClassifier(
                 cfg,
