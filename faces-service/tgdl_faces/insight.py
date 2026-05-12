@@ -235,10 +235,12 @@ def _platform_aware_auto_chain() -> list[str]:
     if machine in ("arm64", "aarch64"):
         machine = "aarch64"
     if sysname == "windows":
+        # DmlExecutionProvider requires a COM Single-Threaded Apartment and
+        # crashes with STATUS_ACCESS_VIOLATION when called from uvicorn /
+        # asyncio worker threads. Exclude it from the "auto" chain — request
+        # it explicitly via TGDL_FACES_PROVIDERS=directml if needed.
         return [
-            "DmlExecutionProvider",
             "CUDAExecutionProvider",
-            "OpenVINOExecutionProvider",
             "CPUExecutionProvider",
         ]
     if sysname == "darwin":
