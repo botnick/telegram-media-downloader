@@ -67,9 +67,24 @@ export function createLinkDownloadRouter({ getAccountManager }) {
         if (typeof host !== 'string' || host.length > 253) {
             return res.status(400).json({ error: 'invalid host' });
         }
-        if (isPrivateHost(host)) {
+        const normalizedHost = host.trim().toLowerCase();
+        if (!normalizedHost || normalizedHost.length > 253) {
+            return res.status(400).json({ error: 'invalid host' });
+        }
+        if (isPrivateHost(normalizedHost)) {
             return res.status(400).json({
                 error: 'Private / loopback / link-local addresses are not allowed for proxy probes.',
+            });
+        }
+        const cfg = loadConfig();
+        const allowedProxyTestHosts = Array.isArray(cfg?.security?.allowedProxyTestHosts)
+            ? cfg.security.allowedProxyTestHosts
+                  .filter((h) => typeof h === 'string' && h.trim())
+                  .map((h) => h.trim().toLowerCase())
+            : [];
+        if (!allowedProxyTestHosts.includes(normalizedHost)) {
+            return res.status(400).json({
+                error: 'host is not in allowedProxyTestHosts',
             });
         }
         const p = parseInt(port, 10);
@@ -92,7 +107,7 @@ export function createLinkDownloadRouter({ getAccountManager }) {
         sock.once('connect', () => finish(true));
         sock.once('error', (e) => finish(false, e.message));
         sock.once('timeout', () => finish(false, 'timeout'));
-        sock.connect(p, host);
+        sock.connect(p, normalizedHost);
     });
 
     // ====== Download-by-Link ===================================================
