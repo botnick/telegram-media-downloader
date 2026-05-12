@@ -764,7 +764,7 @@ export function createDownloadsRouter({
             }
 
             await fs.unlink(r.real);
-            console.log(`🗑️ Deleted: ${sanitizeForLog(filePath)}`);
+            console.log(`🗑️ Deleted: ${sanitizeForLog(r.real)}`);
 
             // Remove from DB (by basename — the DB stores filenames, not paths).
             // Capture matching ids first so we can wipe their cached thumbnails;
