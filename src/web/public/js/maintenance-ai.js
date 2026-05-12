@@ -65,12 +65,14 @@ function _bindOnce() {
     $('#ai-scan-btn')?.addEventListener('click', () => _startScan('faces'));
     $('#ai-cancel-btn')?.addEventListener('click', () => _cancelScan('faces'));
     $('#ai-reindex-btn')?.addEventListener('click', _reindexFromScratch);
-    // Re-cluster button — runs Phase B only (DBSCAN over existing
-    // embeddings, no re-detect). Fast (seconds, not minutes) — useful
-    // for tweaking ε / minPoints + seeing the new cluster count
-    // immediately without waiting for a full re-scan.
     $('#ai-recluster-btn')?.addEventListener('click', _recluster);
     $('#ai-detect-test-btn')?.addEventListener('click', _runDetectTest);
+
+    // Sensitivity preset buttons — one-click apply ε + minPoints, then
+    // immediately re-cluster so the operator sees results in seconds.
+    document.querySelectorAll('.ai-preset-btn').forEach((btn) => {
+        btn.addEventListener('click', () => _applyPreset(btn.dataset.preset));
+    });
 
     // Master + auto toggles — both live as labelled rows in the Face
     // clustering settings section. Click-anywhere on the toggle flips
@@ -426,15 +428,21 @@ function _renderStatus(status) {
     const epsInp = $('#ai-faces-epsilon');
     const epsOut = $('#ai-faces-epsilon-out');
     if (epsInp) {
-        const cur = Number.isFinite(cfg.facesEpsilon) ? Number(cfg.facesEpsilon) : 0.5;
+        const cur = Number.isFinite(cfg.facesEpsilon) ? Number(cfg.facesEpsilon) : 1.05;
         if (Number(epsInp.value) !== cur) epsInp.value = String(cur);
         if (epsOut) epsOut.textContent = Number(cur).toFixed(2);
     }
     const minInp = $('#ai-faces-min-points');
     if (minInp) {
-        const cur = Number.isFinite(cfg.facesMinPoints) ? Number(cfg.facesMinPoints) : 3;
+        const cur = Number.isFinite(cfg.facesMinPoints) ? Number(cfg.facesMinPoints) : 2;
         if (Number(minInp.value) !== cur) minInp.value = String(cur);
     }
+    // Highlight whichever preset matches the live ε + minPoints combo so
+    // the operator can see at a glance which mode is active.
+    _highlightPreset(
+        Number.isFinite(cfg.facesEpsilon) ? cfg.facesEpsilon : 1.05,
+        Number.isFinite(cfg.facesMinPoints) ? cfg.facesMinPoints : 2,
+    );
     const provSel = $('#ai-faces-provider');
     if (provSel) {
         const cur = String(cfg.faces?.providers || 'auto').toLowerCase();
@@ -732,6 +740,68 @@ async function _onFacesProviderChange(e) {
     } catch (err) {
         showToast(
             `${i18nT('common.save_failed', 'Save failed')}: ${err?.data?.error || err?.message || 'unknown'}`,
+            'error',
+        );
+    }
+}
+
+// ---- Sensitivity presets --------------------------------------------------
+//
+// Three opinionated combinations of ε + minPoints. Calibrated on real
+// 900+ photo data (see scripts/calibrate-faces-eps.js). One click saves
+// both values + immediately re-clusters so the operator sees new people
+// within seconds instead of waiting for a full re-scan.
+
+const _PRESETS = {
+    precise:   { epsilon: 0.90, minPoints: 3 },
+    balanced:  { epsilon: 1.05, minPoints: 2 },
+    sensitive: { epsilon: 1.20, minPoints: 2 },
+};
+
+function _highlightPreset(eps, min) {
+    document.querySelectorAll('.ai-preset-btn').forEach((btn) => {
+        const p = _PRESETS[btn.dataset.preset];
+        const active =
+            p &&
+            Math.abs(p.epsilon - eps) < 0.005 &&
+            p.minPoints === min;
+        btn.classList.toggle('border-tg-blue', active);
+        btn.classList.toggle('bg-tg-blue/10', active);
+    });
+}
+
+async function _applyPreset(name) {
+    const p = _PRESETS[name];
+    if (!p) return;
+    // Update slider + number box immediately so the page feels responsive.
+    const epsInp = $('#ai-faces-epsilon');
+    const epsOut = $('#ai-faces-epsilon-out');
+    const minInp = $('#ai-faces-min-points');
+    if (epsInp) epsInp.value = String(p.epsilon);
+    if (epsOut) epsOut.textContent = p.epsilon.toFixed(2);
+    if (minInp) minInp.value = String(p.minPoints);
+    _highlightPreset(p.epsilon, p.minPoints);
+    // Persist both values in one save, then re-cluster.
+    try {
+        const body = {
+            advanced: {
+                ai: {
+                    facesEpsilon: p.epsilon,
+                    facesMinPoints: p.minPoints,
+                    faces: { epsilon: p.epsilon, minPoints: p.minPoints },
+                },
+            },
+        };
+        const r = await api.post('/api/config', body);
+        if (!r.success) throw new Error(r.error || 'save failed');
+        showToast(
+            i18nT('maintenance.ai.preset_applied', `Preset "${name}" applied — re-clustering…`),
+            'success',
+        );
+        await _recluster();
+    } catch (e) {
+        showToast(
+            `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
             'error',
         );
     }
@@ -1061,10 +1131,21 @@ function _renderPeopleGrid() {
                         'No faces detected — ensure the faces sidecar is running and photos exist.',
                     );
                 } else if (lastScan > 0 && scannedPhotos > 0) {
-                    emptyHelp.textContent = i18nT(
-                        'maintenance.ai.people_empty_scan_ran',
-                        'Scan complete — no faces were detected in your photos. Try checking a photo in the viewer, or your library may not contain visible faces.',
-                    );
+                    // Scan ran + photos indexed but 0 clusters. Most likely
+                    // cause: epsilon too tight or minPoints too high. Suggest
+                    // the Sensitive preset as the one-click fix.
+                    const noiseFaces = Number(_lastStatus?.counts?.noiseFaces ?? _lastStatus?.counts?.unclassified ?? 0);
+                    if (noiseFaces > 0) {
+                        emptyHelp.innerHTML = i18nT(
+                            'maintenance.ai.people_empty_noise',
+                            `Faces were detected but none clustered into people (${noiseFaces.toLocaleString()} unclassified). Try <strong>Sensitive</strong> preset above, then Re-cluster.`,
+                        ).replace('{noise}', noiseFaces.toLocaleString());
+                    } else {
+                        emptyHelp.textContent = i18nT(
+                            'maintenance.ai.people_empty_scan_ran',
+                            'Scan complete — no faces were detected. Try the Sensitive preset or use the test tool to check a specific photo.',
+                        );
+                    }
                     showTestForm = true;
                 } else {
                     emptyHelp.textContent = i18nT(

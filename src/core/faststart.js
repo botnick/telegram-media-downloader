@@ -286,11 +286,12 @@ async function _remuxInPlace(absPath) {
         tmp,
     ]);
     if (!existsSync(tmp)) throw new Error('ffmpeg produced no output');
-    // Sanity check: tmp should be roughly the same size as the source.
-    // A wildly different size means something went wrong (codec
-    // mismatch, container conversion). Bail rather than overwrite.
+    // Sanity check: tmp must be within a reasonable range of the source.
+    // Faststart is a lossless remux — the output can be slightly smaller
+    // (junk/padding stripped) but a >20% size drop signals something went
+    // wrong (codec mismatch, truncation). Bail rather than overwrite.
     const [srcStat, tmpStat] = await Promise.all([fs.stat(absPath), fs.stat(tmp)]);
-    if (tmpStat.size < srcStat.size * 0.95 || tmpStat.size > srcStat.size * 1.1) {
+    if (tmpStat.size < srcStat.size * 0.80 || tmpStat.size > srcStat.size * 1.1) {
         try {
             await fs.unlink(tmp);
         } catch {}
