@@ -4525,7 +4525,8 @@ html[data-contrast="more"] .media-item {
 }
 .filmstrip-track::-webkit-scrollbar { display: none; }
 .filmstrip-thumb {
-    flex: 1 0 28px;
+    flex: 1 0 var(--filmstrip-thumb-natural-w, 60px);
+    max-width: calc(var(--filmstrip-thumb-natural-w, 60px) * 1.5);
     position: relative;
     border-radius: 3px;
     overflow: hidden;
