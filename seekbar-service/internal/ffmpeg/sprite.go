@@ -192,9 +192,20 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		)
 	}
 	if extra := strings.TrimSpace(extraArgs); extra != "" {
-		// Split on whitespace; ffmpeg arg lists rarely need quoting and
-		// the operator gets full responsibility for the override.
 		for _, a := range strings.Fields(extra) {
+			// Reject flags that could read/write arbitrary files or
+			// alter I/O in dangerous ways.  Only output-tuning flags
+			// like -preset, -crf, -q:v, -b:v should reach here.
+			lower := strings.ToLower(a)
+			if lower == "-i" || lower == "-f" ||
+				strings.HasPrefix(lower, "-filter") ||
+				lower == "-vf" || lower == "-af" ||
+				lower == "-map" || lower == "-c" ||
+				lower == "-codec" ||
+				strings.HasPrefix(lower, "-c:") ||
+				lower == "-safe" {
+				continue
+			}
 			args = append(args, a)
 		}
 	}

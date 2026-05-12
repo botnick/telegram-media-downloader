@@ -1222,8 +1222,10 @@ class SpamGuard {
     constructor() {
         this.userRateLimits = new Map();
         this.contentHashes = new Map();
-        setInterval(() => this.cleanup(), 60000);
+        this._cleanupTimer = setInterval(() => this.cleanup(), 60000);
     }
+    static USER_CAP = 10000;
+    static HASH_CAP = 50000;
 
     isSpam(message) {
         const userId = message.senderId ? String(message.senderId) : null;
@@ -1281,6 +1283,17 @@ class SpamGuard {
         }
         for (const [key, val] of this.contentHashes) {
             if (now > val.reset + 60000) this.contentHashes.delete(key);
+        }
+        // Hard caps prevent memory growth between cleanup cycles.
+        if (this.userRateLimits.size > SpamGuard.USER_CAP) {
+            const excess = this.userRateLimits.size - SpamGuard.USER_CAP;
+            const it = this.userRateLimits.keys();
+            for (let i = 0; i < excess; i++) this.userRateLimits.delete(it.next().value);
+        }
+        if (this.contentHashes.size > SpamGuard.HASH_CAP) {
+            const excess = this.contentHashes.size - SpamGuard.HASH_CAP;
+            const it = this.contentHashes.keys();
+            for (let i = 0; i < excess; i++) this.contentHashes.delete(it.next().value);
         }
     }
 }

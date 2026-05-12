@@ -160,12 +160,18 @@ def load_image_from_path(path: str, allow_roots: list[str]) -> np.ndarray:
     if not any(_is_under(target, r) for r in roots):
         raise PathNotAllowedError(f"path {path!r} is outside TGDL_FACES_ALLOW_ROOTS")
 
-    # cv2.imread silently returns None on missing/unreadable files
-    # *and* on un-decodable bytes. Read+imdecode so we can tell those
-    # cases apart cleanly.
+    # Open with O_NOFOLLOW where available to prevent TOCTOU symlink
+    # swap between the realpath() validation above and the actual read.
+    _open_flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        _open_flags |= os.O_NOFOLLOW
     try:
-        with open(target, "rb") as fh:
-            raw = fh.read()
+        fd = os.open(target, _open_flags)
+        try:
+            with open(fd, "rb", closefd=False) as fh:
+                raw = fh.read()
+        finally:
+            os.close(fd)
     except (OSError, FileNotFoundError) as exc:
         raise FileNotFoundError(f"could not read {path!r}: {exc}") from exc
 

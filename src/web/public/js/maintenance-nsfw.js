@@ -250,7 +250,10 @@ function _renderHistLegend() {
     const el = $('nsfw-hist-legend');
     if (!el) return;
     const tiers = view.tiersMeta || [];
-    if (!tiers.length) { el.innerHTML = ''; return; }
+    if (!tiers.length) {
+        el.innerHTML = '';
+        return;
+    }
     el.innerHTML = tiers
         .map((t) => {
             const color = TIER_COLOR[t.id] || '#9E9E9E';
@@ -271,13 +274,19 @@ function _wireHistogramTooltip(svgEl) {
         tip.setAttribute('aria-hidden', 'true');
         wrap.appendChild(tip);
     }
-    const hide = () => { tip.style.display = 'none'; };
+    const hide = () => {
+        tip.style.display = 'none';
+    };
     svgEl.addEventListener('pointermove', (e) => {
         const bar = e.target.closest?.('.nsfw-hist-bar');
-        if (!bar) { hide(); return; }
+        if (!bar) {
+            hide();
+            return;
+        }
         const n = Number(bar.dataset.n);
         const pct = bar.dataset.pct;
-        const color = bar.dataset.color;
+        const rawColor = bar.dataset.color;
+        const color = /^[a-zA-Z0-9#(), .%-]+$/.test(rawColor) ? rawColor : '#888';
         tip.innerHTML = `<span class="nsfw-hist-tip-dot" style="background:${color}"></span><b>${pct}%</b> ${n.toLocaleString()} files`;
         tip.style.display = 'block';
         const wrapRect = wrap.getBoundingClientRect();
@@ -310,8 +319,12 @@ function _renderHistogram(hist) {
     for (const n of counts) if (n > maxN) maxN = n;
 
     // SVG layout constants.
-    const W = 580, H = 200;
-    const ML = 42, MR = 8, MT = 14, MB = 48;
+    const W = 580,
+        H = 200;
+    const ML = 42,
+        MR = 8,
+        MT = 14,
+        MB = 48;
     const PW = W - ML - MR;
     const PH = H - MT - MB;
     const yMax = _histNiceMax(maxN);

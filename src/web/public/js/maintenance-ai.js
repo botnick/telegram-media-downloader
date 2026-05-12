@@ -20,7 +20,7 @@ import { openMediaViewerForReview } from './viewer.js';
 const $ = (sel) => document.querySelector(sel);
 
 const _CHIP_STYLES = {
-    'tg-blue':   ['border-tg-blue', 'bg-tg-blue/10', 'text-tg-blue'],
+    'tg-blue': ['border-tg-blue', 'bg-tg-blue/10', 'text-tg-blue'],
     'amber-500': ['border-amber-500', 'bg-amber-500/10', 'text-amber-500'],
 };
 function _applyFilterChipStyle(btn, active, color) {
@@ -42,7 +42,13 @@ let _selectedPerson = null;
 let _selectedPersonName = '';
 let _peopleCache = []; // full people list (un-filtered) for client-side search
 let _photoGridClickHandler = null;
-const _peopleFilter = { query: '', unlabeledOnly: false, videosOnly: false, hideLowQuality: false, sortBy: 'face_count' };
+const _peopleFilter = {
+    query: '',
+    unlabeledOnly: false,
+    videosOnly: false,
+    hideLowQuality: false,
+    sortBy: 'face_count',
+};
 
 // Scan phase tracking — distinguishes Phase A (per-image detect) from
 // Phase B (DBSCAN clustering, runs after A completes, typically seconds).
@@ -144,8 +150,13 @@ function _bindOnce() {
             let ready = false;
             for (let i = 0; i < 60 && !ready; i++) {
                 const s = await api.get(`/api/ai/preload-model/${model}/status`);
-                if (s?.status === 'ready') { ready = true; break; }
-                if (s?.status?.startsWith('error')) { throw new Error(s.status); }
+                if (s?.status === 'ready') {
+                    ready = true;
+                    break;
+                }
+                if (s?.status?.startsWith('error')) {
+                    throw new Error(s.status);
+                }
                 await new Promise((r) => setTimeout(r, 2000));
                 if (statusEl) statusEl.textContent = `Downloading ${model}…`;
             }
@@ -243,9 +254,14 @@ function _bindOnce() {
     ws.on('ai_people_phase_b', (m) => _onScanPhaseB(m));
     ws.on('ai_faces_status', () => refreshStatus());
     ws.on('quality_backfill_progress', () => refreshStatus());
-    ws.on('quality_backfill_done', () => { refreshStatus(); _loadPeople().catch(() => {}); });
+    ws.on('quality_backfill_done', () => {
+        refreshStatus();
+        _loadPeople().catch(() => {});
+    });
     $('#ai-quality-backfill-btn')?.addEventListener('click', async () => {
-        try { await api.post('/api/ai/backfill-quality'); } catch {}
+        try {
+            await api.post('/api/ai/backfill-quality');
+        } catch {}
         refreshStatus();
     });
     // Auto-installer feedback. Streams stdout from `python -m
@@ -517,7 +533,7 @@ function _renderStatus(status) {
         if (label) {
             if (running) {
                 const p = tracker.progress || {};
-                const pct = (p.total > 0) ? Math.round((p.processed / p.total) * 100) : 0;
+                const pct = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
                 label.textContent = `Scoring… ${pct}% (${(p.updated || 0).toLocaleString()} updated)`;
             } else if (pending > 0) {
                 label.textContent = `Score ${pending.toLocaleString()} faces`;
@@ -622,7 +638,11 @@ function _renderSidecarBadge(status) {
         // Show both provider (GPU chip) and model id in the badge so operators
         // can confirm which hardware + model is active without opening System health.
         const providerTag = provider || 'CPU';
-        const modelTag = faces.id ? String(faces.id).replace(/insightface\s*/i, '').trim() : '';
+        const modelTag = faces.id
+            ? String(faces.id)
+                  .replace(/insightface\s*/i, '')
+                  .trim()
+            : '';
         const parts = [providerTag, modelTag].filter(Boolean).join(' · ');
         label = i18nTf(
             'maintenance.ai.sidecar.healthy',
@@ -807,7 +827,10 @@ function _applyProbeToProviderSelect(probe) {
             opt.disabled = true;
             const hint = d.error
                 ? i18nT('maintenance.ai.faces.providers.unavailable', 'unavailable')
-                : i18nT('maintenance.ai.faces.providers.driver_missing', 'driver / libraries missing');
+                : i18nT(
+                      'maintenance.ai.faces.providers.driver_missing',
+                      'driver / libraries missing',
+                  );
             opt.textContent = `✗ ${baseLabel} — ${hint}`;
             opt.title = d.error || '';
         }
@@ -913,18 +936,15 @@ async function _onFacesProviderChange(e) {
 // within seconds instead of waiting for a full re-scan.
 
 const _PRESETS = {
-    precise:   { epsilon: 0.90, minPoints: 3 },
-    balanced:  { epsilon: 1.05, minPoints: 2 },
-    sensitive: { epsilon: 1.20, minPoints: 2 },
+    precise: { epsilon: 0.9, minPoints: 3 },
+    balanced: { epsilon: 1.05, minPoints: 2 },
+    sensitive: { epsilon: 1.2, minPoints: 2 },
 };
 
 function _highlightPreset(eps, min) {
     document.querySelectorAll('.ai-preset-btn').forEach((btn) => {
         const p = _PRESETS[btn.dataset.preset];
-        const active =
-            p &&
-            Math.abs(p.epsilon - eps) < 0.005 &&
-            p.minPoints === min;
+        const active = p && Math.abs(p.epsilon - eps) < 0.005 && p.minPoints === min;
         btn.classList.toggle('border-tg-blue', active);
         btn.classList.toggle('bg-tg-blue/10', active);
     });
@@ -970,10 +990,7 @@ async function _applyPreset(name) {
 async function _restartSidecar() {
     try {
         await api.post('/api/ai/faces/restart', {});
-        showToast(
-            i18nT('maintenance.ai.restart_sidecar', 'Restart sidecar') + '…',
-            'success',
-        );
+        showToast(i18nT('maintenance.ai.restart_sidecar', 'Restart sidecar') + '…', 'success');
         await refreshStatus();
     } catch (e) {
         const msg = e?.data?.error || e?.message || 'unknown';
@@ -1052,7 +1069,10 @@ async function _runDetectTest() {
         return;
     }
     if (btn) btn.disabled = true;
-    if (resultEl) { resultEl.textContent = '…'; resultEl.classList.remove('hidden'); }
+    if (resultEl) {
+        resultEl.textContent = '…';
+        resultEl.classList.remove('hidden');
+    }
     try {
         const r = await api.post('/api/ai/detect-test', { downloadId: id });
         if (!r.success) throw new Error(r.error || 'detect-test failed');
@@ -1069,7 +1089,9 @@ async function _runDetectTest() {
         } else {
             lines.push(`Result:  ${r.rawCount} face(s) detected`);
             for (const f of r.raw || []) {
-                lines.push(`  • box=${f.w}×${f.h}px, score=${f.score?.toFixed(3)}, emb=${f.embeddingDim}d`);
+                lines.push(
+                    `  • box=${f.w}×${f.h}px, score=${f.score?.toFixed(3)}, emb=${f.embeddingDim}d`,
+                );
             }
         }
         if (r.warnings?.length) {
@@ -1189,9 +1211,10 @@ function _onScanProgress(feature, msg) {
     if (running && scanned > 0) {
         const indexedEl = $('#ai-stat-indexed');
         if (indexedEl) {
-            indexedEl.textContent = total > 0
-                ? `${scanned.toLocaleString()} / ${total.toLocaleString()}`
-                : scanned.toLocaleString();
+            indexedEl.textContent =
+                total > 0
+                    ? `${scanned.toLocaleString()} / ${total.toLocaleString()}`
+                    : scanned.toLocaleString();
         }
     }
 }
@@ -1220,16 +1243,20 @@ function _onScanPhaseB(msg) {
     const faceCount = Number(msg?.faceCount) || 0;
     if (progressPct) progressPct.textContent = '';
     if (progressStatus) {
-        progressStatus.textContent = faceCount > 0
-            ? i18nTf(
-                  'maintenance.ai.scan_phase_b_faces',
-                  { n: faceCount.toLocaleString() },
-                  `Clustering ${faceCount.toLocaleString()} faces…`,
-              )
-            : i18nT('maintenance.ai.scan_phase_b', 'Clustering faces…');
+        progressStatus.textContent =
+            faceCount > 0
+                ? i18nTf(
+                      'maintenance.ai.scan_phase_b_faces',
+                      { n: faceCount.toLocaleString() },
+                      `Clustering ${faceCount.toLocaleString()} faces…`,
+                  )
+                : i18nT('maintenance.ai.scan_phase_b', 'Clustering faces…');
     }
     if (phaseTag) {
-        phaseTag.textContent = i18nT('maintenance.ai.scan_phase_b_tag', 'Phase 2: DBSCAN clustering');
+        phaseTag.textContent = i18nT(
+            'maintenance.ai.scan_phase_b_tag',
+            'Phase 2: DBSCAN clustering',
+        );
         phaseTag.classList.remove('hidden');
     }
 }
@@ -1296,7 +1323,8 @@ async function _renderPeopleGrid() {
     const filtered = _peopleCache.filter((p) => {
         if (unlabeled && p.label) return false;
         if (videosOnly && !(Number(p.video_face_count) > 0)) return false;
-        if (hideLQ && (Number(p.avg_quality) || 0) < 0.3 && (Number(p.avg_quality) || 0) > 0) return false;
+        if (hideLQ && (Number(p.avg_quality) || 0) < 0.3 && (Number(p.avg_quality) || 0) > 0)
+            return false;
         if (q) {
             const hay = `${p.label || ''} ${p.id}`.toLowerCase();
             if (!hay.includes(q)) return false;
@@ -1335,7 +1363,8 @@ async function _renderPeopleGrid() {
                 // Determine whether the sidecar is reachable to give context.
                 const faces = _lastStatus?.models?.faces || {};
                 const counts = _lastStatus?.counts || {};
-                const sidecarUp = faces.loaded === true || faces.state === 'healthy' || faces.state === 'ready';
+                const sidecarUp =
+                    faces.loaded === true || faces.state === 'healthy' || faces.state === 'ready';
                 const lastScan = _lastStatus?.scans?.faces?.finishedAt || 0;
                 const scannedPhotos = Number(counts.indexed) || 0;
                 if (!sidecarUp) {
@@ -1347,7 +1376,9 @@ async function _renderPeopleGrid() {
                     // Scan ran + photos indexed but 0 clusters. Most likely
                     // cause: epsilon too tight or minPoints too high. Suggest
                     // the Sensitive preset as the one-click fix.
-                    const noiseFaces = Number(_lastStatus?.counts?.noiseFaces ?? _lastStatus?.counts?.unclassified ?? 0);
+                    const noiseFaces = Number(
+                        _lastStatus?.counts?.noiseFaces ?? _lastStatus?.counts?.unclassified ?? 0,
+                    );
                     if (noiseFaces > 0) {
                         emptyHelp.innerHTML = i18nT(
                             'maintenance.ai.people_empty_noise',
@@ -1445,7 +1476,8 @@ async function _renderPeopleGrid() {
     if (rendered < filtered.length) {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'ai-load-more-btn w-full py-2.5 mt-2 rounded-xl text-xs font-medium text-tg-textSecondary border border-tg-border/30 hover:border-tg-blue/50 hover:text-tg-blue hover:bg-tg-blue/5 transition-all';
+        btn.className =
+            'ai-load-more-btn w-full py-2.5 mt-2 rounded-xl text-xs font-medium text-tg-textSecondary border border-tg-border/30 hover:border-tg-blue/50 hover:text-tg-blue hover:bg-tg-blue/5 transition-all';
         const updateLabel = () => {
             const remaining = filtered.length - rendered;
             btn.textContent = `Show more (${remaining.toLocaleString()} remaining)`;
@@ -1478,9 +1510,9 @@ function _personTile(p) {
     let imgHtml;
     if (faceUrl) {
         const fb = fallbackUrl
-            ? `this.onerror=null;this.src='${fallbackUrl}'`
-            : `this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-2xl text-tg-textSecondary/40\\'></i>'`;
-        imgHtml = `<img src="${faceUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="${fb}">`;
+            ? `this.onerror=null;this.src='${escapeHtml(fallbackUrl)}'`
+            : "this.onerror=null;this.replaceWith(Object.assign(document.createElement('i'),{className:'ri-user-line text-2xl text-tg-textSecondary/40'}))";
+        imgHtml = `<img src="${escapeHtml(faceUrl)}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="${fb}">`;
     } else if (fallbackUrl) {
         imgHtml = `<img src="${fallbackUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover">`;
     } else {
@@ -1489,18 +1521,24 @@ function _personTile(p) {
 
     const videoFaceCount = Number(p.video_face_count) || 0;
     const avgQ = Number(p.avg_quality) || 0;
-    const badge = faceCount > 0
-        ? `<span class="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-tg-blue text-white text-[9px] font-bold flex items-center justify-center leading-none border-2 border-tg-panel">${faceCount}</span>`
-        : '';
-    const videoBadge = videoFaceCount > 0
-        ? `<span class="absolute -top-0.5 -right-0.5 w-[14px] h-[14px] rounded-full bg-amber-500 flex items-center justify-center border border-tg-panel" title="${videoFaceCount} from video"><i class="ri-film-line text-white" style="font-size:8px"></i></span>`
-        : '';
+    const badge =
+        faceCount > 0
+            ? `<span class="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-tg-blue text-white text-[9px] font-bold flex items-center justify-center leading-none border-2 border-tg-panel">${faceCount}</span>`
+            : '';
+    const videoBadge =
+        videoFaceCount > 0
+            ? `<span class="absolute -top-0.5 -right-0.5 w-[14px] h-[14px] rounded-full bg-amber-500 flex items-center justify-center border border-tg-panel" title="${videoFaceCount} from video"><i class="ri-film-line text-white" style="font-size:8px"></i></span>`
+            : '';
     let qualityBadge = '';
     if (avgQ > 0) {
         const qTier = avgQ >= 0.7 ? 'high' : avgQ >= 0.4 ? 'mid' : 'low';
         const qColor = { high: 'bg-emerald-500', mid: 'bg-amber-400', low: 'bg-red-500' }[qTier];
         const qLabel = { high: 'HQ', mid: 'MQ', low: 'LQ' }[qTier];
-        const qTip = { high: 'High quality — sharp, frontal faces', mid: 'Medium quality — some blur or angle', low: 'Low quality — blurry or side-angle' }[qTier];
+        const qTip = {
+            high: 'High quality — sharp, frontal faces',
+            mid: 'Medium quality — some blur or angle',
+            low: 'Low quality — blurry or side-angle',
+        }[qTier];
         qualityBadge = `<span class="absolute -bottom-0.5 -left-0.5 w-[16px] h-[16px] rounded-full ${qColor} text-white text-[7px] font-bold flex items-center justify-center border border-tg-panel" title="${qTip} (${(avgQ * 100).toFixed(0)}%)">${qLabel}</span>`;
     }
 
@@ -1532,7 +1570,7 @@ async function _showPersonPhotos() {
     const detailAvatar = $('#ai-person-detail-avatar');
     if (detailAvatar) {
         if (_selectedPerson > 0) {
-            detailAvatar.innerHTML = `<img src="/api/ai/person/${_selectedPerson}/face?w=80" alt="${escapeHtml(_selectedPersonName)}" loading="lazy" class="w-full h-full object-cover" onerror="this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-lg text-tg-textSecondary/40\\'></i>'">`;
+            detailAvatar.innerHTML = `<img src="/api/ai/person/${_selectedPerson}/face?w=80" alt="${escapeHtml(_selectedPersonName)}" loading="lazy" class="w-full h-full object-cover" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('i'),{className:'ri-user-line text-lg text-tg-textSecondary/40'}))">`;
         } else {
             detailAvatar.innerHTML = `<i class="ri-user-line text-lg text-tg-textSecondary/40"></i>`;
         }
@@ -1671,7 +1709,10 @@ async function _mergeSelectedPerson() {
     if (!_selectedPerson) return;
     const candidates = _peopleCache.filter((p) => p.id !== _selectedPerson && p.id !== -1);
     if (!candidates.length) {
-        showToast(i18nT('maintenance.ai.merge_no_other', 'No other clusters to merge with.'), 'info');
+        showToast(
+            i18nT('maintenance.ai.merge_no_other', 'No other clusters to merge with.'),
+            'info',
+        );
         return;
     }
 
@@ -1734,7 +1775,9 @@ async function _mergeSelectedPerson() {
 
         if (searchEl) {
             searchEl.addEventListener('input', (e) => {
-                const q = String(e.target.value || '').toLowerCase().trim();
+                const q = String(e.target.value || '')
+                    .toLowerCase()
+                    .trim();
                 renderList(
                     q
                         ? candidates.filter((p) =>
@@ -1749,7 +1792,7 @@ async function _mergeSelectedPerson() {
 
     if (!targetId) return;
     const target = candidates.find((p) => p.id === targetId);
-    const targetName = target ? (target.label || `Person #${target.id}`) : `#${targetId}`;
+    const targetName = target ? target.label || `Person #${target.id}` : `#${targetId}`;
 
     const ok = await confirmSheet({
         title: i18nT('maintenance.ai.person_merge', 'Merge'),
@@ -1765,7 +1808,9 @@ async function _mergeSelectedPerson() {
     if (!ok) return;
 
     try {
-        const res = await api.post(`/api/ai/people/${targetId}/merge`, { otherId: _selectedPerson });
+        const res = await api.post(`/api/ai/people/${targetId}/merge`, {
+            otherId: _selectedPerson,
+        });
         if (!res.success) throw new Error(res.error || 'merge failed');
         showToast(
             `${i18nT('maintenance.ai.merge_done', 'Merged')} — ${res.moved || 0} ${i18nT('maintenance.ai.faces_short', 'faces')}`,
@@ -1823,14 +1868,18 @@ function _enterSplitMode() {
     _splitSelectedDlIds.clear();
 
     const hint = $('#ai-split-hint');
-    if (hint) { hint.classList.remove('hidden'); hint.classList.add('flex'); }
+    if (hint) {
+        hint.classList.remove('hidden');
+        hint.classList.add('flex');
+    }
     const bar = $('#ai-split-bar');
     if (bar) {
         bar.classList.remove('hidden');
         bar.classList.add('flex');
     }
     const countEl = $('#ai-split-count');
-    if (countEl) countEl.textContent = i18nT('maintenance.ai.split_select_hint', 'Tap photos to select');
+    if (countEl)
+        countEl.textContent = i18nT('maintenance.ai.split_select_hint', 'Tap photos to select');
     const commitBtn = $('#ai-split-commit-btn');
     if (commitBtn) commitBtn.disabled = true;
 
@@ -1859,9 +1908,10 @@ function _enterSplitMode() {
         const n = _splitSelectedDlIds.size;
         const countEl2 = $('#ai-split-count');
         if (countEl2) {
-            countEl2.textContent = n === 0
-                ? i18nT('maintenance.ai.split_select_hint', 'Tap photos to select')
-                : i18nTf('maintenance.ai.split_n_selected', { n }, `${n} selected`);
+            countEl2.textContent =
+                n === 0
+                    ? i18nT('maintenance.ai.split_select_hint', 'Tap photos to select')
+                    : i18nTf('maintenance.ai.split_n_selected', { n }, `${n} selected`);
         }
         const commitBtn2 = $('#ai-split-commit-btn');
         if (commitBtn2) commitBtn2.disabled = n < 1;
@@ -1874,7 +1924,10 @@ function _exitSplitMode() {
     _splitSelectedDlIds.clear();
 
     const hint = $('#ai-split-hint');
-    if (hint) { hint.classList.add('hidden'); hint.classList.remove('flex'); }
+    if (hint) {
+        hint.classList.add('hidden');
+        hint.classList.remove('flex');
+    }
     const bar = $('#ai-split-bar');
     if (bar) {
         bar.classList.add('hidden');
@@ -1920,7 +1973,10 @@ async function _commitSplit() {
     }
     if (!faceIds.length) {
         showToast(
-            i18nT('maintenance.ai.split_no_face_ids', 'Selected photos have no face data — run a scan first.'),
+            i18nT(
+                'maintenance.ai.split_no_face_ids',
+                'Selected photos have no face data — run a scan first.',
+            ),
             'error',
         );
         return;
@@ -1928,7 +1984,10 @@ async function _commitSplit() {
 
     const newLabel = await promptSheet({
         title: i18nT('maintenance.ai.person_split', 'Split'),
-        message: i18nT('maintenance.ai.split_label_prompt', 'Label for the new cluster (optional):'),
+        message: i18nT(
+            'maintenance.ai.split_label_prompt',
+            'Label for the new cluster (optional):',
+        ),
         confirmLabel: i18nT('maintenance.ai.person_split', 'Split'),
         cancelLabel: i18nT('common.cancel', 'Cancel'),
     });
@@ -2013,7 +2072,10 @@ function _setActionButtonsEnabled(enabled) {
             btn.removeAttribute('title');
         } else {
             btn.classList.add('opacity-40', 'pointer-events-none');
-            btn.title = i18nT('maintenance.ai.doctor_must_pass', 'Fix health checks before scanning');
+            btn.title = i18nT(
+                'maintenance.ai.doctor_must_pass',
+                'Fix health checks before scanning',
+            );
         }
     }
 }

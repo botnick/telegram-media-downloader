@@ -1,41 +1,40 @@
 # Telegram Media Downloader — self-hosted, free, MIT
 
-> **The best self-hosted Telegram media downloader for 2026.** Download photos, videos, documents, voice messages, GIFs, stickers, and Stories from any Telegram channel, group, supergroup, forum topic, or DM your Telegram account can read. Bulk-archive a whole channel, paste a `t.me/` link to grab a single message, capture self-destructing (TTL) media before it expires, auto-forward to another chat, share files with HMAC-signed links, mirror to S3 / R2 / B2 / Wasabi / SFTP / Google Drive / Dropbox, run a cross-machine **cluster** with real-time sync and automatic failover, and one-click update from the browser via a watchtower sidecar. Web dashboard + CLI. Bilingual (English / ไทย). Runs on Windows, Linux, macOS, Raspberry Pi, NAS, and Docker (amd64 + arm64).
+> **The best self-hosted Telegram media downloader for 2026.** Download photos, videos, documents, voice messages, GIFs, stickers, and Stories from any Telegram channel, group, supergroup, forum topic, or DM your Telegram account can read. Bulk-archive a whole channel, paste a `t.me/` link to grab a single message, capture self-destructing (TTL) media before it expires, auto-forward to another chat, share files with HMAC-signed links, mirror to S3 / R2 / B2 / Wasabi / SFTP / Google Drive / Dropbox, run a cross-machine **cluster** with real-time sync and automatic failover, detect and cluster **faces with AI** (insightface + DBSCAN — photos and videos), generate **seekbar timeline previews** for video hover, and one-click update from the browser via a watchtower sidecar. Web dashboard + CLI. Bilingual (English / ไทย). Runs on Windows, Linux, macOS, Raspberry Pi, NAS, and Docker (amd64 + arm64).
 
 [![CI](https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/botnick/telegram-media-downloader/actions/workflows/codeql.yml/badge.svg)](https://github.com/botnick/telegram-media-downloader/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader)
 [![Release](https://img.shields.io/github/v/release/botnick/telegram-media-downloader?label=Release&color=blue)](https://github.com/botnick/telegram-media-downloader/releases)
-[![Tests](https://img.shields.io/badge/tests-1275%20passing-brightgreen)](https://github.com/botnick/telegram-media-downloader/actions)
+[![Tests](https://img.shields.io/badge/tests-5700%2B%20passing-brightgreen)](https://github.com/botnick/telegram-media-downloader/actions)
 
-> **Keywords:** Telegram downloader · Telegram channel scraper · Telegram media backup · Telegram bulk download · download Telegram videos · download Telegram photos · download Telegram voice messages · download Telegram documents · Telegram archive tool · Telegram backup tool · self-hosted Telegram bot alternative · Telegram User API client · GramJS · MTProto · Telegram Stories downloader · Telegram private channel downloader · t.me link downloader · Telegram TTL self-destruct downloader · Telegram NSFW filter · Telegram cluster mode · Telegram multi-machine sync · Telegram dashboard · Telegram media manager · Telegram desktop alternative · self-hosted Telegram archiver · Telegram channel mirror · Telegram media server · open-source Telegram downloader · MIT-licensed Telegram tool · Docker Telegram downloader · Raspberry Pi Telegram downloader · NAS Telegram downloader · Telegram face recognition · Telegram AI face detection · insightface face clustering · DBSCAN people grouping · video face detection · Telegram seekbar preview · GPU-accelerated video thumbnails · Telegram media organizer.
+> **Keywords:** Telegram downloader · Telegram channel scraper · Telegram media backup · Telegram bulk download · download Telegram videos · download Telegram photos · download Telegram voice messages · download Telegram documents · Telegram archive tool · Telegram backup tool · self-hosted Telegram bot alternative · Telegram User API client · GramJS · MTProto · Telegram Stories downloader · Telegram private channel downloader · t.me link downloader · Telegram TTL self-destruct downloader · Telegram NSFW filter · Telegram cluster mode · Telegram multi-machine sync · Telegram dashboard · Telegram media manager · Telegram desktop alternative · self-hosted Telegram archiver · Telegram channel mirror · Telegram media server · open-source Telegram downloader · MIT-licensed Telegram tool · Docker Telegram downloader · Raspberry Pi Telegram downloader · NAS Telegram downloader · Synology Telegram downloader · Telegram face recognition · Telegram AI face detection · insightface face clustering · DBSCAN people grouping · video face detection · Telegram seekbar preview · GPU-accelerated video thumbnails · Telegram media organizer · Telegram deduplication · Telegram auto-forward · Telegram share link · S3 backup Telegram · SFTP backup Telegram · Google Drive backup Telegram · Dropbox backup Telegram · Telegram multi-account · Telegram forum topic downloader · Telegram sticker downloader · Telegram GIF downloader · Telegram audio downloader.
 
-> [Quick start](#quick-start) · [What's new in v2.18](#whats-new-in-v2180) · [Cluster mode](docs/CLUSTER.md) · [AI subsystem](docs/AI.md) · [Architecture](docs/ARCHITECTURE.md) · [API reference](docs/API.md) · [Deploy](docs/DEPLOY.md) · [Backup providers](docs/BACKUP.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Migration v2.9 → v2.10](docs/MIGRATION-v2.9-to-v2.10.md) · [Audit](docs/AUDIT.md)
+> [Quick start](#quick-start) · [What's new in v2.18](#whats-new-in-v2180) · [Cluster mode](docs/CLUSTER.md) · [AI face clustering](docs/AI.md) · [Architecture](docs/ARCHITECTURE.md) · [API reference](docs/API.md) · [Deploy](docs/DEPLOY.md) · [Backup providers](docs/BACKUP.md) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Migration v2.9 → v2.10](docs/MIGRATION-v2.9-to-v2.10.md) · [Audit](docs/AUDIT.md)
 
 ## What's new in v2.18.0
 
-- **🎬 Video face detection** — opt-in "Include videos in face scan" toggle. The sidecar extracts frames from every video via OpenCV, detects faces in each frame, and clusters them alongside photo-sourced faces in the same DBSCAN pass. People who appear in both photos and videos land in one cluster. Progress bar counts both file types from the start.
-- **🧠 Model picker + preload** — dropdown now offers **buffalo_l** (default), **antelopev2** (ResNet100, best accuracy), **buffalo_m**, and **buffalo_s**. Selecting a model triggers a background download before the sidecar restarts, so the switch is seamless. All presets produce 512-dim embeddings — switching models doesn't require re-scanning.
-- **🎬 Video badge on People grid** — each person card shows an amber film icon when they appear in videos. A "Video" filter chip lets you show only people from video sources.
-- **⚡ CPU throttle for face scanning** — duty-cycle rest (`cpuThrottleRatio`, default 0.5) gives the CPU proportional breaks between detection calls. GPU users barely notice; CPU-only hosts stay responsive. Capped at 5 s per rest.
-- **🖼️ Thumbnail auto-generate toggle** — new `advanced.thumbs.autoOnDownload` config with a toggle on the Maintenance → Thumbnails page. Off = generate only via manual Build all.
-- **🔧 GPU scaler probe** — ffmpeg's `scale_cuda` / `scale_vaapi` / `vpp_qsv` filters are now probed at boot. If the filter is missing (common on older/bundled ffmpeg), the pipeline falls back to software scale while keeping GPU decode — fixes video thumbnails on hosts with CUDA decode but no CUDA scaler.
-- **🗑️ Orphan cleanup trigger** — SQLite trigger `trg_purge_orphan_people` auto-deletes people rows when all their faces are cascade-deleted (download deletion, dedup, NSFW purge, integrity sweep — every delete path, zero orphans).
-- **🩺 Doctor gates scan buttons** — Scan / Reindex / Re-cluster buttons are disabled until all health checks pass. No more silent failures from clicking Scan with a dead sidecar.
+- **Video face detection** — opt-in "Include videos in face scan" toggle. The sidecar extracts frames via OpenCV, detects faces in each frame, and clusters them alongside photo-sourced faces in the same DBSCAN pass. People who appear in both photos and videos land in one cluster.
+- **Model picker + preload** — dropdown offers **buffalo_l** (default), **antelopev2** (ResNet100, best accuracy), **buffalo_m**, and **buffalo_s**. Selecting a model triggers a background download before the sidecar restarts. All presets produce 512-dim embeddings — switching doesn't require re-scanning.
+- **Video badge on People grid** — amber film icon per person card when they appear in videos. A "Video" filter chip shows only people from video sources.
+- **CPU throttle for face scanning** — duty-cycle rest (`cpuThrottleRatio`, default 0.5). GPU users can set 0.
+- **Thumbnail auto-generate toggle** — `advanced.thumbs.autoOnDownload` config with a toggle on Maintenance → Thumbnails.
+- **GPU scaler probe** — ffmpeg `scale_cuda` / `scale_vaapi` / `vpp_qsv` probed at boot; missing filter falls back to software scale while keeping GPU decode.
+- **Orphan cleanup trigger** — SQLite trigger `trg_purge_orphan_people` auto-deletes people rows when all their faces are cascade-deleted.
+- **Doctor gates scan buttons** — Scan / Reindex / Re-cluster buttons disabled until all health checks pass.
+- **Security hardening** — constant-time token comparison in seekbar sidecar, TOCTOU symlink protection in faces sidecar, ffmpeg arg injection blocklist, log rotation for all log files, SpamGuard memory caps, event listener leak fixes.
 
 <details>
 <summary>v2.17.0</summary>
 
+- **Seekbar timeline previews** — Netflix / YouTube-style hover thumbnails on the video player. Go sidecar generates WebP sprite sheets; viewer paints a 160 px tile + time pill on scrub. Off by default — enable in Maintenance → Seekbar previews.
+- **Maintenance → Seekbar previews page** — master + auto-on-download toggles, KPI strip, tunable settings, JobTracker-driven Scan + Cancel + Wipe cache.
+- **Face clustering on Python sidecar** — insightface `buffalo_l` (512-dim ArcFace, MIT). Auto-spawns from PyInstaller binary or falls back to `python -m tgdl_faces`.
+- **Multi-platform GPU acceleration** — DirectML (Windows), CUDA (NVIDIA), OpenVINO (Intel), CoreML (Apple Silicon), CPU everywhere else.
 
-- **🎞️ Seekbar timeline previews** — Netflix / YouTube-style hover thumbnails on the in-app video player. A standalone Go sidecar (`seekbar-service/`) generates WebP sprite sheets per video; the viewer paints a 160 px tile + time pill above the scrub line with a shimmer overlay for videos that are still pregenerating. Off by default — flip the master toggle in **Maintenance → Seekbar previews**.
-- **⚙️ Maintenance → Seekbar previews page** — master + auto-on-download toggles, KPI strip (indexed videos / disk usage / last scan / ffmpeg status), tunable interval / tile width / columns / quality / format / hwaccel, JobTracker-driven Scan + Cancel + Wipe cache. Mirrors `/maintenance/thumbs` so muscle memory carries over.
-- **🩹 Cluster of busy-DB / config-merge fixes** — seekbar scan no longer holds a better-sqlite3 cursor across `await` and lock out the realtime downloader; `POST /api/config` deep-merges `advanced.seekbar` + `advanced.ai.faces` namespaces (so partial PATCHes preserve sibling keys); seekbar config tweaks now reach the running Go sidecar without a manual restart.
-- **🧠 Face clustering on a Python sidecar** (carried over from v2.16) — insightface `buffalo_l` (512-dim ArcFace, MIT). Auto-spawns from a prebuilt PyInstaller binary on first use, or falls back to `python -m tgdl_faces` when the host has Python ≥3.10 + deps. Zero `npm install` weight, no native Node bindings — fixes the Windows + Node 22 install break.
-- **⚡ Multi-platform GPU acceleration** — DirectML on Windows, CUDA on NVIDIA Linux, OpenVINO on Intel Linux, CoreML on Apple Silicon, CPU everywhere else. **`tgdl-faces-install`** auto-detects the host and `pip install`s the right `onnxruntime` variant — idempotent, with `--dry-run` / `--force` overrides. Docker compose ships matching `faces` / `faces-cuda` / `faces-openvino` profiles.
-
-Full ship list in [CHANGELOG.md](CHANGELOG.md). AI page operators: see [`docs/AI.md`](docs/AI.md). Seekbar API + sidecar contract: [`docs/API.md`](docs/API.md) + [`seekbar-service/README.md`](seekbar-service/README.md).
+Full ship list in [CHANGELOG.md](CHANGELOG.md).
 </details>
 
 ### One-click deploy
@@ -62,6 +61,8 @@ flowchart LR
     db[(SQLite)]
     fs[(data/downloads/)]
     tg[(Telegram MTProto)]
+    faces[faces-service]
+    seekbar[seekbar-service]
 
     user <-- REST + WebSocket --> server
     server -- start/stop/status --> runtime
@@ -76,6 +77,8 @@ flowchart LR
     downloader -- writes --> fs
     downloader -- inserts --> db
     db -- reads --> server
+    server -- detect/embed --> faces
+    server -- sprite/meta --> seekbar
 ```
 
 Detail in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -96,111 +99,172 @@ A self-hosted application that watches your Telegram chats and downloads new med
 - **Avoid Telegram bot limits** — User API has no 50 MB / 4 GB ceiling that the Bot API imposes.
 - **Forward as you download** — auto-forward to another channel, group, or Saved Messages.
 - **Share without logging in** — admin generates HMAC-signed `/share/<id>` URLs that friends can open or feed to a download manager (TTL configurable, including "never expires").
-- **Backup off-host** — multi-provider mirror to S3-compatible storage (AWS / R2 / B2 / MinIO / Wasabi), an SFTP NAS, Google Drive, Dropbox, or a local mount. Continuous mirror as new files arrive, scheduled tar.gz snapshots, optional client-side AES-256-GCM encryption, persistent retry queue.
-- **Find duplicates** — SHA-256 dedup at download time + on-demand library scan with a stats panel that shows hash coverage and last-scan summary at a glance.
-- **Sort 18+ vs not-18+** — opt-in in-process classifier (`@huggingface/transformers`, WASM, runs everywhere) flags photos that don't match the rest of the library so they can be reviewed and purged.
-- **🌐 Run a cluster (v2.10)** — pair two or more dashboards into a federated library. One peer downloads each group (owner-peer routing); the gallery merges every peer's catalog with a peer-source badge per row. Real-time WebSocket sync, automatic backup-peer failover, LAN auto-discovery, relay-through-peer for any-NAT setups, cross-peer file delete with retry queue, cluster-wide search. See [docs/CLUSTER.md](docs/CLUSTER.md).
-- **One-click update** — opt-in watchtower sidecar lets the dashboard pull-and-recreate the container itself; data volume + DB are preserved (DB is snapshotted to `data/backups/` first, verified by reopen). Full audit trail in the new Updates page.
-- **Right-click context menu, drag-drop URL, pinned items, picture-in-picture, mini-player, bulk-zip download, system notifications, wake lock, sunset/sunrise theme, customisable keyboard shortcuts** — gallery is a real desktop-class library, not a list of links.
-- **Hash worker pool, HTTP compression, immutable static caching, modulepreload** — fast on a Pi 4 / NAS too. Multi-GB SHA-256 hashing runs on a `worker_threads` pool, `compression` middleware halves text-payload bytes on the wire, static assets serve with 1-year `immutable` Cache-Control behind a `?v=` cache-bust.
-- **Run on a NAS / VPS / Raspberry Pi** — Docker image is multi-arch, runs as non-root.
+- **Backup off-host** — multi-provider mirror to S3-compatible storage (AWS / R2 / B2 / MinIO / Wasabi), an SFTP NAS, Google Drive, Dropbox, or a local mount. Continuous mirror, scheduled tar.gz snapshots, optional AES-256-GCM encryption, persistent retry queue.
+- **Find duplicates** — SHA-256 dedup at download time + on-demand library scan.
+- **Sort 18+ vs not-18+** — opt-in in-process classifier (`@huggingface/transformers`, WASM) flags photos for review.
+- **Recognize faces** — opt-in Python sidecar (insightface + DBSCAN) clusters faces from photos **and videos** into a People grid. Multiple model presets, GPU acceleration, CPU throttle.
+- **Seekbar timeline previews** — Go sidecar generates WebP sprite-sheet hover thumbnails for the video player (Netflix / YouTube-style).
+- **Run a cluster** — pair two or more dashboards into a federated library with real-time sync, automatic failover, LAN auto-discovery, relay-through-peer, cross-peer delete. See [docs/CLUSTER.md](docs/CLUSTER.md).
+- **One-click update** — opt-in watchtower sidecar; DB snapshotted first, full audit trail.
+- **Desktop-class gallery** — right-click context menu, drag-drop URL, pinned items, picture-in-picture, mini-player, bulk-zip download, system notifications, wake lock, sunrise/sunset theme, keyboard shortcuts.
+- **Fast on slow hardware** — hash worker pool, HTTP compression, immutable static caching, modulepreload. Runs on a Pi 4 / NAS.
 
 ## Complete feature list
 
 ### Engine
-- Realtime monitor across an unlimited number of channels, groups, supergroups, and forum topics.
-- **Monitor auto-starts** when at least one account is logged in — no manual "Start" click needed after a restart.
-- **Smart-resume backfill** — `iterMessages` skips already-stored ranges via `maxId/minId` instead of walking the whole timeline. Resuming a partial backfill is roughly an order of magnitude faster than re-walking + per-message dedup.
-- **Auto-backfill on first add** — enabling a brand-new group with zero stored rows triggers a background pull of the most recent N messages (default 100, configurable, 0 = disabled).
-- **Auto catch-up after restart** — monitor's boot-time inspection spawns a `catch-up` backfill when the gap between the last stored row and Telegram's current top exceeds the threshold.
-- **Per-group lock** — only one backfill per group at a time; a duplicate request returns 409 with `code: 'ALREADY_RUNNING'`.
-- **Backfill modes** surfaced over WS for the UI: `pull-older` / `catch-up` / `rescan`.
-- **Multi-account routing** — add unlimited Telegram accounts. The engine probes which account can read each chat and pins it automatically; per-group overrides are supported.
-- **Smart dual-lane queue** — realtime jobs (priority 1) never starve behind history backfill; TTL / self-destructing media (priority 0) is unshifted to the front.
-- **Auto-scaling workers** — 1 to 20 parallel downloads, scales with the queue depth, throttles down on FloodWait.
-- **FloodWait-aware** — pauses the right amount of time Telegram tells us to, never more. Per-job FloodWait retry capped (`MAX_FLOOD_RETRIES`) so a stuck job can't loop forever.
-- **Keep-alive pings** — periodic `PingDelayDisconnect` keeps gramJS senders warm so `network.log` stays quiet.
-- **Atomic downloads** — temp-file then rename, no half-written files on crash, **post-write `fs.stat` verify** to catch corrupt or truncated files immediately.
-- **Download-time deduplication** — every newly-written file is SHA-256'd; a hash+size match against an existing row swaps the new copy out for a pointer to the existing on-disk file. Zero duplicate bytes ever land on disk.
-- **Self-healing integrity sweep** — boot + hourly scan that re-queues missing files and prunes orphan DB rows (configurable batch size, opt-out).
-- **Auto-rotate disk cap** — when `maxTotalSize` is exceeded, oldest downloads are pruned automatically (toggleable). The rotator skips files the downloader has actively open.
-- **Rescue Mode** — keep only files that have been deleted from the source chat (configurable per-chat or globally).
-- **Persistent dedup** — `(group_id, message_id)` unique constraint, indexed `(file_name, file_size)` second-pass dedup, and the SHA-256 layer above.
-- **Disk-spillover queue** — over 2000 pending history jobs spill to disk so RAM stays bounded.
-- **Auto-forward** — forward each download to a configured destination (channel, group, Saved Messages) with optional delete-after-forward.
-- **Encrypted sessions** — AES-256-GCM with per-blob random scrypt salt; sessions live in `data/sessions/<id>.enc`.
+- Realtime monitor across unlimited channels, groups, supergroups, and forum topics.
+- **Monitor auto-starts** when at least one account is logged in — no manual "Start" click needed after restart.
+- **Smart-resume backfill** — `iterMessages` skips already-stored ranges via `maxId/minId` instead of walking the whole timeline.
+- **Auto-backfill on first add** — new group triggers background pull of most recent N messages (default 100, configurable, 0 = disabled).
+- **Auto catch-up after restart** — boots with a `catch-up` backfill when gap exceeds threshold.
+- **Per-group lock** — one backfill per group; duplicate request returns 409 `ALREADY_RUNNING`.
+- **Backfill modes** — `pull-older` / `catch-up` / `rescan`, surfaced over WS.
+- **Multi-account routing** — unlimited Telegram accounts. Engine probes which account can read each chat; per-group overrides supported.
+- **Smart dual-lane queue** — realtime (priority 1) never starves behind history backfill (priority 2); TTL / self-destruct unshifted to front (priority 0).
+- **Auto-scaling workers** — 1–20 parallel downloads, scales with queue depth, throttles on FloodWait.
+- **FloodWait-aware** — pauses exactly the time Telegram says, per-job retry cap.
+- **Keep-alive pings** — periodic `PingDelayDisconnect` keeps gramJS senders warm.
+- **Atomic downloads** — temp-file then rename + post-write `fs.stat` verify.
+- **Download-time deduplication** — SHA-256 every file; hash+size match reuses existing on-disk copy. Zero duplicate bytes on disk.
+- **Self-healing integrity sweep** — boot + hourly scan re-queues missing files, prunes orphan DB rows.
+- **Auto-rotate disk cap** — oldest downloads pruned when `maxTotalSize` exceeded; rotator skips actively-open files.
+- **Rescue Mode** — keep only files deleted from the source chat.
+- **Persistent dedup** — `(group_id, message_id)` UNIQUE + indexed `(file_name, file_size)` second-pass + SHA-256 layer.
+- **Disk-spillover queue** — 2000+ pending jobs spill to SQLite `queue_backlog` table.
+- **Auto-forward** — forward each download to a configured destination with optional delete-after-forward.
+- **Encrypted sessions** — AES-256-GCM with per-blob random scrypt salt in `data/sessions/<id>.enc`.
 - **Account add / remove from the web** — phone → OTP → 2FA wizard, no CLI required.
 
 ### Web dashboard
-- **Self-hosted on `:3000`** with a Telegram-themed responsive SPA (vanilla ES Modules, no bundler, no build step).
+- **Self-hosted on `:3000`** — Telegram-themed responsive SPA (vanilla ES Modules, no bundler, no build step).
 - **Installable PWA** — manifest + service worker; install to home-screen / desktop, offline shell.
-- **Light / dark / auto theme** with `prefers-color-scheme` detection, persistence, and a fully-tuned light palette.
-- **Full bilingual UI (en / th)** — `data-i18n` everywhere, lockstep translation files (800+ keys), runtime language switcher.
-- **Asset cache-busting** — every JS module URL carries `?v=<APP_VERSION>` so a fresh deploy is picked up immediately, while unchanged versions stay cached as `immutable`.
-- **Two roles** — `admin` (full access) and opt-in `guest` (read-only viewer; sees gallery + own video-player preferences, blocked from delete / config / accounts via a default-deny `/api` chokepoint).
-- **Live engine card** — start, stop, queue depth, active workers, uptime; updates over WebSocket. The per-row "live downloads" list moved to the dedicated Queue page.
-- **Sticky status bar** — monitor state, queue, active, total files, disk usage, WebSocket health, plus a live **version chip** and an **"Update available" pill** that polls GitHub Releases and (when the watchtower sidecar is enabled) installs the new container with one click.
-- **Queue page (IDM-style)** — append-on-scroll table with per-row pause / resume / cancel / retry, in-place WS progress patches (no full re-render), filter chips, free-text search, and a global throttle slider.
-- **Backfill tab** — pick a chat, choose preset (100 / 1k / 10k / dump-all) or custom range, per-row delete + Clear-all on the Recent backfills list.
-- **Server-side WebP thumbnails** — `sharp` for images, `ffmpeg` for video first-frame, audio cover-art when present. Cached at `data/thumbs/`, served via `/api/thumbs/:id?w=…`. Pre-generated automatically on every download and on a Maintenance "build for older files" sweep.
-- **Maintenance hub** — CLI parity from the browser, every tool surfaced as a card with a live status pill (idle / running / error). Tools: **find duplicate files** (stats panel + Verify-files button + persisted last-scan summary + h-2 progress bars + JobTracker single-flight per route), **build / rebuild thumbnails** (auto-generate on download toggle, scoped builds by media type), **seekbar previews** (Go sidecar — generates WebP sprite-sheet hover previews for the video player; opt-in master toggle + auto-on-download + hardware acceleration), **AI face clustering** (Python sidecar — opt-in; insightface buffalo_l / antelopev2 / buffalo_m / buffalo_s + DBSCAN with rename / merge / split / reassign; video face detection; model preload; CPU throttle; People grid with video badge + filter chips), **video faststart sweep**, **scan images for NSFW (18+)** (review sheet for not-18+ candidates with delete + Mark-as-18+ whitelist), **backup destinations** (S3 / SFTP / GDrive / Dropbox / local with run + edit + retry per row), **cluster mode** (peer pairing, audit, sweep, failover log), **logs** (realtime tail + filter), **active share links** (search + revoke), **install update** (with audit trail), view raw runtime config, sign out everywhere. Every long-running action is fire-and-forget with WebSocket progress + recovery on tab re-open.
-- **Shareable media links** — admin mints HMAC-SHA256 signed URLs (`/share/<id>?exp=&sig=`) that friends can stream or download without logging in; per-link revocation, access counters, optional label, TTL options including "never expires".
-- **Auto-update via watchtower sidecar** (opt-in) — dashboard never touches `/var/run/docker.sock`. The DB is snapshotted to `data/backups/` before the swap; the SPA reconnects to the new container automatically once its healthcheck passes.
-- **YouTube/Netflix-grade video player** — buffered indicator, click + drag scrub, **sprite-sheet hover preview** (Maintenance → Seekbar previews must be enabled), scroll-wheel volume, persisted volume / speed, race-safe resume, full keyboard shortcuts (Space / K / M / F / 0–9 / &lt; &gt;), double-tap mobile seek.
-- **Themed sheets replace native dialogs** — `confirmSheet` / `promptSheet` everywhere; no more browser `alert()` / `confirm()` / `prompt()`.
-- **Media gallery** — append-on-scroll (page-2+ adds tiles in place — no full re-render), lazy loading, server-side WebP thumbnails, type filters (Photos / Videos / Files / Audio), three view modes (Grid / Compact / List with full file metadata columns) selected from a dropdown picker. Mobile uses a smaller page size + poster-only video tiles for smooth scroll on iOS Safari.
-- **Picker / select-mode covers every platform** —
-    - Desktop: drag-to-select lasso · Ctrl/Cmd + click toggle · Shift + click range · Ctrl/Cmd + A select-all · Esc exit · Delete/Backspace bulk-delete.
-    - Touch: long-press to enter select-mode + toggle (with haptic feedback when supported) · drag-after-long-press to continue selecting (Material pattern) · two-finger drag = lasso (iOS Photos pattern). Pinch-to-zoom cancels the long-press cleanly.
-    - All in-place; no grid re-render per click.
-- **Search across all downloads** — server-side `LIKE` search over filename + group name with debounced input + AbortController for race-free fast typing.
-- **Paste t.me link** — drop one or many URLs (newline-separated) to download just those messages.
-- **Stories drawer** — fetch a username's active Stories, pick which ones to save.
-- **Group settings modal** — per-chat media filters (photos, videos, files, voice, gifs, stickers, links), auto-forward destination, monitor / forward account assignment, forum-topic whitelist, per-row cog.
-- **Settings → Advanced** — system-wide runtime tunables (worker auto-scale, integrity batch size, polling interval, history retention, share TTL bounds, auto-backfill knobs, etc.). All clamped server-side; defaults preserve current behaviour. Per-tool settings (NSFW classifier, ffmpeg decoder, AI capabilities) live on their respective `/maintenance/*` page.
-- **Font picker** — 21 fonts (10 Thai-capable + 10 Latin + system); applied at boot before first paint to avoid FOUC.
-- **Privacy / Force-HTTPS / Rate-limit toggles** — opt-in from the browser, no `.env` editing.
-- **Browser notifications** — opt-in toast for download-complete events, with burst coalescing.
-- **Dialogs picker covers archived chats and DMs** (DMs gated by an explicit privacy switch).
-- **Set / change dashboard password from the browser** — first-run setup wizard, no CLI required.
-- **Sign out everywhere** — revoke all active dashboard sessions.
+- **Light / dark / auto theme** with `prefers-color-scheme` detection and persistence.
+- **Full bilingual UI (en / th)** — `data-i18n` everywhere, 800+ keys, runtime language switcher.
+- **Asset cache-busting** — every JS/CSS URL carries `?v=<APP_VERSION>`, unchanged versions stay cached as `immutable`.
+- **Two roles** — `admin` (full access) and opt-in `guest` (read-only; default-deny `/api` chokepoint).
+- **Live engine card** — start, stop, queue depth, active workers, uptime; updates over WebSocket.
+- **Sticky status bar** — monitor state, queue, active, total files, disk usage, WS health, version chip, "Update available" pill.
+- **Queue page (IDM-style)** — per-row pause / resume / cancel / retry, WS progress patches, filter chips, free-text search, global throttle slider.
+- **Backfill tab** — pick chat, preset (100 / 1k / 10k / dump-all) or custom range, delete + Clear-all on Recent backfills.
+- **Server-side WebP thumbnails** — `sharp` for images, `ffmpeg` for video first-frame / audio cover-art. Cached at `data/thumbs/`, auto-generated on download, manual sweep for older files.
+- **Maintenance hub** — CLI parity from the browser:
+  - **Find duplicate files** — stats panel, Verify-files button, progress bars, JobTracker single-flight.
+  - **Build / rebuild thumbnails** — auto-generate on download toggle, scoped builds by media type, GPU probe for `scale_cuda` / `scale_vaapi` / `vpp_qsv`.
+  - **Seekbar previews** — Go sidecar generates WebP sprite-sheet hover previews. Master + auto-on-download toggles, hardware acceleration, tunable interval / width / columns / quality / format.
+  - **AI face clustering** — Python sidecar. insightface models (buffalo_l / antelopev2 / buffalo_m / buffalo_s) + DBSCAN. People grid with rename / merge / split / reassign. Video face detection. Model preload. CPU throttle. Filter chips (All / Unlabeled / Video). Doctor health gate.
+  - **Video faststart sweep** — `moov` atom optimization for streaming.
+  - **NSFW image scanner** — local classifier (Falconsai/nsfw_image_detection), review sheet with whitelist, `w`/`r`/`d` shortcuts.
+  - **Backup destinations** — S3 / SFTP / Google Drive / Dropbox / local with run + edit + retry per row.
+  - **Cluster mode** — peer pairing, audit, sweep, failover log.
+  - **Logs** — realtime tail + filter.
+  - **Active share links** — search + revoke.
+  - **Install update** — with audit trail.
+  - **Database tools** — view runtime config, VACUUM, export.
+  - **Sign out everywhere**.
+- **Shareable media links** — admin mints HMAC-SHA256 signed URLs; per-link revocation, access counters, optional label, TTL options including "never expires".
+- **Auto-update via watchtower sidecar** (opt-in) — DB snapshotted before swap; SPA auto-reconnects after healthcheck passes.
+- **Video player** — buffered indicator, click+drag scrub, **sprite-sheet hover preview**, scroll-wheel volume, persisted volume/speed, resume, keyboard shortcuts (Space / K / M / F / 0–9 / < >), double-tap mobile seek, picture-in-picture.
+- **Themed sheets** — `confirmSheet` / `promptSheet` replace all native dialogs.
+- **Media gallery** — append-on-scroll, lazy loading, WebP thumbnails, type filters (Photos / Videos / Files / Audio), three view modes (Grid / Compact / List), mobile-optimized.
+- **Select mode** — Desktop: drag-lasso · Ctrl+click · Shift+click range · Ctrl+A · Delete. Touch: long-press toggle · drag-after-long-press · two-finger lasso. Haptic feedback.
+- **Search** — server-side `LIKE` over filename + group name with debounced input + AbortController.
+- **Paste t.me link** — one or many URLs (newline-separated).
+- **Stories drawer** — fetch username's active Stories, pick which to save.
+- **Group settings modal** — per-chat media filters, auto-forward destination, account assignment, forum-topic whitelist.
+- **Settings → Advanced** — worker auto-scale, integrity batch size, polling interval, history retention, share TTL bounds, auto-backfill knobs.
+- **Font picker** — 21 fonts (10 Thai-capable + 10 Latin + system).
+- **Privacy / Force-HTTPS / Rate-limit toggles** — opt-in from browser.
+- **Browser notifications** — opt-in download-complete toasts with burst coalescing.
+- **Dialogs picker** — archived chats, DMs (gated by privacy switch).
+- **Set / change password from browser** — first-run setup wizard, password reset via server log token.
 
 ### CLI
 - Interactive main menu with arrow-key navigation.
-- `monitor`, `history`, `dialogs`, `accounts`, `config`, `settings`, `purge`, `auth`, `migrate`, `web` subcommands.
-- Headless watchdog supervisors for production: `runner.js` (cross-platform Node), `runner.sh` (POSIX shell), `watchdog.ps1` (Windows PowerShell). All read `TGDL_RUN` env (default `monitor`).
-- Structured logging via `data/logs/*.log` with a noise classifier so gramJS reconnect chatter doesn't drown out real errors. Set `TGDL_DEBUG=1` to see everything.
+- `monitor`, `history`, `dialogs`, `accounts`, `config`, `settings`, `purge`, `auth`, `migrate`, `web`, `doctor` subcommands.
+- Headless watchdog supervisors: `runner.js` (Node), `runner.sh` (POSIX), `watchdog.ps1` (Windows). All read `TGDL_RUN` env (default `monitor`).
+- Structured logging via `data/logs/*.log` with noise classifier + log rotation (5 MB per file). Set `TGDL_DEBUG=1` for verbose output.
 
 ### Filters & limits
 - Per-group toggles for **photos, videos, files / documents, links, voice messages, GIFs, stickers, and URL extraction**.
-- Global **download speed limit** (bandwidth throttle) and **concurrent worker** count.
+- Global **download speed limit** (bandwidth throttle) and **concurrent worker** count (1–20).
 - Per-file size limits for **videos, images, total disk usage** (e.g. `1GB`, `100MB`, `50GB`, `1TB`).
 - Per-minute API rate limit (anti-FloodWait), polling interval.
-- **SOCKS4 / SOCKS5 / MTProxy** support with username/password/secret + an in-dashboard reachability test.
+- **SOCKS4 / SOCKS5 / MTProxy** support with username/password/secret + in-dashboard reachability test.
 - **Forum-topic filter** — whitelist specific topic IDs in a forum-style supergroup.
 
+### AI face clustering
+- **Python sidecar** (`faces-service/`) — insightface with multiple model presets: buffalo_l (default), antelopev2 (ResNet100, best accuracy, ~2.3x slower on CPU), buffalo_m, buffalo_s. All produce 512-dim embeddings — switching models doesn't require re-scanning.
+- **Photo + video detection** — opt-in `scanVideos` toggle. Video frames extracted via OpenCV; faces clustered alongside photo faces in the same DBSCAN pass.
+- **GPU acceleration** — CUDA (NVIDIA), OpenVINO (Intel iGPU/dGPU/NPU), DirectML (Windows), CoreML (Apple Silicon), CPU everywhere else.
+- **Docker compose profiles** — `faces` (CPU), `faces-cuda` (NVIDIA), `faces-openvino` (Intel). All expose port 8011.
+- **People grid** — circle avatars, face count badge, video badge, quality badge, rename / merge / split / reassign. Filter chips: All / Unlabeled / Video.
+- **Model preload** — background download when switching models; status polling from UI.
+- **CPU throttle** — duty-cycle rest (`cpuThrottleRatio`, 0–5, default 0.5). GPU users set 0.
+- **Orphan cleanup** — SQLite trigger auto-deletes empty people when all faces cascade-deleted.
+- **Doctor health gate** — scan buttons disabled until sidecar health checks pass.
+- Full docs in [`docs/AI.md`](docs/AI.md).
+
+### Seekbar timeline previews
+- **Go sidecar** (`seekbar-service/`) — generates WebP/JPEG sprite-sheet hover previews for videos.
+- **Video player integration** — 160 px tile + time pill above scrub line; shimmer overlay for pregenerating videos.
+- **Master + auto-on-download toggles**, KPI strip, tunable interval / tile width / columns / quality / format / hwaccel.
+- **Hardware acceleration** — auto-detect, CUDA, VAAPI, QSV, VideoToolbox.
+- **JobTracker-driven** — Scan + Cancel + Wipe cache with WS progress.
+- Full docs in [`seekbar-service/README.md`](seekbar-service/README.md).
+
+### Backup providers
+- **S3-compatible** — AWS S3, Cloudflare R2, Backblaze B2, MinIO, Wasabi.
+- **SFTP** — any SSH server / NAS.
+- **Google Drive** — OAuth2 with persistent refresh token.
+- **Dropbox** — OAuth2 with persistent refresh token.
+- **Local mount** — bind-mount or network share.
+- **Modes** — continuous mirror (new files synced on arrival), scheduled tar.gz snapshot, manual trigger.
+- **Client-side AES-256-GCM encryption** — optional, per-destination.
+- **Persistent retry queue** — failed uploads retry with exponential backoff.
+- Full docs in [`docs/BACKUP.md`](docs/BACKUP.md).
+
+### Cluster mode
+- **Federated library** — pair two or more dashboards into a unified gallery.
+- **Owner-peer routing** — each group assigned to one peer for downloading; gallery merges all catalogs.
+- **Real-time WebSocket sync** — new downloads propagate across peers instantly.
+- **Automatic backup-peer failover** — if the owner goes offline, a backup peer takes over.
+- **LAN auto-discovery** — mDNS-based peer finding on local network.
+- **Relay-through-peer** — any-NAT setups where peers can't reach each other directly.
+- **Cross-peer file delete** — with retry queue and audit log.
+- **Cluster-wide search** — queries all peers, merges results.
+- **HMAC-signed inter-peer auth** — every request cryptographically verified.
+- Full docs in [`docs/CLUSTER.md`](docs/CLUSTER.md).
+
 ### Security
-- **Fail-closed by default.** No password configured → no open access. The dashboard redirects to a setup wizard.
-- Passwords stored as **scrypt hashes** with per-password random salt; verified with `crypto.timingSafeEqual`.
-- Session cookies are **opaque random tokens**, not the password. `httpOnly + sameSite=strict + secure` (in production).
-- **Two-tier role model** — admin password + optional guest password. A default-deny `/api` chokepoint allowlists only safe read-only routes for guests; every mutation route is admin-only by construction.
-- **Origin / Referer CSRF check** on every mutation request; `helmet` headers; **rate-limited login** (10 / 15 min / IP); separate **rate-limited share-link endpoint** (60 req / min / IP, configurable); **256 KB JSON body cap**.
-- File serving is **NUL-byte / symlink / path-traversal proof** via `fs.realpath`.
-- **WebSocket auth at the upgrade handshake** — unauthenticated connections are dropped before they ever receive a message; the WS records the session role for future per-event filtering.
-- **Share-link integrity** — HMAC-SHA256 with per-server secret in `config.web.shareSecret` (lazy-generated, persisted atomically). Sigs verified with `crypto.timingSafeEqual` after a length pre-check.
-- **Auto-update isolation** — the watchtower sidecar gets a read-only `/var/run/docker.sock` and is scoped to the labeled container; the dashboard process never sees the socket.
+- **Fail-closed by default.** No password → no access. Dashboard redirects to setup wizard.
+- Passwords: **scrypt hashes** with per-password random salt; verified with `crypto.timingSafeEqual`.
+- Session cookies: **opaque random tokens**, `httpOnly + sameSite=strict + secure`.
+- **Two-tier role model** — admin + optional guest. Default-deny `/api` chokepoint.
+- **CSRF** — Origin / Referer check on every mutation; `helmet` headers.
+- **Rate-limited login** — 10 / 15 min / IP.
+- **Rate-limited share links** — 60 req / min / IP (configurable).
+- **256 KB JSON body cap**.
+- **File serving** — NUL-byte / symlink / path-traversal proof via `fs.realpath`.
+- **WebSocket auth** at the upgrade handshake — unauthenticated connections dropped immediately.
+- **Share-link integrity** — HMAC-SHA256 with per-server secret; `timingSafeEqual` verification.
+- **Auto-update isolation** — watchtower sidecar gets read-only socket, scoped to labeled container.
+- **Seekbar sidecar** — constant-time token comparison (`crypto/subtle`), header-only auth.
+- **Faces sidecar** — O_NOFOLLOW on file reads to prevent TOCTOU symlink attacks.
+- **Log rotation** — all log files (errors.log, network.log, custom) capped at 5 MB with one backup generation.
+- **SpamGuard memory caps** — hard limits on rate-limit and content-hash maps.
 - **CodeQL + Dependabot** scheduled scans.
 
 ### Operations
-- **Docker image** on GHCR, multi-stage, Debian-slim base (glibc — required by `onnxruntime-node` for the optional NSFW classifier), runs as non-root `node` user, `tini` as PID 1, built-in `HEALTHCHECK` against `/api/auth_check`. Multi-arch (amd64 + arm64). Includes `ffmpeg` (apt) so video / audio thumbnails work out of the box without an extra container.
-- **GHCR pull-policy:always** in the bundled compose file — `docker compose up -d` always grabs `:latest`.
-- **`/api/version` + `/api/version/check` + `/metrics`** endpoints — version chip, GitHub-Releases-backed update notifier (cached, fail-soft), and OpenMetrics text format for Prometheus scraping.
-- **Optional in-dashboard auto-update** — opt-in `auto-update` compose profile spins up a watchtower sidecar; a one-click button in Maintenance pulls the new image and recreates the container in place.
-- **Network log rotation** at 5 MB (writes preserved, never skipped).
-- **GitHub Actions CI** — lint + test on Node 22 & 24 across Ubuntu / Windows / macOS, plus a Docker workflow that builds + smoke-tests the image (file perms, healthcheck, runs-as-non-root) before publishing to GHCR.
-- **5700+ vitest specs** covering URL parsing, AES round-trip + legacy decrypt, scrypt password verify, session tokens, role-aware login + guest gating, share-link sign/verify + tamper rejection + TTL limits, proxy mapping, DB migrations + dedup + dedup keyset paging, name sanitisation, AI faces sidecar config/spawn/health-cache, seekbar generator + scan-runner + DB helpers, OOM-pattern checker.
-- **Biome 2 + Lefthook** — single binary that does lint + format + autofix on every commit; replaces eslint, prettier, husky, and lint-staged.
-- **Backwards compatibility** — legacy plaintext passwords auto-rehashed on first login; legacy AES `v=1` blobs still decrypt; sessions persisted before the role field gained one default to admin (no forced re-login on upgrade).
+- **Docker image** on GHCR — multi-stage, Debian-slim base, non-root `node` user, `tini` PID 1, built-in `HEALTHCHECK`. Multi-arch (amd64 + arm64). Includes `ffmpeg`.
+- **GHCR `pull_policy: always`** — `docker compose up -d` always grabs `:latest`.
+- **`/api/version` + `/api/version/check` + `/metrics`** — version chip, GitHub Releases update notifier, OpenMetrics for Prometheus.
+- **Auto-update** — opt-in `auto-update` compose profile with watchtower sidecar.
+- **Autoheal sidecar** — restarts container on unhealthy healthcheck (covers hung process, not just crash).
+- **Log rotation** — Docker json-file (5 × 10 MB), application-level (5 MB per log file).
+- **GitHub Actions CI** — lint + test on Node 22 & 24 × Ubuntu / Windows / macOS + Docker smoke test.
+- **5700+ vitest specs** across 63 test files covering URL parsing, AES round-trip, scrypt verify, session tokens, role-aware login, share-link tamper rejection, proxy mapping, DB migrations, dedup, AI face sidecar config/spawn/health, seekbar generator, cluster identity/handshake/sync/failover/relay/discovery, OOM-pattern checker.
+- **Biome 2 + Lefthook** — single binary for lint + format + autofix on every commit.
+- **Backwards compatibility** — legacy plaintext passwords auto-rehashed; legacy AES `v=1` blobs still decrypt; pre-role sessions default to admin.
 
 ---
 
@@ -233,7 +297,26 @@ Open `http://localhost:3000`:
 
 Pre-built image: `ghcr.io/botnick/telegram-media-downloader:latest`.
 
-### Node
+### Docker with optional services
+
+```bash
+# AI face clustering (CPU)
+docker compose --profile faces up -d
+
+# AI face clustering (NVIDIA CUDA)
+docker compose --profile faces-cuda up -d
+
+# AI face clustering (Intel OpenVINO)
+docker compose --profile faces-openvino up -d
+
+# One-click auto-update (watchtower sidecar)
+docker compose --profile auto-update up -d
+
+# Combine profiles
+docker compose --profile faces --profile auto-update up -d
+```
+
+### Node (bare metal)
 
 ```bash
 git clone https://github.com/botnick/telegram-media-downloader.git
@@ -248,21 +331,23 @@ Long-running monitor under a watchdog (Linux / macOS): `TGDL_RUN=monitor ./runne
 
 ## CLI cheatsheet
 
-The dashboard does almost everything. The CLI subcommands stay around for headless servers and emergencies.
-
 | Command | What it does |
 | --- | --- |
 | `npm start` | **Default.** Opens the dashboard at `http://localhost:3000`. |
-| `npm run prod` | Same dashboard but supervised by the watchdog (`runner.js`). |
-| `npm run monitor` | Headless real-time monitor for servers (no dashboard UI). |
+| `npm run prod` | Same dashboard, supervised by the watchdog (`runner.js`). |
+| `npm run dev` | Dashboard with `node --watch` for auto-restart on edits. |
+| `npm run monitor` | Headless real-time monitor (no dashboard UI). |
 | `npm run history` | Bulk backfill an existing chat. |
 | `npm run auth` | Reset / change the dashboard password from the terminal. |
-| `npm run doctor` | Diagnostics: Node/ABI, config, SQLite, port, ffmpeg. |
+| `npm run doctor` | Diagnostics: Node/ABI, config, SQLite, port, ffmpeg, AI sidecar. |
 | `npm run menu` | Full list of subcommands. |
+| `npm run migrate` | One-shot JSON → SQLite state migration (also runs automatically). |
+| `npm test` | Run vitest test suite. |
+| `npm run check` | Biome lint + format autofix repo-wide. |
 
 ## Configuration
 
-Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heals to defaults on load, edited via the dashboard. Legacy state files (`data/config.json`, `data/disk_usage.json`, `data/web-sessions.json`, `data/history-jobs.json`, `data/queue-history.json`, `data/logs/queue_backlog.jsonl`) are auto-imported on first boot and renamed to `*.migrated` as a reversible backup; v2.8 onward, every runtime surface is SQLite-backed in normal operation.
+Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heals to defaults on load, edited via the dashboard. Legacy state files (`data/config.json`, `data/disk_usage.json`, `data/web-sessions.json`, `data/history-jobs.json`, `data/queue-history.json`) are auto-imported on first boot and renamed to `*.migrated`.
 
 ```jsonc
 {
@@ -279,7 +364,7 @@ Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heal
         "passwordHash":      { "algo": "scrypt", "salt": "…", "hash": "…" },
         "guestPasswordHash": { "algo": "scrypt", "salt": "…", "hash": "…" },
         "guestEnabled":      true,
-        "shareSecret":       "<lazy-generated 64-char hex — never commit>"
+        "shareSecret":       "<lazy-generated 64-char hex>"
     },
     "advanced": {
         "history":  { "autoFirstBackfill": true, "autoFirstLimit": 100,
@@ -290,39 +375,89 @@ Runtime config lives in the `kv['config']` row of `data/db.sqlite` — self-heal
                       "rateLimitWindowMs": 60000, "rateLimitMax": 60 },
         "nsfw":     { "enabled": false, "model": "Falconsai/nsfw_image_detection",
                       "threshold": 0.6, "concurrency": 1, "fileTypes": ["photo"] },
-        "thumbs":     { "hwaccel": "", "warnMisses": true, "autoOnDownload": true },
-        "ai":         { "enabled": false, "faces": { "detectorModel": "buffalo_l",
-                          "scanVideos": false, "providers": "auto" } },
+        "thumbs":   { "hwaccel": "", "warnMisses": true, "autoOnDownload": true },
+        "ai":       { "enabled": false, "faces": { "detectorModel": "buffalo_l",
+                        "scanVideos": false, "providers": "auto",
+                        "cpuThrottleRatio": 0.5 } },
+        "seekbar":  { "enabled": false, "autoOnDownload": false,
+                      "intervalSec": 5, "width": 160, "columns": 10,
+                      "quality": 70, "format": "webp", "hwaccel": "auto" },
         "downloader": { "minConcurrency": 3, "maxConcurrency": 20, "scalerIntervalSec": 5 },
         "integrity":  { "intervalMin": 60, "batchSize": 64 },
         "diskRotator":{ "sweepBatch": 50, "maxDeletesPerSweep": 5000 },
-        "web":      { "sessionTtlDays": 7 }
+        "web":        { "sessionTtlDays": 7 }
     }
 }
 ```
 
-Every `advanced` field is clamped on save and applied immediately on `config_updated` — no restart needed.
+Every `advanced` field is clamped on save and applied immediately — no restart needed.
+
+## Environment variables
+
+All optional. Set in `.env` next to `docker-compose.yml` or export before `npm start`.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TZ` | `UTC` | Container timezone |
+| `TGDL_DEBUG` | _(unset)_ | `1` = verbose logging |
+| `TGDL_PORT` | `3000` | Host port for the dashboard |
+| `TGDL_DATA_DIR` | `./data` | Base data directory (DB, sessions, logs, backups) |
+| `TGDL_DOWNLOADS_DIR` | _(unset)_ | Split downloads onto a separate disk |
+| `TGDL_HEAP_MB` | `8192` | V8 heap ceiling (MB) |
+| `TGDL_MEM_LIMIT` | `8g` | Docker container memory limit |
+| `FFMPEG_HWACCEL` | _(empty)_ | `vaapi` / `qsv` / `cuda` / `videotoolbox` / `d3d11va` |
+| `ENTRYPOINT_DEBUG_GPU` | `0` | `1` = log GPU detection steps |
+| `TRUST_PROXY` | `1` | Express trust-proxy setting for reverse proxies |
+| `WATCHTOWER_HTTP_API_TOKEN` | _(unset)_ | Token for the auto-update sidecar |
+| `WATCHTOWER_URL` | `http://watchtower:8080` | Watchtower sidecar URL |
+| `FACES_SERVICE_URL` | `http://tgdl-faces:8011` | Face clustering sidecar URL |
+| `TGDL_FACES_AUTO_DOWNLOAD` | `true` | Auto-download PyInstaller binary |
+| `TGDL_FACES_DETECTOR_MODEL` | `buffalo_l` | insightface model preset |
+| `TGDL_FACES_CPU_THROTTLE_RATIO` | `0.5` | CPU duty-cycle rest (0–5) |
+| `TGDL_FACES_PROVIDERS` | `auto` | ONNX providers (auto / CUDAExecutionProvider / ...) |
+| `TGDL_FACES_THROTTLE_MS` | `0` | Inter-image sleep (ms) for CPU hosts |
+| `SEEKBAR_SIDECAR_URL` | _(unset)_ | Seekbar sidecar URL |
+| `SEEKBAR_API_TOKEN` | _(unset)_ | Seekbar sidecar auth token |
+| `SEEKBAR_HWACCEL` | `auto` | Seekbar ffmpeg hardware acceleration |
+| `SEEKBAR_CONCURRENCY` | `2` | Parallel sprite generation jobs |
+| `HF_TOKEN` | _(unset)_ | HuggingFace token for gated models |
+
+Full env-var reference for the AI subsystem (27 knobs) in [`docs/AI.md`](docs/AI.md).
 
 ## File layout
 
 ```
 data/
-├── db.sqlite                 (WAL mode; runtime config + sessions + nsfw_score, file_hash)
-├── secret.key                (back this up)
+├── db.sqlite                 (WAL mode; config + sessions + downloads + faces + people)
+├── secret.key                (back this up — decrypts all sessions)
 ├── sessions/<id>.enc         (AES-256-GCM per account)
-├── photos/<id>.jpg
-├── downloads/<sanitised-group-name>/{images,videos,documents,audio,stickers}/
-├── thumbs/<sha>.webp         (server-generated thumbnails, auto-rebuilt when missing)
-├── models/                   (NSFW model cache — only when the feature is enabled)
+├── downloads/<group-name>/{images,videos,documents,audio,stickers}/
+├── thumbs/<sha>.webp         (server-generated thumbnails)
+├── seekbar/<video-id>.webp   (sprite-sheet previews)
+├── seekbar/<video-id>.json   (sprite metadata)
+├── faces-service/bin/        (PyInstaller binary, auto-downloaded)
+├── faces-service/models/     (insightface model cache)
+├── models/                   (NSFW model cache)
 ├── backups/db-pre-update-*.sqlite (pre-update DB snapshots; last 5 kept)
-└── logs/network.log
+└── logs/{network,errors}.log (rotated at 5 MB)
 ```
 
-`data/secret.key` decrypts every saved session — back it up. Without it, every account has to re-login.
+`data/secret.key` decrypts every saved session — **back it up**. Without it, every account has to re-login.
+
+## Docker compose services
+
+| Service | Profile | Description |
+| --- | --- | --- |
+| `telegram-downloader` | _(always)_ | Main app — Node.js dashboard + engine |
+| `tgdl-faces` | `faces` | Face clustering sidecar (CPU) |
+| `tgdl-faces-cuda` | `faces-cuda` | Face clustering sidecar (NVIDIA CUDA) |
+| `tgdl-faces-openvino` | `faces-openvino` | Face clustering sidecar (Intel OpenVINO) |
+| `autoheal` | _(always)_ | Auto-restart on unhealthy healthcheck |
+| `watchtower` | `auto-update` | One-click container update sidecar |
 
 ## Security & deployment
 
-- The dashboard fails closed when no password is configured — there is no "open access" default.
+- The dashboard **fails closed** when no password is configured.
 - Cookies are `httpOnly + sameSite=strict` (and `Secure` when `NODE_ENV=production`).
 - Login is rate-limited; file serving is symlink/NUL-byte proof.
 - **Don't expose `:3000` to the public internet.** Put it behind Caddy / nginx / Traefik with TLS — examples in [`docs/DEPLOY.md`](docs/DEPLOY.md).
@@ -337,37 +472,40 @@ A bot uses the Bot API and is limited to chats it's been added to plus Bot API f
 Built-in rate limiting (default 15 requests/min) and FloodWait handling minimise risk. Don't lower the rate-limit aggressively or run dozens of accounts on the same IP.
 
 **Can I download from a private channel I'm a member of?**
-Yes. If your Telegram account can see it, this tool can download it. The dialogs picker shows every chat — public and private.
+Yes. If your Telegram account can see it, this tool can download it.
 
 **Can I download from a DM (one-on-one chat)?**
-Yes, but it's off by default for privacy. Settings → Privacy → "Allow DM downloads" toggles the picker to include DMs.
+Yes, but off by default for privacy. Settings → Privacy → "Allow DM downloads" toggles the picker.
 
-**Does this run on Windows / macOS / Linux / Raspberry Pi?**
-All four. The Docker image is multi-arch (amd64 + arm64). For non-Docker installs you only need Node 22+.
+**Does this run on Windows / macOS / Linux / Raspberry Pi / NAS?**
+All of them. Docker image is multi-arch (amd64 + arm64). Non-Docker: Node 22+.
 
-**How do I download just one message from a Telegram link?**
+**How do I download just one message?**
 Paste the URL into the dashboard's top-bar "link" drawer. Supports `t.me/<chan>/<msg>`, `t.me/c/<id>/<msg>`, forum-topic links, and `tg://resolve` / `tg://privatepost`.
 
 **Can I download Telegram Stories?**
-Yes. Click the camera icon in the top bar, enter a username, and pick which Stories to download.
+Yes. Click the camera icon in the top bar, enter a username, pick which Stories to download.
 
 **Can I capture self-destructing (TTL) media?**
 Yes. The realtime monitor detects `media.ttlSeconds` and front-loads the queue so the file is downloaded before it expires.
 
 **Can I share a video with a friend without giving them the dashboard password?**
-Yes. Open the file in the viewer, click **Share**, pick a TTL (1 h / 24 h / 7 d / 30 d / 90 d / Never), and copy the link. Friends paste it into a browser or download manager — no login required. The link is HMAC-signed (revocable + expirable). Manage / revoke from Settings → Maintenance → Active share links.
+Yes. Open the file in the viewer, click **Share**, pick a TTL, copy the link. HMAC-signed, revocable, manageable from Maintenance → Active share links.
 
 **How does the in-dashboard auto-update work?**
-Opt-in. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` and start with `docker compose --profile auto-update up -d`. The `Install update` button in Maintenance asks the watchtower sidecar to pull the latest image and recreate the container; the dashboard never touches `/var/run/docker.sock` itself, so an RCE in the web layer cannot escalate to host root. Data volume + config + sessions survive the swap; the SQLite database is snapshotted to `data/backups/` first.
+Opt-in. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` and start with `docker compose --profile auto-update up -d`. The button asks the watchtower sidecar to pull and recreate; the dashboard never touches the Docker socket. DB is snapshotted first.
 
 **How does duplicate detection work?**
-Two layers: at download time, every freshly-written file is SHA-256'd and compared to existing rows — a match swaps the new copy for a pointer to the existing on-disk file (zero duplicate bytes). On demand, Maintenance → Find duplicate files runs the same hash across the whole library, groups byte-identical sets, and lets you keep the oldest / newest / cherry-picked copy.
+Two layers: download-time SHA-256 (zero duplicate bytes on disk) + on-demand full-library scan in Maintenance → Find duplicate files.
 
-**What does the NSFW review tool actually do?**
-A local image classifier (Falconsai/nsfw_image_detection by default) runs in the Node process via `@huggingface/transformers` (WASM, no Python sidecar, works on every platform including Alpine). Photos are scored and bucketed into five tiers (definitely-not / probably-not / borderline / probably / definitely 18+); the review page lands on the borderline tier by default with a thumbnail grid, click-to-lightbox preview, and `w`/`r`/`d` keyboard shortcuts for whitelist / re-classify / delete. Per-row whitelist persists across re-scans and is reversible via the "Show whitelisted" toggle. Off by default.
+**What does the NSFW tool do?**
+Local classifier (Falconsai/nsfw_image_detection) via `@huggingface/transformers` (WASM). Photos scored into five tiers; review page with thumbnail grid, keyboard shortcuts, whitelist. Off by default.
 
-**Does sorting use GPU? Will it run on a Raspberry Pi?**
-CPU only — no GPU dependency. Roughly 300-500 ms per thumbnail-sized image on commodity hardware; concurrency is capped (default 1) so the scan stays in the background and doesn't starve downloads.
+**How does face clustering work?**
+Opt-in Python sidecar runs insightface (buffalo_l or antelopev2) for detection + 512-dim ArcFace embeddings. DBSCAN clusters faces into people. Supports both photos and videos. GPU-accelerated on NVIDIA / Intel / Windows / macOS. See [docs/AI.md](docs/AI.md).
+
+**What are seekbar previews?**
+Netflix-style hover thumbnails above the video scrub bar. A Go sidecar generates WebP sprite sheets per video. Enable in Maintenance → Seekbar previews. See [seekbar-service/README.md](seekbar-service/README.md).
 
 ## Contributing
 
