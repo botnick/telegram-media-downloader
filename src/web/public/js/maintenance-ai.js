@@ -141,6 +141,26 @@ const CAPABILITIES = [
             desc: 'Object detection · OCR · Face quality ranking · Smart albums',
         },
     },
+    {
+        id: 'tags',
+        icon: 'ri-price-tag-3-line',
+        i18n: {
+            title: 'maintenance.ai.tags.title',
+            desc: 'maintenance.ai.tags.desc',
+            scanLabel: 'maintenance.ai.tags.scan',
+            cancelLabel: 'common.cancel',
+        },
+        defaults: {
+            title: 'Image tagging',
+            desc: 'Zero-shot CLIP tagging — detects objects, scenes, concepts in every photo. Runs via the Python sidecar.',
+            scanLabel: 'Tag all',
+            cancelLabel: 'Cancel',
+        },
+        statusKey: 'models.tags',
+        scanFeature: 'tags',
+        autoToggleKey: 'imageTagging',
+        controls: [],
+    },
 ];
 
 export async function init() {
@@ -258,6 +278,8 @@ function _bindOnce() {
     // header badge updates without a polling loop.
     ws.on('ai_people_progress', (m) => _onScanProgress('faces', m));
     ws.on('ai_people_done', (m) => _onScanDone('faces', m));
+    ws.on('ai_tags_progress', (m) => _onScanProgress('tags', m));
+    ws.on('ai_tags_done', (m) => _onScanDone('tags', m));
     ws.on('ai_faces_status', () => refreshStatus());
 
     // Auto-installer feedback. Streams stdout from `python -m

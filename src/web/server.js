@@ -123,6 +123,7 @@ import {
 } from '../core/nsfw.js';
 import {
     startFacesScan as aiStartFacesScan,
+    startTagsScan as aiStartTagsScan,
     cancelScan as aiCancelScan,
     isScanRunning as aiIsScanRunning,
     getScanState as aiGetScanState,
@@ -150,7 +151,6 @@ import {
 } from '../core/db.js';
 import * as backup from '../core/backup/index.js';
 import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
-import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import { metrics } from '../core/metrics.js';
 import {
     hashPassword,
@@ -210,6 +210,13 @@ import {
     createVersionRouter,
     readCurrentVersion as _readCurrentVersion,
 } from './routes/version.js';
+import { createStoriesRouter } from './routes/stories.js';
+import { createQueueRouter } from './routes/queue.js';
+import {
+    pushHistory as pushQueueHistory,
+    failedJobMeta as _failedJobMeta,
+} from './lib/queue-state.js';
+import { tgAuthErrorBody } from './lib/tg-error.js';
 import {
     cookieParser,
     checkAuth,
@@ -1675,19 +1682,6 @@ app.get('/api/accounts', async (req, res) => {
 // underlying state machine lives in AccountManager._authFlows and parks
 // gramJS callbacks on deferred Promises.
 
-function tgAuthErrorBody(e) {
-    if (e?.code === 'NO_API_CREDS') {
-        return {
-            status: 503,
-            body: {
-                error: 'Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first.',
-                code: 'NO_API_CREDS',
-            },
-        };
-    }
-    return { status: 400, body: { error: e?.message || 'Bad request' } };
-}
-
 app.post('/api/accounts/auth/begin', async (req, res) => {
     try {
         const { label } = req.body || {};
@@ -2348,100 +2342,6 @@ app.get('/api/history', (req, res) => {
     res.json(Array.from(_historyJobs.values()).map(({ _runner, ...rest }) => rest));
 });
 
-// ====== Queue (IDM-style download manager) =================================
-//
-// Drives the new #/queue page. The page boots from /api/queue/snapshot,
-// then patches its in-memory store from existing WS events
-// (download_start / _progress / _complete / _error) plus a new
-// `queue_changed` event emitted by the downloader when jobs are
-// paused/resumed/cancelled/retried. Per-row + global actions live under
-// /api/queue/* below.
-//
-// Recent (last N finished/failed) is persisted to disk so a page reload
-// doesn't drop the tail. We keep it small (cap = 100) and fire-and-forget
-// the writes so this can never block the WS event loop.
-
-// Queue history persists to kv['queue_history']. Same migration story as
-// history_jobs above — the legacy `data/queue-history.json` file is
-// imported once on first boot and then archived.
-const QUEUE_HISTORY_KV = 'queue_history';
-const QUEUE_HISTORY_CAP = 100;
-let _queueHistory = []; // newest first
-let _queueHistoryDirty = false;
-let _queueHistoryFlushTimer = null;
-// Map<key, jobMeta> — keeps original job objects around so /retry can
-// re-enqueue without the client having to round-trip the message ref.
-// LRU-capped at 5 000 entries because a chronically-failing source
-// (e.g. CHANNEL_INVALID storm during a Telegram outage) would otherwise
-// grow this Map without bound until the user clicks `clear-finished`.
-// See `CLAUDE.md → Big-data patterns` rule 3.
-const _failedJobMeta = new Map();
-const FAILED_JOB_META_CAP = 5000;
-
-(function loadQueueHistory() {
-    try {
-        const stored = kvGet(QUEUE_HISTORY_KV);
-        if (Array.isArray(stored)) _queueHistory = stored.slice(0, QUEUE_HISTORY_CAP);
-    } catch {
-        /* first-run, no row yet */
-    }
-})();
-
-function flushQueueHistorySoon() {
-    _queueHistoryDirty = true;
-    if (_queueHistoryFlushTimer) return;
-    // 1.5 s debounce keeps a chatty download stream from hammering the kv
-    // upsert. Each kvSet is one short SQLite transaction; cheap, but the
-    // batching still saves a few dozen writes/min on a busy queue.
-    _queueHistoryFlushTimer = setTimeout(() => {
-        _queueHistoryFlushTimer = null;
-        if (!_queueHistoryDirty) return;
-        _queueHistoryDirty = false;
-        try {
-            kvSet(QUEUE_HISTORY_KV, _queueHistory.slice(0, QUEUE_HISTORY_CAP));
-        } catch (e) {
-            console.error("kv['queue_history'] write failed:", e?.message || e);
-        }
-    }, 1500).unref?.();
-}
-
-function pushQueueHistory(entry) {
-    if (!entry || !entry.key) return;
-    // Dedup by key — last write wins so a retry → success replaces the
-    // old failed row instead of stacking duplicates.
-    _queueHistory = [entry, ..._queueHistory.filter((e) => e.key !== entry.key)].slice(
-        0,
-        QUEUE_HISTORY_CAP,
-    );
-    flushQueueHistorySoon();
-}
-
-// Subscribe directly to the downloader's `error` event whenever the
-// runtime spins one up so we can stash the raw job (incl. live `message`
-// reference) for the retry path. The serialized payload broadcast over WS
-// strips `message`, which gramJS needs to actually re-download.
-runtime.on('state', (s) => {
-    if (s.state !== 'running' || !runtime._downloader) return;
-    const dl = runtime._downloader;
-    if (dl.__queueWired) return;
-    dl.__queueWired = true;
-    dl.on('error', ({ job }) => {
-        if (!job?.key) return;
-        // Re-set bumps insertion order to the back → oldest entries fall
-        // off the front when we hit the cap. Real LRU on touch.
-        if (_failedJobMeta.has(job.key)) _failedJobMeta.delete(job.key);
-        _failedJobMeta.set(job.key, job);
-        while (_failedJobMeta.size > FAILED_JOB_META_CAP) {
-            const first = _failedJobMeta.keys().next().value;
-            if (first === undefined) break;
-            _failedJobMeta.delete(first);
-        }
-    });
-    dl.on('complete', (job) => {
-        if (job?.key) _failedJobMeta.delete(job.key);
-    });
-});
-
 // Capture finishes/failures off the runtime event stream so the snapshot
 // always has a populated "recent" tail even after a server restart.
 runtime.on('event', (e) => {
@@ -2530,308 +2430,12 @@ runtime.on('event', (e) => {
     }
 });
 
-function requireDownloader(res) {
-    if (!runtime._downloader) {
-        res.status(409).json({ error: 'Engine is not running. Start the monitor first.' });
-        return null;
-    }
-    return runtime._downloader;
-}
-
-app.get('/api/queue/snapshot', (req, res) => {
-    try {
-        const dl = runtime._downloader;
-        const snap = dl
-            ? dl.snapshot()
-            : {
-                  active: [],
-                  queued: [],
-                  globalPaused: false,
-                  pausedCount: 0,
-                  workers: 0,
-                  pending: 0,
-              };
-        res.json({
-            ...snap,
-            recent: _queueHistory.slice(0, QUEUE_HISTORY_CAP),
-            engineRunning: runtime.state === 'running',
-            maxSpeed: runtime._downloader?.config?.download?.maxSpeed || null,
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/queue/pause-all', (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    dl.pauseAll();
-    broadcast({ type: 'queue_changed', payload: { op: 'pause-all' } });
-    res.json({ success: true });
-});
-
-app.post('/api/queue/resume-all', (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    dl.resumeAll();
-    broadcast({ type: 'queue_changed', payload: { op: 'resume-all' } });
-    res.json({ success: true });
-});
-
-app.post('/api/queue/cancel-all', (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    const removed = dl.cancelAllQueued();
-    broadcast({ type: 'queue_changed', payload: { op: 'cancel-all', removed } });
-    res.json({ success: true, removed });
-});
-
-app.post('/api/queue/clear-finished', (req, res) => {
-    _queueHistory = [];
-    flushQueueHistorySoon();
-    _failedJobMeta.clear();
-    broadcast({ type: 'queue_changed', payload: { op: 'clear-finished' } });
-    res.json({ success: true });
-});
-
-// Per-row routes. Keys look like "<chatId>_<messageId>"; URL-encode them.
-app.post('/api/queue/:key/pause', (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    const key = decodeURIComponent(req.params.key);
-    const ok = dl.pauseJob(key);
-    broadcast({ type: 'queue_changed', payload: { op: 'pause', key } });
-    res.json({ success: ok });
-});
-
-app.post('/api/queue/:key/resume', (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    const key = decodeURIComponent(req.params.key);
-    const ok = dl.resumeJob(key);
-    broadcast({ type: 'queue_changed', payload: { op: 'resume', key } });
-    res.json({ success: ok });
-});
-
-app.post('/api/queue/:key/cancel', async (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    const key = decodeURIComponent(req.params.key);
-    // Best-effort delete of any partial file the worker may have left
-    // behind. We don't know the exact path until the download path is
-    // built (config-dependent), so this is intentionally a no-op for the
-    // cases the downloader hasn't reached yet.
-    const removed = dl.cancelJob(key);
-    _failedJobMeta.delete(key);
-    broadcast({ type: 'queue_changed', payload: { op: 'cancel', key } });
-    res.json({ success: removed });
-});
-
-app.post('/api/queue/:key/retry', async (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    const key = decodeURIComponent(req.params.key);
-    const meta = _failedJobMeta.get(key);
-    if (!meta) {
-        // No cached job means we never saw the original message — surface
-        // a friendly error instead of silently doing nothing. The caller
-        // can fall back to re-pasting the link from the viewer.
-        return res.status(404).json({
-            error: 'Cannot retry: original job no longer in memory. Re-trigger from the source (link / backfill / monitor).',
-        });
-    }
-    dl.retryJob(meta);
-    broadcast({ type: 'queue_changed', payload: { op: 'retry', key } });
-    res.json({ success: true });
-});
-
-// Retry every failed job we still have a cached message for. Skips rows
-// whose source message has already aged out of `_failedJobMeta` (cleared
-// by `clear-finished` or evicted on engine restart) — surfaced as
-// `skipped` in the response so the UI can toast "retried N, skipped M".
-app.post('/api/queue/retry-all', (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    let retried = 0;
-    const skippedKeys = [];
-    for (const [key, meta] of _failedJobMeta) {
-        if (!meta) {
-            skippedKeys.push(key);
-            continue;
-        }
-        try {
-            dl.retryJob(meta);
-            retried++;
-        } catch (e) {
-            skippedKeys.push(key);
-        }
-    }
-    broadcast({ type: 'queue_changed', payload: { op: 'retry-all', retried } });
-    res.json({ success: true, retried, skipped: skippedKeys.length });
-});
-
-// Multi-row batch action. Single endpoint instead of "POST /batch/pause",
-// "POST /batch/resume" etc. so the client can fire one request per user
-// gesture regardless of which action the floating bar invoked. Continues
-// past per-row failures so a single missing key (e.g. just-completed
-// between snapshot and click) doesn't abort the whole batch.
-app.post('/api/queue/batch', async (req, res) => {
-    const dl = requireDownloader(res);
-    if (!dl) return;
-    const { keys, action } = req.body || {};
-    if (!Array.isArray(keys) || keys.length === 0) {
-        return res.status(400).json({ error: 'keys must be a non-empty array' });
-    }
-    const ALLOWED = new Set(['pause', 'resume', 'cancel', 'retry', 'dismiss']);
-    if (!ALLOWED.has(action)) {
-        return res
-            .status(400)
-            .json({ error: `action must be one of: ${Array.from(ALLOWED).join(', ')}` });
-    }
-    let ok = 0;
-    const failed = [];
-    for (const rawKey of keys) {
-        const key = String(rawKey || '');
-        if (!key) {
-            failed.push({ key: rawKey, reason: 'empty key' });
-            continue;
-        }
-        try {
-            if (action === 'pause') {
-                if (dl.pauseJob(key)) ok++;
-                else failed.push({ key, reason: 'not pausable' });
-            } else if (action === 'resume') {
-                if (dl.resumeJob(key)) ok++;
-                else failed.push({ key, reason: 'not paused' });
-            } else if (action === 'cancel') {
-                dl.cancelJob(key);
-                _failedJobMeta.delete(key);
-                ok++;
-            } else if (action === 'retry') {
-                const meta = _failedJobMeta.get(key);
-                if (!meta) {
-                    failed.push({ key, reason: 'meta evicted' });
-                    continue;
-                }
-                dl.retryJob(meta);
-                ok++;
-            } else if (action === 'dismiss') {
-                _failedJobMeta.delete(key);
-                ok++;
-            }
-        } catch (e) {
-            failed.push({ key, reason: e?.message || 'unknown' });
-        }
-    }
-    // One coalesced WS frame instead of N. The Queue page already has
-    // per-row WS hooks (queue_changed/pause/resume/cancel/retry) firing
-    // through the downloader's emit chain — this is a hint to the SPA
-    // that "a batch happened" so it can refresh aggregates / pill counts
-    // in one tick.
-    broadcast({
-        type: 'queue_changed',
-        payload: { op: 'batch', action, ok, failed: failed.length },
-    });
-    res.json({ success: true, ok, failed });
-});
-
 // ====== Proxy test =========================================================
 //
 // Briefly opens a TCP connection to host:port to confirm the proxy is
 // reachable. We don't speak SOCKS/MTProto here — that's the job of gramJS at
 // the next monitor start — but a TCP open is enough to catch typos and DNS
 // misconfiguration without needing a full Telegram round-trip.
-
-// ====== Stories ============================================================
-
-app.post('/api/stories/user', async (req, res) => {
-    try {
-        const { username } = req.body || {};
-        if (!username) return res.status(400).json({ error: 'username required' });
-        const am = await getAccountManager();
-        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
-        const r = await listUserStories(am.getDefaultClient(), username);
-        res.json({ success: true, ...r });
-    } catch (e) {
-        const { status, body } = tgAuthErrorBody(e);
-        res.status(status === 400 ? 502 : status).json(body.error ? body : { error: e.message });
-    }
-});
-
-app.post('/api/stories/all', async (req, res) => {
-    try {
-        const am = await getAccountManager();
-        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
-        const r = await listAllStories(am.getDefaultClient());
-        res.json({ success: true, ...r });
-    } catch (e) {
-        const { status, body } = tgAuthErrorBody(e);
-        res.status(status === 400 ? 502 : status).json(body.error ? body : { error: e.message });
-    }
-});
-
-app.post('/api/stories/download', async (req, res) => {
-    try {
-        const { username, storyIds } = req.body || {};
-        if (!username || !Array.isArray(storyIds) || storyIds.length === 0) {
-            return res.status(400).json({ error: 'username and storyIds required' });
-        }
-        const am = await getAccountManager();
-        if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
-        const client = am.getDefaultClient();
-        const entity = await client.getEntity(username);
-        const r = await client.invoke(
-            new (await import('telegram')).Api.stories.GetPeerStories({ peer: entity }),
-        );
-        const stories = r?.stories?.stories || [];
-        const wanted = new Set(storyIds.map(Number));
-        const matched = stories.filter((s) => wanted.has(Number(s.id)));
-
-        const { DownloadManager } = await import('../core/downloader.js');
-        const { RateLimiter } = await import('../core/security.js');
-        const config = loadConfig();
-        const standalone = !runtime._downloader;
-        const downloader =
-            runtime._downloader ||
-            new DownloadManager(client, config, new RateLimiter(config.rateLimits));
-        if (standalone) {
-            await downloader.init();
-            downloader.start();
-        }
-
-        const storiesAccountId = am.getIdForClient(client);
-        const storiesMeta = storiesAccountId ? am.metadata?.get?.(storiesAccountId) : null;
-        const storiesAccountName =
-            storiesMeta?.name ||
-            storiesMeta?.username ||
-            storiesMeta?.phone ||
-            (storiesAccountId ? `#${storiesAccountId}` : null);
-        let queued = 0;
-        for (const story of matched) {
-            const job = storyToJob({
-                peer: entity,
-                story,
-                peerLabel: entity.username || entity.firstName || username,
-            });
-            job.client = client;
-            job.accountId = storiesAccountId || null;
-            job.accountName = storiesAccountName || null;
-            if (await downloader.enqueue(job, 1)) queued++;
-        }
-        if (standalone) {
-            (async () => {
-                while (downloader.pendingCount > 0 || downloader.active.size > 0) {
-                    await new Promise((r) => setTimeout(r, 1000));
-                }
-                downloader.stop().catch(() => {});
-            })().catch((e) => console.warn('[stories] standalone drain failed:', e?.message || e));
-        }
-        res.json({ success: true, queued, requested: storyIds.length });
-    } catch (e) {
-        console.error('POST /api/stories/download:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
 
 // Refuse to probe addresses that are obviously private or local — without
 // this, an authenticated user could use the dashboard as a port scanner for
@@ -6801,7 +6405,10 @@ app.get('/api/ai/status', async (_req, res) => {
                 },
             },
             counts,
-            scans: { faces: aiGetScanState('faces') },
+            scans: {
+                faces: aiGetScanState('faces'),
+                tags: aiGetScanState('tags'),
+            },
             models: {
                 faces: await (async () => {
                     // Surface the operator-chosen insightface preset
@@ -6847,6 +6454,34 @@ app.get('/api/ai/status', async (_req, res) => {
                         providersRequested: String(facesBlock.providers || 'auto'),
                     };
                 })(),
+                tags: await (async () => {
+                    const enabled = cfg.imageTagging === true;
+                    let loaded = false;
+                    let vocabularySize = 0;
+                    let modelId = '';
+                    try {
+                        const facesClient = await import('../core/ai/faces-client.js');
+                        const url = facesClient.getSidecarUrl();
+                        if (url) {
+                            const info = await _fetchSidecarInfo(url);
+                            if (info) {
+                                loaded = info.clip_ready === true;
+                                vocabularySize = info.clip_vocabulary_size || 0;
+                                modelId = info.clip_model || '';
+                            }
+                        }
+                    } catch {
+                        /* probe failed — leave defaults */
+                    }
+                    return {
+                        id: modelId || 'Xenova/clip-vit-base-patch32',
+                        dim: 512,
+                        dtype: 'fp32',
+                        enabled,
+                        loaded,
+                        vocabularySize,
+                    };
+                })(),
             },
             bgQueue: (() => {
                 try {
@@ -6855,7 +6490,10 @@ app.get('/api/ai/status', async (_req, res) => {
                     return { realtime: 0, backfill: 0 };
                 }
             })(),
-            trackers: { aiPeople: _jobTrackers.aiPeople.getStatus() },
+            trackers: {
+                aiPeople: _jobTrackers.aiPeople.getStatus(),
+                aiTags: _jobTrackers.aiTags.getStatus(),
+            },
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -6868,15 +6506,17 @@ app.get('/api/ai/status', async (_req, res) => {
 // branches have been removed. The handler still accepts a `feature`
 // field so older clients fail with a clear `unknown feature` error
 // rather than a silent no-op.
-const AI_SCAN_FEATURES = new Set(['faces']);
+const AI_SCAN_FEATURES = new Set(['faces', 'tags']);
 
 function _aiTrackerFor(feature) {
     if (feature === 'faces') return _jobTrackers.aiPeople;
+    if (feature === 'tags') return _jobTrackers.aiTags;
     return null;
 }
 
 function _aiStarterFor(feature) {
     if (feature === 'faces') return aiStartFacesScan;
+    if (feature === 'tags') return aiStartTagsScan;
     return null;
 }
 
@@ -10926,6 +10566,8 @@ const _jobTrackers = {
 };
 // ---- Router mounts (registered here so _jobTrackers + broadcast are in scope)
 app.use('/api', createVersionRouter({ broadcast, autoUpdateTracker: _jobTrackers.autoUpdate }));
+app.use('/api', createStoriesRouter({ getAccountManager }));
+app.use('/api', createQueueRouter({ broadcast }));
 
 // One tracker per group id for `/api/groups/:id/purge`. Lazily created
 // because we don't know the group ids in advance, and a group that's

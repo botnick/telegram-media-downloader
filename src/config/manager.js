@@ -173,6 +173,7 @@ const DEFAULT_CONFIG = {
         ai: {
             enabled: false,
             faceClustering: true,
+            imageTagging: false,
             // Face detector backend override (HF model id). Default empty
             // → bundled `@vladmandic/face-api` weights are used. Sticking
             // with the bundle is the recommended path; the override exists

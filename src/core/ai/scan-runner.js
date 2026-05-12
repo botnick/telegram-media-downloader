@@ -19,6 +19,7 @@ import { fileURLToPath } from 'url';
 
 import {
     clearAllPeople,
+    clearImageTagsForDownload,
     deleteFacesForDownload,
     getDb,
     getUnindexedAiBatch,
@@ -27,9 +28,11 @@ import {
     iterateAllFaces,
     setAiIndexedAt,
     setFacePerson,
+    setImageTags,
 } from '../db.js';
 import { clusterFaces, detectFaces } from './faces.js';
 import { resolveFacesValue } from './faces-config.js';
+import { getSidecarUrl } from './faces-client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -59,10 +62,10 @@ function _blobToF32(blob) {
     return out;
 }
 
-// Per-feature state. Only `faces` survives; the slot map is kept for
-// shape compatibility with callers that read `getScanState(feature)`.
+// Per-feature state.
 const _scans = {
     faces: _emptyState(),
+    tags: _emptyState(),
 };
 
 function _emptyState() {
@@ -376,7 +379,115 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
     );
 }
 
+// ---- Tags scan (CLIP-based zero-shot tagging) ---------------------------
+
+/**
+ * Start a background scan that tags every unindexed photo via the Python
+ * sidecar's ``/tag`` endpoint. Single-flight — a second call while one is
+ * running returns ``{ alreadyRunning: true }``.
+ *
+ * Tags are persisted into the ``image_tags`` table via ``setImageTags()``
+ * and ``ai_indexed_at`` is stamped so the row isn't re-processed.
+ */
+export function startTagsScan(cfg, onProgress, onDone, onLog) {
+    return _runScan(
+        'tags',
+        cfg,
+        async (state, signal, bump, log, cfg) => {
+            const db = getDb();
+            const fileTypes = Array.isArray(cfg.fileTypes) ? cfg.fileTypes : ['photo'];
+
+            const total = db
+                .prepare(
+                    `SELECT COUNT(*) AS n FROM downloads
+                     WHERE file_type IN (${fileTypes.map(() => '?').join(',')})
+                       AND ai_indexed_at IS NULL`,
+                )
+                .get(...fileTypes).n;
+            state.total = total;
+            bump();
+            log('info', `tags scan: ${total} files to tag`);
+
+            if (total === 0) {
+                log('info', 'tags scan: nothing to tag');
+                return;
+            }
+
+            const sidecarUrl = getSidecarUrl();
+            if (!sidecarUrl) {
+                throw new Error(
+                    'Python sidecar is not available — cannot tag images. ' +
+                        'Check the AI maintenance page for sidecar status.',
+                );
+            }
+
+            const batchSize = Math.max(1, Math.min(50, Number(cfg.batchSize) || 16));
+
+            while (!signal.aborted) {
+                const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
+                if (!batch.length) break;
+
+                for (const row of batch) {
+                    if (signal.aborted) break;
+                    const abs = _resolveAbs(row.file_path);
+                    let tags = [];
+                    if (abs) {
+                        try {
+                            tags = await _tagOne(sidecarUrl, abs, log);
+                        } catch (e) {
+                            log('warn', `tagging failed for id=${row.id}: ${e?.message || e}`);
+                        }
+                    }
+                    // Write tags to DB
+                    if (Array.isArray(tags) && tags.length) {
+                        clearImageTagsForDownload(row.id);
+                        setImageTags(
+                            row.id,
+                            tags.map((t) => ({ tag: t.tag, score: t.score })),
+                        );
+                    }
+                    setAiIndexedAt(row.id);
+                    state.scanned += 1;
+                    bump();
+                    await new Promise((r) => setImmediate(r));
+                }
+            }
+            log('info', `tags scan: finished — ${state.scanned} files tagged`);
+        },
+        onProgress,
+        onDone,
+        onLog,
+    );
+}
+
+/**
+ * Call the Python sidecar's ``POST /tag`` for one image.
+ * Returns ``[{tag, score}, …]`` or an empty array on failure.
+ */
+async function _tagOne(sidecarUrl, absPath, log) {
+    const url = `${sidecarUrl.replace(/\/+$/, '')}/tag`;
+    const body = { path: absPath };
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(30000), // 30 s per file
+        });
+        if (!res.ok) {
+            log('warn', `tag endpoint returned ${res.status} for ${absPath}`);
+            return [];
+        }
+        const data = await res.json();
+        return Array.isArray(data?.tags) ? data.tags : [];
+    } catch (e) {
+        log('warn', `tag request failed for ${absPath}: ${e?.message || e}`);
+        return [];
+    }
+}
+
 /** For tests — clear in-memory state so the next test starts fresh. */
 export function _resetForTests() {
     _scans.faces = _emptyState();
+    _scans.tags = _emptyState();
 }

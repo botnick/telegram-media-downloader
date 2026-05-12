@@ -69,6 +69,7 @@ export {
     getScanState,
     isScanRunning,
     startFacesScan,
+    startTagsScan,
 } from './scan-runner.js';
 
 // ---- Background pre-generate ---------------------------------------------

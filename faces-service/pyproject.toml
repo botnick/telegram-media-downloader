@@ -55,6 +55,8 @@ dependencies = [
     "numpy>=1.26,<3",
     "Pillow>=10,<12",
     "pydantic>=2,<3",
+    "tokenizers>=0.19,<1",
+    "huggingface-hub>=0.24,<1",
 ]
 
 [project.optional-dependencies]
