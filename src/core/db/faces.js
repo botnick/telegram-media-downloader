@@ -710,18 +710,18 @@ export function setFaceQualityScore(faceId, qualityScore) {
  * Backfill missing `faces.quality_score` rows using bbox-only heuristics.
  *
  * We don't have detector confidence persisted for legacy rows, so the
- * confidence term falls back to 0.5 and we derive the rest from bbox size
+ * confidence term falls back to 0.3 and we derive the rest from bbox size
  * and aspect-ratio sanity.
  */
 export function backfillMissingFaceQualityScores({
     chunkSize = 1000,
-    minFaceSizePx = 80,
-    confidenceFallback = 0.5,
+    minFaceSizePx = 48,
+    confidenceFallback = 0.3,
 } = {}) {
     const db = getDb();
     const lim = Math.max(1, Math.min(10000, Number(chunkSize) || 1000));
-    const minBox = Math.max(1, Number(minFaceSizePx) || 80);
-    const conf = Math.max(0, Math.min(1, Number(confidenceFallback) || 0.5));
+    const minBox = Math.max(1, Number(minFaceSizePx) || 48);
+    const conf = Math.max(0, Math.min(1, Number(confidenceFallback) || 0.3));
     const pick = db.prepare(
         `SELECT id, w, h FROM faces WHERE quality_score IS NULL ORDER BY id ASC LIMIT ?`,
     );

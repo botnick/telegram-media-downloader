@@ -51,7 +51,7 @@ import { getSidecarUrl } from './faces-client.js';
 export const FACE_DEFAULTS = Object.freeze({
     facesEpsilon: 1.05, // DBSCAN radius (buffalo_l 512-dim L2-normalised ArcFace embeddings)
     facesMinPoints: 2, // smallest cluster we'll surface as a "person" — 2 surfaces rarer faces
-    minDetectionScore: 0.5, // sidecar detector confidence floor
+    minDetectionScore: 0.3, // sidecar detector confidence floor
     inputSize: 320, // kept for backwards compat; sidecar ignores it (its own preprocessor)
     facesDetector: 'buffalo_l', // hint forwarded to the sidecar; currently single model
 });
@@ -122,10 +122,10 @@ export async function detectFaces(absPath, cfg = {}, onLog) {
  * "people" out of garbage. Three rules:
  *
  *   1. `score < minScore` — sidecar detector confidence floor.
- *      Default 0.5 — empirical for buffalo_l; lower lets in false
+ *      Default 0.3 — empirical for Telegram libraries; lower lets in false
  *      positives (textures, distant heads, partial occlusion).
  *   2. `min(w, h) < minBoxPx` — too small to embed reliably.
- *      Default 80 px — the sidecar already normalises crops, but
+ *      Default 48 px — the sidecar already normalises crops, but
  *      anything smaller has too few pixels to encode identity well.
  *   3. Aspect ratio outside [0.5, 2.0] — the detector occasionally
  *      returns very-elongated boxes from non-face textures (window
@@ -138,7 +138,7 @@ export function qualityFilter(detections, cfg = {}) {
     const minScore = Number.isFinite(cfg.minDetectionScore)
         ? cfg.minDetectionScore
         : FACE_DEFAULTS.minDetectionScore;
-    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 80;
+    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 48;
     return detections.filter((d) => {
         if (!d) return false;
         if (Number.isFinite(d.score) && d.score < minScore) return false;
@@ -167,7 +167,7 @@ export function computeFaceQualityScore(face, cfg = {}) {
     const conf = Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0.5;
     const w = Math.max(0, Number(face.w) || 0);
     const h = Math.max(0, Number(face.h) || 0);
-    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 80;
+    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 48;
     // 1.0 at ~2.5x the configured minimum box size.
     const sizeNorm = Math.max(0, Math.min(1, Math.min(w, h) / Math.max(1, minBoxPx * 2.5)));
     const ratio = w > 0 && h > 0 ? w / h : 1;

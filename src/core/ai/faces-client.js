@@ -193,8 +193,8 @@ export async function detectFaces(absPath, cfg = {}, onLog = null) {
     // hardcoded default. The caller passes `cfg.advanced.ai` (or the
     // already-flattened `cfg`), so we probe both shapes.
     const facesCfg = cfg?.faces || cfg || {};
-    const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
-    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 80);
+    const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.3);
+    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 48);
     const arRange =
         Array.isArray(facesCfg.arRange) && facesCfg.arRange.length === 2
             ? facesCfg.arRange

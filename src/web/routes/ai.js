@@ -654,11 +654,11 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
             const chunkSize = Math.max(100, Math.min(5000, Number(req.body?.chunkSize) || 1000));
             const minFaceSizePx = Math.max(
                 16,
-                Math.min(1024, Number(req.body?.minFaceSizePx) || 80),
+                Math.min(1024, Number(req.body?.minFaceSizePx) || 48),
             );
             const confidenceFallback = Math.max(
                 0,
-                Math.min(1, Number(req.body?.confidenceFallback) || 0.5),
+                Math.min(1, Number(req.body?.confidenceFallback) || 0.3),
             );
             const result = backfillMissingFaceQualityScores({
                 chunkSize,
