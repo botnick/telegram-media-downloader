@@ -1,4 +1,4 @@
-# Makefile — cross-platform build for seekbar-service
+# Makefile — cross-platform build for seekbar-service v0.2.0
 #
 # Binary naming convention: tgdl-seekbar-{platform}-{arch}[.exe]
 #
@@ -11,11 +11,16 @@
 #   tgdl-seekbar-mac-arm64
 #
 # Usage:
-#   make all          — build every platform
-#   make linux-x64    — build a single target
-#   make clean        — remove bin/
-#   make test         — run Go tests
-#   make vet          — run go vet
+#   make all            — build every platform (server + CLI)
+#   make release-all    — alias for all
+#   make release-win    — Windows x64 + arm64
+#   make release-linux  — Linux x64 + arm64 + x86
+#   make release-mac    — macOS x64 + arm64
+#   make release-dsm    — Synology DSM x64 + arm64
+#   make linux-x64      — build a single target
+#   make clean          — remove bin/
+#   make test           — run Go tests
+#   make vet            — run go vet
 #
 # Requirements: Go 1.22+. CGO is disabled for all targets — no C toolchain
 # needed. Set GOFLAGS=-v for verbose output.
@@ -32,13 +37,21 @@ LDFLAGS  += -X $(MODULE)/internal/api.ServiceVersion=$(VERSION)
 
 GOBUILD  := CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)"
 
-.PHONY: all all-dsm clean test vet \
+.PHONY: all release-all release-win release-linux release-mac release-dsm \
+        all-dsm clean test vet \
         win-x64 win-arm64 \
         linux-x64 linux-arm64 linux-x86 \
         mac-x64 mac-arm64 \
         dsm-x64 dsm-arm64
 
 all: win-x64 win-arm64 linux-x64 linux-arm64 linux-x86 mac-x64 mac-arm64 dsm-x64 dsm-arm64
+
+# Convenience group targets — build a specific OS family.
+release-all:   all
+release-win:   win-x64 win-arm64
+release-linux: linux-x64 linux-arm64 linux-x86
+release-mac:   mac-x64 mac-arm64
+release-dsm:   dsm-x64 dsm-arm64
 
 # DSM targets build the same linux binaries but with a "-dsm" name suffix
 # so operators can drop them into a Synology NAS package alongside the
@@ -114,4 +127,4 @@ vet:
 	go vet ./...
 
 clean:
-	rm -rf $(BINDIR)
+	rm -rf $(BINDIR) dist/

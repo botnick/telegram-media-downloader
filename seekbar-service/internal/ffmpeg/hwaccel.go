@@ -232,14 +232,29 @@ func Resolve(ctx context.Context, ffmpegBin, mode, vaapiDevice string) (HWAccelB
 }
 
 // Args returns the ffmpeg flags to prepend to the input for a given
-// backend. VAAPI needs `-vaapi_device <path>` so the device file gets
-// opened; the rest are single-flag forms.
+// backend. VAAPI needs `-vaapi_device <path>` and `-hwaccel_output_format
+// vaapi` so decoded frames stay on the VAAPI surface (required for the
+// hwdownload step in the filter chain). CUDA/D3D11VA only need -hwaccel.
 func Args(b HWAccelBackend, vaapiDevice string) []string {
 	if b == HWNone {
 		return nil
 	}
-	if b == HWVAAPI && vaapiDevice != "" {
-		return []string{"-hwaccel", "vaapi", "-vaapi_device", vaapiDevice}
+	switch b {
+	case HWVAAPI:
+		dev := vaapiDevice
+		if dev == "" {
+			dev = "/dev/dri/renderD128"
+		}
+		// -hwaccel_output_format vaapi keeps decoded frames on the VAAPI
+		// surface so the hwdownload filter can transfer them to system
+		// memory. Without this flag ffmpeg may auto-download frames and
+		// the hwdownload step in the filter chain fails.
+		return []string{
+			"-hwaccel", "vaapi",
+			"-vaapi_device", dev,
+			"-hwaccel_output_format", "vaapi",
+		}
+	default:
+		return []string{"-hwaccel", string(b)}
 	}
-	return []string{"-hwaccel", string(b)}
 }

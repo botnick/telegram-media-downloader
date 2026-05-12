@@ -31,17 +31,19 @@ type Job struct {
 	Retries  int    `json:"retries"`
 	Priority int    `json:"priority"` // 0 = realtime, 1 = backfill
 	// Result fields (populated on done)
-	SpritePath string  `json:"sprite_path,omitempty"`
-	MetaPath   string  `json:"meta_path,omitempty"`
-	Duration   float64 `json:"duration,omitempty"`
-	Frames     int     `json:"frames,omitempty"`
-	Cols       int     `json:"cols,omitempty"`
-	Rows       int     `json:"rows,omitempty"`
-	TileW      int     `json:"tile_w,omitempty"`
-	Bytes      int64   `json:"bytes,omitempty"`
-	CreatedAt  int64   `json:"created_at"`
-	StartedAt  int64   `json:"started_at,omitempty"`
-	FinishedAt int64   `json:"finished_at,omitempty"`
+	SpritePath  string  `json:"sprite_path,omitempty"`
+	MetaPath    string  `json:"meta_path,omitempty"`
+	Duration    float64 `json:"duration,omitempty"`
+	Frames      int     `json:"frames,omitempty"`
+	Cols        int     `json:"cols,omitempty"`
+	Rows        int     `json:"rows,omitempty"`
+	TileW       int     `json:"tile_w,omitempty"`
+	TileH       int     `json:"tile_h,omitempty"`
+	IntervalSec float64 `json:"interval_sec,omitempty"`
+	Bytes       int64   `json:"bytes,omitempty"`
+	CreatedAt   int64   `json:"created_at"`
+	StartedAt   int64   `json:"started_at,omitempty"`
+	FinishedAt  int64   `json:"finished_at,omitempty"`
 }
 
 // SpriteMeta is the JSON sidecar written alongside each sprite. The
@@ -202,6 +204,8 @@ func (p *Pool) LegacyStats() (total, done, genOk, genErr, queued int) {
 		int(atomic.LoadInt32(&p.genErr)), queued
 }
 
+// next dequeues the next job, including jobs that were externally
+// cancelled (the caller handles the cancelled case).
 func (p *Pool) next() *Job {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -210,8 +214,12 @@ func (p *Pool) next() *Job {
 	}
 	j := p.queue[0]
 	p.queue = p.queue[1:]
-	j.Status = "running"
-	j.StartedAt = time.Now().UnixMilli()
+	if j.Status != "cancelled" {
+		j.Status = "running"
+		j.StartedAt = time.Now().UnixMilli()
+	} else {
+		j.FinishedAt = time.Now().UnixMilli()
+	}
 	return j
 }
 
@@ -233,6 +241,18 @@ func (p *Pool) worker(ctx context.Context) {
 				continue
 			}
 		}
+		// Job was cancelled via the HTTP cancel endpoint before it was
+		// picked up — count it as done but don't invoke ffmpeg.
+		if j.Status == "cancelled" {
+			d := int(atomic.AddInt32(&p.done, 1))
+			if p.onProgress != nil {
+				p.mu.Lock()
+				q := len(p.queue)
+				p.mu.Unlock()
+				p.onProgress(d, p.total, int(atomic.LoadInt32(&p.genOk)), int(atomic.LoadInt32(&p.genErr)), q)
+			}
+			continue
+		}
 		atomic.AddInt32(&p.running, 1)
 		p.processJob(ctx, j)
 		atomic.AddInt32(&p.running, -1)
@@ -249,7 +269,6 @@ func (p *Pool) worker(ctx context.Context) {
 func (p *Pool) processJob(ctx context.Context, j *Job) {
 	cfg := p.cfg
 	outDir := cfg.Storage.OutputDir
-	_ = os.MkdirAll(outDir, 0o755)
 
 	ext := "webp"
 	if cfg.Thumb.Format == "jpeg" || cfg.Thumb.Format == "jpg" {
@@ -288,10 +307,13 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 				j.Status = "done"
 				j.SpritePath = dstPath
 				j.MetaPath = metaPath
+				j.Duration = prior.DurationSec
 				j.Frames = prior.Frames
 				j.Cols = prior.Cols
 				j.Rows = prior.Rows
 				j.TileW = prior.TileW
+				j.TileH = prior.TileH
+				j.IntervalSec = prior.IntervalSec
 				j.Bytes = prior.Bytes
 				j.FinishedAt = time.Now().UnixMilli()
 				atomic.AddInt32(&p.genOk, 1)
@@ -314,12 +336,21 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 		}
 		if err := ffmpeg.Run(ctx, cfg.FFmpeg.Path, args); err != nil {
 			lastErr = err
-			// Capped exponential back-off: base 1s per attempt, max 30s.
+			// Capped exponential back-off: 1s × (attempt+1), max 30s.
+			// Use select so a SIGTERM / context cancel wakes us immediately
+			// instead of blocking the worker goroutine for the full delay.
 			delay := time.Duration(attempt+1) * time.Second
 			if delay > 30*time.Second {
 				delay = 30 * time.Second
 			}
-			time.Sleep(delay)
+			select {
+			case <-ctx.Done():
+				_ = os.Remove(tmpPath)
+				j.Status = "cancelled"
+				j.FinishedAt = time.Now().UnixMilli()
+				return
+			case <-time.After(delay):
+			}
 			continue
 		}
 		lastErr = nil
@@ -394,10 +425,12 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 	j.Cols = plan.Cols
 	j.Rows = plan.Rows
 	j.TileW = plan.TileW
+	j.TileH = tileH
+	j.IntervalSec = plan.IntervalSec
 	j.Bytes = spriteBytes
 	j.FinishedAt = time.Now().UnixMilli()
 	atomic.AddInt32(&p.genOk, 1)
-	p.log.Debug("sprite done", "video_id", j.VideoID, "frames", plan.Frames, "bytes", spriteBytes)
+	p.log.Debug("sprite done", "video_id", j.VideoID, "frames", plan.Frames, "tile_h", tileH, "bytes", spriteBytes)
 }
 
 func (p *Pool) fail(j *Job, msg string) {
