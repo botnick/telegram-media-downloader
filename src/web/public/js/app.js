@@ -480,6 +480,8 @@ async function init() {
     // assign post-await because no inline onclick reaches them before
     // the operator clicks something.
     window.toggleFwdDelete = toggleFwdDelete;
+    window.toggleFwdKeepImages = toggleFwdKeepImages;
+    window.toggleFwdKeepVideos = toggleFwdKeepVideos;
     window.openDestinationPicker = openDestinationPicker;
     window.filterDialogs = filterDialogs;
     window.filterSidebarGroups = filterSidebarGroups;
@@ -3178,6 +3180,10 @@ async function saveGroupSettings() {
         document.getElementById('fwd-enable-toggle')?.classList.contains('active') ?? false;
     const fwdDelete =
         document.getElementById('fwd-delete-toggle')?.classList.contains('active') ?? false;
+    const fwdKeepImages =
+        document.getElementById('fwd-keep-images-toggle')?.classList.contains('active') ?? false;
+    const fwdKeepVideos =
+        document.getElementById('fwd-keep-videos-toggle')?.classList.contains('active') ?? false;
     const fwdDest = document.getElementById('fwd-destination')?.value || '';
 
     // Collect account assignments
@@ -3232,6 +3238,8 @@ async function saveGroupSettings() {
             enabled: fwdEnabled,
             destination: fwdDest,
             deleteAfterForward: fwdDelete,
+            keepImages: fwdKeepImages,
+            keepVideos: fwdKeepVideos,
         },
         trackComments,
         topics: {
@@ -3491,6 +3499,20 @@ function toggleFwdDelete(event) {
     event.preventDefault();
     event.stopPropagation();
     const toggle = document.getElementById('fwd-delete-toggle');
+    if (toggle) toggle.classList.toggle('active');
+}
+
+function toggleFwdKeepImages(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const toggle = document.getElementById('fwd-keep-images-toggle');
+    if (toggle) toggle.classList.toggle('active');
+}
+
+function toggleFwdKeepVideos(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const toggle = document.getElementById('fwd-keep-videos-toggle');
     if (toggle) toggle.classList.toggle('active');
 }
 

@@ -2500,7 +2500,13 @@ app.post('/api/history', async (req, res) => {
                     gifs: false,
                     stickers: false,
                 },
-                autoForward: { enabled: false, destination: null, deleteAfterForward: false },
+                autoForward: {
+                    enabled: false,
+                    destination: null,
+                    deleteAfterForward: false,
+                    keepImages: false,
+                    keepVideos: false,
+                },
                 trackUsers: { enabled: false, users: [] },
                 topics: { enabled: false, ids: [] },
             };
@@ -3846,6 +3852,8 @@ app.get('/api/dialogs', async (req, res) => {
                         enabled: false,
                         destination: null,
                         deleteAfterForward: false,
+                        keepImages: false,
+                        keepVideos: false,
                     },
                     photoUrl: `/api/groups/${id}/photo`,
                     accountIds: accIds,
@@ -10356,7 +10364,13 @@ app.put('/api/groups/:id', async (req, res) => {
                     gifs: false,
                     stickers: false,
                 },
-                autoForward: { enabled: false, destination: null, deleteAfterForward: false },
+                autoForward: {
+                    enabled: false,
+                    destination: null,
+                    deleteAfterForward: false,
+                    keepImages: false,
+                    keepVideos: false,
+                },
                 trackUsers: { enabled: false, users: [] },
                 topics: { enabled: false, ids: [] },
             };

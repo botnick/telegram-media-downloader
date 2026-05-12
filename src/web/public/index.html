@@ -455,6 +455,20 @@
                                     <span class="text-tg-text text-xs" data-i18n="group.fwd.delete_after">Delete after forward</span>
                                     <div class="tg-toggle" id="fwd-delete-toggle"></div>
                                 </label>
+                                <label onclick="toggleFwdKeepImages(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
+                                    <div>
+                                        <span class="text-tg-text text-xs" data-i18n="group.fwd.keep_images">Keep images after forward</span>
+                                        <p class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="group.fwd.keep_images_help">Don't delete forwarded photos locally</p>
+                                    </div>
+                                    <div class="tg-toggle shrink-0" id="fwd-keep-images-toggle"></div>
+                                </label>
+                                <label onclick="toggleFwdKeepVideos(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
+                                    <div>
+                                        <span class="text-tg-text text-xs" data-i18n="group.fwd.keep_videos">Keep videos after forward</span>
+                                        <p class="text-[10px] text-tg-textSecondary mt-0.5" data-i18n="group.fwd.keep_videos_help">Don't delete forwarded videos locally</p>
+                                    </div>
+                                    <div class="tg-toggle shrink-0" id="fwd-keep-videos-toggle"></div>
+                                </label>
                             </div>
                         </div>
 
