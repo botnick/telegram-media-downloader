@@ -6,6 +6,7 @@ import { getRescueSweeper } from '../../core/rescue.js';
 import { applyShareLimits } from '../../core/share.js';
 import { getDiskRotator } from '../../core/disk-rotator.js';
 import { refreshSidecar as refreshSeekbarSidecar } from '../../core/seekbar/spawn.js';
+import { BACKPRESSURE_CAP_DEFAULT } from '../../core/constants.js';
 
 export function createConfigRouter({
     broadcast,
