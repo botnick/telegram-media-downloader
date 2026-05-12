@@ -206,6 +206,15 @@ import WebSocketLib from 'ws';
 import { recordClusterAudit, listClusterAudit, listOwnDownloadsSince } from '../core/db.js';
 import { formatBytes, bestGroupName, nameLooksUnresolved } from './lib/format.js';
 import { readConfigSafe, invalidateConfigCache } from './lib/config-cache.js';
+import {
+    cookieParser,
+    checkAuth,
+    guestGate,
+    isLocalRequest,
+    isPublicPath,
+    PUBLIC_API_PATHS,
+    CLUSTER_PREFIX_HMAC_ONLY,
+} from './middleware/auth.js';
 
 // Demote gramJS reconnect chatter from stderr/stdout to data/logs/network.log.
 // gramJS opens a fresh DC connection per file download (different DCs host
@@ -844,19 +853,7 @@ function _ensureClusterWsInit() {
 
 // ============ AUTHENTICATION ============
 
-// Simple cookie parser middleware
-app.use((req, res, next) => {
-    const list = {};
-    const rc = req.headers.cookie;
-    if (rc) {
-        rc.split(';').forEach((cookie) => {
-            const parts = cookie.split('=');
-            list[parts.shift().trim()] = decodeURI(parts.join('='));
-        });
-    }
-    req.cookies = list;
-    next();
-});
+app.use(cookieParser);
 
 // Atomic config writer. Backed by kv['config'] in SQLite — the SQLite
 // transaction inside saveConfig() gives us the same all-or-nothing
@@ -918,162 +915,6 @@ async function writeConfigAtomic(config) {
     } catch {
         /* nothing */
     }
-}
-
-// Paths that may be reached without an authenticated session.
-// PWA bits (manifest, service worker, icons) MUST be reachable pre-login
-// — the browser fetches them before the user has a session cookie.
-const PUBLIC_PATH_PREFIXES = [
-    '/login',
-    '/setup-needed',
-    '/css/',
-    '/js/',
-    '/locales/',
-    '/favicon',
-    '/metrics',
-    '/icons/',
-    '/manifest.webmanifest',
-    '/sw.js',
-    // Share-link public route — auth is the HMAC sig + DB row check inside
-    // the handler, NOT the dashboard cookie. Without this prefix, friends
-    // following a share URL would be redirected to /login.html.
-    '/share/',
-];
-const PUBLIC_API_PATHS = new Set([
-    '/api/login',
-    '/api/auth_check',
-    '/api/version', // public so the status-bar chip can render pre-login
-    '/api/version/check', // public update-check (GitHub releases poll, cached)
-    '/api/auth/setup', // first-run only — guarded inside the handler
-    '/api/auth/reset/request', // logs token to stdout — no body returned
-    '/api/auth/reset/confirm', // requires the stdout token + new password
-    // Cluster peer-to-peer endpoints. These are NOT cookie-authed — they
-    // verify a HMAC signature inside the handler against the cluster
-    // token. Adding them here just bypasses the dashboard session check;
-    // the handler still rejects unsigned / mis-signed / replayed requests
-    // with 401 + an audit row.
-    '/api/cluster/handshake',
-    '/api/cluster/health',
-    // Phase 2 P2P sync — paged delta + full snapshots, HMAC-only.
-    '/api/cluster/downloads/since',
-    '/api/cluster/groups/snapshot',
-    '/api/cluster/accounts/snapshot',
-    // Phase 4 — short-lived signed URL minting for direct stream mode.
-    '/api/cluster/sign-url',
-    // Phase D (v2.10) — relay-through-peer envelope delivery.
-    '/api/cluster/relay/proxy',
-    // Phase G (v2.10) — cross-peer file delete.
-    '/api/cluster/files/delete',
-    // Phase I (v2.10) — federated search.
-    '/api/cluster/search/peer',
-]);
-// Cluster file-bridge prefix — /api/cluster/files/<encoded path> is variable
-// so it has to live in PUBLIC_PATH_PREFIXES (exact-string set above won't
-// prefix-match). The handler still verifies HMAC.
-//
-// `peer-thumbs` is a separate prefix from `thumbs/<peerId>/<remoteId>`
-// (which is cookie-authed for the browser proxy). Using distinct
-// segments keeps the prefix-match here from accidentally exempting the
-// admin route.
-const CLUSTER_PREFIX_HMAC_ONLY = ['/api/cluster/files/', '/api/cluster/peer-thumbs/'];
-
-// Treat connections from the local machine as "trusted enough" to bootstrap
-// the very first password without prior auth. Any other origin still has to
-// go through the CLI to set the password.
-function isLocalRequest(req) {
-    const ip = req.ip || req.socket?.remoteAddress || '';
-    return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-}
-
-function isPublicPath(p) {
-    if (PUBLIC_API_PATHS.has(p)) return true;
-    if (CLUSTER_PREFIX_HMAC_ONLY.some((pre) => p.startsWith(pre))) return true;
-    return PUBLIC_PATH_PREFIXES.some((pre) => p === pre || p.startsWith(pre));
-}
-
-async function checkAuth(req, res, next) {
-    const config = await readConfigSafe();
-    const enabled = config.web?.enabled !== false; // default ON
-
-    // Fail-closed: dashboard is locked (or not yet configured).
-    if (!enabled || !isAuthConfigured(config.web)) {
-        if (req.path.startsWith('/api/') && !PUBLIC_API_PATHS.has(req.path)) {
-            return res.status(503).json({
-                error: 'Web dashboard not initialised. Run `npm run auth` to set a password.',
-                setupRequired: true,
-            });
-        }
-        if (!isPublicPath(req.path)) {
-            return res.redirect('/setup-needed.html');
-        }
-        return next();
-    }
-
-    if (isPublicPath(req.path)) return next();
-
-    const token = req.cookies['tg_dl_session'];
-    const session = validateSession(token);
-    if (session) {
-        req.role = session.role;
-        return next();
-    }
-
-    if (req.path.startsWith('/api/')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    return res.redirect('/login.html');
-}
-
-// ---- Guest authorization ---------------------------------------------------
-//
-// Default-deny: guest sessions can ONLY hit the explicit allowlist below.
-// Anything else (including endpoints that don't exist yet) returns 403 with
-// `adminRequired: true`. This is intentionally a chokepoint instead of
-// per-route requireAdmin() — a future dev who adds a new mutation route
-// gets admin-gating for free; forgetting to add `requireAdmin` would leak
-// the route, which is a much worse failure mode than the occasional 403
-// when a new read endpoint forgets to ask for guest access.
-// Guest scope: browse downloaded media, view their own files, sign out.
-// Operational surfaces (Groups picker, Backfill, Queue, Engine, Maintenance)
-// are admin-only on both the front (route gating) and the back (this list).
-// Frontend modules that touch these endpoints either skip the call when
-// `body[data-role="guest"]` is set, or fail-soft on the 403.
-const GUEST_GET_ALLOW = [
-    '/api/auth_check',
-    '/api/me',
-    '/api/version',
-    '/api/version/check',
-    '/api/downloads', // Library — list + per-group + paginated /all
-    '/api/groups', // sidebar list of downloaded folders (no config secrets in the response)
-    '/api/stats', // footer disk + file counters
-    '/api/thumbs', // GET /api/thumbs/:id — image thumb stream
-    '/api/seekbar/sprite', // GET /api/seekbar/sprite/:id — WebP sprite sheet
-    '/api/seekbar/meta', // GET /api/seekbar/meta/:id — sprite JSON sidecar
-];
-const GUEST_OTHER_ALLOW = new Set(['POST /api/logout']);
-
-function isGuestAllowed(req) {
-    // The middleware is mounted at `/api`, so inside this function `req.path`
-    // is RELATIVE to the mount point ('/monitor/status' instead of
-    // '/api/monitor/status'). The allowlist below is written with full paths
-    // for legibility — read the full path from `req.baseUrl + req.path` so
-    // the two halves agree. (Pre-fix every guest GET landed here as 403.)
-    const fullPath = (req.baseUrl || '') + req.path;
-    if (req.method === 'GET') {
-        return GUEST_GET_ALLOW.some((pre) => fullPath === pre || fullPath.startsWith(pre + '/'));
-    }
-    return GUEST_OTHER_ALLOW.has(`${req.method} ${fullPath}`);
-}
-
-function guestGate(req, res, next) {
-    if (req.role === 'admin') return next();
-    if (req.role === 'guest' && isGuestAllowed(req)) return next();
-    if (req.role === 'guest') {
-        return res.status(403).json({ error: 'Admin only', adminRequired: true });
-    }
-    // No role on req → checkAuth let the request through as a public path,
-    // so don't second-guess it.
-    return next();
 }
 
 // Stricter rate limit for the login endpoint to slow brute-force attempts.
