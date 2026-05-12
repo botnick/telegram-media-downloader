@@ -594,6 +594,9 @@ export class RealtimeMonitor extends EventEmitter {
                                     _resolveFailures.find(
                                         (f) => String(f.group.id) === String(g.id),
                                     )?.reason || 'index_miss';
+                                if (g._resolveFailedReason.startsWith('banned:')) {
+                                    g.suspended = true;
+                                }
                                 dirty = true;
                             }
                         }

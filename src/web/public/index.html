@@ -363,6 +363,12 @@
                     </div>
                 </div>
 
+                <!-- Suspended group warning banner — shown when group.suspended === true -->
+                <div id="group-suspended-banner" class="hidden px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
+                    <i class="ri-forbid-line text-red-400 text-sm flex-shrink-0"></i>
+                    <span class="text-red-400 text-xs leading-snug" data-i18n="group.suspended.banner">This group was deleted or suspended on Telegram. Monitoring is permanently disabled.</span>
+                </div>
+
                 <!-- Content — compact density + tall scroll area so most
                      of the modal real estate goes to actual content. -->
                 <div class="p-3 max-h-[75vh] overflow-y-auto custom-scrollbar">

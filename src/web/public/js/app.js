@@ -855,11 +855,11 @@ function renderPage(page, params = {}) {
     } else if (page === 'maintenance-ai') {
         document.getElementById('page-title').textContent = i18nT(
             'maintenance.ai.page_title',
-            'AI search & smart organisation',
+            'AI Face Clustering',
         );
         document.getElementById('page-subtitle').textContent = i18nT(
             'maintenance.ai.subtitle',
-            'Semantic image search, auto-tag, and face clustering — all running locally.',
+            'Face clustering groups people across your library — all running locally.',
         );
         import('./maintenance-ai.js')
             .then((m) => m.init())
@@ -1144,7 +1144,13 @@ function renderGroupsList() {
             const cfgGroup = isForeign
                 ? null
                 : (state.groups || []).find((cg) => String(cg.id) === id);
-            const monitorEnabled = cfgGroup ? cfgGroup.enabled !== false : null;
+            // Suspended groups cannot be toggled — hide the button entirely
+            const monitorEnabled =
+                cfgGroup && !cfgGroup.suspended ? cfgGroup.enabled !== false : null;
+            const sidebarPill =
+                cfgGroup?.suspended === true
+                    ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
+                    : null;
             return renderChatRow({
                 id,
                 name: canonical,
@@ -1154,6 +1160,7 @@ function renderGroupsList() {
                 avatarDot: ring ? 'monitor' : null,
                 time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
                 selected: state.currentGroupId === id,
+                statusPill: sidebarPill,
                 cog: !isForeign, // foreign groups are read-only; hide the cog
                 monitorEnabled, // 1-click ▶/⏸ toggle when this is a config group
                 peerId: g.peerId || null,
@@ -2699,11 +2706,13 @@ function renderDialogsList(dialogs) {
             if (d.archived) subParts.push(i18nT('groups.archived', 'archived'));
 
             const statusPill =
-                d.inConfig && d.enabled
-                    ? { label: i18nT('groups.status.active', 'Active'), kind: 'active' }
-                    : d.inConfig && !d.enabled
-                      ? { label: i18nT('groups.status.paused', 'Paused'), kind: 'paused' }
-                      : { label: i18nT('groups.status.add', 'Add'), kind: 'add' };
+                d.inConfig && d.suspended
+                    ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
+                    : d.inConfig && d.enabled
+                      ? { label: i18nT('groups.status.active', 'Active'), kind: 'active' }
+                      : d.inConfig && !d.enabled
+                        ? { label: i18nT('groups.status.paused', 'Paused'), kind: 'paused' }
+                        : { label: i18nT('groups.status.add', 'Add'), kind: 'add' };
 
             // Canonical name — for dialogs the d.name is usually authoritative
             // (Telegram-side title) but route through getGroupName so a config
@@ -2872,7 +2881,20 @@ async function openGroupSettings(groupId, groupName) {
 
     // Update toggle states
     const enableToggle = document.getElementById('group-enable-toggle');
-    if (enableToggle) enableToggle.classList.toggle('active', group?.enabled !== false);
+    const isSuspended = group?.suspended === true;
+    if (enableToggle) {
+        enableToggle.classList.toggle('active', !isSuspended && group?.enabled !== false);
+        enableToggle.classList.toggle('opacity-50', isSuspended);
+        enableToggle.classList.toggle('pointer-events-none', isSuspended);
+    }
+    const enableLabel = enableToggle?.closest('label');
+    if (enableLabel) {
+        enableLabel.classList.toggle('opacity-60', isSuspended);
+        enableLabel.classList.toggle('cursor-not-allowed', isSuspended);
+        enableLabel.classList.toggle('cursor-pointer', !isSuspended);
+    }
+    const suspendedBanner = document.getElementById('group-suspended-banner');
+    if (suspendedBanner) suspendedBanner.classList.toggle('hidden', !isSuspended);
 
     const fwdToggle = document.getElementById('fwd-enable-toggle');
     if (fwdToggle) fwdToggle.classList.toggle('active', fwd.enabled === true);
@@ -3160,8 +3182,12 @@ function closeGroupSettings() {
 async function saveGroupSettings() {
     if (!currentEditGroup) return;
 
+    const _editedGroup = state.groups.find((g) => String(g.id) === String(currentEditGroup.id));
+    const _isSuspended = _editedGroup?.suspended === true;
     const enabled =
-        document.getElementById('group-enable-toggle')?.classList.contains('active') ?? true;
+        _isSuspended
+            ? false
+            : (document.getElementById('group-enable-toggle')?.classList.contains('active') ?? true);
 
     // Collect filters
     const filters = {};

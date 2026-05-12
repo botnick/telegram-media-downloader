@@ -3856,6 +3856,7 @@ app.get('/api/dialogs', async (req, res) => {
                     members: d.entity?.participantsCount || null,
                     enabled: configGroup?.enabled || false,
                     inConfig: !!configGroup,
+                    suspended: configGroup?.suspended === true,
                     filters: configGroup?.filters || {
                         photos: true,
                         videos: true,
@@ -10508,6 +10509,12 @@ app.put('/api/groups/:id', async (req, res) => {
 
         // Update fields
         const group = config.groups[groupIndex];
+        if (group.suspended === true && req.body.enabled === true) {
+            return res.status(403).json({
+                error: 'Cannot re-enable a suspended group — the channel/group was deleted or banned on Telegram',
+                code: 'GROUP_SUSPENDED',
+            });
+        }
         if (req.body.enabled !== undefined) group.enabled = req.body.enabled;
         if (req.body.name) group.name = req.body.name;
         if (req.body.filters) {

@@ -2103,6 +2103,10 @@ export function getAiCounts({ fileTypes = ['photo'] } = {}) {
     const withFaces = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces`).get().n;
     const withTags = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM image_tags`).get().n;
     const peopleCount = db.prepare(`SELECT COUNT(*) AS n FROM people`).get().n;
+    const totalFaces = db.prepare(`SELECT COUNT(*) AS n FROM faces`).get().n;
+    const noiseFaces = db
+        .prepare(`SELECT COUNT(*) AS n FROM faces WHERE person_id IS NULL OR person_id = -1`)
+        .get().n;
     return {
         totalEligible: total,
         indexed,
@@ -2111,6 +2115,8 @@ export function getAiCounts({ fileTypes = ['photo'] } = {}) {
         withFaces,
         withTags,
         peopleCount,
+        totalFaces,
+        noiseFaces,
     };
 }
 
