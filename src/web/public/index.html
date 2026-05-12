@@ -2105,6 +2105,11 @@
                                         title="Walk data/downloads/ and add catalogue rows for files that aren't tracked yet.">
                                     <i class="ri-refresh-line"></i><span data-i18n="maintenance.reindex.button">Re-index from disk</span>
                                 </button>
+                                <button id="dup-stop-btn" class="hidden tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 text-red-400 border-red-400/40 hover:bg-red-400/10"
+                                        data-i18n-title="maintenance.duplicates.stop_scan.tooltip"
+                                        title="Stop the running scan. Progress is saved — you can resume later.">
+                                    <i class="ri-stop-circle-line"></i><span data-i18n="maintenance.duplicates.stop_scan">Stop</span>
+                                </button>
                                 <button id="dup-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
                                         data-i18n-title="maintenance.duplicates.scan.tooltip"
                                         title="Hash every catalogued file and group byte-identical copies.">
