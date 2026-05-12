@@ -9,7 +9,7 @@ from PIL import Image
 
 _LOG = logging.getLogger(__name__)
 
-_MODEL_AVAILABLE = False
+_MODEL_AVAILABLE = None
 _MODEL_ERROR = None
 _SESSION = None
 _LABELS = None
