@@ -34,7 +34,7 @@ import {
     setFacePerson,
     setImageTags,
 } from '../db.js';
-import { clusterFaces, detectFaces } from './faces.js';
+import { clusterFaces, computeFaceQualityScore, detectFaces } from './faces.js';
 import { resolveFacesValue } from './faces-config.js';
 import { getSidecarUrl } from './faces-client.js';
 import { hasFfmpeg, resolveFfmpegBin } from '../thumbs.js';
@@ -398,6 +398,10 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                                         w: f.w,
                                                         h: f.h,
                                                         embeddingBlob: _f32ToBlob(f.embedding),
+                                                        qualityScore: computeFaceQualityScore(
+                                                            f,
+                                                            cfg,
+                                                        ),
                                                     });
                                                     detectedTotal += 1;
                                                 }
@@ -419,6 +423,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                             w: f.w,
                                             h: f.h,
                                             embeddingBlob: _f32ToBlob(f.embedding),
+                                            qualityScore: computeFaceQualityScore(f, cfg),
                                         });
                                         detectedTotal += 1;
                                     }
@@ -686,6 +691,102 @@ async function _tagOne(sidecarUrl, absPath, tagLabels, log) {
     } catch (e) {
         log('warn', `tag request failed for ${absPath}: ${e?.message || e}`);
         return [];
+    }
+}
+
+/**
+ * Start OCR text extraction scan. Processes unscanned images and stores
+ * extracted text in the `image_text` table.
+ */
+export function startOcrScan(cfg, onProgress, onDone, onLog) {
+    return _runScan(
+        'ocr',
+        cfg,
+        async (state, signal, bump, log) => {
+            const sidecarUrl = getSidecarUrl();
+            if (!sidecarUrl) {
+                throw new Error(
+                    'Python sidecar is not available — cannot extract text. ' +
+                        'Check the AI maintenance page for sidecar status.',
+                );
+            }
+
+            const batchSize = Math.max(1, Math.min(50, Number(cfg.batchSize) || 16));
+
+            while (!signal.aborted) {
+                const batch = getUnindexedAiBatch({ limit: batchSize });
+                if (!batch.length) {
+                    log('info', 'ocr scan: no more unscanned images');
+                    break;
+                }
+                state.total = Math.max(state.total, state.scanned + batch.length * 2);
+                bump();
+
+                for (const row of batch) {
+                    if (signal.aborted) break;
+
+                    const absPath = _resolveAbs(row.file_path);
+                    if (!absPath) {
+                        log('warn', `ocr: file not found: ${row.file_path}`);
+                        setAiIndexedAt(row.id);
+                        state.scanned += 1;
+                        bump();
+                        continue;
+                    }
+
+                    if (row.file_type !== 'photo') {
+                        log('debug', `ocr: skipping non-photo: ${row.file_name}`);
+                        setAiIndexedAt(row.id);
+                        state.scanned += 1;
+                        bump();
+                        continue;
+                    }
+
+                    try {
+                        const result = await _extractTextOne(sidecarUrl, absPath, log);
+                        if (result && result.text) {
+                            const { setImageText } = await import('../db/faces.js');
+                            setImageText(row.id, result.text, result.language, result.confidence);
+                        }
+                    } catch (e) {
+                        log('warn', `ocr failed for id=${row.id}: ${e?.message || e}`);
+                    }
+                    setAiIndexedAt(row.id);
+                    state.scanned += 1;
+                    bump();
+                    await new Promise((r) => setImmediate(r));
+                }
+            }
+            log('info', `ocr scan: finished — ${state.scanned} files scanned`);
+        },
+        onProgress,
+        onDone,
+        onLog,
+    );
+}
+
+/**
+ * Call the Python sidecar's ``POST /ocr`` for one image.
+ * Returns ``{text, language, confidence}`` or null on failure.
+ */
+async function _extractTextOne(sidecarUrl, absPath, log) {
+    const url = `${sidecarUrl.replace(/\/+$/, '')}/ocr`;
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: absPath }),
+            signal: AbortSignal.timeout(30000), // 30 s per file
+        });
+        if (!res.ok) {
+            log('warn', `ocr endpoint returned ${res.status} for ${absPath}`);
+            return null;
+        }
+        const data = await res.json();
+        return data?.result || null;
+    } catch (e) {
+        log('warn', `ocr request failed for ${absPath}: ${e?.message || e}`);
+        return null;
     }
 }
 

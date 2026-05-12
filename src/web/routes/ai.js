@@ -8,7 +8,10 @@ import {
     getScanState as aiGetScanState,
     _bgQueueDepths as aiBgQueueDepths,
 } from '../../core/ai/index.js';
-import { startTagsScan as aiStartTagsScan } from '../../core/ai/scan-runner.js';
+import {
+    startTagsScan as aiStartTagsScan,
+    startOcrScan as aiStartOcrScan,
+} from '../../core/ai/scan-runner.js';
 import {
     getAiCounts,
     listPeople,
@@ -27,12 +30,14 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
     function _aiTrackerFor(feature) {
         if (feature === 'faces') return jobTrackers.aiPeople;
         if (feature === 'tags') return jobTrackers.aiTags;
+        if (feature === 'ocr') return jobTrackers.aiOcr;
         return null;
     }
 
     function _aiStarterFor(feature) {
         if (feature === 'faces') return aiStartFacesScan;
         if (feature === 'tags') return aiStartTagsScan;
+        if (feature === 'ocr') return aiStartOcrScan;
         return null;
     }
 
@@ -320,7 +325,7 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
     // branches have been removed. The handler still accepts a `feature`
     // field so older clients fail with a clear `unknown feature` error
     // rather than a silent no-op.
-    const AI_SCAN_FEATURES = new Set(['faces', 'tags']);
+    const AI_SCAN_FEATURES = new Set(['faces', 'tags', 'ocr']);
 
     // JobTracker integration for AI scans:
     //   The scan-runner module already owns the per-feature state machine

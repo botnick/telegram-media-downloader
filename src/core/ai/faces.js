@@ -151,6 +151,32 @@ export function qualityFilter(detections, cfg = {}) {
     });
 }
 
+/**
+ * Composite face quality score in [0, 1].
+ *
+ * Phase 1 (cheap signals only):
+ *   - detector confidence (signal quality from sidecar)
+ *   - face size (bigger crops usually embed better)
+ *   - aspect ratio sanity (near-square boxes are usually cleaner faces)
+ *
+ * The UI maps this to 0..100.
+ */
+export function computeFaceQualityScore(face, cfg = {}) {
+    if (!face) return 0;
+    const score = Number(face.score);
+    const conf = Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0.5;
+    const w = Math.max(0, Number(face.w) || 0);
+    const h = Math.max(0, Number(face.h) || 0);
+    const minBoxPx = Number.isFinite(cfg.minFaceSizePx) ? cfg.minFaceSizePx : 80;
+    // 1.0 at ~2.5x the configured minimum box size.
+    const sizeNorm = Math.max(0, Math.min(1, Math.min(w, h) / Math.max(1, minBoxPx * 2.5)));
+    const ratio = w > 0 && h > 0 ? w / h : 1;
+    // Penalize elongated boxes.
+    const aspectNorm = Math.max(0, Math.min(1, 1 - Math.min(1, Math.abs(Math.log(ratio)))));
+    // Weighted blend: confidence dominates, then size, then aspect sanity.
+    return conf * 0.5 + sizeNorm * 0.35 + aspectNorm * 0.15;
+}
+
 // ---- Math + DBSCAN -------------------------------------------------------
 
 /** Euclidean distance between two equal-length vectors. */

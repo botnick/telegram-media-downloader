@@ -1994,10 +1994,17 @@ function _photoTile(row) {
     const id = row.download_id || row.id;
     const faceId = row.face_id || '';
     const name = escapeHtml(row.file_name || `#${id}`);
+    const q = Number(row.face_quality);
+    const qualityScore = Number.isFinite(q) ? Math.round(Math.max(0, Math.min(1, q)) * 100) : null;
     return `
         <a href="#/files/${id}" class="block group relative" data-face-id="${escapeHtml(String(faceId))}">
             <img src="/api/thumbs/${id}?w=320" alt="${name}" loading="lazy"
                 class="aspect-square w-full object-cover rounded-lg bg-tg-bg/40">
+            ${
+                qualityScore == null
+                    ? ''
+                    : `<span class="absolute top-1 right-1 text-[10px] px-1.5 py-0.5 rounded bg-black/65 text-white tabular-nums">Q${qualityScore}</span>`
+            }
         </a>
     `;
 }

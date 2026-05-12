@@ -22,7 +22,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { deleteFacesForDownload, getDb, insertFace, setAiIndexedAt } from '../db.js';
-import { detectFaces } from './faces.js';
+import { computeFaceQualityScore, detectFaces } from './faces.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -187,6 +187,7 @@ async function _drainBg() {
                                 w: f.w,
                                 h: f.h,
                                 embeddingBlob: _f32ToBlob(f.embedding),
+                                qualityScore: computeFaceQualityScore(f, cfg),
                             });
                         }
                     }

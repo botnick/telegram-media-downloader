@@ -626,11 +626,20 @@ export function clearStaleEmbeddings(currentModelId) {
 
 // ---- Faces & people -------------------------------------------------------
 
-export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null }) {
+export function insertFace({
+    downloadId,
+    x,
+    y,
+    w,
+    h,
+    embeddingBlob,
+    personId = null,
+    qualityScore = null,
+}) {
     return getDb()
         .prepare(`
-        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id, quality_score)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
         .run(
             Number(downloadId),
@@ -640,6 +649,7 @@ export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = n
             Number(h),
             embeddingBlob,
             personId == null ? null : Number(personId),
+            qualityScore == null ? null : Number(qualityScore),
         );
 }
 
@@ -923,11 +933,12 @@ export function listPhotosForPerson(personId, { limit = 50, offset = 0 } = {}) {
     const off = Math.max(0, Number(offset) || 0);
     const rows = getDb()
         .prepare(`
-        SELECT DISTINCT d.*
+        SELECT d.*, MAX(f.quality_score) AS face_quality
           FROM faces f
           JOIN downloads d ON d.id = f.download_id
          WHERE f.person_id = ?
-         ORDER BY d.created_at DESC, d.id DESC
+         GROUP BY d.id
+         ORDER BY face_quality DESC, d.created_at DESC, d.id DESC
          LIMIT ? OFFSET ?
     `)
         .all(Number(personId), lim, off);

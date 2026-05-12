@@ -38,6 +38,11 @@ from .clip import (
     is_ready as clip_is_ready,
     last_error as clip_last_error,
 )
+from .ocr import (
+    extract_text as ocr_extract_text,
+    is_ready as ocr_is_ready,
+    last_error as ocr_last_error,
+)
 from .insight import (
     DET_SIZE,
     EMBEDDING_DIM,
@@ -714,8 +719,15 @@ def ocr_image(body: Annotated[OCRRequest, ...]) -> JSONResponse:
     Returns ``{result: {text, language, confidence}}``.
 
     Error codes: ``path_not_allowed`` (403), ``file_not_found`` (404),
-    ``image_decode_failed`` (415), ``ocr_failed`` (500).
+    ``image_decode_failed`` (415), ``ocr_not_ready`` (503), ``ocr_failed`` (500).
     """
+    if not ocr_is_ready():
+        return _error(
+            f"tesseract not available: {ocr_last_error()}",
+            code="ocr_not_ready",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     try:
         if body.path:
             img = load_image_from_path(body.path, _allow_roots())
@@ -733,16 +745,11 @@ def ocr_image(body: Annotated[OCRRequest, ...]) -> JSONResponse:
                       status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     try:
-        # TODO: Implement OCR using pytesseract or local Tesseract
-        # For now, return empty placeholder
-        text = ""
-        language = None
-        confidence = None
-
+        result = ocr_extract_text(img, lang="eng")
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content=OCRResponse(
-                result=OCRResult(text=text, language=language, confidence=confidence)
+                result=OCRResult(**result)
             ).model_dump(),
         )
     except Exception as exc:
