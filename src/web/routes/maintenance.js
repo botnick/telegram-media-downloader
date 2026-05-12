@@ -67,6 +67,7 @@ import {
 import { loginVerify, isAuthConfigured, revokeAllSessions } from '../../core/web-auth.js';
 import {
     getScanState as nsfwGetScanState,
+    classifierReady as nsfwClassifierReady,
     preloadClassifier as nsfwPreloadClassifier,
     clearClassifierCache as nsfwClearCache,
 } from '../../core/nsfw.js';
