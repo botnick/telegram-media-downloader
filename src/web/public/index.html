@@ -3943,6 +3943,25 @@
                             <i class="ri-fullscreen-line text-lg"></i>
                         </button>
                     </div>
+
+                    <!-- Timeline filmstrip — horizontal strip of sprite
+                         thumbnails that appears below the controls bar
+                         when sprite data is ready. Each cell is a crop
+                         from the same WebP sprite used by hover previews.
+                         Clicking a cell seeks to that timestamp.
+                         JS: _renderFilmstrip() in viewer.js. -->
+                    <div id="video-filmstrip" class="hidden" aria-label="Timeline thumbnails">
+                        <div class="filmstrip-time-float" id="filmstrip-time-float"></div>
+                        <div class="filmstrip-wrap">
+                            <button id="filmstrip-prev" type="button" class="filmstrip-arrow" aria-label="Scroll left" tabindex="-1">
+                                <i class="ri-arrow-left-s-line text-base" aria-hidden="true"></i>
+                            </button>
+                            <div id="filmstrip-track" class="filmstrip-track" role="listbox"></div>
+                            <button id="filmstrip-next" type="button" class="filmstrip-arrow" aria-label="Scroll right" tabindex="-1">
+                                <i class="ri-arrow-right-s-line text-base" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
