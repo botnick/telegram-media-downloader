@@ -1,0 +1,79 @@
+# syntax=docker/dockerfile:1.6
+#
+# seekbar-service — CUDA GPU-accelerated variant.
+#
+# Requires nvidia-container-runtime (or nvidia-docker2) on the host.
+# The seekbar service itself is CPU-only Go code; CUDA is used exclusively
+# by ffmpeg for hardware-accelerated video decode (h264_cuvid, hevc_cuvid)
+# and pixel-format conversion on the GPU before CPU-side tile encoding.
+#
+# Build:
+#   docker buildx build -f Dockerfile.cuda --platform linux/amd64 \
+#       -t tgdl-seekbar-cuda:latest .
+#
+# Run:
+#   docker run --rm --gpus all -p 8089:8089 \
+#       -v /path/to/videos:/videos:ro \
+#       -v /path/to/sprites:/out \
+#       -e SEEKBAR_OUTPUT_DIR=/out \
+#       -e SEEKBAR_HWACCEL=cuda \
+#       tgdl-seekbar-cuda:latest
+
+# ---- Stage 1: build the binary (no CUDA needed at compile time) -----------
+FROM --platform=$BUILDPLATFORM golang:1.22-bookworm AS build
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+        go build -trimpath -ldflags '-s -w' -o /out/seekbar-server ./cmd/server && \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+        go build -trimpath -ldflags '-s -w' -o /out/seekbar-cli ./cmd/cli
+
+# ---- Stage 2: CUDA runtime + ffmpeg with NVDEC/NVENC support -------------
+#
+# nvidia/cuda:12.4-base provides libcuda.so and the NVIDIA driver stubs.
+# ffmpeg from Debian bookworm ships with --enable-cuda-nvcc and NVDEC support
+# when the CUDA libraries are present at runtime (dynamic loading via dlopen).
+# No CUDA dev headers are needed — ffmpeg does runtime NVDEC device probing.
+FROM nvidia/cuda:12.4-base-ubuntu22.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        tini \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Non-root user — matches the telegram-media-downloader convention.
+RUN useradd --system --create-home --uid 1000 --user-group seekbar
+
+COPY --from=build /out/seekbar-server /usr/local/bin/seekbar-server
+COPY --from=build /out/seekbar-cli    /usr/local/bin/seekbar-cli
+
+ENV SEEKBAR_OUTPUT_DIR=/data/output \
+    SEEKBAR_TEMP_DIR=/data/tmp \
+    SEEKBAR_HTTP_LISTEN=:8089 \
+    SEEKBAR_HWACCEL=cuda \
+    SEEKBAR_CONCURRENCY=2 \
+    SEEKBAR_LOG_LEVEL=info \
+    SEEKBAR_LOG_FORMAT=text
+
+RUN mkdir -p /data/output /data/tmp && chown -R seekbar:seekbar /data
+
+USER seekbar
+WORKDIR /home/seekbar
+EXPOSE 8089
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/bin/sh","-c","wget -qO- --tries=1 --timeout=3 http://127.0.0.1:8089/health | grep -q '\"ok\":true'"]
+
+ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/seekbar-server"]

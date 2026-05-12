@@ -72,9 +72,10 @@ type ProgressFunc func(done, total, generated, errored, queued int)
 
 // Pool manages concurrent sprite workers.
 type Pool struct {
-	cfg    *config.Config
-	log    *logx.Logger
-	hwArgs []string
+	cfg       *config.Config
+	log       *logx.Logger
+	hwArgs    []string
+	hwBackend ffmpeg.HWAccelBackend // resolved at Start() for filter-chain injection
 
 	mu      sync.Mutex
 	queue   []*Job
@@ -100,12 +101,31 @@ func (p *Pool) SetProgressCallback(fn ProgressFunc) {
 }
 
 // Submit enqueues a job. Thread-safe.
+//
+// Priority ordering: realtime jobs (Priority == 0) are placed at the front
+// of the queue so they are always processed before backfill jobs
+// (Priority == 1). Within the same priority level, FIFO order is preserved.
 func (p *Pool) Submit(j *Job) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	j.Status = "pending"
 	j.CreatedAt = time.Now().UnixMilli()
-	p.queue = append(p.queue, j)
+	if j.Priority == 0 {
+		// Realtime: find the first backfill job and insert before it.
+		insertAt := len(p.queue)
+		for i, q := range p.queue {
+			if q.Priority > 0 {
+				insertAt = i
+				break
+			}
+		}
+		p.queue = append(p.queue, nil)
+		copy(p.queue[insertAt+1:], p.queue[insertAt:])
+		p.queue[insertAt] = j
+	} else {
+		// Backfill: append at the back.
+		p.queue = append(p.queue, j)
+	}
 	p.total++
 }
 
@@ -132,6 +152,7 @@ func (p *Pool) Start(ctx context.Context, resolvedHWAccel string) ffmpeg.HWAccel
 		}
 	}
 	p.hwArgs = ffmpeg.Args(hwa, p.cfg.FFmpeg.VAAPIDevice)
+	p.hwBackend = hwa
 	if len(p.hwArgs) > 0 {
 		p.log.Info("hwaccel active", "backend", string(hwa))
 	} else {
@@ -281,7 +302,7 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 
 	// Build sprite.
 	tmpPath := ffmpeg.TempPath(dstPath)
-	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs)
+	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs, p.hwBackend)
 
 	var lastErr error
 	maxAttempts := cfg.Jobs.MaxRetries + 1
@@ -293,7 +314,12 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 		}
 		if err := ffmpeg.Run(ctx, cfg.FFmpeg.Path, args); err != nil {
 			lastErr = err
-			time.Sleep(time.Duration(cfg.Jobs.RetryDelay*(attempt+1)) * time.Second / 10)
+			// Capped exponential back-off: base 1s per attempt, max 30s.
+			delay := time.Duration(attempt+1) * time.Second
+			if delay > 30*time.Second {
+				delay = 30 * time.Second
+			}
+			time.Sleep(delay)
 			continue
 		}
 		lastErr = nil
@@ -307,6 +333,19 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 	if err := ffmpeg.AtomicRename(tmpPath, dstPath); err != nil {
 		p.fail(j, fmt.Sprintf("rename: %v", err))
 		return
+	}
+
+	// Probe actual sprite dimensions to derive tile_h.
+	// tile_h cannot be computed from the plan alone because ffmpeg may
+	// round the height differently (e.g. -2 snaps to nearest even number).
+	tileH := 0
+	if imgW, imgH, dimErr := ffmpeg.ReadImageDims(dstPath); dimErr == nil {
+		_ = imgW // tile width is already known from the plan
+		if plan.Rows > 0 {
+			tileH = imgH / plan.Rows
+		}
+	} else {
+		p.log.Warn("sprite dim probe failed, tile_h=0", "video_id", j.VideoID, "err", dimErr)
 	}
 
 	// Write JSON meta.
@@ -332,7 +371,7 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 		Cols:        plan.Cols,
 		Rows:        plan.Rows,
 		TileW:       plan.TileW,
-		TileH:       0,
+		TileH:       tileH,
 		IntervalSec: plan.IntervalSec,
 		Format:      ext,
 		Bytes:       spriteBytes,
