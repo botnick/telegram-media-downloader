@@ -262,6 +262,21 @@ export function createAiRouter({ broadcast, log, jobTrackers }) {
         }
     });
 
+    router.get('/ai/tags/suggestions', async (req, res) => {
+        try {
+            const minRate = Math.max(0, Math.min(1, Number(req.query.minRate) || 0.6));
+            const minImages = Math.max(1, Number(req.query.minImages) || 2);
+            const { getTagCooccurrenceSuggestions } = await import('../../core/db/faces.js');
+            const suggestions = getTagCooccurrenceSuggestions({
+                minCooccurrenceRate: minRate,
+                minImagesPerTag: minImages,
+            });
+            res.json({ success: true, suggestions });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
     // ---- Scan controls -------------------------------------------------------
     //
     // Faces is the only feature left; the legacy `feature: 'embed' | 'tags'`

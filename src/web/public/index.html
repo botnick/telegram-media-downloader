@@ -3404,6 +3404,23 @@
                         <p id="ai-tag-empty" class="text-[11px] text-tg-textSecondary text-center py-3 hidden">No tags yet — run a tag scan to populate.</p>
                     </section>
 
+                    <!-- Tag suggestions — shows co-occurring tags that might be merged -->
+                    <section id="ai-tag-suggestions" class="hidden bg-tg-panel rounded-xl p-4 mb-3">
+                        <div class="flex items-start justify-between gap-3 flex-wrap mb-2">
+                            <div class="min-w-0">
+                                <h3 class="text-tg-text text-sm font-semibold" data-i18n="maintenance.ai.tags.suggestions_title">Tag suggestions</h3>
+                                <p class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="maintenance.ai.tags.suggestions_desc">Tags that appear together often might be duplicates or related. Consider merging them to improve your tag vocabulary.</p>
+                            </div>
+                            <button id="ai-tag-suggestions-refresh" type="button" class="tg-btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1">
+                                <i class="ri-refresh-line"></i><span data-i18n="common.refresh">Refresh</span>
+                            </button>
+                        </div>
+                        <div id="ai-tag-suggestions-list" class="space-y-2">
+                            <p class="text-[11px] text-tg-textSecondary text-center py-3">Loading suggestions…</p>
+                        </div>
+                        <p id="ai-tag-suggestions-empty" class="text-[11px] text-tg-textSecondary text-center py-3 hidden">No tag suggestions yet.</p>
+                    </section>
+
                     <!-- Hidden hosts for legacy element ids referenced
                          by older bookmarklets / extensions. Empty + no-op
                          so a stray getElementById doesn't throw, but

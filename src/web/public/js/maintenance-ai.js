@@ -380,6 +380,95 @@ function _moveTagChipFocus(currentBtn, dir) {
     list[next]?.focus();
 }
 
+// ---- Tag suggestions ---------------------------------------------------
+
+/**
+ * Fetch tag co-occurrence suggestions and render them.
+ */
+async function _renderTagSuggestions(forceReload = true) {
+    const section = $('#ai-tag-suggestions');
+    const list = $('#ai-tag-suggestions-list');
+    const empty = $('#ai-tag-suggestions-empty');
+    if (!section || !list) return;
+
+    try {
+        const r = await api.get('/api/ai/tags/suggestions?minRate=0.6&minImages=2');
+        const suggestions = Array.isArray(r?.suggestions) ? r.suggestions : [];
+
+        if (!suggestions.length) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        if (empty) empty.classList.add('hidden');
+
+        list.innerHTML = suggestions
+            .map(
+                (s) =>
+                    `<div class="bg-tg-panelOverlay rounded p-3 text-xs space-y-1.5">
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <span class="font-mono text-tg-text">${escapeHtml(s.tag1)}</span>
+                                <span class="text-tg-textSecondary">←→</span>
+                                <span class="font-mono text-tg-text">${escapeHtml(s.tag2)}</span>
+                            </div>
+                            <span class="text-tg-textSecondary tabular-nums">${Math.round(s.cooccurrence_rate * 100)}%</span>
+                        </div>
+                        <p class="text-[10px] text-tg-textSecondary">
+                            Appear together in ${s.images_together} images
+                            (${s.tag1}: ${s.images_tag1}, ${s.tag2}: ${s.images_tag2})
+                        </p>
+                        <button type="button" class="tg-btn-secondary text-[10px] px-2 py-1 merge-suggestion-btn" data-tag1="${escapeHtml(s.tag1)}" data-tag2="${escapeHtml(s.tag2)}">
+                            Merge → keep first
+                        </button>
+                    </div>`,
+            )
+            .join('');
+
+        // Wire merge buttons
+        list.querySelectorAll('.merge-suggestion-btn').forEach((btn) => {
+            btn.addEventListener('click', () => _applyTagMerge(btn.dataset.tag1, btn.dataset.tag2));
+        });
+    } catch (e) {
+        console.warn('tag suggestions:', e);
+        section.classList.add('hidden');
+    }
+}
+
+/**
+ * Apply a tag merge by updating the tagLabels config to remove tag2 and keep tag1.
+ */
+async function _applyTagMerge(tag1, tag2) {
+    try {
+        // Fetch current config to get existing tagLabels
+        const cfgRes = await api.get('/api/config');
+        const labels = Array.isArray(cfgRes?.advanced?.ai?.tagLabels)
+            ? cfgRes.advanced.ai.tagLabels
+            : [];
+
+        // Remove tag2, keep tag1
+        const updated = labels.filter((t) => String(t).trim() !== String(tag2).trim());
+
+        // Make sure tag1 is still there
+        if (!updated.find((t) => String(t).trim() === String(tag1).trim())) {
+            updated.push(tag1);
+        }
+
+        // Save config
+        const saveRes = await api.post('/api/config', {
+            advanced: { ai: { tagLabels: updated } },
+        });
+        if (!saveRes.success) throw new Error(saveRes.error || 'save failed');
+
+        showToast(`Merged "${tag2}" into "${tag1}". Refresh suggestions to see the change.`);
+        _renderTagSuggestions(true);
+    } catch (e) {
+        console.error('merge failed:', e);
+        showToast(`Error merging tags: ${e.message}`, 'error');
+    }
+}
+
 function _getVisibleTags() {
     const q = _tagFilterQuery.trim().toLowerCase();
     let tags = _tagListCache.slice();
@@ -421,6 +510,7 @@ export async function init() {
     _refreshDoctor().catch(() => {});
     _loadPeople().catch(() => {});
     _renderTagBrowser().catch(() => {});
+    _renderTagSuggestions().catch(() => {});
 }
 
 // Public refresher — exported so the SPA shell can poke us after a
@@ -432,6 +522,7 @@ export async function refreshStatus() {
         _lastStatus = r;
         _renderStatus(r);
         _renderTagBrowser().catch(() => {});
+        _renderTagSuggestions().catch(() => {});
     } catch (e) {
         console.warn('ai/status:', e);
     }
@@ -598,6 +689,7 @@ function _bindOnce() {
         _renderTagBrowser(false);
     });
     $('#ai-tag-load-more')?.addEventListener('click', _loadMoreTagPhotos);
+    $('#ai-tag-suggestions-refresh')?.addEventListener('click', () => _renderTagSuggestions());
     _initDetailsCollapsedState({
         detailsId: 'ai-pane-faces',
         storageKey: LS_FACES_COLLAPSED,

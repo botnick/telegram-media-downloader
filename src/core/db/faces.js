@@ -994,3 +994,74 @@ export function listPhotosForTag(tag, { limit = 50, offset = 0 } = {}) {
         .get(String(tag)).n;
     return { files: rows, total };
 }
+
+/**
+ * Find tag pairs that appear together frequently. Suggests which tags
+ * might be redundant/similar and could be merged.
+ *
+ * Returns array of { tag1, tag2, cooccurrence_rate, images_together,
+ * images_tag1, images_tag2 } sorted by cooccurrence_rate DESC.
+ *
+ * @param {number} minCooccurrenceRate - Include pairs above this rate (0-1, default 0.6)
+ * @param {number} minImagesPerTag - Exclude tags appearing in fewer than N images (default 2)
+ * @returns {Array} Suggested tag merges
+ */
+export function getTagCooccurrenceSuggestions({
+    minCooccurrenceRate = 0.6,
+    minImagesPerTag = 2,
+} = {}) {
+    const db = getDb();
+    const minRate = Math.max(0, Math.min(1, Number(minCooccurrenceRate) || 0.6));
+    const minImages = Math.max(1, Number(minImagesPerTag) || 2);
+
+    // Get all tags with counts, filter by minImages
+    const tags = db
+        .prepare(`
+        SELECT tag, COUNT(DISTINCT download_id) AS count
+          FROM image_tags
+         GROUP BY tag
+        HAVING count >= ?
+         ORDER BY count DESC
+    `)
+        .all(minImages);
+
+    if (tags.length < 2) return [];
+
+    // For each tag pair, calculate co-occurrence
+    const suggestions = [];
+    for (let i = 0; i < tags.length; i++) {
+        for (let j = i + 1; j < tags.length; j++) {
+            const t1 = tags[i].tag;
+            const t2 = tags[j].tag;
+            const count1 = tags[i].count;
+            const count2 = tags[j].count;
+
+            const together = db
+                .prepare(`
+                SELECT COUNT(DISTINCT t1.download_id) AS n
+                  FROM image_tags t1
+                  JOIN image_tags t2 ON t1.download_id = t2.download_id
+                 WHERE t1.tag = ? AND t2.tag = ?
+            `)
+                .get(t1, t2).n;
+
+            // Co-occurrence rate: how often they appear together vs apart
+            const union = count1 + count2 - together;
+            const rate = union > 0 ? together / union : 0;
+
+            if (rate >= minRate && together >= minImages) {
+                suggestions.push({
+                    tag1: t1,
+                    tag2: t2,
+                    cooccurrence_rate: Math.round(rate * 100) / 100,
+                    images_together: together,
+                    images_tag1: count1,
+                    images_tag2: count2,
+                });
+            }
+        }
+    }
+
+    // Sort by cooccurrence rate DESC
+    return suggestions.sort((a, b) => b.cooccurrence_rate - a.cooccurrence_rate);
+}
