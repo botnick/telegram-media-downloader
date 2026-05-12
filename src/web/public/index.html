@@ -3143,18 +3143,14 @@
                          "capability card" nesting), so every toggle and
                          slider is at the same depth and reads
                          left-to-right. -->
-                    <section id="ai-pane-faces" class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <div class="flex items-start justify-between gap-2 mb-1">
+                    <details id="ai-pane-faces" class="bg-tg-panel rounded-xl p-4 mb-3 group">
+                        <summary class="cursor-pointer list-none flex items-center justify-between gap-2 mb-1">
                             <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
+                                <i class="ri-arrow-right-s-line text-tg-textSecondary text-xs transition-transform group-open:rotate-90"></i>
                                 <i class="ri-user-smile-line text-tg-blue"></i>
                                 <span data-i18n="maintenance.ai.faces.title">Face clustering</span>
                             </h3>
-                            <button id="ai-pane-faces-toggle" type="button" class="tg-btn-secondary text-xs px-2 py-1 inline-flex items-center gap-1" aria-expanded="true" aria-controls="ai-pane-faces-body">
-                                <i class="ri-arrow-down-s-line"></i>
-                                <span>Collapse</span>
-                            </button>
-                        </div>
-                        <div id="ai-pane-faces-body">
+                        </summary>
                         <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.ai.faces.desc">Detects faces with insightface, groups recurring people into clusters via DBSCAN.</p>
                         <!-- Resolved model line — sidecar + dim + provider.
                              Stays in sync with the live /api/ai/status. -->
@@ -3280,25 +3276,20 @@
                                 <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.ai.faces.providers.help">Auto is the safe default; pick a specific backend only after a probe shows it works. Falls back to CPU if the chosen backend isn't available.</p>
                             </div>
                         </div>
-                        </div>
-                    </section>
+                    </details>
 
                     <!-- Image tagging card — zero-shot CLIP tagging.
                          Mirrors the face clustering section layout so
                          every capability reads the same way. The toggle
                          controls the `advanced.ai.imageTagging` config key. -->
-                    <section id="ai-pane-tags" class="bg-tg-panel rounded-xl p-4 mb-3">
-                        <div class="flex items-start justify-between gap-2 mb-1">
+                    <details id="ai-pane-tags" class="bg-tg-panel rounded-xl p-4 mb-3 group">
+                        <summary class="cursor-pointer list-none flex items-center justify-between gap-2 mb-1">
                             <h3 class="text-tg-text text-sm font-medium flex items-center gap-2">
+                                <i class="ri-arrow-right-s-line text-tg-textSecondary text-xs transition-transform group-open:rotate-90"></i>
                                 <i class="ri-price-tag-3-line text-tg-orange"></i>
                                 <span data-i18n="maintenance.ai.tags.title">Image tagging</span>
                             </h3>
-                            <button id="ai-pane-tags-toggle" type="button" class="tg-btn-secondary text-xs px-2 py-1 inline-flex items-center gap-1" aria-expanded="true" aria-controls="ai-pane-tags-body">
-                                <i class="ri-arrow-down-s-line"></i>
-                                <span>Collapse</span>
-                            </button>
-                        </div>
-                        <div id="ai-pane-tags-body">
+                        </summary>
                         <p class="text-[11px] text-tg-textSecondary mb-3" data-i18n="maintenance.ai.tags.desc">Zero-shot CLIP tagging — detects objects, scenes, concepts in every photo. Runs via the Python sidecar.</p>
 
                         <div id="ai-tags-model-line" class="text-[10px] text-tg-textSecondary font-mono truncate mb-3" title=""></div>
@@ -3331,8 +3322,7 @@
                                 </button>
                             </div>
                         </div>
-                        </div>
-                    </section>
+                    </details>
 
                     <!-- People (face clusters) — the surface today.
                          Search box + Unlabeled-only chip + refresh on

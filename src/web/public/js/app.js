@@ -89,6 +89,23 @@ function scheduleRender(fn) {
     _scheduledRenders.set(fn, handle);
 }
 
+async function _triggerGroupsRefreshInfo() {
+    if (!state.isAdmin) return;
+    if (state._resolvingGroups) return;
+    state._resolvingGroups = true;
+    try {
+        const st = await api.get('/api/groups/refresh-info/status').catch(() => null);
+        if (st?.running) return;
+        await api.post('/api/groups/refresh-info');
+    } catch (e) {
+        if (!(e?.status === 409 && e?.data?.code === 'ALREADY_RUNNING')) {
+            console.warn('groups refresh-info:', e);
+        }
+    } finally {
+        state._resolvingGroups = false;
+    }
+}
+
 // ============ Initialization ============
 async function init() {
     // Install the in-SPA reauth modal BEFORE the first network call so
@@ -347,12 +364,7 @@ async function init() {
         const cfg = (state.groups || []).find((g) => String(g.id) === String(id));
         const known = cached || (cfg && !isUnresolvedName(cfg.name, id));
         if (!known && !state._resolvingGroups) {
-            state._resolvingGroups = true;
-            api.post('/api/groups/refresh-info')
-                .catch(() => {})
-                .finally(() => {
-                    state._resolvingGroups = false;
-                });
+            _triggerGroupsRefreshInfo();
         }
     });
 
@@ -453,12 +465,7 @@ async function init() {
     // `groups_refreshed` broadcast handler above merges the resolved
     // names into the canonical cache when the job finishes.
     if (isAdmin && !state._resolvingGroups) {
-        state._resolvingGroups = true;
-        api.post('/api/groups/refresh-info')
-            .catch(() => {})
-            .finally(() => {
-                state._resolvingGroups = false;
-            });
+        _triggerGroupsRefreshInfo();
     }
     // Routes need to be registered BEFORE router.start() so the initial
     // hash dispatch lands on a real handler.
@@ -1198,12 +1205,7 @@ function renderGroupsList() {
     // re-renders from hammering the endpoint, while a 409 from a sibling
     // client is no-op'd on the server side.
     if (needsResolve && !state._resolvingGroups) {
-        state._resolvingGroups = true;
-        api.post('/api/groups/refresh-info')
-            .catch(() => {})
-            .finally(() => {
-                state._resolvingGroups = false;
-            });
+        _triggerGroupsRefreshInfo();
     }
 
     // Event delegation — click opens the group viewer; click on the

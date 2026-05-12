@@ -399,25 +399,15 @@ function _getVisibleTags() {
     return tags;
 }
 
-function _initCollapsiblePane({ buttonId, bodyId, storageKey }) {
-    const btn = document.getElementById(buttonId);
-    const body = document.getElementById(bodyId);
-    if (!btn || !body) return;
-    const labelEl = btn.querySelector('span');
-    const iconEl = btn.querySelector('i');
-    const apply = (collapsed) => {
-        body.classList.toggle('hidden', collapsed);
-        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        if (labelEl) labelEl.textContent = collapsed ? 'Expand' : 'Collapse';
-        if (iconEl) iconEl.className = collapsed ? 'ri-arrow-right-s-line' : 'ri-arrow-down-s-line';
-    };
+function _initDetailsCollapsedState({ detailsId, storageKey, defaultOpen = false }) {
+    const details = document.getElementById(detailsId);
+    if (!details) return;
     const stored = localStorage.getItem(storageKey);
-    apply(stored === null ? true : stored === '1');
-    btn.addEventListener('click', () => {
-        const collapsed = !body.classList.contains('hidden');
-        apply(collapsed);
+    const open = stored === null ? defaultOpen : stored === '0';
+    details.open = open;
+    details.addEventListener('toggle', () => {
         try {
-            localStorage.setItem(storageKey, collapsed ? '1' : '0');
+            localStorage.setItem(storageKey, details.open ? '0' : '1');
         } catch {}
     });
 }
@@ -608,15 +598,15 @@ function _bindOnce() {
         _renderTagBrowser(false);
     });
     $('#ai-tag-load-more')?.addEventListener('click', _loadMoreTagPhotos);
-    _initCollapsiblePane({
-        buttonId: 'ai-pane-faces-toggle',
-        bodyId: 'ai-pane-faces-body',
+    _initDetailsCollapsedState({
+        detailsId: 'ai-pane-faces',
         storageKey: LS_FACES_COLLAPSED,
+        defaultOpen: false,
     });
-    _initCollapsiblePane({
-        buttonId: 'ai-pane-tags-toggle',
-        bodyId: 'ai-pane-tags-body',
+    _initDetailsCollapsedState({
+        detailsId: 'ai-pane-tags',
         storageKey: LS_TAGS_COLLAPSED,
+        defaultOpen: false,
     });
 
     // Person action buttons.
