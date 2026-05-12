@@ -21,6 +21,8 @@ import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { getTotalSizeBytes, getOldestDownloads, deleteDownloadsBy } from './db.js';
+import { purgeThumbsForDownload } from './thumbs.js';
+import { purgeSeekbarForDownload } from './seekbar/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = path.join(__dirname, '../../data/downloads');
@@ -218,6 +220,8 @@ export class DiskRotator {
                         total -= sz;
                         deleted += 1;
                         safety -= 1;
+                        purgeThumbsForDownload(row.id).catch(() => {});
+                        purgeSeekbarForDownload(row.id).catch(() => {});
                         try {
                             this._broadcast({
                                 type: 'file_deleted',
