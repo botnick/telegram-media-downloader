@@ -537,17 +537,20 @@ const DEFAULT_CONFIG = {
                 fileTypes: ['photo'],
 
                 // ===== Performance =====
-                // Node-side gate on inflight detect calls. 0 = unlimited
-                // (only the sidecar's own concurrency caps it). Set to 2
-                // on Pi 4 / shared NAS to avoid swap thrash.
-                sidecarMaxConcurrency: 0,
+                // Node-side gate on inflight detect calls. 0 = unlimited.
+                // CPU-only inference (the default) is single-threaded, so
+                // unlimited concurrency causes requests to pile up in the
+                // sidecar queue and hit the request timeout before they
+                // even start. Default 1 = sequential; GPU installs can
+                // raise this to 2-4 to pipeline inference across cores.
+                sidecarMaxConcurrency: 1,
                 // /health probe response cache (ms). The AI maintenance
                 // page polls this aggressively; caching avoids hammering
                 // the sidecar during a busy scan.
                 healthCacheTtlMs: 5000,
                 // Per-request hard timeout (ms). Bumps for slow CPUs /
                 // first-call model load on Pi.
-                requestTimeoutMs: 15000,
+                requestTimeoutMs: 60000,
                 // POST retry count on 5xx / network errors.
                 maxRetries: 3,
                 // Linear backoff between retry attempts (ms).
@@ -688,6 +691,21 @@ function _mergeAi(userAi) {
         ...defaults.faces,
         ...userFaces,
     };
+
+    // One-time migration: the old default was 15 s which is too short for
+    // CPU-only buffalo_l inference. Any install that still has the stale
+    // value gets bumped to 60 s on the next loadConfig().
+    if (mergedFaces.requestTimeoutMs === 15000) {
+        mergedFaces.requestTimeoutMs = 60000;
+    }
+
+    // One-time migration: old default was 0 (unlimited concurrency). Unlimited
+    // concurrency causes CPU-only sidecars to queue 16 requests simultaneously
+    // (one batchSize), which exceeds the per-request timeout before most
+    // requests even start processing. 1 = sequential (safe for CPU and GPU).
+    if (mergedFaces.sidecarMaxConcurrency === 0) {
+        mergedFaces.sidecarMaxConcurrency = 1;
+    }
 
     // Migrate legacy flat keys ONLY when the operator hasn't explicitly set
     // the new path. Probing `userFaces` (not `mergedFaces`) so a previously-

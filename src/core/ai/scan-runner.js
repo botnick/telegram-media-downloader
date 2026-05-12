@@ -28,7 +28,8 @@ import {
     setAiIndexedAt,
     setFacePerson,
 } from '../db.js';
-import { clusterFaces, detectFaces, FACE_DEFAULTS } from './faces.js';
+import { clusterFaces, FACE_DEFAULTS } from './faces.js';
+import { detectFacesBatch } from './faces-client.js';
 import { resolveFacesValue } from './faces-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -223,54 +224,67 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             while (!signal.aborted) {
                 const batch = getUnindexedAiBatch({ fileTypes, limit: batchSize });
                 if (!batch.length) break;
-                // Process the batch in parallel — each detectFaces call is an
-                // async HTTP request to the Python sidecar, so the event loop
-                // is free while each request is in flight. The sidecar's own
-                // concurrency gate (faces-client `_maxConcurrency`) prevents
-                // overloading it. Synchronous DB writes are single-threaded
-                // by JS runtime, so no DB busy risk here.
-                await Promise.all(
-                    batch.map(async (row) => {
-                        if (signal.aborted) return;
-                        const abs = _resolveAbs(row.file_path);
-                        let detected = null;
-                        if (abs) {
-                            try {
-                                detected = await detectFaces(abs, cfg, log);
-                            } catch (e) {
-                                log(
-                                    'warn',
-                                    `detectFaces threw on id=${row.id}: ${e?.message || e}`,
-                                );
-                            }
+                // One HTTP round-trip for the whole batch — the sidecar's
+                // /detect/batch endpoint processes files sequentially in its
+                // threadpool and returns all results together. This replaces
+                // the old Promise.all approach that sent N concurrent requests
+                // to a CPU-only sidecar, causing queue build-up and timeouts.
+                const items = batch.map((row) => ({ row, abs: _resolveAbs(row.file_path) }));
+                const nullItems = items.filter((i) => !i.abs);
+                const validItems = items.filter((i) => i.abs);
+
+                for (const { row } of nullItems) {
+                    _statNull++;
+                    setAiIndexedAt(row.id);
+                    state.scanned += 1;
+                    bump();
+                }
+
+                if (signal.aborted) continue;
+
+                let batchResults = [];
+                if (validItems.length) {
+                    try {
+                        batchResults = await detectFacesBatch(
+                            validItems.map((i) => i.abs),
+                            cfg,
+                            log,
+                        );
+                    } catch (e) {
+                        log('warn', `detectFacesBatch threw: ${e?.message || e}`);
+                        batchResults = validItems.map(() => null);
+                    }
+                }
+
+                for (let bi = 0; bi < validItems.length; bi++) {
+                    const { row } = validItems[bi];
+                    const detected = batchResults[bi] ?? null;
+                    if (detected === null) {
+                        _statNull++;
+                    } else if (detected.length === 0) {
+                        _statEmpty++;
+                    } else {
+                        _statFaces += detected.length;
+                        _statPhotos++;
+                    }
+                    if (Array.isArray(detected) && detected.length) {
+                        deleteFacesForDownload(row.id);
+                        for (const f of detected) {
+                            if (!f.embedding || !f.embedding.length) continue;
+                            insertFace({
+                                downloadId: row.id,
+                                x: f.x,
+                                y: f.y,
+                                w: f.w,
+                                h: f.h,
+                                embeddingBlob: _f32ToBlob(f.embedding),
+                            });
                         }
-                        if (detected === null) {
-                            _statNull++;
-                        } else if (detected.length === 0) {
-                            _statEmpty++;
-                        } else {
-                            _statFaces += detected.length;
-                            _statPhotos++;
-                        }
-                        if (Array.isArray(detected) && detected.length) {
-                            deleteFacesForDownload(row.id);
-                            for (const f of detected) {
-                                if (!f.embedding || !f.embedding.length) continue;
-                                insertFace({
-                                    downloadId: row.id,
-                                    x: f.x,
-                                    y: f.y,
-                                    w: f.w,
-                                    h: f.h,
-                                    embeddingBlob: _f32ToBlob(f.embedding),
-                                });
-                            }
-                        }
-                        setAiIndexedAt(row.id);
-                        state.scanned += 1;
-                        bump();
-                    }),
-                );
+                    }
+                    setAiIndexedAt(row.id);
+                    state.scanned += 1;
+                    bump();
+                }
                 if (state.scanned >= _nextStatLog) {
                     log(
                         'info',
