@@ -4142,15 +4142,36 @@ app.get('/api/downloads', async (req, res) => {
 
         const results = rows
             .map((r) => {
-                const cfg = configGroups.find((g) => String(g.id) === r.group_id);
+                // Detect comment: groups and derive display info from the parent group.
+                // Telegram creates separate comment groups for channel posts; these are
+                // stored with a 'comment:' prefix in the group_id so we can distinguish
+                // them and display them as "<Channel Name> (comments)" in the sidebar.
+                const isCommentGroup =
+                    typeof r.group_id === 'string' && r.group_id.startsWith('comment:');
+                const parentGroupId = isCommentGroup ? r.group_id.slice(8) : null;
+
+                const cfg = isCommentGroup
+                    ? configGroups.find((g) => String(g.id) === parentGroupId)
+                    : configGroups.find((g) => String(g.id) === r.group_id);
+
                 // Best-available: live Telegram dialogs name → config → DB → placeholder.
-                const name = bestGroupName(
-                    r.group_id,
-                    cfg?.name,
-                    r.best_name || r.any_name,
-                    dialogsNames.get(String(r.group_id)),
-                );
-                const hasPhoto = existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
+                const name = isCommentGroup
+                    ? bestGroupName(
+                          parentGroupId,
+                          cfg?.name,
+                          r.best_name || r.any_name,
+                          dialogsNames.get(String(parentGroupId)),
+                      ) + ' (comments)'
+                    : bestGroupName(
+                          r.group_id,
+                          cfg?.name,
+                          r.best_name || r.any_name,
+                          dialogsNames.get(String(r.group_id)),
+                      );
+
+                const hasPhoto = isCommentGroup
+                    ? existsSync(path.join(PHOTOS_DIR, `${parentGroupId}.jpg`))
+                    : existsSync(path.join(PHOTOS_DIR, `${r.group_id}.jpg`));
 
                 return {
                     id: r.group_id,
@@ -4158,10 +4179,14 @@ app.get('/api/downloads', async (req, res) => {
                     // Type drives the sidebar avatar's corner badge
                     // (channel = megaphone / group = group icon / user / bot).
                     // Prefer config (sticky), fall back to live-dialogs cache.
-                    type: cfg?.type || dialogsTypeFor(r.group_id),
+                    type: isCommentGroup
+                        ? cfg?.type || dialogsTypeFor(parentGroupId)
+                        : cfg?.type || dialogsTypeFor(r.group_id),
                     totalFiles: r.count,
                     sizeFormatted: formatBytes(r.size || 0),
-                    photoUrl: hasPhoto ? `/photos/${r.group_id}.jpg` : null,
+                    photoUrl: hasPhoto
+                        ? `/photos/${isCommentGroup ? parentGroupId : r.group_id}.jpg`
+                        : null,
                     enabled: cfg ? cfg.enabled : false,
                 };
             })
