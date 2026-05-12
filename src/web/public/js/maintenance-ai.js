@@ -339,9 +339,21 @@ function _bindOnce() {
     $('#ai-faces-min-points')?.addEventListener('change', (e) =>
         _saveSetting('facesMinPoints', Number(e.target.value || 3)),
     );
-    $('#ai-faces-include-videos')?.addEventListener('change', (e) =>
-        _saveSetting('includeVideos', !!e.target.checked),
-    );
+    $('#ai-faces-include-videos')?.addEventListener('click', () => {
+        const el = $('#ai-faces-include-videos');
+        if (!el) return;
+        const cur = el.classList.contains('active');
+        const next = !cur;
+        el.classList.toggle('active', next);
+        el.setAttribute('aria-checked', String(next));
+        _saveSetting('includeVideos', next);
+    });
+    $('#ai-faces-include-videos')?.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            $('#ai-faces-include-videos')?.click();
+        }
+    });
     $('#ai-faces-video-interval')?.addEventListener('change', (e) => {
         const v = Number(e.target.value || 8);
         if (!Number.isFinite(v)) return;
@@ -722,7 +734,9 @@ function _renderStatus(status) {
     }
     const includeVideosEl = $('#ai-faces-include-videos');
     if (includeVideosEl) {
-        includeVideosEl.checked = cfg.faces?.includeVideos === true;
+        const on = cfg.faces?.includeVideos === true;
+        includeVideosEl.classList.toggle('active', on);
+        includeVideosEl.setAttribute('aria-checked', String(on));
     }
     const videoIntervalEl = $('#ai-faces-video-interval');
     if (videoIntervalEl) {
