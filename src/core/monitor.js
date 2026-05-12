@@ -929,11 +929,20 @@ export class RealtimeMonitor extends EventEmitter {
 
             let group = this.config.groups.find((g) => normalizeId(g.id) === targetId && g.enabled);
 
+            // Linked-chat messages use a distinct group_id (comment:<parentId>)
+            // so they don't collide with the parent channel's message IDs in
+            // the downloads table UNIQUE(group_id, message_id) constraint or
+            // the queue de-duplication key.
+            let commentGroupId = null;
+            let commentGroupName = null;
+
             if (!group) {
                 // Check if this is a linked discussion group (comment tracking)
                 const linkedEntry = this.linkedChatMap?.get(targetId);
                 if (linkedEntry) {
                     group = linkedEntry.group;
+                    commentGroupId = `comment:${group.id}`;
+                    commentGroupName = `${group.name} (comments)`;
                 } else {
                     // Helpful log for users wondering why it's ignored
                     // Only log once per group per session to avoid spam
@@ -1034,8 +1043,8 @@ export class RealtimeMonitor extends EventEmitter {
                 const added = await this.downloader.enqueue(
                     {
                         message,
-                        groupId: group.id,
-                        groupName: group.name,
+                        groupId: commentGroupId || group.id,
+                        groupName: commentGroupName || group.name,
                         mediaType,
                         ttlSeconds,
                         pendingUntil,
@@ -1049,7 +1058,7 @@ export class RealtimeMonitor extends EventEmitter {
                 if (added) {
                     this.stats.downloaded++;
                     this.emit('download', {
-                        group: group.name,
+                        group: commentGroupName || group.name,
                         type: mediaType,
                         messageId: message.id,
                     });

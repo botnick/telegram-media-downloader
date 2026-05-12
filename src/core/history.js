@@ -348,12 +348,19 @@ export class HistoryDownloader extends EventEmitter {
                     const linkedId = fullResult?.fullChat?.linkedChatId;
                     if (linkedId) {
                         this.emit('log', `💬 Backfilling comment media for "${group.name}"…`);
+                        // Use a distinct group_id so linked-chat rows don't collide
+                        // with the parent channel's message IDs in the DB.
+                        const commentGroup = {
+                            ...group,
+                            id: `comment:${group.id}`,
+                            name: `${group.name} (comments)`,
+                        };
                         for await (const msg of workingClient.iterMessages(linkedId, {
                             limit: iterOpts.limit,
                         })) {
                             if (!this.running || this.cancelFlag) break;
                             this.stats.processed++;
-                            await this.processMessage(msg, group, workingClient);
+                            await this.processMessage(msg, commentGroup, workingClient);
                             if (this.stats.processed % 10 === 0) {
                                 this.emit('progress', {
                                     ...this.stats,
