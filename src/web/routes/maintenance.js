@@ -1,10 +1,13 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs, { existsSync } from 'fs';
 import express from 'express';
 import { loadConfig } from '../../config/manager.js';
 import { getDb } from '../../core/db.js';
 import { runtime } from '../../core/runtime.js';
 import { writeConfigAtomic } from '../lib/config-writer.js';
+
+const fsSync = fs;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1951,6 +1954,153 @@ export function createMaintenanceRouter({ broadcast, log, jobTrackers, getAccoun
 
     router.get('/maintenance/recovery/status', async (req, res) => {
         res.json(jobTrackers.recoveryBulk.getStatus());
+    });
+
+    // List logfiles under data/logs/ with size + mtime — used by the SPA to
+    // populate the "Download log" picker.
+    router.get('/maintenance/logs', async (req, res) => {
+        try {
+            if (!existsSync(LOGS_DIR)) return res.json({ files: [] });
+            const names = fsSync.readdirSync(LOGS_DIR).filter((f) => f.endsWith('.log'));
+            const files = names
+                .map((name) => {
+                    try {
+                        const st = fsSync.statSync(path.join(LOGS_DIR, name));
+                        return { name, size: st.size, modified: st.mtime.toISOString() };
+                    } catch {
+                        return null;
+                    }
+                })
+                .filter(Boolean);
+            files.sort((a, b) => b.modified.localeCompare(a.modified));
+            res.json({ files });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Stream the tail of a logfile as plain text. `name` is restricted to a single
+    // path segment so a malicious caller can't traverse out of LOGS_DIR.
+    router.get('/maintenance/logs/download', async (req, res) => {
+        try {
+            const name = String(req.query.name || '');
+            if (
+                !name ||
+                name.includes('/') ||
+                name.includes('\\') ||
+                name.includes('\0') ||
+                !name.endsWith('.log')
+            ) {
+                return res.status(400).json({ error: 'Invalid log name' });
+            }
+            const lines = Math.max(10, Math.min(100000, parseInt(req.query.lines, 10) || 5000));
+            const filePath = path.join(LOGS_DIR, name);
+            if (!existsSync(filePath)) return res.status(404).json({ error: 'Log not found' });
+
+            // Realpath check defends against symlink escapes that the basename
+            // filter can't catch (e.g. logs/foo.log -> /etc/passwd). Resolve
+            // both sides so a case-insensitive FS or a symlinked LOGS_DIR still
+            // compares cleanly.
+            try {
+                const realFile = fsSync.realpathSync(filePath);
+                const realLogs = fsSync.realpathSync(LOGS_DIR);
+                if (realFile !== realLogs && !realFile.startsWith(realLogs + path.sep)) {
+                    return res.status(400).json({ error: 'Path escape detected' });
+                }
+            } catch {
+                return res.status(400).json({ error: 'Invalid log name' });
+            }
+
+            // Naive tail — read whole file (logs are bounded), keep last N lines.
+            // Acceptable up to a few hundred MB; if logs ever grow bigger we'd
+            // switch to a stream-with-ring-buffer reader.
+            const raw = await fs.readFile(filePath, 'utf8');
+            const all = raw.split(/\r?\n/);
+            const tail = all.slice(Math.max(0, all.length - lines)).join('\n');
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            // RFC 5987 — strip non-ASCII for the basic param, keep UTF-8 in filename*.
+            const asciiLogName = String(name).replace(/[^\x20-\x7e]/g, '_');
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename="${asciiLogName}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+            );
+            res.send(tail);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Export a Telegram account session as a portable string. The session is
+    // AES-256 encrypted on disk under data/sessions/<id>.enc; this endpoint
+    // decrypts it with the local SecureSession key and returns the raw gramJS
+    // string (which itself is the long-form telegram session payload). The user
+    // can paste this into another instance to migrate without re-doing the OTP
+    // flow. We never log the value.
+    router.post('/maintenance/session/export', async (req, res) => {
+        if (!_requireConfirm(req, res)) return;
+        if (!(await _requirePassword(req, res))) return;
+        try {
+            const { accountId } = req.body || {};
+            if (typeof accountId !== 'string' || !accountId) {
+                return res.status(400).json({ error: 'accountId required' });
+            }
+            // Path-segment guard — accountId becomes a filename.
+            if (
+                accountId.includes('/') ||
+                accountId.includes('\\') ||
+                accountId.includes('..') ||
+                accountId.includes('\0')
+            ) {
+                return res.status(400).json({ error: 'Invalid accountId' });
+            }
+            const sessionFile = path.join(SESSIONS_DIR, `${accountId}.enc`);
+            if (!existsSync(sessionFile)) {
+                return res.status(404).json({ error: 'Session file not found for that account' });
+            }
+            const raw = await fs.readFile(sessionFile, 'utf8');
+            const encrypted = JSON.parse(raw);
+            const sessionString = _secureSession.decrypt(encrypted);
+            res.json({ success: true, accountId, session: sessionString });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Revoke every dashboard session token. Forces every browser (including the
+    // caller) back to the login page. Useful after a suspected compromise or after
+    // rotating the password from another device.
+    router.post('/maintenance/sessions/revoke-all', async (req, res) => {
+        if (!_requireConfirm(req, res)) return;
+        if (!(await _requirePassword(req, res))) return;
+        try {
+            revokeAllSessions();
+            res.clearCookie('tg_dl_session', SESSION_COOKIE_OPTS);
+            broadcast({ type: 'sessions_revoked' });
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Surface the raw config.json (with secrets redacted) so power users can
+    // review what's on disk without SSHing into the container. Sensitive fields
+    // are stripped — see /api/config for the existing redaction policy.
+    router.get('/maintenance/config/raw', async (req, res) => {
+        try {
+            const config = loadConfig();
+            if (config.telegram?.apiHash) config.telegram.apiHash = '••••••• (redacted)';
+            if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
+            if (config.web?.password) config.web.password = '••••••• (redacted)';
+            if (config.proxy?.password) config.proxy.password = '••••••• (redacted)';
+            if (Array.isArray(config.accounts)) {
+                // Phone numbers are stored alongside the metadata; keep but show
+                // the user what they're about to download.
+            }
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.send(JSON.stringify(config, null, 2));
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
     });
 
     return router;
