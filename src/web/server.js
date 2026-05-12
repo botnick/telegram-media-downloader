@@ -6300,10 +6300,12 @@ app.get('/api/maintenance/seekbar/build/stats', async (req, res) => {
 });
 
 app.post('/api/maintenance/seekbar/rebuild', async (req, res) => {
+    const wipeOnly = req.body?.wipeOnly === true;
     const tracker = _jobTrackers.seekbarRebuild;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         const wiped = await purgeAllSeekbar();
         onProgress({ phase: 'wiped', wiped });
+        if (wipeOnly) return { wiped, regenerated: 0 };
         if (signal?.aborted) return { wiped, regenerated: 0 };
         const result = await buildAllSeekbar({ onProgress, signal });
         try {
