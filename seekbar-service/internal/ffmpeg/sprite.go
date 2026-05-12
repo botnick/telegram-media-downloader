@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -74,15 +76,32 @@ func Plan(durationSec float64, targetIntervalSec float64, columns, maxTiles, til
 // for a single sprite encode. The encoder choice depends on `format`:
 //   - "webp" / "" → -c:v libwebp
 //   - "jpeg" / "jpg" → -q:v <derived from quality>
-func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality int, hwArgs []string, extraArgs string) []string {
+//
+// hwBackend is used to inject the appropriate pixel-format download step
+// when hardware-accelerated decoding is active:
+//   - VAAPI: hwdownload,format=nv12 (explicit format required)
+//   - CUDA / D3D11VA: hwdownload (ffmpeg converts format automatically)
+//   - Others: no download step needed
+func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality int, hwArgs []string, extraArgs string, hwBackend HWAccelBackend) []string {
 	if quality <= 0 {
 		quality = 70
 	}
 	if quality > 100 {
 		quality = 100
 	}
+
+	// Build the hwdownload prefix for GPU-decoded pixel data.
+	var hwDownload string
+	switch hwBackend {
+	case HWVAAPI:
+		hwDownload = "hwdownload,format=nv12,"
+	case HWCUDA, HWD3D11:
+		hwDownload = "hwdownload,"
+	}
+
 	filter := fmt.Sprintf(
-		"fps=1/%s,scale=%d:-2:flags=fast_bilinear,tile=%dx%d",
+		"%sfps=1/%s,scale=%d:-2:flags=fast_bilinear:force_original_aspect_ratio=decrease,tile=%dx%d",
+		hwDownload,
 		strconv.FormatFloat(plan.IntervalSec, 'f', 6, 64),
 		plan.TileW, plan.Cols, plan.Rows,
 	)
@@ -161,4 +180,100 @@ func TempPath(target string) string {
 	var b [4]byte
 	_, _ = rand.Read(b[:])
 	return filepath.Join(dir, "."+base+".tmp."+hex.EncodeToString(b[:]))
+}
+
+// ReadImageDims returns the pixel dimensions of a WebP or JPEG file by
+// parsing only the image header bytes — no imaging library required.
+//
+// WebP layout (RIFF container):
+//
+//	[0-3]   "RIFF"
+//	[4-7]   file size (LE uint32)
+//	[8-11]  "WEBP"
+//	[12-15] chunk FourCC — "VP8 " (lossy), "VP8L" (lossless), "VP8X" (extended)
+//	Lossy VP8 bitstream starts at byte 20; canvas W/H are 14-bit LE at [26] and [28].
+//	For VP8X extended: canvas W-1 is 24-bit LE at [24], H-1 is 24-bit LE at [27].
+//
+// JPEG: scan for SOF0 (0xFFC0) / SOF2 (0xFFC2) markers; height is at +5 (big-endian uint16),
+// width at +7.
+func ReadImageDims(path string) (w, h int, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+
+	// Read enough header bytes for both formats.
+	// WebP extended header needs ~34 bytes; JPEG may need to scan further.
+	hdr := make([]byte, 36)
+	if _, err := io.ReadFull(f, hdr); err != nil {
+		return 0, 0, fmt.Errorf("read header: %w", err)
+	}
+
+	// ---- WebP ----------------------------------------------------------------
+	if string(hdr[0:4]) == "RIFF" && string(hdr[8:12]) == "WEBP" {
+		fourcc := string(hdr[12:16])
+		switch fourcc {
+		case "VP8 ": // lossy — width/height packed in two 14-bit LE fields
+			// The VP8 bitstream starts at byte 20 (after "VP8 " + 4-byte size + 3-byte frame tag).
+			// Bytes 23-26 contain the signature. Width (14 bits) is at bytes 26-27 LE,
+			// height (14 bits) is at bytes 28-29 LE.
+			if len(hdr) >= 30 {
+				rawW := binary.LittleEndian.Uint16(hdr[26:28]) & 0x3FFF
+				rawH := binary.LittleEndian.Uint16(hdr[28:30]) & 0x3FFF
+				return int(rawW), int(rawH), nil
+			}
+		case "VP8L": // lossless — signature 0x2F at byte 20; W/H packed in next 4 bytes
+			// Byte 20: 0x2F signature. Bytes 21-24: 28 bits encoding (w-1) in [0:13] and (h-1) in [14:27].
+			if len(hdr) >= 25 {
+				bits := binary.LittleEndian.Uint32(hdr[21:25])
+				rawW := (bits & 0x3FFF) + 1
+				rawH := ((bits >> 14) & 0x3FFF) + 1
+				return int(rawW), int(rawH), nil
+			}
+		case "VP8X": // extended — 24-bit LE (canvas_width-1) at byte 24, (canvas_height-1) at byte 27
+			if len(hdr) >= 30 {
+				cw := uint32(hdr[24]) | uint32(hdr[25])<<8 | uint32(hdr[26])<<16
+				ch := uint32(hdr[27]) | uint32(hdr[28])<<8 | uint32(hdr[29])<<16
+				return int(cw + 1), int(ch + 1), nil
+			}
+		}
+		return 0, 0, fmt.Errorf("unrecognised WebP sub-format: %q", fourcc)
+	}
+
+	// ---- JPEG ----------------------------------------------------------------
+	if hdr[0] == 0xFF && hdr[1] == 0xD8 {
+		// Rewind to start and scan for SOF markers (up to 1 MiB to handle large JFIF headers).
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return 0, 0, err
+		}
+		const maxScan = 1 << 20
+		data, err := io.ReadAll(io.LimitReader(f, maxScan))
+		if err != nil {
+			return 0, 0, err
+		}
+		for i := 0; i+8 < len(data); i++ {
+			if data[i] != 0xFF {
+				continue
+			}
+			marker := data[i+1]
+			// SOF0 = 0xC0, SOF1 = 0xC1, SOF2 = 0xC2 (progressive)
+			if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
+				// segHeight = big-endian uint16 at i+5, segWidth at i+7
+				imgH := int(data[i+5])<<8 | int(data[i+6])
+				imgW := int(data[i+7])<<8 | int(data[i+8])
+				return imgW, imgH, nil
+			}
+			// Skip over this segment using its length field.
+			if i+3 < len(data) {
+				segLen := int(data[i+2])<<8 | int(data[i+3])
+				if segLen >= 2 {
+					i += segLen // loop increment adds 1 more
+				}
+			}
+		}
+		return 0, 0, fmt.Errorf("JPEG: SOF marker not found")
+	}
+
+	return 0, 0, fmt.Errorf("unrecognised image format (magic: %X %X)", hdr[0], hdr[1])
 }

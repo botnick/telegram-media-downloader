@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -139,12 +140,17 @@ func ProbeAvailableWithDevice(ctx context.Context, ffmpegBin string, candidates 
 				"-frames:v", "1", "-f", "null", "-",
 			}
 		case HWV4L2M2M:
-			// v4l2m2m: init_hw_device is not supported; just probe
-			// whether ffmpeg lists v4l2m2m in its hwaccels output
-			// (already guaranteed by CompiledIn), so accept it.
-			// A full test-encode requires an actual /dev/video* node.
-			out = append(out, b)
+			// v4l2m2m: init_hw_device is not supported. Only accept if
+			// at least one /dev/video* device node exists on this host —
+			// without a real device the hwaccel will silently fail at
+			// encode time. On non-Linux hosts there are no such nodes.
 			cancel()
+			if runtime.GOOS == "linux" {
+				matches, globErr := filepath.Glob("/dev/video*")
+				if globErr == nil && len(matches) > 0 {
+					out = append(out, b)
+				}
+			}
 			continue
 		default:
 			args = []string{
