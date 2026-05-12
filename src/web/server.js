@@ -10377,6 +10377,53 @@ app.post('/api/config', async (req, res) => {
             } catch {}
         }
 
+        // Faces sidecar — push config changes to the running sidecar immediately.
+        // Soft-apply (timeouts, concurrency, quality thresholds) takes effect
+        // without a restart. Hard-apply (model, provider, enable/disable) requires
+        // a full sidecar restart because these are baked into the spawned process.
+        if (req.body.advanced?.ai !== undefined) {
+            try {
+                const [facesSpawnMod, facesClientMod, facesConfigMod] = await Promise.all([
+                    import('../core/ai/faces-spawn.js').catch(() => null),
+                    import('../core/ai/faces-client.js').catch(() => null),
+                    import('../core/ai/faces-config.js').catch(() => null),
+                ]);
+                if (facesClientMod && facesConfigMod) {
+                    const freshCfg = loadConfig();
+                    const freshFaces = freshCfg.advanced?.ai?.faces || {};
+                    const resolved = facesConfigMod.resolveAllFaces(freshFaces);
+                    // Soft-apply: push runtime knobs (timeouts, concurrency, etc.)
+                    // to the live client without restarting the process.
+                    try {
+                        facesClientMod.applyFacesCfg(resolved);
+                    } catch {}
+                }
+                // Hard-restart when the operator changes something that requires
+                // a new process: model pack, inference provider, or the master
+                // enable/disable toggle. We compare against the incoming body
+                // rather than the merged config so a no-op save doesn't restart.
+                const bodyAi = req.body.advanced.ai || {};
+                const bodyFaces = bodyAi.faces || {};
+                const needsRestart =
+                    bodyFaces.detectorModel !== undefined ||
+                    bodyFaces.providers !== undefined ||
+                    bodyFaces.backend !== undefined ||
+                    bodyAi.faceClustering !== undefined;
+                if (needsRestart && facesSpawnMod) {
+                    facesSpawnMod.stopSidecar();
+                    facesSpawnMod.startSidecar().catch((e) =>
+                        console.warn(
+                            '[faces-sidecar] config-change restart failed:',
+                            e?.message || e,
+                        ),
+                    );
+                }
+                broadcast({ type: 'ai_config_changed' });
+            } catch (e) {
+                console.warn('[faces-sidecar] config-change apply threw:', e?.message || e);
+            }
+        }
+
         // Invalidate the dialogs response cache so the next /api/dialogs hit
         // rebuilds `inConfig` from the freshly-saved config. Without this,
         // adding a group via POST /api/config keeps showing the dialog as
