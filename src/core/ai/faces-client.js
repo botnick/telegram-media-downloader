@@ -29,7 +29,9 @@ import { resolveFacesValue } from './faces-config.js';
 // hasn't set any of the matching `TGDL_FACES_*` env vars. `applyFacesCfg`
 // pushes operator values on top, so this is the bare-install behaviour.
 const HEALTH_CACHE_TTL_MS_DEFAULT = 5000;
-const REQUEST_TIMEOUT_MS_DEFAULT = 15000;
+// CPU-only buffalo_l inference can take 5-30 s per image on slow hardware;
+// 60 s gives headroom without hanging the scan loop forever on a dead sidecar.
+const REQUEST_TIMEOUT_MS_DEFAULT = 60000;
 const MAX_RETRIES_DEFAULT = 3;
 const RETRY_BACKOFF_MS_DEFAULT = [300, 600, 1200];
 
@@ -346,7 +348,8 @@ async function _postWithRetry(url, body, onLog) {
     const base = _baseUrl(url);
     let lastErr = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
-        let sidecarDown = false;
+        let bail = false;
+        let bailReason = '';
         try {
             const res = await _fetchWithTimeout(url, {
                 method: 'POST',
@@ -362,20 +365,28 @@ async function _postWithRetry(url, body, onLog) {
             }
         } catch (e) {
             lastErr = e;
-            // On a network-level error (not a client-side abort/timeout), the
-            // sidecar may have crashed. Quick single-attempt health probe —
-            // if it's confirmed down, bail immediately rather than burning
-            // remaining retries + sleeps against a dead process.
-            if (e?.name !== 'AbortError' && attempt < maxRetries - 1) {
-                sidecarDown = !(await _quickHealthProbe(base));
-                if (sidecarDown) _healthCache = null; // Force fresh answer on next health() call
+            if (attempt < maxRetries - 1) {
+                if (e?.name === 'AbortError') {
+                    // Client-side timeout: sidecar is alive but slow — don't retry
+                    // (piling up requests against a slow CPU just makes it worse).
+                    bail = true;
+                    bailReason = `— timed out after ${_requestTimeoutMs}ms, skipping image`;
+                } else {
+                    // Network error: quick health probe to detect a crashed sidecar.
+                    const alive = await _quickHealthProbe(base);
+                    if (!alive) {
+                        bail = true;
+                        bailReason = '— sidecar unreachable, aborting';
+                        _healthCache = null;
+                    }
+                }
             }
         }
-        const hasMore = attempt < maxRetries - 1 && !sidecarDown;
+        const hasMore = attempt < maxRetries - 1 && !bail;
         const backoff =
             _retryBackoffMs[attempt] ?? _retryBackoffMs[_retryBackoffMs.length - 1] ?? 300;
-        const suffix = sidecarDown
-            ? '— sidecar unreachable, aborting'
+        const suffix = bail
+            ? bailReason
             : hasMore
               ? `— retrying in ${backoff} ms`
               : '— giving up';
@@ -386,7 +397,7 @@ async function _postWithRetry(url, body, onLog) {
                 lastErr?.message || lastErr
             } ${suffix}`,
         );
-        if (sidecarDown) break;
+        if (bail) break;
         if (hasMore) await _sleep(backoff);
     }
     throw lastErr || new Error('sidecar POST: retries exhausted');
