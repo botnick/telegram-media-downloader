@@ -717,19 +717,12 @@ export function createGroupsRouter({
         // then served and ALSO copied to a safe filename keyed by the
         // synthetic id, so subsequent hits skip the resolve loop.
         if (typeof id === 'string' && id.startsWith('unknown:')) {
-            const folderName = id.slice('unknown:'.length);
-            if (
-                !folderName ||
-                folderName.length > 128 ||
-                /[\\/]/.test(folderName) ||
-                /[\0-\x1F\x7F]/.test(folderName)
-            ) {
+            const rawKey = id.slice('unknown:'.length);
+            if (!/^[A-Za-z0-9_.-]{1,128}$/.test(rawKey)) {
                 return res.status(400).send('Invalid id');
             }
-            const safeKey = id.replace(/[^A-Za-z0-9_.-]/g, '_');
-            if (!/^[A-Za-z0-9_.-]{1,128}$/.test(safeKey)) {
-                return res.status(400).send('Invalid id');
-            }
+            const folderName = rawKey;
+            const safeKey = rawKey;
             const photosRoot = path.resolve(PHOTOS_DIR);
             const synthPath = path.resolve(PHOTOS_DIR, `${safeKey}.jpg`);
             if (synthPath !== photosRoot && !synthPath.startsWith(photosRoot + path.sep)) {
