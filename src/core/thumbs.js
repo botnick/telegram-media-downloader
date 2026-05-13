@@ -824,14 +824,6 @@ async function _generateAudioThumb(srcAbs, width, dstAbs) {
  * Thread-safe: multiple concurrent calls for the same (id, width) wait
  * on a single in-flight generation.
  */
-let _thumbGenSuspended = false;
-export function suspendThumbGen() {
-    _thumbGenSuspended = true;
-}
-export function resumeThumbGen() {
-    _thumbGenSuspended = false;
-}
-
 export async function getOrCreateThumb(downloadId, widthHint) {
     const id = parseInt(downloadId, 10);
     if (!Number.isInteger(id) || id <= 0) return null;
@@ -847,8 +839,6 @@ export async function getOrCreateThumb(downloadId, widthHint) {
             /* fall through — regenerate */
         }
     }
-
-    if (_thumbGenSuspended) return null;
 
     const row = getDb().prepare('SELECT file_path, file_type FROM downloads WHERE id = ?').get(id);
     if (!row) return null;
@@ -1047,7 +1037,6 @@ export function thumbKindTypes(kind) {
  * @returns {Promise<number>}
  */
 export async function purgeAllThumbs(opts = {}) {
-    _thumbGenSuspended = true;
     if (!existsSync(THUMBS_DIR)) return 0;
     const kind = String(opts.kind || 'all').toLowerCase();
 
@@ -1113,7 +1102,6 @@ export async function purgeAllThumbs(opts = {}) {
  * @returns {Promise<{ scanned:number, built:number, skipped:number, errored:number }>}
  */
 export async function buildAllThumbnails(opts = {}) {
-    _thumbGenSuspended = false;
     const { onProgress, signal, kind = 'all' } = opts;
     // Keyset-paginated `.all()` — `.iterate()` + `await getOrCreateThumb`
     // held the connection open across async sharp/ffmpeg calls, blocking

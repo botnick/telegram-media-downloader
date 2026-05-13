@@ -640,7 +640,11 @@ async function _loadGalleryPage() {
     _setSentinelVisible(true);
     const seq = _gallerySeq;
     try {
-        const qs = new URLSearchParams({ limit: String(GALLERY_PAGE_SIZE), kind: _galleryKind });
+        const qs = new URLSearchParams({
+            limit: String(GALLERY_PAGE_SIZE),
+            kind: _galleryKind,
+            cachedOnly: '1',
+        });
         if (_galleryCursor !== null) qs.set('cursor', String(_galleryCursor));
         const r = await api.get(`/api/maintenance/thumbs/list?${qs.toString()}`);
         if (seq !== _gallerySeq) return;

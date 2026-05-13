@@ -6293,7 +6293,9 @@ app.get('/api/maintenance/thumbs/list', async (req, res) => {
             .all(...args, limit);
         // Decorate with `cached:true|false` — the gallery uses this to
         // surface "12 not built yet" without round-tripping per tile.
-        const out = rows.map((r) => ({ ...r, cached: hasCachedThumb(r.id) }));
+        const cachedOnly = req.query.cachedOnly === '1';
+        const decorated = rows.map((r) => ({ ...r, cached: hasCachedThumb(r.id) }));
+        const out = cachedOnly ? decorated.filter((r) => r.cached) : decorated;
         const nextCursor = rows.length === limit ? rows[rows.length - 1].id : null;
         // COUNT(*) is the expensive part on a 1M-row library (index scan,
         // not stat cache because of the WHERE). Send it only on the first
