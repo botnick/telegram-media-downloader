@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.18.11] — 2026-05-13
+
+NSFW settings persistence fixes — three fields silently ignored by the save path.
+
+### Fixed
+- **NSFW blocklist toggle** not saved from the Maintenance → NSFW page (autosave payload was missing `blocklistEnabled`).
+- **NSFW preload-on-boot** never fired — `_nsfwCfg()` didn't return `preload`, so the startup check always saw `undefined`.
+- **NSFW video tiles** setting ignored — `_nsfwCfg()` didn't return `videoMaxTiles`; scans always used the default 48.
+- Added server-side validation for `preload` (boolean coerce) and `videoMaxTiles` (`clampInt 3–200`).
+
+### Service worker
+- `VERSION = 'v21811'`
+
 ## [2.18.9] — 2026-05-13
 
 File-access bearer tokens, iOS Safari fullscreen, viewer light-mode contrast, and pin icon refresh.
