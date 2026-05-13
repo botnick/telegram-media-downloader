@@ -948,7 +948,10 @@ export function loadAdvanced(config) {
     set('setting-adv-nsfw-threshold', Number.isFinite(ns.threshold) ? ns.threshold : 0.6);
     set('setting-adv-nsfw-concurrency', Number.isFinite(ns.concurrency) ? ns.concurrency : 1);
     wireToggle('nsfw-ft-video', Array.isArray(ns.fileTypes) && ns.fileTypes.includes('video'));
-    set('setting-adv-nsfw-video-max-tiles', Number.isFinite(ns.videoMaxTiles) ? ns.videoMaxTiles : 48);
+    set(
+        'setting-adv-nsfw-video-max-tiles',
+        Number.isFinite(ns.videoMaxTiles) ? ns.videoMaxTiles : 48,
+    );
 
     // ffmpeg hardware acceleration — written to `advanced.thumbs.hwaccel`.
     // Empty string = off (default); `vaapi` / `qsv` / `cuda` / etc.
@@ -1122,7 +1125,8 @@ function gatherAdvanced() {
             videoMaxTiles: num('setting-adv-nsfw-video-max-tiles', 48),
             fileTypes: (() => {
                 const t = ['photo'];
-                if (document.getElementById('nsfw-ft-video')?.classList.contains('active')) t.push('video');
+                if (document.getElementById('nsfw-ft-video')?.classList.contains('active'))
+                    t.push('video');
                 return t;
             })(),
         },
@@ -1407,6 +1411,10 @@ function _gatherScopedPayload(page) {
                         document
                             .getElementById('setting-adv-nsfw-preload')
                             ?.classList.contains('active') === true,
+                    blocklistEnabled:
+                        document
+                            .getElementById('setting-adv-nsfw-blocklist')
+                            ?.classList.contains('active') === true,
                     model:
                         String(get('setting-adv-nsfw-model') || '').trim() ||
                         'AdamCodd/vit-base-nsfw-detector',
@@ -1416,7 +1424,8 @@ function _gatherScopedPayload(page) {
                     videoMaxTiles: num('setting-adv-nsfw-video-max-tiles', 48),
                     fileTypes: (() => {
                         const t = ['photo'];
-                        if (document.getElementById('nsfw-ft-video')?.classList.contains('active')) t.push('video');
+                        if (document.getElementById('nsfw-ft-video')?.classList.contains('active'))
+                            t.push('video');
                         return t;
                     })(),
                 },

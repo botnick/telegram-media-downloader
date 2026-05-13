@@ -6744,6 +6744,7 @@ function _nsfwCfg() {
         const cfg = loadConfig().advanced?.nsfw || {};
         return {
             enabled: cfg.enabled === true,
+            preload: cfg.preload === true,
             blocklistEnabled: cfg.blocklistEnabled === true,
             model: cfg.model || NSFW_DEFAULTS.model,
             threshold: Number.isFinite(cfg.threshold) ? cfg.threshold : NSFW_DEFAULTS.threshold,
@@ -6751,6 +6752,9 @@ function _nsfwCfg() {
                 ? cfg.concurrency
                 : NSFW_DEFAULTS.concurrency,
             batchSize: Number.isFinite(cfg.batchSize) ? cfg.batchSize : NSFW_DEFAULTS.batchSize,
+            videoMaxTiles: Number.isFinite(cfg.videoMaxTiles)
+                ? cfg.videoMaxTiles
+                : NSFW_DEFAULTS.videoMaxTiles,
             fileTypes:
                 Array.isArray(cfg.fileTypes) && cfg.fileTypes.length
                     ? cfg.fileTypes
@@ -10746,6 +10750,7 @@ app.post('/api/config', async (req, res) => {
             // model id, threshold, or concurrency in code.
             const ns = merged.nsfw;
             ns.enabled = ns.enabled === true; // explicit opt-in only
+            ns.preload = ns.preload === true;
             ns.blocklistEnabled = ns.blocklistEnabled === true;
             // Threshold is on a 0-1 score axis; clamped via integer math by
             // multiplying through so the same clampInt helper works.
@@ -10753,6 +10758,7 @@ app.post('/api/config', async (req, res) => {
             ns.threshold = clampInt(tInt, 100, 990, 600) / 1000;
             ns.concurrency = clampInt(ns.concurrency, 1, 4, NSFW_DEFAULTS.concurrency);
             ns.batchSize = clampInt(ns.batchSize, 10, 500, NSFW_DEFAULTS.batchSize);
+            ns.videoMaxTiles = clampInt(ns.videoMaxTiles, 3, 200, NSFW_DEFAULTS.videoMaxTiles);
             // Model id + cache dir + fileTypes are strings/arrays — light
             // validation only (string coerce, allowlist-strip).
             ns.model =
