@@ -101,7 +101,8 @@ function _resolveFfprobeBin() {
         return (_ffprobeBinResolved = process.env.FFPROBE_PATH);
     }
     if (existsSync('/usr/bin/ffprobe')) return (_ffprobeBinResolved = '/usr/bin/ffprobe');
-    if (existsSync('/usr/local/bin/ffprobe')) return (_ffprobeBinResolved = '/usr/local/bin/ffprobe');
+    if (existsSync('/usr/local/bin/ffprobe'))
+        return (_ffprobeBinResolved = '/usr/local/bin/ffprobe');
     try {
         const ffmpeg = _resolveFfmpegBin();
         if (ffmpeg && ffmpeg !== 'ffmpeg') {
@@ -579,13 +580,17 @@ function _gpuScalerAvailable(backend) {
         _probed_gpu_scalers = new Set();
         try {
             const r = spawnSync(_resolveFfmpegBin(), ['-filters', '-hide_banner'], {
-                encoding: 'utf8', timeout: 5000, windowsHide: true,
+                encoding: 'utf8',
+                timeout: 5000,
+                windowsHide: true,
             });
             const out = r.stdout || '';
             for (const [b, f] of Object.entries(_GPU_SCALER_BACKEND_FILTERS)) {
                 if (out.includes(f)) _probed_gpu_scalers.add(b);
             }
-        } catch { /* probe failed — treat all as unavailable */ }
+        } catch {
+            /* probe failed — treat all as unavailable */
+        }
     }
     return _probed_gpu_scalers.has(backend);
 }
@@ -597,7 +602,9 @@ function _activeBackend(override) {
         if (_HWACCEL_ALLOW.has(v)) return v;
         // Unknown override → cascade
     }
-    const env = String(process.env.FFMPEG_HWACCEL || '').toLowerCase().trim();
+    const env = String(process.env.FFMPEG_HWACCEL || '')
+        .toLowerCase()
+        .trim();
     if (env && _HWACCEL_ALLOW.has(env)) return env;
     return _hwaccelFromConfig();
 }
@@ -605,7 +612,8 @@ function _activeBackend(override) {
 function _gpuFullScaleVf(backend, w) {
     // Frames already on GPU — scale directly then download for SW encode.
     if (backend === 'vaapi') return `scale_vaapi=w=${w}:h=-2,hwdownload,format=yuv420p`;
-    if (backend === 'cuda') return `scale_cuda=w=${w}:h=-2,hwdownload,format=yuv420p`;
+    if (backend === 'cuda')
+        return `scale_cuda=w=${w}:h=-2:format=yuv420p,hwdownload,format=yuv420p`;
     if (backend === 'qsv') return `vpp_qsv=w=${w}:h=-2,hwdownload`;
     return null;
 }
@@ -615,7 +623,7 @@ function _gpuUploadScaleVf(backend, w) {
     if (backend === 'vaapi')
         return `hwupload=extra_hw_frames=16,scale_vaapi=w=${w}:h=-2,hwdownload,format=yuv420p`;
     if (backend === 'cuda')
-        return `hwupload,scale_cuda=w=${w}:h=-2,hwdownload,format=yuv420p`;
+        return `hwupload,scale_cuda=w=${w}:h=-2:format=yuv420p,hwdownload,format=yuv420p`;
     if (backend === 'qsv') return `hwupload,vpp_qsv=w=${w}:h=-2,hwdownload`;
     return null;
 }
@@ -968,9 +976,7 @@ export async function purgeNonStandardThumbs() {
     // `purgeAllThumbs`: `.iterate()` + `await fs.stat/unlink` holds the
     // DB connection open across async I/O, blocking concurrent writes.
     const PAGE_SIZE = 200;
-    const pageStmt = db.prepare(
-        'SELECT id FROM downloads WHERE id < ? ORDER BY id DESC LIMIT ?',
-    );
+    const pageStmt = db.prepare('SELECT id FROM downloads WHERE id < ? ORDER BY id DESC LIMIT ?');
     let beforeId = Number.MAX_SAFE_INTEGER;
     while (true) {
         const page = pageStmt.all(beforeId, PAGE_SIZE);
