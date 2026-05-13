@@ -338,7 +338,7 @@ function _envFromConfig(cfg, port, token) {
         SEEKBAR_FFMPEG: ffmpegBin,
         SEEKBAR_FFPROBE: ffprobeBin,
         SEEKBAR_HWACCEL: cfg.hwaccel ?? 'none',
-        SEEKBAR_CONCURRENCY: String(cfg.concurrency || 2),
+        SEEKBAR_CONCURRENCY: String(cfg.concurrency || 8),
         SEEKBAR_INTERVAL_SEC: String(cfg.intervalSec || 5),
         SEEKBAR_WIDTH: String(cfg.tileWidth || 160),
         SEEKBAR_COLUMNS: String(cfg.columns || 10),

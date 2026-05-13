@@ -295,8 +295,8 @@ const FFMPEG_WEBP_COMPRESSION = 6; // libwebp -compression_level 0-6
 
 // sharp can run multiple jobs concurrently; ffmpeg pins a core. Cap them
 // separately so the more expensive video work doesn't starve image work.
-const IMG_CONCURRENCY = Math.max(1, Math.min(32, Number(process.env.THUMBS_IMG_CONCURRENCY) || 8));
-const VID_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.THUMBS_VID_CONCURRENCY) || 3));
+const IMG_CONCURRENCY = Math.max(1, Math.min(32, Number(process.env.THUMBS_IMG_CONCURRENCY) || 16));
+const VID_CONCURRENCY = Math.max(1, Math.min(16, Number(process.env.THUMBS_VID_CONCURRENCY) || 6));
 
 function makeSemaphore(max) {
     let active = 0;

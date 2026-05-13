@@ -49,7 +49,7 @@ export const SEEKBAR_DEFAULTS = Object.freeze({
     maxTiles: 240,
     format: 'webp',
     quality: 75,
-    concurrency: 4,
+    concurrency: 8,
     maxRetries: 3,
     hwaccel: null,
 });

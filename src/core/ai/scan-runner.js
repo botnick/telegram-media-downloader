@@ -82,10 +82,10 @@ function _emptyState() {
         startedAt: null,
         finishedAt: null,
         error: null,
-        phase: 'A',       // 'A' = detection, 'B' = clustering
-        faceCount: 0,     // total face embeddings found in phase A
-        peopleCount: 0,   // clusters produced by phase B
-        noiseFaces: 0,    // faces not assigned to any cluster
+        phase: 'A', // 'A' = detection, 'B' = clustering
+        faceCount: 0, // total face embeddings found in phase A
+        peopleCount: 0, // clusters produced by phase B
+        noiseFaces: 0, // faces not assigned to any cluster
         abort: null,
     };
 }
@@ -222,16 +222,23 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 .get(...fileTypes).n;
             const scanVideos = facesCfgIn.scanVideos === true;
             const videoTotal = scanVideos
-                ? db.prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type = 'video' AND ai_indexed_at IS NULL`).get().n
+                ? db
+                      .prepare(
+                          `SELECT COUNT(*) AS n FROM downloads WHERE file_type = 'video' AND ai_indexed_at IS NULL`,
+                      )
+                      .get().n
                 : 0;
             state.total = phaseATotal + videoTotal;
             bump();
-            log('info', `faces scan: ${phaseATotal} photos${videoTotal ? ` + ${videoTotal} videos` : ''} to scan in phase A`);
+            log(
+                'info',
+                `faces scan: ${phaseATotal} photos${videoTotal ? ` + ${videoTotal} videos` : ''} to scan in phase A`,
+            );
 
             // `batchSize` precedence (same model as fileTypes above).
             const envBatch = resolveFacesValue('batchSize', facesCfgIn);
             const batchSizeRaw = _pickNumber([facesCfgIn.batchSize, cfg?.batchSize, envBatch], 16);
-            const batchSize = Math.max(1, Math.min(200, Number(batchSizeRaw) || 16));
+            const batchSize = Math.max(1, Math.min(200, Number(batchSizeRaw) || 32));
 
             // Duty-cycle CPU throttle ratio (0 = off, default 0.5 = rest for
             // half the time spent on detection). Configurable so GPU users
@@ -274,9 +281,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 const nullItems = items.filter((i) => !i.abs);
                 const skipItems = excludeExts.size
                     ? items.filter(
-                          (i) =>
-                              i.abs &&
-                              excludeExts.has(path.extname(i.abs).toLowerCase()),
+                          (i) => i.abs && excludeExts.has(path.extname(i.abs).toLowerCase()),
                       )
                     : [];
                 const skipSet = new Set(skipItems.map((i) => i.row.id));
@@ -336,7 +341,11 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                 w: f.w,
                                 h: f.h,
                                 embeddingBlob: _f32ToBlob(f.embedding),
-                                qualityScore: Number.isFinite(f.qualityScore) ? f.qualityScore : (Number.isFinite(f.score) ? f.score : null),
+                                qualityScore: Number.isFinite(f.qualityScore)
+                                    ? f.qualityScore
+                                    : Number.isFinite(f.score)
+                                      ? f.score
+                                      : null,
                             });
                         }
                     }
@@ -373,7 +382,10 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             if (!signal.aborted && scanVideos) {
                 if (videoTotal > 0) {
                     log('info', `faces scan: starting video phase — ${videoTotal} videos`);
-                    let _vNull = 0, _vEmpty = 0, _vFaces = 0, _vVids = 0;
+                    let _vNull = 0,
+                        _vEmpty = 0,
+                        _vFaces = 0,
+                        _vVids = 0;
                     while (!signal.aborted) {
                         const [row] = getUnindexedAiBatch({ fileTypes: ['video'], limit: 1 });
                         if (!row) break;
@@ -412,7 +424,11 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                     w: f.w,
                                     h: f.h,
                                     embeddingBlob: _f32ToBlob(f.embedding),
-                                    qualityScore: Number.isFinite(f.qualityScore) ? f.qualityScore : (Number.isFinite(f.score) ? f.score : null),
+                                    qualityScore: Number.isFinite(f.qualityScore)
+                                        ? f.qualityScore
+                                        : Number.isFinite(f.score)
+                                          ? f.score
+                                          : null,
                                 });
                             }
                         }
