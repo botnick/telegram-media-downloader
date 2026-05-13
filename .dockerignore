@@ -12,6 +12,7 @@ tests
 *.md
 !README.md
 !SECURITY.md
+!CHANGELOG.md
 !LICENSE
 .editorconfig
 .nvmrc
