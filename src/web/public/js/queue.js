@@ -18,6 +18,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml, formatBytes, getFileIcon } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { getGroupName } from './store.js';
+import { fileTokenQuery } from './media-url.js';
 import { confirmSheet } from './sheet.js';
 
 // ============ Constants ============
@@ -833,11 +834,13 @@ function renderRows() {
             if (window.Viewer?.openMediaViewerSingle) {
                 window.Viewer.openMediaViewerSingle(file);
             } else {
-                window.open(`/files/${encodeURIComponent(fp)}?inline=1`, '_blank');
+                const _ftq = fileTokenQuery();
+                window.open(`/files/${encodeURIComponent(fp)}?inline=1${_ftq ? '&' + _ftq : ''}`, '_blank');
             }
         } catch (e) {
             console.warn('queue row open failed:', e);
-            window.open(`/files/${encodeURIComponent(fp)}?inline=1`, '_blank');
+            const _ftq = fileTokenQuery();
+            window.open(`/files/${encodeURIComponent(fp)}?inline=1${_ftq ? '&' + _ftq : ''}`, '_blank');
         }
     };
 }

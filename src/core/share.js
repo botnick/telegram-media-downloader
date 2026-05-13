@@ -187,6 +187,43 @@ export function buildShareUrlPath(linkId, expEpochSeconds, fileName = null) {
     return `/share/${encodeURIComponent(linkId)}${slug}?s=${encodeURIComponent(sig)}`;
 }
 
+// ---- file-access token (bearer auth for /files/) --------------------------
+
+const FILE_TOKEN_TTL_DEFAULT = 3600;
+
+export function mintFileToken(ttlSec) {
+    const ttl = Number.isFinite(ttlSec) && ttlSec > 0 ? Math.floor(ttlSec) : FILE_TOKEN_TTL_DEFAULT;
+    const exp = Math.floor(Date.now() / 1000) + ttl;
+    const secret = getCachedSecret();
+    const mac = crypto.createHmac('sha256', Buffer.from(secret, 'hex'))
+        .update(`filetoken|${exp}`)
+        .digest();
+    return { token: `${exp}.${toBase64Url(mac)}`, exp };
+}
+
+export function verifyFileToken(token) {
+    if (typeof token !== 'string') return false;
+    const dot = token.indexOf('.');
+    if (dot < 1) return false;
+    const exp = Number(token.slice(0, dot));
+    if (!Number.isFinite(exp) || Date.now() / 1000 > exp) return false;
+    const sig = token.slice(dot + 1);
+    const secret = getCachedSecret();
+    const expected = toBase64Url(
+        crypto.createHmac('sha256', Buffer.from(secret, 'hex'))
+            .update(`filetoken|${exp}`)
+            .digest(),
+    );
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const gotBuf = Buffer.from(sig, 'utf8');
+    if (expectedBuf.length !== gotBuf.length) return false;
+    try {
+        return crypto.timingSafeEqual(expectedBuf, gotBuf);
+    } catch {
+        return false;
+    }
+}
+
 // ---- TTL clamp -------------------------------------------------------------
 
 // Spec defaults — used when config.advanced.share isn't set. The mutable

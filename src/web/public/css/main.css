@@ -290,6 +290,15 @@ html.theme-light .bottom-nav-item {
    No override needed there. */
 html.theme-light .video-controls {
     /* keep dark gradient — readability over video */
+    background-image: linear-gradient(to top, rgba(0,0,0,0.92), rgba(0,0,0,0.50) 60%, transparent) !important;
+}
+.video-controls button,
+.video-controls span,
+.video-controls input {
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.video-controls i {
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
 }
 
 /* ============================================================
@@ -3598,9 +3607,6 @@ body[data-page="maintenance-recovery"] {
 }
 .media-item:not(.is-pinned) .pin-chip {
     color: rgba(255, 255, 255, 0.65);
-}
-.media-item:not(.is-pinned) .pin-chip i::before {
-    content: "\ed94"; /* ri-pushpin-line outline */
 }
 
 /* Pinned filter chip — sits at the right end of #media-tabs as a

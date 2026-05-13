@@ -20,6 +20,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import { confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
+import { fileTokenQuery } from './media-url.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -133,7 +134,8 @@ function _createdAtMs(file) {
 
 function _renderRow(file, set) {
     const thumbUrl = `/api/thumbs/${encodeURIComponent(file.id)}?w=320`;
-    const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1`;
+    const _ftq = fileTokenQuery();
+    const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1${_ftq ? '&' + _ftq : ''}`;
     const when = file.createdAt ? new Date(file.createdAt).toLocaleDateString() : '—';
     const sizeStr = file.fileSize ? _formatBytes(file.fileSize) : '';
     // `_delete` is the in-memory selection state — set by per-set keep

@@ -86,6 +86,8 @@ import {
     buildShareUrlPath,
     clampTtlSeconds,
     applyShareLimits,
+    verifyFileToken,
+    mintFileToken,
 } from '../core/share.js';
 import {
     getOrCreateThumb,
@@ -1078,6 +1080,15 @@ async function checkAuth(req, res, next) {
 
     if (isPublicPath(req.path)) return next();
 
+    // Bearer-token auth for /files/ — lets the URL work without a session
+    // cookie (e.g. after a Cloudflare redirect to a direct DDNS host).
+    if (req.path.startsWith('/files/') && req.query.token) {
+        if (verifyFileToken(req.query.token)) {
+            req.role = 'admin';
+            return next();
+        }
+    }
+
     const token = req.cookies['tg_dl_session'];
     const session = validateSession(token);
     if (session) {
@@ -1125,6 +1136,7 @@ const GUEST_GET_ALLOW = [
     '/api/seekbar/sprite', // GET /api/seekbar/sprite/:id — WebP sprite sheet
     '/api/seekbar/meta', // GET /api/seekbar/meta/:id — sprite JSON sidecar
     '/api/monitor/status', // engine state (running/stopped) — no config secrets
+    '/api/files/token', // file-access bearer token (guests can view files)
 ];
 const GUEST_OTHER_ALLOW = new Set(['POST /api/logout']);
 
@@ -4934,6 +4946,14 @@ app.delete('/api/file', async (req, res) => {
         console.error('DELETE /api/file:', error);
         res.status(500).json({ error: 'Internal error' });
     }
+});
+
+// Mint a short-lived bearer token for /files/ paths. The token lets a URL
+// work without the session cookie — useful when Cloudflare redirects the
+// request to a direct DDNS host where the cookie doesn't follow.
+app.get('/api/files/token', (_req, res) => {
+    const { token, exp } = mintFileToken();
+    res.json({ token, exp });
 });
 
 // 6a. Archive listing — used by the in-app viewer to preview the

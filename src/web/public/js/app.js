@@ -6,7 +6,7 @@
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
 import { createAvatar, escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
-import { getThumbUrl, getMediaUrl, getDownloadUrl, isPeerRow } from './media-url.js';
+import { getThumbUrl, getMediaUrl, getDownloadUrl, isPeerRow, initFileToken, fileTokenQuery } from './media-url.js';
 import * as Settings from './settings.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
@@ -115,6 +115,7 @@ async function init() {
     } catch {
         state.role = 'admin';
     }
+    initFileToken();
     // Successful re-auth from the modal: refresh state.role + body
     // attribute so admin-only items become visible again WITHOUT a
     // page reload.
@@ -1972,10 +1973,11 @@ function renderMediaGrid(opts = {}) {
                     const pinTitle = file.pinned
                         ? i18nT('favorites.unpin', 'Unpin')
                         : i18nT('favorites.pin', 'Pin');
+                    const pinIcon = file.pinned ? 'ri-map-pin-fill' : 'ri-map-pin-line';
                     const pinChip =
-                        file.id != null
+                        file.id != null && state.role === 'admin'
                             ? `<button type="button" class="pin-chip" data-tile-pin title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}">
-                       <i class="ri-pushpin-2-fill"></i>
+                       <i class="${pinIcon}"></i>
                    </button>`
                             : '';
                     return `
@@ -2137,6 +2139,13 @@ function _wireMediaGridDelegation(grid) {
                 });
                 file.pinned = next;
                 tile?.classList.toggle('is-pinned', next);
+                const ico = pinBtn.querySelector('i');
+                if (ico) {
+                    ico.classList.replace(
+                        next ? 'ri-map-pin-line' : 'ri-map-pin-fill',
+                        next ? 'ri-map-pin-fill' : 'ri-map-pin-line',
+                    );
+                }
             } catch (e) {
                 showToast(e?.message || 'Pin failed', 'error');
             }
@@ -3511,7 +3520,8 @@ function _renderGroupFiles(rows) {
                     ? 'AUD'
                     : (r.file_name || '').split('.').pop()?.toUpperCase()?.slice(0, 4) || 'DOC';
             const filePath = (r.file_path || '').replace(/\\/g, '/');
-            const href = filePath ? `/files/${encodeURI(filePath)}?inline=1` : null;
+            const _ftq = fileTokenQuery();
+            const href = filePath ? `/files/${encodeURI(filePath)}?inline=1${_ftq ? '&' + _ftq : ''}` : null;
             const open = href
                 ? `onclick="window.open('${_escape(href)}','_blank','noopener,noreferrer')"`
                 : '';

@@ -20,6 +20,39 @@
 // hits the cookie-authed cluster proxy (`/api/cluster/thumbs/...`) which
 // in turn fetches from the peer's `/api/cluster/peer-thumbs/<remoteId>`.
 
+// ---- file-access bearer token ---------------------------------------------
+
+let _ft = null; // { token, exp }
+let _ftTimer = 0;
+const _FT_MARGIN = 300; // refresh 5 min before expiry
+
+async function _fetchFileToken() {
+    try {
+        const res = await fetch('/api/files/token', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        _ft = await res.json();
+        clearTimeout(_ftTimer);
+        const refreshIn = (_ft.exp - Math.floor(Date.now() / 1000) - _FT_MARGIN) * 1000;
+        if (refreshIn > 0) _ftTimer = setTimeout(_fetchFileToken, refreshIn);
+    } catch { /* cookie auth fallback */ }
+}
+
+export function initFileToken() {
+    return _fetchFileToken();
+}
+
+export function fileTokenQuery() {
+    if (!_ft) return '';
+    if (Date.now() / 1000 > _ft.exp) {
+        _ft = null;
+        _fetchFileToken();
+        return '';
+    }
+    return `token=${encodeURIComponent(_ft.token)}`;
+}
+
+// ---- URL builders ---------------------------------------------------------
+
 /**
  * Build the thumbnail URL for a gallery row at the requested width.
  * Returns null when the row has no id (sticker / document / placeholder
@@ -48,6 +81,8 @@ export function getMediaUrl(file, opts = {}) {
     if (file.peer_id && file.peer_id !== 'self') {
         params.push(`peer=${encodeURIComponent(file.peer_id)}`);
     }
+    const ftq = fileTokenQuery();
+    if (ftq) params.push(ftq);
     const query = params.length ? `?${params.join('&')}` : '';
     return `/files/${encodeURIComponent(file.fullPath)}${query}`;
 }

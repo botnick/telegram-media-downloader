@@ -56,7 +56,27 @@ window.addEventListener('appinstalled', () => {
  * Returns the user's choice ('accepted' / 'dismissed' / 'unavailable').
  */
 export async function installPwa() {
-    if (!deferredPrompt) return 'unavailable';
+    if (!deferredPrompt) {
+        const isIos = /iP(hone|ad|od)/.test(navigator.userAgent);
+        const msg = isIos
+            ? 'Tap the Share button ⎋ then "Add to Home Screen"'
+            : 'Use your browser menu to install this app';
+        const toastEl = document.querySelector('.toast-container') || document.body;
+        if (typeof window.showToast === 'function') {
+            window.showToast(msg, 'info');
+        } else {
+            const t = document.createElement('div');
+            t.textContent = msg;
+            Object.assign(t.style, {
+                position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
+                background: '#333', color: '#fff', padding: '10px 18px', borderRadius: '8px',
+                fontSize: '14px', zIndex: '9999', whiteSpace: 'nowrap',
+            });
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 4000);
+        }
+        return 'unavailable';
+    }
     const evt = deferredPrompt;
     deferredPrompt = null;
     setInstallVisible(false);

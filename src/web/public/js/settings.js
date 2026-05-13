@@ -12,6 +12,7 @@ import { wireJobButton } from './job-buttons.js';
 let _fontPickerWired = false;
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { openSheet, confirmSheet, promptSheet } from './sheet.js';
+import { fileTokenQuery } from './media-url.js';
 
 export async function loadSettings() {
     try {
@@ -2197,7 +2198,8 @@ async function openDedupSheet(sets) {
         const isVideo = _isVideo(file.fileType);
         // Server-side WebP thumbnail — way smaller than the full file and
         // works for video previews too (first-frame extraction).
-        const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1`;
+        const _ftq = fileTokenQuery();
+        const fileUrl = `/files/${encodeURIComponent(file.filePath || '')}?inline=1${_ftq ? '&' + _ftq : ''}`;
         const thumbUrl =
             isThumb || isVideo ? `/api/thumbs/${encodeURIComponent(file.id)}?w=320` : null;
         const thumb = thumbUrl

@@ -1081,6 +1081,9 @@ class VideoPlayer {
             this._barRect = null; // layout shifts on fullscreen — force re-measure
         };
         document.addEventListener('fullscreenchange', this._onFullscreenChange);
+        // iOS Safari: native video fullscreen fires these instead
+        this.video.addEventListener('webkitbeginfullscreen', this._onFullscreenChange);
+        this.video.addEventListener('webkitendfullscreen', this._onFullscreenChange);
 
         // Retry button (error overlay).
         this.retryBtn.onclick = () => {
@@ -1383,6 +1386,8 @@ class VideoPlayer {
         this.unload();
         if (this._onFullscreenChange) {
             document.removeEventListener('fullscreenchange', this._onFullscreenChange);
+            this.video.removeEventListener('webkitbeginfullscreen', this._onFullscreenChange);
+            this.video.removeEventListener('webkitendfullscreen', this._onFullscreenChange);
             this._onFullscreenChange = null;
         }
     }
@@ -1408,10 +1413,17 @@ class VideoPlayer {
         try {
             if (document.fullscreenElement) {
                 await document.exitFullscreen();
+            } else if (this.video.webkitDisplayingFullscreen) {
+                this.video.webkitExitFullscreen();
             } else if (this.container.requestFullscreen) {
                 await this.container.requestFullscreen();
+            } else if (this.video.webkitEnterFullscreen) {
+                this.video.webkitEnterFullscreen();
             }
         } catch (e) {
+            if (this.video.webkitEnterFullscreen) {
+                try { this.video.webkitEnterFullscreen(); return; } catch {}
+            }
             showToast(
                 i18nTf(
                     'viewer.video.fullscreen_failed',
@@ -1973,7 +1985,7 @@ class VideoPlayer {
 
     _refreshFsIcon() {
         if (!this.fsBtn) return;
-        const inFs = !!document.fullscreenElement;
+        const inFs = !!document.fullscreenElement || !!this.video?.webkitDisplayingFullscreen;
         this.fsBtn.innerHTML = inFs
             ? '<i class="ri-fullscreen-exit-line text-lg"></i>'
             : '<i class="ri-fullscreen-line text-lg"></i>';
@@ -2328,6 +2340,11 @@ export function setupViewerEvents() {
                 await document.exitFullscreen();
                 return;
             }
+            const vid = document.getElementById('modal-video');
+            if (vid?.webkitDisplayingFullscreen) {
+                vid.webkitExitFullscreen();
+                return;
+            }
             const candidates = [
                 'video-container',
                 'image-container',
@@ -2349,8 +2366,16 @@ export function setupViewerEvents() {
                 }
             }
             if (!target) target = document.getElementById('media-modal');
-            await target?.requestFullscreen?.();
+            if (target?.requestFullscreen) {
+                await target.requestFullscreen();
+            } else if (vid?.webkitEnterFullscreen) {
+                vid.webkitEnterFullscreen();
+            }
         } catch (e) {
+            const vid = document.getElementById('modal-video');
+            if (vid?.webkitEnterFullscreen) {
+                try { vid.webkitEnterFullscreen(); return; } catch {}
+            }
             showToast(
                 i18nTf(
                     'viewer.video.fullscreen_failed',
