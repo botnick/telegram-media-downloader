@@ -1,0 +1,116 @@
+services:
+  telegram-downloader:
+    image: ghcr.io/botnick/telegram-media-downloader:latest
+    pull_policy: always
+    container_name: telegram-downloader
+    restart: unless-stopped
+    ports:
+      - "${TGDL_PORT:-3000}:3000"
+    entrypoint: ["/usr/bin/tini", "--", "/bin/sh", "/patch-docker-entrypoint.sh"]
+    command: ["node", "src/web/server.js"]
+    volumes:
+      - /volume3/Downloads/telegram-media-downloader/data:/app/data
+      - /volume3/Downloads/telegram-media-downloader/patch-docker-entrypoint.sh:/patch-docker-entrypoint.sh:ro
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      - NODE_ENV=production
+      - TZ=${TZ:-UTC}
+      - TGDL_DEBUG=${TGDL_DEBUG:-}
+      - TRUST_PROXY=${TRUST_PROXY:-1}
+      - WATCHTOWER_URL=${WATCHTOWER_URL:-http://watchtower:8080}
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      - FFMPEG_HWACCEL=${FFMPEG_HWACCEL:-vaapi}
+      - FACES_SERVICE_URL=http://tgdl-faces:8011
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "autoheal=true"
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: ${TGDL_MEM_LIMIT:-2g}
+        reservations:
+          memory: 256m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
+  tgdl-faces:
+    image: ghcr.io/botnick/tgdl-faces:latest
+    pull_policy: always
+    container_name: tgdl-faces
+    restart: unless-stopped
+    volumes:
+      - /volume3/Downloads/telegram-media-downloader/data/downloads:/app/data/downloads:ro
+      - /volume3/Downloads/telegram-media-downloader/data/faces-service/models:/root/.cache/tgdl-faces/models
+    environment:
+      - TGDL_FACES_HOST=0.0.0.0
+      - TGDL_FACES_PORT=8011
+      - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
+      - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
+      - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
+      - TZ=${TZ:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    deploy:
+      resources:
+        limits:
+          memory: ${TGDL_FACES_MEM_LIMIT:-2g}
+        reservations:
+          memory: 512m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: telegram-downloader-autoheal
+    restart: unless-stopped
+    network_mode: none
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=60
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+      - TZ=${TZ:-UTC}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "3"
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    container_name: telegram-downloader-updater
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WATCHTOWER_HTTP_API=true
+      - WATCHTOWER_HTTP_API_UPDATE=true
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=false
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_NO_STARTUP_MESSAGE=true
+      - TZ=${TZ:-UTC}
