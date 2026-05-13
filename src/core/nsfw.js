@@ -60,7 +60,7 @@ export const NSFW_DEFAULTS = Object.freeze({
     model: 'AdamCodd/vit-base-nsfw-detector',
     dtype: 'q8',
     threshold: 0.6,
-    concurrency: 1,
+    concurrency: 2,
     fileTypes: ['photo'],
     cacheDir: 'data/models',
     batchSize: 50,

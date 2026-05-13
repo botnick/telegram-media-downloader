@@ -1124,6 +1124,7 @@ const GUEST_GET_ALLOW = [
     '/api/thumbs', // GET /api/thumbs/:id — image thumb stream
     '/api/seekbar/sprite', // GET /api/seekbar/sprite/:id — WebP sprite sheet
     '/api/seekbar/meta', // GET /api/seekbar/meta/:id — sprite JSON sidecar
+    '/api/monitor/status', // engine state (running/stopped) — no config secrets
 ];
 const GUEST_OTHER_ALLOW = new Set(['POST /api/logout']);
 
@@ -6199,11 +6200,17 @@ app.post('/api/maintenance/thumbs/build-all', async (req, res) => {
     const kindRaw = String(req.body?.kind || 'all').toLowerCase();
     const kind = thumbKindTypes(kindRaw) ? kindRaw : 'all';
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        try {
+            kvSet('pending_job_thumbsBuild', { startedAt: Date.now(), kind });
+        } catch {}
         const result = await buildAllThumbnails({
             kind,
             onProgress: (p) => onProgress({ ...p, kind }),
             signal,
         });
+        try {
+            kvSet('pending_job_thumbsBuild', null);
+        } catch {}
         try {
             kvSet('thumbs_last_build', {
                 finishedAt: Date.now(),
@@ -6366,7 +6373,13 @@ app.get('/api/maintenance/thumbs/stats', async (req, res) => {
 app.post('/api/maintenance/seekbar/build-all', async (req, res) => {
     const tracker = _jobTrackers.seekbarBuild;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
+        try {
+            kvSet('pending_job_seekbarBuild', { startedAt: Date.now() });
+        } catch {}
         const result = await buildAllSeekbar({ onProgress, signal });
+        try {
+            kvSet('pending_job_seekbarBuild', null);
+        } catch {}
         try {
             kvSet('seekbar_last_build', { finishedAt: Date.now(), ...result });
         } catch {}
@@ -6774,6 +6787,9 @@ app.post('/api/maintenance/nsfw/scan', async (req, res) => {
             level: 'info',
             msg: `scan starting — model=${cfg.model} threshold=${cfg.threshold} fileTypes=[${(cfg.fileTypes || []).join(',')}] concurrency=${cfg.concurrency}`,
         });
+        try {
+            kvSet('pending_job_nsfwScan', { startedAt: Date.now() });
+        } catch {}
         let _lastLoggedScanned = 0;
         const r = await nsfwStartScan(
             cfg,
@@ -6793,6 +6809,9 @@ app.post('/api/maintenance/nsfw/scan', async (req, res) => {
                 }
             },
             (p) => {
+                try {
+                    kvSet('pending_job_nsfwScan', null);
+                } catch {}
                 try {
                     broadcast({ type: 'nsfw_done', ...p });
                 } catch {}
@@ -7507,10 +7526,10 @@ app.post('/api/ai/scan/start', async (req, res) => {
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
+            try {
+                kvSet(`pending_job_ai_${feature}`, { startedAt: Date.now() });
+            } catch {}
             return new Promise((resolve, reject) => {
-                // Forward the runner's signal abort -> our internal
-                // cancelScan, so /api/ai/scan/cancel and the tracker's
-                // own abort path both terminate the same scan.
                 if (signal && typeof signal.addEventListener === 'function') {
                     signal.addEventListener('abort', () => {
                         try {
@@ -7521,18 +7540,14 @@ app.post('/api/ai/scan/start', async (req, res) => {
                 starter(
                     cfg,
                     (p) => {
-                        // tracker.onProgress already _safeBroadcasts
-                        // `${prefix}_progress` with the merged status — a
-                        // second broadcast here would double every event
-                        // on the wire. Keep tracker as the single source.
                         try {
                             onProgress(p);
                         } catch {}
                     },
                     (p) => {
-                        // tracker auto-broadcasts `${prefix}_done` on
-                        // resolve/reject — surface scan errors back into
-                        // the tracker promise so it logs + finishes once.
+                        try {
+                            kvSet(`pending_job_ai_${feature}`, null);
+                        } catch {}
                         if (p?.error) reject(new Error(p.error));
                         else resolve(p || {});
                     },
@@ -12377,6 +12392,117 @@ ${tip}
     } catch (e) {
         console.warn('[monitor] auto-start skipped:', e.message);
     }
+
+    // Auto-resume interrupted scans. When a scan/build was running and
+    // the server restarted (update, crash, manual restart), the kv flag
+    // persists. Re-trigger the same job so it picks up where it left off.
+    // Each scan is idempotent — already-processed rows are skipped.
+    setTimeout(async () => {
+        try {
+            if (kvGet('pending_job_thumbsBuild')) {
+                const kind = kvGet('pending_job_thumbsBuild')?.kind || 'all';
+                console.log(`[auto-resume] resuming thumbs build (kind=${kind})`);
+                _jobTrackers.thumbsBuild.tryStart(async ({ onProgress, signal }) => {
+                    try {
+                        kvSet('pending_job_thumbsBuild', { startedAt: Date.now(), kind });
+                    } catch {}
+                    const result = await buildAllThumbnails({
+                        kind,
+                        onProgress: (p) => onProgress({ ...p, kind }),
+                        signal,
+                    });
+                    try {
+                        kvSet('pending_job_thumbsBuild', null);
+                    } catch {}
+                    try {
+                        kvSet('thumbs_last_build', { finishedAt: Date.now(), kind, ...result });
+                    } catch {}
+                    return { ...result, kind };
+                });
+            }
+            if (kvGet('pending_job_seekbarBuild')) {
+                console.log('[auto-resume] resuming seekbar build');
+                _jobTrackers.seekbarBuild.tryStart(async ({ onProgress, signal }) => {
+                    try {
+                        kvSet('pending_job_seekbarBuild', { startedAt: Date.now() });
+                    } catch {}
+                    const result = await buildAllSeekbar({ onProgress, signal });
+                    try {
+                        kvSet('pending_job_seekbarBuild', null);
+                    } catch {}
+                    try {
+                        kvSet('seekbar_last_build', { finishedAt: Date.now(), ...result });
+                    } catch {}
+                    return result;
+                });
+            }
+            if (kvGet('pending_job_nsfwScan')) {
+                const nsfwCfg = _nsfwCfg();
+                if (nsfwCfg.enabled) {
+                    console.log('[auto-resume] resuming NSFW scan');
+                    nsfwStartScan(
+                        nsfwCfg,
+                        (p) => {
+                            try {
+                                broadcast({ type: 'nsfw_progress', ...p });
+                            } catch {}
+                        },
+                        (p) => {
+                            try {
+                                kvSet('pending_job_nsfwScan', null);
+                            } catch {}
+                            try {
+                                broadcast({ type: 'nsfw_done', ...p });
+                            } catch {}
+                        },
+                        (entry) => log(entry),
+                    ).catch(() => {});
+                } else {
+                    kvSet('pending_job_nsfwScan', null);
+                }
+            }
+            if (kvGet('pending_job_ai_faces')) {
+                const aiCfg = _aiCfg();
+                if (aiCfg.enabled) {
+                    console.log('[auto-resume] resuming AI faces scan');
+                    const tracker = _aiTrackerFor('faces');
+                    tracker.tryStart(({ onProgress, signal }) => {
+                        try {
+                            kvSet('pending_job_ai_faces', { startedAt: Date.now() });
+                        } catch {}
+                        return new Promise((resolve, reject) => {
+                            if (signal?.addEventListener)
+                                signal.addEventListener('abort', () => {
+                                    try {
+                                        aiCancelScan('faces');
+                                    } catch {}
+                                });
+                            aiStartFacesScan(
+                                aiCfg,
+                                (p) => {
+                                    try {
+                                        onProgress(p);
+                                    } catch {}
+                                },
+                                (p) => {
+                                    try {
+                                        kvSet('pending_job_ai_faces', null);
+                                    } catch {}
+                                    if (p?.error) reject(new Error(p.error));
+                                    else resolve(p || {});
+                                },
+                                (entry) => log(entry),
+                            );
+                        });
+                    });
+                } else {
+                    kvSet('pending_job_ai_faces', null);
+                }
+            }
+        } catch (e) {
+            console.warn('[auto-resume] error:', e.message);
+        }
+    }, 5000);
 });
 
 // Graceful shutdown — Docker / systemd / Ctrl-C send SIGTERM/SIGINT and

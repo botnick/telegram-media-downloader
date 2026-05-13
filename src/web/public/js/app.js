@@ -346,7 +346,7 @@ async function init() {
         const cached = state.groupNameCache?.get?.(String(id));
         const cfg = (state.groups || []).find((g) => String(g.id) === String(id));
         const known = cached || (cfg && !isUnresolvedName(cfg.name, id));
-        if (!known && !state._resolvingGroups) {
+        if (!known && !state._resolvingGroups && state.role === 'admin') {
             state._resolvingGroups = true;
             api.post('/api/groups/refresh-info')
                 .catch(() => {})
@@ -400,8 +400,8 @@ async function init() {
     // state + queue counters; onboarding = monitor hint; group-name
     // resolver = POST /api/groups/refresh-info).
     const isAdmin = state.role === 'admin';
+    initStatusBar();
     if (isAdmin) {
-        initStatusBar();
         initOnboarding();
         // Must initialise AFTER initOnboarding so our monitor-status
         // subscriber lands later in the Set and runs after the banner
@@ -1147,7 +1147,9 @@ function renderGroupsList() {
                 : (state.groups || []).find((cg) => String(cg.id) === id);
             // Suspended groups cannot be toggled — hide the button entirely
             const monitorEnabled =
-                cfgGroup && !cfgGroup.suspended ? cfgGroup.enabled !== false : null;
+                state.role === 'admin' && cfgGroup && !cfgGroup.suspended
+                    ? cfgGroup.enabled !== false
+                    : null;
             const sidebarPill =
                 cfgGroup?.suspended === true
                     ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
@@ -1162,7 +1164,7 @@ function renderGroupsList() {
                 time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
                 selected: state.currentGroupId === id,
                 statusPill: sidebarPill,
-                cog: !isForeign, // foreign groups are read-only; hide the cog
+                cog: !isForeign && state.role === 'admin',
                 monitorEnabled, // 1-click ▶/⏸ toggle when this is a config group
                 peerId: g.peerId || null,
                 peerName: g.peerName || null,
@@ -1190,7 +1192,7 @@ function renderGroupsList() {
     // for every open tab. The dedupe flag prevents a flurry of WS-driven
     // re-renders from hammering the endpoint, while a 409 from a sibling
     // client is no-op'd on the server side.
-    if (needsResolve && !state._resolvingGroups) {
+    if (needsResolve && !state._resolvingGroups && state.role === 'admin') {
         state._resolvingGroups = true;
         api.post('/api/groups/refresh-info')
             .catch(() => {})

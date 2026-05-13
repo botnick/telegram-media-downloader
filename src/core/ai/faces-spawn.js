@@ -427,11 +427,29 @@ async function _doStart() {
     if (binaryReady && !_verifyBinary(target.binPath)) {
         _log('warn', `binary at ${target.binPath} failed verification — re-downloading`);
         _killChild();
-        await new Promise((r) => setTimeout(r, 1000));
+        if (process.platform === 'win32') {
+            const binName = path.basename(target.binPath);
+            try {
+                spawnSync('taskkill', ['/F', '/IM', binName], { stdio: 'ignore', timeout: 5000 });
+            } catch {}
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+        let unlocked = false;
         try {
             await fs.unlink(target.binPath);
-        } catch {}
-        if (_resolvedCfg.autoDownload !== false) {
+            unlocked = true;
+        } catch {
+            try {
+                await fs.rename(target.binPath, target.binPath + '.old');
+                unlocked = true;
+            } catch (renameErr) {
+                _log(
+                    'warn',
+                    `cannot remove locked binary (${renameErr.code || renameErr.message}) — skipping re-download`,
+                );
+            }
+        }
+        if (unlocked && _resolvedCfg.autoDownload !== false) {
             try {
                 await _downloadAndExtract(target);
             } catch (e) {
