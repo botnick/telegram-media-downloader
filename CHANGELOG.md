@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.18.12] — 2026-05-13
+
+Docker build fix — missing CHANGELOG.md whitelist.
+
+### Fixed
+- **Docker build failure** — `CHANGELOG.md` was excluded by the `*.md` glob in `.dockerignore`; added the negation so the COPY directive finds the file.
+
+### Service worker
+- `VERSION = 'v21812'`
+
 ## [2.18.11] — 2026-05-13
 
 NSFW settings persistence fixes — three fields silently ignored by the save path.
