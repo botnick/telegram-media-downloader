@@ -1826,22 +1826,19 @@ app.get('/metrics', (req, res) => {
 // behave identically to /files/*). Cache-Control: no-store keeps a
 // shared CDN/proxy from hijacking the bytes for the next visitor.
 //
-// Both windowMs and limit are passed as functions so a config_updated
-// broadcast that changes them takes effect on the next request without a
-// process restart.
-const shareLimiter = rateLimit({
-    windowMs: () => {
-        const ms = Number(_currentShareConfig().rateLimitWindowMs);
-        return Number.isFinite(ms) && ms > 0 ? ms : 60_000;
-    },
-    limit: () => {
-        const lim = Number(_currentShareConfig().rateLimitMax);
-        return Number.isFinite(lim) && lim > 0 ? lim : 60;
-    },
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    message: { error: 'Too many requests — slow down.' },
-});
+// express-rate-limit v7 does not support function values for windowMs/limit,
+// so we use static defaults and rebuild the limiter on config change.
+const _shareRateCfg = { windowMs: 60_000, limit: 60 };
+function _buildShareLimiter() {
+    return rateLimit({
+        windowMs: _shareRateCfg.windowMs,
+        limit: _shareRateCfg.limit,
+        standardHeaders: 'draft-7',
+        legacyHeaders: false,
+        message: { error: 'Too many requests — slow down.' },
+    });
+}
+let shareLimiter = _buildShareLimiter();
 
 // Tiny cache around the last-loaded config so the rate-limit getters
 // don't sync-read disk on every share request. Refreshed by the
@@ -1859,6 +1856,12 @@ function _currentShareConfig() {
 }
 function _invalidateShareConfigCache() {
     _shareConfigCache = null;
+    const sh = _currentShareConfig();
+    const ms = Number(sh.rateLimitWindowMs);
+    const lim = Number(sh.rateLimitMax);
+    _shareRateCfg.windowMs = Number.isFinite(ms) && ms > 0 ? ms : 60_000;
+    _shareRateCfg.limit = Number.isFinite(lim) && lim > 0 ? lim : 60;
+    shareLimiter = _buildShareLimiter();
 }
 
 // v2 URL shape: `/share/<linkId>?s=<sig>` (or `/share/<linkId>/<filename>?s=<sig>`
