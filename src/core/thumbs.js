@@ -611,17 +611,17 @@ function _activeBackend(override) {
 
 function _gpuFullScaleVf(backend, w) {
     // Frames already on GPU — scale directly then download for SW encode.
-    if (backend === 'vaapi') return `scale_vaapi=w=${w}:h=-2,hwdownload,format=yuv420p`;
+    if (backend === 'vaapi') return `scale_vaapi=w=${w}:h=-2:format=nv12,hwdownload,format=yuv420p`;
     if (backend === 'cuda')
         return `scale_cuda=w=${w}:h=-2:format=yuv420p,hwdownload,format=yuv420p`;
-    if (backend === 'qsv') return `vpp_qsv=w=${w}:h=-2,hwdownload`;
+    if (backend === 'qsv') return `vpp_qsv=w=${w}:h=-2,hwdownload,format=yuv420p`;
     return null;
 }
 
 function _gpuUploadScaleVf(backend, w) {
     // Frames on CPU — upload to GPU, scale, download back.
     if (backend === 'vaapi')
-        return `hwupload=extra_hw_frames=16,scale_vaapi=w=${w}:h=-2,hwdownload,format=yuv420p`;
+        return `hwupload=extra_hw_frames=16,scale_vaapi=w=${w}:h=-2:format=nv12,hwdownload,format=yuv420p`;
     if (backend === 'cuda')
         return `hwupload,scale_cuda=w=${w}:h=-2:format=yuv420p,hwdownload,format=yuv420p`;
     if (backend === 'qsv') return `hwupload,vpp_qsv=w=${w}:h=-2,hwdownload`;
