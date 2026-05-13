@@ -639,13 +639,8 @@ function _gpuUploadScaleVf(backend, w) {
 export function hwaccelFullPipeline(override) {
     const backend = _activeBackend(override);
     if (!backend) return { inputArgs: [], scaleVf: null };
-    if (_gpuScalerAvailable(backend)) {
-        return {
-            inputArgs: ['-hwaccel', backend, '-hwaccel_output_format', backend],
-            scaleVf: (w) => _gpuFullScaleVf(backend, w),
-        };
-    }
-    // Decode-only backend — GPU accelerates decode, SW handles scale.
+    // Single-frame jobs (thumbnails): GPU decode + SW scale is fast enough
+    // and avoids color-space issues with hwdownload on VAAPI/CUDA surfaces.
     return { inputArgs: ['-hwaccel', backend], scaleVf: null };
 }
 
