@@ -717,16 +717,14 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
                   '-an',
                   '-vf',
                   scaleFilter,
+                  '-pix_fmt',
+                  'yuv420p',
                   '-c:v',
                   'libwebp',
                   '-quality',
                   String(FFMPEG_WEBP_QUALITY),
                   '-compression_level',
                   String(FFMPEG_WEBP_COMPRESSION),
-                  // Force the WebP muxer explicitly. dstAbs ends in `.webp.tmp`
-                  // for atomic-rename writes; ffmpeg on Debian/Ubuntu won't
-                  // infer the format from the `.tmp` suffix and dies with
-                  // "Unable to find a suitable output format" on every video.
                   '-f',
                   'webp',
                   '-y',
@@ -751,6 +749,8 @@ async function _generateVideoThumb(srcAbs, width, dstAbs) {
                       '-an',
                       '-vf',
                       scaleFilter,
+                      '-pix_fmt',
+                      'yuv420p',
                       '-q:v',
                       '3',
                       '-y',
