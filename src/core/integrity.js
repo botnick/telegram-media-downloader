@@ -128,13 +128,24 @@ export async function sweep(onProgress) {
         }
 
         if (sizeFixes.length) {
-            _emit({ processed, total, stage: 'fixing_sizes' });
             const upd = getDb().prepare('UPDATE downloads SET file_size = ? WHERE id = ?');
-            const tx = getDb().transaction((items) => {
-                for (const it of items) upd.run(it.size, it.id);
-            });
-            tx(sizeFixes);
-            result.sizeFixed = sizeFixes.length;
+            const SIZE_BATCH = 500;
+            let sizeFixed = 0;
+            for (let i = 0; i < sizeFixes.length; i += SIZE_BATCH) {
+                const slice = sizeFixes.slice(i, i + SIZE_BATCH);
+                const tx = getDb().transaction((items) => {
+                    for (const it of items) upd.run(it.size, it.id);
+                });
+                tx(slice);
+                sizeFixed += slice.length;
+                _emit({
+                    processed: sizeFixed,
+                    total: sizeFixes.length,
+                    stage: 'fixing_sizes',
+                });
+                await new Promise((r) => setImmediate(r));
+            }
+            result.sizeFixed = sizeFixed;
         }
 
         if (deleteIds.length) {
@@ -321,6 +332,7 @@ export async function reindexFromDisk(configGroups, onProgress) {
         }
         const groupDirs = topEntries.filter((e) => e.isDirectory());
         result.groups = groupDirs.length;
+        let groupsDone = 0;
         for (const gd of groupDirs) {
             const folderName = gd.name;
             const resolved = resolveGroupId(folderName, configGroups);
@@ -376,9 +388,15 @@ export async function reindexFromDisk(configGroups, onProgress) {
                     });
                 }
             }
+            groupsDone++;
             try {
                 if (typeof onProgress === 'function')
-                    onProgress({ ...result, currentGroup: groupName });
+                    onProgress({
+                        ...result,
+                        processed: groupsDone,
+                        total: groupDirs.length,
+                        currentGroup: groupName,
+                    });
             } catch {}
         }
         result.finishedAt = Date.now();

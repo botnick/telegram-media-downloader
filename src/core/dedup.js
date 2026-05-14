@@ -149,32 +149,57 @@ export async function findDuplicates(opts = {}) {
         if (page.length < PAGE_SIZE) break;
     }
 
-    // Second pass: group by hash, return the duplicate sets ordered by the
-    // amount of disk those duplicates are wasting (size × extra copies).
-    if (onProgress) onProgress({ stage: 'grouping', processed: total, total, hashed, errored });
-
-    // Yield so the "grouping" WS progress event flushes before the heavy
-    // sync GROUP BY blocks the event loop.
+    // Second pass: paginated GROUP BY — scan the file_hash index in order,
+    // grouping 5000 distinct hashes per page. Each page blocks ~10-50ms
+    // instead of the old single-query approach that blocked 3-15s on 1M rows.
+    if (onProgress) onProgress({ stage: 'grouping', processed: 0, total: 0, hashed, errored });
     await new Promise((r) => setImmediate(r));
 
-    const duplicates = db
-        .prepare(`
+    const HASH_PAGE = 5000;
+    const allDupes = [];
+    let afterHash = '';
+    let scannedGroups = 0;
+
+    const groupStmt = db.prepare(`
         SELECT file_hash AS hash,
                COUNT(*)  AS cnt,
                MAX(file_size) AS max_size
           FROM downloads
          WHERE file_hash IS NOT NULL
+           AND file_hash > ?
          GROUP BY file_hash
-        HAVING COUNT(*) > 1
-         ORDER BY (MAX(file_size) * (COUNT(*) - 1)) DESC,
-                  COUNT(*) DESC
-         LIMIT 500
-    `)
-        .all();
+         ORDER BY file_hash ASC
+         LIMIT ?
+    `);
 
-    // Yield after the heavy GROUP BY so queued I/O can flush.
-    await new Promise((r) => setImmediate(r));
+    while (true) {
+        if (signal?.aborted) break;
+        const page = groupStmt.all(afterHash, HASH_PAGE);
+        if (!page.length) break;
+        for (const row of page) {
+            if (row.cnt > 1) allDupes.push(row);
+        }
+        scannedGroups += page.length;
+        afterHash = page[page.length - 1].hash;
+        if (onProgress)
+            onProgress({
+                stage: 'grouping',
+                processed: scannedGroups,
+                total: 0,
+                hashed,
+                errored,
+                duplicatesFound: allDupes.length,
+            });
+        await new Promise((r) => setImmediate(r));
+        if (page.length < HASH_PAGE) break;
+    }
 
+    // Sort by reclaimable space (size × extra copies), then by count.
+    allDupes.sort((a, b) => b.max_size * (b.cnt - 1) - a.max_size * (a.cnt - 1) || b.cnt - a.cnt);
+    const duplicates = allDupes.slice(0, 500);
+
+    // Build the file-detail sets for each duplicate hash. Yields every
+    // 50 sets so WS progress events keep flowing.
     const sets = [];
     const filesQ = db.prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_size,
@@ -206,13 +231,11 @@ export async function findDuplicates(opts = {}) {
         if ((i + 1) % SETS_BATCH === 0) {
             if (onProgress)
                 onProgress({
-                    stage: 'grouping',
-                    processed: total,
-                    total,
+                    stage: 'building',
+                    processed: sets.length,
+                    total: duplicates.length,
                     hashed,
                     errored,
-                    setsBuilt: sets.length,
-                    setsTotal: duplicates.length,
                 });
             await new Promise((r) => setImmediate(r));
         }

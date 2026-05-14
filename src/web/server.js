@@ -7261,8 +7261,18 @@ app.post('/api/maintenance/nsfw/v2/bulk-whitelist', async (req, res) => {
         onProgress({ stage: 'resolving', op: 'whitelist' });
         const ids = await _resolveBulkIds(body);
         if (!ids.length) return { op: 'whitelist', updated: 0, ids: [] };
-        onProgress({ stage: 'updating', op: 'whitelist', total: ids.length });
-        const updated = whitelistNsfw(ids);
+        const total = ids.length;
+        const BATCH = 500;
+        let updated = 0;
+        let processed = 0;
+        onProgress({ stage: 'updating', op: 'whitelist', processed: 0, total });
+        for (let off = 0; off < ids.length; off += BATCH) {
+            const slice = ids.slice(off, off + BATCH);
+            updated += whitelistNsfw(slice);
+            processed += slice.length;
+            onProgress({ stage: 'updating', op: 'whitelist', processed, total });
+            await new Promise((r) => setImmediate(r));
+        }
         try {
             broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
         } catch {}
@@ -7296,8 +7306,18 @@ app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
                 : { ...body, includeWhitelisted: true };
         const ids = _resolveBulkIds(resolveBody);
         if (!ids.length) return { op: 'unwhitelist', updated: 0, ids: [] };
-        onProgress({ stage: 'updating', op: 'unwhitelist', total: ids.length });
-        const updated = unwhitelistNsfw(ids);
+        const total = ids.length;
+        const BATCH = 500;
+        let updated = 0;
+        let processed = 0;
+        onProgress({ stage: 'updating', op: 'unwhitelist', processed: 0, total });
+        for (let off = 0; off < ids.length; off += BATCH) {
+            const slice = ids.slice(off, off + BATCH);
+            updated += unwhitelistNsfw(slice);
+            processed += slice.length;
+            onProgress({ stage: 'updating', op: 'unwhitelist', processed, total });
+            await new Promise((r) => setImmediate(r));
+        }
         try {
             broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
         } catch {}
@@ -7323,8 +7343,18 @@ app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
         onProgress({ stage: 'resolving', op: 'reclassify' });
         const ids = await _resolveBulkIds(body);
         if (!ids.length) return { op: 'reclassify', cleared: 0, ids: [] };
-        onProgress({ stage: 'clearing', op: 'reclassify', total: ids.length });
-        const cleared = reclassifyNsfw(ids);
+        const total = ids.length;
+        const BATCH = 500;
+        let cleared = 0;
+        let processed = 0;
+        onProgress({ stage: 'clearing', op: 'reclassify', processed: 0, total });
+        for (let off = 0; off < ids.length; off += BATCH) {
+            const slice = ids.slice(off, off + BATCH);
+            cleared += reclassifyNsfw(slice);
+            processed += slice.length;
+            onProgress({ stage: 'clearing', op: 'reclassify', processed, total });
+            await new Promise((r) => setImmediate(r));
+        }
         log({
             source: 'nsfw',
             level: 'info',

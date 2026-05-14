@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.2] — 2026-05-15
+
+Dedup scan non-blocking, filename dedup, bulk-delete all, progress feedback audit.
+
+### Added
+- **Dedup "Delete all extras"** — one-click bulk delete keeping oldest or newest copy per set, with confirm dialog and live progress bar.
+- **Filename+size dedup layer** — `fileAlreadyStored(group, name, size)` fallback in `registerDownload()` catches re-posts when the first row has no hash yet.
+
+### Fixed
+- **Dedup GROUP BY blocks event loop 3-15s on 1M rows** — replaced single GROUP BY with paginated scan (5 000 hashes/page, yield between pages). Dashboard stays responsive throughout.
+- **Reindex shows 0 / 0 groups** — backend emitted `scanned`/`groups` but frontend read `processed`/`total`; added the missing fields.
+- **NSFW bulk-whitelist/unwhitelist/reclassify no progress** — split into 500-item batches with `processed`/`total` progress events.
+- **Integrity sweep size-fixing blocks without progress** — split single transaction into 500-row batches with progress between each.
+
+### Service worker
+- `VERSION = 'v2192'`
+
 ## [2.19.1] — 2026-05-15
 
 Monitor state resume on restart + dedup scan responsiveness fix.

@@ -566,9 +566,33 @@ async function _runVerify() {
     }
 }
 
-function _setDeleteUi(running) {
+function _setDeleteUi(running, progress) {
     const btn = $('dup-delete-btn');
+    const allOldest = $('dup-delete-all-oldest');
+    const allNewest = $('dup-delete-all-newest');
+    const progBar = $('dup-delete-progress');
+    const bar = $('dup-delete-progress-bar');
+    const progText = $('dup-delete-all-progress');
     if (btn) btn.disabled = !!running;
+    if (allOldest) allOldest.disabled = !!running;
+    if (allNewest) allNewest.disabled = !!running;
+    if (progBar) progBar.classList.toggle('hidden', !running);
+    if (progress && running) {
+        const total = Math.max(1, progress.total || 1);
+        const pct = Math.min(100, Math.round(((progress.processed || 0) / total) * 100));
+        if (bar) bar.style.width = pct + '%';
+        if (progText) {
+            progText.classList.remove('hidden');
+            progText.textContent = `${(progress.processed || 0).toLocaleString()} / ${(progress.total || 0).toLocaleString()}`;
+        }
+    }
+    if (!running) {
+        if (bar) bar.style.width = '0%';
+        if (progText) {
+            progText.classList.add('hidden');
+            progText.textContent = '';
+        }
+    }
 }
 
 async function _deleteSelected() {
@@ -655,7 +679,6 @@ function _wireWs() {
         if (!bar) return;
         const total = Math.max(1, m.total || 1);
         const pct = Math.min(100, Math.round(((m.processed || 0) / total) * 100));
-        bar.style.width = pct + '%';
         // Stage-specific labels — generic "hashing · 12 / 5000" was too
         // terse to convey what's happening on a multi-minute scan. Each
         // backend stage gets its own friendly i18n string.
@@ -668,9 +691,18 @@ function _wireWs() {
                     `Hashing files… ${m.processed || 0} / ${m.total || 0}`,
                 );
             } else if (stageKey === 'grouping') {
-                stage.textContent = i18nT(
-                    'maintenance.duplicates.progress.grouping',
-                    'Grouping by hash…',
+                const found = m.duplicatesFound || 0;
+                const scanned = m.processed || 0;
+                stage.textContent = i18nTf(
+                    'maintenance.duplicates.progress.grouping_v2',
+                    { scanned, found },
+                    `Grouping by hash… ${scanned.toLocaleString()} scanned · ${found} duplicates found`,
+                );
+            } else if (stageKey === 'building') {
+                stage.textContent = i18nTf(
+                    'maintenance.duplicates.progress.building',
+                    { processed: m.processed || 0, total: m.total || 0 },
+                    `Building sets… ${m.processed || 0} / ${m.total || 0}`,
                 );
             } else if (stageKey === 'starting' || !stageKey) {
                 stage.textContent = i18nT('maintenance.duplicates.progress.starting', 'Starting…');
@@ -683,10 +715,22 @@ function _wireWs() {
             }
         }
         if (pctEl) {
-            pctEl.textContent =
-                m.total > 0
-                    ? `${pct}% · ${(m.processed || 0).toLocaleString()} / ${(m.total || 0).toLocaleString()}`
-                    : '';
+            if (m.total > 0) {
+                pctEl.textContent = `${pct}% · ${(m.processed || 0).toLocaleString()} / ${(m.total || 0).toLocaleString()}`;
+            } else if (m.processed > 0) {
+                pctEl.textContent = (m.processed || 0).toLocaleString();
+            } else {
+                pctEl.textContent = '';
+            }
+        }
+        if (bar) {
+            if (m.total > 0) {
+                bar.classList.remove('animate-pulse');
+                bar.style.width = pct + '%';
+            } else if (m.stage === 'grouping') {
+                bar.classList.add('animate-pulse');
+                bar.style.width = '100%';
+            }
         }
     });
 
@@ -745,8 +789,8 @@ function _wireWs() {
     // delete button share this single tracker, so closing the tab
     // mid-delete and reopening this page still picks up the running
     // state (re-disables the Delete button) until the work finishes.
-    ws.on('dedup_delete_progress', () => {
-        _setDeleteUi(true);
+    ws.on('dedup_delete_progress', (m) => {
+        _setDeleteUi(true, m);
     });
 
     ws.on('dedup_delete_done', async (m) => {
@@ -931,6 +975,57 @@ function _bulkClearSelection() {
     _refreshSummary();
 }
 
+async function _bulkDeleteAll(keep) {
+    if (!_sets.length) return;
+    const sortFn = (a, b) => _createdAtMs(a) - _createdAtMs(b);
+    const ids = [];
+    for (const set of _sets) {
+        const sorted = [...set.files].sort(sortFn);
+        const keepId = (keep === 'newest' ? sorted[sorted.length - 1] : sorted[0])?.id;
+        for (const f of set.files) {
+            if (f.id !== keepId) ids.push(f.id);
+        }
+    }
+    if (!ids.length) {
+        showToast(i18nT('maintenance.dedup.nothing', 'Nothing to delete'), 'info');
+        return;
+    }
+    const label = keep === 'newest' ? 'newest' : 'oldest';
+    const ok = await confirmSheet({
+        title: i18nT('maintenance.dedup.confirm_title', 'Delete duplicate files?'),
+        message: i18nTf(
+            'maintenance.dedup.bulk_delete_body',
+            { n: ids.length, keep: label },
+            `Delete ${ids.length} file(s), keeping the ${label} copy in each set?`,
+        ),
+        confirmLabel: i18nTf(
+            'maintenance.dedup.bulk_delete_btn',
+            { n: ids.length },
+            `Delete ${ids.length} files`,
+        ),
+        danger: true,
+    });
+    if (!ok) return;
+    _setDeleteUi(true);
+    try {
+        const r = await api.post('/api/maintenance/dedup/delete', { ids });
+        if (!r?.started && !r?.success) throw new Error('Failed to start');
+    } catch (e) {
+        if (e?.data?.code === 'ALREADY_RUNNING') {
+            showToast(
+                i18nT(
+                    'jobs.already_running',
+                    'Already running on another tab — waiting for it to finish.',
+                ),
+                'info',
+            );
+            return;
+        }
+        showToast(e?.data?.error || e.message || 'Failed', 'error');
+        _setDeleteUi(false);
+    }
+}
+
 export function init() {
     _wireWs();
 
@@ -944,6 +1039,8 @@ export function init() {
         $('dup-bulk-oldest')?.addEventListener('click', () => _bulkKeep('oldest'));
         $('dup-bulk-newest')?.addEventListener('click', () => _bulkKeep('newest'));
         $('dup-bulk-clear')?.addEventListener('click', _bulkClearSelection);
+        $('dup-delete-all-oldest')?.addEventListener('click', () => _bulkDeleteAll('oldest'));
+        $('dup-delete-all-newest')?.addEventListener('click', () => _bulkDeleteAll('newest'));
 
         // Event delegation on the list root — attaches ONE listener
         // instead of N×M (per-row + per-set-keep), so a 1000-set library

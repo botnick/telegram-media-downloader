@@ -12,6 +12,7 @@ import {
     getDb,
     insertDownload,
     isDownloaded as dbIsDownloaded,
+    fileAlreadyStored,
     kvGet,
     kvSet,
     pushQueueBacklog,
@@ -1026,6 +1027,40 @@ export class DownloadManager extends EventEmitter {
             // Hash failed (very rare — file disappeared between rename and
             // open). Fall through and store the row with the new file path.
             console.warn('[downloader] dedup hash failed:', e?.message || e);
+        }
+
+        // Fallback dedup: same filename + size in the same group catches
+        // re-posts/forwards whose earlier row has file_hash = NULL (downloaded
+        // before hash-at-download was active). Uses the idx_filename_size index.
+        if (bytesAddedToDisk > 0) {
+            try {
+                const fname = path.basename(storedPath);
+                if (
+                    fname &&
+                    storedSize > 0 &&
+                    fileAlreadyStored(String(groupId), fname, storedSize)
+                ) {
+                    const existing = getDb()
+                        .prepare(
+                            `SELECT id, file_path FROM downloads
+                              WHERE group_id = ? AND file_name = ? AND file_size = ?
+                              ORDER BY id ASC LIMIT 1`,
+                        )
+                        .get(String(groupId), fname, storedSize);
+                    if (existing?.file_path) {
+                        const dupAbs = path.isAbsolute(existing.file_path)
+                            ? existing.file_path
+                            : path.resolve(DOWNLOADS_DIR, existing.file_path);
+                        if (existsSync(dupAbs)) {
+                            try {
+                                await fs.unlink(filePath);
+                            } catch {}
+                            storedPath = dupAbs;
+                            bytesAddedToDisk = 0;
+                        }
+                    }
+                }
+            } catch {}
         }
 
         // DB Insert

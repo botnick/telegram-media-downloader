@@ -2174,18 +2174,35 @@
                         <div id="dup-totals" class="text-sm text-tg-text mb-2"></div>
                         <!-- Bulk keep-decisions — applies the rule to every
                              set in one click. Hidden when the list is empty. -->
-                        <div id="dup-bulk-bar" class="hidden flex items-center justify-between gap-2 flex-wrap mb-3 pb-3 border-b border-tg-border/30">
-                            <span class="text-[11px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.duplicates.bulk.heading">Apply to all sets</span>
+                        <div id="dup-bulk-bar" class="hidden mb-3 pb-3 border-b border-tg-border/30 space-y-2">
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
+                                <span class="text-[11px] uppercase tracking-wide text-tg-textSecondary" data-i18n="maintenance.duplicates.bulk.heading">Apply to all sets</span>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <button id="dup-bulk-oldest" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                        <i class="ri-time-line"></i><span data-i18n="maintenance.duplicates.bulk.keep_oldest">Keep oldest in every set</span>
+                                    </button>
+                                    <button id="dup-bulk-newest" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                        <i class="ri-flashlight-line"></i><span data-i18n="maintenance.duplicates.bulk.keep_newest">Keep newest in every set</span>
+                                    </button>
+                                    <button id="dup-bulk-clear" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
+                                        <i class="ri-eraser-line"></i><span data-i18n="maintenance.duplicates.bulk.clear">Clear selection</span>
+                                    </button>
+                                </div>
+                            </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <button id="dup-bulk-oldest" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
-                                    <i class="ri-time-line"></i><span data-i18n="maintenance.duplicates.bulk.keep_oldest">Keep oldest in every set</span>
+                                <button id="dup-delete-all-oldest" type="button" class="px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs font-medium transition inline-flex items-center gap-1.5">
+                                    <i class="ri-delete-bin-line"></i><span data-i18n="maintenance.duplicates.bulk.delete_keep_oldest">Delete all extras (keep oldest)</span>
                                 </button>
-                                <button id="dup-bulk-newest" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
-                                    <i class="ri-flashlight-line"></i><span data-i18n="maintenance.duplicates.bulk.keep_newest">Keep newest in every set</span>
+                                <button id="dup-delete-all-newest" type="button" class="px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs font-medium transition inline-flex items-center gap-1.5">
+                                    <i class="ri-delete-bin-line"></i><span data-i18n="maintenance.duplicates.bulk.delete_keep_newest">Delete all extras (keep newest)</span>
                                 </button>
-                                <button id="dup-bulk-clear" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
-                                    <i class="ri-eraser-line"></i><span data-i18n="maintenance.duplicates.bulk.clear">Clear selection</span>
-                                </button>
+                                <span id="dup-delete-all-progress" class="text-xs text-tg-textSecondary hidden"></span>
+                            </div>
+                            <!-- Delete progress bar -->
+                            <div id="dup-delete-progress" class="hidden">
+                                <div class="h-1.5 bg-tg-bg/60 rounded-full overflow-hidden">
+                                    <div id="dup-delete-progress-bar" class="h-full bg-red-400 rounded-full transition-all duration-300" style="width:0%"></div>
+                                </div>
                             </div>
                         </div>
                         <div id="dup-empty" class="text-center py-8 text-sm text-tg-textSecondary" data-i18n="maintenance.duplicates.empty">No scan yet — click "Scan" to begin.</div>
