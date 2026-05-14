@@ -12504,6 +12504,42 @@ ${tip}
     // Resolve group names from Telegram for any DB records still unnamed
     await resolveGroupNamesFromTelegram();
 
+    // Purge orphaned .part files left by crashed downloads. Runs before
+    // monitor start so no active downloads can be in flight. The monitor
+    // catch-up will re-discover and re-download the original messages.
+    try {
+        const dlDir = getDownloadsDir();
+        let purged = 0;
+        const groups = await fs.readdir(dlDir, { withFileTypes: true }).catch(() => []);
+        for (const gd of groups) {
+            if (!gd.isDirectory()) continue;
+            const groupPath = path.join(dlDir, gd.name);
+            const subs = await fs.readdir(groupPath, { withFileTypes: true }).catch(() => []);
+            for (const sub of subs) {
+                if (sub.isDirectory()) {
+                    const typePath = path.join(groupPath, sub.name);
+                    const files = await fs.readdir(typePath).catch(() => []);
+                    for (const f of files) {
+                        if (f.endsWith('.part')) {
+                            try {
+                                await fs.unlink(path.join(typePath, f));
+                                purged++;
+                            } catch {}
+                        }
+                    }
+                } else if (sub.name.endsWith('.part')) {
+                    try {
+                        await fs.unlink(path.join(groupPath, sub.name));
+                        purged++;
+                    } catch {}
+                }
+            }
+        }
+        if (purged) console.log(`[startup] purged ${purged} orphaned .part file(s)`);
+    } catch (e) {
+        console.warn('[startup] .part cleanup failed:', e.message);
+    }
+
     // Resume the realtime monitor if it was running before the last
     // shutdown. The start/stop endpoints persist monitor.autoStart to
     // config so the flag reflects the operator's last intent — graceful

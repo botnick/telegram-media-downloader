@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -322,10 +323,16 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 		}
 	}
 
-	// Build sprite.
+	// Build sprite. Cap ffmpeg threads per job so concurrent workers don't
+	// oversubscribe the CPU (e.g. 2 workers × 8 threads = 16 on an 8-core
+	// box). Floor at 2 threads for decode + scale pipeline efficiency.
+	threadsPerJob := runtime.NumCPU() / max(1, cfg.Jobs.Concurrency)
+	if threadsPerJob < 2 {
+		threadsPerJob = 2
+	}
 	tmpPath := ffmpeg.TempPath(dstPath)
-	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs, p.hwBackend)
-	cpuArgs := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, nil, cfg.FFmpeg.ExtraArgs, "")
+	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs, p.hwBackend, threadsPerJob)
+	cpuArgs := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, nil, cfg.FFmpeg.ExtraArgs, "", threadsPerJob)
 
 	var lastErr error
 	maxAttempts := cfg.Jobs.MaxRetries + 1

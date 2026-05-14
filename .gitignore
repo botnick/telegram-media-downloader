@@ -87,5 +87,6 @@ faces-service/htmlcov/
 seekbar-service/bin/
 seekbar-service/dist/
 seekbar-service/seekbar-server
+seekbar-service/seekbar-server.exe
 seekbar-service/seekbar-cli
 faces-service/tgdl-faces-win-x64.spec

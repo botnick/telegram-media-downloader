@@ -116,3 +116,57 @@ describe('searchDownloads', () => {
         expect(result.files.some((f) => f.file_name.includes('cat'))).toBe(true);
     });
 });
+
+describe('getStats', () => {
+    it('returns totalFiles and totalSize in a single query', () => {
+        const stats = downloadsApi.getStats();
+        expect(stats).toHaveProperty('totalFiles');
+        expect(stats).toHaveProperty('totalSize');
+        expect(stats.totalFiles).toBeGreaterThan(0);
+        expect(typeof stats.totalSize).toBe('number');
+    });
+});
+
+describe('pinned queries', () => {
+    let pinnedId;
+
+    it('pinned column is never NULL after backfill', () => {
+        const nullCount = db
+            .prepare('SELECT COUNT(*) AS n FROM downloads WHERE pinned IS NULL')
+            .get().n;
+        expect(nullCount).toBe(0);
+    });
+
+    it('getAllDownloads pinnedOnly returns only pinned rows', () => {
+        downloadsApi.insertDownload({
+            groupId: '-100555',
+            groupName: 'Pinned Group',
+            messageId: 900,
+            fileName: 'pinned.jpg',
+            fileSize: 500,
+            fileType: 'photo',
+            filePath: 'pg/images/pinned.jpg',
+        });
+        pinnedId = db.prepare('SELECT id FROM downloads WHERE message_id = 900').get().id;
+        db.prepare('UPDATE downloads SET pinned = 1 WHERE id = ?').run(pinnedId);
+
+        const result = downloadsApi.getAllDownloads(50, 0, 'all', { pinnedOnly: true });
+        expect(result.files.length).toBeGreaterThan(0);
+        expect(result.files.every((f) => f.pinned === 1)).toBe(true);
+    });
+
+    it('getAllDownloads pinnedFirst puts pinned rows first', () => {
+        const result = downloadsApi.getAllDownloads(50, 0, 'all', { pinnedFirst: true });
+        expect(result.files.length).toBeGreaterThan(1);
+        const firstPinned = result.files.findIndex((f) => f.pinned === 1);
+        const firstUnpinned = result.files.findIndex((f) => f.pinned === 0);
+        if (firstPinned >= 0 && firstUnpinned >= 0) {
+            expect(firstPinned).toBeLessThan(firstUnpinned);
+        }
+    });
+
+    it('getOldestDownloads excludes pinned rows', () => {
+        const oldest = downloadsApi.getOldestDownloads(100);
+        expect(oldest.every((f) => f.pinned === 0)).toBe(true);
+    });
+});

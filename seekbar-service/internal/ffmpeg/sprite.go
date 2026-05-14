@@ -114,7 +114,7 @@ func Plan(durationSec float64, targetIntervalSec float64, columns, maxTiles, til
 //   - VAAPI: hwdownload,format=nv12 (explicit format required)
 //   - CUDA / D3D11VA: hwdownload (ffmpeg converts format automatically)
 //   - Others: no download step needed
-func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality int, hwArgs []string, extraArgs string, hwBackend HWAccelBackend) []string {
+func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality int, hwArgs []string, extraArgs string, hwBackend HWAccelBackend, threads int) []string {
 	if quality <= 0 {
 		quality = 70
 	}
@@ -122,37 +122,29 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		quality = 100
 	}
 
-	// Build the hwdownload prefix for GPU-decoded pixel data.
+	// Build the filter chain. When a GPU backend is active, prefer the
+	// hardware scaler (scale_vaapi / scale_cuda) so the resize happens on
+	// the GPU surface before the frame is downloaded to CPU memory. This
+	// cuts the PCIe transfer from full-resolution (e.g. 1080p) to the
+	// tile width (e.g. 160px) — ~45x less data per frame.
 	//
-	// VAAPI: hwdownload transfers the VAAPI surface to system memory.
-	// We follow with format=yuv420p to normalise driver-specific surface
-	// formats (Intel outputs NV12, AMD/Mesa may output YUV420P, Rockchip
-	// may output NV12 or YUV420P depending on the kernel version). The
-	// scale filter that follows accepts any planar YUV format.
-	//
-	// CUDA / D3D11VA: hwdownload without a format pin; ffmpeg selects the
-	// appropriate pixel format for the NVDEC / D3D11VA decode surface, and
-	// the scale filter converts as needed.
-	var hwDownload string
+	// Backends without a hardware scaler (D3D11VA, VideoToolbox, V4L2M2M)
+	// fall back to hwdownload + software scale.
+	fps := "fps=1/" + strconv.FormatFloat(plan.IntervalSec, 'f', 6, 64)
+	tile := fmt.Sprintf("tile=%dx%d", plan.Cols, plan.Rows)
+	swScale := fmt.Sprintf("scale=%d:-2:flags=fast_bilinear", plan.TileW)
+
+	var filter string
 	switch hwBackend {
 	case HWVAAPI:
-		hwDownload = "hwdownload,format=yuv420p,"
-	case HWCUDA, HWD3D11:
-		hwDownload = "hwdownload,"
+		filter = fmt.Sprintf("scale_vaapi=w=%d:h=-2,hwdownload,format=yuv420p,%s,%s", plan.TileW, fps, tile)
+	case HWCUDA:
+		filter = fmt.Sprintf("scale_cuda=w=%d:h=-2,hwdownload,%s,%s", plan.TileW, fps, tile)
+	case HWD3D11:
+		filter = fmt.Sprintf("hwdownload,%s,%s,%s", fps, swScale, tile)
+	default:
+		filter = fmt.Sprintf("%s,%s,%s", fps, swScale, tile)
 	}
-
-	// scale=W:-2 preserves aspect ratio while snapping height to a
-	// multiple of 2 (required by most codecs). The :flags=fast_bilinear
-	// chooses the fastest scaling algorithm — quality is irrelevant for
-	// small sprite thumbnails. force_original_aspect_ratio=decrease would
-	// be redundant here (since -2 already handles AR) and can cause
-	// "width not divisible" errors in older ffmpeg builds, so we omit it.
-	filter := fmt.Sprintf(
-		"%sfps=1/%s,scale=%d:-2:flags=fast_bilinear,tile=%dx%d",
-		hwDownload,
-		strconv.FormatFloat(plan.IntervalSec, 'f', 6, 64),
-		plan.TileW, plan.Cols, plan.Rows,
-	)
 	args := []string{"-hide_banner", "-loglevel", "error"}
 	args = append(args, hwArgs...)
 	args = append(args,
@@ -162,7 +154,7 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		// Use all available CPU threads for the decode+scale pipeline.
 		// ffmpeg interprets 0 as "auto" (one thread per logical CPU up
 		// to the internal cap).
-		"-threads", "0",
+		"-threads", strconv.Itoa(threads),
 		"-vf", filter,
 	)
 	switch strings.ToLower(format) {

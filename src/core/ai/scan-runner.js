@@ -306,12 +306,28 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                 let batchResults = [];
                 if (validItems.length) {
                     const _t0 = Date.now();
+                    // Split the batch into parallel chunks so the sidecar's
+                    // concurrency semaphore can process multiple files at once
+                    // instead of one sequential batch blocking a single slot.
+                    const CHUNK = Math.max(1, Math.min(4, Math.ceil(validItems.length / 4)));
+                    const chunks = [];
+                    for (let ci = 0; ci < validItems.length; ci += CHUNK) {
+                        chunks.push(validItems.slice(ci, ci + CHUNK));
+                    }
                     try {
-                        batchResults = await detectFacesBatch(
-                            validItems.map((i) => i.abs),
-                            cfg,
-                            log,
+                        const chunkResults = await Promise.all(
+                            chunks.map((chunk) =>
+                                detectFacesBatch(
+                                    chunk.map((i) => i.abs),
+                                    cfg,
+                                    log,
+                                ).catch((e) => {
+                                    log('warn', `detectFacesBatch threw: ${e?.message || e}`);
+                                    return chunk.map(() => null);
+                                }),
+                            ),
                         );
+                        batchResults = chunkResults.flat();
                     } catch (e) {
                         log('warn', `detectFacesBatch threw: ${e?.message || e}`);
                         batchResults = validItems.map(() => null);

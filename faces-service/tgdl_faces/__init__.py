@@ -28,6 +28,6 @@ dimension-agnostic, so callers see a `512`-element `embedding` instead
 of `128` and otherwise behave identically.
 """
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = ["__version__"]

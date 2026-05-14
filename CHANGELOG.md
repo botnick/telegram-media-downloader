@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.3] — 2026-05-15
+
+DB performance, sidecar GPU optimization, boot cleanup, dedup hardening.
+
+### Added
+- **DB composite indexes** — `idx_gallery_group_date` and `idx_gallery_pinned_date` cover all gallery ORDER BY patterns; EXPLAIN shows SEARCH instead of SCAN.
+- **DB pragmas** — `cache_size = -64000` (64 MB page cache) + `temp_store = MEMORY` (RAM temp tables) per better-sqlite3 best practices.
+- **Dedup "Delete all extras"** — one-click bulk delete keeping oldest or newest per set, with confirm + progress bar.
+- **Filename+size dedup layer** — `fileAlreadyStored()` fallback in `registerDownload()` catches re-posts when first row has no hash.
+- **Boot `.part` cleanup** — purge orphaned `.part` files from crashed downloads on startup; monitor catch-up re-downloads automatically.
+- **5 new DB tests** — pinned NULL backfill, pinnedOnly, pinnedFirst, getOldestDownloads skip-pinned, getStats shape.
+
+### Fixed
+- **`datetime(created_at)` wrapper** removed — ISO-8601 text is lexicographically sortable; SQLite now uses `idx_created_at` directly.
+- **`COALESCE(pinned, 0)`** removed (6 spots) — one-time NULL→0 backfill on boot; queries use `pinned` directly with index support.
+- **`getStats()` 2 queries → 1** — COUNT + SUM in single statement; called every ~2s.
+- **Reindex 0/0 groups** — backend now emits `processed`/`total` fields.
+- **NSFW bulk whitelist/unwhitelist/reclassify** — batched 500 items with progress.
+- **Integrity size-fixing** — batched 500-row transactions with progress.
+- **Reindex picks up `.part` files** — filtered out in both scan paths.
+
+### Changed
+- **Seekbar sidecar v0.3.2** — GPU scale filters (`scale_vaapi`, `scale_cuda`) replace `hwdownload` + software scale; ~45x less PCIe transfer per frame. Thread cap `NumCPU / concurrency` prevents oversubscription.
+- **Faces sidecar v0.3.2** — batch endpoint processes files in parallel via `ThreadPoolExecutor` instead of sequential loop; ~2-4x throughput on GPU.
+- **Faces scan runner** — sends parallel chunk requests instead of one sequential batch.
+
+### Service worker
+- `VERSION = 'v2193'`
+
 ## [2.19.2] — 2026-05-15
 
 Dedup scan non-blocking, filename dedup, bulk-delete all, progress feedback audit.

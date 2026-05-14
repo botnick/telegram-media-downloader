@@ -35,6 +35,12 @@ export function getDb() {
     // Performance tuning
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
+    // 64 MB page cache (default ~2 MB). Keeps hot pages in memory so
+    // repeated gallery/stats queries hit RAM instead of disk.
+    db.pragma('cache_size = -64000');
+    // Temp tables and sort spills go to RAM instead of a temp file on
+    // disk. Speeds up GROUP BY, ORDER BY, and UNION sorts.
+    db.pragma('temp_store = MEMORY');
     // Without busy_timeout, a long write (sweeper bulk delete) makes
     // concurrent readers fail INSTANTLY with SQLITE_BUSY instead of
     // waiting. 5 s gives us plenty of headroom for the longest write
@@ -227,6 +233,30 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_unhashed ON downloads(id DESC) WHERE file_hash IS NULL AND file_path IS NOT NULL',
         );
     } catch {}
+
+    // Gallery composite indexes — cover ORDER BY without a separate sort pass.
+    // Per-group gallery: WHERE group_id = ? ORDER BY created_at DESC, id DESC
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_gallery_group_date ON downloads(group_id, created_at DESC, id DESC)',
+        );
+    } catch {}
+    // All-media gallery with pinned-first: ORDER BY pinned DESC, created_at DESC, id DESC
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, id DESC)',
+        );
+    } catch {}
+
+    // Backfill pinned NULLs from pre-ALTER TABLE rows so queries can use
+    // `pinned` directly without COALESCE. Guard check avoids a full table
+    // scan on subsequent boots where no NULL rows remain.
+    try {
+        if (db.prepare('SELECT 1 FROM downloads WHERE pinned IS NULL LIMIT 1').get()) {
+            db.exec('UPDATE downloads SET pinned = 0 WHERE pinned IS NULL');
+        }
+    } catch {}
+
     // NSFW hash blocklist — stores SHA-256 fingerprints of files deleted via
     // NSFW review so re-downloads can be auto-deleted without rescanning.
     try {
@@ -1065,15 +1095,12 @@ export function getAllDownloads(limit = 50, offset = 0, type = 'all', opts = {})
         params.push(typeMap[type]);
     }
     if (opts.pinnedOnly) {
-        clauses.push('COALESCE(pinned, 0) = 1');
+        clauses.push('pinned = 1');
     }
     const where = clauses.length ? ' WHERE ' + clauses.join(' AND ') : '';
-    // `pinnedFirst` surfaces pinned rows above the rest while keeping
-    // chronological order within each group. The default sort is unchanged
-    // so existing callers behave identically.
     const orderBy = opts.pinnedFirst
-        ? 'COALESCE(pinned, 0) DESC, datetime(created_at) DESC, id DESC'
-        : 'datetime(created_at) DESC, id DESC';
+        ? 'pinned DESC, created_at DESC, id DESC'
+        : 'created_at DESC, id DESC';
     const rows = getDb()
         .prepare(`SELECT * FROM downloads${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
         .all(...params, lim, off);
@@ -1101,10 +1128,10 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
         }
     }
 
-    if (opts.pinnedOnly) query += ' AND COALESCE(pinned, 0) = 1';
+    if (opts.pinnedOnly) query += ' AND pinned = 1';
 
     query += opts.pinnedFirst
-        ? ' ORDER BY COALESCE(pinned, 0) DESC, created_at DESC LIMIT ? OFFSET ?'
+        ? ' ORDER BY pinned DESC, created_at DESC LIMIT ? OFFSET ?'
         : ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
@@ -1196,7 +1223,7 @@ const _FED_COLS_LOCAL = `
     'self' AS peer_id,
     d.id, d.group_id, d.group_name, d.message_id, d.file_name, d.file_size, d.file_type,
     d.file_path, d.file_hash, d.status, d.created_at, d.nsfw_score,
-    COALESCE(d.pinned, 0) AS pinned,
+    d.pinned,
     CAST(strftime('%s', d.created_at) AS INTEGER) * 1000 AS sort_ts,
     sb.duration_sec
 `;
@@ -1252,7 +1279,7 @@ export function getAllDownloadsFederated(limit = 50, offset = 0, type = 'all', o
         peerParams.push(typeFilter);
     }
     if (opts.pinnedOnly) {
-        localWhereParts.push('COALESCE(pinned, 0) = 1');
+        localWhereParts.push('pinned = 1');
         // Peer side excluded entirely under pinnedOnly — peer files can't
         // be locally pinned. Drop a never-true predicate to short-circuit.
         peerWhereParts.push('0 = 1');
@@ -1318,7 +1345,7 @@ export function getDownloadsForGroupFederated(
         peerParams.push(typeFilter);
     }
     if (opts.pinnedOnly) {
-        localWhereParts.push('COALESCE(pinned, 0) = 1');
+        localWhereParts.push('pinned = 1');
         peerWhereParts.push('0 = 1');
     }
     // Optional peerId filter — when caller wants only one peer's files for
@@ -1494,10 +1521,10 @@ export function purgeOrphanPeople() {
 }
 
 export function getStats() {
-    const db = getDb();
-    const totalFiles = db.prepare('SELECT COUNT(*) as count FROM downloads').get().count;
-    const totalSize = db.prepare('SELECT SUM(file_size) as size FROM downloads').get().size || 0;
-    return { totalFiles, totalSize };
+    const r = getDb()
+        .prepare('SELECT COUNT(*) AS count, COALESCE(SUM(file_size), 0) AS size FROM downloads')
+        .get();
+    return { totalFiles: r.count, totalSize: r.size };
 }
 
 /**
@@ -1520,8 +1547,8 @@ export function getOldestDownloads(count = 50) {
         .prepare(`
             SELECT id, group_id, group_name, file_name, file_size, file_type, file_path, created_at, pinned
             FROM downloads
-            WHERE COALESCE(pinned, 0) = 0
-            ORDER BY datetime(created_at) ASC, id ASC
+            WHERE pinned = 0
+            ORDER BY created_at ASC, id ASC
             LIMIT ?
         `)
         .all(limit);

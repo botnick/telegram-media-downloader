@@ -358,7 +358,7 @@ export async function reindexFromDisk(configGroups, onProgress) {
                         continue;
                     }
                     for (const f of files) {
-                        if (!f.isFile()) continue;
+                        if (!f.isFile() || f.name.endsWith('.part')) continue;
                         const fullAbs = path.join(DOWNLOADS_DIR, folderName, typeFolder, f.name);
                         const relPath = path.posix
                             .join(folderName, typeFolder, f.name)
@@ -374,7 +374,7 @@ export async function reindexFromDisk(configGroups, onProgress) {
                                 folderType || fileTypeFromExt(path.extname(f.name).toLowerCase()),
                         });
                     }
-                } else if (sub.isFile()) {
+                } else if (sub.isFile() && !sub.name.endsWith('.part')) {
                     const fullAbs = path.join(DOWNLOADS_DIR, folderName, sub.name);
                     const relPath = path.posix.join(folderName, sub.name).replace(/\\/g, '/');
                     await _ingestOne({

@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Annotated, Any
 
 import numpy as np
@@ -721,48 +722,55 @@ def _do_batch_sync(body: BatchDetectRequest) -> JSONResponse:
         kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
 
     throttle_sec = _resolve_throttle_ms() / 1000.0
-    results: list[dict[str, Any]] = []
-    total_faces = 0
-    _first = True
+    max_workers = _resolve_max_concurrency()
 
-    for file_path in body.files:
-        if throttle_sec > 0 and not _first:
+    def _process_one(file_path: str) -> dict[str, Any]:
+        if throttle_sec > 0:
             time.sleep(throttle_sec)
-        _first = False
         img, err_code = _load_image(file_path, None)
         if img is None:
-            results.append({
+            return {
                 "file": file_path,
                 "faces": [],
                 "image_w": 0,
                 "image_h": 0,
                 "error": err_code,
-            })
-            continue
-
+            }
         try:
             faces = detect_and_embed(img, **kwargs)
         except Exception as exc:
             _LOG.exception("detect_and_embed failed for %s", file_path)
-            results.append({
+            return {
                 "file": file_path,
                 "faces": [],
                 "image_w": 0,
                 "image_h": 0,
                 "error": f"detect_failed: {type(exc).__name__}",
-            })
-            continue
-
+            }
         h_img, w_img = int(img.shape[0]), int(img.shape[1])
         face_objs = [Face(**f).model_dump() for f in faces]
-        total_faces += len(face_objs)
-        results.append({
+        return {
             "file": file_path,
             "faces": face_objs,
             "image_w": w_img,
             "image_h": h_img,
             "error": None,
-        })
+        }
+
+    # Process files in parallel up to the concurrency limit. The semaphore
+    # inside detect_and_embed() still governs GPU/model access, but image
+    # loading and pre/post-processing now overlap with inference.
+    indexed_results: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_process_one, fp): idx
+            for idx, fp in enumerate(body.files)
+        }
+        for fut in as_completed(futures):
+            indexed_results[futures[fut]] = fut.result()
+
+    results = [indexed_results[i] for i in range(len(body.files))]
+    total_faces = sum(len(r["faces"]) for r in results)
 
     return JSONResponse(
         status_code=status.HTTP_200_OK,
