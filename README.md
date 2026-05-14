@@ -113,7 +113,7 @@ A self-hosted application that watches your Telegram chats and downloads new med
 
 ### Engine
 - Realtime monitor across unlimited channels, groups, supergroups, and forum topics.
-- **Monitor auto-starts** when at least one account is logged in — no manual "Start" click needed after restart.
+- **Monitor resumes last state** on restart — if running before shutdown it auto-starts; if stopped it stays stopped. Persisted via `monitor.autoStart` in config.
 - **Smart-resume backfill** — `iterMessages` skips already-stored ranges via `maxId/minId` instead of walking the whole timeline.
 - **Auto-backfill on first add** — new group triggers background pull of most recent N messages (default 100, configurable, 0 = disabled).
 - **Auto catch-up after restart** — boots with a `catch-up` backfill when gap exceeds threshold.

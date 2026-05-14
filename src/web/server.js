@@ -2368,6 +2368,12 @@ app.post('/api/monitor/start', async (req, res) => {
             });
         }
         await runtime.start({ config: loadConfig(), accountManager: am });
+        try {
+            const cfg = loadConfig();
+            if (!cfg.monitor) cfg.monitor = {};
+            cfg.monitor.autoStart = true;
+            saveConfig(cfg);
+        } catch {}
         res.json({ success: true, status: runtime.status() });
     } catch (e) {
         const { status, body } = tgAuthErrorBody(e);
@@ -2378,6 +2384,12 @@ app.post('/api/monitor/start', async (req, res) => {
 app.post('/api/monitor/stop', async (req, res) => {
     try {
         await runtime.stop();
+        try {
+            const cfg = loadConfig();
+            if (!cfg.monitor) cfg.monitor = {};
+            cfg.monitor.autoStart = false;
+            saveConfig(cfg);
+        } catch {}
         res.json({ success: true, status: runtime.status() });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -2393,6 +2405,12 @@ app.post('/api/monitor/restart', async (req, res) => {
             });
         }
         await runtime.restart({ config: loadConfig(), accountManager: am });
+        try {
+            const cfg = loadConfig();
+            if (!cfg.monitor) cfg.monitor = {};
+            cfg.monitor.autoStart = true;
+            saveConfig(cfg);
+        } catch {}
         res.json({ success: true, status: runtime.status() });
     } catch (e) {
         const { status, body } = tgAuthErrorBody(e);
@@ -12456,11 +12474,10 @@ ${tip}
     // Resolve group names from Telegram for any DB records still unnamed
     await resolveGroupNamesFromTelegram();
 
-    // Auto-start the realtime monitor on container boot when at least one
-    // group is enabled and at least one Telegram account is loaded. Lets
-    // `docker compose up -d` boot a ready-to-monitor instance without a
-    // manual click on Settings → Engine → Start. Opt out via
-    // `monitor.autoStart: false` in config.json.
+    // Resume the realtime monitor if it was running before the last
+    // shutdown. The start/stop endpoints persist monitor.autoStart to
+    // config so the flag reflects the operator's last intent — graceful
+    // shutdown does NOT clear it.
     try {
         const cfg = loadConfig();
         const autoStart = cfg.monitor?.autoStart === true;

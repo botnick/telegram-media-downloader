@@ -153,6 +153,10 @@ export async function findDuplicates(opts = {}) {
     // amount of disk those duplicates are wasting (size × extra copies).
     if (onProgress) onProgress({ stage: 'grouping', processed: total, total, hashed, errored });
 
+    // Yield so the "grouping" WS progress event flushes before the heavy
+    // sync GROUP BY blocks the event loop.
+    await new Promise((r) => setImmediate(r));
+
     const duplicates = db
         .prepare(`
         SELECT file_hash AS hash,
@@ -168,6 +172,9 @@ export async function findDuplicates(opts = {}) {
     `)
         .all();
 
+    // Yield after the heavy GROUP BY so queued I/O can flush.
+    await new Promise((r) => setImmediate(r));
+
     const sets = [];
     const filesQ = db.prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_size,
@@ -176,7 +183,10 @@ export async function findDuplicates(opts = {}) {
          WHERE file_hash = ?
          ORDER BY created_at ASC, id ASC
     `);
-    for (const d of duplicates) {
+    const SETS_BATCH = 50;
+    for (let i = 0; i < duplicates.length; i++) {
+        if (signal?.aborted) break;
+        const d = duplicates[i];
         const files = filesQ.all(d.hash).map((r) => ({
             id: r.id,
             groupId: r.group_id,
@@ -193,6 +203,19 @@ export async function findDuplicates(opts = {}) {
             count: d.cnt,
             files,
         });
+        if ((i + 1) % SETS_BATCH === 0) {
+            if (onProgress)
+                onProgress({
+                    stage: 'grouping',
+                    processed: total,
+                    total,
+                    hashed,
+                    errored,
+                    setsBuilt: sets.length,
+                    setsTotal: duplicates.length,
+                });
+            await new Promise((r) => setImmediate(r));
+        }
     }
 
     if (onProgress) onProgress({ stage: 'done', processed: total, total, hashed, errored });

@@ -86,7 +86,9 @@ describe('scanVideos gate', () => {
         await waitForScan();
 
         expect(clientMock.detectFacesInVideo).not.toHaveBeenCalled();
-        const row = db.prepare('SELECT ai_indexed_at FROM downloads WHERE file_type = ?').get('video');
+        const row = db
+            .prepare('SELECT ai_indexed_at FROM downloads WHERE file_type = ?')
+            .get('video');
         expect(row.ai_indexed_at).toBeNull();
     });
 

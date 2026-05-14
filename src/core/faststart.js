@@ -289,7 +289,7 @@ async function _remuxInPlace(absPath) {
     // (junk/padding stripped) but a >20% size drop signals something went
     // wrong (codec mismatch, truncation). Bail rather than overwrite.
     const [srcStat, tmpStat] = await Promise.all([fs.stat(absPath), fs.stat(tmp)]);
-    if (tmpStat.size < srcStat.size * 0.80 || tmpStat.size > srcStat.size * 1.1) {
+    if (tmpStat.size < srcStat.size * 0.8 || tmpStat.size > srcStat.size * 1.1) {
         try {
             await fs.unlink(tmp);
         } catch {}
@@ -393,8 +393,9 @@ export function optimizeDownloadInBackground(id) {
         const errBit = status === 'errored' ? ` error=${String(error).slice(0, 160)}` : '';
         const line = `[faststart] id=${id} result=${status}${detail}${sizeBit}${errBit}`;
         if (status === 'errored') console.warn(line);
-        else if (status === 'skipped' && reason === 'not video/document') { /* expected — suppress */ }
-        else console.log(line);
+        else if (status === 'skipped' && reason === 'not video/document') {
+            /* expected — suppress */
+        } else console.log(line);
         // Persist running counters even for skipped rows — the
         // operator's mental model is "how many downloads did the auto
         // hook see?", not "how many actually rewrote". Errored rows are

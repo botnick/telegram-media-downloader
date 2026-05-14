@@ -68,9 +68,17 @@ export async function installPwa() {
             const t = document.createElement('div');
             t.textContent = msg;
             Object.assign(t.style, {
-                position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
-                background: '#333', color: '#fff', padding: '10px 18px', borderRadius: '8px',
-                fontSize: '14px', zIndex: '9999', whiteSpace: 'nowrap',
+                position: 'fixed',
+                bottom: '80px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: '#333',
+                color: '#fff',
+                padding: '10px 18px',
+                borderRadius: '8px',
+                fontSize: '14px',
+                zIndex: '9999',
+                whiteSpace: 'nowrap',
             });
             document.body.appendChild(t);
             setTimeout(() => t.remove(), 4000);

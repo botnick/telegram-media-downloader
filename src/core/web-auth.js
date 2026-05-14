@@ -147,7 +147,11 @@ export function validateSession(token) {
     if (!token || typeof token !== 'string') return false;
     const row = findSession(token);
     if (!row) return false;
-    return { role: row.role === 'guest' ? 'guest' : 'admin', expiresAt: row.expiresAt, issuedAt: row.issuedAt };
+    return {
+        role: row.role === 'guest' ? 'guest' : 'admin',
+        expiresAt: row.expiresAt,
+        issuedAt: row.issuedAt,
+    };
 }
 
 export function renewSession(token, newExpiresAt) {

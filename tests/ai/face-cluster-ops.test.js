@@ -324,4 +324,3 @@ describe('setFaceQualityScore', () => {
         expect(row.quality_score).toBeCloseTo(0.91, 5);
     });
 });
-

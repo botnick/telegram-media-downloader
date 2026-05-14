@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.1] — 2026-05-15
+
+Monitor state resume on restart + dedup scan responsiveness fix.
+
+### Added
+- **Monitor auto-resume** — start/stop now persists `monitor.autoStart` to config so the monitor resumes its last state on restart. Graceful shutdown preserves the flag.
+
+### Fixed
+- **Dedup scan freezes dashboard** — the grouping phase (GROUP BY + 500 set-building queries) blocked the event loop without yielding; added `setImmediate` yields before/after the heavy query and every 50 sets so WS progress events flush to the browser.
+
+### Changed
+- **Vitest config** — added `vitest.config.js` to exclude `.claude/worktrees` from test discovery (stale worktree copies caused port conflicts on cluster e2e tests).
+
+### Service worker
+- `VERSION = 'v2191'`
+
 ## [2.19.0] — 2026-05-14
 
 Video duration badges, pin icon refresh, monitor auto-start default change.

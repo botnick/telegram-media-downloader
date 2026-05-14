@@ -34,7 +34,9 @@ async function _fetchFileToken() {
         clearTimeout(_ftTimer);
         const refreshIn = (_ft.exp - Math.floor(Date.now() / 1000) - _FT_MARGIN) * 1000;
         if (refreshIn > 0) _ftTimer = setTimeout(_fetchFileToken, refreshIn);
-    } catch { /* cookie auth fallback */ }
+    } catch {
+        /* cookie auth fallback */
+    }
 }
 
 export function initFileToken() {

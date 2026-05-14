@@ -45,7 +45,11 @@ const STALE_THRESHOLD_MS = 10 * 60 * 1000; // < 10 min = Stale
  */
 function _healthPill(peer) {
     const stored = peer.status;
-    const last = peer.lastSeenAt ? (typeof peer.lastSeenAt === 'number' ? peer.lastSeenAt : Date.parse(peer.lastSeenAt)) : null;
+    const last = peer.lastSeenAt
+        ? typeof peer.lastSeenAt === 'number'
+            ? peer.lastSeenAt
+            : Date.parse(peer.lastSeenAt)
+        : null;
     const age = last ? Date.now() - last : null;
 
     // Revoked is always shown regardless of timestamps.
@@ -181,9 +185,7 @@ function _renderPeers() {
             row.querySelector('[data-act="ping"]')?.addEventListener('click', (e) => {
                 _pingPeer(pid, e.currentTarget);
             });
-            row.querySelector('[data-act="edit"]')?.addEventListener('click', () =>
-                _editPeer(pid),
-            );
+            row.querySelector('[data-act="edit"]')?.addEventListener('click', () => _editPeer(pid));
             row.querySelector('[data-act="remove"]')?.addEventListener('click', () =>
                 _removePeer(pid),
             );
@@ -344,12 +346,17 @@ async function _submitPairing() {
 
     // Validate
     if (!url) {
-        _setPairingState('error', { message: i18nT('cluster.error.bad_url', 'URL must start with http:// or https://') });
+        _setPairingState('error', {
+            message: i18nT('cluster.error.bad_url', 'URL must start with http:// or https://'),
+        });
         return;
     }
     if (!tokenOrCode) {
         _setPairingState('error', {
-            message: i18nT('cluster.error.bad_token', 'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token'),
+            message: i18nT(
+                'cluster.error.bad_token',
+                'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token',
+            ),
         });
         return;
     }
@@ -361,7 +368,10 @@ async function _submitPairing() {
         body = { url, pairingCode: tokenOrCode.toUpperCase() };
     } else {
         _setPairingState('error', {
-            message: i18nT('cluster.error.bad_token', 'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token'),
+            message: i18nT(
+                'cluster.error.bad_token',
+                'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token',
+            ),
         });
         return;
     }
@@ -378,7 +388,9 @@ async function _submitPairing() {
             await _loadPeers();
             _renderAudit();
         } else {
-            _setPairingState('error', { message: i18nT('cluster.error.unknown', 'Unexpected response — try again') });
+            _setPairingState('error', {
+                message: i18nT('cluster.error.unknown', 'Unexpected response — try again'),
+            });
         }
     } catch (e) {
         const code = e?.body?.code;
@@ -392,7 +404,7 @@ async function _submitPairing() {
         };
         const i18nKey = map[code];
         _setPairingState('error', {
-            message: i18nKey ? i18nT(i18nKey, e?.message || String(e)) : (e?.message || String(e)),
+            message: i18nKey ? i18nT(i18nKey, e?.message || String(e)) : e?.message || String(e),
         });
     }
 }
@@ -804,7 +816,10 @@ function _addPeerWizardSheet() {
         const url = node.querySelector('#add-peer-url').value.trim();
         const tokenOrCode = node.querySelector('#add-peer-token').value.trim();
         if (!url) {
-            status.textContent = i18nT('cluster.error.bad_url', 'URL must start with http:// or https://');
+            status.textContent = i18nT(
+                'cluster.error.bad_url',
+                'URL must start with http:// or https://',
+            );
             return;
         }
         let body;
@@ -813,7 +828,10 @@ function _addPeerWizardSheet() {
         } else if (/^[A-Z0-9]{6,16}$/i.test(tokenOrCode)) {
             body = { url, pairingCode: tokenOrCode.toUpperCase() };
         } else {
-            status.textContent = i18nT('cluster.error.bad_token', 'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token');
+            status.textContent = i18nT(
+                'cluster.error.bad_token',
+                'Paste either a pairing code (6-16 alphanumeric) or a 32+ hex token',
+            );
             return;
         }
         submit.disabled = true;
@@ -839,7 +857,9 @@ function _addPeerWizardSheet() {
                 self: 'cluster.error.self',
             };
             const i18nKey = map[code];
-            status.textContent = i18nKey ? i18nT(i18nKey, e?.message || String(e)) : e?.message || String(e);
+            status.textContent = i18nKey
+                ? i18nT(i18nKey, e?.message || String(e))
+                : e?.message || String(e);
         } finally {
             submit.disabled = false;
             submit.textContent = restoreLabel;

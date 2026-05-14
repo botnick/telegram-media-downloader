@@ -414,12 +414,20 @@ export async function detectFacesInVideo(absPath, cfg = {}, onLog = null) {
             clearTimeout(timer);
         }
     } catch (e) {
-        _log(onLog, 'warn', `detectFacesInVideo: network error for ${absPath} — ${e?.message || e}`);
+        _log(
+            onLog,
+            'warn',
+            `detectFacesInVideo: network error for ${absPath} — ${e?.message || e}`,
+        );
         return null;
     }
 
     if (res.status === 403) {
-        _log(onLog, 'warn', `detectFacesInVideo: path_not_allowed for ${absPath} — no b64 fallback for video`);
+        _log(
+            onLog,
+            'warn',
+            `detectFacesInVideo: path_not_allowed for ${absPath} — no b64 fallback for video`,
+        );
         return null;
     }
 
@@ -585,11 +593,7 @@ async function _postWithRetry(url, body, onLog) {
         const hasMore = attempt < maxRetries - 1 && !bail;
         const backoff =
             _retryBackoffMs[attempt] ?? _retryBackoffMs[_retryBackoffMs.length - 1] ?? 300;
-        const suffix = bail
-            ? bailReason
-            : hasMore
-              ? `— retrying in ${backoff} ms`
-              : '— giving up';
+        const suffix = bail ? bailReason : hasMore ? `— retrying in ${backoff} ms` : '— giving up';
         _log(
             onLog,
             'warn',

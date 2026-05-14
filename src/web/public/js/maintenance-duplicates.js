@@ -382,10 +382,7 @@ function _setScanUi(running, opts = {}) {
         const labelSpan = btn.querySelector('span[data-i18n]');
         if (labelSpan) {
             if (!running && opts.resume) {
-                labelSpan.textContent = i18nT(
-                    'maintenance.duplicates.resume_scan',
-                    'Resume scan',
-                );
+                labelSpan.textContent = i18nT('maintenance.duplicates.resume_scan', 'Resume scan');
             } else {
                 labelSpan.textContent = i18nT('maintenance.duplicates.scan', 'Scan');
             }

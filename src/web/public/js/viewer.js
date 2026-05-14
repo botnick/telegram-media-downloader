@@ -1422,7 +1422,10 @@ class VideoPlayer {
             }
         } catch (e) {
             if (this.video.webkitEnterFullscreen) {
-                try { this.video.webkitEnterFullscreen(); return; } catch {}
+                try {
+                    this.video.webkitEnterFullscreen();
+                    return;
+                } catch {}
             }
             showToast(
                 i18nTf(
@@ -2204,11 +2207,18 @@ class VideoPlayer {
         if (Number.isFinite(this.video.currentTime) && this.video.currentTime > 0) {
             const sp = this._sprite;
             const ivl = sp.interval_sec || (sp.duration_sec > 0 ? sp.duration_sec / frames : 1);
-            const startIdx = Math.max(0, Math.min(frames - 1, Math.round(this.video.currentTime / ivl)));
+            const startIdx = Math.max(
+                0,
+                Math.min(frames - 1, Math.round(this.video.currentTime / ivl)),
+            );
             const startThumb = track.children[startIdx];
             if (startThumb) {
                 requestAnimationFrame(() => {
-                    startThumb.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                    startThumb.scrollIntoView({
+                        inline: 'center',
+                        block: 'nearest',
+                        behavior: 'smooth',
+                    });
                 });
             }
         }
@@ -2374,7 +2384,10 @@ export function setupViewerEvents() {
         } catch (e) {
             const vid = document.getElementById('modal-video');
             if (vid?.webkitEnterFullscreen) {
-                try { vid.webkitEnterFullscreen(); return; } catch {}
+                try {
+                    vid.webkitEnterFullscreen();
+                    return;
+                } catch {}
             }
             showToast(
                 i18nTf(

@@ -139,12 +139,14 @@ function _renderNotifyList() {
             const icon = _icon(e.level);
             const rel = _formatRel(e.ts);
             const src = escapeHtml(e.source || 'app');
-            return `<div class="notify-row" data-level="${escapeHtml(e.level || '')}">` +
+            return (
+                `<div class="notify-row" data-level="${escapeHtml(e.level || '')}">` +
                 `<div class="notify-icon"><i class="${icon}" aria-hidden="true"></i></div>` +
                 `<div class="notify-body">` +
                 `<div class="notify-msg">${escapeHtml(e.msg)}</div>` +
                 `<div class="notify-meta"><span class="notify-source-chip">${src}</span><span>·</span><span>${rel}</span></div>` +
-                `</div></div>`;
+                `</div></div>`
+            );
         })
         .join('');
 }

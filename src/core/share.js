@@ -195,7 +195,8 @@ export function mintFileToken(ttlSec) {
     const ttl = Number.isFinite(ttlSec) && ttlSec > 0 ? Math.floor(ttlSec) : FILE_TOKEN_TTL_DEFAULT;
     const exp = Math.floor(Date.now() / 1000) + ttl;
     const secret = getCachedSecret();
-    const mac = crypto.createHmac('sha256', Buffer.from(secret, 'hex'))
+    const mac = crypto
+        .createHmac('sha256', Buffer.from(secret, 'hex'))
         .update(`filetoken|${exp}`)
         .digest();
     return { token: `${exp}.${toBase64Url(mac)}`, exp };
@@ -210,9 +211,7 @@ export function verifyFileToken(token) {
     const sig = token.slice(dot + 1);
     const secret = getCachedSecret();
     const expected = toBase64Url(
-        crypto.createHmac('sha256', Buffer.from(secret, 'hex'))
-            .update(`filetoken|${exp}`)
-            .digest(),
+        crypto.createHmac('sha256', Buffer.from(secret, 'hex')).update(`filetoken|${exp}`).digest(),
     );
     const expectedBuf = Buffer.from(expected, 'utf8');
     const gotBuf = Buffer.from(sig, 'utf8');

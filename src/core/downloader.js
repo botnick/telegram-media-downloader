@@ -42,21 +42,21 @@ const _WIN_RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
 // folder names and their components survive individually.
 const _INVISIBLE_RE = new RegExp(
     '[' +
-    '­' +          // soft hyphen
-    '͏' +          // combining grapheme joiner
-    '؜' +          // Arabic letter mark
-    'ᅟᅠ' +    // Hangul fillers
-    '឴឵' +    // Khmer vowel inherent
-    '᠎' +          // Mongolian vowel separator
-    '​-‏' +   // ZW space, ZWNJ, ZWJ, LTR/RTL marks
-    '‪-‮' +   // bidi embedding/override
-    '⁠-⁯' +   // word joiner, invisible operators
-    '⠀' +          // Braille blank
-    'ㅤ' +          // Hangul filler ㅤ
-    '︀-️' +  // variation selectors
-    '﻿' +          // BOM / ZWNBS
-    'ﾠ' +          // halfwidth Hangul filler
-    ']',
+        '­' + // soft hyphen
+        '͏' + // combining grapheme joiner
+        '؜' + // Arabic letter mark
+        'ᅟᅠ' + // Hangul fillers
+        '឴឵' + // Khmer vowel inherent
+        '᠎' + // Mongolian vowel separator
+        '​-‏' + // ZW space, ZWNJ, ZWJ, LTR/RTL marks
+        '‪-‮' + // bidi embedding/override
+        '⁠-⁯' + // word joiner, invisible operators
+        '⠀' + // Braille blank
+        'ㅤ' + // Hangul filler ㅤ
+        '︀-️' + // variation selectors
+        '﻿' + // BOM / ZWNBS
+        'ﾠ' + // halfwidth Hangul filler
+        ']',
     'g',
 );
 
@@ -164,12 +164,22 @@ export async function migrateFolders(downloadPath) {
                 db.prepare(`
                     UPDATE downloads SET file_path = ? || substr(file_path, ?)
                      WHERE file_path LIKE ? ESCAPE '\\'
-                `).run(newPosix, oldPosix.length + 1, oldPosix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%');
+                `).run(
+                    newPosix,
+                    oldPosix.length + 1,
+                    oldPosix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%',
+                );
                 db.prepare(`
                     UPDATE downloads SET file_path = ? || substr(file_path, ?)
                      WHERE file_path LIKE ? ESCAPE '\\'
-                `).run(newPrefix, oldPrefix.length + 1, oldPrefix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%');
-            } catch { /* DB update is best-effort */ }
+                `).run(
+                    newPrefix,
+                    oldPrefix.length + 1,
+                    oldPrefix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%',
+                );
+            } catch {
+                /* DB update is best-effort */
+            }
 
             // Remove old folder if empty
             try {

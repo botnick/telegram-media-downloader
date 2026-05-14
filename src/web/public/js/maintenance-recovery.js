@@ -133,12 +133,13 @@ function _renderStats() {
     const totalFiles = _items.reduce((s, i) => s + (Number(i.fileCount) || 0), 0);
     const enabled = _items.filter((i) => i.enabled).length;
     const ignored = _items.filter((i) => i.recoveryIgnored).length;
-    const ignoredStat = _showIgnored && ignored > 0
-        ? `<div class="bg-tg-bg/40 rounded-lg p-3 text-center">
+    const ignoredStat =
+        _showIgnored && ignored > 0
+            ? `<div class="bg-tg-bg/40 rounded-lg p-3 text-center">
             <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="maintenance.recovery.stat.ignored">Ignored</div>
             <div class="text-xl font-semibold text-gray-400 tabular-nums">${ignored}</div>
         </div>`
-        : '';
+            : '';
     host.innerHTML = `
         <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
             <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="maintenance.recovery.stat.total">Unresolved</div>
@@ -209,7 +210,9 @@ async function _refresh() {
     if (_refreshing) return;
     _refreshing = true;
     try {
-        const r = await api.get(`/api/maintenance/recovery/list${_showIgnored ? '?showIgnored=1' : ''}`);
+        const r = await api.get(
+            `/api/maintenance/recovery/list${_showIgnored ? '?showIgnored=1' : ''}`,
+        );
         _items = Array.isArray(r?.items) ? r.items : [];
         // Drop stale selections.
         const ids = new Set(_items.map((i) => i.id));
@@ -354,7 +357,11 @@ function _wireActions() {
         try {
             const r = await api.post('/api/maintenance/recovery/ignore', { ids });
             showToast(
-                i18nTf('maintenance.recovery.ignored_n', { n: r.ignored || 0 }, `Ignored ${r.ignored || 0} group(s)`),
+                i18nTf(
+                    'maintenance.recovery.ignored_n',
+                    { n: r.ignored || 0 },
+                    `Ignored ${r.ignored || 0} group(s)`,
+                ),
                 'success',
             );
             _selected.clear();
@@ -372,7 +379,11 @@ function _wireActions() {
         try {
             const r = await api.post('/api/maintenance/recovery/unignore', { ids });
             showToast(
-                i18nTf('maintenance.recovery.unignored_n', { n: r.unignored || 0 }, `Unignored ${r.unignored || 0} group(s)`),
+                i18nTf(
+                    'maintenance.recovery.unignored_n',
+                    { n: r.unignored || 0 },
+                    `Unignored ${r.unignored || 0} group(s)`,
+                ),
                 'success',
             );
             _selected.clear();

@@ -835,12 +835,18 @@ function renderRows() {
                 window.Viewer.openMediaViewerSingle(file);
             } else {
                 const _ftq = fileTokenQuery();
-                window.open(`/files/${encodeURIComponent(fp)}?inline=1${_ftq ? '&' + _ftq : ''}`, '_blank');
+                window.open(
+                    `/files/${encodeURIComponent(fp)}?inline=1${_ftq ? '&' + _ftq : ''}`,
+                    '_blank',
+                );
             }
         } catch (e) {
             console.warn('queue row open failed:', e);
             const _ftq = fileTokenQuery();
-            window.open(`/files/${encodeURIComponent(fp)}?inline=1${_ftq ? '&' + _ftq : ''}`, '_blank');
+            window.open(
+                `/files/${encodeURIComponent(fp)}?inline=1${_ftq ? '&' + _ftq : ''}`,
+                '_blank',
+            );
         }
     };
 }
