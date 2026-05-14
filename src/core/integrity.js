@@ -14,9 +14,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { getDb, insertDownload } from './db.js';
+import { getDb, insertDownload, purgeOrphanPeople } from './db.js';
 import { sanitizeName } from './downloader.js';
 import { getDownloadsDir } from './paths.js';
+import { purgeThumbsForDownload } from './thumbs.js';
+import { purgeSeekbarForDownload, collectSeekbarPaths } from './seekbar/index.js';
 
 const DOWNLOADS_DIR = getDownloadsDir();
 
@@ -137,9 +139,7 @@ export async function sweep(onProgress) {
 
         if (deleteIds.length) {
             _emit({ processed, total, stage: 'pruning' });
-            // Chunk to stay under SQLite's SQLITE_LIMIT_VARIABLE_NUMBER cap
-            // (default 999 on older builds, 32766 on newer). 500 is well
-            // below both and keeps each statement's prepare/bind cost cheap.
+            const seekbarMap = collectSeekbarPaths(deleteIds);
             const DELETE_CHUNK = 500;
             const tx = getDb().transaction((ids) => {
                 let changed = 0;
@@ -153,6 +153,13 @@ export async function sweep(onProgress) {
                 return changed;
             });
             result.pruned = tx(deleteIds);
+            for (const id of deleteIds) {
+                purgeThumbsForDownload(id).catch(() => {});
+                purgeSeekbarForDownload(id, seekbarMap.get(id)).catch(() => {});
+            }
+            try {
+                purgeOrphanPeople();
+            } catch {}
             try {
                 _broadcast({
                     type: 'integrity_swept',

@@ -43,6 +43,7 @@ import {
     backfillGroupNames,
     searchDownloads,
     deleteDownloadsBy,
+    purgeOrphanPeople,
     createShareLink,
     getShareLinkForServe,
     bumpShareLinkAccess,
@@ -111,6 +112,7 @@ import {
     generateForDownload as generateSeekbarForDownload,
     purgeAllSeekbar,
     purgeSeekbarForDownload,
+    collectSeekbarPaths,
 } from '../core/seekbar/index.js';
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
@@ -4722,6 +4724,7 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         // single dedup set so we do not delete a row twice + so the
         // thumb purge loop hits every removed download.
         const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
+        const seekbarMap = collectSeekbarPaths(allIds);
         const dbDeleted = deleteDownloadsBy({ ids: allIds });
         onProgress({ processed: total, total, stage: 'purging_cache' });
         for (const id of allIds) {
@@ -4729,7 +4732,7 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 await purgeThumbsForDownload(id);
             } catch {}
             try {
-                await purgeSeekbarForDownload(id);
+                await purgeSeekbarForDownload(id, seekbarMap.get(id));
             } catch {}
         }
         broadcast({ type: 'bulk_delete', unlinked, dbDeleted, ids: allIds });
@@ -4932,12 +4935,19 @@ app.delete('/api/file', async (req, res) => {
             .prepare('SELECT id FROM downloads WHERE file_name = ?')
             .all(fileName)
             .map((row) => row.id);
+        const seekbarMap = collectSeekbarPaths(matchingIds);
         db.prepare('DELETE FROM downloads WHERE file_name = ?').run(fileName);
         for (const id of matchingIds) {
             try {
                 await purgeThumbsForDownload(id);
             } catch {}
+            try {
+                await purgeSeekbarForDownload(id, seekbarMap.get(id));
+            } catch {}
         }
+        try {
+            purgeOrphanPeople();
+        } catch {}
 
         broadcast({ type: 'file_deleted', path: filePath });
         res.json({ success: true });
@@ -5219,6 +5229,8 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
             .all(String(groupId))
             .map((r) => r.id);
 
+        const seekbarMap = collectSeekbarPaths(downloadIds);
+
         // 3. Delete DB records
         onProgress({ stage: 'deleting_rows', groupId });
         const dbResult = deleteGroupDownloads(groupId);
@@ -5240,12 +5252,15 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
                     await purgeThumbsForDownload(id);
                 } catch {}
                 try {
-                    await purgeSeekbarForDownload(id);
+                    await purgeSeekbarForDownload(id, seekbarMap.get(id));
                 } catch {}
             }
             await new Promise((r) => setImmediate(r));
         }
 
+        try {
+            purgeOrphanPeople();
+        } catch {}
         console.log(
             `PURGED: ${groupName} — ${filesDeleted} files, ${dbResult.deletedDownloads} DB records`,
         );
@@ -5347,11 +5362,12 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
                 processed: filesDeleted,
             });
         }
-        // Collect IDs before wiping rows so we can purge per-file caches.
+        // Collect IDs + seekbar paths before wiping rows so we can purge per-file caches.
         const downloadIds = getDb()
             .prepare('SELECT id FROM downloads WHERE group_id = ?')
             .all(String(groupId))
             .map((r) => r.id);
+        const seekbarMap = collectSeekbarPaths(downloadIds);
 
         onProgress({ stage: 'deleting_rows', groupId });
         const dbResult = deleteGroupDownloads(groupId);
@@ -5364,12 +5380,15 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
                     await purgeThumbsForDownload(id);
                 } catch {}
                 try {
-                    await purgeSeekbarForDownload(id);
+                    await purgeSeekbarForDownload(id, seekbarMap.get(id));
                 } catch {}
             }
             await new Promise((r) => setImmediate(r));
         }
 
+        try {
+            purgeOrphanPeople();
+        } catch {}
         onProgress({ stage: 'done', groupId });
         try {
             broadcast({
@@ -6000,6 +6019,7 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
         onProgress({ processed: 0, total, stage: 'deleting' });
         for (let off = 0; off < cleanIds.length; off += BATCH) {
             const slice = cleanIds.slice(off, off + BATCH);
+            const seekbarMap = collectSeekbarPaths(slice);
             const part = dedupDeleteByIds(slice);
             aggregate.removed += part.removed || 0;
             aggregate.freedBytes += part.freedBytes || 0;
@@ -6009,15 +6029,16 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
                     await purgeThumbsForDownload(id);
                 } catch {}
                 try {
-                    await purgeSeekbarForDownload(id);
+                    await purgeSeekbarForDownload(id, seekbarMap.get(id));
                 } catch {}
             }
             processed += slice.length;
             onProgress({ processed, total, stage: 'deleting' });
-            // Yield to the event loop so the WS broadcast above actually
-            // flushes before the next batch starts hammering the disk.
             await new Promise((r) => setImmediate(r));
         }
+        try {
+            purgeOrphanPeople();
+        } catch {}
         try {
             broadcast({ type: 'bulk_delete', ids: cleanIds });
         } catch {}
@@ -6986,15 +7007,19 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
                 }
             } catch {}
         }
+        const seekbarMap = collectSeekbarPaths(cleanIds);
         const r = dedupDeleteByIds(cleanIds);
         for (const id of cleanIds) {
             try {
                 await purgeThumbsForDownload(id);
             } catch {}
             try {
-                await purgeSeekbarForDownload(id);
+                await purgeSeekbarForDownload(id, seekbarMap.get(id));
             } catch {}
         }
+        try {
+            purgeOrphanPeople();
+        } catch {}
         try {
             broadcast({ type: 'bulk_delete', ids: cleanIds });
         } catch {}
@@ -7167,10 +7192,7 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
         onProgress({ stage: 'deleting', op: 'delete', processed: 0, total });
         for (let off = 0; off < ids.length; off += BATCH) {
             const slice = ids.slice(off, off + BATCH);
-            // Batch the sync fs.unlinkSync inside dedupDeleteByIds — without
-            // this a 47 k-row delete blocks the event loop for minutes and
-            // every WS progress event queues behind it (UI freezes at 0/N
-            // until the whole job finishes; users perceive it as a hang).
+            const seekbarMap = collectSeekbarPaths(slice);
             const part = dedupDeleteByIds(slice);
             aggregate.removed += part.removed || 0;
             aggregate.freedBytes += part.freedBytes || 0;
@@ -7180,13 +7202,16 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
                     await purgeThumbsForDownload(id);
                 } catch {}
                 try {
-                    await purgeSeekbarForDownload(id);
+                    await purgeSeekbarForDownload(id, seekbarMap.get(id));
                 } catch {}
             }
             processed += slice.length;
             onProgress({ stage: 'deleting', op: 'delete', processed, total });
             await new Promise((r) => setImmediate(r));
         }
+        try {
+            purgeOrphanPeople();
+        } catch {}
         try {
             broadcast({ type: 'bulk_delete', ids });
         } catch {}
@@ -9058,14 +9083,26 @@ app.post('/api/maintenance/recovery/delete', async (req, res) => {
             // caller can poll /api/maintenance/recovery/list to confirm.
             for (const id of ids) {
                 try {
+                    const dlIds = getDb()
+                        .prepare('SELECT id FROM downloads WHERE group_id = ?')
+                        .all(String(id))
+                        .map((r) => r.id);
+                    const seekbarMap = collectSeekbarPaths(dlIds);
                     const r = deleteGroupDownloads(id);
                     purged.totalRows += r.deletedDownloads || 0;
-                    // We don't try to delete the on-disk folder here —
-                    // it's keyed by sanitised name not group_id, and the
-                    // operator should use /purge for that. The DB delete
-                    // is enough to clear the gallery sidebar.
+                    for (const dlId of dlIds) {
+                        try {
+                            await purgeThumbsForDownload(dlId);
+                        } catch {}
+                        try {
+                            await purgeSeekbarForDownload(dlId, seekbarMap.get(dlId));
+                        } catch {}
+                    }
                 } catch {}
             }
+            try {
+                purgeOrphanPeople();
+            } catch {}
         }
         res.json({ success: true, removed, purgeDownloads, ...purged });
     } catch (e) {
@@ -9949,7 +9986,12 @@ app.post('/api/cluster/files/delete', async (req, res) => {
                 /* best effort */
             }
         }
+        const seekbarRow = getDb()
+            .prepare('SELECT sprite_path, meta_path FROM seekbar_sprites WHERE download_id = ?')
+            .get(Number(row.id));
         getDb().prepare('DELETE FROM downloads WHERE id = ?').run(Number(row.id));
+        purgeThumbsForDownload(row.id).catch(() => {});
+        purgeSeekbarForDownload(row.id, seekbarRow || undefined).catch(() => {});
         recordClusterAudit({
             kind: 'cross_delete',
             ok: true,
@@ -11714,10 +11756,22 @@ app.use('/files', async (req, res, next) => {
                         const fwd = reqPath.replace(/\\/g, '/');
                         const bwd = fwd.replace(/\//g, '\\');
                         const db = getDb();
+                        const matchIds = db
+                            .prepare(
+                                'SELECT id FROM downloads WHERE file_path = ? OR file_path = ?',
+                            )
+                            .all(fwd, bwd)
+                            .map((r) => r.id);
+                        if (!matchIds.length) return;
+                        const seekbarMap = collectSeekbarPaths(matchIds);
                         const result = db
                             .prepare(`DELETE FROM downloads WHERE file_path = ? OR file_path = ?`)
                             .run(fwd, bwd);
                         if (result.changes > 0) {
+                            for (const id of matchIds) {
+                                purgeThumbsForDownload(id).catch(() => {});
+                                purgeSeekbarForDownload(id, seekbarMap.get(id)).catch(() => {});
+                            }
                             broadcast({ type: 'file_deleted', path: fwd, autoPruned: true });
                         }
                     } catch {
@@ -12353,7 +12407,7 @@ ${tip}
 
     // Register the blocklist auto-delete callback so background deletes are
     // visible in the realtime log and cause the downloads UI to remove the row.
-    nsfwSetBlocklistDeleteCallback((id) => {
+    nsfwSetBlocklistDeleteCallback((id, seekbarRow) => {
         try {
             broadcast({ type: 'bulk_delete', ids: [id] });
         } catch {}
@@ -12361,7 +12415,7 @@ ${tip}
             log({ source: 'nsfw', level: 'info', msg: `blocklist: auto-deleted id=${id}` });
         } catch {}
         purgeThumbsForDownload(id).catch(() => {});
-        purgeSeekbarForDownload(id).catch(() => {});
+        purgeSeekbarForDownload(id, seekbarRow || undefined).catch(() => {});
     });
 
     // Pre-fetch the NSFW classifier in the background when the operator

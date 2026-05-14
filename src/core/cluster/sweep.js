@@ -159,14 +159,24 @@ export async function resolveConflict(conflictId, keep) {
     let queued = 0;
     let remoteDeleted = 0;
     const { getDb, enqueuePeerDeleteJob } = await import('../db.js');
+    const { purgeThumbsForDownload } = await import('../thumbs.js');
+    const { purgeSeekbarForDownload } = await import('../seekbar/index.js');
     const selfId = getSelfPeerId();
     for (const loser of losers) {
         if (loser.peerId === 'self' || loser.peerId === selfId) {
             // Local row — unlink + delete.
             try {
+                const id = Number(loser.remoteId);
                 const abs = path.join(downloadsDir, loser.filePath || '');
+                const seekbarRow = getDb()
+                    .prepare(
+                        'SELECT sprite_path, meta_path FROM seekbar_sprites WHERE download_id = ?',
+                    )
+                    .get(id);
                 await fs.unlink(abs).catch(() => {});
-                getDb().prepare('DELETE FROM downloads WHERE id = ?').run(Number(loser.remoteId));
+                getDb().prepare('DELETE FROM downloads WHERE id = ?').run(id);
+                purgeThumbsForDownload(id).catch(() => {});
+                purgeSeekbarForDownload(id, seekbarRow || undefined).catch(() => {});
                 unlinked++;
             } catch {
                 /* ignore — best-effort */
@@ -230,7 +240,6 @@ async function _attemptRemoteDelete(loser) {
         return false;
     }
 }
-
 
 /**
  * JobTracker-style tryStart so the express route can respond in <500ms

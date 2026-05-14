@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.18.13] — 2026-05-14
+
+Dedup scan/delete performance fix for large libraries + comprehensive related-data cleanup on all delete paths.
+
+### Fixed
+- **Dedup scan hangs on 100k+ files** — added `idx_file_hash` and `idx_unhashed` partial indexes on `downloads`; the grouping query now uses an index-only scan instead of a full table scan (~100× faster on large libraries).
+- **Dedup delete hangs on Docker** — `deleteByIds` called `resolveStoredPath` twice per file (6 stat calls each on bind mounts); merged into a single pass (3 stat calls), halving I/O.
+- **Seekbar sprite files orphaned on every delete path** — FK CASCADE deleted the `seekbar_sprites` DB row before `purgeSeekbarForDownload` could read the file paths; all 10 delete paths now pre-fetch paths before the CASCADE fires.
+- **Orphan `people` rows after dedup/NSFW/integrity deletes** — `purgeOrphanPeople()` was only called from `deleteDownloadsBy`; now runs after every bulk-delete path that bypasses it.
+- **Missing thumb/seekbar cleanup** on single-file delete, integrity sweep, cluster cross-delete, cluster sweep, auto-prune on 404, and recovery group purge.
+
+### Service worker
+- `VERSION = 'v21813'`
+
 ## [2.18.12] — 2026-05-13
 
 Docker build fix — missing CHANGELOG.md whitelist.

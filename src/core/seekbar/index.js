@@ -170,10 +170,10 @@ async function _drainBg() {
 
 // ---- Per-row purge --------------------------------------------------------
 
-export async function purgeSeekbarForDownload(downloadId) {
+export async function purgeSeekbarForDownload(downloadId, prefetchedRow) {
     const id = Number(downloadId);
     if (!Number.isInteger(id) || id <= 0) return 0;
-    const row = getSeekbarSprite(id);
+    const row = prefetchedRow || getSeekbarSprite(id);
     if (!row) return 0;
     for (const p of [row.sprite_path, row.meta_path]) {
         if (!p) continue;
@@ -183,7 +183,17 @@ export async function purgeSeekbarForDownload(downloadId) {
             /* best-effort */
         }
     }
-    return deleteSeekbarSprite(id);
+    if (!prefetchedRow) deleteSeekbarSprite(id);
+    return 1;
+}
+
+export function collectSeekbarPaths(ids) {
+    const map = new Map();
+    for (const id of ids) {
+        const row = getSeekbarSprite(Number(id));
+        if (row) map.set(Number(id), row);
+    }
+    return map;
 }
 
 // ---- Cache stats ----------------------------------------------------------

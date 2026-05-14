@@ -738,11 +738,19 @@ async function _drainBg() {
                                 await fs.unlink(abs);
                             } catch {}
                         }
+                        let seekbarRow;
+                        try {
+                            seekbarRow = db
+                                .prepare(
+                                    'SELECT sprite_path, meta_path FROM seekbar_sprites WHERE download_id = ?',
+                                )
+                                .get(Number(id));
+                        } catch {}
                         try {
                             db.prepare('DELETE FROM downloads WHERE id = ?').run(Number(id));
                         } catch {}
                         try {
-                            _onBlocklistDelete?.(Number(id));
+                            _onBlocklistDelete?.(Number(id), seekbarRow);
                         } catch {}
                         continue;
                     }

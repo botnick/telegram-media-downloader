@@ -235,43 +235,36 @@ export function deleteByIds(ids) {
 
     let freed = 0;
     let missing = 0;
+    const idsToDrop = [];
     for (const r of rows) {
         const abs = resolveStoredPath(r.file_path);
         if (abs) {
             try {
                 fs.unlinkSync(abs);
                 freed += Number(r.file_size) || 0;
+                idsToDrop.push(r.id);
             } catch (e) {
                 if (e?.code === 'ENOENT') {
                     missing++;
                     freed += Number(r.file_size) || 0;
+                    idsToDrop.push(r.id);
                 }
                 // Other errors (EPERM etc.) — skip the row, don't drop from DB
                 // so the user can retry / inspect.
-                else continue;
             }
         } else {
             missing++;
             freed += Number(r.file_size) || 0;
+            idsToDrop.push(r.id);
         }
     }
 
-    // Drop only the rows whose files we successfully removed (or were
-    // already missing — the row points at nothing anyway).
-    const idsToDrop = [];
-    for (const r of rows) {
-        const abs = resolveStoredPath(r.file_path);
-        const exists = abs ? fs.existsSync(abs) : false;
-        if (!exists) idsToDrop.push(r.id);
-    }
     let removed = 0;
-    if (idsToDrop.length) {
-        for (let i = 0; i < idsToDrop.length; i += SQL_IN_CHUNK) {
-            const slice = idsToDrop.slice(i, i + SQL_IN_CHUNK);
-            const ph = slice.map(() => '?').join(',');
-            const r = db.prepare(`DELETE FROM downloads WHERE id IN (${ph})`).run(...slice);
-            removed += r.changes;
-        }
+    for (let i = 0; i < idsToDrop.length; i += SQL_IN_CHUNK) {
+        const slice = idsToDrop.slice(i, i + SQL_IN_CHUNK);
+        const ph = slice.map(() => '?').join(',');
+        const r = db.prepare(`DELETE FROM downloads WHERE id IN (${ph})`).run(...slice);
+        removed += r.changes;
     }
     return { removed, freedBytes: freed, missingFiles: missing };
 }

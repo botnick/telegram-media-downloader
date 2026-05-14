@@ -21,7 +21,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { getTotalSizeBytes, getOldestDownloads, deleteDownloadsBy } from './db.js';
 import { purgeThumbsForDownload } from './thumbs.js';
-import { purgeSeekbarForDownload } from './seekbar/index.js';
+import { purgeSeekbarForDownload, collectSeekbarPaths } from './seekbar/index.js';
 import { getDownloadsDir } from './paths.js';
 
 const DOWNLOADS_DIR = getDownloadsDir();
@@ -213,6 +213,7 @@ export class DiskRotator {
                     if (total <= capBytes || safety <= 0) break outer;
                     if (isInFlight(row)) continue; // skip — downloader is mid-write
                     await tryUnlink(row);
+                    const sbMap = collectSeekbarPaths([row.id]);
                     const removed = deleteDownloadsBy({ ids: [row.id] });
                     if (removed > 0) {
                         const sz = Number(row.file_size || 0);
@@ -220,7 +221,7 @@ export class DiskRotator {
                         deleted += 1;
                         safety -= 1;
                         purgeThumbsForDownload(row.id).catch(() => {});
-                        purgeSeekbarForDownload(row.id).catch(() => {});
+                        purgeSeekbarForDownload(row.id, sbMap.get(row.id)).catch(() => {});
                         try {
                             this._broadcast({
                                 type: 'file_deleted',

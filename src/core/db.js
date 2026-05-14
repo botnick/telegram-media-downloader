@@ -213,6 +213,20 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_nsfw_tier ON downloads(file_type, nsfw_whitelist, nsfw_score) WHERE nsfw_score IS NOT NULL',
         );
     } catch {}
+    // Dedup scan: GROUP BY file_hash + WHERE file_hash = ? both need this.
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_file_hash ON downloads(file_hash) WHERE file_hash IS NOT NULL',
+        );
+    } catch {}
+    // Dedup hashing catch-up: the keyset-paginated query filters on
+    // file_hash IS NULL — a partial index lets it seek instead of scanning
+    // the entire table.
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_unhashed ON downloads(id DESC) WHERE file_hash IS NULL AND file_path IS NOT NULL',
+        );
+    } catch {}
     // NSFW hash blocklist — stores SHA-256 fingerprints of files deleted via
     // NSFW review so re-downloads can be auto-deleted without rescanning.
     try {
@@ -301,12 +315,12 @@ function initSchema() {
     }
     // gender classification — 'male' | 'female' | null (from insightface genderage model).
     try {
-        db.exec("ALTER TABLE faces ADD COLUMN gender TEXT");
+        db.exec('ALTER TABLE faces ADD COLUMN gender TEXT');
     } catch {
         /* column already present */
     }
     try {
-        db.exec("ALTER TABLE people ADD COLUMN gender TEXT");
+        db.exec('ALTER TABLE people ADD COLUMN gender TEXT');
     } catch {
         /* column already present */
     }
@@ -1463,16 +1477,18 @@ export function deleteDownloadsBy(opts) {
         );
         removed = tx();
     }
-    if (removed > 0) _purgeOrphanPeople(db);
+    if (removed > 0) purgeOrphanPeople();
     return removed;
 }
 
-function _purgeOrphanPeople(db) {
-    db.prepare(`
-        DELETE FROM people WHERE id NOT IN (
+export function purgeOrphanPeople() {
+    getDb()
+        .prepare(
+            `DELETE FROM people WHERE id NOT IN (
             SELECT DISTINCT person_id FROM faces WHERE person_id IS NOT NULL
+        )`,
         )
-    `).run();
+        .run();
 }
 
 export function getStats() {
@@ -2293,7 +2309,16 @@ export function clearStaleEmbeddings(currentModelId) {
 
 // ---- Faces & people -------------------------------------------------------
 
-export function insertFace({ downloadId, x, y, w, h, embeddingBlob, personId = null, qualityScore = null }) {
+export function insertFace({
+    downloadId,
+    x,
+    y,
+    w,
+    h,
+    embeddingBlob,
+    personId = null,
+    qualityScore = null,
+}) {
     return getDb()
         .prepare(`
         INSERT INTO faces (download_id, x, y, w, h, embedding, person_id, quality_score)
@@ -2562,7 +2587,8 @@ export function listPeople({ limit = 500, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(2000, Number(limit) || 500));
     const off = Math.max(0, Number(offset) || 0);
     const db = getDb();
-    const rows = db.prepare(`
+    const rows = db
+        .prepare(`
         SELECT p.id, p.label, p.face_count, p.created_at, p.updated_at,
                f.download_id AS cover_download_id,
                f.id          AS cover_face_id,
@@ -2588,7 +2614,8 @@ export function listPeople({ limit = 500, offset = 0 } = {}) {
           )
          ORDER BY p.face_count DESC, p.id ASC
          LIMIT ? OFFSET ?
-    `).all(lim, off);
+    `)
+        .all(lim, off);
     const total = db.prepare('SELECT COUNT(*) AS n FROM people').get().n;
     return { people: rows, total };
 }
@@ -2609,7 +2636,8 @@ export function listPhotosForPerson(personId, { limit = 50, offset = 0 } = {}) {
     const lim = Math.max(1, Math.min(500, Number(limit) || 50));
     const off = Math.max(0, Number(offset) || 0);
     const db = getDb();
-    const rows = db.prepare(`
+    const rows = db
+        .prepare(`
         SELECT d.id, d.file_name, d.file_path, d.file_type, d.file_size,
                d.created_at, d.group_id, d.group_name, d.message_id,
                f.id AS face_id,
@@ -2627,10 +2655,11 @@ export function listPhotosForPerson(personId, { limit = 50, offset = 0 } = {}) {
          WHERE f.rn = 1
          ORDER BY d.created_at DESC, d.id DESC
          LIMIT ? OFFSET ?
-    `).all(Number(personId), lim, off);
-    const total = db.prepare(
-        `SELECT COUNT(DISTINCT download_id) AS n FROM faces WHERE person_id = ?`
-    ).get(Number(personId)).n;
+    `)
+        .all(Number(personId), lim, off);
+    const total = db
+        .prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces WHERE person_id = ?`)
+        .get(Number(personId)).n;
     return { files: rows, total };
 }
 
