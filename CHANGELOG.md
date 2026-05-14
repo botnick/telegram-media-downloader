@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.4] — 2026-05-15
+
+People card cleanup, GitHub-style changelog viewer.
+
+### Changed
+- **People card** — replaced 3 separate corner badges (face count, video icon, quality) with a single bottom-center info pill (`34 · 🎬 · MQ`). Cleaner, easier to read at a glance.
+- **Changelog viewer** — full GitHub-style markdown rendering: nested lists, tables, fenced code blocks, horizontal rules, styled headings. 58 previously-hidden indented items now render correctly.
+
+### Service worker
+- `VERSION = 'v2194'`
+
 ## [2.19.3] — 2026-05-15
 
 DB performance, sidecar GPU optimization, boot cleanup, dedup hardening.

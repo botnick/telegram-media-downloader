@@ -1518,37 +1518,29 @@ function _personTile(p) {
 
     const videoFaceCount = Number(p.video_face_count) || 0;
     const avgQ = Number(p.avg_quality) || 0;
-    const badge =
-        faceCount > 0
-            ? `<span class="absolute -bottom-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-tg-blue text-white text-[9px] font-bold flex items-center justify-center leading-none border-2 border-tg-panel">${faceCount}</span>`
-            : '';
-    const videoBadge =
-        videoFaceCount > 0
-            ? `<span class="absolute -top-0.5 -right-0.5 w-[14px] h-[14px] rounded-full bg-amber-500 flex items-center justify-center border border-tg-panel" title="${videoFaceCount} from video"><i class="ri-film-line text-white" style="font-size:8px"></i></span>`
-            : '';
-    let qualityBadge = '';
+
+    // Single combined info badge — bottom-right pill with all metadata
+    const parts = [];
+    if (faceCount > 0) parts.push(`${faceCount}`);
+    if (videoFaceCount > 0) parts.push(`<i class="ri-film-line" style="font-size:8px"></i>`);
     if (avgQ > 0) {
-        const qTier = avgQ >= 0.7 ? 'high' : avgQ >= 0.4 ? 'mid' : 'low';
-        const qColor = { high: 'bg-emerald-500', mid: 'bg-amber-400', low: 'bg-red-500' }[qTier];
-        const qLabel = { high: 'HQ', mid: 'MQ', low: 'LQ' }[qTier];
-        const qTip = {
-            high: 'High quality — sharp, frontal faces',
-            mid: 'Medium quality — some blur or angle',
-            low: 'Low quality — blurry or side-angle',
-        }[qTier];
-        qualityBadge = `<span class="absolute -bottom-0.5 -left-0.5 w-[16px] h-[16px] rounded-full ${qColor} text-white text-[7px] font-bold flex items-center justify-center border border-tg-panel" title="${qTip} (${(avgQ * 100).toFixed(0)}%)">${qLabel}</span>`;
+        const qLabel = avgQ >= 0.7 ? 'HQ' : avgQ >= 0.4 ? 'MQ' : 'LQ';
+        parts.push(qLabel);
     }
+    const infoBadge = parts.length
+        ? `<span class="absolute -bottom-1 left-1/2 -translate-x-1/2 h-[16px] px-1.5 rounded-full bg-black/70 text-white text-[8px] font-medium flex items-center justify-center gap-1 leading-none backdrop-blur-sm whitespace-nowrap">${parts.join('<span class="opacity-40">·</span>')}</span>`
+        : '';
+
+    const qTip = avgQ > 0 ? ` · Quality: ${(avgQ * 100).toFixed(0)}%` : '';
 
     return `<button type="button" data-person="${p.id}" data-name="${safeName}"
-        title="${safeName} · ${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}${videoFaceCount > 0 ? ` (${videoFaceCount} from video)` : ''}${avgQ > 0 ? ` · Quality: ${(avgQ * 100).toFixed(0)}%` : ''}"
+        title="${safeName} · ${faceCount} ${escapeHtml(i18nT('maintenance.ai.faces_short', 'faces'))}${videoFaceCount > 0 ? ` (${videoFaceCount} from video)` : ''}${qTip}"
         class="ai-person-card flex flex-col items-center gap-1 p-1 rounded-xl hover:bg-tg-blue/5 active:scale-95 transition-all group text-center select-none">
         <div class="relative w-full">
             <div class="w-full aspect-square rounded-full overflow-hidden ring-2 ring-tg-border/30 group-hover:ring-tg-blue/60 transition-all flex items-center justify-center bg-tg-bg/40">
                 ${imgHtml}
             </div>
-            ${badge}
-            ${videoBadge}
-            ${qualityBadge}
+            ${infoBadge}
         </div>
         <div class="w-full min-w-0 px-0.5">
             <div class="ai-person-name text-[9.5px] font-medium text-tg-text leading-tight truncate">${safeName}</div>

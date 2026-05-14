@@ -4862,3 +4862,83 @@ html[data-contrast="more"] .media-item {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
 }
+
+/* Changelog viewer — GitHub-style markdown rendering */
+.changelog-body h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 1.5rem 0 0.5rem;
+    border-bottom: 1px solid var(--tg-border, #333);
+    padding-bottom: 0.25rem;
+}
+.changelog-body h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 1.25rem 0 0.4rem;
+}
+.changelog-body h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 1rem 0 0.3rem;
+}
+.changelog-body ul {
+    list-style: disc;
+    padding-left: 1.25rem;
+    margin: 0.25rem 0;
+}
+.changelog-body ul ul {
+    list-style: circle;
+    margin: 0.1rem 0;
+}
+.changelog-body li {
+    margin: 0.15rem 0;
+}
+.changelog-body code {
+    background: var(--tg-bg, #1a1a1a);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.changelog-body a {
+    color: var(--tg-blue, #3390ec);
+    text-decoration: none;
+}
+.changelog-body a:hover {
+    text-decoration: underline;
+}
+.changelog-body hr {
+    border: none;
+    border-top: 1px solid var(--tg-border, #333);
+    margin: 1rem 0;
+}
+.changelog-body pre.cl-code {
+    background: var(--tg-bg, #1a1a1a);
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    margin: 0.5rem 0;
+}
+.changelog-body pre.cl-code code {
+    background: none;
+    padding: 0;
+}
+.changelog-body .cl-table-wrap {
+    overflow-x: auto;
+    margin: 0.5rem 0;
+}
+.changelog-body .cl-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.changelog-body .cl-table th,
+.changelog-body .cl-table td {
+    border: 1px solid var(--tg-border, #333);
+    padding: 0.35rem 0.6rem;
+    text-align: left;
+}
+.changelog-body .cl-table th {
+    background: var(--tg-bg, #1a1a1a);
+    font-weight: 600;
+}

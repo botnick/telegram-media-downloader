@@ -35,7 +35,9 @@ function escapeHtml(s) {
 function mdToHtml(md) {
     const lines = String(md || '').split(/\r?\n/);
     const out = [];
-    let inList = false;
+    const listStack = []; // depth tracking for nested lists
+    let inTable = false;
+    let inCode = false;
 
     function inline(s) {
         return escapeHtml(s)
@@ -48,48 +50,121 @@ function mdToHtml(md) {
             });
     }
 
-    function flushList() {
-        if (inList) {
+    function closeLists(toDepth = 0) {
+        while (listStack.length > toDepth) {
+            listStack.pop();
             out.push('</ul>');
-            inList = false;
         }
     }
 
-    for (const raw of lines) {
+    function closeTable() {
+        if (inTable) {
+            out.push('</tbody></table></div>');
+            inTable = false;
+        }
+    }
+
+    for (let li = 0; li < lines.length; li++) {
+        const raw = lines[li];
         const line = raw.trimEnd();
         let m;
+
+        // Fenced code blocks
+        if (line.match(/^```/)) {
+            closeLists();
+            closeTable();
+            if (inCode) {
+                out.push('</code></pre>');
+                inCode = false;
+            } else {
+                inCode = true;
+                out.push('<pre class="cl-code"><code>');
+            }
+            continue;
+        }
+        if (inCode) {
+            out.push(escapeHtml(raw));
+            continue;
+        }
+
+        // Headings
         if ((m = line.match(/^### (.+)$/))) {
-            flushList();
+            closeLists();
+            closeTable();
             out.push(`<h4>${inline(m[1])}</h4>`);
             continue;
         }
         if ((m = line.match(/^## (.+)$/))) {
-            flushList();
+            closeLists();
+            closeTable();
             out.push(`<h3 class="cl-version">${inline(m[1])}</h3>`);
             continue;
         }
         if ((m = line.match(/^# (.+)$/))) {
-            flushList();
+            closeLists();
+            closeTable();
             out.push(`<h2>${inline(m[1])}</h2>`);
             continue;
         }
-        if ((m = line.match(/^[-*] (.+)$/))) {
-            if (!inList) {
-                out.push('<ul>');
-                inList = true;
-            }
-            out.push(`<li>${inline(m[1])}</li>`);
+
+        // Horizontal rule
+        if (line.match(/^---+$/)) {
+            closeLists();
+            closeTable();
+            out.push('<hr>');
             continue;
         }
-        if (line.trim() === '') {
-            flushList();
+
+        // Table rows (| col | col |)
+        if (line.match(/^\|.*\|$/)) {
+            closeLists();
+            if (line.match(/^\|[\s:|-]+\|$/)) continue; // separator row
+            if (!inTable) {
+                inTable = true;
+                out.push('<div class="cl-table-wrap"><table class="cl-table"><tbody>');
+            }
+            const cells = line
+                .split('|')
+                .slice(1, -1)
+                .map((c) => c.trim());
+            const tag = !inTable || out[out.length - 1].includes('<tbody>') ? 'th' : 'td';
+            out.push(`<tr>${cells.map((c) => `<${tag}>${inline(c)}</${tag}>`).join('')}</tr>`);
+            continue;
+        }
+        if (inTable) closeTable();
+
+        // List items (top-level and nested via indentation)
+        if ((m = line.match(/^(\s*)([-*])\s(.+)$/))) {
+            const indent = m[1].length;
+            const depth = Math.floor(indent / 2) + 1;
+            while (listStack.length < depth) {
+                listStack.push(depth);
+                out.push('<ul>');
+            }
+            if (listStack.length > depth) closeLists(depth);
+            out.push(`<li>${inline(m[3])}</li>`);
+            continue;
+        }
+        if (listStack.length && line.trim() === '') {
+            closeLists();
             out.push('');
             continue;
         }
-        flushList();
+
+        // Empty line
+        if (line.trim() === '') {
+            closeLists();
+            out.push('');
+            continue;
+        }
+
+        // Paragraph
+        closeLists();
         out.push(`<p>${inline(line)}</p>`);
     }
-    flushList();
+    closeLists();
+    closeTable();
+    if (inCode) out.push('</code></pre>');
     return out.join('\n');
 }
 
