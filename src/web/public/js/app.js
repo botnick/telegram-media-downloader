@@ -6,7 +6,14 @@
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
 import { createAvatar, escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
-import { getThumbUrl, getMediaUrl, getDownloadUrl, isPeerRow, initFileToken, fileTokenQuery } from './media-url.js';
+import {
+    getThumbUrl,
+    getMediaUrl,
+    getDownloadUrl,
+    isPeerRow,
+    initFileToken,
+    fileTokenQuery,
+} from './media-url.js';
 import * as Settings from './settings.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
@@ -30,7 +37,7 @@ import {
     renderRowSkeletons,
     renderGallerySkeletons,
 } from './components.js';
-import { formatRelativeTime } from './utils.js';
+import { formatRelativeTime, formatDuration } from './utils.js';
 import { attachPullToRefresh } from './gestures.js';
 import {
     setupGallerySelect,
@@ -1915,6 +1922,13 @@ function renderMediaGrid(opts = {}) {
                     // Inner thumb content — the visual changes per file type (img,
                     // video w/ play overlay, doc icon). Wrapped in `.tile-thumb`
                     // so list-mode CSS can size it as a 56 px square cell.
+                    const durLabel =
+                        file.type === 'videos' && file.duration
+                            ? formatDuration(file.duration)
+                            : '';
+                    const durBadge = durLabel
+                        ? `<span class="video-duration">${durLabel}</span>`
+                        : '';
                     const thumbInner =
                         file.type === 'images'
                             ? imgFallback
@@ -1926,6 +1940,7 @@ function renderMediaGrid(opts = {}) {
                                 <i class="ri-play-fill text-white text-xl ml-0.5"></i>
                             </div>
                         </div>
+                        ${durBadge}
                        </div>`
                               : docFallback;
                     // Filename-under-tile fallback for non-image-non-video types
@@ -1973,7 +1988,7 @@ function renderMediaGrid(opts = {}) {
                     const pinTitle = file.pinned
                         ? i18nT('favorites.unpin', 'Unpin')
                         : i18nT('favorites.pin', 'Pin');
-                    const pinIcon = file.pinned ? 'ri-map-pin-fill' : 'ri-map-pin-line';
+                    const pinIcon = file.pinned ? 'ri-pushpin-2-fill' : 'ri-pushpin-2-line';
                     const pinChip =
                         file.id != null && state.role === 'admin'
                             ? `<button type="button" class="pin-chip" data-tile-pin title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}">
@@ -2142,8 +2157,8 @@ function _wireMediaGridDelegation(grid) {
                 const ico = pinBtn.querySelector('i');
                 if (ico) {
                     ico.classList.replace(
-                        next ? 'ri-map-pin-line' : 'ri-map-pin-fill',
-                        next ? 'ri-map-pin-fill' : 'ri-map-pin-line',
+                        next ? 'ri-pushpin-2-line' : 'ri-pushpin-2-fill',
+                        next ? 'ri-pushpin-2-fill' : 'ri-pushpin-2-line',
                     );
                 }
             } catch (e) {
@@ -3521,7 +3536,9 @@ function _renderGroupFiles(rows) {
                     : (r.file_name || '').split('.').pop()?.toUpperCase()?.slice(0, 4) || 'DOC';
             const filePath = (r.file_path || '').replace(/\\/g, '/');
             const _ftq = fileTokenQuery();
-            const href = filePath ? `/files/${encodeURI(filePath)}?inline=1${_ftq ? '&' + _ftq : ''}` : null;
+            const href = filePath
+                ? `/files/${encodeURI(filePath)}?inline=1${_ftq ? '&' + _ftq : ''}`
+                : null;
             const open = href
                 ? `onclick="window.open('${_escape(href)}','_blank','noopener,noreferrer')"`
                 : '';

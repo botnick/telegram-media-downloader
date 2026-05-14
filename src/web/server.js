@@ -4356,6 +4356,7 @@ app.get('/api/downloads/all', async (req, res) => {
                 // a "from {peer}" badge without /api/cluster/peers.
                 peer_id: row.peer_id || 'self',
                 peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
+                duration: row.duration_sec ?? null,
             };
         });
 
@@ -4465,6 +4466,7 @@ app.get('/api/downloads/:groupId', async (req, res, next) => {
                 pinned: !!row.pinned,
                 peer_id: row.peer_id || 'self',
                 peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
+                duration: row.duration_sec ?? null,
             };
         });
 
@@ -4599,6 +4601,7 @@ app.get('/api/downloads/search', async (req, res) => {
                 rescuedAt: row.rescued_at || null,
                 peer_id: row.peer_id || 'self',
                 peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
+                duration: row.duration_sec ?? null,
             };
         });
         res.json({ files, total: r.total, page, totalPages: Math.ceil(r.total / limit), q });
@@ -12460,7 +12463,7 @@ ${tip}
     // `monitor.autoStart: false` in config.json.
     try {
         const cfg = loadConfig();
-        const autoStart = cfg.monitor?.autoStart !== false;
+        const autoStart = cfg.monitor?.autoStart === true;
         const enabled = Array.isArray(cfg.groups) && cfg.groups.some((g) => g?.enabled !== false);
         if (autoStart && enabled) {
             const am = await getAccountManager().catch(() => null);

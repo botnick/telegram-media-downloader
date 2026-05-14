@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.0] — 2026-05-14
+
+Video duration badges, pin icon refresh, monitor auto-start default change.
+
+### Added
+- **Video duration on gallery tiles** — YouTube-style `1:23` badge on video thumbnails. Duration sourced from `seekbar_sprites` via LEFT JOIN; available on all three gallery endpoints (all / group / search).
+
+### Changed
+- **Pin icon** reverted to `ri-pushpin-2-fill` / `ri-pushpin-2-line` (was `ri-map-pin-*`).
+- **Monitor auto-start** now defaults to off — operators must click Start or set `monitor.autoStart: true` in config.
+
+### Service worker
+- `VERSION = 'v2190'`
+
 ## [2.18.13] — 2026-05-14
 
 Dedup scan/delete performance fix for large libraries + comprehensive related-data cleanup on all delete paths.

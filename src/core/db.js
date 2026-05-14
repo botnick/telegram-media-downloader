@@ -1194,17 +1194,19 @@ const _FEDERATED_TYPE_MAP = {
 // the four helpers below stay small and readable.
 const _FED_COLS_LOCAL = `
     'self' AS peer_id,
-    id, group_id, group_name, message_id, file_name, file_size, file_type,
-    file_path, file_hash, status, created_at, nsfw_score,
-    COALESCE(pinned, 0) AS pinned,
-    CAST(strftime('%s', created_at) AS INTEGER) * 1000 AS sort_ts
+    d.id, d.group_id, d.group_name, d.message_id, d.file_name, d.file_size, d.file_type,
+    d.file_path, d.file_hash, d.status, d.created_at, d.nsfw_score,
+    COALESCE(d.pinned, 0) AS pinned,
+    CAST(strftime('%s', d.created_at) AS INTEGER) * 1000 AS sort_ts,
+    sb.duration_sec
 `;
 const _FED_COLS_PEER = `
     peer_id,
     remote_id AS id, group_id, group_name, message_id, file_name, file_size, file_type,
     file_path, file_hash, status, created_at, nsfw_score,
     0 AS pinned,
-    CAST(created_at AS INTEGER) AS sort_ts
+    CAST(created_at AS INTEGER) AS sort_ts,
+    NULL AS duration_sec
 `;
 
 function _stripSortTs(rows) {
@@ -1266,7 +1268,7 @@ export function getAllDownloadsFederated(limit = 50, offset = 0, type = 'all', o
 
     const sql = `
         SELECT * FROM (
-            SELECT ${_FED_COLS_LOCAL} FROM downloads${localWhere}
+            SELECT ${_FED_COLS_LOCAL} FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id${localWhere}
             UNION ALL
             SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
         ) ORDER BY ${orderBy} LIMIT ? OFFSET ?
@@ -1335,7 +1337,7 @@ export function getDownloadsForGroupFederated(
 
     const sql = `
         SELECT * FROM (
-            SELECT ${_FED_COLS_LOCAL} FROM downloads${localWhere}
+            SELECT ${_FED_COLS_LOCAL} FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id${localWhere}
             UNION ALL
             SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
         ) ORDER BY ${orderBy} LIMIT ? OFFSET ?
@@ -1383,7 +1385,7 @@ export function searchDownloadsFederated(query, opts = {}) {
 
     const sql = `
         SELECT * FROM (
-            SELECT ${_FED_COLS_LOCAL} FROM downloads${localWhere}
+            SELECT ${_FED_COLS_LOCAL} FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id${localWhere}
             UNION ALL
             SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
         ) ORDER BY sort_ts DESC, id DESC LIMIT ? OFFSET ?
