@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.6] — 2026-05-15
+
+Deferred file deletion + unified cleanup across all 15 delete paths.
+
+### Added
+- **Deferred file deletion** (`src/core/deferred-delete.js`) — `deferDelete()` renames media files to `downloads/.deleted/<uuid>` instantly (same-filesystem atomic move), then `startDrain()` walks the directory async in the background. Boot recovery picks up leftovers.
+
+### Fixed
+- **Unified all 15 delete paths** to the same pattern: deferDelete → DB delete → purge thumbs → purge seekbar → purgeOrphanPeople → drain. Previously only 3 paths had full cleanup.
+- **5 missing `purgeOrphanPeople` calls** added (gallery bulk delete, disk rotator, rescue sweep, cluster dedup, cluster cross-delete).
+- **WS frame overflow on large deletes** — `bulk_delete` broadcast sends `count` instead of full ids array; dedup done payload strips duplicateSets via non-enumerable property.
+- **JSON body limit** raised from 256 KB to 2 MB so bulk deletes of 50K+ ids don't fail.
+- **CLI purge-all** photo delete crash (bare `unlinkSync` without try/catch).
+- **`.deleted` directory** excluded from reindexFromDisk + boot `.part` cleanup scans.
+
+### Service worker
+- `VERSION = 'v2196'`
+
 ## [2.19.5] — 2026-05-15
 
 Cancel responsiveness + dedup unlimited sets.
