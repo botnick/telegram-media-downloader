@@ -775,7 +775,7 @@ app.use(apiLimiter);
 // whitespace and break the signature.
 app.use(
     express.json({
-        limit: '256kb',
+        limit: '2mb',
         verify: (req, _res, buf) => {
             req.rawBody = buf;
         },
@@ -4756,7 +4756,7 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 await purgeSeekbarForDownload(id, seekbarMap.get(id));
             } catch {}
         }
-        broadcast({ type: 'bulk_delete', unlinked, dbDeleted, ids: allIds });
+        broadcast({ type: 'bulk_delete', unlinked, dbDeleted, count: allIds.length });
         return { unlinked, dbDeleted, requested: total };
     });
     if (!r.started) {
@@ -6083,9 +6083,9 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
             purgeOrphanPeople();
         } catch {}
         try {
-            broadcast({ type: 'bulk_delete', ids: cleanIds });
+            broadcast({ type: 'bulk_delete', count: cleanIds.length });
         } catch {}
-        return { ...aggregate, requested: cleanIds.length, ids: cleanIds };
+        return { ...aggregate, requested: cleanIds.length };
     });
     if (!r.started) {
         return res
@@ -7064,7 +7064,7 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
             purgeOrphanPeople();
         } catch {}
         try {
-            broadcast({ type: 'bulk_delete', ids: cleanIds });
+            broadcast({ type: 'bulk_delete', count: cleanIds.length });
         } catch {}
         try {
             broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
@@ -7256,7 +7256,7 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
             purgeOrphanPeople();
         } catch {}
         try {
-            broadcast({ type: 'bulk_delete', ids });
+            broadcast({ type: 'bulk_delete', count: ids.length });
         } catch {}
         try {
             broadcast({ type: 'nsfw_progress', ..._nsfwStateLight() });
@@ -7266,7 +7266,7 @@ app.post('/api/maintenance/nsfw/v2/bulk-delete', async (req, res) => {
             level: 'info',
             msg: `bulk-delete done: removed=${aggregate.removed} of ${ids.length}`,
         });
-        return { op: 'delete', deleted: aggregate.removed, ids, ...aggregate };
+        return { op: 'delete', deleted: aggregate.removed, requested: ids.length, ...aggregate };
     });
     if (!r.started) {
         return res
@@ -7303,7 +7303,7 @@ app.post('/api/maintenance/nsfw/v2/bulk-whitelist', async (req, res) => {
             level: 'info',
             msg: `bulk-whitelist: marked ${updated} rows as 18+`,
         });
-        return { op: 'whitelist', updated, ids };
+        return { op: 'whitelist', updated, requested: ids.length };
     });
     if (!r.started) {
         return res
@@ -7348,7 +7348,7 @@ app.post('/api/maintenance/nsfw/v2/unwhitelist', async (req, res) => {
             level: 'info',
             msg: `unwhitelist: ${updated} rows back into review`,
         });
-        return { op: 'unwhitelist', updated, ids };
+        return { op: 'unwhitelist', updated, requested: ids.length };
     });
     if (!r.started) {
         return res
@@ -7382,7 +7382,7 @@ app.post('/api/maintenance/nsfw/v2/reclassify', async (req, res) => {
             level: 'info',
             msg: `reclassify: cleared ${cleared} rows for re-scan`,
         });
-        return { op: 'reclassify', cleared, ids };
+        return { op: 'reclassify', cleared, requested: ids.length };
     });
     if (!r.started) {
         return res
