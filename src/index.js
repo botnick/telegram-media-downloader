@@ -29,6 +29,7 @@ import {
     deleteGroupDownloads,
     deleteAllDownloads,
     backfillGroupNames,
+    purgeOrphanPeople,
 } from './core/db.js';
 import { sanitizeName, migrateFolders } from './core/downloader.js';
 
@@ -1956,8 +1957,16 @@ async function purgeData(client, config) {
                 }
             }
 
-            // 2. Delete all DB records
+            // 2. Delete all DB records + cached assets
             const dbResult = deleteAllDownloads();
+            try {
+                const { purgeAllThumbs } = await import('./core/thumbs.js');
+                await purgeAllThumbs();
+            } catch {}
+            try {
+                const { purgeAllSeekbar } = await import('./core/seekbar/scan-runner.js');
+                await purgeAllSeekbar();
+            } catch {}
 
             // 3. Clear groups from config
             config.groups = [];
@@ -2007,8 +2016,33 @@ async function purgeData(client, config) {
                 fs.rmSync(folderPath, { recursive: true, force: true });
             }
 
-            // 2. Delete DB records
+            // 2. Collect IDs for cleanup, then delete DB records
+            let downloadIds = [];
+            try {
+                downloadIds = getDb()
+                    .prepare('SELECT id FROM downloads WHERE group_id = ?')
+                    .all(String(groupId))
+                    .map((r) => r.id);
+            } catch {}
+            let seekbarMap = new Map();
+            try {
+                const { collectSeekbarPaths } = await import('./core/seekbar/index.js');
+                seekbarMap = collectSeekbarPaths(downloadIds);
+            } catch {}
             const dbResult = deleteGroupDownloads(groupId);
+            for (const id of downloadIds) {
+                try {
+                    const { purgeThumbsForDownload } = await import('./core/thumbs.js');
+                    await purgeThumbsForDownload(id);
+                } catch {}
+                try {
+                    const { purgeSeekbarForDownload } = await import('./core/seekbar/index.js');
+                    await purgeSeekbarForDownload(id, seekbarMap.get(id));
+                } catch {}
+            }
+            try {
+                purgeOrphanPeople();
+            } catch {}
 
             // 3. Remove from config
             config.groups = (config.groups || []).filter((g) => String(g.id) !== String(groupId));

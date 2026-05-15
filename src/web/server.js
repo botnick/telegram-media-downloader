@@ -4987,6 +4987,7 @@ app.delete('/api/file', async (req, res) => {
         try {
             purgeOrphanPeople();
         } catch {}
+        import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
 
         broadcast({ type: 'file_deleted', path: filePath });
         res.json({ success: true });
@@ -7083,6 +7084,7 @@ app.post('/api/maintenance/nsfw/delete', async (req, res) => {
         try {
             purgeOrphanPeople();
         } catch {}
+        import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
         try {
             broadcast({ type: 'bulk_delete', count: cleanIds.length });
         } catch {}
@@ -12510,13 +12512,16 @@ ${tip}
     // visible in the realtime log and cause the downloads UI to remove the row.
     nsfwSetBlocklistDeleteCallback((id, seekbarRow) => {
         try {
-            broadcast({ type: 'bulk_delete', ids: [id] });
+            broadcast({ type: 'bulk_delete', count: 1 });
         } catch {}
         try {
             log({ source: 'nsfw', level: 'info', msg: `blocklist: auto-deleted id=${id}` });
         } catch {}
         purgeThumbsForDownload(id).catch(() => {});
         purgeSeekbarForDownload(id, seekbarRow || undefined).catch(() => {});
+        try {
+            purgeOrphanPeople();
+        } catch {}
     });
 
     // Pre-fetch the NSFW classifier in the background when the operator
