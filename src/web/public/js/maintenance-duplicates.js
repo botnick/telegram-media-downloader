@@ -734,7 +734,7 @@ function _wireWs() {
         }
     });
 
-    ws.on('dedup_done', (m) => {
+    ws.on('dedup_done', async (m) => {
         _stopRequested = false;
         if (m?.error) {
             _setScanUi(false);
@@ -754,10 +754,20 @@ function _wireWs() {
         // "Resume scan" to make that clear to the operator.
         const wasAborted = !!m?.aborted;
         _setScanUi(false, { resume: wasAborted });
-        const sets = Array.isArray(m?.duplicateSets) ? m.duplicateSets : [];
+        // The WS done payload no longer includes the full duplicateSets
+        // array (it can be megabytes on large libraries). Pull the sets
+        // from the status endpoint which reads the tracker's in-memory
+        // result directly.
+        let sets = Array.isArray(m?.duplicateSets) ? m.duplicateSets : [];
+        if (!sets.length) {
+            try {
+                const status = await api.get('/api/maintenance/dedup/status');
+                if (status?.result?.duplicateSets) {
+                    sets = status.result.duplicateSets;
+                }
+            } catch {}
+        }
         if (sets.length) {
-            // Partial scans may surface duplicate sets from files hashed in
-            // prior runs — render them so results aren't lost.
             _renderSets(sets);
         }
         if (wasAborted) {

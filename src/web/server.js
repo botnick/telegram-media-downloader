@@ -5934,7 +5934,25 @@ app.post('/api/maintenance/dedup/scan', async (req, res) => {
                 });
             }
         } catch {}
-        return { ...result, aborted: signal?.aborted || false };
+        // The JobTracker spreads the entire result into the WS
+        // `dedup_done` broadcast. With no set-count cap the full
+        // duplicateSets array can be megabytes, blowing the WS frame.
+        // Solution: stash the heavy array on a non-enumerable property
+        // so JSON.stringify (used by broadcast) skips it, but the
+        // GET /dedup/status handler can still read it via getStatus().
+        const wsResult = {
+            scanned: result?.scanned || 0,
+            hashed: result?.hashed || 0,
+            errored: result?.errored || 0,
+            aborted: signal?.aborted || false,
+        };
+        const sets = Array.isArray(result?.duplicateSets) ? result.duplicateSets : [];
+        Object.defineProperty(wsResult, 'duplicateSets', {
+            value: sets,
+            enumerable: false,
+            configurable: true,
+        });
+        return wsResult;
     });
     if (!r.started) {
         return res
@@ -5961,10 +5979,14 @@ app.post('/api/maintenance/dedup/scan/stop', (req, res) => {
 
 app.get('/api/maintenance/dedup/status', async (req, res) => {
     const snap = _jobTrackers.dedupScan.getStatus();
-    // Flatten progress into top-level fields for the existing front-end
-    // contract (it reads `.processed`, `.total`, `.stage` directly off
-    // the response). The tracker keeps progress under `progress.*`.
-    res.json({ ...snap, ...(snap.progress || {}) });
+    // Re-attach the non-enumerable duplicateSets so the frontend can
+    // pull the full result via this endpoint (the WS done event strips
+    // it to avoid multi-MB frames).
+    const out = { ...snap, ...(snap.progress || {}) };
+    if (snap.result && !out.result?.duplicateSets && snap.result.duplicateSets) {
+        out.result = { ...snap.result, duplicateSets: snap.result.duplicateSets };
+    }
+    res.json(out);
 });
 
 // Library hash-coverage stats — total rows, how many already have a SHA-256
