@@ -62,7 +62,10 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
         for (const row of rows) {
             if (signal?.aborted) break;
             try {
-                const meta = await generateForDownload(row, cfg, { overwrite: 'if-changed' });
+                const meta = await generateForDownload(row, cfg, {
+                    overwrite: 'if-changed',
+                    signal,
+                });
                 if (meta) generated++;
                 else skipped++;
             } catch (_e) {

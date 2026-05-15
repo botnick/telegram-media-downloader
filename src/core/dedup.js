@@ -196,7 +196,7 @@ export async function findDuplicates(opts = {}) {
 
     // Sort by reclaimable space (size × extra copies), then by count.
     allDupes.sort((a, b) => b.max_size * (b.cnt - 1) - a.max_size * (a.cnt - 1) || b.cnt - a.cnt);
-    const duplicates = allDupes.slice(0, 500);
+    const duplicates = allDupes;
 
     // Build the file-detail sets for each duplicate hash. Yields every
     // 50 sets so WS progress events keep flowing.

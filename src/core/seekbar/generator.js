@@ -342,8 +342,9 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
         }
     }
 
+    if (opts.signal?.aborted) return null;
     const duration = await _ffprobeDuration(srcAbs);
-    if (!duration) return null;
+    if (!duration || opts.signal?.aborted) return null;
 
     const plan = planSprite(duration, conf);
     await _ensureSeekbarDir();
@@ -354,13 +355,26 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
     // error so `npm start` still works without the binary built.
     if (getSidecarUrl()) {
         try {
+            // Use async mode for bulk scans so the sidecar queues the
+            // job and returns immediately. This lets cancel abort the
+            // scan loop without waiting for ffmpeg to finish the current
+            // sprite (sync mode blocks until the sprite is done).
+            const isBulk = !!opts.signal;
             const r = await sidecarSubmitOne({
                 videoId: String(id),
                 srcPath: srcAbs,
-                async: false,
+                async: isBulk,
                 cfg: conf,
+                signal: opts.signal || null,
             });
-            if (r && r.status === 'done' && r.sprite_path) {
+            if (
+                r &&
+                (r.status === 'done' || r.status === 'pending') &&
+                (r.sprite_path || r.status === 'pending')
+            ) {
+                if (r.status === 'pending') {
+                    return { pending: true, download_id: id };
+                }
                 const sidecarMeta = {
                     version: 1,
                     download_id: id,

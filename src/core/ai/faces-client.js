@@ -266,7 +266,7 @@ export async function detectFaces(absPath, cfg = {}, onLog = null) {
  *   Items rejected with `path_not_allowed` (Docker sandbox) are retried
  *   individually via the single-detect b64 fallback path.
  */
-export async function detectFacesBatch(absPaths, cfg = {}, onLog = null) {
+export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal = null) {
     _bootstrapFromEnv();
     if (!absPaths.length) return [];
     const url = getSidecarUrl();
@@ -291,6 +291,10 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null) {
     try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), batchTimeoutMs);
+        if (signal) {
+            if (signal.aborted) ctrl.abort();
+            else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+        }
         try {
             batchRes = await globalThis.fetch(`${url}/detect/batch`, {
                 method: 'POST',
@@ -369,7 +373,7 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null) {
  *   `[]`   = processed but no faces found
  *   `[…]` = detected unique faces (one embedding per person per video)
  */
-export async function detectFacesInVideo(absPath, cfg = {}, onLog = null) {
+export async function detectFacesInVideo(absPath, cfg = {}, onLog = null, signal = null) {
     _bootstrapFromEnv();
     const url = getSidecarUrl();
     if (!url) {
@@ -403,6 +407,10 @@ export async function detectFacesInVideo(absPath, cfg = {}, onLog = null) {
     try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), videoTimeoutMs);
+        if (signal) {
+            if (signal.aborted) ctrl.abort();
+            else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+        }
         try {
             res = await globalThis.fetch(`${url}/detect/video`, {
                 method: 'POST',

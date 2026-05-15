@@ -28,6 +28,16 @@ async function _fetch(path, opts = {}) {
     if (!_baseUrl) throw new Error('seekbar sidecar URL not configured');
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), opts.timeoutMs || 120_000);
+    // Forward external abort signal so JobTracker cancellation kills
+    // in-flight HTTP requests immediately instead of waiting for the
+    // sidecar's 10-minute processing timeout.
+    if (opts.signal) {
+        if (opts.signal.aborted) {
+            ctrl.abort();
+        } else {
+            opts.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+        }
+    }
     try {
         const r = await fetch(_baseUrl + path, {
             ...opts,
@@ -81,7 +91,14 @@ export async function health() {
  * defaults). Unknown fields are silently ignored by older sidecars so
  * callers can always forward the full cfg snapshot.
  */
-export async function submitOne({ videoId, srcPath, priority = 1, async = false, cfg = null }) {
+export async function submitOne({
+    videoId,
+    srcPath,
+    priority = 1,
+    async = false,
+    cfg = null,
+    signal = null,
+}) {
     const body = {
         video_id: String(videoId),
         path: String(srcPath),
@@ -111,9 +128,8 @@ export async function submitOne({ videoId, srcPath, priority = 1, async = false,
     return _fetch('/v1/sprite', {
         method: 'POST',
         body: JSON.stringify(body),
-        // Long timeout for sync mode — a 30-min clip can take a while
-        // on a Pi class device even with hwaccel.
         timeoutMs: 10 * 60_000,
+        signal,
     });
 }
 

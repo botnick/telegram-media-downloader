@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.19.5] — 2026-05-15
+
+Cancel responsiveness + dedup unlimited sets.
+
+### Fixed
+- **Seekbar cancel hangs** — bulk scan now uses async sidecar mode so cancel takes effect immediately instead of waiting for the current ffmpeg sprite to finish (could block minutes on large videos).
+- **Faces scan cancel hangs** — abort signal forwarded through `detectFacesBatch` and `detectFacesInVideo` HTTP calls so in-flight sidecar requests are aborted on cancel.
+- **Seekbar signal chain** — abort signal propagated from JobTracker through scan-runner → generator → client → fetch, with pre-flight `signal.aborted` check before ffprobe.
+
+### Changed
+- **Dedup scan no longer capped at 500 sets** — returns all duplicate sets found, sorted by reclaimable space.
+
+### Service worker
+- `VERSION = 'v2195'`
+
 ## [2.19.4] — 2026-05-15
 
 People card cleanup, GitHub-style changelog viewer.

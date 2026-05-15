@@ -51,11 +51,6 @@ jobs:
             goarch: '386'
             slug: tgdl-seekbar-linux-x86
             target: seekbar-server
-          - os: macos-13
-            goos: darwin
-            goarch: amd64
-            slug: tgdl-seekbar-mac-x64
-            target: seekbar-server
           - os: macos-14
             goos: darwin
             goarch: arm64

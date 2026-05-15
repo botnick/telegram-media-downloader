@@ -57,10 +57,6 @@ jobs:
             arch: arm64
             target: tgdl-faces-linux-arm64
             archive: tgdl-faces-linux-arm64.tar.gz
-          - os: macos-13
-            arch: x64
-            target: tgdl-faces-mac-x64
-            archive: tgdl-faces-mac-x64.tar.gz
           - os: macos-14
             arch: arm64
             target: tgdl-faces-mac-arm64

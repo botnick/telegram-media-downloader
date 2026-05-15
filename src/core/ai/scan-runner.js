@@ -321,6 +321,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                                     chunk.map((i) => i.abs),
                                     cfg,
                                     log,
+                                    signal,
                                 ).catch((e) => {
                                     log('warn', `detectFacesBatch threw: ${e?.message || e}`);
                                     return chunk.map(() => null);
@@ -416,7 +417,7 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
                         let detected = null;
                         const _tv0 = Date.now();
                         try {
-                            detected = await detectFacesInVideo(abs, cfg, log);
+                            detected = await detectFacesInVideo(abs, cfg, log, signal);
                         } catch (e) {
                             log('warn', `detectFacesInVideo threw for ${abs}: ${e?.message || e}`);
                         }
