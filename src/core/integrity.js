@@ -330,7 +330,7 @@ export async function reindexFromDisk(configGroups, onProgress) {
             // No downloads dir → nothing to do, succeed quietly.
             return { ...result, finishedAt: Date.now() };
         }
-        const groupDirs = topEntries.filter((e) => e.isDirectory());
+        const groupDirs = topEntries.filter((e) => e.isDirectory() && e.name !== '.deleted');
         result.groups = groupDirs.length;
         let groupsDone = 0;
         for (const gd of groupDirs) {

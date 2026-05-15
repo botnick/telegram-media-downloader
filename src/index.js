@@ -1976,7 +1976,9 @@ async function purgeData(client, config) {
             if (fs.existsSync(PHOTOS_DIR)) {
                 const photos = fs.readdirSync(PHOTOS_DIR);
                 for (const photo of photos) {
-                    fs.unlinkSync(path.join(PHOTOS_DIR, photo));
+                    try {
+                        fs.unlinkSync(path.join(PHOTOS_DIR, photo));
+                    } catch {}
                 }
             }
 

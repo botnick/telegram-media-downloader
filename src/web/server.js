@@ -12567,7 +12567,7 @@ ${tip}
         let purged = 0;
         const groups = await fs.readdir(dlDir, { withFileTypes: true }).catch(() => []);
         for (const gd of groups) {
-            if (!gd.isDirectory()) continue;
+            if (!gd.isDirectory() || gd.name === '.deleted') continue;
             const groupPath = path.join(dlDir, gd.name);
             const subs = await fs.readdir(groupPath, { withFileTypes: true }).catch(() => []);
             for (const sub of subs) {
