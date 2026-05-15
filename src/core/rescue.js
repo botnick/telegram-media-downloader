@@ -13,7 +13,12 @@
  */
 import path from 'path';
 import fs from 'fs/promises';
-import { getExpiredPending, deleteDownloadsBy, setRescueLastSweep } from './db.js';
+import {
+    getExpiredPending,
+    deleteDownloadsBy,
+    setRescueLastSweep,
+    purgeOrphanPeople,
+} from './db.js';
 import { purgeThumbsForDownload } from './thumbs.js';
 import { purgeSeekbarForDownload, collectSeekbarPaths } from './seekbar/index.js';
 import { getDownloadsDir } from './paths.js';
@@ -35,10 +40,15 @@ async function tryUnlink(row) {
     if (path.isAbsolute(normalized) || normalized.split(path.sep).includes('..')) return;
     const target = path.join(DOWNLOADS_DIR, normalized);
     try {
-        await fs.unlink(target);
-    } catch (e) {
-        if (e && e.code !== 'ENOENT') {
-            console.warn(`[rescue] unlink failed for ${normalized}: ${e.message}`);
+        const { deferDelete } = await import('./deferred-delete.js');
+        deferDelete(target);
+    } catch {
+        try {
+            await fs.unlink(target);
+        } catch (e2) {
+            if (e2?.code !== 'ENOENT') {
+                console.warn(`[rescue] unlink failed for ${normalized}: ${e2.message}`);
+            }
         }
     }
 }
@@ -155,6 +165,12 @@ export class RescueSweeper {
                 }
             }
 
+            if (swept > 0) {
+                try {
+                    purgeOrphanPeople();
+                } catch {}
+                import('./deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
+            }
             setRescueLastSweep(swept);
             // One structured log line per sweep — matches the disk-rotator
             // shape so the two side-by-side modules feel consistent.

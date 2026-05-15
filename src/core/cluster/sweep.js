@@ -173,7 +173,12 @@ export async function resolveConflict(conflictId, keep) {
                         'SELECT sprite_path, meta_path FROM seekbar_sprites WHERE download_id = ?',
                     )
                     .get(id);
-                await fs.unlink(abs).catch(() => {});
+                try {
+                    const { deferDelete } = await import('../deferred-delete.js');
+                    deferDelete(abs);
+                } catch {
+                    await fs.unlink(abs).catch(() => {});
+                }
                 getDb().prepare('DELETE FROM downloads WHERE id = ?').run(id);
                 purgeThumbsForDownload(id).catch(() => {});
                 purgeSeekbarForDownload(id, seekbarRow || undefined).catch(() => {});
@@ -201,6 +206,13 @@ export async function resolveConflict(conflictId, keep) {
                 }
             }
         }
+    }
+    if (unlinked > 0) {
+        try {
+            const { purgeOrphanPeople } = await import('../db.js');
+            purgeOrphanPeople();
+        } catch {}
+        import('../deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
     }
     conflicts.splice(idx, 1);
     _saveConflicts(conflicts);

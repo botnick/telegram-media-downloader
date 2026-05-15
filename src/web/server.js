@@ -4673,10 +4673,16 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             const sr = await safeResolveDownload(p);
             if (sr.ok) {
                 try {
-                    await fs.unlink(sr.real);
+                    const { deferDelete } = await import('../core/deferred-delete.js');
+                    deferDelete(sr.real);
                     unlinked++;
-                } catch (e) {
-                    if (e.code !== 'ENOENT') throw e;
+                } catch {
+                    try {
+                        await fs.unlink(sr.real);
+                        unlinked++;
+                    } catch (e2) {
+                        if (e2.code !== 'ENOENT') throw e2;
+                    }
                 }
             }
             processed += 1;
@@ -4729,10 +4735,16 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 const sr = await safeResolveDownload(candidate);
                 if (sr.ok) {
                     try {
-                        await fs.unlink(sr.real);
+                        const { deferDelete } = await import('../core/deferred-delete.js');
+                        deferDelete(sr.real);
                         unlinked++;
-                    } catch (e) {
-                        if (e.code !== 'ENOENT') throw e;
+                    } catch {
+                        try {
+                            await fs.unlink(sr.real);
+                            unlinked++;
+                        } catch (e2) {
+                            if (e2.code !== 'ENOENT') throw e2;
+                        }
                     }
                 }
                 processed += 1;
@@ -4741,9 +4753,6 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 }
             }
         }
-        // Merge frontend ids + ids we just resolved from paths into a
-        // single dedup set so we do not delete a row twice + so the
-        // thumb purge loop hits every removed download.
         const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
         const seekbarMap = collectSeekbarPaths(allIds);
         const dbDeleted = deleteDownloadsBy({ ids: allIds });
@@ -4756,6 +4765,10 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 await purgeSeekbarForDownload(id, seekbarMap.get(id));
             } catch {}
         }
+        try {
+            purgeOrphanPeople();
+        } catch {}
+        import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
         broadcast({ type: 'bulk_delete', unlinked, dbDeleted, count: allIds.length });
         return { unlinked, dbDeleted, requested: total };
     });
@@ -4943,7 +4956,12 @@ app.delete('/api/file', async (req, res) => {
                 .json({ error: r.reason === 'missing' ? 'File not found' : 'Access denied' });
         }
 
-        await fs.unlink(r.real);
+        try {
+            const { deferDelete } = await import('../core/deferred-delete.js');
+            deferDelete(r.real);
+        } catch {
+            await fs.unlink(r.real);
+        }
         console.log(`🗑️ Deleted: ${filePath}`);
 
         // Remove from DB (by basename — the DB stores filenames, not paths).
@@ -10055,10 +10073,14 @@ app.post('/api/cluster/files/delete', async (req, res) => {
         let freedBytes = 0;
         if (r.ok) {
             try {
-                await fs.unlink(r.real);
+                const { deferDelete } = await import('../core/deferred-delete.js');
+                deferDelete(r.real);
                 freedBytes = Number(row.file_size) || 0;
             } catch {
-                /* best effort */
+                try {
+                    await fs.unlink(r.real);
+                    freedBytes = Number(row.file_size) || 0;
+                } catch {}
             }
         }
         const seekbarRow = getDb()
@@ -10067,6 +10089,10 @@ app.post('/api/cluster/files/delete', async (req, res) => {
         getDb().prepare('DELETE FROM downloads WHERE id = ?').run(Number(row.id));
         purgeThumbsForDownload(row.id).catch(() => {});
         purgeSeekbarForDownload(row.id, seekbarRow || undefined).catch(() => {});
+        try {
+            purgeOrphanPeople();
+        } catch {}
+        import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
         recordClusterAudit({
             kind: 'cross_delete',
             ok: true,

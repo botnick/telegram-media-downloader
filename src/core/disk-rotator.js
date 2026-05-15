@@ -19,7 +19,12 @@
 
 import path from 'path';
 import fs from 'fs/promises';
-import { getTotalSizeBytes, getOldestDownloads, deleteDownloadsBy } from './db.js';
+import {
+    getTotalSizeBytes,
+    getOldestDownloads,
+    deleteDownloadsBy,
+    purgeOrphanPeople,
+} from './db.js';
 import { purgeThumbsForDownload } from './thumbs.js';
 import { purgeSeekbarForDownload, collectSeekbarPaths } from './seekbar/index.js';
 import { getDownloadsDir } from './paths.js';
@@ -64,14 +69,18 @@ export function parseSize(input) {
 async function tryUnlink(row) {
     if (!row.file_path) return;
     const normalized = path.normalize(String(row.file_path));
-    if (path.isAbsolute(normalized) || normalized.includes('..')) return; // refuse to escape
+    if (path.isAbsolute(normalized) || normalized.includes('..')) return;
     const target = path.join(DOWNLOADS_DIR, normalized);
     try {
-        await fs.unlink(target);
+        const { deferDelete } = await import('./deferred-delete.js');
+        deferDelete(target);
     } catch (e) {
-        if (e && e.code !== 'ENOENT') {
-            // Log but don't throw — the rotator is best-effort.
-            console.warn(`[disk-rotator] unlink failed for ${normalized}: ${e.message}`);
+        try {
+            await fs.unlink(target);
+        } catch (e2) {
+            if (e2?.code !== 'ENOENT') {
+                console.warn(`[disk-rotator] unlink failed for ${normalized}: ${e2.message}`);
+            }
         }
     }
 }
@@ -237,6 +246,12 @@ export class DiskRotator {
                 }
             }
 
+            if (deleted > 0) {
+                try {
+                    purgeOrphanPeople();
+                } catch {}
+                import('./deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
+            }
             const after = getTotalSizeBytes();
             console.log(
                 `[disk-rotator] sweep ${JSON.stringify({ before, deleted, after, capBytes })}`,
