@@ -23,6 +23,7 @@ import path from 'path';
 import { getDb } from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { getDownloadsDir } from './paths.js';
+import { deferDelete } from './deferred-delete.js';
 
 // Where the downloader writes by default.
 // `safeResolveDownload`-style resolution lives in server.js; for the CLI
@@ -286,17 +287,12 @@ export function deleteByIds(ids) {
         const abs = resolveStoredPath(r.file_path);
         if (abs) {
             try {
-                fs.unlinkSync(abs);
+                const moved = deferDelete(abs);
                 freed += Number(r.file_size) || 0;
                 idsToDrop.push(r.id);
-            } catch (e) {
-                if (e?.code === 'ENOENT') {
-                    missing++;
-                    freed += Number(r.file_size) || 0;
-                    idsToDrop.push(r.id);
-                }
-                // Other errors (EPERM etc.) — skip the row, don't drop from DB
-                // so the user can retry / inspect.
+                if (!moved) missing++;
+            } catch {
+                // EPERM etc. — skip the row so user can retry.
             }
         } else {
             missing++;

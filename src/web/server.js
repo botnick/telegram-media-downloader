@@ -6085,6 +6085,8 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
         try {
             broadcast({ type: 'bulk_delete', count: cleanIds.length });
         } catch {}
+        // Drain deferred-deleted files in the background.
+        import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
         return { ...aggregate, requested: cleanIds.length };
     });
     if (!r.started) {
@@ -12561,6 +12563,15 @@ ${tip}
     } catch (e) {
         console.warn('[startup] .part cleanup failed:', e.message);
     }
+
+    // Drain leftover deferred-deleted files from a previous crash/restart.
+    try {
+        const { hasLeftovers, startDrain } = await import('../core/deferred-delete.js');
+        if (hasLeftovers()) {
+            console.log('[startup] draining leftover .deleted files');
+            startDrain().catch(() => {});
+        }
+    } catch {}
 
     // Resume the realtime monitor if it was running before the last
     // shutdown. The start/stop endpoints persist monitor.autoStart to
