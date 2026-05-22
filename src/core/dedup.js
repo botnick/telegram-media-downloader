@@ -110,7 +110,7 @@ export async function findDuplicates(opts = {}) {
     // Keyset cursor over id DESC — keeps a stable window even as hashed
     // rows are updated (file_hash no longer NULL, so they fall out of the
     // WHERE clause naturally on the next page fetch).
-    const PAGE_SIZE = 50;
+    const PAGE_SIZE = 200;
     let beforeId = Number.MAX_SAFE_INTEGER;
     const pageStmt = db.prepare(`
         SELECT id, file_path, file_size FROM downloads
@@ -141,7 +141,7 @@ export async function findDuplicates(opts = {}) {
             } catch {
                 errored++;
             }
-            if (onProgress && (processed % 25 === 0 || processed === total)) {
+            if (onProgress && (processed % 10 === 0 || processed === total)) {
                 onProgress({ stage: 'hashing', processed, total, hashed, errored });
             }
         }
@@ -153,7 +153,11 @@ export async function findDuplicates(opts = {}) {
     // Second pass: paginated GROUP BY — scan the file_hash index in order,
     // grouping 5000 distinct hashes per page. Each page blocks ~10-50ms
     // instead of the old single-query approach that blocked 3-15s on 1M rows.
-    if (onProgress) onProgress({ stage: 'grouping', processed: 0, total: 0, hashed, errored });
+    const totalHashes = db
+        .prepare('SELECT COUNT(DISTINCT file_hash) AS n FROM downloads WHERE file_hash IS NOT NULL')
+        .get().n;
+    if (onProgress)
+        onProgress({ stage: 'grouping', processed: 0, total: totalHashes, hashed, errored });
     await new Promise((r) => setImmediate(r));
 
     const HASH_PAGE = 5000;
@@ -186,7 +190,7 @@ export async function findDuplicates(opts = {}) {
             onProgress({
                 stage: 'grouping',
                 processed: scannedGroups,
-                total: 0,
+                total: totalHashes,
                 hashed,
                 errored,
                 duplicatesFound: allDupes.length,
@@ -209,7 +213,7 @@ export async function findDuplicates(opts = {}) {
          WHERE file_hash = ?
          ORDER BY created_at ASC, id ASC
     `);
-    const SETS_BATCH = 50;
+    const SETS_BATCH = 25;
     for (let i = 0; i < duplicates.length; i++) {
         if (signal?.aborted) break;
         const d = duplicates[i];

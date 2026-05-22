@@ -216,17 +216,21 @@ function _renderSet(set, idx) {
 function _refreshSummary() {
     const root = $('page-maintenance-duplicates');
     if (!root) return;
-    const ids = [...root.querySelectorAll('.dup-del:checked')].map((el) => Number(el.dataset.id));
+    const checked = root.querySelectorAll('.dup-del:checked');
+    const idSet = new Set();
+    for (const el of checked) idSet.add(Number(el.dataset.id));
     let bytes = 0;
     for (const set of _sets) {
-        for (const f of set.files) if (ids.includes(f.id)) bytes += Number(f.fileSize) || 0;
+        for (const f of set.files) {
+            if (idSet.has(f.id)) bytes += Number(f.fileSize) || 0;
+        }
     }
     const sum = $('dup-summary');
     if (sum) {
         sum.textContent = i18nTf(
             'maintenance.dedup.selected',
-            { count: ids.length, freed: _formatBytes(bytes) },
-            `${ids.length} selected · ${_formatBytes(bytes)} will be freed`,
+            { count: idSet.size, freed: _formatBytes(bytes) },
+            `${idSet.size} selected · ${_formatBytes(bytes)} will be freed`,
         );
     }
 }
