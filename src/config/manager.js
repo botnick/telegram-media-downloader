@@ -155,6 +155,11 @@ const DEFAULT_CONFIG = {
             // null = inherit. Allowed values: same as thumbs.hwaccel
             // ('', 'vaapi', 'qsv', 'cuda', 'videotoolbox', 'd3d11va', 'dxva2').
             hwaccel: null,
+            // HTTP URL of the Go seekbar sidecar. Empty = auto-spawn local
+            // binary. Docker compose overrides via SEEKBAR_SIDECAR_URL env.
+            sidecarUrl: '',
+            // API token for auth-protected sidecars.
+            apiToken: '',
         },
         // AI subsystem (semantic search + auto-tag + face clustering).
         // Master switch defaults OFF so existing installs are unaffected.

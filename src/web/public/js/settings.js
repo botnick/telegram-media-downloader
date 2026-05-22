@@ -989,6 +989,8 @@ export function loadAdvanced(config) {
     if (skFmt) skFmt.value = String(sk.format || 'webp').toLowerCase();
     const skHw = document.getElementById('setting-adv-seekbar-hwaccel');
     if (skHw) skHw.value = String(sk.hwaccel || '').toLowerCase();
+    set('setting-adv-seekbar-sidecar-url', typeof sk.sidecarUrl === 'string' ? sk.sidecarUrl : '');
+    set('setting-adv-seekbar-api-token', typeof sk.apiToken === 'string' ? sk.apiToken : '');
     // Master + auto toggles — same idempotent wiring pattern as the
     // NSFW toggles; their optimistic POST is owned by maintenance-seekbar.js
     // but we still mirror the visual `.active` state here so a fresh
@@ -1473,6 +1475,8 @@ function _gatherScopedPayload(page) {
                     hwaccel: String(get('setting-adv-seekbar-hwaccel') || '')
                         .toLowerCase()
                         .trim(),
+                    sidecarUrl: String(get('setting-adv-seekbar-sidecar-url') || '').trim(),
+                    apiToken: String(get('setting-adv-seekbar-api-token') || '').trim(),
                 },
             },
         };
