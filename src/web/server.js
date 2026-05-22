@@ -135,6 +135,7 @@ import {
     clearClassifierCache as nsfwClearCache,
     classifierReady as nsfwClassifierReady,
     setBlocklistDeleteCallback as nsfwSetBlocklistDeleteCallback,
+    initNsfwSidecar,
     NSFW_DEFAULTS,
     getNsfwStats,
     getNsfwDeleteCandidates,
@@ -6997,6 +6998,35 @@ app.post('/api/maintenance/nsfw/preload', async (req, res) => {
     }
 });
 
+// Server-side health probe for an arbitrary NSFW sidecar URL (CORS proxy).
+app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
+    const url = typeof req.body?.url === 'string' ? req.body.url.trim().replace(/\/+$/, '') : '';
+    if (!url) return res.status(400).json({ ok: false, error: 'url_required' });
+    if (!/^https?:\/\//i.test(url))
+        return res.status(400).json({ ok: false, error: 'invalid_scheme' });
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        let r;
+        try {
+            r = await fetch(`${url}/health`, { method: 'GET', signal: ctrl.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!r.ok) return res.json({ ok: false, error: `http_${r.status}` });
+        const body = await r.json();
+        res.json({
+            ok: body?.ok === true,
+            version: body?.version ?? null,
+            model: body?.model ?? null,
+            ready: body?.ready === true,
+        });
+    } catch (e) {
+        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
+        res.json({ ok: false, error: msg });
+    }
+});
+
 // Snapshot of the in-process classifier load state. Polled by the
 // /maintenance/nsfw page so the model-status pill reflects reality
 // even between WS messages.
@@ -7732,6 +7762,38 @@ app.get('/api/ai/scan/status', async (req, res) => {
 //
 // Mirrors the ffmpeg `hwaccel-probe` endpoint pattern used by the Build
 // thumbnails page. Proxies to the Python sidecar's `/providers` route
+// Server-side health probe for an arbitrary faces sidecar URL.
+// The browser can't hit a Cloudflare-tunnelled endpoint directly (CORS),
+// so we proxy the health check. Accepts { url } in the POST body.
+app.post('/api/ai/faces/health-test', async (req, res) => {
+    const url = typeof req.body?.url === 'string' ? req.body.url.trim().replace(/\/+$/, '') : '';
+    if (!url) return res.status(400).json({ ok: false, error: 'url_required' });
+    if (!/^https?:\/\//i.test(url))
+        return res.status(400).json({ ok: false, error: 'invalid_scheme' });
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        let r;
+        try {
+            r = await fetch(`${url}/health`, { method: 'GET', signal: ctrl.signal });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!r.ok) return res.json({ ok: false, error: `http_${r.status}` });
+        const body = await r.json();
+        res.json({
+            ok: body?.ok === true,
+            version: body?.version ?? null,
+            model: body?.model ?? null,
+            ready: body?.ready === true,
+            providers: body?.providers_resolved ?? null,
+        });
+    } catch (e) {
+        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
+        res.json({ ok: false, error: msg });
+    }
+});
+
 // which spins up a tiny onnxruntime session against each candidate
 // provider — only backends that genuinely allocate a session end up in
 // `available`. Surfaces a clear 503 when the sidecar isn't running.
@@ -11255,6 +11317,13 @@ app.post('/api/config', async (req, res) => {
             }
         }
 
+        // Re-init NSFW sidecar when the URL changes.
+        if (req.body.advanced?.nsfw?.sidecarUrl !== undefined) {
+            try {
+                initNsfwSidecar(loadConfig());
+            } catch {}
+        }
+
         // Invalidate the dialogs response cache so the next /api/dialogs hit
         // rebuilds `inConfig` from the freshly-saved config. Without this,
         // adding a group via POST /api/config keeps showing the dialog as
@@ -12523,6 +12592,13 @@ ${tip}
             purgeOrphanPeople();
         } catch {}
     });
+
+    // Init NSFW sidecar URL from config + env before any scan/preload.
+    try {
+        initNsfwSidecar(loadConfig());
+    } catch (e) {
+        console.warn('[nsfw] initNsfwSidecar failed:', e.message);
+    }
 
     // Pre-fetch the NSFW classifier in the background when the operator
     // has enabled both `advanced.nsfw.enabled` and `advanced.nsfw.preload`.

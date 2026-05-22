@@ -947,6 +947,7 @@ export function loadAdvanced(config) {
     );
     set('setting-adv-nsfw-threshold', Number.isFinite(ns.threshold) ? ns.threshold : 0.6);
     set('setting-adv-nsfw-concurrency', Number.isFinite(ns.concurrency) ? ns.concurrency : 1);
+    set('setting-adv-nsfw-sidecar-url', typeof ns.sidecarUrl === 'string' ? ns.sidecarUrl : '');
     wireToggle('nsfw-ft-video', Array.isArray(ns.fileTypes) && ns.fileTypes.includes('video'));
     set(
         'setting-adv-nsfw-video-max-tiles',
@@ -1122,6 +1123,7 @@ function gatherAdvanced() {
             dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
             threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
             concurrency: num('setting-adv-nsfw-concurrency', 1),
+            sidecarUrl: String(get('setting-adv-nsfw-sidecar-url') || '').trim(),
             videoMaxTiles: num('setting-adv-nsfw-video-max-tiles', 48),
             fileTypes: (() => {
                 const t = ['photo'];
@@ -1421,6 +1423,7 @@ function _gatherScopedPayload(page) {
                     dtype: String(get('setting-adv-nsfw-dtype') || 'q8'),
                     threshold: parseFloat(get('setting-adv-nsfw-threshold')) || 0.6,
                     concurrency: num('setting-adv-nsfw-concurrency', 1),
+                    sidecarUrl: String(get('setting-adv-nsfw-sidecar-url') || '').trim(),
                     videoMaxTiles: num('setting-adv-nsfw-video-max-tiles', 48),
                     fileTypes: (() => {
                         const t = ['photo'];

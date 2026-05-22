@@ -139,6 +139,13 @@ function _bindOnce() {
         }
     });
 
+    // External sidecar URL — save on blur/Enter, test on button click.
+    const sidecarUrlEl = $('#ai-faces-sidecar-url');
+    if (sidecarUrlEl) {
+        sidecarUrlEl.addEventListener('change', _onFacesSidecarUrlChange);
+    }
+    $('#ai-faces-sidecar-test-btn')?.addEventListener('click', _onFacesSidecarTestClick);
+
     // Settings inputs — model / threshold / minPoints / provider.
     // `change` (not `input`) so dragging the slider doesn't spam saves.
     $('#ai-faces-model')?.addEventListener('change', async (e) => {
@@ -615,6 +622,12 @@ function _renderStatus(status) {
         const cur = String(cfg.faces?.providers || 'auto').toLowerCase();
         if (provSel.value !== cur) provSel.value = cur;
     }
+
+    const sidecarUrlEl = $('#ai-faces-sidecar-url');
+    if (sidecarUrlEl) {
+        const cur = String(cfg.faces?.sidecarUrl || '');
+        if (sidecarUrlEl.value !== cur) sidecarUrlEl.value = cur;
+    }
 }
 
 function _renderSidecarBadge(status) {
@@ -981,6 +994,63 @@ async function _applyPreset(name) {
             `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
             'error',
         );
+    }
+}
+
+async function _onFacesSidecarUrlChange() {
+    const el = $('#ai-faces-sidecar-url');
+    const url = String(el?.value || '').trim();
+    try {
+        await api.post('/api/config', {
+            advanced: { ai: { faces: { sidecarUrl: url } } },
+        });
+        await api.post('/api/ai/faces/restart', {});
+        showToast(
+            url
+                ? i18nT('maintenance.ai.sidecar_url_saved', 'Sidecar URL saved — reconnecting…')
+                : i18nT('maintenance.ai.sidecar_url_cleared', 'Sidecar URL cleared — using local'),
+            'success',
+        );
+        await refreshStatus();
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _onFacesSidecarTestClick() {
+    const el = $('#ai-faces-sidecar-url');
+    const resultEl = $('#ai-faces-sidecar-test-result');
+    const url = String(el?.value || '').trim();
+    if (!url) {
+        if (resultEl) {
+            resultEl.textContent = i18nT('maintenance.ai.sidecar_test_empty', 'Enter a URL first');
+            resultEl.className = 'text-[10px] shrink-0 text-yellow-400';
+        }
+        return;
+    }
+    if (resultEl) {
+        resultEl.textContent = i18nT('maintenance.ai.sidecar_testing', 'Testing…');
+        resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
+    }
+    try {
+        const r = await api.post('/api/ai/faces/health-test', { url });
+        if (resultEl) {
+            if (r.ok) {
+                const parts = [r.model, r.version ? `v${r.version}` : null]
+                    .filter(Boolean)
+                    .join(' · ');
+                resultEl.textContent = `✓ ${parts || 'Connected'}`;
+                resultEl.className = 'text-[10px] shrink-0 text-green-400';
+            } else {
+                resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
+                resultEl.className = 'text-[10px] shrink-0 text-red-400';
+            }
+        }
+    } catch (e) {
+        if (resultEl) {
+            resultEl.textContent = `✗ ${e?.message || 'error'}`;
+            resultEl.className = 'text-[10px] shrink-0 text-red-400';
+        }
     }
 }
 

@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.20.0] — 2026-05-23
+
+External AI sidecar — offload face detection and NSFW classification to a remote GPU server.
+
+### Added
+- **External sidecar URLs** configurable from the web dashboard — face detection (Maintenance > AI > System Health) and NSFW classification (Maintenance > NSFW settings).
+- **NSFW HTTP client** (`src/core/nsfw-client.js`) — mirrors the faces-client pattern with retry, b64 fallback, cached health probe.
+- **NSFW sidecar routing** in `nsfw.js` — when `sidecarUrl` is set, classification routes to the external service; falls back to local WASM when empty.
+- **Standalone NSFW sidecar** (`nsfw-service/`) — FastAPI + transformers + torch with GPU auto-detect. Dockerfile included.
+- **Health-test proxy endpoints** — `POST /api/ai/faces/health-test` and `POST /api/maintenance/nsfw/sidecar-test` for CORS-safe connection testing from the browser.
+- **Env var** `TGDL_NSFW_SIDECAR_URL` — mirrors the faces-service pattern for Docker/k8s deployments.
+
+### Fixed
+- **SSRF protection** on health-test endpoints — rejects non-http(s) URL schemes.
+- **NSFW background classifier** respects `cfg.enabled=false` even when a remote sidecar URL is configured.
+
+### Service worker
+- `VERSION = 'v2200'`
+
 ## [2.19.6] — 2026-05-15
 
 Deferred file deletion + unified cleanup across all 15 delete paths.

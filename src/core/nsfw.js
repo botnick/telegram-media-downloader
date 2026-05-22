@@ -33,6 +33,13 @@ import {
 import { sha256OfFile } from './checksum.js';
 import { getSpritePath, getMetaFilePath } from './seekbar/generator.js';
 import { getDataDir, getRepoRoot } from './paths.js';
+import {
+    setSidecarUrl as _setNsfwSidecarUrl,
+    getSidecarUrl as getNsfwSidecarUrl,
+    applyNsfwSidecarCfg,
+    health as nsfwSidecarHealth,
+    classifyFile as remoteClassifyFile,
+} from './nsfw-client.js';
 
 const DATA_DIR = getDataDir();
 
@@ -82,6 +89,15 @@ export const NSFW_MODEL_SUGGESTIONS = Object.freeze([
 ]);
 
 const VALID_DTYPES = new Set(['q8', 'fp16', 'fp32', 'q4']);
+
+export function initNsfwSidecar(cfg) {
+    const nsfwCfg = cfg?.advanced?.nsfw || {};
+    const url = process.env.TGDL_NSFW_SIDECAR_URL || nsfwCfg.sidecarUrl || '';
+    _setNsfwSidecarUrl(url);
+    if (nsfwCfg) applyNsfwSidecarCfg(nsfwCfg);
+}
+
+export { getNsfwSidecarUrl };
 
 // Lazy classifier singleton. The transformers module is heavy
 // (~10 MB of JS + WASM glue) so we only require() it when the operator
@@ -248,7 +264,11 @@ async function _loadClassifier(cfg, onProgress, onLog) {
  *   so the loop doesn't keep retrying).
  */
 async function _classifyFile(classifier, absPath) {
-    if (!existsSync(absPath)) return null;
+    if (!absPath) return null;
+    if (getNsfwSidecarUrl()) {
+        return remoteClassifyFile(absPath);
+    }
+    if (!classifier || !existsSync(absPath)) return null;
     let out;
     try {
         out = await classifier(absPath);
@@ -460,28 +480,46 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
 
     // Background driver — fire-and-forget, errors funnel into onDone.
     (async () => {
-        let classifier;
-        try {
-            classifier = await _loadClassifier(
-                cfg,
-                (p) => {
-                    try {
-                        if (typeof onModel === 'function') onModel(p);
-                    } catch {}
-                },
-                onLog,
-            );
-        } catch (e) {
-            _log('error', `classifier load failed: ${e?.message || e}`);
-            _scanState.error = e.message;
-            _scanState.running = false;
-            _scanState.finishedAt = Date.now();
-            _scanRunning = false;
-            _scanAbort = null;
+        const useRemote = !!getNsfwSidecarUrl();
+        let classifier = null;
+        if (useRemote) {
+            _log('info', `using external NSFW sidecar at ${getNsfwSidecarUrl()}`);
+            const h = await nsfwSidecarHealth();
+            if (!h.ok) {
+                _log('error', `NSFW sidecar unreachable: ${h.error}`);
+                _scanState.error = `sidecar unreachable: ${h.error}`;
+                _scanState.running = false;
+                _scanState.finishedAt = Date.now();
+                _scanRunning = false;
+                _scanAbort = null;
+                try {
+                    if (typeof onDone === 'function') onDone({ ..._scanState });
+                } catch {}
+                return;
+            }
+        } else {
             try {
-                if (typeof onDone === 'function') onDone({ ..._scanState });
-            } catch {}
-            return;
+                classifier = await _loadClassifier(
+                    cfg,
+                    (p) => {
+                        try {
+                            if (typeof onModel === 'function') onModel(p);
+                        } catch {}
+                    },
+                    onLog,
+                );
+            } catch (e) {
+                _log('error', `classifier load failed: ${e?.message || e}`);
+                _scanState.error = e.message;
+                _scanState.running = false;
+                _scanState.finishedAt = Date.now();
+                _scanRunning = false;
+                _scanAbort = null;
+                try {
+                    if (typeof onDone === 'function') onDone({ ..._scanState });
+                } catch {}
+                return;
+            }
         }
 
         const resolveAbs = (storedPath) => {
@@ -665,9 +703,10 @@ async function _drainBg() {
         }
 
         // Only load classifier when scan is enabled; blocklist check can run
-        // without it.
+        // without it. Skip local classifier load when a remote sidecar is configured.
+        const useRemote = !!getNsfwSidecarUrl();
         let classifier = null;
-        if (cfg.enabled) {
+        if (cfg.enabled && !useRemote) {
             try {
                 classifier = await _loadClassifier(cfg);
             } catch {
@@ -675,7 +714,6 @@ async function _drainBg() {
                     _bgQueue.length = 0;
                     return;
                 }
-                // Classifier failed but blocklist still works — continue.
             }
         }
 
@@ -757,8 +795,7 @@ async function _drainBg() {
                 }
             }
 
-            // Skip scoring if classifier is not loaded (scan disabled or failed).
-            if (!classifier) continue;
+            if (!cfg.enabled || (!classifier && !useRemote)) continue;
 
             let score = null;
             try {
@@ -836,6 +873,20 @@ export async function preloadClassifier(cfg, onProgress, onLog) {
             if (typeof onLog === 'function') onLog({ source: 'nsfw', level, msg });
         } catch {}
     };
+    if (getNsfwSidecarUrl()) {
+        _log('info', `using external NSFW sidecar — skipping local model preload`);
+        const h = await nsfwSidecarHealth();
+        _loadState = {
+            state: h.ok ? 'ready' : 'error',
+            model: h.model || 'remote',
+            dtype: null,
+            progress: null,
+            error: h.ok ? null : h.error || 'unreachable',
+            startedAt: Date.now(),
+            finishedAt: Date.now(),
+        };
+        return { started: true, remote: true, sidecarHealth: h };
+    }
     const modelId = cfg.model || NSFW_DEFAULTS.model;
     const dtype = VALID_DTYPES.has(String(cfg.dtype || '').toLowerCase())
         ? String(cfg.dtype).toLowerCase()

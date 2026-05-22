@@ -1243,6 +1243,46 @@ async function _refreshModelStatus() {
     }
 }
 
+async function _onNsfwSidecarTestClick() {
+    const el = document.getElementById('setting-adv-nsfw-sidecar-url');
+    const resultEl = document.getElementById('nsfw-sidecar-test-result');
+    const url = String(el?.value || '').trim();
+    if (!url) {
+        if (resultEl) {
+            resultEl.textContent = i18nT(
+                'maintenance.nsfw.sidecar_test_empty',
+                'Enter a URL first',
+            );
+            resultEl.className = 'text-[10px] shrink-0 text-yellow-400';
+        }
+        return;
+    }
+    if (resultEl) {
+        resultEl.textContent = i18nT('maintenance.nsfw.sidecar_testing', 'Testing…');
+        resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
+    }
+    try {
+        const r = await api.post('/api/maintenance/nsfw/sidecar-test', { url });
+        if (resultEl) {
+            if (r.ok) {
+                const parts = [r.model, r.version ? `v${r.version}` : null]
+                    .filter(Boolean)
+                    .join(' · ');
+                resultEl.textContent = `✓ ${parts || 'Connected'}`;
+                resultEl.className = 'text-[10px] shrink-0 text-green-400';
+            } else {
+                resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
+                resultEl.className = 'text-[10px] shrink-0 text-red-400';
+            }
+        }
+    } catch (e) {
+        if (resultEl) {
+            resultEl.textContent = `✗ ${e?.message || 'error'}`;
+            resultEl.className = 'text-[10px] shrink-0 text-red-400';
+        }
+    }
+}
+
 async function _onPreloadClick() {
     const btn = $('nsfw-preload-btn');
     if (!btn) return;
@@ -1373,6 +1413,7 @@ export function init() {
         $('nsfw-bulk-reclassify-btn')?.addEventListener('click', () => _bulkAction('reclassify'));
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
+        $('nsfw-sidecar-test-btn')?.addEventListener('click', _onNsfwSidecarTestClick);
         $('nsfw-blocklist-clear-btn')?.addEventListener('click', _clearBlocklist);
         $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {
             view.includeWhitelisted = !!ev.target.checked;

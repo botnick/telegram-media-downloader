@@ -152,9 +152,9 @@ npm ci && npm start
 
 | Feature | Backend | Description |
 |---------|---------|-------------|
-| **Face clustering** | Python sidecar (insightface + DBSCAN) | Detect and group faces from photos and videos. GPU-accelerated. |
+| **Face clustering** | Python sidecar (insightface + DBSCAN) | Detect and group faces from photos and videos. GPU-accelerated. Local or [remote sidecar](#external-ai-sidecar). |
 | **Seekbar previews** | Go sidecar (ffmpeg) | Netflix-style hover thumbnails on the video scrub bar |
-| **NSFW detection** | In-process (HuggingFace WASM) | Local image classifier with review UI and whitelist |
+| **NSFW detection** | HuggingFace WASM or remote sidecar | Local CPU classifier with review UI and whitelist, or offload to a [remote GPU](#external-ai-sidecar) |
 | **Duplicate finder** | SHA-256 + GROUP BY | Full-library scan with bulk delete |
 
 ### Backup & Sync
@@ -253,6 +253,7 @@ All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy
 | `FFMPEG_HWACCEL` | _(empty)_ | `cuda` / `vaapi` / `qsv` / `videotoolbox` |
 | `WATCHTOWER_HTTP_API_TOKEN` | _(unset)_ | Auto-update sidecar token |
 | `FACES_SERVICE_URL` | `http://tgdl-faces:8011` | Face clustering sidecar |
+| `TGDL_NSFW_SIDECAR_URL` | _(unset)_ | External NSFW classifier URL |
 | `SEEKBAR_SIDECAR_URL` | _(unset)_ | Seekbar sidecar URL |
 
 Full env-var reference (27+ knobs) in [docs/AI.md](docs/AI.md).
@@ -279,6 +280,29 @@ docker compose --profile auto-update up -d
 # Combine
 docker compose --profile faces --profile auto-update up -d
 ```
+
+---
+
+## External AI Sidecar
+
+Offload face detection and NSFW classification to a remote GPU server — ideal when the main dashboard runs on a CPU-only machine.
+
+**Setup (GPU server):**
+
+```bash
+# Face detection (already included in the repo)
+cd faces-service && pip install -r requirements.txt && python -m tgdl_faces
+
+# NSFW classification
+cd nsfw-service && pip install -r requirements.txt && python main.py
+```
+
+Expose via Cloudflare Tunnel or any reverse proxy, then paste the URLs in **Maintenance > AI > System Health** (faces) and **Maintenance > NSFW** (classifier). Both fall back to local processing when no URL is set.
+
+| Service | Default Port | Env Override | Config Key |
+|---------|-------------|-------------|------------|
+| Face detection | 8011 | `FACES_SERVICE_URL` | `advanced.ai.faces.sidecarUrl` |
+| NSFW classifier | 8012 | `TGDL_NSFW_SIDECAR_URL` | `advanced.nsfw.sidecarUrl` |
 
 ---
 
