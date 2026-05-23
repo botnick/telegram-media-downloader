@@ -143,7 +143,7 @@ npm ci && npm start
 
 - **Telegram-themed SPA** — responsive, installable PWA, works offline
 - **Gallery** — grid/compact/list views, lazy-load thumbnails, type filters, search
-- **Queue** — IDM-style per-file progress, pause/resume/cancel/retry
+- **Queue** — IDM-style per-file progress, pause/resume/cancel/retry, NSFW blocklist badges
 - **Video player** — scrub, seekbar hover preview, PiP, keyboard shortcuts
 - **Share links** — HMAC-signed URLs with TTL, revocable, no login required
 - **Bilingual** — English + Thai, runtime switchable
@@ -153,7 +153,7 @@ npm ci && npm start
 | Feature | Backend | Description |
 |---------|---------|-------------|
 | **Face clustering** | Python sidecar (insightface + DBSCAN) | Detect and group faces from photos and videos. GPU-accelerated. Local or [remote sidecar](#external-ai-sidecar). |
-| **Seekbar previews** | Go sidecar (ffmpeg) | Netflix-style hover thumbnails on the video scrub bar |
+| **Seekbar previews** | Go sidecar (ffmpeg) | Netflix-style hover thumbnails on the video scrub bar. Local or [remote sidecar](#external-ai-sidecar). |
 | **NSFW detection** | HuggingFace WASM or remote sidecar | Local CPU classifier with review UI and whitelist, or offload to a [remote GPU](#external-ai-sidecar) |
 | **Duplicate finder** | SHA-256 + GROUP BY | Full-library scan with bulk delete |
 
@@ -303,6 +303,7 @@ Expose via Cloudflare Tunnel or any reverse proxy, then paste the URLs in **Main
 |---------|-------------|-------------|------------|
 | Face detection | 8011 | `FACES_SERVICE_URL` | `advanced.ai.faces.sidecarUrl` |
 | NSFW classifier | 8012 | `TGDL_NSFW_SIDECAR_URL` | `advanced.nsfw.sidecarUrl` |
+| Seekbar previews | 8089 | `SEEKBAR_SIDECAR_URL` | `advanced.seekbar.sidecarUrl` |
 
 ---
 

@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.21.0] — 2026-05-23
+
+Seekbar sidecar web config, categorized sidebar, queue NSFW badge, dedup perf.
+
+### Added
+- **Seekbar sidecar URL** configurable from dashboard (Maintenance > Seekbar) with API token support and Test button.
+- **Categorized sidebar** — groups list organized by type (Channels / Groups / DMs / Bots / Folders) with monitored-first sort and collapsible sections.
+- **Queue "NSFW Blocked" badge** — files auto-deleted by the NSFW hash blocklist now show a distinct red badge instead of the generic "Duplicate" label.
+- **Queue filter chip** "NSFW Blocked" for filtering blocklist deletions.
+
+### Changed
+- **Dedup scan 4× faster** — hash page size 50→200, progress fires every 10 files, grouping stage shows determinate progress bar.
+- **`_refreshSummary()` O(1)** — uses Set instead of Array.includes for selected-file byte counting.
+- **Set building** yields every 25 instead of 50 for quicker feedback.
+
+### Fixed
+- **Seekbar API token** now passed in health-test connection probe.
+- **Seekbar ffmpeg retries** — permanent errors (no video stream, invalid NAL, moov not found) skip retry immediately.
+- **Tab bar chip spacing** — `:first-of-type` CSS selector replaced with adjacent-sibling rule that actually matches toggle chips.
+- **Avatar 404s** — non-numeric group IDs (folders, `unknown:*`) skip photo fetch, show gradient initials directly.
+- **Sidebar search + collapsed sections** — search finds groups inside collapsed sections; separators hide per-section instead of globally.
+- **Removed sidebar search-input** — cleaned up `#search-input`, its listeners, and the focus_search shortcut.
+
+### Service worker
+- `VERSION = 'v2210'`
+
 ## [2.20.0] — 2026-05-23
 
 External AI sidecar — offload face detection and NSFW classification to a remote GPU server.

@@ -136,6 +136,7 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `GET`  | `/api/maintenance/nsfw/results`  | Paginated low-score rows (deletion candidates). `?page=&limit=`. |
 | `POST` | `/api/maintenance/nsfw/delete`   | `{ids:[…]}` — delete + purge thumbs. |
 | `POST` | `/api/maintenance/nsfw/whitelist`| `{ids:[…]}` — mark as confirmed-18+; future scans skip. |
+| `POST` | `/api/maintenance/nsfw/sidecar-test` | CORS proxy — test connection to an arbitrary NSFW sidecar URL. Body: `{url}`. Returns `{ok, version, model, ready}`. |
 | `GET`  | `/api/maintenance/logs`          | List `data/logs/*.log` with size + mtime. |
 | `GET`  | `/api/maintenance/logs/download` | `?name=&lines=` — tail of one logfile (50 MB cap). |
 | `GET`  | `/api/maintenance/config/raw`    | Redacted runtime config (kv-backed). |
@@ -161,6 +162,7 @@ Opt-in feature — generates WebP sprite-sheet timeline thumbnails for video hov
 | `GET`  | `/api/maintenance/seekbar/list` | Cursor-paginated row list. `?beforeId=&limit=`. |
 | `GET`  | `/api/maintenance/seekbar/health` | `{sidecar:{ok, url, mode, version, pid?}, ffmpegAvailable}` — drives the page's status pill. |
 | `GET`  | `/api/maintenance/seekbar/hwaccel-probe` | Proxies the sidecar's hardware probe — `{candidates[], available[], recommended}`. |
+| `POST` | `/api/maintenance/seekbar/sidecar-test` | CORS proxy — test connection to an arbitrary seekbar sidecar URL. Body: `{url, token?}`. Returns `{ok, version}`. |
 | `POST` | `/api/maintenance/seekbar/sidecar/restart` | Tear down + respawn the Go sidecar. Use after changing hwaccel / concurrency / port range. Broadcasts `seekbar_sidecar_status`. |
 
 ## AI / Face clustering (v2.16+)
@@ -174,6 +176,7 @@ Opt-in face detection + clustering, backed by the Python sidecar in `faces-servi
 | `POST`   | `/api/ai/scan/cancel`               | Cancels the active scan; partial detections are kept. |
 | `GET`    | `/api/ai/scan/status?feature=faces` | JobTracker snapshot for the re-mounted page. |
 | `GET`    | `/api/ai/faces/provider-probe`      | Sidecar provider probe — `{candidates[], available[], details[], recommended, current}`. |
+| `POST`   | `/api/ai/faces/health-test`         | CORS proxy — test connection to an arbitrary faces sidecar URL. Body: `{url}`. Returns `{ok, version, model, ready, providers}`. |
 | `POST`   | `/api/ai/faces/restart`             | Restart the faces sidecar (after switching detector model / providers / det_size). Broadcasts `ai_faces_status`. |
 | `POST`   | `/api/ai/faces/install-deps`        | Stream `python -m tgdl_faces.install` over `ai_faces_install_progress` / `ai_faces_install_done`. Accepts `{force?:'cpu'\|'gpu'\|'directml'\|'openvino', dryRun?:bool, noUninstall?:bool}`. |
 | `POST`   | `/api/ai/faces/recluster`           | Re-run DBSCAN over the existing `faces` table without re-detecting (cheap; preserves labels via centroid match). |
@@ -249,6 +252,7 @@ The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidec
 | `thumbs_progress`      | `{stage, processed, total, built, skipped, errored}` |
 | `nsfw_progress`        | `{scanned, total, candidates, keep, running}` |
 | `nsfw_done`            | `{scanned, candidates, keep, durationMs}` |
+| `nsfw_blocklist_deleted`| `{id, key}` — a file auto-deleted by the NSFW hash blocklist. `key` is the job key (`groupId:messageId:mediaType`) for queue UI matching. |
 | `nsfw_model_downloading` | `{percent}` (first-run only) |
 | `seekbar_progress`     | `{stage, processed, total, generated, skipped, errored}` — backfill scan. |
 | `seekbar_done`         | `{processed, generated, skipped, errored, durationMs}`. |

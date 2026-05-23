@@ -659,3 +659,43 @@ or via **Maintenance → AI → Inference provider** → select **CUDA** or **CP
 the scan-runner flows through streamed iterators. If you see one, it's
 a regression — `scripts/check-oom-patterns.sh` should have caught it.
 File a bug with the stack trace.
+
+---
+
+## NSFW External Sidecar (v2.20.0+)
+
+The NSFW classifier can be offloaded to a remote GPU server, mirroring the faces sidecar pattern. When no URL is set, the built-in WASM classifier runs in-process (CPU).
+
+### Setup
+
+```bash
+cd nsfw-service
+pip install -r requirements.txt
+python main.py                        # default: 0.0.0.0:8012
+TGDL_NSFW_PORT=9000 python main.py    # custom port
+```
+
+Or use the GPU Dockerfile:
+
+```bash
+docker build -f Dockerfile.gpu -t nsfw-sidecar .
+docker run --gpus all -p 8012:8012 nsfw-sidecar
+```
+
+### Configuration
+
+| Config key | Env var | Default | Description |
+|---|---|---|---|
+| `advanced.nsfw.sidecarUrl` | `TGDL_NSFW_SIDECAR_URL` | `''` | External classifier URL; empty = local WASM |
+
+Set via **Maintenance → NSFW → External classifier URL** in the dashboard, or via env var for Docker deployments.
+
+### Endpoints (nsfw-service)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | `{ok, model, ready, version, device, uptime_sec}` |
+| `POST` | `/classify` | `{path \| image_b64}` → `{score, label}` |
+| `POST` | `/classify/batch` | `{files[]}` → `{results[]}` |
+
+The Node client (`src/core/nsfw-client.js`) tries path mode first; if the sidecar returns 403 (can't see the file — common when running on a different machine), it falls back to sending the image as base64.
