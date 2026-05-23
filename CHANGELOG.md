@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.2] — 2026-05-23
+
+Explicit sidecar mode controls — test before switching, switch back with one click.
+
+### Changed
+- **Use External / Use Local buttons** — entering a sidecar URL no longer auto-switches on blur. Test the connection first, then click "Use External" to apply. "Use Local" button appears when external is active for easy rollback.
+
+### Service worker
+- `VERSION = 'v2222'`
+
 ## [2.22.1] — 2026-05-23
 
 External sidecar performance fix — eliminates wasted round-trips on cross-machine deployments.
