@@ -13,9 +13,11 @@ pnpm-lock.yaml
 .env.*
 !.env.example
 
-# Local batch scripts
+# Local launcher scripts
 *.bat
 *.cmd
+sidecar-start.js
+sidecar-tunnel.js
 
 # Runtime data (everything under data/ is gitignored except a few examples)
 data/
