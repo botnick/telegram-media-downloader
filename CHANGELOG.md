@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.1] — 2026-05-23
+
+External sidecar performance fix — eliminates wasted round-trips on cross-machine deployments.
+
+### Fixed
+- **Faces/NSFW b64 fast-path** — after the first `path_not_allowed` rejection, all subsequent files go directly to b64 upload instead of trying path mode first. Cuts per-file latency in half on external sidecar setups (Cloudflare Tunnel, cross-machine).
+- **Batch detection skip** — `detectFacesBatch` and `classifyBatch` skip the batch path request entirely when path mode is already known to fail.
+- **Log spam** — "path mode rejected" logged once per session instead of per file.
+
+### Removed
+- **Seekbar external config** — removed `seekbar.sidecarUrl` / `apiToken` from config defaults, settings UI collect/populate, and `/api/maintenance/seekbar/sidecar-test` endpoint. Go binary requires shared filesystem; Docker env `SEEKBAR_SIDECAR_URL` still works for compose setups with shared volumes.
+
+### Service worker
+- `VERSION = 'v2221'`
+
 ## [2.22.0] — 2026-05-23
 
 Web-configured external sidecar overrides Docker env + mode indicator.
