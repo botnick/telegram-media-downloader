@@ -139,12 +139,21 @@ function _bindOnce() {
         }
     });
 
-    // Sidecar mode toggle — Local / External
-    for (const btn of document.querySelectorAll('#ai-faces-mode-toggle .ai-mode-btn')) {
-        btn.addEventListener('click', () => _onFacesModeToggle(btn.dataset.mode));
-    }
-    $('#ai-faces-sidecar-test-btn')?.addEventListener('click', _onFacesSidecarTestClick);
-    $('#ai-faces-sidecar-apply-btn')?.addEventListener('click', _onFacesSidecarApply);
+    // Sidecar mode toggle + actions — event delegation on the doctor
+    // card so timing of SW HTML cache vs JS module load doesn't matter.
+    $('#ai-doctor-card')?.addEventListener('click', (e) => {
+        const modeBtn = e.target.closest('.ai-mode-btn');
+        if (modeBtn?.dataset.mode) return _onFacesModeToggle(modeBtn.dataset.mode);
+        if (e.target.closest('#ai-faces-sidecar-test-btn')) return _onFacesSidecarTestClick();
+        if (e.target.closest('#ai-faces-sidecar-apply-btn')) return _onFacesSidecarApply();
+    });
+    // URL input change clears stale test result + disables Apply
+    $('#ai-faces-sidecar-url')?.addEventListener('input', () => {
+        const resultEl = $('#ai-faces-sidecar-test-result');
+        if (resultEl) resultEl.textContent = '';
+        const applyBtn = $('#ai-faces-sidecar-apply-btn');
+        if (applyBtn) applyBtn.disabled = true;
+    });
 
     // Settings inputs — model / threshold / minPoints / provider.
     // `change` (not `input`) so dragging the slider doesn't spam saves.

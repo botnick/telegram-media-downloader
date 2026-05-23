@@ -1478,11 +1478,18 @@ export function init() {
         $('nsfw-bulk-reclassify-btn')?.addEventListener('click', () => _bulkAction('reclassify'));
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
-        for (const btn of document.querySelectorAll('#nsfw-mode-toggle .ai-mode-btn')) {
-            btn.addEventListener('click', () => _onNsfwModeToggle(btn.dataset.mode));
-        }
-        $('nsfw-sidecar-test-btn')?.addEventListener('click', _onNsfwSidecarTestClick);
-        $('nsfw-sidecar-apply-btn')?.addEventListener('click', _onNsfwSidecarApply);
+        $('nsfw-settings-card')?.addEventListener('click', (e) => {
+            const modeBtn = e.target.closest('.ai-mode-btn');
+            if (modeBtn?.dataset.mode) return _onNsfwModeToggle(modeBtn.dataset.mode);
+            if (e.target.closest('#nsfw-sidecar-test-btn')) return _onNsfwSidecarTestClick();
+            if (e.target.closest('#nsfw-sidecar-apply-btn')) return _onNsfwSidecarApply();
+        });
+        $('setting-adv-nsfw-sidecar-url')?.addEventListener('input', () => {
+            const resultEl = $('nsfw-sidecar-test-result');
+            if (resultEl) resultEl.textContent = '';
+            const applyBtn = $('nsfw-sidecar-apply-btn');
+            if (applyBtn) applyBtn.disabled = true;
+        });
         _syncNsfwModeToggle();
         $('nsfw-blocklist-clear-btn')?.addEventListener('click', _clearBlocklist);
         $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {
