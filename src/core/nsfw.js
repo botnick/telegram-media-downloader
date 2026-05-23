@@ -784,11 +784,19 @@ async function _drainBg() {
                                 )
                                 .get(Number(id));
                         } catch {}
+                        let dlRow;
+                        try {
+                            dlRow = db
+                                .prepare(
+                                    'SELECT group_id, message_id, media_type FROM downloads WHERE id = ?',
+                                )
+                                .get(Number(id));
+                        } catch {}
                         try {
                             db.prepare('DELETE FROM downloads WHERE id = ?').run(Number(id));
                         } catch {}
                         try {
-                            _onBlocklistDelete?.(Number(id), seekbarRow);
+                            _onBlocklistDelete?.(Number(id), seekbarRow, dlRow);
                         } catch {}
                         continue;
                     }

@@ -75,7 +75,13 @@ const STATUS_FILTERS = [
         id: 'dupe',
         i18n: 'queue.chip.dupe',
         fallback: 'Duplicate',
-        match: (j) => j.deduped === true,
+        match: (j) => j.deduped === true && !j.nsfwBlocked,
+    },
+    {
+        id: 'nsfw_blocked',
+        i18n: 'queue.chip.nsfw_blocked',
+        fallback: 'NSFW Blocked',
+        match: (j) => j.nsfwBlocked === true,
     },
 ];
 
@@ -609,6 +615,15 @@ function handleWs(msg) {
         scheduleRender();
         return;
     }
+    if (msg.type === 'nsfw_blocklist_deleted') {
+        const matchKey = msg.key;
+        if (matchKey && store.has(matchKey)) {
+            const job = store.get(matchKey);
+            job.nsfwBlocked = true;
+            scheduleRender();
+        }
+        return;
+    }
     if (msg.type === 'queue_length') {
         // No-op: snapshot patches keep the store accurate, the chip count
         // is already O(1) via statusCounts.
@@ -1055,9 +1070,11 @@ function renderRow(j) {
     // again (`bytesAddedToDisk = 0`) but the (group, msg) → file mapping
     // is still recorded so it shows in the gallery. The tag stays after
     // dismiss/close — purely informational.
-    const dupBadge = j.deduped
-        ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-tg-orange/15 text-tg-orange ml-1.5 inline-flex items-center gap-0.5" title="${escapeHtml(i18nT('queue.duplicate.tooltip', 'Same file already exists on disk — no new bytes written, this row points at the existing copy.'))}"><i class="ri-file-copy-2-line"></i><span data-i18n="queue.duplicate">Duplicate</span></span>`
-        : '';
+    const dupBadge = j.nsfwBlocked
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 ml-1.5 inline-flex items-center gap-0.5" title="${escapeHtml(i18nT('queue.nsfw_blocked.tooltip', 'File hash matched the NSFW blocklist — auto-deleted.'))}"><i class="ri-forbid-2-line"></i><span data-i18n="queue.nsfw_blocked">NSFW Blocked</span></span>`
+        : j.deduped
+          ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-tg-orange/15 text-tg-orange ml-1.5 inline-flex items-center gap-0.5" title="${escapeHtml(i18nT('queue.duplicate.tooltip', 'Same file already exists on disk — no new bytes written, this row points at the existing copy.'))}"><i class="ri-file-copy-2-line"></i><span data-i18n="queue.duplicate">Duplicate</span></span>`
+          : '';
 
     // Account chip — surfaces which Telegram session pulled this job's
     // bytes. Suppressed for jobs queued before multi-account routing

@@ -12608,9 +12608,14 @@ ${tip}
 
     // Register the blocklist auto-delete callback so background deletes are
     // visible in the realtime log and cause the downloads UI to remove the row.
-    nsfwSetBlocklistDeleteCallback((id, seekbarRow) => {
+    nsfwSetBlocklistDeleteCallback((id, seekbarRow, dlRow) => {
         try {
             broadcast({ type: 'bulk_delete', count: 1 });
+            const jobKey =
+                dlRow?.group_id && dlRow?.message_id
+                    ? `${dlRow.group_id}:${dlRow.message_id}:${dlRow.media_type || 'photo'}`
+                    : null;
+            broadcast({ type: 'nsfw_blocklist_deleted', id, key: jobKey });
         } catch {}
         try {
             log({ source: 'nsfw', level: 'info', msg: `blocklist: auto-deleted id=${id}` });
