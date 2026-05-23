@@ -468,16 +468,19 @@ def get_app() -> Any:
             # redirected to an invalid handle (common in bat/cmd launchers).
             try:
                 import insightface.utils.storage as _if_storage  # noqa: PLC0415
-                _orig_dl = _if_storage.download
-                def _patched_dl(*a, **kw):
-                    import builtins
-                    _rp = builtins.print
-                    builtins.print = lambda *_a, **_kw: None
-                    try:
-                        return _orig_dl(*a, **kw)
-                    finally:
-                        builtins.print = _rp
-                _if_storage.download = _patched_dl
+                def _wrap_print(fn):
+                    def _safe(*a, **kw):
+                        import builtins
+                        _rp = builtins.print
+                        builtins.print = lambda *_a, **_kw: None
+                        try:
+                            return fn(*a, **kw)
+                        finally:
+                            builtins.print = _rp
+                    return _safe
+                _if_storage.download = _wrap_print(_if_storage.download)
+                if hasattr(_if_storage, 'download_onnx'):
+                    _if_storage.download_onnx = _wrap_print(_if_storage.download_onnx)
             except Exception:
                 pass
 

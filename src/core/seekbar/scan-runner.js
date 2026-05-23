@@ -86,11 +86,17 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
                             downloadId: row.id,
                             spritePath: '',
                             metaPath: '',
+                            durationSec: null,
                             frames: 0,
                             cols: 0,
                             rows: 0,
                             tileW: 0,
+                            tileH: 0,
+                            intervalSec: null,
                             format: 'failed',
+                            bytes: 0,
+                            sourceSize: Number(row.file_size) || null,
+                            sourceMtime: null,
                             generatedAt: Date.now(),
                         });
                     } catch {}
