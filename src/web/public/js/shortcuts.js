@@ -208,7 +208,6 @@ function _runAction(id) {
         return;
     }
     if (id === 'focus_search') {
-        document.getElementById('search-input')?.focus();
         return;
     }
     if (id === 'go_library') {

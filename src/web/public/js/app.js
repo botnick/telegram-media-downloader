@@ -3785,29 +3785,6 @@ function setupEventListeners() {
     // We resolve names through getGroupName() so a stale row rendered
     // before /api/groups/refresh-info filled in the canonical label
     // still matches when the user types it.
-    // Dual-mode search bar (v2.16): typing keystrokes filters the
-    // groups-list (existing instant behaviour, kept). Pressing Enter
-    // routes through `/api/ai/search` for semantic content search and
-    // navigates the gallery to the results. The Enter path no-ops when
-    // AI is disabled or unconfigured — operator stays in groups filter.
-    document.getElementById('search-input')?.addEventListener('input', (e) => {
-        const query = e.target.value.trim().toLowerCase();
-        document.querySelectorAll('#groups-list .chat-row').forEach((item) => {
-            const id = item.dataset?.id || '';
-            const canonical = id ? getGroupName(id, { fallback: '' }) : '';
-            const text = (canonical || item.textContent || '').toLowerCase();
-            const idMatch = id && id.toLowerCase().includes(query);
-            item.style.display = !query || text.includes(query) || idMatch ? '' : 'none';
-        });
-    });
-    document.getElementById('search-input')?.addEventListener('keydown', async (e) => {
-        if (e.key !== 'Enter') return;
-        const q = e.target.value.trim();
-        if (!q) return;
-        e.preventDefault();
-        await _runSemanticSearch(q);
-    });
-
     // Media tabs
     setupMediaTabs();
 }
