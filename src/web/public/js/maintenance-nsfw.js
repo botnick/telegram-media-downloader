@@ -1287,25 +1287,20 @@ async function _onNsfwSidecarTestClick() {
     }
 }
 
-async function _onNsfwSidecarApply() {
-    const el = document.getElementById('setting-adv-nsfw-sidecar-url');
-    const url = String(el?.value || '').trim();
-    if (!url) return;
-    try {
-        await api.post('/api/config', {
-            advanced: { nsfw: { sidecarUrl: url } },
-        });
-        showToast(
-            i18nT('maintenance.nsfw.sidecar_url_saved', 'Switched to external classifier'),
-            'success',
-        );
-        _syncNsfwSidecarActions();
-    } catch (e) {
-        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+function _onNsfwModeToggle(mode) {
+    const panel = document.getElementById('nsfw-external-panel');
+    for (const b of document.querySelectorAll('#nsfw-mode-toggle .ai-mode-btn')) {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    }
+    if (mode === 'local') {
+        if (panel) panel.classList.add('hidden');
+        _switchNsfwToLocal();
+    } else {
+        if (panel) panel.classList.remove('hidden');
     }
 }
 
-async function _onNsfwSidecarUseLocal() {
+async function _switchNsfwToLocal() {
     try {
         await api.post('/api/config', {
             advanced: { nsfw: { sidecarUrl: '' } },
@@ -1320,17 +1315,37 @@ async function _onNsfwSidecarUseLocal() {
             i18nT('maintenance.nsfw.sidecar_url_cleared', 'Switched to local classifier'),
             'success',
         );
-        _syncNsfwSidecarActions();
     } catch (e) {
         showToast(`Switch failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
     }
 }
 
-function _syncNsfwSidecarActions() {
-    const localBtn = document.getElementById('nsfw-sidecar-local-btn');
+async function _onNsfwSidecarApply() {
+    const el = document.getElementById('setting-adv-nsfw-sidecar-url');
+    const url = String(el?.value || '').trim();
+    if (!url) return;
+    try {
+        await api.post('/api/config', {
+            advanced: { nsfw: { sidecarUrl: url } },
+        });
+        showToast(
+            i18nT('maintenance.nsfw.sidecar_url_saved', 'Switched to external classifier'),
+            'success',
+        );
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+function _syncNsfwModeToggle() {
     const urlEl = document.getElementById('setting-adv-nsfw-sidecar-url');
-    const currentUrl = String(urlEl?.value || '').trim();
-    if (localBtn) localBtn.classList.toggle('hidden', !currentUrl);
+    const hasUrl = String(urlEl?.value || '').trim().length > 0;
+    const mode = hasUrl ? 'external' : 'local';
+    for (const b of document.querySelectorAll('#nsfw-mode-toggle .ai-mode-btn')) {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    }
+    const panel = document.getElementById('nsfw-external-panel');
+    if (panel) panel.classList.toggle('hidden', !hasUrl);
 }
 
 async function _onPreloadClick() {
@@ -1463,10 +1478,12 @@ export function init() {
         $('nsfw-bulk-reclassify-btn')?.addEventListener('click', () => _bulkAction('reclassify'));
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
+        for (const btn of document.querySelectorAll('#nsfw-mode-toggle .ai-mode-btn')) {
+            btn.addEventListener('click', () => _onNsfwModeToggle(btn.dataset.mode));
+        }
         $('nsfw-sidecar-test-btn')?.addEventListener('click', _onNsfwSidecarTestClick);
         $('nsfw-sidecar-apply-btn')?.addEventListener('click', _onNsfwSidecarApply);
-        $('nsfw-sidecar-local-btn')?.addEventListener('click', _onNsfwSidecarUseLocal);
-        _syncNsfwSidecarActions();
+        _syncNsfwModeToggle();
         $('nsfw-blocklist-clear-btn')?.addEventListener('click', _clearBlocklist);
         $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {
             view.includeWhitelisted = !!ev.target.checked;

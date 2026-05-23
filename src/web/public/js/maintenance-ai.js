@@ -139,10 +139,12 @@ function _bindOnce() {
         }
     });
 
-    // External sidecar URL — test only, no auto-save.
+    // Sidecar mode toggle — Local / External
+    for (const btn of document.querySelectorAll('#ai-faces-mode-toggle .ai-mode-btn')) {
+        btn.addEventListener('click', () => _onFacesModeToggle(btn.dataset.mode));
+    }
     $('#ai-faces-sidecar-test-btn')?.addEventListener('click', _onFacesSidecarTestClick);
     $('#ai-faces-sidecar-apply-btn')?.addEventListener('click', _onFacesSidecarApply);
-    $('#ai-faces-sidecar-local-btn')?.addEventListener('click', _onFacesSidecarUseLocal);
 
     // Settings inputs — model / threshold / minPoints / provider.
     // `change` (not `input`) so dragging the slider doesn't spam saves.
@@ -626,7 +628,7 @@ function _renderStatus(status) {
         const cur = String(cfg.faces?.sidecarUrl || '');
         if (sidecarUrlEl.value !== cur) sidecarUrlEl.value = cur;
     }
-    _syncSidecarActions();
+    _syncFacesModeToggle();
 }
 
 function _renderSidecarBadge(status) {
@@ -1005,6 +1007,41 @@ async function _applyPreset(name) {
     }
 }
 
+function _onFacesModeToggle(mode) {
+    const panel = $('#ai-faces-external-panel');
+    for (const b of document.querySelectorAll('#ai-faces-mode-toggle .ai-mode-btn')) {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    }
+    if (mode === 'local') {
+        if (panel) panel.classList.add('hidden');
+        _switchFacesToLocal();
+    } else {
+        if (panel) panel.classList.remove('hidden');
+    }
+}
+
+async function _switchFacesToLocal() {
+    try {
+        await api.post('/api/config', {
+            advanced: { ai: { faces: { sidecarUrl: '' } } },
+        });
+        await api.post('/api/ai/faces/restart', {});
+        const el = $('#ai-faces-sidecar-url');
+        if (el) el.value = '';
+        const resultEl = $('#ai-faces-sidecar-test-result');
+        if (resultEl) resultEl.textContent = '';
+        const applyBtn = $('#ai-faces-sidecar-apply-btn');
+        if (applyBtn) applyBtn.disabled = true;
+        showToast(
+            i18nT('maintenance.ai.sidecar_url_cleared', 'Switched to local sidecar'),
+            'success',
+        );
+        await refreshStatus();
+    } catch (e) {
+        showToast(`Switch failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
 async function _onFacesSidecarTestClick() {
     const el = $('#ai-faces-sidecar-url');
     const resultEl = $('#ai-faces-sidecar-test-result');
@@ -1013,14 +1050,14 @@ async function _onFacesSidecarTestClick() {
     if (!url) {
         if (resultEl) {
             resultEl.textContent = i18nT('maintenance.ai.sidecar_test_empty', 'Enter a URL first');
-            resultEl.className = 'text-[10px] shrink-0 text-yellow-400';
+            resultEl.className = 'text-[11px] mt-1.5 block text-yellow-400';
         }
         if (applyBtn) applyBtn.disabled = true;
         return;
     }
     if (resultEl) {
         resultEl.textContent = i18nT('maintenance.ai.sidecar_testing', 'Testing…');
-        resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
+        resultEl.className = 'text-[11px] mt-1.5 block text-tg-textSecondary';
     }
     if (applyBtn) applyBtn.disabled = true;
     try {
@@ -1031,17 +1068,17 @@ async function _onFacesSidecarTestClick() {
                     .filter(Boolean)
                     .join(' · ');
                 resultEl.textContent = `✓ ${parts || 'Connected'}`;
-                resultEl.className = 'text-[10px] shrink-0 text-green-400';
+                resultEl.className = 'text-[11px] mt-1.5 block text-green-400';
                 if (applyBtn) applyBtn.disabled = false;
             } else {
                 resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
-                resultEl.className = 'text-[10px] shrink-0 text-red-400';
+                resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
             }
         }
     } catch (e) {
         if (resultEl) {
             resultEl.textContent = `✗ ${e?.message || 'error'}`;
-            resultEl.className = 'text-[10px] shrink-0 text-red-400';
+            resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
         }
     }
 }
@@ -1060,42 +1097,20 @@ async function _onFacesSidecarApply() {
             'success',
         );
         await refreshStatus();
-        _syncSidecarActions();
     } catch (e) {
         showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
     }
 }
 
-async function _onFacesSidecarUseLocal() {
-    try {
-        await api.post('/api/config', {
-            advanced: { ai: { faces: { sidecarUrl: '' } } },
-        });
-        await api.post('/api/ai/faces/restart', {});
-        const el = $('#ai-faces-sidecar-url');
-        if (el) el.value = '';
-        const resultEl = $('#ai-faces-sidecar-test-result');
-        if (resultEl) resultEl.textContent = '';
-        const applyBtn = $('#ai-faces-sidecar-apply-btn');
-        if (applyBtn) applyBtn.disabled = true;
-        showToast(
-            i18nT('maintenance.ai.sidecar_url_cleared', 'Switched to local sidecar'),
-            'success',
-        );
-        await refreshStatus();
-        _syncSidecarActions();
-    } catch (e) {
-        showToast(`Switch failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
-    }
-}
-
-function _syncSidecarActions() {
-    const localBtn = $('#ai-faces-sidecar-local-btn');
+function _syncFacesModeToggle() {
     const urlEl = $('#ai-faces-sidecar-url');
-    const currentUrl = String(urlEl?.value || '').trim();
-    if (localBtn) {
-        localBtn.classList.toggle('hidden', !currentUrl);
+    const hasUrl = String(urlEl?.value || '').trim().length > 0;
+    const mode = hasUrl ? 'external' : 'local';
+    for (const b of document.querySelectorAll('#ai-faces-mode-toggle .ai-mode-btn')) {
+        b.classList.toggle('active', b.dataset.mode === mode);
     }
+    const panel = $('#ai-faces-external-panel');
+    if (panel) panel.classList.toggle('hidden', !hasUrl);
 }
 
 async function _restartSidecar() {

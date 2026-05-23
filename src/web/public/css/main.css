@@ -1829,6 +1829,27 @@ html.theme-light .notify-source-chip {
     cursor: not-allowed;
 }
 
+.ai-mode-btn {
+    background: transparent;
+    color: var(--tg-textSecondary, #8b9baa);
+    cursor: pointer;
+    border: none;
+}
+.ai-mode-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.ai-mode-btn.active {
+    background: #2aabee;
+    color: #fff;
+}
+html.theme-light .ai-mode-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+html.theme-light .ai-mode-btn.active {
+    background: #2aabee;
+    color: #fff;
+}
+
 /* AI Doctor — health-check strip on the AI page. Each check is one
    line: icon + label + detail (truncated). Compact so 10+ checks
    fit without scrolling. */
