@@ -1444,8 +1444,30 @@ function _syncMediaKindButtons() {
     });
 }
 
+function _bindNsfwSidecarToggle() {
+    const card = $('nsfw-settings-card');
+    if (!card || card.dataset.toggleBound) return;
+    card.dataset.toggleBound = '1';
+    card.addEventListener('click', (e) => {
+        const modeBtn = e.target.closest('.ai-mode-btn');
+        if (modeBtn?.dataset.mode) return _onNsfwModeToggle(modeBtn.dataset.mode);
+        if (e.target.closest('#nsfw-sidecar-test-btn')) return _onNsfwSidecarTestClick();
+        if (e.target.closest('#nsfw-sidecar-apply-btn')) return _onNsfwSidecarApply();
+    });
+    const urlEl = $('setting-adv-nsfw-sidecar-url');
+    if (urlEl) {
+        urlEl.addEventListener('input', () => {
+            const resultEl = $('nsfw-sidecar-test-result');
+            if (resultEl) resultEl.textContent = '';
+            const applyBtn = $('nsfw-sidecar-apply-btn');
+            if (applyBtn) applyBtn.disabled = true;
+        });
+    }
+}
+
 export function init() {
     _wireWs();
+    _bindNsfwSidecarToggle();
     if (!_pageWired) {
         _pageWired = true;
         $('nsfw-scan-btn')?.addEventListener('click', _toggleScan);
@@ -1478,18 +1500,6 @@ export function init() {
         $('nsfw-bulk-reclassify-btn')?.addEventListener('click', () => _bulkAction('reclassify'));
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
-        $('nsfw-settings-card')?.addEventListener('click', (e) => {
-            const modeBtn = e.target.closest('.ai-mode-btn');
-            if (modeBtn?.dataset.mode) return _onNsfwModeToggle(modeBtn.dataset.mode);
-            if (e.target.closest('#nsfw-sidecar-test-btn')) return _onNsfwSidecarTestClick();
-            if (e.target.closest('#nsfw-sidecar-apply-btn')) return _onNsfwSidecarApply();
-        });
-        $('setting-adv-nsfw-sidecar-url')?.addEventListener('input', () => {
-            const resultEl = $('nsfw-sidecar-test-result');
-            if (resultEl) resultEl.textContent = '';
-            const applyBtn = $('nsfw-sidecar-apply-btn');
-            if (applyBtn) applyBtn.disabled = true;
-        });
         _syncNsfwModeToggle();
         $('nsfw-blocklist-clear-btn')?.addEventListener('click', _clearBlocklist);
         $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {

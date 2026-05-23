@@ -72,6 +72,7 @@ export async function init() {
         _bindOnce();
         _initOnce = true;
     }
+    _bindSidecarToggle();
     _setActionButtonsEnabled(false);
     await refreshStatus();
     _refreshDoctor().catch(() => {});
@@ -137,22 +138,6 @@ function _bindOnce() {
             e.preventDefault();
             _onScanVideosToggle();
         }
-    });
-
-    // Sidecar mode toggle + actions — event delegation on the doctor
-    // card so timing of SW HTML cache vs JS module load doesn't matter.
-    $('#ai-doctor-card')?.addEventListener('click', (e) => {
-        const modeBtn = e.target.closest('.ai-mode-btn');
-        if (modeBtn?.dataset.mode) return _onFacesModeToggle(modeBtn.dataset.mode);
-        if (e.target.closest('#ai-faces-sidecar-test-btn')) return _onFacesSidecarTestClick();
-        if (e.target.closest('#ai-faces-sidecar-apply-btn')) return _onFacesSidecarApply();
-    });
-    // URL input change clears stale test result + disables Apply
-    $('#ai-faces-sidecar-url')?.addEventListener('input', () => {
-        const resultEl = $('#ai-faces-sidecar-test-result');
-        if (resultEl) resultEl.textContent = '';
-        const applyBtn = $('#ai-faces-sidecar-apply-btn');
-        if (applyBtn) applyBtn.disabled = true;
     });
 
     // Settings inputs — model / threshold / minPoints / provider.
@@ -1013,6 +998,27 @@ async function _applyPreset(name) {
             `${i18nT('common.save_failed', 'Save failed')}: ${e?.data?.error || e?.message || 'unknown'}`,
             'error',
         );
+    }
+}
+
+function _bindSidecarToggle() {
+    const card = $('#ai-doctor-card');
+    if (!card || card.dataset.toggleBound) return;
+    card.dataset.toggleBound = '1';
+    card.addEventListener('click', (e) => {
+        const modeBtn = e.target.closest('.ai-mode-btn');
+        if (modeBtn?.dataset.mode) return _onFacesModeToggle(modeBtn.dataset.mode);
+        if (e.target.closest('#ai-faces-sidecar-test-btn')) return _onFacesSidecarTestClick();
+        if (e.target.closest('#ai-faces-sidecar-apply-btn')) return _onFacesSidecarApply();
+    });
+    const urlEl = $('#ai-faces-sidecar-url');
+    if (urlEl) {
+        urlEl.addEventListener('input', () => {
+            const resultEl = $('#ai-faces-sidecar-test-result');
+            if (resultEl) resultEl.textContent = '';
+            const applyBtn = $('#ai-faces-sidecar-apply-btn');
+            if (applyBtn) applyBtn.disabled = true;
+        });
     }
 }
 
