@@ -16,7 +16,13 @@
  * returns), process them, then ask for the next page.
  */
 
-import { getDb, countVideoDownloads, pageMissingSeekbarVideos, pageSeekbarSprites } from '../db.js';
+import {
+    getDb,
+    countVideoDownloads,
+    pageMissingSeekbarVideos,
+    pageSeekbarSprites,
+    upsertSeekbarSprite,
+} from '../db.js';
 import { generateForDownload, getSeekbarConfig } from './generator.js';
 
 const PAGE_SIZE = 100;
@@ -70,6 +76,25 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
                 else skipped++;
             } catch (_e) {
                 errored++;
+                if (
+                    /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found/i.test(
+                        _e?.message || '',
+                    )
+                ) {
+                    try {
+                        upsertSeekbarSprite({
+                            downloadId: row.id,
+                            spritePath: '',
+                            metaPath: '',
+                            frames: 0,
+                            cols: 0,
+                            rows: 0,
+                            tileW: 0,
+                            format: 'failed',
+                            generatedAt: Date.now(),
+                        });
+                    } catch {}
+                }
             }
             processed++;
             cursor = Number(row.id) || cursor;
