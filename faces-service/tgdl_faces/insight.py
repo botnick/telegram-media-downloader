@@ -463,6 +463,23 @@ def get_app() -> Any:
             # Imported inside the function so test code can run /health
             # without paying the insightface import cost.
             from insightface.app import FaceAnalysis  # noqa: PLC0415
+            # Monkey-patch insightface's download helper to suppress print()
+            # calls that crash on Windows with WinError 1 when stdout is
+            # redirected to an invalid handle (common in bat/cmd launchers).
+            try:
+                import insightface.utils.storage as _if_storage  # noqa: PLC0415
+                _orig_dl = _if_storage.download
+                def _patched_dl(*a, **kw):
+                    import builtins
+                    _rp = builtins.print
+                    builtins.print = lambda *_a, **_kw: None
+                    try:
+                        return _orig_dl(*a, **kw)
+                    finally:
+                        builtins.print = _rp
+                _if_storage.download = _patched_dl
+            except Exception:
+                pass
 
             models_dir = _resolve_models_dir()
             models_dir.mkdir(parents=True, exist_ok=True)
