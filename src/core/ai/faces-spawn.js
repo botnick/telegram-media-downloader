@@ -202,6 +202,7 @@ let _starting = null;
 let _child = null;
 let _childUrl = null;
 let _state = 'idle'; // idle | downloading | spawning | healthy | failed
+let _sidecarMode = null; // external | docker | override | local | null
 let _error = null;
 let _healthMonitorTimer = null;
 let _healthMonitorFailCount = 0;
@@ -223,6 +224,7 @@ export function getSidecarStatus() {
     return {
         state: _state,
         url: _childUrl || getSidecarUrl() || null,
+        mode: _sidecarMode || null,
         error: _error,
         pid: _child?.pid || null,
         version: SIDECAR_VERSION,
@@ -295,7 +297,24 @@ async function _doStart() {
         return getSidecarStatus();
     }
 
-    // Mode 1 — Docker compose sets `FACES_SERVICE_URL` to the sidecar's
+    // Mode 1 — web-configured external sidecar URL (highest priority).
+    // Operator sets this from Maintenance > AI > System Health > External
+    // sidecar URL. When set, it wins over Docker env + local spawn so
+    // the dashboard is the single source of truth.
+    const webUrl = _normaliseUrl(_resolvedCfg.sidecarUrl);
+    if (webUrl) {
+        setSidecarUrl(webUrl);
+        _childUrl = webUrl;
+        _state = 'healthy';
+        _error = null;
+        _sidecarMode = 'external';
+        _log('info', `using external sidecar at ${webUrl}`);
+        await _maybeMigrateDim(webUrl);
+        _broadcast({ type: 'ai_faces_status', ok: true, url: webUrl, mode: 'external' });
+        return getSidecarStatus();
+    }
+
+    // Mode 2 — Docker compose sets `FACES_SERVICE_URL` to the sidecar's
     // in-network URL. No spawn needed; just hand the URL to the client.
     const envUrl = _normaliseUrl(process.env.FACES_SERVICE_URL);
     if (envUrl) {
@@ -303,24 +322,24 @@ async function _doStart() {
         _childUrl = envUrl;
         _state = 'healthy';
         _error = null;
+        _sidecarMode = 'docker';
         _log('info', `using docker sidecar at ${envUrl}`);
         await _maybeMigrateDim(envUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: envUrl, mode: 'docker' });
         return getSidecarStatus();
     }
 
-    // Mode 2 — operator override via config / env. Resolver merges both;
-    // explicit env wins over runtime config.
-    const overrideUrl =
-        _normaliseUrl(_resolvedCfg.sidecarUrl) || _normaliseUrl(aiCfg.facesServiceUrl);
-    if (overrideUrl) {
-        setSidecarUrl(overrideUrl);
-        _childUrl = overrideUrl;
+    // Mode 3 — legacy operator override via env / flat config alias.
+    const legacyUrl = _normaliseUrl(aiCfg.facesServiceUrl);
+    if (legacyUrl) {
+        setSidecarUrl(legacyUrl);
+        _childUrl = legacyUrl;
         _state = 'healthy';
         _error = null;
-        _log('info', `using operator-override sidecar at ${overrideUrl}`);
-        await _maybeMigrateDim(overrideUrl);
-        _broadcast({ type: 'ai_faces_status', ok: true, url: overrideUrl, mode: 'override' });
+        _sidecarMode = 'override';
+        _log('info', `using legacy override sidecar at ${legacyUrl}`);
+        await _maybeMigrateDim(legacyUrl);
+        _broadcast({ type: 'ai_faces_status', ok: true, url: legacyUrl, mode: 'override' });
         return getSidecarStatus();
     }
 

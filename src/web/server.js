@@ -7635,6 +7635,13 @@ app.get('/api/ai/status', async (_req, res) => {
                     } catch {
                         /* sidecar offline / fetch failed — fall through */
                     }
+                    let sidecarMode = null;
+                    try {
+                        const facesSpawnStatus = (
+                            await import('../core/ai/faces-spawn.js')
+                        ).getSidecarStatus();
+                        sidecarMode = facesSpawnStatus?.mode || null;
+                    } catch {}
                     return {
                         id,
                         preset,
@@ -7647,6 +7654,7 @@ app.get('/api/ai/status', async (_req, res) => {
                         providers,
                         providersRequested: String(facesBlock.providers || 'auto'),
                         version: sidecarVersion,
+                        mode: sidecarMode,
                     };
                 })(),
             },

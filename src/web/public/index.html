@@ -2688,26 +2688,10 @@
                                 <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.hwaccel.backend_help">Auto is safe; pick a specific backend only after the probe shows it works. The sidecar silently falls back to CPU if the chosen backend can't initialise on this host.</p>
                             </div>
 
-                            <!-- External sidecar URL — offload seekbar
-                                 generation to a remote server. Empty = auto-spawn
-                                 local binary (default). -->
-                            <div class="mt-3 pt-3 border-t border-tg-border/30">
-                                <label for="setting-adv-seekbar-sidecar-url" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.sidecar_url">External sidecar URL</label>
-                                <div class="flex items-center gap-2">
-                                    <input id="setting-adv-seekbar-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com:8089" autocomplete="off" spellcheck="false">
-                                    <button id="seekbar-sidecar-test-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0">
-                                        <i class="ri-link"></i><span data-i18n="maintenance.seekbar.sidecar_test">Test</span>
-                                    </button>
-                                </div>
-                                <div class="flex items-center gap-2 mt-1">
-                                    <p class="text-[10px] text-tg-textSecondary flex-1" data-i18n="maintenance.seekbar.sidecar_url_help">Leave empty to auto-spawn locally. Set a URL to offload seekbar generation to a remote server.</p>
-                                    <span id="seekbar-sidecar-test-result" class="text-[10px] shrink-0"></span>
-                                </div>
-                                <div class="mt-2">
-                                    <label for="setting-adv-seekbar-api-token" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.seekbar.api_token">API token (optional)</label>
-                                    <input id="setting-adv-seekbar-api-token" type="text" class="tg-input w-full text-sm" placeholder="" autocomplete="off" spellcheck="false">
-                                </div>
-                            </div>
+                            <!-- Seekbar external sidecar removed — Go binary
+                                 requires shared filesystem (path-based, no
+                                 upload/b64 mode). Use Docker volume or NFS
+                                 mount if the sidecar runs on another host. -->
                         </div>
                     </section>
 

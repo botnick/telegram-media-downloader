@@ -644,8 +644,6 @@ function _renderSidecarBadge(status) {
     let cls = 'text-tg-textSecondary';
     let healthy = false;
     if (state === 'healthy' || state === 'ready' || faces.loaded === true) {
-        // Show both provider (GPU chip) and model id in the badge so operators
-        // can confirm which hardware + model is active without opening System health.
         const providerTag = provider || 'CPU';
         const modelTag = faces.id
             ? String(faces.id)
@@ -653,7 +651,18 @@ function _renderSidecarBadge(status) {
                   .trim()
             : '';
         const ver = faces.version ? `v${faces.version}` : '';
-        const parts = [providerTag, modelTag, ver].filter(Boolean).join(' · ');
+        const mode = String(faces.mode || status?.trackers?.faces?.mode || '').toLowerCase();
+        const modeTag =
+            mode === 'external'
+                ? '🌐 External'
+                : mode === 'docker'
+                  ? '🐳 Docker'
+                  : mode === 'override'
+                    ? '⚙ Override'
+                    : mode === 'local'
+                      ? '💻 Local'
+                      : '';
+        const parts = [modeTag, providerTag, modelTag, ver].filter(Boolean).join(' · ');
         label = i18nTf(
             'maintenance.ai.sidecar.healthy',
             { provider: parts },
