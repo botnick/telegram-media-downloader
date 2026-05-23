@@ -16,8 +16,8 @@ pnpm-lock.yaml
 # Local launcher scripts
 *.bat
 *.cmd
-sidecar-start.js
-sidecar-tunnel.js
+sidecar-start.*
+sidecar-tunnel.*
 
 # Runtime data (everything under data/ is gitignored except a few examples)
 data/
