@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.3] — 2026-05-24
+
+Sidecar toggle fix — inline onclick eliminates module-cache binding failures.
+
+### Fixed
+- **Toggle buttons now clickable** — switched from `addEventListener` (broke due to ES module caching across SPA tab switches) to inline `onclick` handlers calling `window` globals.
+- **Sidecar URL populated on load** — `/api/ai/status` now includes `faces.sidecarUrl`.
+- **Stale test results** cleared when URL input changes.
+
+### Service worker
+- `VERSION = 'v2223'`
+
 ## [2.22.2] — 2026-05-23
 
 Explicit sidecar mode controls — test before switching, switch back with one click.
