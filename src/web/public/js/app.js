@@ -1233,16 +1233,25 @@ function renderGroupsList() {
         const collapsed = _isCollapsed(sec.key);
         parts.push(_renderSectionHeader(sec, monitored, items.length, collapsed));
 
-        if (!collapsed) {
-            const monItems = items.filter((g) => _monitorScore(g) === 0);
-            const otherItems = items.filter((g) => _monitorScore(g) > 0);
-            for (const g of monItems) parts.push(_buildGroupRow(g));
-            if (monItems.length > 0 && otherItems.length > 0) {
-                parts.push(
-                    '<div class="sidebar-section-sep mx-3 my-1 border-t border-dashed border-tg-border/40"></div>',
-                );
-            }
-            for (const g of otherItems) parts.push(_buildGroupRow(g));
+        const monItems = items.filter((g) => _monitorScore(g) === 0);
+        const otherItems = items.filter((g) => _monitorScore(g) > 0);
+        const hiddenAttr = collapsed ? ' hidden' : '';
+        for (const g of monItems) {
+            const row = _buildGroupRow(g);
+            parts.push(
+                collapsed ? row.replace('class="chat-row', `class="chat-row${hiddenAttr}`) : row,
+            );
+        }
+        if (monItems.length > 0 && otherItems.length > 0) {
+            parts.push(
+                `<div class="sidebar-section-sep mx-3 my-1 border-t border-dashed border-tg-border/40"${hiddenAttr}></div>`,
+            );
+        }
+        for (const g of otherItems) {
+            const row = _buildGroupRow(g);
+            parts.push(
+                collapsed ? row.replace('class="chat-row', `class="chat-row${hiddenAttr}`) : row,
+            );
         }
     }
 
@@ -2913,22 +2922,31 @@ function filterSidebarGroups(rawQuery) {
     const seps = list.querySelectorAll('.sidebar-section-sep');
     const headers = list.querySelectorAll('.sidebar-section-header');
     if (!q) {
-        rows.forEach((r) => r.classList.remove('hidden'));
-        seps.forEach((s) => s.classList.remove('hidden'));
-        headers.forEach((h) => h.classList.remove('hidden'));
+        // Restore collapse state when search is cleared
+        headers.forEach((h) => {
+            h.classList.remove('hidden');
+            const collapsed = h.getAttribute('aria-expanded') === 'false';
+            let sibling = h.nextElementSibling;
+            while (sibling && !sibling.classList.contains('sidebar-section-header')) {
+                if (
+                    sibling.classList.contains('chat-row') ||
+                    sibling.classList.contains('sidebar-section-sep')
+                ) {
+                    sibling.classList.toggle('hidden', collapsed);
+                }
+                sibling = sibling.nextElementSibling;
+            }
+        });
         return;
     }
-    // Hide/show rows matching query
-    const visibleBySection = {};
+    // Search active: show ALL matching rows regardless of collapse state
     rows.forEach((r) => {
         const name = (r.querySelector('.row-title-name')?.textContent || '').toLowerCase();
         const id = (r.dataset.id || '').toLowerCase();
-        const match = name.includes(q) || id.includes(q);
-        r.classList.toggle('hidden', !match);
+        r.classList.toggle('hidden', !(name.includes(q) || id.includes(q)));
     });
     // Hide section headers + separators that have no visible rows
     headers.forEach((h) => {
-        const key = h.dataset.section;
         let sibling = h.nextElementSibling;
         let hasVisible = false;
         while (sibling && !sibling.classList.contains('sidebar-section-header')) {
@@ -2939,7 +2957,16 @@ function filterSidebarGroups(rawQuery) {
         }
         h.classList.toggle('hidden', !hasVisible);
     });
-    seps.forEach((s) => s.classList.add('hidden'));
+    // Hide separators within sections that have no visible rows
+    seps.forEach((s) => {
+        let prev = s.previousElementSibling;
+        let next = s.nextElementSibling;
+        const prevVisible =
+            prev && prev.classList.contains('chat-row') && !prev.classList.contains('hidden');
+        const nextVisible =
+            next && next.classList.contains('chat-row') && !next.classList.contains('hidden');
+        s.classList.toggle('hidden', !prevVisible || !nextVisible);
+    });
 }
 
 // Re-apply the sidebar filter after every renderGroupsList() so a fresh
