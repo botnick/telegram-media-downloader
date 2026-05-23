@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.0] — 2026-05-23
+
+Web-configured external sidecar overrides Docker env + mode indicator.
+
+### Added
+- **Sidecar mode badge** — AI page badge now shows 🌐 External / 🐳 Docker / 💻 Local so operators know exactly which sidecar path is active.
+- **`/api/ai/status` mode field** — faces model payload includes `mode` from `getSidecarStatus()`.
+
+### Changed
+- **Web sidecar URL overrides Docker env** — `config.advanced.ai.faces.sidecarUrl` (set from dashboard) now takes priority over `FACES_SERVICE_URL` env var, so operators can switch to an external GPU sidecar without touching Docker config.
+
+### Removed
+- **Seekbar external sidecar UI** — Go binary requires shared filesystem (path-based, no upload/b64 fallback). Seekbar still works via Docker volume, NFS mount, or local auto-spawn.
+
+### Service worker
+- `VERSION = 'v2220'`
+
 ## [2.21.1] — 2026-05-23
 
 Sidecar reliability fixes for external GPU deployments.
