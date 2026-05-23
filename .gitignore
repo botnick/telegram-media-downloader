@@ -13,6 +13,10 @@ pnpm-lock.yaml
 .env.*
 !.env.example
 
+# Local batch scripts
+*.bat
+*.cmd
+
 # Runtime data (everything under data/ is gitignored except a few examples)
 data/
 
