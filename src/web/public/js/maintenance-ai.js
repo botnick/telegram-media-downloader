@@ -139,12 +139,10 @@ function _bindOnce() {
         }
     });
 
-    // External sidecar URL — save on blur/Enter, test on button click.
-    const sidecarUrlEl = $('#ai-faces-sidecar-url');
-    if (sidecarUrlEl) {
-        sidecarUrlEl.addEventListener('change', _onFacesSidecarUrlChange);
-    }
+    // External sidecar URL — test only, no auto-save.
     $('#ai-faces-sidecar-test-btn')?.addEventListener('click', _onFacesSidecarTestClick);
+    $('#ai-faces-sidecar-apply-btn')?.addEventListener('click', _onFacesSidecarApply);
+    $('#ai-faces-sidecar-local-btn')?.addEventListener('click', _onFacesSidecarUseLocal);
 
     // Settings inputs — model / threshold / minPoints / provider.
     // `change` (not `input`) so dragging the slider doesn't spam saves.
@@ -628,6 +626,7 @@ function _renderStatus(status) {
         const cur = String(cfg.faces?.sidecarUrl || '');
         if (sidecarUrlEl.value !== cur) sidecarUrlEl.value = cur;
     }
+    _syncSidecarActions();
 }
 
 function _renderSidecarBadge(status) {
@@ -1006,41 +1005,24 @@ async function _applyPreset(name) {
     }
 }
 
-async function _onFacesSidecarUrlChange() {
-    const el = $('#ai-faces-sidecar-url');
-    const url = String(el?.value || '').trim();
-    try {
-        await api.post('/api/config', {
-            advanced: { ai: { faces: { sidecarUrl: url } } },
-        });
-        await api.post('/api/ai/faces/restart', {});
-        showToast(
-            url
-                ? i18nT('maintenance.ai.sidecar_url_saved', 'Sidecar URL saved — reconnecting…')
-                : i18nT('maintenance.ai.sidecar_url_cleared', 'Sidecar URL cleared — using local'),
-            'success',
-        );
-        await refreshStatus();
-    } catch (e) {
-        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
-    }
-}
-
 async function _onFacesSidecarTestClick() {
     const el = $('#ai-faces-sidecar-url');
     const resultEl = $('#ai-faces-sidecar-test-result');
+    const applyBtn = $('#ai-faces-sidecar-apply-btn');
     const url = String(el?.value || '').trim();
     if (!url) {
         if (resultEl) {
             resultEl.textContent = i18nT('maintenance.ai.sidecar_test_empty', 'Enter a URL first');
             resultEl.className = 'text-[10px] shrink-0 text-yellow-400';
         }
+        if (applyBtn) applyBtn.disabled = true;
         return;
     }
     if (resultEl) {
         resultEl.textContent = i18nT('maintenance.ai.sidecar_testing', 'Testing…');
         resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
     }
+    if (applyBtn) applyBtn.disabled = true;
     try {
         const r = await api.post('/api/ai/faces/health-test', { url });
         if (resultEl) {
@@ -1050,6 +1032,7 @@ async function _onFacesSidecarTestClick() {
                     .join(' · ');
                 resultEl.textContent = `✓ ${parts || 'Connected'}`;
                 resultEl.className = 'text-[10px] shrink-0 text-green-400';
+                if (applyBtn) applyBtn.disabled = false;
             } else {
                 resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
                 resultEl.className = 'text-[10px] shrink-0 text-red-400';
@@ -1060,6 +1043,58 @@ async function _onFacesSidecarTestClick() {
             resultEl.textContent = `✗ ${e?.message || 'error'}`;
             resultEl.className = 'text-[10px] shrink-0 text-red-400';
         }
+    }
+}
+
+async function _onFacesSidecarApply() {
+    const el = $('#ai-faces-sidecar-url');
+    const url = String(el?.value || '').trim();
+    if (!url) return;
+    try {
+        await api.post('/api/config', {
+            advanced: { ai: { faces: { sidecarUrl: url } } },
+        });
+        await api.post('/api/ai/faces/restart', {});
+        showToast(
+            i18nT('maintenance.ai.sidecar_url_saved', 'Switched to external sidecar'),
+            'success',
+        );
+        await refreshStatus();
+        _syncSidecarActions();
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _onFacesSidecarUseLocal() {
+    try {
+        await api.post('/api/config', {
+            advanced: { ai: { faces: { sidecarUrl: '' } } },
+        });
+        await api.post('/api/ai/faces/restart', {});
+        const el = $('#ai-faces-sidecar-url');
+        if (el) el.value = '';
+        const resultEl = $('#ai-faces-sidecar-test-result');
+        if (resultEl) resultEl.textContent = '';
+        const applyBtn = $('#ai-faces-sidecar-apply-btn');
+        if (applyBtn) applyBtn.disabled = true;
+        showToast(
+            i18nT('maintenance.ai.sidecar_url_cleared', 'Switched to local sidecar'),
+            'success',
+        );
+        await refreshStatus();
+        _syncSidecarActions();
+    } catch (e) {
+        showToast(`Switch failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+function _syncSidecarActions() {
+    const localBtn = $('#ai-faces-sidecar-local-btn');
+    const urlEl = $('#ai-faces-sidecar-url');
+    const currentUrl = String(urlEl?.value || '').trim();
+    if (localBtn) {
+        localBtn.classList.toggle('hidden', !currentUrl);
     }
 }
 

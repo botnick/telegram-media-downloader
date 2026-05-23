@@ -3278,8 +3278,16 @@
                                 </button>
                             </div>
                             <div class="flex items-center gap-2 mt-1">
-                                <p class="text-[10px] text-tg-textSecondary flex-1" data-i18n="maintenance.ai.sidecar_url_help">Leave empty to auto-spawn locally. Set a URL to offload face detection to a remote GPU server.</p>
                                 <span id="ai-faces-sidecar-test-result" class="text-[10px] shrink-0"></span>
+                            </div>
+                            <div id="ai-faces-sidecar-actions" class="flex items-center gap-2 mt-2">
+                                <button id="ai-faces-sidecar-apply-btn" type="button" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled>
+                                    <i class="ri-check-line"></i><span data-i18n="maintenance.ai.sidecar_apply">Use External</span>
+                                </button>
+                                <button id="ai-faces-sidecar-local-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 hidden">
+                                    <i class="ri-computer-line"></i><span data-i18n="maintenance.ai.sidecar_use_local">Use Local</span>
+                                </button>
+                                <p class="text-[10px] text-tg-textSecondary flex-1" data-i18n="maintenance.ai.sidecar_url_help">Test the connection first, then click Use External to switch.</p>
                             </div>
                         </div>
                     </details>
