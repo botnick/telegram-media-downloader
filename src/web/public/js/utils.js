@@ -167,8 +167,11 @@ export function createAvatar(idOrOpts, name, type) {
               ? 'avatar-ring'
               : '';
 
+    const hasPhoto = /^-?\d+$/.test(String(id));
     return `
-        <div class="relative flex-shrink-0 ${ringClass}" style="width:${sizePx}px;height:${sizePx}px">
+        <div class="relative flex-shrink-0 ${ringClass}" style="width:${sizePx}px;height:${sizePx}px">${
+            hasPhoto
+                ? `
             <img src="/api/groups/${encodeURIComponent(id)}/photo"
                  class="w-full h-full rounded-full object-cover bg-tg-bg"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
@@ -176,7 +179,12 @@ export function createAvatar(idOrOpts, name, type) {
                  alt="${escapeHtml(String(name || id))}">
             <div class="absolute inset-0 w-full h-full rounded-full ${gradient} flex items-center justify-center text-white hidden shadow-inner">
                 <span class="font-bold drop-shadow-md" style="font-size:${initialPx}px">${initial}</span>
-            </div>
+            </div>`
+                : `
+            <div class="w-full h-full rounded-full ${gradient} flex items-center justify-center text-white shadow-inner">
+                <span class="font-bold drop-shadow-md" style="font-size:${initialPx}px">${initial}</span>
+            </div>`
+        }
             ${
                 dotMeta
                     ? `

@@ -3711,8 +3711,14 @@ body[data-page="maintenance-recovery"] {
    capsule-shaped toggle. Visually distinct from the underline-style
    type tabs (All / Photos / Videos / …) because it STACKS with the
    active type rather than replacing it. */
-#media-tabs .tab-item--toggle {
+#media-tabs .tab-item--toggle:first-of-type {
     margin-left: auto;
+}
+#media-tabs .tab-item--toggle + .tab-item--toggle {
+    margin-left: 6px;
+}
+#media-tabs .tab-item--toggle {
+    margin-left: 0;
     align-self: center;
     display: inline-flex;
     align-items: center;
