@@ -1054,24 +1054,111 @@ async function loadGroups() {
     }
 }
 
+// Section config for the categorized sidebar. Order = render order.
+const _SIDEBAR_SECTIONS = [
+    { key: 'channel', icon: 'ri-megaphone-line', label: 'Channels' },
+    { key: 'group', icon: 'ri-group-line', label: 'Groups' },
+    { key: 'user', icon: 'ri-user-line', label: 'DMs' },
+    { key: 'bot', icon: 'ri-robot-2-line', label: 'Bots' },
+    { key: 'folder', icon: 'ri-folder-3-line', label: 'Folders' },
+];
+
+function _classifyGroupType(g) {
+    const t = String(g.type || '').toLowerCase();
+    if (t === 'channel') return 'channel';
+    if (t === 'group' || t === 'supergroup') return 'group';
+    if (t === 'user') return 'user';
+    if (t === 'bot') return 'bot';
+    if (t === 'folder') return 'folder';
+    if (t === 'config') {
+        const cfgGroup = (state.groups || []).find((cg) => String(cg.id) === String(g.id));
+        const ct = String(cfgGroup?.type || '').toLowerCase();
+        if (ct === 'channel') return 'channel';
+        if (ct === 'group' || ct === 'supergroup') return 'group';
+        if (ct === 'user') return 'user';
+        if (ct === 'bot') return 'bot';
+    }
+    return 'folder';
+}
+
+function _buildGroupRow(g) {
+    const id = String(g.downloadId || g.id || g.name);
+    const canonical = getGroupName(id, {
+        fallback: i18nT('groups.unknown_chat', 'Unknown chat'),
+    });
+    const stillUnresolved = isUnresolvedName(g.name, id) && !state.groupNameCache?.get?.(id);
+    if (stillUnresolved) renderGroupsList._needsResolve = true;
+    const isForeign = !!g.peerId;
+    const subtitle = isForeign
+        ? i18nTf(
+              'sidebar.group.peer_badge',
+              { peer: g.peerName || g.peerId.slice(0, 12) },
+              `from ${g.peerName || g.peerId.slice(0, 12)}`,
+          )
+        : stillUnresolved
+          ? i18nTf(
+                'groups.resolving',
+                { count: g.totalFiles || 0 },
+                `Resolving… · ${g.totalFiles || 0} files`,
+            )
+          : i18nTf(
+                'groups.files_size',
+                { count: g.totalFiles || 0, size: g.sizeFormatted || '0 B' },
+                `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`,
+            );
+    const ring = !isForeign && state.activeRings.has(id) ? 'downloading' : null;
+    const cfgGroup = isForeign ? null : (state.groups || []).find((cg) => String(cg.id) === id);
+    const monitorEnabled =
+        state.role === 'admin' && cfgGroup && !cfgGroup.suspended
+            ? cfgGroup.enabled !== false
+            : null;
+    const sidebarPill =
+        cfgGroup?.suspended === true
+            ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
+            : null;
+    return renderChatRow({
+        id,
+        name: canonical,
+        subtitle,
+        avatarType: g._sectionType || g.type,
+        avatarRing: ring,
+        avatarDot: ring ? 'monitor' : null,
+        time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
+        selected: state.currentGroupId === id,
+        statusPill: sidebarPill,
+        cog: !isForeign && state.role === 'admin',
+        monitorEnabled,
+        peerId: g.peerId || null,
+        peerName: g.peerName || null,
+    });
+}
+
+function _renderSectionHeader(sec, monitored, total, collapsed) {
+    const chevron = collapsed ? 'ri-arrow-right-s-line' : 'ri-arrow-down-s-line';
+    const countLabel = `${monitored}/${total}`;
+    return `<button type="button" class="sidebar-section-header w-full px-3 py-1.5 text-[11px] text-tg-textSecondary uppercase tracking-wide flex items-center gap-1.5 hover:bg-tg-hover/40 transition-colors select-none"
+                    data-section="${sec.key}" aria-expanded="${!collapsed}">
+        <i class="${chevron} text-sm transition-transform sidebar-section-chevron"></i>
+        <i class="${sec.icon} text-sm"></i>
+        <span class="flex-1 text-left">${sec.label}</span>
+        <span class="text-[10px] font-mono tabular-nums ${monitored > 0 ? 'text-tg-green' : ''}">${countLabel}</span>
+    </button>`;
+}
+
 function renderGroupsList() {
     const list = document.getElementById('groups-list');
     if (!list) return;
 
     const map = new Map();
-
-    // Start with config groups (these are monitored groups — the authoritative name source)
     state.groups.forEach((g) => {
         map.set(String(g.id), {
             ...g,
             downloadId: String(g.id),
             totalFiles: 0,
             sizeFormatted: '0 B',
-            type: 'config',
+            type: g.type || 'config',
         });
     });
-
-    // Enrich with download data (file counts, sizes) and add download-only groups
     state.downloads.forEach((d) => {
         const key = String(d.id);
         if (map.has(key)) {
@@ -1086,14 +1173,13 @@ function renderGroupsList() {
                 downloadId: d.id,
                 totalFiles: d.totalFiles,
                 sizeFormatted: d.sizeFormatted,
-                type: 'folder',
+                type: d.type || 'folder',
             });
         }
     });
 
-    const sorted = Array.from(map.values());
-
-    if (sorted.length === 0) {
+    const allGroups = Array.from(map.values());
+    if (allGroups.length === 0) {
         list.innerHTML = renderEmptyState({
             icon: 'ri-chat-3-line',
             title: i18nT('groups.empty.title', 'No groups yet'),
@@ -1108,98 +1194,77 @@ function renderGroupsList() {
     }
 
     state.activeRings = state.activeRings || new Set();
-    let needsResolve = false;
-    const html = sorted
-        .map((g) => {
-            const id = String(g.downloadId || g.id || g.name);
-            // Route every render through the canonical lookup so a name set by
-            // the WS `groups_refreshed` handler propagates without a reload.
-            const canonical = getGroupName(id, {
-                fallback: i18nT('groups.unknown_chat', 'Unknown chat'),
-            });
-            // Did the canonical lookup fall through to the placeholder? If so,
-            // surface the friendly "Resolving…" subtitle and trigger a one-shot
-            // refresh-info below.
-            const stillUnresolved =
-                isUnresolvedName(g.name, id) && !state.groupNameCache?.get?.(id);
-            if (stillUnresolved) needsResolve = true;
-            // Federated sidebar (Layer 1): foreign rows carry `peerId` + `peerName`.
-            // Subtitle becomes "from {peer}" instead of the file count, since
-            // we don't have peer-side counts cached locally; cog is suppressed
-            // (foreign groups can't be edited from this peer's dashboard —
-            // the click navigates to the per-group view filtered to that peer).
-            const isForeign = !!g.peerId;
-            const subtitle = isForeign
-                ? i18nTf(
-                      'sidebar.group.peer_badge',
-                      { peer: g.peerName || g.peerId.slice(0, 12) },
-                      `from ${g.peerName || g.peerId.slice(0, 12)}`,
-                  )
-                : stillUnresolved
-                  ? i18nTf(
-                        'groups.resolving',
-                        { count: g.totalFiles || 0 },
-                        `Resolving… · ${g.totalFiles || 0} files`,
-                    )
-                  : i18nTf(
-                        'groups.files_size',
-                        { count: g.totalFiles || 0, size: g.sizeFormatted || '0 B' },
-                        `${g.totalFiles || 0} files · ${g.sizeFormatted || '0 B'}`,
-                    );
-            const ring = !isForeign && state.activeRings.has(id) ? 'downloading' : null;
-            // Monitor toggle — only meaningful for own (non-foreign) groups
-            // that are actually in `state.groups` (config-defined). Folder-
-            // only rows have no monitor state to toggle.
-            const cfgGroup = isForeign
-                ? null
-                : (state.groups || []).find((cg) => String(cg.id) === id);
-            // Suspended groups cannot be toggled — hide the button entirely
-            const monitorEnabled =
-                state.role === 'admin' && cfgGroup && !cfgGroup.suspended
-                    ? cfgGroup.enabled !== false
-                    : null;
-            const sidebarPill =
-                cfgGroup?.suspended === true
-                    ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
-                    : null;
-            return renderChatRow({
-                id,
-                name: canonical,
-                subtitle,
-                avatarType: g.type,
-                avatarRing: ring,
-                avatarDot: ring ? 'monitor' : null,
-                time: g.lastDownloadAt ? formatRelativeTime(g.lastDownloadAt) : '',
-                selected: state.currentGroupId === id,
-                statusPill: sidebarPill,
-                cog: !isForeign && state.role === 'admin',
-                monitorEnabled, // 1-click ▶/⏸ toggle when this is a config group
-                peerId: g.peerId || null,
-                peerName: g.peerName || null,
-                // Don't ship the (possibly stale) raw name through the dataset —
-                // click handlers re-resolve from the canonical store.
-            });
-        })
-        .join('');
+    renderGroupsList._needsResolve = false;
 
-    // Skip the assignment when nothing changed — the user reported the
-    // sidebar was "blinking" because we were rebuilding identical HTML on
-    // every WS event. innerHTML reassignment tears down + recreates every
-    // node, briefly flashing focus + scroll. This guard is the simplest
-    // way to make the list smooth without a real DOM-diff lib.
+    // Classify into sections
+    const buckets = {};
+    for (const sec of _SIDEBAR_SECTIONS) buckets[sec.key] = [];
+    for (const g of allGroups) {
+        const cat = _classifyGroupType(g);
+        g._sectionType = cat;
+        if (!buckets[cat]) buckets[cat] = [];
+        buckets[cat].push(g);
+    }
+
+    // Sort within each section: monitored first, then by totalFiles desc
+    const _monitorScore = (g) => {
+        const cfg = (state.groups || []).find((cg) => String(cg.id) === String(g.id));
+        if (!cfg) return 2; // download-only → after paused
+        if (cfg.suspended) return 3;
+        return cfg.enabled !== false ? 0 : 1;
+    };
+    for (const key of Object.keys(buckets)) {
+        buckets[key].sort(
+            (a, b) =>
+                _monitorScore(a) - _monitorScore(b) || (b.totalFiles || 0) - (a.totalFiles || 0),
+        );
+    }
+
+    // Read collapse state from localStorage
+    const _collapseKey = (k) => `tgdl.sidebar.section.${k}`;
+    const _isCollapsed = (k) => localStorage.getItem(_collapseKey(k)) === '1';
+
+    // Build HTML section by section
+    const parts = [];
+    for (const sec of _SIDEBAR_SECTIONS) {
+        const items = buckets[sec.key];
+        if (!items || items.length === 0) continue;
+        const monitored = items.filter((g) => _monitorScore(g) === 0).length;
+        const collapsed = _isCollapsed(sec.key);
+        parts.push(_renderSectionHeader(sec, monitored, items.length, collapsed));
+
+        if (!collapsed) {
+            const monItems = items.filter((g) => _monitorScore(g) === 0);
+            const otherItems = items.filter((g) => _monitorScore(g) > 0);
+            for (const g of monItems) parts.push(_buildGroupRow(g));
+            if (monItems.length > 0 && otherItems.length > 0) {
+                parts.push(
+                    '<div class="sidebar-section-sep mx-3 my-1 border-t border-dashed border-tg-border/40"></div>',
+                );
+            }
+            for (const g of otherItems) parts.push(_buildGroupRow(g));
+        }
+    }
+
+    const html = parts.join('');
+
     if (renderGroupsList._lastHtml !== html) {
         renderGroupsList._lastHtml = html;
         list.innerHTML = html;
-        // Re-apply any active sidebar filter so a WS-driven re-render
-        // doesn't blow away the user's typed query.
         _reapplySidebarFilter();
+        // Wire section collapse toggles
+        list.querySelectorAll('.sidebar-section-header').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const key = btn.dataset.section;
+                const nowCollapsed = _isCollapsed(key);
+                localStorage.setItem(_collapseKey(key), nowCollapsed ? '' : '1');
+                renderGroupsList();
+            });
+        });
     }
 
-    // Fire a one-shot resolve in the background. Endpoint is fire-and-
-    // forget; the `groups_refreshed` WS handler covers the cache merge
-    // for every open tab. The dedupe flag prevents a flurry of WS-driven
-    // re-renders from hammering the endpoint, while a 409 from a sibling
-    // client is no-op'd on the server side.
+    const needsResolve = renderGroupsList._needsResolve;
     if (needsResolve && !state._resolvingGroups && state.role === 'admin') {
         state._resolvingGroups = true;
         api.post('/api/groups/refresh-info')
@@ -2845,15 +2910,36 @@ function filterSidebarGroups(rawQuery) {
         .trim()
         .toLowerCase();
     const rows = list.querySelectorAll('.chat-row');
+    const seps = list.querySelectorAll('.sidebar-section-sep');
+    const headers = list.querySelectorAll('.sidebar-section-header');
     if (!q) {
         rows.forEach((r) => r.classList.remove('hidden'));
+        seps.forEach((s) => s.classList.remove('hidden'));
+        headers.forEach((h) => h.classList.remove('hidden'));
         return;
     }
+    // Hide/show rows matching query
+    const visibleBySection = {};
     rows.forEach((r) => {
         const name = (r.querySelector('.row-title-name')?.textContent || '').toLowerCase();
         const id = (r.dataset.id || '').toLowerCase();
-        r.classList.toggle('hidden', !(name.includes(q) || id.includes(q)));
+        const match = name.includes(q) || id.includes(q);
+        r.classList.toggle('hidden', !match);
     });
+    // Hide section headers + separators that have no visible rows
+    headers.forEach((h) => {
+        const key = h.dataset.section;
+        let sibling = h.nextElementSibling;
+        let hasVisible = false;
+        while (sibling && !sibling.classList.contains('sidebar-section-header')) {
+            if (sibling.classList.contains('chat-row') && !sibling.classList.contains('hidden')) {
+                hasVisible = true;
+            }
+            sibling = sibling.nextElementSibling;
+        }
+        h.classList.toggle('hidden', !hasVisible);
+    });
+    seps.forEach((s) => s.classList.add('hidden'));
 }
 
 // Re-apply the sidebar filter after every renderGroupsList() so a fresh
