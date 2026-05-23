@@ -266,7 +266,9 @@ async function _onSeekbarSidecarTestClick() {
         resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
     }
     try {
-        const r = await api.post('/api/maintenance/seekbar/sidecar-test', { url });
+        const tokenEl = document.getElementById('setting-adv-seekbar-api-token');
+        const token = String(tokenEl?.value || '').trim();
+        const r = await api.post('/api/maintenance/seekbar/sidecar-test', { url, token });
         if (resultEl) {
             if (r.ok) {
                 const parts = [r.version ? `v${r.version}` : null].filter(Boolean).join(' · ');

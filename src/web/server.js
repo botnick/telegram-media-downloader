@@ -6677,15 +6677,18 @@ app.get('/api/maintenance/seekbar/hwaccel-probe', async (req, res) => {
 
 app.post('/api/maintenance/seekbar/sidecar-test', async (req, res) => {
     const url = typeof req.body?.url === 'string' ? req.body.url.trim().replace(/\/+$/, '') : '';
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     if (!url) return res.status(400).json({ ok: false, error: 'url_required' });
     if (!/^https?:\/\//i.test(url))
         return res.status(400).json({ ok: false, error: 'invalid_scheme' });
     try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 5000);
+        const headers = {};
+        if (token) headers['X-API-Token'] = token;
         let r;
         try {
-            r = await fetch(`${url}/health`, { method: 'GET', signal: ctrl.signal });
+            r = await fetch(`${url}/health`, { method: 'GET', signal: ctrl.signal, headers });
         } finally {
             clearTimeout(timer);
         }
