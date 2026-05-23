@@ -7567,6 +7567,8 @@ app.get('/api/ai/status', async (_req, res) => {
                         facesBlock.detectorModel || cfg.facesDetectorModel || 'buffalo_l',
                     ),
                     scanVideos: facesBlock.scanVideos === true,
+                    sidecarUrl:
+                        typeof facesBlock.sidecarUrl === 'string' ? facesBlock.sidecarUrl : '',
                 },
             },
             counts,
