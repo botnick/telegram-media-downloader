@@ -146,15 +146,6 @@ function _wireButtons() {
         _refreshHealth().catch(() => {});
     });
 
-    // External sidecar URL — save on blur/Enter, test on button click.
-    const seekbarUrlEl = document.getElementById('setting-adv-seekbar-sidecar-url');
-    if (seekbarUrlEl) {
-        seekbarUrlEl.addEventListener('change', _onSeekbarSidecarUrlChange);
-    }
-    document
-        .getElementById('seekbar-sidecar-test-btn')
-        ?.addEventListener('click', _onSeekbarSidecarTestClick);
-
     // Group-selector enable/disable rebuild button when a group is selected.
     const groupSel = document.getElementById('seekbar-group-select');
     const rebuildGroupBtn = document.getElementById('seekbar-rebuild-group-btn');
@@ -216,74 +207,6 @@ async function _wipeCache() {
         showToast(i18nT('maintenance.seekbar.wipe_started', 'Wipe started'));
     } catch (e) {
         showToast(e?.data?.error || e?.message || 'Wipe failed', 'error');
-    }
-}
-
-async function _onSeekbarSidecarUrlChange() {
-    const el = document.getElementById('setting-adv-seekbar-sidecar-url');
-    const tokenEl = document.getElementById('setting-adv-seekbar-api-token');
-    const url = String(el?.value || '').trim();
-    const token = String(tokenEl?.value || '').trim();
-    try {
-        await api.post('/api/config', {
-            advanced: { seekbar: { sidecarUrl: url, apiToken: token } },
-        });
-        await api.post('/api/maintenance/seekbar/sidecar/restart', {});
-        showToast(
-            url
-                ? i18nT(
-                      'maintenance.seekbar.sidecar_url_saved',
-                      'Sidecar URL saved — reconnecting…',
-                  )
-                : i18nT(
-                      'maintenance.seekbar.sidecar_url_cleared',
-                      'Sidecar URL cleared — using local',
-                  ),
-            'success',
-        );
-        await _refreshHealth();
-    } catch (e) {
-        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
-    }
-}
-
-async function _onSeekbarSidecarTestClick() {
-    const el = document.getElementById('setting-adv-seekbar-sidecar-url');
-    const resultEl = document.getElementById('seekbar-sidecar-test-result');
-    const url = String(el?.value || '').trim();
-    if (!url) {
-        if (resultEl) {
-            resultEl.textContent = i18nT(
-                'maintenance.seekbar.sidecar_test_empty',
-                'Enter a URL first',
-            );
-            resultEl.className = 'text-[10px] shrink-0 text-yellow-400';
-        }
-        return;
-    }
-    if (resultEl) {
-        resultEl.textContent = i18nT('maintenance.seekbar.sidecar_testing', 'Testing…');
-        resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
-    }
-    try {
-        const tokenEl = document.getElementById('setting-adv-seekbar-api-token');
-        const token = String(tokenEl?.value || '').trim();
-        const r = await api.post('/api/maintenance/seekbar/sidecar-test', { url, token });
-        if (resultEl) {
-            if (r.ok) {
-                const parts = [r.version ? `v${r.version}` : null].filter(Boolean).join(' · ');
-                resultEl.textContent = `✓ ${parts || 'Connected'}`;
-                resultEl.className = 'text-[10px] shrink-0 text-green-400';
-            } else {
-                resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
-                resultEl.className = 'text-[10px] shrink-0 text-red-400';
-            }
-        }
-    } catch (e) {
-        if (resultEl) {
-            resultEl.textContent = `✗ ${e?.message || 'error'}`;
-            resultEl.className = 'text-[10px] shrink-0 text-red-400';
-        }
     }
 }
 

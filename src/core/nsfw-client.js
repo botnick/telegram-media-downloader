@@ -25,6 +25,7 @@ const HEALTH_PROBE_RETRIES = 3;
 
 let _sidecarUrl = '';
 let _healthCache = null;
+let _pathRejectedLogged = false;
 let _requestTimeoutMs = REQUEST_TIMEOUT_MS;
 let _maxRetries = MAX_RETRIES;
 let _retryBackoffMs = RETRY_BACKOFF_MS.slice();
@@ -105,48 +106,64 @@ export async function health() {
     return value;
 }
 
+async function _sendB64Classify(absPath, url, threshold, onLog) {
+    let bytes;
+    try {
+        bytes = await fs.readFile(absPath);
+    } catch (e) {
+        _log(onLog, 'warn', `b64 read failed for ${absPath}: ${e?.message || e}`);
+        return null;
+    }
+    const b64Body = { image_b64: Buffer.from(bytes).toString('base64') };
+    if (threshold !== undefined) b64Body.threshold = threshold;
+    try {
+        return await _postWithRetry(`${url}/classify`, b64Body, onLog);
+    } catch (e) {
+        _log(onLog, 'warn', `classify b64-mode failed for ${absPath}: ${e?.message || e}`);
+        return null;
+    }
+}
+
 /**
  * Classify a single image via the external sidecar.
- * Path mode first; 403 falls back to b64.
+ * Path mode first; 403 falls back to b64 (and remembers for the session).
  * @returns {Promise<{ score: number, label: string } | null>}
  */
 export async function classifyFile(absPath, opts = {}, onLog = null) {
     const url = getSidecarUrl();
     if (!url) return null;
     const threshold = Number.isFinite(opts.threshold) ? opts.threshold : undefined;
-    const pathBody = { path: absPath };
-    if (threshold !== undefined) pathBody.threshold = threshold;
 
     let res;
-    try {
-        res = await _postWithRetry(`${url}/classify`, pathBody, onLog);
-    } catch (e) {
-        _log(onLog, 'warn', `classify path-mode failed for ${absPath}: ${e?.message || e}`);
-        return null;
-    }
 
-    if (res && res.status === 403) {
-        let code = null;
+    if (_pathRejectedLogged) {
+        res = await _sendB64Classify(absPath, url, threshold, onLog);
+        if (res === null) return null;
+    } else {
+        const pathBody = { path: absPath };
+        if (threshold !== undefined) pathBody.threshold = threshold;
         try {
-            const body = await res.clone().json();
-            code = body?.code || null;
-        } catch {}
-        if (code === 'path_not_allowed') {
-            _log(onLog, 'info', `path mode rejected for ${absPath}; falling back to b64`);
-            let bytes;
+            res = await _postWithRetry(`${url}/classify`, pathBody, onLog);
+        } catch (e) {
+            _log(onLog, 'warn', `classify path-mode failed for ${absPath}: ${e?.message || e}`);
+            return null;
+        }
+
+        if (res && res.status === 403) {
+            let code = null;
             try {
-                bytes = await fs.readFile(absPath);
-            } catch (e) {
-                _log(onLog, 'warn', `b64 read failed for ${absPath}: ${e?.message || e}`);
-                return null;
-            }
-            const b64Body = { image_b64: Buffer.from(bytes).toString('base64') };
-            if (threshold !== undefined) b64Body.threshold = threshold;
-            try {
-                res = await _postWithRetry(`${url}/classify`, b64Body, onLog);
-            } catch (e) {
-                _log(onLog, 'warn', `classify b64-mode failed for ${absPath}: ${e?.message || e}`);
-                return null;
+                const body = await res.clone().json();
+                code = body?.code || null;
+            } catch {}
+            if (code === 'path_not_allowed') {
+                _log(
+                    onLog,
+                    'info',
+                    'path mode rejected by sidecar; switching to b64 for all files',
+                );
+                _pathRejectedLogged = true;
+                res = await _sendB64Classify(absPath, url, threshold, onLog);
+                if (res === null) return null;
             }
         }
     }
@@ -182,6 +199,15 @@ export async function classifyBatch(absPaths, opts = {}, onLog = null) {
     const url = getSidecarUrl();
     if (!url) return absPaths.map(() => null);
     if (!absPaths.length) return [];
+
+    // Path mode already known to fail — classify individually via b64.
+    if (_pathRejectedLogged) {
+        const out = [];
+        for (const p of absPaths) {
+            out.push(await classifyFile(p, opts, onLog));
+        }
+        return out;
+    }
 
     const threshold = Number.isFinite(opts.threshold) ? opts.threshold : undefined;
     const body = { files: absPaths };
@@ -243,6 +269,10 @@ export async function classifyBatch(absPaths, opts = {}, onLog = null) {
         output[i] = { score, label: item.label || (score >= 0.5 ? 'nsfw' : 'normal') };
     }
 
+    if (pathFallbacks.length) {
+        _log(onLog, 'info', 'path mode rejected by sidecar; switching to b64 for all files');
+        _pathRejectedLogged = true;
+    }
     for (const idx of pathFallbacks) {
         output[idx] = await classifyFile(absPaths[idx], opts, onLog);
     }

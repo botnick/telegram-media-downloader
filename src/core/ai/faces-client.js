@@ -46,6 +46,7 @@ let _retryBackoffMs = RETRY_BACKOFF_MS_DEFAULT.slice();
 let _maxConcurrency = 0; // 0 = unlimited
 let _inflight = 0;
 let _envBootstrapped = false;
+let _pathRejectedLogged = false;
 
 let _sidecarUrl = '';
 let _healthCache = null; // { value, expiresAt }
@@ -275,6 +276,19 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
         return absPaths.map(() => null);
     }
 
+    // Path mode already known to fail — detect individually via b64.
+    if (_pathRejectedLogged) {
+        const out = [];
+        for (const p of absPaths) {
+            if (signal?.aborted) {
+                out.push(null);
+                continue;
+            }
+            out.push(await detectFaces(p, cfg, onLog));
+        }
+        return out;
+    }
+
     const facesCfg = cfg?.faces || cfg || {};
     const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
     const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60);
@@ -350,8 +364,10 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
         output[i] = _parseFacesList(item.faces);
     }
 
-    // Per-image b64 fallback for Docker/sandbox environments where the sidecar
-    // can't read host paths. Rare but required for correctness.
+    if (pathFallbacks.length) {
+        _log(onLog, 'info', 'path mode rejected by sidecar; switching to b64 for all files');
+        _pathRejectedLogged = true;
+    }
     for (const idx of pathFallbacks) {
         output[idx] = await detectFaces(absPaths[idx], cfg, onLog);
     }
@@ -461,42 +477,52 @@ export async function detectFacesInVideo(absPath, cfg = {}, onLog = null, signal
     return _parseFacesList(Array.isArray(resBody?.faces) ? resBody.faces : []);
 }
 
-async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
-    // Path mode first. If the sidecar rejects with `path_not_allowed`
-    // (Docker sandbox, or operator chose strict allow-roots), fall back
-    // to b64. The fallback only fires on that explicit 403 — other
-    // errors flow through retry / null.
-    let res;
+async function _sendB64(absPath, baseBody, url, onLog) {
+    let bytes;
     try {
-        res = await _postWithRetry(`${url}/detect`, pathBody, onLog);
+        bytes = await fs.readFile(absPath);
     } catch (e) {
-        _log(onLog, 'warn', `detect path-mode failed for ${absPath}: ${e?.message || e}`);
+        _log(onLog, 'warn', `b64 read failed for ${absPath}: ${e?.message || e}`);
         return null;
     }
+    const b64Body = { ...baseBody, image_b64: Buffer.from(bytes).toString('base64') };
+    try {
+        return await _postWithRetry(`${url}/detect`, b64Body, onLog);
+    } catch (e) {
+        _log(onLog, 'warn', `detect b64-mode failed for ${absPath}: ${e?.message || e}`);
+        return null;
+    }
+}
 
-    if (res && res.status === 403) {
-        let code = null;
+async function _detectInner(absPath, pathBody, baseBody, url, onLog) {
+    let res;
+
+    if (_pathRejectedLogged) {
+        res = await _sendB64(absPath, baseBody, url, onLog);
+        if (res === null) return null;
+    } else {
         try {
-            const body = await res.clone().json();
-            code = body?.code || null;
-        } catch {
-            /* body may not be JSON; treat as generic 403 */
+            res = await _postWithRetry(`${url}/detect`, pathBody, onLog);
+        } catch (e) {
+            _log(onLog, 'warn', `detect path-mode failed for ${absPath}: ${e?.message || e}`);
+            return null;
         }
-        if (code === 'path_not_allowed') {
-            _log(onLog, 'info', `path mode rejected for ${absPath}; falling back to b64`);
-            let bytes;
+
+        if (res && res.status === 403) {
+            let code = null;
             try {
-                bytes = await fs.readFile(absPath);
-            } catch (e) {
-                _log(onLog, 'warn', `b64 read failed for ${absPath}: ${e?.message || e}`);
-                return null;
-            }
-            const b64Body = { ...baseBody, image_b64: Buffer.from(bytes).toString('base64') };
-            try {
-                res = await _postWithRetry(`${url}/detect`, b64Body, onLog);
-            } catch (e) {
-                _log(onLog, 'warn', `detect b64-mode failed for ${absPath}: ${e?.message || e}`);
-                return null;
+                const body = await res.clone().json();
+                code = body?.code || null;
+            } catch {}
+            if (code === 'path_not_allowed') {
+                _log(
+                    onLog,
+                    'info',
+                    'path mode rejected by sidecar; switching to b64 for all files',
+                );
+                _pathRejectedLogged = true;
+                res = await _sendB64(absPath, baseBody, url, onLog);
+                if (res === null) return null;
             }
         }
     }

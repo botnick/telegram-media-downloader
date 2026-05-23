@@ -466,19 +466,14 @@ export async function startSidecar() {
     if (_startingPromise) return _startingPromise;
     _startingPromise = (async () => {
         try {
-            // Mode 1: operator-provided URL (Docker compose / remote sidecar).
+            // Mode 1: operator-provided URL (Docker compose with shared volume).
             const envUrl = (process.env.SEEKBAR_SIDECAR_URL || '').trim();
             const envToken = (process.env.SEEKBAR_API_TOKEN || '').trim();
             if (envUrl) {
                 return await _connectRemote(envUrl, envToken);
             }
-            const cfg = _cfg();
-            const cfgUrl = String(cfg.sidecarUrl || '').trim();
-            if (cfgUrl) {
-                return await _connectRemote(cfgUrl, String(cfg.apiToken || '').trim());
-            }
             // Mode 2: auto-spawn the local Go binary.
-            return await _spawnLocal(cfg);
+            return await _spawnLocal(_cfg());
         } finally {
             _startingPromise = null;
         }
