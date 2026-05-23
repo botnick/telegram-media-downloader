@@ -434,6 +434,11 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
         }
     }
 
+    const _permanentFfmpegError = (msg) =>
+        /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found/i.test(
+            msg,
+        );
+
     let lastErr = null;
     for (let attempt = 0; attempt < Math.max(1, Number(conf.maxRetries) || 1) + 1; attempt++) {
         try {
@@ -442,7 +447,7 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
             break;
         } catch (e) {
             lastErr = e;
-            // Tiny backoff on transient locked-moov / interrupted-read errors.
+            if (_permanentFfmpegError(e?.message || '')) break;
             await new Promise((r) => setTimeout(r, 50 + attempt * 100));
         }
     }
