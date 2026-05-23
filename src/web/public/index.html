@@ -3035,16 +3035,22 @@
                         <!-- External NSFW sidecar URL — offload classification
                              to a remote GPU server. Empty = local WASM (default). -->
                         <div class="mt-3 pt-3 border-t border-tg-border/30">
-                            <label for="setting-adv-nsfw-sidecar-url" class="text-tg-text text-xs block mb-1" data-i18n="maintenance.nsfw.sidecar_url">External classifier URL</label>
-                            <div class="flex items-center gap-2">
+                            <label for="setting-adv-nsfw-sidecar-url" class="text-tg-text text-xs block mb-1.5" data-i18n="maintenance.nsfw.sidecar_url">External classifier URL</label>
+                            <div class="flex items-stretch gap-2">
                                 <input id="setting-adv-nsfw-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com:8012" autocomplete="off" spellcheck="false">
-                                <button id="nsfw-sidecar-test-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5 shrink-0">
-                                    <i class="ri-link"></i><span data-i18n="maintenance.nsfw.sidecar_test">Test</span>
+                                <button id="nsfw-sidecar-test-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5">
+                                    <i class="ri-wifi-line"></i><span data-i18n="maintenance.nsfw.sidecar_test">Test</span>
                                 </button>
                             </div>
-                            <div class="flex items-center gap-2 mt-1">
-                                <p class="text-[10px] text-tg-textSecondary flex-1" data-i18n="maintenance.nsfw.sidecar_url_help">Leave empty for built-in CPU classifier. Set a URL to offload NSFW classification to a remote GPU.</p>
-                                <span id="nsfw-sidecar-test-result" class="text-[10px] shrink-0"></span>
+                            <span id="nsfw-sidecar-test-result" class="text-[11px] mt-1.5 block"></span>
+                            <div class="flex items-center gap-2 mt-2">
+                                <button id="nsfw-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5" disabled>
+                                    <i class="ri-global-line"></i><span data-i18n="maintenance.nsfw.sidecar_apply">Use External</span>
+                                </button>
+                                <button id="nsfw-sidecar-local-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5 hidden">
+                                    <i class="ri-computer-line"></i><span data-i18n="maintenance.nsfw.sidecar_use_local">Use Local</span>
+                                </button>
+                                <span class="text-[10px] text-tg-textSecondary flex-1" data-i18n="maintenance.nsfw.sidecar_url_help">Test the connection first, then click Use External to switch.</span>
                             </div>
                         </div>
 

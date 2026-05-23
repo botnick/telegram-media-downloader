@@ -1246,6 +1246,7 @@ async function _refreshModelStatus() {
 async function _onNsfwSidecarTestClick() {
     const el = document.getElementById('setting-adv-nsfw-sidecar-url');
     const resultEl = document.getElementById('nsfw-sidecar-test-result');
+    const applyBtn = document.getElementById('nsfw-sidecar-apply-btn');
     const url = String(el?.value || '').trim();
     if (!url) {
         if (resultEl) {
@@ -1253,14 +1254,16 @@ async function _onNsfwSidecarTestClick() {
                 'maintenance.nsfw.sidecar_test_empty',
                 'Enter a URL first',
             );
-            resultEl.className = 'text-[10px] shrink-0 text-yellow-400';
+            resultEl.className = 'text-[11px] mt-1.5 block text-yellow-400';
         }
+        if (applyBtn) applyBtn.disabled = true;
         return;
     }
     if (resultEl) {
         resultEl.textContent = i18nT('maintenance.nsfw.sidecar_testing', 'Testing…');
-        resultEl.className = 'text-[10px] shrink-0 text-tg-textSecondary';
+        resultEl.className = 'text-[11px] mt-1.5 block text-tg-textSecondary';
     }
+    if (applyBtn) applyBtn.disabled = true;
     try {
         const r = await api.post('/api/maintenance/nsfw/sidecar-test', { url });
         if (resultEl) {
@@ -1269,18 +1272,65 @@ async function _onNsfwSidecarTestClick() {
                     .filter(Boolean)
                     .join(' · ');
                 resultEl.textContent = `✓ ${parts || 'Connected'}`;
-                resultEl.className = 'text-[10px] shrink-0 text-green-400';
+                resultEl.className = 'text-[11px] mt-1.5 block text-green-400';
+                if (applyBtn) applyBtn.disabled = false;
             } else {
                 resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
-                resultEl.className = 'text-[10px] shrink-0 text-red-400';
+                resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
             }
         }
     } catch (e) {
         if (resultEl) {
             resultEl.textContent = `✗ ${e?.message || 'error'}`;
-            resultEl.className = 'text-[10px] shrink-0 text-red-400';
+            resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
         }
     }
+}
+
+async function _onNsfwSidecarApply() {
+    const el = document.getElementById('setting-adv-nsfw-sidecar-url');
+    const url = String(el?.value || '').trim();
+    if (!url) return;
+    try {
+        await api.post('/api/config', {
+            advanced: { nsfw: { sidecarUrl: url } },
+        });
+        showToast(
+            i18nT('maintenance.nsfw.sidecar_url_saved', 'Switched to external classifier'),
+            'success',
+        );
+        _syncNsfwSidecarActions();
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _onNsfwSidecarUseLocal() {
+    try {
+        await api.post('/api/config', {
+            advanced: { nsfw: { sidecarUrl: '' } },
+        });
+        const el = document.getElementById('setting-adv-nsfw-sidecar-url');
+        if (el) el.value = '';
+        const resultEl = document.getElementById('nsfw-sidecar-test-result');
+        if (resultEl) resultEl.textContent = '';
+        const applyBtn = document.getElementById('nsfw-sidecar-apply-btn');
+        if (applyBtn) applyBtn.disabled = true;
+        showToast(
+            i18nT('maintenance.nsfw.sidecar_url_cleared', 'Switched to local classifier'),
+            'success',
+        );
+        _syncNsfwSidecarActions();
+    } catch (e) {
+        showToast(`Switch failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+function _syncNsfwSidecarActions() {
+    const localBtn = document.getElementById('nsfw-sidecar-local-btn');
+    const urlEl = document.getElementById('setting-adv-nsfw-sidecar-url');
+    const currentUrl = String(urlEl?.value || '').trim();
+    if (localBtn) localBtn.classList.toggle('hidden', !currentUrl);
 }
 
 async function _onPreloadClick() {
@@ -1414,6 +1464,9 @@ export function init() {
         $('nsfw-preload-btn')?.addEventListener('click', _onPreloadClick);
         $('nsfw-cache-clear-btn')?.addEventListener('click', _onCacheClearClick);
         $('nsfw-sidecar-test-btn')?.addEventListener('click', _onNsfwSidecarTestClick);
+        $('nsfw-sidecar-apply-btn')?.addEventListener('click', _onNsfwSidecarApply);
+        $('nsfw-sidecar-local-btn')?.addEventListener('click', _onNsfwSidecarUseLocal);
+        _syncNsfwSidecarActions();
         $('nsfw-blocklist-clear-btn')?.addEventListener('click', _clearBlocklist);
         $('nsfw-show-whitelisted')?.addEventListener('change', (ev) => {
             view.includeWhitelisted = !!ev.target.checked;
