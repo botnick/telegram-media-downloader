@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.21.1] — 2026-05-23
+
+Sidecar reliability fixes for external GPU deployments.
+
+### Fixed
+- **Faces sidecar Windows crash** — monkey-patch insightface `print()` calls that throw `WinError 1` when stdout is redirected (covers both `download()` and `download_onnx()`).
+- **Seekbar corrupt video retry loop** — permanently-failed videos (no stream, invalid NAL, moov not found) now get a `format='failed'` marker row in `seekbar_sprites` so bulk scans skip them instead of retrying endlessly.
+- **Seekbar failed row completeness** — all 15 fields populated in the permanent-fail upsert.
+
+### Service worker
+- `VERSION = 'v2211'`
+
 ## [2.21.0] — 2026-05-23
 
 Seekbar sidecar web config, categorized sidebar, queue NSFW badge, dedup perf.
