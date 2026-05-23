@@ -72,7 +72,6 @@ export async function init() {
         _bindOnce();
         _initOnce = true;
     }
-    _bindSidecarToggle();
     _setActionButtonsEnabled(false);
     await refreshStatus();
     _refreshDoctor().catch(() => {});
@@ -1001,26 +1000,15 @@ async function _applyPreset(name) {
     }
 }
 
-function _bindSidecarToggle() {
-    const card = $('#ai-doctor-card');
-    if (!card || card.dataset.toggleBound) return;
-    card.dataset.toggleBound = '1';
-    card.addEventListener('click', (e) => {
-        const modeBtn = e.target.closest('.ai-mode-btn');
-        if (modeBtn?.dataset.mode) return _onFacesModeToggle(modeBtn.dataset.mode);
-        if (e.target.closest('#ai-faces-sidecar-test-btn')) return _onFacesSidecarTestClick();
-        if (e.target.closest('#ai-faces-sidecar-apply-btn')) return _onFacesSidecarApply();
-    });
-    const urlEl = $('#ai-faces-sidecar-url');
-    if (urlEl) {
-        urlEl.addEventListener('input', () => {
-            const resultEl = $('#ai-faces-sidecar-test-result');
-            if (resultEl) resultEl.textContent = '';
-            const applyBtn = $('#ai-faces-sidecar-apply-btn');
-            if (applyBtn) applyBtn.disabled = true;
-        });
-    }
-}
+window._facesModeToggle = (mode) => _onFacesModeToggle(mode);
+window._facesSidecarTest = () => _onFacesSidecarTestClick();
+window._facesSidecarApply = () => _onFacesSidecarApply();
+window._facesSidecarUrlInput = () => {
+    const resultEl = $('#ai-faces-sidecar-test-result');
+    if (resultEl) resultEl.textContent = '';
+    const applyBtn = $('#ai-faces-sidecar-apply-btn');
+    if (applyBtn) applyBtn.disabled = true;
+};
 
 function _onFacesModeToggle(mode) {
     const panel = $('#ai-faces-external-panel');

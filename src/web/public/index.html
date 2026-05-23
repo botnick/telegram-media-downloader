@@ -3036,22 +3036,22 @@
                         <div class="mt-3 pt-3 border-t border-tg-border/30">
                             <p class="text-tg-text text-xs mb-2" data-i18n="maintenance.nsfw.sidecar_mode">Classifier mode</p>
                             <div class="inline-flex rounded-lg overflow-hidden border border-tg-border/50" id="nsfw-mode-toggle">
-                                <button type="button" data-mode="local" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors">
+                                <button type="button" data-mode="local" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors" onclick="window._nsfwModeToggle?.('local')">
                                     <i class="ri-computer-line"></i> Local
                                 </button>
-                                <button type="button" data-mode="external" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors">
+                                <button type="button" data-mode="external" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors" onclick="window._nsfwModeToggle?.('external')">
                                     <i class="ri-global-line"></i> External
                                 </button>
                             </div>
                             <div id="nsfw-external-panel" class="hidden mt-3">
                                 <div class="flex items-stretch gap-2">
-                                    <input id="setting-adv-nsfw-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com:8012" autocomplete="off" spellcheck="false">
-                                    <button id="nsfw-sidecar-test-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5">
+                                    <input id="setting-adv-nsfw-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com:8012" autocomplete="off" spellcheck="false" oninput="window._nsfwSidecarUrlInput?.()">
+                                    <button id="nsfw-sidecar-test-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5" onclick="window._nsfwSidecarTest?.()">
                                         <i class="ri-wifi-line"></i><span data-i18n="maintenance.nsfw.sidecar_test">Test</span>
                                     </button>
                                 </div>
                                 <span id="nsfw-sidecar-test-result" class="text-[11px] mt-1.5 block"></span>
-                                <button id="nsfw-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled>
+                                <button id="nsfw-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled onclick="window._nsfwSidecarApply?.()">
                                     <i class="ri-check-line"></i><span data-i18n="maintenance.nsfw.sidecar_apply">Apply</span>
                                 </button>
                             </div>
@@ -3278,22 +3278,22 @@
                         <div class="mt-3 pt-3 border-t border-tg-border/30">
                             <p class="text-tg-text text-xs mb-2" data-i18n="maintenance.ai.sidecar_mode">Sidecar mode</p>
                             <div class="inline-flex rounded-lg overflow-hidden border border-tg-border/50" id="ai-faces-mode-toggle">
-                                <button type="button" data-mode="local" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors">
+                                <button type="button" data-mode="local" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors" onclick="window._facesModeToggle?.('local')">
                                     <i class="ri-computer-line"></i> Local
                                 </button>
-                                <button type="button" data-mode="external" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors">
+                                <button type="button" data-mode="external" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors" onclick="window._facesModeToggle?.('external')">
                                     <i class="ri-global-line"></i> External
                                 </button>
                             </div>
                             <div id="ai-faces-external-panel" class="hidden mt-3">
                                 <div class="flex items-stretch gap-2">
-                                    <input id="ai-faces-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com:8011" autocomplete="off" spellcheck="false">
-                                    <button id="ai-faces-sidecar-test-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5">
+                                    <input id="ai-faces-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com:8011" autocomplete="off" spellcheck="false" oninput="window._facesSidecarUrlInput?.()">
+                                    <button id="ai-faces-sidecar-test-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5" onclick="window._facesSidecarTest?.()">
                                         <i class="ri-wifi-line"></i><span data-i18n="maintenance.ai.sidecar_test">Test</span>
                                     </button>
                                 </div>
                                 <span id="ai-faces-sidecar-test-result" class="text-[11px] mt-1.5 block"></span>
-                                <button id="ai-faces-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled>
+                                <button id="ai-faces-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled onclick="window._facesSidecarApply?.()">
                                     <i class="ri-check-line"></i><span data-i18n="maintenance.ai.sidecar_apply">Apply</span>
                                 </button>
                             </div>
