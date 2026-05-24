@@ -507,6 +507,12 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
             return null;
         }
     })();
+    if (!spriteSize) {
+        try {
+            await fs.unlink(dstAbs);
+        } catch {}
+        throw new Error('does not contain any stream (0-byte sprite)');
+    }
 
     const meta = {
         version: 1,
