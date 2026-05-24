@@ -4166,11 +4166,6 @@ function setupFab() {
     applyVisibility(getMonitorStatusLatest());
     subscribeMonitorStatus(applyVisibility);
 
-    // Sidebar queue stat — updated every 3 s via monitor_status_push
-    subscribeMonitorStatus((s) => {
-        const sq = document.getElementById('sidebar-stat-queue');
-        if (sq) sq.textContent = String(Number(s?.queueSize) || 0);
-    });
 
     // Action catalogue keyed by id so the per-hint policy below can pick
     // and order without duplicating definitions.
@@ -4358,12 +4353,6 @@ function setupInfiniteScroll() {
     observer.observe(sentinel);
 }
 
-function _compactNum(n) {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return String(n);
-}
-
 async function loadStats() {
     try {
         const stats = await api.get('/api/stats');
@@ -4371,13 +4360,6 @@ async function loadStats() {
         const filesEl = document.getElementById('total-files');
         if (diskEl)
             diskEl.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
-        // Sidebar quick stats
-        const sf = document.getElementById('sidebar-stat-files');
-        const sd = document.getElementById('sidebar-stat-disk');
-        const sg = document.getElementById('sidebar-stat-groups');
-        if (sf) sf.textContent = _compactNum(Number(stats.totalFiles) || 0);
-        if (sd) sd.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
-        if (sg) sg.textContent = String(Number(stats.groupCount) || 0);
         // Federated footer total. When the gallery scope is 'all' or a
         // specific peer, the footer file count should reflect what the
         // user is currently looking at — otherwise "1234 files" + a
