@@ -787,10 +787,9 @@ async function _extractVideoFrames(absPath, maxFrames, onLog) {
         }
     }
 
-    // Step 3: extract each frame as JPEG bytes piped to stdout
-    const frames = [];
-    for (const pos of positions) {
-        const buf = await new Promise((resolve) => {
+    // Step 3: extract frames in parallel (batches of 6 to avoid fd exhaustion)
+    function _extractOne(pos) {
+        return new Promise((resolve) => {
             const args = [
                 '-hide_banner',
                 '-loglevel',
@@ -824,7 +823,16 @@ async function _extractVideoFrames(absPath, maxFrames, onLog) {
             });
             proc.on('error', () => resolve(null));
         });
-        if (buf) frames.push(buf);
+    }
+
+    const EXTRACT_PARALLEL = 6;
+    const frames = [];
+    for (let i = 0; i < positions.length; i += EXTRACT_PARALLEL) {
+        const batch = positions.slice(i, i + EXTRACT_PARALLEL);
+        const results = await Promise.all(batch.map(_extractOne));
+        for (const buf of results) {
+            if (buf) frames.push(buf);
+        }
     }
     return frames;
 }
@@ -908,76 +916,80 @@ async function _detectVideoB64Fallback(absPath, cfg, url, onLog, signal) {
     return _dedupeVideoFaces(allFaces);
 }
 
-const BATCH_B64_CHUNK = 20;
+const BATCH_B64_CHUNK = 30;
+const BATCH_B64_PARALLEL = 3;
 
 async function _sendBatchB64(frames, { minScore, minBoxPx, arRange }, url, onLog, signal) {
+    // Split into chunks and send multiple chunks in parallel to keep GPU saturated
+    const chunks = [];
+    for (let start = 0; start < frames.length; start += BATCH_B64_CHUNK) {
+        chunks.push(frames.slice(start, start + BATCH_B64_CHUNK));
+    }
+
     const allFaces = [];
 
-    // Send frames in chunks to avoid huge payloads
-    for (let start = 0; start < frames.length; start += BATCH_B64_CHUNK) {
-        if (signal?.aborted) break;
-        const chunk = frames.slice(start, start + BATCH_B64_CHUNK);
+    async function _sendChunk(chunk) {
+        if (signal?.aborted) return [];
         const body = {
             images: chunk.map((buf) => buf.toString('base64')),
             min_score: minScore,
             min_box_px: minBoxPx,
             ar_range: arRange,
         };
-        const timeoutMs = Math.max(chunk.length * _requestTimeoutMs, 120_000);
+        const timeoutMs = Math.max(chunk.length * _requestTimeoutMs, 180_000);
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+        if (signal) {
+            if (signal.aborted) ctrl.abort();
+            else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+        }
         let res;
         try {
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-            if (signal) {
-                if (signal.aborted) ctrl.abort();
-                else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
-            }
-            try {
-                res = await globalThis.fetch(`${url}/detect/batch-b64`, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify(body),
-                    signal: ctrl.signal,
-                });
-            } finally {
-                clearTimeout(timer);
-            }
-        } catch (e) {
-            // batch-b64 not available — fall back to one-by-one
-            if (start === 0) {
-                _log(onLog, 'info', 'batch-b64 unavailable, falling back to sequential detect');
-                return _sendFramesSequential(
-                    frames,
-                    { minScore, minBoxPx, arRange },
-                    url,
-                    onLog,
-                    signal,
-                );
-            }
-            continue;
+            res = await globalThis.fetch(`${url}/detect/batch-b64`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: ctrl.signal,
+            });
+        } catch {
+            return null; // signal: endpoint not available
+        } finally {
+            clearTimeout(timer);
         }
-        if (res.status === 404 || res.status === 405) {
-            // Older sidecar without batch-b64 endpoint
-            _log(onLog, 'info', 'batch-b64 not supported, falling back to sequential detect');
-            return _sendFramesSequential(
-                frames,
-                { minScore, minBoxPx, arRange },
-                url,
-                onLog,
-                signal,
-            );
-        }
-        if (!res.ok) continue;
+        if (res.status === 404 || res.status === 405) return null;
+        if (!res.ok) return [];
         let resBody;
         try {
             resBody = await res.json();
         } catch {
-            continue;
+            return [];
         }
+        const faces = [];
         for (const item of resBody?.results ?? []) {
             if (item.error) continue;
             const parsed = _parseFacesList(Array.isArray(item.faces) ? item.faces : []);
-            allFaces.push(...parsed);
+            faces.push(...parsed);
+        }
+        return faces;
+    }
+
+    // Try first chunk to detect if batch-b64 is available
+    const firstResult = await _sendChunk(chunks[0]);
+    if (firstResult === null) {
+        _log(onLog, 'info', 'batch-b64 unavailable, falling back to sequential detect');
+        return _sendFramesSequential(frames, { minScore, minBoxPx, arRange }, url, onLog, signal);
+    }
+    allFaces.push(...firstResult);
+
+    // Send remaining chunks in parallel (pipeline: GPU processes chunk N while
+    // network transfers chunk N+1, keeping the GPU saturated)
+    const remaining = chunks.slice(1);
+    for (let i = 0; i < remaining.length; i += BATCH_B64_PARALLEL) {
+        if (signal?.aborted) break;
+        const batch = remaining.slice(i, i + BATCH_B64_PARALLEL);
+        const results = await Promise.all(batch.map((c) => _sendChunk(c)));
+        for (const r of results) {
+            if (r) allFaces.push(...r);
         }
     }
     return allFaces;
