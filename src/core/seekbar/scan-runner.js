@@ -26,11 +26,12 @@ import {
 import { generateForDownload, getSeekbarConfig } from './generator.js';
 
 const PAGE_SIZE = 100;
-const YIELD_EVERY = 5;
+const CONCURRENCY = 6;
 const PROGRESS_EVERY_MS = 1000;
 
 export async function buildAllSeekbar({ onProgress, signal } = {}) {
     const cfg = getSeekbarConfig();
+    const concurrency = Math.max(1, Math.min(16, Number(cfg.concurrency) || CONCURRENCY));
     const total = countVideoDownloads();
     let processed = 0;
     let generated = 0;
@@ -56,57 +57,65 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
 
     emit('start');
 
+    const _markFailed = (row) => {
+        try {
+            upsertSeekbarSprite({
+                downloadId: row.id,
+                spritePath: '',
+                metaPath: '',
+                durationSec: null,
+                frames: 0,
+                cols: 0,
+                rows: 0,
+                tileW: 0,
+                tileH: 0,
+                intervalSec: null,
+                format: 'failed',
+                bytes: 0,
+                sourceSize: Number(row.file_size) || null,
+                sourceMtime: null,
+                generatedAt: Date.now(),
+            });
+        } catch {}
+    };
+
+    const _processOne = async (row) => {
+        try {
+            const meta = await generateForDownload(row, cfg, {
+                overwrite: 'if-changed',
+                signal,
+                sync: true,
+            });
+            if (meta && !meta.pending) generated++;
+            else skipped++;
+        } catch (_e) {
+            errored++;
+            if (
+                /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found/i.test(
+                    _e?.message || '',
+                )
+            ) {
+                _markFailed(row);
+            }
+        }
+        processed++;
+    };
+
     let cursor = Number.MAX_SAFE_INTEGER;
-    // Outer loop: each iteration pulls a page of IDs synchronously (the
-    // DB statement opens + closes within this call, so the connection is
-    // free while we await ffmpeg / the sidecar). The inner loop owns no
-    // cursor — it walks an array.
     while (true) {
         if (signal?.aborted) break;
         const rows = pageMissingSeekbarVideos({ beforeId: cursor, limit: PAGE_SIZE });
         if (!rows.length) break;
-        for (const row of rows) {
+
+        // Process page in concurrent batches
+        for (let i = 0; i < rows.length; i += concurrency) {
             if (signal?.aborted) break;
-            try {
-                const meta = await generateForDownload(row, cfg, {
-                    overwrite: 'if-changed',
-                    signal,
-                    sync: true,
-                });
-                if (meta && !meta.pending) generated++;
-                else skipped++;
-            } catch (_e) {
-                errored++;
-                if (
-                    /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found/i.test(
-                        _e?.message || '',
-                    )
-                ) {
-                    try {
-                        upsertSeekbarSprite({
-                            downloadId: row.id,
-                            spritePath: '',
-                            metaPath: '',
-                            durationSec: null,
-                            frames: 0,
-                            cols: 0,
-                            rows: 0,
-                            tileW: 0,
-                            tileH: 0,
-                            intervalSec: null,
-                            format: 'failed',
-                            bytes: 0,
-                            sourceSize: Number(row.file_size) || null,
-                            sourceMtime: null,
-                            generatedAt: Date.now(),
-                        });
-                    } catch {}
-                }
-            }
-            processed++;
-            cursor = Number(row.id) || cursor;
+            const batch = rows.slice(i, i + concurrency);
+            await Promise.all(batch.map(_processOne));
+
+            cursor = Number(batch[batch.length - 1].id) || cursor;
             const now = Date.now();
-            if (processed % YIELD_EVERY === 0 || now - lastEmit >= PROGRESS_EVERY_MS) {
+            if (now - lastEmit >= PROGRESS_EVERY_MS) {
                 lastEmit = now;
                 emit('progress');
                 await new Promise((r) => setImmediate(r));

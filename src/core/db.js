@@ -241,10 +241,28 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_gallery_group_date ON downloads(group_id, created_at DESC, id DESC)',
         );
     } catch {}
+    // Per-group gallery filtered by type: WHERE group_id = ? AND file_type = ? ORDER BY created_at DESC
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_gallery_group_type_date ON downloads(group_id, file_type, created_at DESC, id DESC)',
+        );
+    } catch {}
+    // All-media gallery filtered by type: WHERE file_type = ? ORDER BY created_at DESC, id DESC
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_gallery_type_date ON downloads(file_type, created_at DESC, id DESC)',
+        );
+    } catch {}
     // All-media gallery with pinned-first: ORDER BY pinned DESC, created_at DESC, id DESC
     try {
         db.exec(
             'CREATE INDEX IF NOT EXISTS idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, id DESC)',
+        );
+    } catch {}
+    // Seekbar scan: WHERE file_type = 'video' AND file_path IS NOT NULL (LEFT JOIN seekbar_sprites)
+    try {
+        db.exec(
+            "CREATE INDEX IF NOT EXISTS idx_video_filepath ON downloads(file_type, id DESC) WHERE file_type = 'video' AND file_path IS NOT NULL",
         );
     } catch {}
 
