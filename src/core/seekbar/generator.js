@@ -309,7 +309,7 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
     const conf = { ...(cfg || getSeekbarConfig()) };
     const overwrite = opts.overwrite || 'if-changed';
     const srcAbs = _resolveDownloadAbs(row.file_path);
-    if (!srcAbs) return null;
+    if (!srcAbs) return { skipped: 'missing' };
 
     const sourceStat = (() => {
         try {
@@ -335,6 +335,28 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
                 prior.source_mtime === sourceStat.mtime &&
                 prior.frames > 0
             ) {
+                // Sprite exists on disk but DB row may be missing (interrupted
+                // scan). Backfill the row so pageMissingSeekbarVideos stops
+                // re-selecting this video every scan.
+                try {
+                    upsertSeekbarSprite({
+                        downloadId: id,
+                        spritePath: dstAbs,
+                        metaPath: metaAbs,
+                        durationSec: prior.duration_sec ?? null,
+                        frames: prior.frames,
+                        cols: prior.cols ?? 0,
+                        rows: prior.rows ?? 0,
+                        tileW: prior.tile_w ?? 0,
+                        tileH: prior.tile_h ?? null,
+                        intervalSec: prior.interval_sec ?? null,
+                        format: prior.format || format,
+                        bytes: prior.bytes ?? null,
+                        sourceSize: sourceStat.size,
+                        sourceMtime: sourceStat.mtime,
+                        generatedAt: prior.generated_at ?? Date.now(),
+                    });
+                } catch {}
                 return null;
             }
         } catch {
@@ -344,7 +366,8 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
 
     if (opts.signal?.aborted) return null;
     const duration = await _ffprobeDuration(srcAbs);
-    if (!duration || opts.signal?.aborted) return null;
+    if (opts.signal?.aborted) return null;
+    if (!duration) return { skipped: 'no_duration' };
 
     const plan = planSprite(duration, conf);
     await _ensureSeekbarDir();

@@ -79,6 +79,28 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
         } catch {}
     };
 
+    const _markSkipped = (row, reason) => {
+        try {
+            upsertSeekbarSprite({
+                downloadId: row.id,
+                spritePath: '',
+                metaPath: '',
+                durationSec: null,
+                frames: 0,
+                cols: 0,
+                rows: 0,
+                tileW: 0,
+                tileH: 0,
+                intervalSec: null,
+                format: reason,
+                bytes: 0,
+                sourceSize: Number(row.file_size) || null,
+                sourceMtime: null,
+                generatedAt: Date.now(),
+            });
+        } catch {}
+    };
+
     const _processOne = async (row) => {
         try {
             const meta = await generateForDownload(row, cfg, {
@@ -86,8 +108,11 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
                 signal,
                 sync: true,
             });
-            if (meta && !meta.pending) generated++;
-            else skipped++;
+            if (meta && !meta.pending && !meta.skipped) generated++;
+            else {
+                skipped++;
+                if (meta?.skipped) _markSkipped(row, meta.skipped);
+            }
         } catch (_e) {
             errored++;
             if (
