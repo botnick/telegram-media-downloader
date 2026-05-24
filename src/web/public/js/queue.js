@@ -1172,43 +1172,54 @@ function renderRow(j) {
     // `data-row-status` let `_patchRowNode()` update only the changing
     // bits on every WS progress tick (no full re-render of the row).
     const rowSelClass = isSelected ? ' bg-tg-blue/10' : '';
+    const metaLine = [
+        j.addedAt
+            ? `<span class="inline-flex items-center gap-0.5 tabular-nums" title="${escapeHtml(i18nT('queue.row.added_tooltip', 'Added to queue'))}"><i class="ri-add-circle-line"></i>${escapeHtml(_fmtClock(j.addedAt))}</span>`
+            : '',
+        j.finishedAt
+            ? `<span class="inline-flex items-center gap-0.5 tabular-nums ${j.status === 'failed' ? 'text-red-400/80' : 'text-tg-green/80'}" title="${escapeHtml(i18nT(j.status === 'failed' ? 'queue.row.failed_tooltip' : 'queue.row.finished_tooltip', j.status === 'failed' ? 'Failed at' : 'Finished at'))}"><i class="${j.status === 'failed' ? 'ri-close-circle-line' : 'ri-check-line'}"></i>${escapeHtml(_fmtClock(j.finishedAt))}</span>${
+                  j.addedAt && j.finishedAt > j.addedAt
+                      ? `<span class="tabular-nums" title="${escapeHtml(i18nT('queue.row.duration_tooltip', 'Time taken'))}">${escapeHtml(_fmtDuration(j.finishedAt - j.addedAt))}</span>`
+                      : ''
+              }`
+            : '',
+    ].filter(Boolean);
+
+    // Mobile: compact card layout. Desktop: full grid row.
     return `
         <div data-key="${escapeHtml(j.key)}" ${rowAttrs}
-             class="grid grid-cols-[32px_40px_minmax(0,2.5fr)_90px_minmax(140px,1.4fr)_80px_70px_90px_120px] items-center gap-2 px-3 py-2 hover:bg-tg-hover/40${rowExtraCls}${rowSelClass}">
+             class="md:grid md:grid-cols-[32px_40px_minmax(0,2.5fr)_90px_minmax(140px,1.4fr)_80px_70px_90px_120px] items-center gap-2 px-3 py-2 hover:bg-tg-hover/40${rowExtraCls}${rowSelClass}">
             ${selectCell}
+            <div class="flex items-start gap-2.5 md:contents">
             ${thumb}
+            <div class="min-w-0 flex-1 md:contents">
             <div class="min-w-0">
                 <div class="text-sm text-tg-text truncate" title="${escapeHtml(name)}">${escapeHtml(name)}${accountChip}</div>
                 <div class="text-[11px] text-tg-textSecondary truncate flex items-center gap-1.5 flex-wrap">
                     <span class="truncate">${escapeHtml(groupName)}</span>
-                    ${
-                        j.addedAt
-                            ? `<span class="text-tg-textSecondary/40">·</span><span class="inline-flex items-center gap-0.5 tabular-nums" title="${escapeHtml(i18nT('queue.row.added_tooltip', 'Added to queue'))}"><i class="ri-add-circle-line"></i>${escapeHtml(_fmtClock(j.addedAt))}</span>`
-                            : ''
-                    }
-                    ${
-                        j.finishedAt
-                            ? `<span class="text-tg-textSecondary/40">·</span><span class="inline-flex items-center gap-0.5 tabular-nums ${j.status === 'failed' ? 'text-red-400/80' : 'text-tg-green/80'}" title="${escapeHtml(i18nT(j.status === 'failed' ? 'queue.row.failed_tooltip' : 'queue.row.finished_tooltip', j.status === 'failed' ? 'Failed at' : 'Finished at'))}"><i class="${j.status === 'failed' ? 'ri-close-circle-line' : 'ri-check-line'}"></i>${escapeHtml(_fmtClock(j.finishedAt))}</span>${
-                                  j.addedAt && j.finishedAt > j.addedAt
-                                      ? `<span class="text-tg-textSecondary/40">·</span><span class="tabular-nums" title="${escapeHtml(i18nT('queue.row.duration_tooltip', 'Time taken'))}">${escapeHtml(_fmtDuration(j.finishedAt - j.addedAt))}</span>`
-                                      : ''
-                              }`
-                            : ''
-                    }
+                    ${metaLine.map((s) => `<span class="text-tg-textSecondary/40">·</span>${s}`).join('')}
                     ${j.error ? `<span class="text-tg-textSecondary/40">·</span><span class="text-red-400/80 truncate">${escapeHtml(j.error)}</span>` : ''}
                 </div>
             </div>
-            <div class="text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(sizeStr)}</div>
-            <div class="min-w-0">
+            <div class="hidden md:block text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(sizeStr)}</div>
+            <div class="mt-1.5 md:mt-0">
                 <div class="h-1.5 bg-tg-bg/60 rounded overflow-hidden">
                     <div data-row-bar class="h-full ${j.status === 'failed' ? 'bg-red-500' : isDone ? 'bg-tg-green' : 'bg-tg-blue'} transition-all" style="width: ${pct}%"></div>
                 </div>
-                <div data-row-pct class="text-[10px] text-tg-textSecondary tabular-nums mt-0.5">${escapeHtml(pctLabel)}</div>
+                <div class="flex items-center gap-2 mt-0.5 md:hidden">
+                    <span data-row-pct class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(pctLabel)}</span>
+                    <span class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(sizeStr)}</span>
+                    <span data-row-meta class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(speedStr !== '—' ? speedStr : '')}</span>
+                    <span data-row-status data-status="${escapeHtml(j.status)}" class="text-[10px] px-1.5 py-0.5 rounded-full ${pillCls} ml-auto">${escapeHtml(pillLabel)}</span>
+                    ${actions.length ? `<span class="flex items-center gap-0.5">${actions.join('')}</span>` : ''}
+                </div>
+                <div data-row-pct class="hidden md:block text-[10px] text-tg-textSecondary tabular-nums mt-0.5">${escapeHtml(pctLabel)}</div>
             </div>
-            <div data-row-meta class="text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(speedStr)}</div>
-            <div class="text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(etaStr)}</div>
-            <div><span data-row-status data-status="${escapeHtml(j.status)}" class="text-[11px] px-2 py-0.5 rounded-full ${pillCls}">${escapeHtml(pillLabel)}</span>${dupBadge}</div>
-            <div class="flex items-center justify-end gap-1">${actions.join('')}</div>
+            <div class="hidden md:block" data-row-meta><span class="text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(speedStr)}</span></div>
+            <div class="hidden md:block text-xs text-tg-textSecondary text-right tabular-nums">${escapeHtml(etaStr)}</div>
+            <div class="hidden md:block"><span data-row-status data-status="${escapeHtml(j.status)}" class="text-[11px] px-2 py-0.5 rounded-full ${pillCls}">${escapeHtml(pillLabel)}</span>${dupBadge}</div>
+            <div class="hidden md:flex items-center justify-end gap-1">${actions.join('')}</div>
+            </div></div>
         </div>`;
 }
 

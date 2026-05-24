@@ -85,7 +85,7 @@ function attachDragToDismiss(card, handleEl, onDismiss) {
         if (dy > 80) {
             // Animate the rest of the way down, then dismiss.
             card.style.transform = 'translateY(100%)';
-            setTimeout(onDismiss, 180);
+            setTimeout(onDismiss, 120);
         } else {
             card.style.transform = '';
         }
@@ -155,11 +155,11 @@ export function openSheet(opts) {
     requestAnimationFrame(() => root.classList.add('sheet-open'));
 
     const returnFocus = document.activeElement;
-    setTimeout(() => {
+    requestAnimationFrame(() => {
         const first = card.querySelector(FOCUSABLE_SELECTOR);
         if (first) first.focus();
         else card.focus();
-    }, 50);
+    });
 
     const releaseTrap = trapFocus(root);
     const releaseDrag = dismissible ? attachDragToDismiss(card, handleEl, close) : () => {};
@@ -214,7 +214,7 @@ export function openSheet(opts) {
             } catch {}
         };
         if (REDUCED.matches) after();
-        else setTimeout(after, 220);
+        else setTimeout(after, 150);
     }
 
     const entry = { root, opts, returnFocus, body, close };

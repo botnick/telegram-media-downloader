@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.23.0] — 2026-05-24
+
+Mobile-first UI overhaul — every page fits on phone without horizontal scroll.
+
+### Added
+- **Gallery virtual scroll** — sliding-window caps DOM at 600 tiles with height-preserving spacer.
+- **Health dashboard** — `GET /api/system/health` endpoint (uptime, heap, CPU, DB, WebSocket clients) + real-time card UI.
+- **DB composite indexes** — `idx_gallery_group_type_date`, `idx_gallery_type_date`, `idx_video_filepath` (verified via EXPLAIN QUERY PLAN).
+- **Seekbar concurrent scan** — 6 parallel jobs (configurable via `cfg.concurrency`).
+
+### Changed
+- **Sidebar nav redesigned** — colored icon badges (blue/purple/green/gray/amber) + rounded active state with brand-blue fill.
+- **Media tabs** — equal-width on mobile, no horizontal scroll. Toggle chips (Pinned/Scope) icon-only on <640px.
+- **Modal info bar** — stacks vertically on mobile, buttons icon-only + right-aligned.
+- **Queue rows** — card layout on mobile (thumb + name + progress bar + status pill inline), full grid on desktop.
+- **Sheet dialogs** — transitions 200ms→150ms, snappier spring curve, focus via rAF instead of setTimeout.
+- **Mobile gallery** — tighter grid (100px tiles), tap scale feedback, momentum scroll, 3-col on <380px.
+
+### Service worker
+- `VERSION = 'v2230'`
+
 ## [2.22.6] — 2026-05-24
 
 Seekbar scan fix — corrupt videos no longer stall the bulk scan.
