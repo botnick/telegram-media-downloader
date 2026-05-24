@@ -451,13 +451,28 @@ async function _generateImageThumb(srcAbs, width, dstAbs) {
         .toFile(dstAbs);
 }
 
+const FFMPEG_TIMEOUT_MS = 120_000;
+
 function _runFfmpeg(args) {
     return new Promise((resolve, reject) => {
         const p = spawn(_resolveFfmpegBin(), args, { windowsHide: true });
         const errChunks = [];
+        let killed = false;
+        const timer = setTimeout(() => {
+            killed = true;
+            try {
+                p.kill('SIGKILL');
+            } catch {}
+            reject(new Error('does not contain any stream (ffmpeg timeout 120s)'));
+        }, FFMPEG_TIMEOUT_MS);
         p.stderr.on('data', (c) => errChunks.push(c));
-        p.on('error', reject);
+        p.on('error', (e) => {
+            clearTimeout(timer);
+            reject(e);
+        });
         p.on('close', (code) => {
+            clearTimeout(timer);
+            if (killed) return;
             if (code !== 0) {
                 const stderr = Buffer.concat(errChunks).toString('utf8');
                 return reject(new Error(`ffmpeg exit ${code}: ${stderr.slice(0, 400)}`));
