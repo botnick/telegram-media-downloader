@@ -1109,27 +1109,30 @@ export function getAllDownloads(limit = 50, offset = 0, type = 'all', opts = {})
     const clauses = [];
     const params = [];
     if (type !== 'all' && typeMap[type]) {
-        clauses.push('file_type = ?');
+        clauses.push('d.file_type = ?');
         params.push(typeMap[type]);
     }
     if (opts.pinnedOnly) {
-        clauses.push('pinned = 1');
+        clauses.push('d.pinned = 1');
     }
     const where = clauses.length ? ' WHERE ' + clauses.join(' AND ') : '';
     const orderBy = opts.pinnedFirst
-        ? 'pinned DESC, created_at DESC, id DESC'
-        : 'created_at DESC, id DESC';
+        ? 'd.pinned DESC, d.created_at DESC, d.id DESC'
+        : 'd.created_at DESC, d.id DESC';
     const rows = getDb()
-        .prepare(`SELECT * FROM downloads${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
+        .prepare(
+            `SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
+        )
         .all(...params, lim, off);
     const total = getDb()
-        .prepare(`SELECT COUNT(*) AS c FROM downloads${where}`)
+        .prepare(`SELECT COUNT(*) AS c FROM downloads d${where}`)
         .get(...params).c;
     return { files: rows, total };
 }
 
 export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts = {}) {
-    let query = 'SELECT * FROM downloads WHERE group_id = ?';
+    let query =
+        'SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id WHERE d.group_id = ?';
     const params = [groupId];
 
     if (type !== 'all') {
@@ -1139,33 +1142,29 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
             documents: 'document',
             audio: 'audio',
         };
-        // Use LIKE for flexibility or map precisely
         if (typeMap[type]) {
-            query += ' AND file_type = ?';
+            query += ' AND d.file_type = ?';
             params.push(typeMap[type]);
         }
     }
 
-    if (opts.pinnedOnly) query += ' AND pinned = 1';
+    if (opts.pinnedOnly) query += ' AND d.pinned = 1';
 
     query += opts.pinnedFirst
-        ? ' ORDER BY pinned DESC, created_at DESC LIMIT ? OFFSET ?'
-        : ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+        ? ' ORDER BY d.pinned DESC, d.created_at DESC LIMIT ? OFFSET ?'
+        : ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    const stmt = getDb().prepare(query);
-    const rows = stmt.all(...params);
+    const rows = getDb()
+        .prepare(query)
+        .all(...params);
 
-    // Count total for pagination
-    let countQuery = 'SELECT COUNT(*) as total FROM downloads WHERE group_id = ?';
+    let countQuery = 'SELECT COUNT(*) as total FROM downloads d WHERE d.group_id = ?';
     const countParams = [groupId];
 
-    // We reuse the type filter logic for count but it's cleaner to separate or build dynamically
-    // For simplicity here:
     if (params.length > 3) {
-        // If type filter was added
-        countQuery += ' AND file_type = ?';
-        countParams.push(params[1]); // existing type param
+        countQuery += ' AND d.file_type = ?';
+        countParams.push(params[1]);
     }
 
     const total = getDb()
