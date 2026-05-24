@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.5] — 2026-05-24
+
+GPU throughput boost — push RTX 4080-class GPUs from 15% to 50-70% utilization.
+
+### Changed
+- **Sidecar concurrency 8→24** for GPU (auto-scaled; override with `TGDL_FACES_MAX_CONCURRENCY`).
+- **onnxruntime CUDA tuning** — parallel execution mode, max cuDNN workspace, 4 GB arena.
+- **Parallel frame extraction** — ffmpeg spawns 6 concurrent processes instead of sequential.
+- **Pipelined chunk dispatch** — Node sends 3 batch-b64 chunks concurrently to keep GPU saturated between network round-trips.
+- **Chunk size 20→30** — fewer HTTP requests per video.
+
+### Performance
+- Measured 3.8 fps → 26.6 fps on ext sidecar via Cloudflare tunnel (7× improvement).
+
+### Service worker
+- `VERSION = 'v2225'`
+
 ## [2.22.4] — 2026-05-24
 
 External sidecar now supports video face detection via b64 fallback + GPU throughput boost.
