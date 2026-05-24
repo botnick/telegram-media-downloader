@@ -71,8 +71,9 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
                 const meta = await generateForDownload(row, cfg, {
                     overwrite: 'if-changed',
                     signal,
+                    sync: true,
                 });
-                if (meta) generated++;
+                if (meta && !meta.pending) generated++;
                 else skipped++;
             } catch (_e) {
                 errored++;

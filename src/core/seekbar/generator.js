@@ -355,18 +355,30 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
     // error so `npm start` still works without the binary built.
     if (getSidecarUrl()) {
         try {
-            // Use async mode for bulk scans so the sidecar queues the
-            // job and returns immediately. This lets cancel abort the
-            // scan loop without waiting for ffmpeg to finish the current
-            // sprite (sync mode blocks until the sprite is done).
-            const isBulk = !!opts.signal;
+            // Sync mode ensures the sidecar finishes ffmpeg before
+            // returning so the scan-runner knows immediately whether
+            // the sprite was created or the video is corrupt. Async mode
+            // caused silent failures: sidecar returned 'pending', scan
+            // moved on, ffmpeg failed later with no one to record it.
+            const useSync = opts.sync !== false;
             const r = await sidecarSubmitOne({
                 videoId: String(id),
                 srcPath: srcAbs,
-                async: isBulk,
+                async: !useSync,
                 cfg: conf,
                 signal: opts.signal || null,
             });
+            // Sidecar returned an error status with a permanent ffmpeg failure
+            if (r && r.status === 'error' && r.error) {
+                const errMsg = String(r.error);
+                if (
+                    /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found|exit status/i.test(
+                        errMsg,
+                    )
+                ) {
+                    throw new Error(`ffmpeg: ${errMsg}`);
+                }
+            }
             if (
                 r &&
                 (r.status === 'done' || r.status === 'pending') &&
@@ -425,11 +437,22 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
                 return sidecarMeta;
             }
         } catch (e) {
-            // Soft-fail to the in-process path. Operators can see
-            // sidecar health on the maintenance page.
+            const msg = String(e?.message || e);
+            // Permanent ffmpeg errors (corrupt video) — throw immediately
+            // so scan-runner marks the row as failed. Falling through to
+            // local ffmpeg would just repeat the same failure.
+            if (
+                /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found/i.test(
+                    msg,
+                )
+            ) {
+                throw e;
+            }
+            // Transient sidecar errors (network, timeout) — fall through
+            // to the in-process ffmpeg path.
             console.warn(
                 '[seekbar-generator] sidecar submit failed, falling back to local ffmpeg:',
-                String(e?.message || e).slice(0, 160),
+                msg.slice(0, 160),
             );
         }
     }
