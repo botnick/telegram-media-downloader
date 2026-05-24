@@ -45,6 +45,7 @@ import {
     repaintSelection,
     selectAllVisible,
 } from './gallery-select.js';
+import { trimGalleryDOM, resetGalleryWindow } from './gallery-virtual.js';
 import {
     initI18n,
     setLang,
@@ -2110,7 +2111,10 @@ function renderMediaGrid(opts = {}) {
         // which is the difference between buttery scroll and stutter on
         // a 1000-tile gallery.
         grid.insertAdjacentHTML('beforeend', html);
+        // Sliding window: trim oldest tiles from top to cap DOM size.
+        trimGalleryDOM(grid);
     } else {
+        resetGalleryWindow(grid);
         grid.innerHTML = html;
     }
     _renderedFileCount = state.files.length;

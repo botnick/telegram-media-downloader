@@ -4968,3 +4968,35 @@ html[data-contrast="more"] .media-item {
     background: var(--tg-bg, #1a1a1a);
     font-weight: 600;
 }
+
+/* ============================================================
+   MOBILE NATIVE-FEEL ENHANCEMENTS
+   Momentum scroll, tap feedback, safe-area spacing.
+   ============================================================ */
+@media (max-width: 767.98px) {
+    .media-grid {
+        gap: 2px;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    }
+    .media-grid .media-item {
+        -webkit-tap-highlight-color: transparent;
+        transition: transform 0.1s ease;
+    }
+    .media-grid .media-item:active {
+        transform: scale(0.96);
+    }
+    #main-content {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: contain;
+        scroll-behavior: smooth;
+    }
+    .media-grid .tile-actions {
+        display: none !important;
+    }
+}
+@media (max-width: 380px) {
+    .media-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1px;
+    }
+}

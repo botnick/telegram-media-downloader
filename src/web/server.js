@@ -3647,6 +3647,73 @@ function broadcastStatsSoon() {
     }, 400);
 }
 
+app.get('/api/system/health', async (req, res) => {
+    try {
+        const os = await import('os');
+        const mem = process.memoryUsage();
+        const cpus = os.cpus();
+        const loadAvg = os.loadavg();
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const uptime = process.uptime();
+
+        const diskUsage = await (async () => {
+            try {
+                const du = kvGet('disk_usage');
+                return du ? JSON.parse(du) : null;
+            } catch {
+                return null;
+            }
+        })();
+
+        res.json({
+            process: {
+                pid: process.pid,
+                uptime: Math.floor(uptime),
+                memoryMB: {
+                    rss: Math.round(mem.rss / 1024 / 1024),
+                    heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+                    heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+                    external: Math.round(mem.external / 1024 / 1024),
+                },
+                nodeVersion: process.version,
+            },
+            system: {
+                platform: os.platform(),
+                arch: os.arch(),
+                hostname: os.hostname(),
+                cpuCount: cpus.length,
+                cpuModel: cpus[0]?.model || 'unknown',
+                loadAvg: loadAvg.map((l) => Math.round(l * 100) / 100),
+                totalMemMB: Math.round(totalMem / 1024 / 1024),
+                freeMemMB: Math.round(freeMem / 1024 / 1024),
+                usedMemPercent: Math.round(((totalMem - freeMem) / totalMem) * 100),
+            },
+            disk: diskUsage,
+            database: (() => {
+                try {
+                    const db = getDb();
+                    const pageSize = db.pragma('page_size', { simple: true });
+                    const pageCount = db.pragma('page_count', { simple: true });
+                    const walPages = db.pragma('wal_checkpoint(PASSIVE)');
+                    return {
+                        sizeMB: Math.round((pageSize * pageCount) / 1024 / 1024),
+                        walPages: walPages?.[0]?.busy || 0,
+                        journalMode: db.pragma('journal_mode', { simple: true }),
+                    };
+                } catch {
+                    return null;
+                }
+            })(),
+            connections: {
+                wsClients: clients.size,
+            },
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/stats', async (req, res) => {
     try {
         const now = Date.now();
