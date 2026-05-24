@@ -173,7 +173,8 @@ describe('createJobTracker — multi-client WS guarantees', () => {
             }
             return { processed: 3 };
         });
-        await new Promise((res) => setTimeout(res, 60));
+        // Windows CI runners are slow — wait longer for async completion.
+        await new Promise((res) => setTimeout(res, 200));
         expect(clientA).toEqual(clientB);
         const aProg = clientA.filter((m) => m.type === 'fan_progress');
         const aDone = clientA.find((m) => m.type === 'fan_done');
