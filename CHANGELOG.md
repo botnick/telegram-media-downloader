@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.6] — 2026-05-24
+
+Seekbar scan fix — corrupt videos no longer stall the bulk scan.
+
+### Fixed
+- **Seekbar bulk scan now uses sync mode** — sidecar async mode silently dropped failed jobs, causing "21 generated / 85K videos" scans that appeared done but processed almost nothing.
+- **Corrupt H.264 videos marked permanently** — invalid NAL, missing moov atom, and empty-stream errors now insert `format: 'failed'` in the DB so corrupt files are never re-scanned.
+- **Sidecar permanent errors propagated immediately** — no longer falls through to local ffmpeg for errors that would repeat identically.
+
+### CI
+- Removed `codeql.yml` and `release-drafter.yml` workflows.
+- Trimmed CI matrix from 6 jobs to 2 (Node 22 × Ubuntu + Windows).
+
+### Service worker
+- `VERSION = 'v2226'`
+
 ## [2.22.5] — 2026-05-24
 
 GPU throughput boost — push RTX 4080-class GPUs from 15% to 50-70% utilization.
