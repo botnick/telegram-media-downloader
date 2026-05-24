@@ -191,37 +191,41 @@
                  redundant entry-point to the same #/viewer page (the
                  "All Media" card below + the bottom-nav "Library" item
                  already cover it). -->
-            <nav class="border-b border-tg-border/40 py-1">
-                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="groups" data-admin-only
+            <nav class="border-b border-tg-border/40 px-2 py-2 flex flex-col gap-0.5">
+                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="groups" data-admin-only
                     onclick="navigateTo('groups')">
-                    <i class="ri-group-line text-base text-tg-textSecondary"></i>
-                    <span class="text-tg-text text-sm" data-i18n="nav.groups">Groups</span>
+                    <div class="w-7 h-7 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                        <i class="ri-group-line text-sm text-blue-400"></i>
+                    </div>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.groups">Groups</span>
                 </div>
-                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="backfill" data-admin-only
+                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="backfill" data-admin-only
                     onclick="navigateTo('backfill')">
-                    <i class="ri-history-line text-base text-tg-textSecondary"></i>
-                    <span class="text-tg-text text-sm" data-i18n="nav.backfill">Backfill</span>
+                    <div class="w-7 h-7 rounded-md bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                        <i class="ri-history-line text-sm text-purple-400"></i>
+                    </div>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.backfill">Backfill</span>
                 </div>
-                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="queue" data-admin-only
+                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="queue" data-admin-only
                     onclick="navigateTo('queue')">
-                    <i class="ri-download-cloud-2-line text-base text-tg-textSecondary"></i>
-                    <span class="text-tg-text text-sm" data-i18n="nav.queue">Queue</span>
+                    <div class="w-7 h-7 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                        <i class="ri-download-cloud-2-line text-sm text-green-400"></i>
+                    </div>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.queue">Queue</span>
                 </div>
-                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="settings"
+                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="settings"
                     onclick="navigateTo('settings')">
-                    <i class="ri-settings-3-line text-base text-tg-textSecondary"></i>
-                    <span class="text-tg-text text-sm" data-i18n="nav.settings">Settings</span>
+                    <div class="w-7 h-7 rounded-md bg-gray-500/10 flex items-center justify-center flex-shrink-0">
+                        <i class="ri-settings-3-line text-sm text-gray-400"></i>
+                    </div>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.settings">Settings</span>
                 </div>
-                <!-- Maintenance — single sidebar row that opens a hub
-                     page with a card grid for every tool. v2.6
-                     consolidation: the previous 5 sub-rows cluttered both
-                     mobile + desktop, so they collapse into one entry.
-                     Power users keep the deep links —
-                     /maintenance/duplicates etc. still resolve directly. -->
-                <div class="nav-item flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-tg-hover" data-page="maintenance" data-admin-only
+                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="maintenance" data-admin-only
                     onclick="navigateTo('maintenance')">
-                    <i class="ri-tools-line text-base text-tg-textSecondary"></i>
-                    <span class="text-tg-text text-sm" data-i18n="nav.maintenance.section">Maintenance</span>
+                    <div class="w-7 h-7 rounded-md bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                        <i class="ri-tools-line text-sm text-amber-400"></i>
+                    </div>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.maintenance.section">Maintenance</span>
                 </div>
                 <!-- Hidden anchors so existing inline-onclick deep-links
                      (settings.js maint cards) keep working without code

@@ -344,8 +344,19 @@ textarea::placeholder {
    had no matching CSS, so the active page was invisible in the
    sidebar. Surface a left-accent + tinted background. */
 .nav-item.active {
-    background-color: var(--tg-hover, #2b5278);
+    background-color: var(--tg-blue, #2aabee) !important;
+    color: #fff;
     position: relative;
+}
+.nav-item.active .text-tg-text,
+.nav-item.active span {
+    color: #fff !important;
+}
+.nav-item.active i {
+    color: #fff !important;
+}
+.nav-item.active > div:first-child {
+    background: rgba(255, 255, 255, 0.2) !important;
 }
 .nav-item.active::before {
     content: "";
@@ -354,7 +365,7 @@ textarea::placeholder {
     top: 6px;
     bottom: 6px;
     width: 3px;
-    background: var(--tg-blue, #2aabee);
+    background: #fff;
     border-radius: 0 2px 2px 0;
 }
 .nav-item.active i,
