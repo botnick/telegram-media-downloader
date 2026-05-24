@@ -46,7 +46,7 @@ const DATA_DIR = process.env.TGDL_DATA_DIR
  * on next boot — the matching GitHub Release `seekbar-v<VER>` must exist
  * with `tgdl-seekbar-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.3.2';
+export const SIDECAR_VERSION = '0.3.3';
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/seekbar-v${SIDECAR_VERSION}`;
 const DOWNLOAD_CONNECT_TIMEOUT_MS = 30_000;
 const DOWNLOAD_REDIRECT_LIMIT = 5;
