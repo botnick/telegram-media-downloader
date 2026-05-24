@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.23.1] — 2026-05-25
+
+Seekbar scan reliability — every skip/fail case now marks the DB so videos are never re-scanned.
+
+### Fixed
+- **ffmpeg 120s timeout** — corrupt videos that hang ffmpeg indefinitely are now killed after 120s and marked as failed.
+- **0-byte sprite rejection** — ffmpeg can exit cleanly with an empty output file; now detected and treated as permanent failure.
+- **Skip DB marking** — file-missing and no-duration videos now insert a `seekbar_sprites` row so they are never re-selected.
+- **Cache-hit DB backfill** — sprites on disk from interrupted scans now get their missing DB row backfilled from the JSON meta.
+
+### Changed
+- Seekbar sidecar bumped to v0.3.3.
+
+### Service worker
+- `VERSION = 'v2231'`
+
 ## [2.23.0] — 2026-05-24
 
 Mobile-first UI overhaul — every page fits on phone without horizontal scroll.
