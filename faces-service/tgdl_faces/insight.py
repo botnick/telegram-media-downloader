@@ -177,12 +177,17 @@ def _resolve_models_dir() -> Path:
 
 
 def _resolve_max_concurrency() -> int:
-    raw = os.environ.get("TGDL_FACES_MAX_CONCURRENCY", "2").strip()
-    try:
-        n = int(raw)
-    except ValueError:
-        return 2
-    return max(1, n)
+    raw = os.environ.get("TGDL_FACES_MAX_CONCURRENCY", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    # Auto-scale: GPU can saturate with more parallel inferences.
+    # CPU-only stays conservative to avoid thermal/memory pressure.
+    if gpu_available():
+        return 8
+    return 2
 
 
 def _resolve_max_image_dim() -> int:
@@ -213,6 +218,13 @@ def _get_concurrency_sem() -> threading.Semaphore:
         if _CONCURRENCY_SEM is None:
             _CONCURRENCY_SEM = threading.Semaphore(_resolve_max_concurrency())
     return _CONCURRENCY_SEM
+
+
+def _refresh_concurrency_sem() -> None:
+    """Recreate the semaphore after model load (GPU state is now known)."""
+    global _CONCURRENCY_SEM
+    with _CONCURRENCY_LOCK:
+        _CONCURRENCY_SEM = threading.Semaphore(_resolve_max_concurrency())
 
 
 _PROVIDER_CHAINS = {
@@ -600,12 +612,15 @@ def get_app() -> Any:
                 pass
             # Derive the short GPU-provider label from the final resolved list.
             _GPU_PROVIDER = _derive_gpu_provider(_RESOLVED_PROVIDERS or providers)
+            # Refresh concurrency semaphore now that GPU state is known.
+            _refresh_concurrency_sem()
             _LOG.info(
-                "%s ready (dim=%d, providers=%s gpu_provider=%s)",
+                "%s ready (dim=%d, providers=%s gpu_provider=%s concurrency=%d)",
                 MODEL_NAME,
                 EMBEDDING_DIM,
                 _RESOLVED_PROVIDERS,
                 _GPU_PROVIDER,
+                _resolve_max_concurrency(),
             )
             if _GPU_PROVIDER == "cpu" and any(
                 p in {"CUDAExecutionProvider", "DmlExecutionProvider",
@@ -813,6 +828,11 @@ def _compute_quality_score(
     return round(max(0.0, min(1.0, composite)), 4)
 
 
+def _skip_quality() -> bool:
+    """Return True if quality score computation should be skipped for throughput."""
+    return os.environ.get("TGDL_FACES_SKIP_QUALITY", "").strip().lower() in ("1", "true", "yes")
+
+
 def detect_and_embed(
     image_bgr: np.ndarray,
     *,
@@ -820,6 +840,7 @@ def detect_and_embed(
     min_box_px: int = 80,
     ar_range: tuple[float, float] = (0.5, 2.0),
     _track_stats: bool = True,
+    _skip_quality_score: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Detect every face in ``image_bgr`` and return cleaned-up records.
 
@@ -955,7 +976,8 @@ def detect_and_embed(
                 except (ValueError, TypeError):
                     landmarks = []
 
-            quality = _compute_quality_score(face, image_bgr, x, y, w, h, scale)
+            do_quality = not (_skip_quality_score if _skip_quality_score is not None else _skip_quality())
+            quality = _compute_quality_score(face, image_bgr, x, y, w, h, scale) if do_quality else 0.0
 
             out.append(
                 {

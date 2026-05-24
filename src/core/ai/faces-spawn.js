@@ -120,7 +120,7 @@ function _resolveCudaBinDirs(pyBin) {
  * on next boot — release `faces-v<X>` on the GitHub repo must exist with
  * the matching `tgdl-faces-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.3.2';
+export const SIDECAR_VERSION = '0.4.0';
 
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/faces-v${SIDECAR_VERSION}`;
 

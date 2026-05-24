@@ -303,6 +303,20 @@ one frame, long videos are capped at `max_frames` (default 120, roughly
 a deduplication pass then collapses faces with cosine similarity above
 0.50 so only one best-score instance per identity is kept.
 
+#### Video b64 fallback (external sidecar)
+
+When the sidecar runs externally without shared filesystem access, the
+`/detect/video` path mode returns 403. The Node client automatically
+falls back to:
+
+1. Extract frames locally with ffmpeg (same evenly-spaced logic).
+2. Send frames in batches of 20 to `POST /detect/batch-b64`.
+3. Deduplicate faces client-side (same cosine-sim ≥ 0.50 rule).
+
+The fallback activates transparently — no configuration needed. Once
+`_pathRejectedLogged` is set (by any 403 from photos or video), all
+subsequent video calls skip the path-mode attempt entirely.
+
 Embeddings from video frames land in the same `faces` table and use the
 same 512-dim ArcFace space as photo-sourced faces. Phase B DBSCAN
 clusters them together — the same person in a photo and a video ends up
@@ -565,6 +579,7 @@ All endpoints are admin-only.
 | `POST` | `/detect` | `{ path \| image_b64, min_score?, min_box_px?, ar_range? }` | `{ faces[], image_w, image_h }` |
 | `POST` | `/detect-embed` | _alias of `/detect`_ | — |
 | `POST` | `/detect/batch` | `{ files[] }` | `{ results: [{ file, faces[], image_w, image_h }] }` |
+| `POST` | `/detect/batch-b64` | `{ images: [b64…], min_score?, min_box_px?, ar_range? }` | `{ results: [{ faces[], error? }], total_images, total_faces }` — GPU-pipelined parallel detect |
 | `POST` | `/detect/video` | `{ path, max_frames? }` | `{ faces[], image_w, image_h }` (deduplicated across frames) |
 | `POST` | `/preload/{model}` | — | `{ model, status }` — trigger background model download |
 | `GET`  | `/preload/{model}/status` | — | `{ model, status }` — `downloading` / `ready` / `invalid` / `failed` |

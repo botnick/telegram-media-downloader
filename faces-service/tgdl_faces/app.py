@@ -801,6 +801,116 @@ async def detect_batch(body: BatchDetectRequest) -> JSONResponse:
     return await run_in_threadpool(_do_batch_sync, body)
 
 
+class BatchB64DetectRequest(BaseModel):
+    """Body for ``POST /detect/batch-b64``.
+
+    Accepts an array of base64-encoded images for GPU-pipelined parallel
+    detection. Designed for the Node video-b64-fallback path where frames
+    are extracted locally and sent in bulk.
+    """
+
+    images: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="List of base64-encoded image blobs.",
+    )
+    min_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_box_px: int | None = Field(default=None, ge=1)
+    ar_range: tuple[float, float] | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _validate_ar_range(self) -> "BatchB64DetectRequest":
+        if self.ar_range is not None:
+            lo, hi = float(self.ar_range[0]), float(self.ar_range[1])
+            if lo <= 0 or hi <= 0 or lo >= hi:
+                raise ValueError("ar_range must be (lo, hi) with 0 < lo < hi")
+        return self
+
+
+def _do_batch_b64_sync(body: BatchB64DetectRequest) -> JSONResponse:
+    """Process multiple b64 images in parallel — GPU-optimised."""
+    if last_error() is not None:
+        return _error(
+            f"model failed to load: {last_error()}",
+            code="model_load_failed",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    if not is_ready():
+        return _error(
+            "model is still loading, retry shortly",
+            code="model_loading",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    kwargs: dict[str, Any] = {}
+    if body.min_score is not None:
+        kwargs["min_score"] = float(body.min_score)
+    if body.min_box_px is not None:
+        kwargs["min_box_px"] = int(body.min_box_px)
+    if body.ar_range is not None:
+        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
+    # Skip quality for throughput — video frames don't need per-face quality scores
+    kwargs["_skip_quality_score"] = True
+
+    max_workers = _resolve_max_concurrency()
+
+    def _process_one(idx: int, b64: str) -> dict[str, Any]:
+        try:
+            img = load_image_from_b64(b64)
+        except (Base64DecodeError, ImageDecodeError):
+            return {"idx": idx, "faces": [], "error": "decode_failed"}
+        try:
+            faces = detect_and_embed(img, **kwargs)
+        except Exception:
+            return {"idx": idx, "faces": [], "error": "detect_failed"}
+        return {"idx": idx, "faces": faces, "error": None}
+
+    indexed_results: dict[int, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_process_one, i, b64): i
+            for i, b64 in enumerate(body.images)
+        }
+        for fut in as_completed(futures):
+            r = fut.result()
+            indexed_results[r["idx"]] = r
+
+    results = []
+    total_faces = 0
+    for i in range(len(body.images)):
+        item = indexed_results.get(i, {"faces": [], "error": "missing"})
+        faces = item["faces"]
+        total_faces += len(faces)
+        results.append({
+            "faces": [
+                {
+                    "x": f["x"], "y": f["y"], "w": f["w"], "h": f["h"],
+                    "score": f["score"], "quality_score": f.get("quality_score", 0.0),
+                    "embedding": f["embedding"], "landmarks": f.get("landmarks", []),
+                }
+                for f in faces
+            ],
+            "error": item.get("error"),
+        })
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={"results": results, "total_images": len(results), "total_faces": total_faces},
+    )
+
+
+@app.post("/detect/batch-b64")
+async def detect_batch_b64(body: BatchB64DetectRequest) -> JSONResponse:
+    """Detect faces in multiple base64 images — GPU-pipelined.
+
+    Optimised for the Node-side video b64 fallback: accepts an array of
+    frames as base64, processes them in parallel on GPU, and returns all
+    results in one response. Skips quality-score computation for throughput.
+    """
+    return await run_in_threadpool(_do_batch_b64_sync, body)
+
+
 def _dedupe_video_faces(all_faces: list[dict]) -> list[dict]:
     """Return one best face per unique identity across video frames.
 
@@ -874,17 +984,35 @@ def _do_detect_video_sync(body: VideoDetectRequest) -> JSONResponse:
     first_frame = frames[0]
     image_h, image_w = int(first_frame.shape[0]), int(first_frame.shape[1])
 
-    throttle_sec = _resolve_throttle_ms() / 1000.0
+    # Skip quality for video frames — throughput matters more than per-face scores
+    kwargs["_skip_quality_score"] = True
+
+    # GPU mode: process frames in parallel for pipeline saturation.
+    # CPU mode: sequential with optional throttle.
     all_faces_raw: list[dict] = []
-    for i, frame in enumerate(frames):
-        if throttle_sec > 0 and i > 0:
-            time.sleep(throttle_sec)
-        try:
-            face_dicts = detect_and_embed(frame, **kwargs)
-        except Exception:
-            _LOG.exception("detect_and_embed failed on frame %d of %s", i, body.path)
-            continue
-        all_faces_raw.extend(face_dicts)
+    if gpu_available() and len(frames) > 1:
+        max_workers = _resolve_max_concurrency()
+
+        def _detect_frame(frame: "np.ndarray") -> list[dict]:
+            try:
+                return detect_and_embed(frame, **kwargs)
+            except Exception:
+                return []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for faces in pool.map(_detect_frame, frames):
+                all_faces_raw.extend(faces)
+    else:
+        throttle_sec = _resolve_throttle_ms() / 1000.0
+        for i, frame in enumerate(frames):
+            if throttle_sec > 0 and i > 0:
+                time.sleep(throttle_sec)
+            try:
+                face_dicts = detect_and_embed(frame, **kwargs)
+            except Exception:
+                _LOG.exception("detect_and_embed failed on frame %d of %s", i, body.path)
+                continue
+            all_faces_raw.extend(face_dicts)
 
     unique_faces = _dedupe_video_faces(all_faces_raw)
     return JSONResponse(

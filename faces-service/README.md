@@ -104,6 +104,29 @@ curl -X POST http://127.0.0.1:8011/detect/batch \
 }
 ```
 
+### `/detect/batch-b64` example
+
+GPU-pipelined batch detection from base64 images. Designed for the Node
+video-b64-fallback path (frames extracted locally, sent in bulk). Skips
+quality-score computation for throughput.
+
+```bash
+curl -X POST http://127.0.0.1:8011/detect/batch-b64 \
+    -H 'content-type: application/json' \
+    -d '{"images": ["<b64>", "<b64>"], "min_score": 0.5}'
+```
+
+```json
+{
+  "results": [
+    {"faces": [...], "error": null},
+    {"faces": [], "error": "decode_failed"}
+  ],
+  "total_images": 2,
+  "total_faces": 3
+}
+```
+
 ## Environment
 
 | Variable | Default | Purpose |
@@ -115,7 +138,8 @@ curl -X POST http://127.0.0.1:8011/detect/batch \
 | `TGDL_FACES_PROVIDERS` | `auto` | onnxruntime provider hint. Shorthand aliases: `auto`, `cpu`, `cuda`, `coreml`, `directml`, `openvino`. Or a comma-separated list of full provider names: `CUDAExecutionProvider,CPUExecutionProvider`. |
 | `TGDL_FACES_DETECTOR_MODEL` | `buffalo_l` | insightface model pack name. |
 | `TGDL_FACES_DET_SIZE` | `640` | Detector input size. `480` is the Pi 4 sweet spot. |
-| `TGDL_FACES_MAX_CONCURRENCY` | `2` | Max parallel detection requests. Prevents OOM on burst traffic. |
+| `TGDL_FACES_MAX_CONCURRENCY` | `2` (CPU) / `8` (GPU) | Max parallel detection requests. Auto-scales when GPU is detected. |
+| `TGDL_FACES_SKIP_QUALITY` | _empty_ | Set to `1` to skip per-face quality score computation for higher throughput. |
 | `TGDL_FACES_LOG_LEVEL` | `INFO` | Standard Python `logging` level. |
 
 ### GPU provider auto-detection (`TGDL_FACES_PROVIDERS=auto`)

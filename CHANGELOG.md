@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.22.4] — 2026-05-24
+
+External sidecar now supports video face detection via b64 fallback + GPU throughput boost.
+
+### Added
+- **Video b64 fallback** — `detectFacesInVideo` extracts frames locally with ffmpeg and sends them as base64 when the sidecar cannot access files by path (external/remote mode).
+- **`POST /detect/batch-b64`** sidecar endpoint — accepts an array of base64 images for GPU-pipelined parallel detection; designed for video frame batches.
+- **Auto-scale concurrency** — GPU sidecars now default to 8 parallel inferences (was hardcoded 2); configurable via `TGDL_FACES_MAX_CONCURRENCY`.
+- **`TGDL_FACES_SKIP_QUALITY`** env — skip per-face quality score computation for higher throughput.
+
+### Changed
+- Video detection on GPU uses parallel `ThreadPoolExecutor` instead of sequential frame loop.
+- `_pathRejectedLogged` flag now set by video 403 handler too — prevents 198K wasted round trips on large libraries.
+- Node client sends frames in chunks of 20 via `/detect/batch-b64` with automatic fallback to sequential `/detect`.
+
+### Service worker
+- `VERSION = 'v2224'`
+
+### Sidecar
+- Bumped faces-service to v0.4.0.
+
 ## [2.22.3] — 2026-05-24
 
 Sidecar toggle fix — inline onclick eliminates module-cache binding failures.

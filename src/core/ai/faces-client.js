@@ -22,6 +22,7 @@
 
 import { promises as fs } from 'fs';
 import { Buffer } from 'buffer';
+import { spawn } from 'child_process';
 
 import { resolveFacesValue } from './faces-config.js';
 
@@ -397,6 +398,11 @@ export async function detectFacesInVideo(absPath, cfg = {}, onLog = null, signal
         return null;
     }
 
+    // Path mode already known to fail — skip straight to b64 fallback.
+    if (_pathRejectedLogged) {
+        return _detectVideoB64Fallback(absPath, cfg, url, onLog, signal);
+    }
+
     const facesCfg = cfg?.faces || cfg || {};
     const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
     const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60);
@@ -447,11 +453,23 @@ export async function detectFacesInVideo(absPath, cfg = {}, onLog = null, signal
     }
 
     if (res.status === 403) {
-        _log(
-            onLog,
-            'warn',
-            `detectFacesInVideo: path_not_allowed for ${absPath} — no b64 fallback for video`,
-        );
+        let code = null;
+        try {
+            const body = await res.clone().json();
+            code = body?.code || null;
+        } catch {}
+        if (code === 'path_not_allowed') {
+            if (!_pathRejectedLogged) {
+                _log(
+                    onLog,
+                    'info',
+                    'video path mode rejected by sidecar; switching to b64 fallback for all files',
+                );
+                _pathRejectedLogged = true;
+            }
+            return _detectVideoB64Fallback(absPath, cfg, url, onLog, signal);
+        }
+        _log(onLog, 'warn', `detectFacesInVideo: sidecar returned 403 for ${absPath}`);
         return null;
     }
 
@@ -708,6 +726,292 @@ function _log(onLog, level, msg) {
     }
 }
 
+// ---- Video b64 fallback (external sidecar without shared filesystem) ----
+
+let _ffmpegBin = null;
+
+async function _resolveFfmpegForFaces() {
+    if (_ffmpegBin !== null) return _ffmpegBin;
+    try {
+        const mod = await import('../thumbs.js');
+        _ffmpegBin = mod.resolveFfmpegBin();
+    } catch {
+        _ffmpegBin = 'ffmpeg';
+    }
+    return _ffmpegBin;
+}
+
+/**
+ * Extract evenly-spaced JPEG frames from a video using ffmpeg.
+ * Returns an array of Buffer (raw JPEG bytes) for each frame.
+ * Mirrors the Python sidecar's `extract_video_frames` logic.
+ */
+async function _extractVideoFrames(absPath, maxFrames, onLog) {
+    const bin = await _resolveFfmpegForFaces();
+
+    // Step 1: get video duration via ffprobe-style ffmpeg output
+    const duration = await new Promise((resolve) => {
+        const args = ['-hide_banner', '-i', absPath, '-f', 'null', '-'];
+        const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        let stderr = '';
+        proc.stderr.on('data', (d) => {
+            stderr += d.toString();
+        });
+        proc.on('close', () => {
+            const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+            if (m) {
+                resolve(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+            } else {
+                resolve(0);
+            }
+        });
+        proc.on('error', () => resolve(0));
+    });
+
+    if (duration <= 0) {
+        _log(onLog, 'warn', `video b64 fallback: could not determine duration for ${absPath}`);
+        return [];
+    }
+
+    // Step 2: compute seek positions (evenly spaced, skip first/last 0.5s)
+    const start = Math.min(0.5, duration * 0.05);
+    const end = Math.max(duration - 0.5, duration * 0.95);
+    const span = end - start;
+    const nFrames = Math.min(maxFrames, Math.max(1, Math.floor(duration)));
+    const positions = [];
+    if (nFrames === 1) {
+        positions.push(start + span / 2);
+    } else {
+        for (let i = 0; i < nFrames; i++) {
+            positions.push(start + (span * i) / (nFrames - 1));
+        }
+    }
+
+    // Step 3: extract each frame as JPEG bytes piped to stdout
+    const frames = [];
+    for (const pos of positions) {
+        const buf = await new Promise((resolve) => {
+            const args = [
+                '-hide_banner',
+                '-loglevel',
+                'error',
+                '-ss',
+                String(pos),
+                '-i',
+                absPath,
+                '-frames:v',
+                '1',
+                '-f',
+                'image2',
+                '-c:v',
+                'mjpeg',
+                '-q:v',
+                '3',
+                'pipe:1',
+            ];
+            const proc = spawn(bin, args, {
+                stdio: ['ignore', 'pipe', 'ignore'],
+                windowsHide: true,
+            });
+            const chunks = [];
+            proc.stdout.on('data', (d) => chunks.push(d));
+            proc.on('close', (code) => {
+                if (code === 0 && chunks.length) {
+                    resolve(Buffer.concat(chunks));
+                } else {
+                    resolve(null);
+                }
+            });
+            proc.on('error', () => resolve(null));
+        });
+        if (buf) frames.push(buf);
+    }
+    return frames;
+}
+
+/**
+ * Deduplicate faces across video frames. Keeps the highest-score face
+ * per identity (cosine similarity >= 0.50 threshold on L2-normalised
+ * embeddings). Mirrors Python's `_dedupe_video_faces`.
+ */
+function _dedupeVideoFaces(allFaces) {
+    const THRESHOLD = 0.5;
+    const uniqueEmbs = [];
+    const uniqueFaces = [];
+    for (const face of allFaces) {
+        const emb = face.embedding;
+        let matched = false;
+        for (let i = 0; i < uniqueEmbs.length; i++) {
+            const dot = _dotProduct(emb, uniqueEmbs[i]);
+            if (dot >= THRESHOLD) {
+                if (face.score > uniqueFaces[i].score) {
+                    uniqueEmbs[i] = emb;
+                    uniqueFaces[i] = face;
+                }
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            uniqueEmbs.push(emb);
+            uniqueFaces.push(face);
+        }
+    }
+    return uniqueFaces;
+}
+
+function _dotProduct(a, b) {
+    let sum = 0;
+    const len = Math.min(a.length, b.length);
+    for (let i = 0; i < len; i++) sum += a[i] * b[i];
+    return sum;
+}
+
+/**
+ * Video b64 fallback: extract frames locally with ffmpeg, send as a
+ * batch to the sidecar's /detect/batch-b64 endpoint (GPU-pipelined),
+ * then deduplicate. Falls back to one-by-one /detect if batch-b64 is
+ * unavailable (older sidecar).
+ */
+async function _detectVideoB64Fallback(absPath, cfg, url, onLog, signal) {
+    const facesCfg = cfg?.faces || cfg || {};
+    const maxFrames = _pickNumber([facesCfg.videoMaxFrames, cfg?.videoMaxFrames], 120);
+    const capped = Math.max(1, Math.min(500, maxFrames));
+
+    _log(onLog, 'info', `video b64 fallback: extracting up to ${capped} frames from ${absPath}`);
+    const frames = await _extractVideoFrames(absPath, capped, onLog);
+    if (!frames.length) {
+        _log(onLog, 'warn', `video b64 fallback: no frames extracted for ${absPath}`);
+        return [];
+    }
+    _log(
+        onLog,
+        'info',
+        `video b64 fallback: extracted ${frames.length} frames, sending to sidecar`,
+    );
+
+    const minScore = _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5);
+    const minBoxPx = _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60);
+    const arRange =
+        Array.isArray(facesCfg.arRange) && facesCfg.arRange.length === 2
+            ? facesCfg.arRange
+            : [0.5, 2.0];
+
+    // Try batch-b64 endpoint (GPU-pipelined, much faster)
+    const allFaces = await _sendBatchB64(
+        frames,
+        { minScore, minBoxPx, arRange },
+        url,
+        onLog,
+        signal,
+    );
+    return _dedupeVideoFaces(allFaces);
+}
+
+const BATCH_B64_CHUNK = 20;
+
+async function _sendBatchB64(frames, { minScore, minBoxPx, arRange }, url, onLog, signal) {
+    const allFaces = [];
+
+    // Send frames in chunks to avoid huge payloads
+    for (let start = 0; start < frames.length; start += BATCH_B64_CHUNK) {
+        if (signal?.aborted) break;
+        const chunk = frames.slice(start, start + BATCH_B64_CHUNK);
+        const body = {
+            images: chunk.map((buf) => buf.toString('base64')),
+            min_score: minScore,
+            min_box_px: minBoxPx,
+            ar_range: arRange,
+        };
+        const timeoutMs = Math.max(chunk.length * _requestTimeoutMs, 120_000);
+        let res;
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            if (signal) {
+                if (signal.aborted) ctrl.abort();
+                else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+            }
+            try {
+                res = await globalThis.fetch(`${url}/detect/batch-b64`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify(body),
+                    signal: ctrl.signal,
+                });
+            } finally {
+                clearTimeout(timer);
+            }
+        } catch (e) {
+            // batch-b64 not available — fall back to one-by-one
+            if (start === 0) {
+                _log(onLog, 'info', 'batch-b64 unavailable, falling back to sequential detect');
+                return _sendFramesSequential(
+                    frames,
+                    { minScore, minBoxPx, arRange },
+                    url,
+                    onLog,
+                    signal,
+                );
+            }
+            continue;
+        }
+        if (res.status === 404 || res.status === 405) {
+            // Older sidecar without batch-b64 endpoint
+            _log(onLog, 'info', 'batch-b64 not supported, falling back to sequential detect');
+            return _sendFramesSequential(
+                frames,
+                { minScore, minBoxPx, arRange },
+                url,
+                onLog,
+                signal,
+            );
+        }
+        if (!res.ok) continue;
+        let resBody;
+        try {
+            resBody = await res.json();
+        } catch {
+            continue;
+        }
+        for (const item of resBody?.results ?? []) {
+            if (item.error) continue;
+            const parsed = _parseFacesList(Array.isArray(item.faces) ? item.faces : []);
+            allFaces.push(...parsed);
+        }
+    }
+    return allFaces;
+}
+
+async function _sendFramesSequential(frames, { minScore, minBoxPx, arRange }, url, onLog, signal) {
+    const allFaces = [];
+    for (const frameBuf of frames) {
+        if (signal?.aborted) break;
+        const b64Body = {
+            image_b64: frameBuf.toString('base64'),
+            min_score: minScore,
+            min_box_px: minBoxPx,
+            ar_range: arRange,
+        };
+        let res;
+        try {
+            res = await _postWithRetry(`${url}/detect`, b64Body, onLog);
+        } catch {
+            continue;
+        }
+        if (!res || !res.ok) continue;
+        let resBody;
+        try {
+            resBody = await res.json();
+        } catch {
+            continue;
+        }
+        const parsed = _parseFacesList(Array.isArray(resBody?.faces) ? resBody.faces : []);
+        allFaces.push(...parsed);
+    }
+    return allFaces;
+}
+
 /** Test-only: clear cached URL + health probe so each spec starts fresh. */
 export function _resetForTests() {
     _sidecarUrl = '';
@@ -719,6 +1023,8 @@ export function _resetForTests() {
     _maxConcurrency = 0;
     _inflight = 0;
     _envBootstrapped = false;
+    _pathRejectedLogged = false;
+    _ffmpegBin = null;
 }
 
 /** Test-only: snapshot the resolved runtime knobs. */
