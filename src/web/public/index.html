@@ -290,9 +290,12 @@
                                     cover LastPass / 1Password / Bitwarden variants explicitly.
                                   - `spellcheck="false"` keeps the red squiggle out of group names.
                             -->
+                            <input type="text" name="prevent_autofill" autocomplete="username"
+                                tabindex="-1" aria-hidden="true"
+                                style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none">
                             <input type="search" id="sidebar-groups-search" name="filter"
                                 role="searchbox"
-                                autocomplete="off"
+                                autocomplete="nope"
                                 spellcheck="false"
                                 data-form-type="other"
                                 data-lpignore="true"
@@ -889,8 +892,11 @@
                         <div class="relative">
                             <i
                                 class="ri-search-line absolute left-3 top-1/2 transform -translate-y-1/2 text-tg-textSecondary"></i>
+                            <input type="text" name="prevent_autofill_2" autocomplete="username"
+                                tabindex="-1" aria-hidden="true"
+                                style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none">
                             <input type="search" id="groups-search" name="filter" role="searchbox"
-                                autocomplete="off" spellcheck="false"
+                                autocomplete="nope" spellcheck="false"
                                 data-form-type="other"
                                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
                                 class="w-full bg-tg-panel border border-tg-border rounded-lg pl-10 pr-4 py-2 text-tg-text focus:ring-1 focus:ring-tg-blue focus:border-tg-blue outline-none"
