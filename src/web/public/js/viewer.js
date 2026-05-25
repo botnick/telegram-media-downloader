@@ -754,8 +754,14 @@ export function openMediaViewer(index) {
     }
 
     document.getElementById('modal-filename').textContent = file.name;
-    document.getElementById('modal-meta').textContent =
-        `${file.sizeFormatted} • ${formatDate(file.modified)}`;
+    const groupLabel = file.groupName || file.group_name || '';
+    document.getElementById('modal-meta').textContent = [
+        groupLabel,
+        file.sizeFormatted,
+        formatDate(file.modified),
+    ]
+        .filter(Boolean)
+        .join(' • ');
     document.getElementById('modal-counter').textContent = `${index + 1} / ${state.files.length}`;
     document.getElementById('modal-download').href = downloadUrl;
     _setTypeChip(file);

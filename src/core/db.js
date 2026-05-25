@@ -266,6 +266,55 @@ function initSchema() {
         );
     } catch {}
 
+    // FTS5 full-text search over file_name + group_name. content-sync'd
+    // from the downloads table so inserts/deletes stay in sync automatically.
+    try {
+        db.exec(`
+            CREATE VIRTUAL TABLE IF NOT EXISTS downloads_fts USING fts5(
+                file_name, group_name,
+                content='downloads',
+                content_rowid='id'
+            )
+        `);
+        // Populate FTS on first boot (or after schema migration). The
+        // INSERT ... SELECT is a no-op when the FTS table is already populated
+        // because FTS5 content-sync tables track the content table's rowid.
+        const ftsCount = db.prepare('SELECT COUNT(*) as n FROM downloads_fts').get().n;
+        if (ftsCount === 0) {
+            const dlCount = db.prepare('SELECT COUNT(*) as n FROM downloads').get().n;
+            if (dlCount > 0) {
+                db.exec(`
+                    INSERT INTO downloads_fts(rowid, file_name, group_name)
+                    SELECT id, COALESCE(file_name,''), COALESCE(group_name,'') FROM downloads
+                `);
+            }
+        }
+    } catch {}
+
+    // Triggers to keep FTS in sync with downloads table.
+    try {
+        db.exec(`
+            CREATE TRIGGER IF NOT EXISTS downloads_fts_insert AFTER INSERT ON downloads BEGIN
+                INSERT INTO downloads_fts(rowid, file_name, group_name)
+                VALUES (new.id, COALESCE(new.file_name,''), COALESCE(new.group_name,''));
+            END
+        `);
+        db.exec(`
+            CREATE TRIGGER IF NOT EXISTS downloads_fts_delete AFTER DELETE ON downloads BEGIN
+                INSERT INTO downloads_fts(downloads_fts, rowid, file_name, group_name)
+                VALUES ('delete', old.id, COALESCE(old.file_name,''), COALESCE(old.group_name,''));
+            END
+        `);
+        db.exec(`
+            CREATE TRIGGER IF NOT EXISTS downloads_fts_update AFTER UPDATE OF file_name, group_name ON downloads BEGIN
+                INSERT INTO downloads_fts(downloads_fts, rowid, file_name, group_name)
+                VALUES ('delete', old.id, COALESCE(old.file_name,''), COALESCE(old.group_name,''));
+                INSERT INTO downloads_fts(rowid, file_name, group_name)
+                VALUES (new.id, COALESCE(new.file_name,''), COALESCE(new.group_name,''));
+            END
+        `);
+    } catch {}
+
     // Backfill pinned NULLs from pre-ALTER TABLE rows so queries can use
     // `pinned` directly without COALESCE. Guard check avoids a full table
     // scan on subsequent boots where no NULL rows remain.
@@ -1187,18 +1236,62 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
 export function searchDownloads(query, opts = {}) {
     const limit = Math.max(1, Math.min(500, parseInt(opts.limit, 10) || 50));
     const offset = Math.max(0, parseInt(opts.offset, 10) || 0);
-    const q = `%${String(query || '').trim()}%`;
+    const raw = String(query || '').trim();
+    if (!raw) return { files: [], total: 0 };
+
+    const db = getDb();
+
+    // Try FTS5 first (fast). Falls back to LIKE if FTS table doesn't exist
+    // (e.g. SQLite build without FTS5 extension — rare but possible).
+    try {
+        // FTS5 match query: wrap each token with * for prefix matching
+        const ftsQuery = raw
+            .replace(/['"]/g, '')
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((t) => `"${t}"*`)
+            .join(' ');
+        if (ftsQuery) {
+            const groupFilter = opts.groupId ? ' AND d.group_id = ?' : '';
+            const params = [ftsQuery, ...(opts.groupId ? [String(opts.groupId)] : [])];
+            const rows = db
+                .prepare(
+                    `SELECT d.*, sb.duration_sec FROM downloads d
+                     LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id
+                     INNER JOIN downloads_fts fts ON fts.rowid = d.id
+                     WHERE downloads_fts MATCH ?${groupFilter}
+                     ORDER BY fts.rank
+                     LIMIT ? OFFSET ?`,
+                )
+                .all(...params, limit, offset);
+            const total = db
+                .prepare(
+                    `SELECT COUNT(*) as c FROM downloads d
+                     INNER JOIN downloads_fts fts ON fts.rowid = d.id
+                     WHERE downloads_fts MATCH ?${groupFilter}`,
+                )
+                .get(...params).c;
+            return { files: rows, total };
+        }
+    } catch {
+        // FTS unavailable — fall through to LIKE
+    }
+
+    // LIKE fallback
+    const q = `%${raw}%`;
     const params = [q, q];
-    let where = '(file_name LIKE ? OR group_name LIKE ?)';
+    let where = '(d.file_name LIKE ? OR d.group_name LIKE ?)';
     if (opts.groupId) {
-        where += ' AND group_id = ?';
+        where += ' AND d.group_id = ?';
         params.push(String(opts.groupId));
     }
-    const rows = getDb()
-        .prepare(`SELECT * FROM downloads WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+    const rows = db
+        .prepare(
+            `SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id WHERE ${where} ORDER BY d.created_at DESC LIMIT ? OFFSET ?`,
+        )
         .all(...params, limit, offset);
-    const total = getDb()
-        .prepare(`SELECT COUNT(*) as c FROM downloads WHERE ${where}`)
+    const total = db
+        .prepare(`SELECT COUNT(*) as c FROM downloads d WHERE ${where}`)
         .get(...params).c;
     return { files: rows, total };
 }

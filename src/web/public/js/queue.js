@@ -1278,6 +1278,30 @@ function renderToolbarState() {
     btn.disabled = failed === 0;
 }
 
+const _speedHistory = new Array(60).fill(0);
+let _speedIdx = 0;
+
+function _pushSpeed(bps) {
+    _speedHistory[_speedIdx % _speedHistory.length] = bps;
+    _speedIdx++;
+}
+
+function _speedSparkline() {
+    const len = _speedHistory.length;
+    const max = Math.max(1, ...Array.from(_speedHistory));
+    const w = 120;
+    const h = 24;
+    const step = w / (len - 1);
+    const points = [];
+    for (let i = 0; i < len; i++) {
+        const idx = (_speedIdx + i) % len;
+        const x = Math.round(i * step);
+        const y = Math.round(h - (_speedHistory[idx] / max) * (h - 2));
+        points.push(`${x},${y}`);
+    }
+    return `<svg width="${w}" height="${h}" class="inline-block align-middle ml-1 opacity-70"><polyline points="${points.join(' ')}" fill="none" stroke="var(--tg-blue,#2aabee)" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+
 function renderAggregate() {
     const host = document.getElementById('queue-aggregate');
     if (!host) return;
@@ -1290,11 +1314,12 @@ function renderAggregate() {
             totalBps += j.bps || 0;
         } else if (j.status === 'queued') queued++;
     }
+    _pushSpeed(totalBps);
     const speed = totalBps ? `${formatBytes(totalBps)}/s` : '0 B/s';
     host.innerHTML = `
         <span><i class="ri-loader-2-line text-tg-blue"></i> ${i18nTf('queue.agg.active', { n: active }, `${active} active`)}</span>
         <span><i class="ri-time-line"></i> ${i18nTf('queue.agg.queued', { n: queued }, `${queued} queued`)}</span>
-        <span><i class="ri-flashlight-line"></i> ${escapeHtml(speed)}</span>
+        <span><i class="ri-flashlight-line"></i> ${escapeHtml(speed)}${_speedSparkline()}</span>
         ${globalPaused ? `<span class="text-tg-orange">· ${escapeHtml(i18nT('queue.agg.paused_global', 'Globally paused'))}</span>` : ''}
         ${!engineRunning ? `<span class="text-tg-textSecondary">· ${escapeHtml(i18nT('queue.agg.engine_stopped', 'Engine stopped'))}</span>` : ''}
     `;
