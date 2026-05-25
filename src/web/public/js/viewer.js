@@ -1001,32 +1001,11 @@ class VideoPlayer {
         this.skipFwdBtn.onclick = () => this.seekRelative(skipStep());
 
         // Tap layer = anywhere on the video pane that ISN'T a control.
-        this.tapLayer.onclick = (e) => {
-            if (SUPPORTS_HOVER) {
-                this.togglePlay();
-            } else {
-                // Mobile: first tap reveals controls, second tap toggles play.
-                if (this._controlsVisible()) {
-                    this.togglePlay();
-                } else {
-                    this._showControls(true);
-                }
-            }
-            e.stopPropagation();
-        };
-        this.tapLayer.ondblclick = (e) => {
-            // Settings → Video Player → Double-tap to fullscreen. Default
-            // is ON (legacy behaviour); explicit '0' opts out.
-            if (localStorage.getItem('viewer-dbl-tap-fs') === '0') {
-                e.stopPropagation();
-                return;
-            }
-            this.toggleFullscreen();
-            e.stopPropagation();
-        };
-
-        // Mobile double-tap left/right halves to seek (YouTube-style).
+        // pointerdown captures whether controls were hidden BEFORE
+        // pointermove (which fires between down and click) can show them.
+        // Also handles mobile double-tap seek.
         this.tapLayer.onpointerdown = (e) => {
+            this._controlsWereHidden = !this._controlsVisible();
             if (SUPPORTS_HOVER) return;
             const now = Date.now();
             if (now - this._lastTapAt < 320 && Math.abs(e.clientX - this._lastTapX) < 60) {
@@ -1040,6 +1019,27 @@ class VideoPlayer {
                 this._lastTapAt = now;
                 this._lastTapX = e.clientX;
             }
+        };
+
+        // If controls were hidden at pointerdown, first click just reveals
+        // them without toggling play — so tapping the video to "wake"
+        // the controls doesn't accidentally pause.
+        this.tapLayer.onclick = (e) => {
+            if (this._controlsWereHidden) {
+                this._controlsWereHidden = false;
+                this._showControls(true);
+            } else {
+                this.togglePlay();
+            }
+            e.stopPropagation();
+        };
+        this.tapLayer.ondblclick = (e) => {
+            if (localStorage.getItem('viewer-dbl-tap-fs') === '0') {
+                e.stopPropagation();
+                return;
+            }
+            this.toggleFullscreen();
+            e.stopPropagation();
         };
 
         // Auto-hide on desktop when the cursor wanders inside the modal.
@@ -1157,16 +1157,11 @@ class VideoPlayer {
             // already been closed.
             if (localStorage.getItem('viewer-auto-advance') === '1' && !this.video.loop) {
                 try {
-                    const idx = state.currentFileIndex;
-                    if (Number.isFinite(idx) && idx + 1 < state.files.length) {
-                        // Defer one tick so this onended handler returns
-                        // before we tear down + re-init for the next clip.
-                        setTimeout(() => {
-                            try {
-                                openMediaViewer(idx + 1);
-                            } catch {}
-                        }, 60);
-                    }
+                    setTimeout(() => {
+                        try {
+                            navigateMedia(1);
+                        } catch {}
+                    }, 60);
                 } catch {}
             }
         };
@@ -1327,7 +1322,9 @@ class VideoPlayer {
         // interaction, so if we ever can't start with audio we fall back
         // to a muted start — the user can unmute with one click. The
         // mute state we already restored above wins when present.
-        if (localStorage.getItem(AUTOPLAY_LS_KEY) === '1') {
+        const shouldAutoplay = localStorage.getItem(AUTOPLAY_LS_KEY) === '1'
+            || localStorage.getItem('viewer-auto-advance') === '1';
+        if (shouldAutoplay) {
             const tryPlay = () => {
                 this.video.play().catch(() => {
                     // Browser refused (autoplay policy) — flip mute on

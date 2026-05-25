@@ -4,22 +4,24 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
-## [2.24.1] — 2026-05-25
+## [2.24.2] — 2026-05-25
 
-Video player skip buttons and mobile seek UX.
+Video player: skip buttons, mobile seek overlay, tap-to-show-controls fix, continuous player fix.
 
 ### Added
 - **Skip back / forward buttons** in the video controls bar — uses the configurable step (default 5 s, Settings → Video Player).
 - **Double-tap seek overlay** — YouTube-style visual feedback (icon + seconds label) on mobile when double-tapping left/right halves of the video.
 
 ### Fixed
+- **Tap-to-show-controls paused video** — tapping to reveal hidden controls no longer toggles play/pause; applies to both desktop and mobile.
+- **Continuous player not playing next video on mobile** — auto-advance now forces autoplay regardless of the separate "Autoplay videos" toggle, and wraps around at the end of the gallery.
 - **Double-tap seek hardcoded 10 s** — now honours the `viewer-skip-step` setting, same as keyboard arrows.
 
 ### Changed
 - **Fullscreen touch targets** — all video control buttons meet 44 px minimum in fullscreen for easier mobile tapping.
 
 ### Service worker
-- `VERSION = 'v2241'`
+- `VERSION = 'v2242'`
 
 ## [2.24.0] — 2026-05-25
 
