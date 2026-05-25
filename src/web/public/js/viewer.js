@@ -755,8 +755,21 @@ export function openMediaViewer(index) {
 
     document.getElementById('modal-filename').textContent = file.name;
     const groupLabel = file.groupName || file.group_name || '';
+    const groupChip = document.getElementById('modal-group-chip');
+    const groupNameEl = document.getElementById('modal-group-name');
+    if (groupChip && groupNameEl) {
+        if (groupLabel) {
+            groupNameEl.textContent = groupLabel;
+            groupChip.classList.remove('hidden');
+            groupChip.onclick = () => {
+                const gid = file.groupId || file.group_id;
+                if (gid) location.hash = `#/viewer/${encodeURIComponent(gid)}`;
+            };
+        } else {
+            groupChip.classList.add('hidden');
+        }
+    }
     document.getElementById('modal-meta').textContent = [
-        groupLabel,
         file.sizeFormatted,
         formatDate(file.modified),
     ]
