@@ -537,7 +537,12 @@ if (_trustProxyRaw === undefined) {
 // silently retry mutations on a different scheme.
 app.use(async (req, res, next) => {
     const config = await readConfigSafe();
-    if (!config.web?.forceHttps) return next();
+    if (!config.web?.forceHttps) {
+        // Clear HSTS so browsers that previously cached the 1-year policy
+        // stop forcing HTTPS after the operator disables forceHttps.
+        res.setHeader('Strict-Transport-Security', 'max-age=0');
+        return next();
+    }
     // HSTS — set on every secure response so browsers remember the
     // upgrade. 1-year max-age + includeSubDomains is the modern baseline;
     // we deliberately omit `preload` because the operator has to opt in
@@ -605,6 +610,9 @@ try {
 // viewer renders it without leaving the dashboard.
 app.use(
     helmet({
+        // HSTS managed by the forceHttps middleware above — helmet must not
+        // override the max-age=0 clear header when the operator disables HTTPS.
+        hsts: false,
         contentSecurityPolicy: {
             useDefaults: true,
             directives: {

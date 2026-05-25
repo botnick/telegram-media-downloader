@@ -1552,11 +1552,23 @@
 
                         <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-2">
                             <div>
-                                <div class="text-tg-text text-sm" data-i18n="settings.video_player.auto_advance">Auto-advance to next</div>
-                                <div class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="settings.video_player.auto_advance_help">When a video ends, open the next file in the gallery automatically.</div>
+                                <div class="text-tg-text text-sm" data-i18n="settings.video_player.auto_advance">Continuous play</div>
+                                <div class="text-[11px] text-tg-textSecondary mt-0.5" data-i18n="settings.video_player.auto_advance_help">Auto-advance to next file when video ends or photo timer expires. Loops at the end of the gallery.</div>
                             </div>
                             <div id="setting-viewer-auto-advance" class="tg-toggle shrink-0"></div>
                         </label>
+
+                        <div id="slideshow-interval-row" class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg mb-2" style="display:none">
+                            <div>
+                                <div class="text-tg-text text-sm">Photo slideshow interval</div>
+                                <div class="text-[11px] text-tg-textSecondary mt-0.5">Seconds to show each photo before advancing.</div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input id="setting-slideshow-sec" type="range" min="2" max="15" step="1" value="5"
+                                    class="w-20 accent-tg-blue">
+                                <span id="slideshow-sec-label" class="text-sm text-tg-text tabular-nums w-6 text-center">5s</span>
+                            </div>
+                        </div>
 
                         <label class="flex items-center justify-between p-3 bg-tg-bg/40 rounded-lg cursor-pointer mb-2">
                             <div>
@@ -4284,7 +4296,12 @@
         <!-- Top Toolbar -->
         <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-30 transition-opacity duration-300"
             id="modal-top-bar">
-            <div id="modal-counter" class="bg-black/50 px-3 py-1 rounded-full text-sm text-white">1 / 10</div>
+            <div class="flex items-center gap-2">
+                <div id="modal-counter" class="bg-black/50 px-3 py-1 rounded-full text-sm text-white">1 / 10</div>
+                <div id="modal-continuous-badge" class="hidden bg-tg-blue/80 px-2 py-0.5 rounded-full text-[10px] text-white font-medium flex items-center gap-1">
+                    <i class="ri-play-circle-line"></i> AUTO
+                </div>
+            </div>
             <div class="flex gap-2">
                 <button id="modal-fullscreen-btn"
                     class="w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 flex items-center justify-center text-white transition">
@@ -4655,15 +4672,16 @@
                             <span id="modal-type-chip"
                                 class="hidden inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 text-tg-text/90 text-[11px] font-medium uppercase tracking-wide shrink-0"></span>
                         </div>
+                        <p id="modal-meta" class="text-xs sm:text-sm text-gray-300 mt-0.5"></p>
+                    </div>
+                    <div class="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
                         <span id="modal-group-chip"
-                            class="hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue text-[11px] font-medium max-w-[240px] sm:max-w-[360px] mt-0.5 cursor-pointer hover:bg-tg-blue/25 transition-colors"
+                            class="hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-tg-blue/15 text-tg-blue text-[11px] font-medium max-w-[160px] sm:max-w-[280px] cursor-pointer hover:bg-tg-blue/25 transition-colors"
                             title="Go to group">
                             <i class="ri-chat-3-line text-[10px]"></i>
                             <span id="modal-group-name" class="truncate"></span>
                         </span>
-                        <p id="modal-meta" class="text-xs sm:text-sm text-gray-300 mt-0.5"></p>
-                    </div>
-                    <div class="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 w-full sm:w-auto">
+                        <span class="flex-1"></span>
                         <button id="modal-share" data-admin-only
                             class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-tg-panel hover:bg-tg-hover rounded-lg text-xs sm:text-sm text-tg-text flex items-center font-medium transition"
                             data-i18n-title="viewer.video.share_title" title="Share with friends — link works without login">

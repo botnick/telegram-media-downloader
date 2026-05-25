@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.24.0] — 2026-05-25
+
+Continuous player, FTS5 smart search, speed sparkline, HSTS fix.
+
+### Added
+- **Continuous player** — auto-advance through the gallery: videos advance on end, photos advance on a configurable timer (2-15s, default 5). Wraps around at the end. Crossfade transition between files. "AUTO" badge shown in viewer when active.
+- **Photo slideshow interval** — Settings > Video Player > slider appears when continuous play is enabled.
+- **FTS5 smart search** — full-text search over `file_name` + `group_name` with prefix matching. Auto-populated on first boot, kept in sync via triggers. Falls back to LIKE if FTS5 unavailable.
+- **Speed sparkline** — SVG mini-graph (60 samples) next to the speed readout in the Queue aggregate bar.
+- **Group name pill** — clickable blue chip in the viewer info bar, navigates to the group gallery. Desktop: below meta line. Mobile: inline with action buttons.
+- **`POST /api/system/health`** — process uptime, heap, CPU, DB size, WS clients.
+
+### Fixed
+- **HSTS stuck on HTTP** — helmet's default HSTS overrode the forceHttps middleware, causing browsers to cache a 1-year HTTPS redirect even after disabling forceHttps. Now: `helmet({ hsts: false })` + explicit `max-age=0` when forceHttps is off.
+
+### Changed
+- **Filmstrip dynamic sizing** — thumb width/height adapt to video aspect ratio (9:16 portrait, 16:9 landscape, 4:3). Fill available viewport width. Larger thumbs (52-72px base height). Touch-friendly scroll snap on mobile.
+- **Modal info bar** — stacked layout on mobile, icon-only buttons, group pill responsive.
+
+### Service worker
+- `VERSION = 'v2240'`
+
 ## [2.23.2] — 2026-05-25
 
 Video duration badge fix — gallery tiles now show duration on non-federated installs.

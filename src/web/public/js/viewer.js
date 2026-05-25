@@ -761,8 +761,8 @@ export function openMediaViewer(index) {
         if (groupLabel) {
             groupNameEl.textContent = groupLabel;
             groupChip.classList.remove('hidden');
+            const gid = file.groupId || file.group_id;
             groupChip.onclick = () => {
-                const gid = file.groupId || file.group_id;
                 if (gid) location.hash = `#/viewer/${encodeURIComponent(gid)}`;
             };
         } else {
@@ -781,6 +781,12 @@ export function openMediaViewer(index) {
 
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+
+    // Continuous player: start slideshow for photos, videos handle it via onended.
+    _stopSlideshow();
+    if (file.type === 'images' || file.type === 'documents') _startSlideshow();
+    const autoBadge = document.getElementById('modal-continuous-badge');
+    if (autoBadge) autoBadge.classList.toggle('hidden', !_isAutoAdvance());
 
     prefetchNeighbor(index + 1);
 
@@ -2124,28 +2130,38 @@ class VideoPlayer {
             (Number.isFinite(sp.duration_sec) && sp.frames > 0 ? sp.duration_sec / sp.frames : 1);
         const spriteUrl = `/api/seekbar/sprite/${encodeURIComponent(id)}`;
 
-        // Responsive thumb height.
-        const thumbH = window.innerWidth <= 640 ? 44 : 56;
+        const tileAR = tileW / Math.max(1, tileH);
+        const vw = window.innerWidth;
+        const isMobile = vw <= 640;
         const rows = Math.max(1, Math.ceil(frames / cols));
-        // Natural width = tile aspect ratio × display height.
-        const naturalThumbW = Math.max(28, Math.round((tileW / Math.max(1, tileH)) * thumbH));
 
-        // Reveal wrap now so clientWidth reflects the real layout.
+        // Reveal wrap BEFORE measuring so clientWidth is real.
         wrap.classList.remove('hidden');
+
+        // Available width for the track (viewport minus arrows + padding).
         const arrowsW =
             (this.filmstripPrev?.offsetWidth ?? 26) + (this.filmstripNext?.offsetWidth ?? 26);
-        const GAP = 2;
-        const PAD = 8;
-        // Few frames: trackW = displayWidth so fillW stretches thumbs to fill.
-        // Many frames: trackW = frames×natural so thumbs stay close to natural
-        // size and the strip scrolls. Either way fillW = track/frames with no
-        // space-between gaps — blank stretches never appear in the timeline.
-        const trackW = Math.max(
-            frames * naturalThumbW,
-            (wrap.clientWidth || window.innerWidth) - arrowsW - PAD,
+        const GAP = isMobile ? 1 : 2;
+        const PAD = isMobile ? 4 : 8;
+        const availW = Math.max(200, vw - arrowsW - PAD);
+
+        // Thumb width: fill available space. If too many frames, cap width
+        // and let the strip scroll. Min width ensures touch targets are usable.
+        const minThumbW = isMobile ? 40 : 48;
+        const maxThumbW = isMobile ? 80 : 120;
+        const idealW = Math.round((availW - GAP * Math.max(0, frames - 1)) / frames);
+        const thumbW = Math.max(minThumbW, Math.min(maxThumbW, idealW));
+
+        // Thumb height: derived from actual tile aspect ratio to preserve
+        // video proportions. Portrait (9:16) gets tall thumbs, landscape
+        // (16:9) gets shorter ones — no blind cropping.
+        const thumbH = Math.max(
+            isMobile ? 44 : 56,
+            Math.min(isMobile ? 90 : 110, Math.round(thumbW / Math.max(0.3, tileAR))),
         );
-        const fillW = (trackW - GAP * (frames - 1)) / frames;
-        const thumbW = Math.max(28, Math.round(fillW));
+
+        // Track width: either fills viewport or overflows for scroll.
+        const trackW = Math.max(availW, frames * thumbW + GAP * (frames - 1));
 
         // Object-fit: cover semantics for the sprite.
         // Scale so one sprite tile exactly fills thumbW; the tile will then be
@@ -2317,6 +2333,7 @@ export function closeMediaViewer() {
             window.tgdlShrinkToMini();
         } catch {}
     }
+    _stopSlideshow();
     modal.classList.add('hidden');
     document.body.style.overflow = '';
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -2542,24 +2559,81 @@ export function setupViewerEvents() {
     }
 }
 
+// ---- Continuous Player ------------------------------------------------
+// Photo slideshow timer + smooth crossfade transitions.
+// Toggle: Settings > Video Player > Auto-advance (same key: 'viewer-auto-advance')
+// Photo interval: 'viewer-slideshow-sec' (default 5)
+
+let _slideshowTimer = null;
+const SLIDESHOW_DEFAULT_SEC = 5;
+
+function _slideshowSec() {
+    const v = parseInt(localStorage.getItem('viewer-slideshow-sec'), 10);
+    return Number.isFinite(v) && v >= 1 ? v : SLIDESHOW_DEFAULT_SEC;
+}
+
+function _isAutoAdvance() {
+    return localStorage.getItem('viewer-auto-advance') === '1';
+}
+
+function _startSlideshow() {
+    _stopSlideshow();
+    if (!_isAutoAdvance()) return;
+    const file = state.files[state.currentFileIndex];
+    if (!file || file.type === 'videos' || file.type === 'audio') return;
+    _slideshowTimer = setTimeout(() => {
+        _slideshowTimer = null;
+        navigateMedia(1);
+    }, _slideshowSec() * 1000);
+}
+
+function _stopSlideshow() {
+    if (_slideshowTimer) {
+        clearTimeout(_slideshowTimer);
+        _slideshowTimer = null;
+    }
+}
+
+function _crossfadeTransition(callback) {
+    const modal = document.getElementById('media-modal');
+    const swipe = document.getElementById('modal-swipe');
+    if (!swipe) return callback();
+    swipe.style.transition = 'opacity 120ms ease-out';
+    swipe.style.opacity = '0';
+    setTimeout(() => {
+        callback();
+        requestAnimationFrame(() => {
+            swipe.style.opacity = '1';
+            setTimeout(() => {
+                swipe.style.transition = '';
+            }, 120);
+        });
+    }, 100);
+}
+
 function navigateMedia(dir) {
-    // Walk through the active filter, not the unfiltered state.files —
-    // tapping → in the Photos filter shouldn't jump to a video.
     const currentFilter = state.currentFilter || 'all';
     const visible =
         currentFilter === 'all' ? state.files : state.files.filter((f) => f.type === currentFilter);
 
     const currentFile = state.files[state.currentFileIndex];
     const visibleIndex = currentFile ? visible.indexOf(currentFile) : -1;
+    let newIndex;
     if (visibleIndex < 0) {
-        const newIndex = state.currentFileIndex + dir;
-        if (newIndex >= 0 && newIndex < state.files.length) openMediaViewer(newIndex);
-        return;
+        newIndex = state.currentFileIndex + dir;
+    } else {
+        // Wrap around in continuous mode
+        let nextVisIdx = visibleIndex + dir;
+        if (_isAutoAdvance()) {
+            if (nextVisIdx >= visible.length) nextVisIdx = 0;
+            else if (nextVisIdx < 0) nextVisIdx = visible.length - 1;
+        }
+        const nextVisible = visible[nextVisIdx];
+        if (!nextVisible) return;
+        newIndex = state.files.indexOf(nextVisible);
     }
-    const nextVisible = visible[visibleIndex + dir];
-    if (!nextVisible) return;
-    const newIndex = state.files.indexOf(nextVisible);
-    if (newIndex >= 0 && newIndex < state.files.length) {
-        openMediaViewer(newIndex);
-    }
+    if (newIndex < 0 || newIndex >= state.files.length) return;
+
+    _stopSlideshow();
+    _crossfadeTransition(() => openMediaViewer(newIndex));
 }

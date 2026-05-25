@@ -227,6 +227,35 @@ export async function loadSettings() {
             'toast.viewer_advance_on',
             'toast.viewer_advance_off',
         );
+        // Slideshow interval slider — only visible when auto-advance is on.
+        const slideshowRow = document.getElementById('slideshow-interval-row');
+        const slideshowSlider = document.getElementById('setting-slideshow-sec');
+        const slideshowLabel = document.getElementById('slideshow-sec-label');
+        const _showSlideshowRow = () => {
+            if (slideshowRow) {
+                slideshowRow.style.display =
+                    localStorage.getItem('viewer-auto-advance') === '1' ? '' : 'none';
+            }
+        };
+        _showSlideshowRow();
+        if (slideshowSlider && slideshowLabel) {
+            const stored = parseInt(localStorage.getItem('viewer-slideshow-sec'), 10);
+            slideshowSlider.value = Number.isFinite(stored) && stored >= 2 ? stored : 5;
+            slideshowLabel.textContent = slideshowSlider.value + 's';
+            slideshowSlider.oninput = () => {
+                slideshowLabel.textContent = slideshowSlider.value + 's';
+                localStorage.setItem('viewer-slideshow-sec', slideshowSlider.value);
+            };
+        }
+        // Re-check slideshow row visibility after auto-advance toggle
+        const advToggle = document.getElementById('setting-viewer-auto-advance');
+        if (advToggle) {
+            const orig = advToggle.onclick;
+            advToggle.onclick = (e) => {
+                if (orig) orig(e);
+                setTimeout(_showSlideshowRow, 50);
+            };
+        }
         // PiP / Speed button visibility — defaults to ON (legacy behaviour).
         // Use inverted-sense keys ('viewer-hide-pip' = '1' → hidden) so
         // existing users who never touched the toggle keep both visible.

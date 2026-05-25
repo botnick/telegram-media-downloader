@@ -4724,12 +4724,21 @@ html[data-contrast="more"] .media-item {
     display: flex;
     overflow-x: auto;
     overflow-y: hidden;
-    gap: 2px;
-    padding: 6px 4px;
+    gap: 1px;
+    padding: 6px 2px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
-    scroll-snap-type: x proximity;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
     flex: 1;
+    touch-action: pan-x;
+}
+@media (min-width: 640px) {
+    .filmstrip-track {
+        gap: 2px;
+        padding: 8px 4px;
+        scroll-snap-type: x proximity;
+    }
 }
 .filmstrip-track::-webkit-scrollbar {
     display: none;
@@ -4737,9 +4746,10 @@ html[data-contrast="more"] .media-item {
 .filmstrip-thumb {
     flex-shrink: 0;
     position: relative;
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
     cursor: pointer;
+    scroll-snap-align: start;
     outline: 2px solid transparent;
     outline-offset: 0;
     transition:
