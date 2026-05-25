@@ -465,6 +465,8 @@
     "viewer.video.download": "Download",
     "viewer.video.share": "แชร์",
     "viewer.video.share_title": "สร้างลิงก์แชร์ — เพื่อนเปิดไฟล์ได้โดยไม่ต้องเข้าสู่ระบบ",
+    "viewer.video.skip_back": "ย้อนกลับ",
+    "viewer.video.skip_fwd": "ข้ามไปข้างหน้า",
     "viewer.video.speed": "ความเร็ว",
     "viewer.video.pip": "PiP",
     "viewer.video.fullscreen": "Fullscreen",

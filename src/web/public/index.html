@@ -4368,6 +4368,22 @@
 
                 <video id="modal-video" class="max-w-full max-h-full object-contain w-full h-full relative z-0" playsinline></video>
 
+                <!-- Double-tap seek overlays (YouTube-style visual feedback). -->
+                <div id="video-seek-back-overlay"
+                    class="absolute left-0 top-0 w-1/2 h-full flex items-center justify-center z-[15] pointer-events-none opacity-0 transition-opacity duration-200">
+                    <div class="flex flex-col items-center gap-1 text-white">
+                        <i class="ri-rewind-mini-line text-4xl"></i>
+                        <span id="video-seek-back-label" class="text-sm font-medium">5s</span>
+                    </div>
+                </div>
+                <div id="video-seek-fwd-overlay"
+                    class="absolute right-0 top-0 w-1/2 h-full flex items-center justify-center z-[15] pointer-events-none opacity-0 transition-opacity duration-200">
+                    <div class="flex flex-col items-center gap-1 text-white">
+                        <i class="ri-speed-mini-line text-4xl"></i>
+                        <span id="video-seek-fwd-label" class="text-sm font-medium">5s</span>
+                    </div>
+                </div>
+
                 <!-- Center play button — only visible while the video is paused. -->
                 <button id="video-center-play"
                     class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full bg-black/60 hover:bg-black/80 flex items-center justify-center text-white z-20 transition-opacity duration-200 hidden"
@@ -4499,6 +4515,16 @@
                             class="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center text-white transition shrink-0"
                             data-i18n-aria-label="viewer.video.play" aria-label="Play">
                             <i class="ri-play-fill text-2xl"></i>
+                        </button>
+                        <button id="video-skip-back"
+                            class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center text-white/85 hover:text-white transition shrink-0"
+                            data-i18n-title="viewer.video.skip_back" title="Skip back">
+                            <i class="ri-rewind-mini-line text-lg"></i>
+                        </button>
+                        <button id="video-skip-fwd"
+                            class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center text-white/85 hover:text-white transition shrink-0"
+                            data-i18n-title="viewer.video.skip_fwd" title="Skip forward">
+                            <i class="ri-speed-mini-line text-lg"></i>
                         </button>
                         <button id="video-mute-btn"
                             class="text-white/90 hover:text-white w-9 h-9 flex items-center justify-center rounded hover:bg-white/10 shrink-0"

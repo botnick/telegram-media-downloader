@@ -908,6 +908,8 @@ class VideoPlayer {
         this.tapLayer = document.getElementById('video-tap-layer');
         this.controls = document.getElementById('video-controls');
         this.playBtn = document.getElementById('video-play-btn');
+        this.skipBackBtn = document.getElementById('video-skip-back');
+        this.skipFwdBtn = document.getElementById('video-skip-fwd');
         this.centerPlay = document.getElementById('video-center-play');
         this.muteBtn = document.getElementById('video-mute-btn');
         this.volume = document.getElementById('video-volume');
@@ -947,6 +949,10 @@ class VideoPlayer {
         this.speedOpts = Array.from(document.querySelectorAll('.speed-opt[data-speed]'));
         this.pipBtn = document.getElementById('video-pip-btn');
         this.fsBtn = document.getElementById('video-fullscreen-btn');
+        this.seekBackOverlay = document.getElementById('video-seek-back-overlay');
+        this.seekFwdOverlay = document.getElementById('video-seek-fwd-overlay');
+        this.seekBackLabel = document.getElementById('video-seek-back-label');
+        this.seekFwdLabel = document.getElementById('video-seek-fwd-label');
 
         // Hide PiP button if browser lacks support.
         if (this.pipBtn && !document.pictureInPictureEnabled) {
@@ -989,6 +995,11 @@ class VideoPlayer {
         this.playBtn.onclick = () => this.togglePlay();
         this.centerPlay.onclick = () => this.togglePlay();
 
+        // Skip backward / forward — same step as ArrowLeft / ArrowRight.
+        const skipStep = () => parseInt(localStorage.getItem('viewer-skip-step'), 10) || 5;
+        this.skipBackBtn.onclick = () => this.seekRelative(-skipStep());
+        this.skipFwdBtn.onclick = () => this.seekRelative(skipStep());
+
         // Tap layer = anywhere on the video pane that ISN'T a control.
         this.tapLayer.onclick = (e) => {
             if (SUPPORTS_HOVER) {
@@ -1014,14 +1025,16 @@ class VideoPlayer {
             e.stopPropagation();
         };
 
-        // Mobile double-tap left/right halves to seek -/+10 s (YouTube-style).
+        // Mobile double-tap left/right halves to seek (YouTube-style).
         this.tapLayer.onpointerdown = (e) => {
             if (SUPPORTS_HOVER) return;
             const now = Date.now();
             if (now - this._lastTapAt < 320 && Math.abs(e.clientX - this._lastTapX) < 60) {
                 const rect = this.tapLayer.getBoundingClientRect();
                 const isLeft = e.clientX - rect.left < rect.width / 2;
-                this.seekRelative(isLeft ? -10 : 10);
+                const step = skipStep();
+                this.seekRelative(isLeft ? -step : step);
+                this._flashSeekOverlay(isLeft, step);
                 this._lastTapAt = 0;
             } else {
                 this._lastTapAt = now;
@@ -2057,6 +2070,18 @@ class VideoPlayer {
             this.controls.style.opacity = '0';
             this.container.style.cursor = 'none';
         }, delay);
+    }
+
+    _flashSeekOverlay(isBack, step) {
+        const show = isBack ? this.seekBackOverlay : this.seekFwdOverlay;
+        const hide = isBack ? this.seekFwdOverlay : this.seekBackOverlay;
+        const label = isBack ? this.seekBackLabel : this.seekFwdLabel;
+        if (!show) return;
+        if (hide) hide.style.opacity = '0';
+        label.textContent = `${step}s`;
+        show.style.opacity = '1';
+        clearTimeout(this._seekOverlayTimer);
+        this._seekOverlayTimer = setTimeout(() => { show.style.opacity = '0'; }, 600);
     }
 
     _showSpinner(on) {
