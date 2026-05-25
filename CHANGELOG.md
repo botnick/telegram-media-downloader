@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.23.2] — 2026-05-25
+
+Video duration badge fix — gallery tiles now show duration on non-federated installs.
+
+### Fixed
+- **Video duration badge missing** — `getDownloads` and `getAllDownloads` used `SELECT * FROM downloads` without joining `seekbar_sprites`, so `duration_sec` was always null and tiles never displayed the duration overlay. Now both queries include `LEFT JOIN seekbar_sprites`.
+- **Flaky CI test** — job-tracker WS test timeout increased from 60ms to 200ms for slow Windows runners.
+
+### Service worker
+- `VERSION = 'v2232'`
+
 ## [2.23.1] — 2026-05-25
 
 Seekbar scan reliability — every skip/fail case now marks the DB so videos are never re-scanned.
