@@ -650,12 +650,27 @@ app.use(
                 'object-src': ["'none'"],
                 'frame-src': ["'self'"],
                 'frame-ancestors': ["'self'"],
+                'upgrade-insecure-requests': null,
             },
         },
         crossOriginEmbedderPolicy: false,
         crossOriginResourcePolicy: { policy: 'same-origin' },
     }),
 );
+
+// Dynamic CSP: re-inject upgrade-insecure-requests only when forceHttps is
+// active and the response is already on a secure channel. Helmet's static
+// middleware can't vary per-request, so we patch the header after it runs.
+app.use(async (req, res, next) => {
+    const config = await readConfigSafe();
+    if (config.web?.forceHttps && req.secure) {
+        const orig = res.getHeader('Content-Security-Policy');
+        if (orig && !String(orig).includes('upgrade-insecure-requests')) {
+            res.setHeader('Content-Security-Policy', `${orig};upgrade-insecure-requests`);
+        }
+    }
+    next();
+});
 
 // HTTP caching policy. Browsers (and intermediaries like Cloudflare) will
 // happily serve a 200 from disk for several seconds even on responses with

@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.24.3] — 2026-05-25
+
+CSP `upgrade-insecure-requests` fix for HTTP / LAN access.
+
+### Fixed
+- **HTTP/LAN login broken** — helmet's default CSP included `upgrade-insecure-requests`, causing browsers to force HTTPS on plain-HTTP LAN connections (`ERR_SSL_PROTOCOL_ERROR`). Now dynamically injected only when `forceHttps` is enabled and the request is already on HTTPS.
+
+### Service worker
+- `VERSION = 'v2243'`
+
 ## [2.24.2] — 2026-05-25
 
 Video player: skip buttons, mobile seek overlay, tap-to-show-controls fix, continuous player fix.
