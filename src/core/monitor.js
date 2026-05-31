@@ -50,15 +50,23 @@ export class RealtimeMonitor extends EventEmitter {
 
     /**
      * Get the correct client for a group — priority:
-     * 1. Explicit monitorAccount from config
+     * 1. Explicit monitorAccount from config (only when that account is
+     *    actually connected — a dead pin is skipped so it can't shadow a
+     *    working client after the account was deleted + re-added)
      * 2. Cached auto-discovered client
      * 3. Default client as last resort
      */
     getClientForGroup(group) {
-        // 1. Explicit config setting
+        // 1. Explicit config setting — but only if the pinned account is still
+        // loaded. `getClient()` falls back to the default client for an unknown
+        // id, so probe `clients` directly to tell a live pin from a dead one.
         if (this.accountManager && group.monitorAccount) {
-            const client = this.accountManager.getClient(group.monitorAccount);
-            if (client) return client;
+            if (this.accountManager.clients?.has(group.monitorAccount)) {
+                const client = this.accountManager.getClient(group.monitorAccount);
+                if (client) return client;
+            }
+            // Dead pin — fall through to the cache / probe so a deleted +
+            // re-added account self-heals instead of returning the wrong client.
         }
         // 2. Auto-discovered & cached
         if (this.groupClientCache && this.groupClientCache.has(group.id)) {
@@ -66,6 +74,43 @@ export class RealtimeMonitor extends EventEmitter {
         }
         // 3. Fallback
         return this.client;
+    }
+
+    /**
+     * Persist the account that actually served a group back to
+     * `group.monitorAccount` so the binding survives across restarts and a
+     * deleted + re-added account re-pins itself. Only writes when the value
+     * genuinely changed (avoids saveConfig churn / reload storms). Updates the
+     * in-memory `this.config` too so the running pass sees the new pin.
+     */
+    _rememberGroupAccount(group, client) {
+        if (!this.accountManager || !group || !client) return;
+        const accountId = this.accountManager.getIdForClient(client);
+        if (!accountId) return;
+        if (String(group.monitorAccount || '') === String(accountId)) return;
+        group.monitorAccount = accountId;
+        try {
+            const cfg = loadConfig();
+            const target = Array.isArray(cfg.groups)
+                ? cfg.groups.find((g) => g && String(g.id) === String(group.id))
+                : null;
+            if (target && String(target.monitorAccount || '') !== String(accountId)) {
+                target.monitorAccount = accountId;
+                saveConfig(cfg);
+            }
+        } catch {
+            // DB not ready / save failed — the in-memory pin still helps this run.
+        }
+    }
+
+    /**
+     * Drop the auto-discovered client cache. Called when the account set
+     * changes (add / remove) so a cached entry can't keep pointing at a
+     * disconnected client. The next lookup re-probes against the live
+     * AccountManager.clients map.
+     */
+    invalidateGroupClientCache() {
+        if (this.groupClientCache) this.groupClientCache.clear();
     }
 
     /**
@@ -144,12 +189,18 @@ export class RealtimeMonitor extends EventEmitter {
             // probe loop log the existing "no account has access" warning.
         }
 
-        for (const [_id, acctClient] of this.accountManager.clients) {
+        // Probe the pinned account first (when still connected) so a healthy
+        // pin keeps winning, then fall through to the rest. A dead pin simply
+        // isn't in `clients`, so it's skipped and the loop re-binds + re-pins.
+        const ordered = this._orderedClientsForGroup(group);
+        for (const acctClient of ordered) {
             try {
                 const history = await acctClient.getMessages(group.id, { limit: 1 });
                 if (history) {
-                    // Cache the working client
+                    // Cache the working client + remember it on the group so the
+                    // binding survives restarts and re-added accounts self-heal.
                     this.groupClientCache.set(group.id, acctClient);
+                    this._rememberGroupAccount(group, acctClient);
                     return acctClient;
                 }
             } catch (e) {
@@ -157,6 +208,23 @@ export class RealtimeMonitor extends EventEmitter {
             }
         }
         return null; // No client can access
+    }
+
+    /**
+     * Return every connected client, with the group's pinned account (when
+     * still loaded) sorted FIRST. Never restricts to the pin alone — a dead
+     * pin must not shrink the candidate set to empty.
+     */
+    _orderedClientsForGroup(group) {
+        const all = Array.from(this.accountManager.clients.entries());
+        const pinned = group?.monitorAccount;
+        if (!pinned || !this.accountManager.clients.has(pinned)) {
+            return all.map(([, c]) => c);
+        }
+        return [
+            this.accountManager.clients.get(pinned),
+            ...all.filter(([id]) => String(id) !== String(pinned)).map(([, c]) => c),
+        ];
     }
 
     /**
@@ -368,6 +436,18 @@ export class RealtimeMonitor extends EventEmitter {
             // Accept the freshly-saved tree from the bus when available;
             // otherwise re-read it (covers manual reloadConfig() callers).
             const newConfig = maybeConfig || loadConfig();
+
+            // Accounts changed (add / remove writes config.accounts via
+            // AccountManager.syncToConfig) → drop the auto-discovered client
+            // cache so a re-added account isn't shadowed by a cached handle to
+            // a now-disconnected client. The next lookup re-probes the live set.
+            if (
+                JSON.stringify(this.config.accounts || []) !==
+                JSON.stringify(newConfig.accounts || [])
+            ) {
+                this.invalidateGroupClientCache();
+            }
+
             const oldGroupIds = this.config.groups.map((g) => String(g.id));
             const newGroupIds = newConfig.groups.map((g) => String(g.id));
 

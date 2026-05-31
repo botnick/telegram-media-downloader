@@ -1817,6 +1817,30 @@ async function getAccountManager() {
     return _accountManager;
 }
 
+// Refresh the in-process AccountManager + running engine after an account was
+// added or removed, so the not_connected / NO_ACCESS window closes without a
+// manual restart. Repopulates `am.clients` via the idempotent reload, then —
+// if the monitor is running — restarts it through the singleton runtime so it
+// picks up the new account set + a freshly invalidated client cache. Respects
+// the single-writer rule: we never construct a second engine instance.
+async function refreshAccountsAndEngine() {
+    try {
+        const am = await getAccountManager();
+        await am.reloadAccounts();
+        if (runtime?.state === 'running' && am.count > 0) {
+            await runtime.restart({ config: loadConfig(), accountManager: am });
+        }
+        // Drop the cached dialogs response so the picker re-derives against the
+        // new account set on the next open.
+        _dialogsResponseCache = { at: 0, body: null };
+        // Nudge the SPA to refetch /api/config + /api/accounts. Payload-less to
+        // match the other account routes (the dashboard re-pulls on this event).
+        broadcast({ type: 'config_updated' });
+    } catch (e) {
+        console.warn('[accounts] refresh after change failed:', e?.message || e);
+    }
+}
+
 // PWA: serve the service worker and the web app manifest BEFORE the auth
 // middleware so they're reachable on a fresh / logged-out browser. Both
 // have explicit Content-Type headers (some hosts mis-detect .webmanifest)
@@ -2230,11 +2254,25 @@ app.post('/api/accounts/auth/cancel', async (req, res) => {
     }
 });
 
+// Tracks auth sessions whose 'done' transition we've already acted on, so the
+// SPA polling this endpoint can't trigger a restart storm. Bounded — entries
+// are short-lived (the flow self-deletes ~60 s after completion).
+const _refreshedAuthSessions = new Set();
 app.get('/api/accounts/auth/:sessionId', async (req, res) => {
     try {
         const am = await getAccountManager();
         const status = am.getAuthStatus(req.params.sessionId);
         if (!status) return res.status(404).json({ error: 'Auth session not found' });
+        // First time we observe a completed add, repopulate the client map +
+        // refresh the running engine so the new account is live immediately
+        // (closing the not_connected window without a manual restart).
+        if (status.state === 'done' && !_refreshedAuthSessions.has(req.params.sessionId)) {
+            _refreshedAuthSessions.add(req.params.sessionId);
+            if (_refreshedAuthSessions.size > 100) {
+                _refreshedAuthSessions.delete(_refreshedAuthSessions.values().next().value);
+            }
+            refreshAccountsAndEngine().catch(() => {});
+        }
         res.json(status);
     } catch (e) {
         const { status, body } = tgAuthErrorBody(e);
@@ -2249,6 +2287,10 @@ app.delete('/api/accounts/:id', async (req, res) => {
         const id = req.params.id;
         if (!am.metadata.has(id)) return res.status(404).json({ error: 'Account not found' });
         await am.removeAccount(id);
+        // Reload the client map + refresh the running engine so a re-added
+        // account binds immediately and stale group pins (cleared by
+        // removeAccount) self-heal on the next probe — no manual restart.
+        await refreshAccountsAndEngine();
         res.json({ success: true });
     } catch (e) {
         const { status, body } = tgAuthErrorBody(e);

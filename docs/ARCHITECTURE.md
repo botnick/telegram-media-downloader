@@ -88,6 +88,10 @@ data/
 
 When `RealtimeMonitor.start()` runs, it walks every enabled group and asks each loaded client whether it can read it (`getMessages(groupId, {limit:1})`); the first one that succeeds is cached in `groupClientCache`. A group can pin an explicit account via `group.monitorAccount` — that wins.
 
+Pin resolution self-heals. `getClientForGroup` only honours `monitorAccount` when that id is still in `clients`; a dead pin (account deleted + re-added under a new id) is skipped and the group falls through to the probe sweep across every connected client. On the first successful probe the winning account is written back to `group.monitorAccount`, so the group "remembers" a working account without manual reassignment. The same pin-first-then-sweep + re-pin logic backs the history backfill path. Removing an account clears any `group.monitorAccount` that referenced it (leaving pins to other accounts untouched), and the web add/delete routes hot-reload the AccountManager + restart the engine through `runtime.restart` so live clients repopulate without a process restart.
+
+`AccountManager._keepAliveTick()` pings every loaded client to extend Telegram's idle-disconnect window, and reconnects any client it finds with a dropped socket (`connected === false`) before pinging — without it a single idle-disconnect or network blip would leave a client dead until the next process restart, surfacing as `not_connected` on `/api/dialogs` and `NO_ACCESS` on backfill.
+
 When editing monitor / forwarder / history code, never assume `this.client` is the right client for a given group — go through `getClientForGroup(group)`.
 
 ## Web auth

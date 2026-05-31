@@ -160,55 +160,93 @@ export class AccountManager {
         if (this._keepAliveTimer) clearInterval(this._keepAliveTimer);
         // Coalesce repeated FloodWait warnings so a throttled DC doesn't log
         // a wall of identical lines. Cleared once a successful ping lands.
-        const lastWarnAt = new Map(); // accountId → ts
-        // Per-account "skip until" timestamps so a FloodWait pauses the
-        // next N ticks for that DC instead of pinging right back into the
-        // throttle. Reset on first clean ping (in the success path).
-        const skipUntil = new Map(); // accountId → ts
+        // Instance-scoped so a re-armed timer (add/remove account) keeps the
+        // existing cooldowns instead of pinging straight back into a flood.
+        if (!this._lastWarnAt) this._lastWarnAt = new Map(); // accountId → ts
+        // Per-account "skip until" timestamps so a FloodWait (or a failed
+        // reconnect) pauses the next N ticks for that DC instead of hammering
+        // straight back. Reset on first clean ping (in the success path).
+        if (!this._skipUntil) this._skipUntil = new Map(); // accountId → ts
+        // First ping fires fast so a freshly-loaded set of clients gets
+        // their disconnect-delay extended before the gramJS default expires.
+        setTimeout(() => this._keepAliveTick(), 5 * 1000);
+        this._keepAliveTimer = setInterval(() => this._keepAliveTick(), 60 * 1000);
+        this._keepAliveTimer.unref?.();
+    }
+
+    /**
+     * One keep-alive pass over every loaded client. A dropped socket
+     * (Telegram idle-disconnect, network blip, or gramJS exhausting its
+     * connectionRetries) leaves `client.connected === false` permanently —
+     * nothing else revives it. So before pinging, reconnect any client we
+     * find disconnected (mirrors ConnectionManager.check), then ping the
+     * live ones to extend the disconnect-delay window.
+     *
+     * Extracted from the interval so it can be invoked directly in tests.
+     */
+    async _keepAliveTick() {
         const FLOOD_WARN_INTERVAL_MS = 5 * 60 * 1000;
         const FLOOD_BACKOFF_MS = 10 * 60 * 1000;
-        const tick = async () => {
-            const now = Date.now();
-            for (const [id, client] of this.clients) {
-                if (!client?.connected) continue;
-                if ((skipUntil.get(id) || 0) > now) continue; // serving FloodWait penalty
+        const RECONNECT_BACKOFF_MS = 60 * 1000;
+        const now = Date.now();
+        for (const [id, client] of this.clients) {
+            if ((this._skipUntil.get(id) || 0) > now) continue; // serving FloodWait / reconnect penalty
+            if (!client?.connected) {
+                // Dropped socket — revive it before pinging. Sequential
+                // within the tick (we await) so a multi-account outage
+                // doesn't open a connection storm.
                 try {
-                    // 90 s extension — keeps the connection past the next
-                    // tick (60 s) with comfortable headroom.
-                    await client.invoke(
-                        new Api.PingDelayDisconnect({
-                            pingId: BigInt(Date.now()),
-                            disconnectDelay: 90,
-                        }),
-                    );
-                    lastWarnAt.delete(id);
-                    skipUntil.delete(id);
+                    await client.disconnect().catch(() => {});
+                    await client.connect();
+                    console.log(colorize(`[keep-alive] reconnected account ${id}`, 'green'));
+                    this._lastWarnAt.delete(id);
                 } catch (e) {
-                    // FloodWait is the one signal worth surfacing — keep
-                    // pinging an already-throttled DC and we just dig the
-                    // hole deeper. Back off for 10 min and let the
-                    // throttle decay. Other failures (network blips,
-                    // half-closed sockets) stay silent; gramJS will
-                    // reconnect.
                     const text = e?.errorMessage || e?.message || String(e || '');
-                    if (/FLOOD/i.test(text) || /flood_wait/i.test(text)) {
-                        skipUntil.set(id, Date.now() + FLOOD_BACKOFF_MS);
-                        const prev = lastWarnAt.get(id) || 0;
-                        if (Date.now() - prev > FLOOD_WARN_INTERVAL_MS) {
-                            lastWarnAt.set(id, Date.now());
-                            console.warn(
-                                `[keep-alive] FloodWait on account ${id}, pausing pings for 10m: ${text}`,
-                            );
-                        }
+                    const prev = this._lastWarnAt.get(id) || 0;
+                    if (Date.now() - prev > FLOOD_WARN_INTERVAL_MS) {
+                        this._lastWarnAt.set(id, Date.now());
+                        console.warn(
+                            colorize(
+                                `[keep-alive] reconnect failed for ${id}, will retry: ${text}`,
+                                'yellow',
+                            ),
+                        );
+                    }
+                    this._skipUntil.set(id, Date.now() + RECONNECT_BACKOFF_MS);
+                    continue;
+                }
+            }
+            try {
+                // 90 s extension — keeps the connection past the next
+                // tick (60 s) with comfortable headroom.
+                await client.invoke(
+                    new Api.PingDelayDisconnect({
+                        pingId: BigInt(Date.now()),
+                        disconnectDelay: 90,
+                    }),
+                );
+                this._lastWarnAt.delete(id);
+                this._skipUntil.delete(id);
+            } catch (e) {
+                // FloodWait is the one signal worth surfacing — keep
+                // pinging an already-throttled DC and we just dig the
+                // hole deeper. Back off for 10 min and let the
+                // throttle decay. Other failures (network blips,
+                // half-closed sockets) stay silent; gramJS will
+                // reconnect.
+                const text = e?.errorMessage || e?.message || String(e || '');
+                if (/FLOOD/i.test(text) || /flood_wait/i.test(text)) {
+                    this._skipUntil.set(id, Date.now() + FLOOD_BACKOFF_MS);
+                    const prev = this._lastWarnAt.get(id) || 0;
+                    if (Date.now() - prev > FLOOD_WARN_INTERVAL_MS) {
+                        this._lastWarnAt.set(id, Date.now());
+                        console.warn(
+                            `[keep-alive] FloodWait on account ${id}, pausing pings for 10m: ${text}`,
+                        );
                     }
                 }
             }
-        };
-        // First ping fires fast so a freshly-loaded set of clients gets
-        // their disconnect-delay extended before the gramJS default expires.
-        setTimeout(tick, 5 * 1000);
-        this._keepAliveTimer = setInterval(tick, 60 * 1000);
-        this._keepAliveTimer.unref?.();
+        }
     }
 
     stopKeepAlive() {
@@ -429,8 +467,51 @@ export class AccountManager {
             fs.unlinkSync(sessionFile);
         }
 
+        // Clear any group still pinned to this (now-deleted) account. A stale
+        // monitorAccount pin survives delete+re-add — the re-added account is
+        // keyed by a different accountId — so we drop the pin here and let the
+        // probe fallback re-bind the group to a working client (and re-pin it).
+        // Groups pinned to a different, still-valid account are left untouched.
+        this.clearGroupPins(accountId);
+
         // Sync metadata to config
         this.syncToConfig().catch(() => {});
+    }
+
+    /**
+     * Drop every `group.monitorAccount === accountId` reference from the
+     * persisted config so a dead pin can't block the probe fallback. Only
+     * writes when something actually changed (avoids needless saveConfig
+     * churn / reload storms). Returns the number of pins cleared.
+     */
+    clearGroupPins(accountId) {
+        if (!accountId) return 0;
+        let cleared = 0;
+        try {
+            const cfg = loadConfig();
+            if (!Array.isArray(cfg.groups)) return 0;
+            for (const group of cfg.groups) {
+                if (group && String(group.monitorAccount) === String(accountId)) {
+                    delete group.monitorAccount;
+                    cleared++;
+                }
+            }
+            if (cleared > 0) saveConfig(cfg);
+        } catch {
+            // DB may not be initialised yet during first run — non-fatal.
+        }
+        return cleared;
+    }
+
+    /**
+     * Public, idempotent re-population of `clients` + `metadata` from the
+     * session files on disk. Web routes call this after an add/delete so a
+     * fresh AccountManager view is available without spinning up a second
+     * instance (which would violate the single-writer rule). loadAll() already
+     * connects + de-dupes by accountId, so calling it again is safe.
+     */
+    async reloadAccounts() {
+        return this.loadAll();
     }
 
     /**

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.24.4] — 2026-05-31
+
+Telegram connection resilience — auto-reconnect dropped clients, self-healing group→account binding.
+
+### Fixed
+- **Dashboard stuck on "Telegram client not connected" / "Failed to load dialogs"** with a valid, authorized session. A dropped MTProto socket (Telegram idle-disconnect, network blip, or exhausted reconnect retries) left a client `connected === false` permanently — the keep-alive loop skipped disconnected clients instead of reviving them. It now reconnects them before pinging, with per-account backoff.
+- **Backfill "No available account has access to this group" after deleting and re-adding the same account.** Group→account binding self-heals: a dead `monitorAccount` pin is skipped, the group probes every connected client, and the winning account is re-pinned automatically. Removing an account clears its stale group pins (pins to other accounts left intact), and the web add/delete routes hot-reload the engine so groups rebind without a manual restart.
+
+### Service worker
+- `VERSION = 'v2244'`
+
 ## [2.24.3] — 2026-05-25
 
 CSP `upgrade-insecure-requests` fix for HTTP / LAN access.

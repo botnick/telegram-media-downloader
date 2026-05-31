@@ -10,6 +10,7 @@ import { Api } from 'telegram';
 import { getMessageIdRange } from './db.js';
 import { BACKPRESSURE_CAP_DEFAULT } from './constants.js';
 import { resolveConfigDownloadPath } from './paths.js';
+import { loadConfig, saveConfig } from '../config/manager.js';
 
 export class HistoryDownloader extends EventEmitter {
     constructor(client, downloader, config, accountManager = null) {
@@ -42,16 +43,28 @@ export class HistoryDownloader extends EventEmitter {
     }
 
     /**
-     * Try every available client to find one that can access a group
+     * Try every available client to find one that can access a group.
+     *
+     * Candidates are ALWAYS built from every connected client; the group's
+     * pinned `monitorAccount` (when still loaded) is merely probed first. A
+     * dead pin — e.g. after the account was deleted and re-added under a new
+     * id — never shrinks the candidate set, so the probe still finds a working
+     * account. On the first success we persist the winner back to
+     * `group.monitorAccount` so the group remembers it next time.
      * @returns {TelegramClient|null}
      */
     async discoverClientForGroup(groupId) {
         if (!this.accountManager) return this.client;
 
-        for (const [_id, acctClient] of this.accountManager.clients) {
+        const group = Array.isArray(this.config?.groups)
+            ? this.config.groups.find((g) => String(g.id) === String(groupId))
+            : null;
+
+        for (const acctClient of this._orderedClientsForGroup(group)) {
             try {
                 const history = await acctClient.getMessages(groupId, { limit: 1 });
                 if (history) {
+                    this._rememberGroupAccount(group, acctClient);
                     return acctClient;
                 }
             } catch (e) {
@@ -59,6 +72,48 @@ export class HistoryDownloader extends EventEmitter {
             }
         }
         return null; // No client can access
+    }
+
+    /**
+     * Every connected client, with the group's pinned account (when still
+     * loaded) sorted first. Never restricts to the pin alone.
+     */
+    _orderedClientsForGroup(group) {
+        const all = Array.from(this.accountManager.clients.entries());
+        const pinned = group?.monitorAccount;
+        if (!pinned || !this.accountManager.clients.has(pinned)) {
+            return all.map(([, c]) => c);
+        }
+        return [
+            this.accountManager.clients.get(pinned),
+            ...all.filter(([id]) => String(id) !== String(pinned)).map(([, c]) => c),
+        ];
+    }
+
+    /**
+     * Persist the account that served this group back to
+     * `group.monitorAccount` (re-pin) so the binding survives restarts and a
+     * re-added account self-heals. Writes only when the value changed. Mirrors
+     * RealtimeMonitor._rememberGroupAccount.
+     */
+    _rememberGroupAccount(group, client) {
+        if (!this.accountManager || !group || !client) return;
+        const accountId = this.accountManager.getIdForClient(client);
+        if (!accountId) return;
+        if (String(group.monitorAccount || '') === String(accountId)) return;
+        group.monitorAccount = accountId;
+        try {
+            const cfg = loadConfig();
+            const target = Array.isArray(cfg.groups)
+                ? cfg.groups.find((g) => g && String(g.id) === String(group.id))
+                : null;
+            if (target && String(target.monitorAccount || '') !== String(accountId)) {
+                target.monitorAccount = accountId;
+                saveConfig(cfg);
+            }
+        } catch {
+            // DB not ready / save failed — the in-memory pin still helps this run.
+        }
     }
 
     async scan(groupId, _limit = 0) {
