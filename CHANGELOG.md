@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.24.5] — 2026-05-31
+
+Hardening follow-up to v2.24.4 — connection-leak + revoked-session fixes from an adversarial audit of the reconnect/self-heal code.
+
+### Fixed
+- **Leaked Telegram connections on account reload.** `loadAll()` overwrote an already-loaded client in the map without disconnecting it, so every add/delete reload orphaned the previous account's MTProto socket + gramJS timers. It now tears down the old client before replacing it, and `reloadAccounts()` is single-flight so concurrent reloads can't double-connect.
+- **Revoked sessions stayed "connected" forever.** The keep-alive sweep only revived dropped sockets; a session revoked server-side (logout/device-revoke/2FA change) kept `connected === true` and was pinged in a silent loop. It now probes `checkAuthorization()` and backs off, surfacing a re-login warning.
+- **Stuck reconnect could stall the keep-alive sweep.** A hanging `connect()` is now bounded by a 15s timeout so one sick account can't delay every other account's keep-alive ping.
+
+### Service worker
+- `VERSION = 'v2245'`
+
 ## [2.24.4] — 2026-05-31
 
 Telegram connection resilience — auto-reconnect dropped clients, self-healing group→account binding.

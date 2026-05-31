@@ -39,7 +39,7 @@ function makeManager() {
     return am;
 }
 
-function fakeClient({ connected }) {
+function fakeClient({ connected, authorized = true }) {
     const client = {
         connected,
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -47,6 +47,10 @@ function fakeClient({ connected }) {
             client.connected = true;
             return Promise.resolve();
         }),
+        // A connected client gets an authorization probe before the ping
+        // (revoked-session detection). Default authorized so existing specs
+        // that only set { connected } keep pinging as before.
+        checkAuthorization: vi.fn().mockResolvedValue(authorized),
         invoke: vi.fn().mockResolvedValue({}),
     };
     return client;
@@ -99,5 +103,65 @@ describe('AccountManager keep-alive reconnect', () => {
 
         expect(client.connect).not.toHaveBeenCalled();
         expect(client.invoke).not.toHaveBeenCalled();
+    });
+});
+
+describe('AccountManager keep-alive — revoked session detection (#2)', () => {
+    it('does NOT ping a connected client whose session is revoked; sets a backoff', async () => {
+        const am = makeManager();
+        // connected===true but the session was revoked server-side, so
+        // checkAuthorization() resolves false.
+        const client = fakeClient({ connected: true, authorized: false });
+        am.clients.set('acct1', client);
+
+        await am._keepAliveTick();
+
+        expect(client.checkAuthorization).toHaveBeenCalledTimes(1);
+        expect(client.invoke).not.toHaveBeenCalled(); // never ping a dead session
+        expect(client.connect).not.toHaveBeenCalled(); // no silent reconnect — it'd fail too
+        expect(am._skipUntil.get('acct1')).toBeGreaterThan(Date.now());
+    });
+
+    it('pings a connected client whose authorization check passes', async () => {
+        const am = makeManager();
+        const client = fakeClient({ connected: true, authorized: true });
+        am.clients.set('acct1', client);
+
+        await am._keepAliveTick();
+
+        expect(client.checkAuthorization).toHaveBeenCalledTimes(1);
+        expect(client.invoke).toHaveBeenCalledTimes(1); // healthy → ping fires
+    });
+});
+
+describe('AccountManager keep-alive — reconnect timeout (#3)', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('a hanging reconnect times out without blocking the rest of the sweep', async () => {
+        vi.useFakeTimers();
+        const am = makeManager();
+
+        // First account: connect() never resolves → must hit the 15 s timeout.
+        const stuck = fakeClient({ connected: false });
+        stuck.connect = vi.fn().mockImplementation(() => new Promise(() => {}));
+        // Second account: healthy and connected → must still get pinged even
+        // though it is iterated AFTER the stuck one (no head-of-line stall).
+        const healthy = fakeClient({ connected: true });
+
+        am.clients.set('stuck', stuck);
+        am.clients.set('healthy', healthy);
+
+        const tick = am._keepAliveTick();
+        // Advance past the 15 s reconnect timeout so the race rejects.
+        await vi.advanceTimersByTimeAsync(15_000);
+        await tick; // resolves (does not throw) once the sweep completes
+
+        // Stuck account: timed out → backoff set, never pinged.
+        expect(am._skipUntil.get('stuck')).toBeGreaterThan(Date.now());
+        expect(stuck.invoke).not.toHaveBeenCalled();
+        // Healthy account still processed despite the earlier stall.
+        expect(healthy.invoke).toHaveBeenCalledTimes(1);
     });
 });

@@ -112,6 +112,18 @@ export class AccountManager {
                 }
 
                 const me = await client.getMe();
+                // Disconnect-before-overwrite: tear down any previously-loaded
+                // client for this id before replacing it, otherwise a reload
+                // orphans the old TelegramClient (leaked MTProto socket + gramJS
+                // timers that _keepAliveTick can never reap — it only iterates
+                // this.clients). We do this ONLY on the authorized success path,
+                // right before set(), so an unauthorized/failed reload leaves the
+                // previously-working client untouched. Mirrors removeAccount()/
+                // disconnectAll().
+                const existing = this.clients.get(accountId);
+                if (existing && existing !== client) {
+                    await existing.disconnect().catch(() => {});
+                }
                 this.clients.set(accountId, client);
                 this.metadata.set(accountId, {
                     id: accountId,
@@ -188,30 +200,74 @@ export class AccountManager {
         const FLOOD_WARN_INTERVAL_MS = 5 * 60 * 1000;
         const FLOOD_BACKOFF_MS = 10 * 60 * 1000;
         const RECONNECT_BACKOFF_MS = 60 * 1000;
+        // Hard ceiling on a single reconnect attempt. gramJS retries internally
+        // (connectionRetries:5 × retryDelay:2000 ≈ 10 s) and a half-open socket
+        // can hang past that. Without this cap, one stuck account's reconnect
+        // blocks the whole sequential sweep — every other account's keep-alive
+        // ping is delayed behind it (head-of-line blocking).
+        const RECONNECT_TIMEOUT_MS = 15 * 1000;
         const now = Date.now();
+        // Coalesced warn helper — respects FLOOD_WARN_INTERVAL_MS so a sick DC
+        // doesn't log a wall of identical lines.
+        const warnCoalesced = (id, msg) => {
+            const prev = this._lastWarnAt.get(id) || 0;
+            if (Date.now() - prev > FLOOD_WARN_INTERVAL_MS) {
+                this._lastWarnAt.set(id, Date.now());
+                console.warn(colorize(msg, 'yellow'));
+            }
+        };
         for (const [id, client] of this.clients) {
             if ((this._skipUntil.get(id) || 0) > now) continue; // serving FloodWait / reconnect penalty
             if (!client?.connected) {
-                // Dropped socket — revive it before pinging. Sequential
-                // within the tick (we await) so a multi-account outage
-                // doesn't open a connection storm.
+                // Dropped socket — revive it before pinging. Deliberately
+                // sequential within the tick (we await) so a multi-account
+                // outage doesn't open a connection storm — the audit explicitly
+                // warned against fully parallelizing this. Head-of-line blocking
+                // is bounded instead by RECONNECT_TIMEOUT_MS below.
                 try {
                     await client.disconnect().catch(() => {});
-                    await client.connect();
+                    // Race the reconnect against a timeout so a hanging
+                    // connect() can't monopolize the tick. The timer is
+                    // unref()'d so it never keeps the process alive.
+                    let timer;
+                    await Promise.race([
+                        client.connect(),
+                        new Promise((_, reject) => {
+                            timer = setTimeout(
+                                () => reject(new Error('reconnect timeout')),
+                                RECONNECT_TIMEOUT_MS,
+                            );
+                            timer.unref?.();
+                        }),
+                    ]).finally(() => clearTimeout(timer));
                     console.log(colorize(`[keep-alive] reconnected account ${id}`, 'green'));
                     this._lastWarnAt.delete(id);
                 } catch (e) {
                     const text = e?.errorMessage || e?.message || String(e || '');
-                    const prev = this._lastWarnAt.get(id) || 0;
-                    if (Date.now() - prev > FLOOD_WARN_INTERVAL_MS) {
-                        this._lastWarnAt.set(id, Date.now());
-                        console.warn(
-                            colorize(
-                                `[keep-alive] reconnect failed for ${id}, will retry: ${text}`,
-                                'yellow',
-                            ),
-                        );
-                    }
+                    warnCoalesced(
+                        id,
+                        `[keep-alive] reconnect failed for ${id}, will retry: ${text}`,
+                    );
+                    this._skipUntil.set(id, Date.now() + RECONNECT_BACKOFF_MS);
+                    continue;
+                }
+            } else {
+                // Still flagged connected, but a session revoked server-side
+                // (logout elsewhere / device revoke / 2FA change) keeps
+                // connected===true while every RPC fails. The blind ping below
+                // would just loop forever and swallow the error. Probe with a
+                // lightweight checkAuthorization() (mirrors the old
+                // ConnectionManager.check) — if it's false the session is dead
+                // and needs operator re-login; surface one coalesced warning,
+                // back off, and skip. A silent reconnect would also fail.
+                const authorized = await Promise.resolve(client.checkAuthorization?.()).catch(
+                    () => false,
+                );
+                if (!authorized) {
+                    warnCoalesced(
+                        id,
+                        `[keep-alive] account ${id} session revoked/unauthorized — re-login required`,
+                    );
                     this._skipUntil.set(id, Date.now() + RECONNECT_BACKOFF_MS);
                     continue;
                 }
@@ -509,9 +565,20 @@ export class AccountManager {
      * fresh AccountManager view is available without spinning up a second
      * instance (which would violate the single-writer rule). loadAll() already
      * connects + de-dupes by accountId, so calling it again is safe.
+     *
+     * Single-flight: two concurrent reloads (e.g. an auth-complete and a delete
+     * in flight) would both walk the session dir, both connect a fresh client
+     * per account, and the loser of the final set() would be orphaned — a leaked
+     * socket. Coalesce overlapping calls onto one in-flight promise so the work
+     * runs exactly once. Guarded here (not in loadAll) so the boot loadAll()
+     * path is untouched.
      */
     async reloadAccounts() {
-        return this.loadAll();
+        if (this._loadingAll) return this._loadingAll;
+        this._loadingAll = this.loadAll().finally(() => {
+            this._loadingAll = null;
+        });
+        return this._loadingAll;
     }
 
     /**
