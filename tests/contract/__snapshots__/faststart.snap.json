@@ -1,0 +1,447 @@
+{
+  "entries": {
+    "guest POST faststart/scan → 403": {
+      "route": "POST /api/maintenance/faststart/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/faststart/scan",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest GET faststart/stats → 403": {
+      "route": "GET /api/maintenance/faststart/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/stats",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "anon GET faststart/auto-stats → 401": {
+      "route": "GET /api/maintenance/faststart/auto-stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/auto-stats",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "faststart/stats before sweep": {
+      "route": "GET /api/maintenance/faststart/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ffmpegAvailable": true,
+          "lastRun": null,
+          "missing": 0,
+          "optimized": 2,
+          "pending": 2,
+          "success": true,
+          "total": 4,
+          "unknown": 0
+        }
+      }
+    },
+    "faststart/auto-stats (no downloads seen)": {
+      "route": "GET /api/maintenance/faststart/auto-stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/auto-stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "already": 0,
+          "errored": 0,
+          "ffmpegAvailable": true,
+          "lastAt": null,
+          "lastError": null,
+          "lastResult": null,
+          "optimized": 0,
+          "skipped": 0,
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "faststart/status idle": {
+      "route": "GET /api/maintenance/faststart/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "faststart",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "faststart/scan (first): start": {
+      "route": "POST /api/maintenance/faststart/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/faststart/scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "faststart/scan (first): ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "faststart_progress",
+          "collapsed": true
+        },
+        {
+          "already": 2,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "kind": "faststart",
+          "optimized": 2,
+          "scanned": 4,
+          "skipped": 0,
+          "type": "faststart_done"
+        }
+      ],
+      "collapsed": [
+        "faststart_progress"
+      ]
+    },
+    "faststart/status after first sweep": {
+      "route": "GET /api/maintenance/faststart/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "already": 2,
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errored": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "faststart",
+          "optimized": 2,
+          "processed": 4,
+          "progress": {
+            "already": 2,
+            "errored": 0,
+            "optimized": 2,
+            "processed": 4,
+            "skipped": 0,
+            "stage": "done",
+            "total": 4
+          },
+          "result": {
+            "already": 2,
+            "errored": 0,
+            "optimized": 2,
+            "scanned": 4,
+            "skipped": 0
+          },
+          "running": false,
+          "skipped": 0,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 4
+        }
+      }
+    },
+    "faststart/stats after first sweep": {
+      "route": "GET /api/maintenance/faststart/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ffmpegAvailable": true,
+          "lastRun": {
+            "already": 2,
+            "errored": 0,
+            "finishedAt": "<time:ms>",
+            "optimized": 2,
+            "scanned": 4,
+            "skipped": 0
+          },
+          "missing": 0,
+          "optimized": 4,
+          "pending": 0,
+          "success": true,
+          "total": 4,
+          "unknown": 0
+        }
+      }
+    },
+    "faststart/scan (second): start": {
+      "route": "POST /api/maintenance/faststart/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/faststart/scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "faststart/scan (second): ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "faststart_progress",
+          "collapsed": true
+        },
+        {
+          "already": 4,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "kind": "faststart",
+          "optimized": 0,
+          "scanned": 4,
+          "skipped": 0,
+          "type": "faststart_done"
+        }
+      ],
+      "collapsed": [
+        "faststart_progress"
+      ]
+    },
+    "faststart/status after second sweep": {
+      "route": "GET /api/maintenance/faststart/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "already": 4,
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errored": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "faststart",
+          "optimized": 0,
+          "processed": 4,
+          "progress": {
+            "already": 4,
+            "errored": 0,
+            "optimized": 0,
+            "processed": 4,
+            "skipped": 0,
+            "stage": "done",
+            "total": 4
+          },
+          "result": {
+            "already": 4,
+            "errored": 0,
+            "optimized": 0,
+            "scanned": 4,
+            "skipped": 0
+          },
+          "running": false,
+          "skipped": 0,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "total": 4
+        }
+      }
+    },
+    "faststart/auto-stats after sweeps (sweeps do not count)": {
+      "route": "GET /api/maintenance/faststart/auto-stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/faststart/auto-stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "already": 0,
+          "errored": 0,
+          "ffmpegAvailable": true,
+          "lastAt": null,
+          "lastError": null,
+          "lastResult": null,
+          "optimized": 0,
+          "skipped": 0,
+          "success": true,
+          "total": 0
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

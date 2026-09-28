@@ -1,0 +1,1639 @@
+{
+  "entries": {
+    "guest POST thumbs/build-all → 403": {
+      "route": "POST /api/maintenance/thumbs/build-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/build-all",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest GET thumbs/list → 403": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "anon GET thumbs/stats → 401": {
+      "route": "GET /api/maintenance/thumbs/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/stats",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "thumbs/stats empty cache": {
+      "route": "GET /api/maintenance/thumbs/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "allowedWidths": [
+            320
+          ],
+          "bytes": 0,
+          "count": 0,
+          "ffmpegAvailable": true,
+          "success": true
+        }
+      }
+    },
+    "thumbs/list default": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": false,
+              "created_at": "2024-05-02 10:00:00",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 19
+            },
+            {
+              "cached": false,
+              "created_at": "2024-05-01 10:00:00",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 18
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-04 10:00:00",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 17
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-03 10:00:00",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 16
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-02 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 15
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-01 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 14
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-03 10:00:00",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 9
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-02 10:00:00",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 8
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-01 10:00:00",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 7
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-14 10:00:00",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "id": 5
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 4
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 3
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 2
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 1
+            }
+          ],
+          "total": 16
+        }
+      }
+    },
+    "thumbs/list image limit=3": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?kind=image&limit=3",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "nextCursor": 17,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-05-02 10:00:00",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 19
+            },
+            {
+              "cached": false,
+              "created_at": "2024-05-01 10:00:00",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 18
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-04 10:00:00",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 17
+            }
+          ],
+          "total": 12
+        }
+      }
+    },
+    "thumbs/list image limit=3 cursor=16": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?kind=image&limit=3&cursor=16",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "nextCursor": 9,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-04-02 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 15
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-01 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 14
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-03 10:00:00",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 9
+            }
+          ],
+          "total": null
+        }
+      }
+    },
+    "thumbs/list video": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?kind=video",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-02 10:00:00",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 8
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-01 10:00:00",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 7
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6
+            }
+          ],
+          "total": 4
+        }
+      }
+    },
+    "thumbs/list audio (none)": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?kind=audio",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [],
+          "total": 0
+        }
+      }
+    },
+    "thumbs/list unknown kind → all": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?kind=bogus&limit=2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "nextCursor": 19,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": false,
+              "created_at": "2024-05-02 10:00:00",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 19
+            }
+          ],
+          "total": 16
+        }
+      }
+    },
+    "thumbs/list limit=0 → default 60": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?limit=0&kind=video",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-02 10:00:00",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 8
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-01 10:00:00",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 7
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6
+            }
+          ],
+          "total": 4
+        }
+      }
+    },
+    "thumbs/list limit=999 clamps to 200, negative cursor ignored": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?limit=999&cursor=-5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [
+            {
+              "cached": false,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": false,
+              "created_at": "2024-05-02 10:00:00",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 19
+            },
+            {
+              "cached": false,
+              "created_at": "2024-05-01 10:00:00",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 18
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-04 10:00:00",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 17
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-03 10:00:00",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 16
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-02 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 15
+            },
+            {
+              "cached": false,
+              "created_at": "2024-04-01 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 14
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-03 10:00:00",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 9
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-02 10:00:00",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 8
+            },
+            {
+              "cached": false,
+              "created_at": "2024-02-01 10:00:00",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 7
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-14 10:00:00",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "id": 5
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 4
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 3
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 2
+            },
+            {
+              "cached": false,
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 1
+            }
+          ],
+          "total": 16
+        }
+      }
+    },
+    "thumbs/list cachedOnly (nothing cached)": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?cachedOnly=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [],
+          "total": 16
+        }
+      }
+    },
+    "thumbs/build/status idle": {
+      "route": "GET /api/maintenance/thumbs/build/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/build/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "thumbsBuild",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "thumbs/build/stats before any build": {
+      "route": "GET /api/maintenance/thumbs/build/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/build/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastRun": null
+        }
+      }
+    },
+    "thumbs/build/cancel while idle": {
+      "route": "POST /api/maintenance/thumbs/build/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/build/cancel",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cancelled": false,
+          "success": true
+        }
+      }
+    },
+    "thumbs/rebuild/status idle": {
+      "route": "GET /api/maintenance/thumbs/rebuild/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/rebuild/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "thumbsRebuild",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "thumbs/build-all video: start": {
+      "route": "POST /api/maintenance/thumbs/build-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/build-all",
+        "as": "admin",
+        "body": {
+          "kind": "video"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "kind": "video",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "thumbs/build-all video: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "thumbs_progress",
+          "collapsed": true
+        },
+        {
+          "built": 4,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "kind": "thumbsBuild",
+          "scanned": 4,
+          "skipped": 0,
+          "type": "thumbs_done"
+        }
+      ],
+      "collapsed": [
+        "thumbs_progress"
+      ]
+    },
+    "thumbs/build/status after video build": {
+      "route": "GET /api/maintenance/thumbs/build/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/build/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "built": 4,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errored": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "thumbsBuild",
+          "processed": 4,
+          "progress": {
+            "built": 4,
+            "errored": 0,
+            "kind": "video",
+            "processed": 4,
+            "skipped": 0,
+            "stage": "done",
+            "total": 4
+          },
+          "result": {
+            "built": 4,
+            "errored": 0,
+            "kind": "video",
+            "scanned": 4,
+            "skipped": 0
+          },
+          "running": false,
+          "skipped": 0,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 4
+        }
+      }
+    },
+    "thumbs/build/stats after video build": {
+      "route": "GET /api/maintenance/thumbs/build/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/build/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastRun": {
+            "built": 4,
+            "errored": 0,
+            "finishedAt": "<time:ms>",
+            "kind": "video",
+            "scanned": 4,
+            "skipped": 0
+          }
+        }
+      }
+    },
+    "thumbs/stats after video build": {
+      "route": "GET /api/maintenance/thumbs/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "allowedWidths": [
+            320
+          ],
+          "bytes": "<masked:number>",
+          "count": 4,
+          "ffmpegAvailable": true,
+          "success": true
+        }
+      },
+      "masked": {
+        "bytes": "sum of encoder output sizes (sharp/libvips + ffmpeg/libwebp versions differ per host)"
+      }
+    },
+    "thumbs/list video cached": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?kind=video",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "nextCursor": null,
+          "rows": [
+            {
+              "cached": true,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": true,
+              "created_at": "2024-02-02 10:00:00",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 8
+            },
+            {
+              "cached": true,
+              "created_at": "2024-02-01 10:00:00",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 7
+            },
+            {
+              "cached": true,
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6
+            }
+          ],
+          "total": 4
+        }
+      }
+    },
+    "thumbs/build-all kind=Bogus: start": {
+      "route": "POST /api/maintenance/thumbs/build-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/build-all",
+        "as": "admin",
+        "body": {
+          "kind": "Bogus"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "kind": "all",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "thumbs/build-all kind=Bogus: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "thumbs_progress",
+          "collapsed": true
+        },
+        {
+          "built": 12,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "kind": "thumbsBuild",
+          "scanned": 16,
+          "skipped": 4,
+          "type": "thumbs_done"
+        }
+      ],
+      "collapsed": [
+        "thumbs_progress"
+      ]
+    },
+    "thumbs/build/status after full build": {
+      "route": "GET /api/maintenance/thumbs/build/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/build/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 2,
+          "built": 12,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errored": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "thumbsBuild",
+          "processed": 16,
+          "progress": {
+            "built": 12,
+            "errored": 0,
+            "kind": "all",
+            "processed": 16,
+            "skipped": 4,
+            "stage": "done",
+            "total": 16
+          },
+          "result": {
+            "built": 12,
+            "errored": 0,
+            "kind": "all",
+            "scanned": 16,
+            "skipped": 4
+          },
+          "running": false,
+          "skipped": 4,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "total": 16
+        }
+      }
+    },
+    "thumbs/stats after full build": {
+      "route": "GET /api/maintenance/thumbs/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "allowedWidths": [
+            320
+          ],
+          "bytes": "<masked:number>",
+          "count": 16,
+          "ffmpegAvailable": true,
+          "success": true
+        }
+      },
+      "masked": {
+        "bytes": "sum of encoder output sizes (sharp/libvips + ffmpeg/libwebp versions differ per host)"
+      }
+    },
+    "thumbs/list cachedOnly after build": {
+      "route": "GET /api/maintenance/thumbs/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/list?cachedOnly=1&limit=5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "nextCursor": 16,
+          "rows": [
+            {
+              "cached": true,
+              "created_at": "2024-05-03 10:00:00",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "id": 20
+            },
+            {
+              "cached": true,
+              "created_at": "2024-05-02 10:00:00",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 19
+            },
+            {
+              "cached": true,
+              "created_at": "2024-05-01 10:00:00",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 18
+            },
+            {
+              "cached": true,
+              "created_at": "2024-04-04 10:00:00",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 17
+            },
+            {
+              "cached": true,
+              "created_at": "2024-04-03 10:00:00",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 16
+            }
+          ],
+          "total": 16
+        }
+      }
+    },
+    "thumbs/rebuild-one/abc → 400": {
+      "route": "POST /api/maintenance/thumbs/rebuild-one/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild-one/abc",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Bad id"
+        }
+      }
+    },
+    "thumbs/rebuild-one/0 → 400": {
+      "route": "POST /api/maintenance/thumbs/rebuild-one/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild-one/0",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Bad id"
+        }
+      }
+    },
+    "thumbs/rebuild-one/1 (cached photo)": {
+      "route": "POST /api/maintenance/thumbs/rebuild-one/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild-one/1",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cached": true,
+          "removed": 1,
+          "success": true
+        }
+      }
+    },
+    "thumbs/rebuild-one/10 (pdf, not thumbnailable)": {
+      "route": "POST /api/maintenance/thumbs/rebuild-one/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild-one/10",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cached": false,
+          "removed": 0,
+          "success": true
+        }
+      }
+    },
+    "thumbs/rebuild-one/9999 (unknown row)": {
+      "route": "POST /api/maintenance/thumbs/rebuild-one/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild-one/9999",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cached": false,
+          "removed": 0,
+          "success": true
+        }
+      }
+    },
+    "thumbs/rebuild video: start": {
+      "route": "POST /api/maintenance/thumbs/rebuild",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild",
+        "as": "admin",
+        "body": {
+          "kind": "video"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "kind": "video",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "thumbs/rebuild video: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "thumbs_rebuild_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "thumbsRebuild",
+          "removed": 4,
+          "type": "thumbs_rebuild_done"
+        }
+      ],
+      "collapsed": [
+        "thumbs_rebuild_progress"
+      ]
+    },
+    "thumbs/rebuild/status after video wipe": {
+      "route": "GET /api/maintenance/thumbs/rebuild/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/rebuild/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "thumbsRebuild",
+          "progress": {},
+          "result": {
+            "kind": "video",
+            "removed": 4
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "thumbs/stats after video wipe": {
+      "route": "GET /api/maintenance/thumbs/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "allowedWidths": [
+            320
+          ],
+          "bytes": "<masked:number>",
+          "count": 12,
+          "ffmpegAvailable": true,
+          "success": true
+        }
+      },
+      "masked": {
+        "bytes": "sum of encoder output sizes (sharp/libvips + ffmpeg/libwebp versions differ per host)"
+      }
+    },
+    "thumbs/rebuild all: start": {
+      "route": "POST /api/maintenance/thumbs/rebuild",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/thumbs/rebuild",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "kind": "all",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "thumbs/rebuild all: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "thumbs_rebuild_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "thumbsRebuild",
+          "removed": 12,
+          "type": "thumbs_rebuild_done"
+        }
+      ],
+      "collapsed": [
+        "thumbs_rebuild_progress"
+      ]
+    },
+    "thumbs/stats after full wipe": {
+      "route": "GET /api/maintenance/thumbs/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/thumbs/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "allowedWidths": [
+            320
+          ],
+          "bytes": 0,
+          "count": 0,
+          "ffmpegAvailable": true,
+          "success": true
+        }
+      }
+    },
+    "thumbs/hwaccel-probe shape": {
+      "route": "GET /api/maintenance/thumbs/hwaccel-probe",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "keys": [
+        "available",
+        "compiledIn",
+        "ffmpegPath",
+        "recommended"
+      ],
+      "available": "array<string>",
+      "compiledIn": "array<string>",
+      "ffmpegPath": "string",
+      "recommended": "null|string",
+      "availableSubsetOfCompiledIn": true,
+      "recommendedIsAvailable": true,
+      "note": "available/compiledIn/ffmpegPath/recommended depend on the host ffmpeg build and GPU; only the shape and invariants are contract"
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
