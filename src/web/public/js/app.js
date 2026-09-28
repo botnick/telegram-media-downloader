@@ -4001,16 +4001,30 @@ async function confirmDeleteFile() {
 
     try {
         await api.delete(`/api/file?path=${encodeURIComponent(file.fullPath)}`);
-        const idx = state.currentFileIndex;
+        // The server broadcasts `file_deleted` BEFORE this response lands,
+        // so dropFileFromView() may already have spliced the file out —
+        // splicing `currentFileIndex` again removed the NEXT file. Locate
+        // the file by identity and only remove it if it's still there.
         const isGallery = state.files === _galleryFilesRef;
-        state.files.splice(idx, 1);
-        Viewer.closeMediaViewer();
-        if (isGallery) {
-            // Drop just that tile — a full re-render would throw away the
-            // window + scroll position on a deep-scrolled gallery.
-            removeFileIndex(idx);
-            _renderedFileCount = state.files.length;
-            if (state.files.length === 0) renderGalleryEmptyState();
+        let idx = state.files.indexOf(file);
+        if (idx < 0) idx = state.files.findIndex((f) => f.fullPath === file.fullPath);
+        if (idx >= 0) {
+            state.files.splice(idx, 1);
+            if (isGallery) {
+                // Drop just that tile — a full re-render would throw away
+                // the window + scroll position on a deep-scrolled gallery.
+                removeFileIndex(idx);
+                _renderedFileCount = state.files.length;
+            }
+        }
+        if (state.files.length === 0) {
+            Viewer.closeMediaViewer();
+            if (isGallery) renderGalleryEmptyState();
+        } else {
+            // Stay in the viewer on the item that took the deleted one's
+            // place (the previous one when it was the last).
+            const from = idx >= 0 ? idx : state.currentFileIndex;
+            Viewer.openMediaViewer(Math.min(Math.max(0, from), state.files.length - 1));
         }
         showToast(i18nT('viewer.delete.success', 'File deleted'), 'success');
     } catch (e) {

@@ -783,6 +783,8 @@ export function openMediaViewer(index) {
     document.getElementById('modal-download').href = downloadUrl;
     _setTypeChip(file);
 
+    _syncPinButton(file);
+
     const wasHidden = modal.classList.contains('hidden');
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -875,16 +877,185 @@ function prefetchNeighbor(nextIndex) {
 function resetZoom() {
     zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0 };
     const img = document.getElementById('modal-image');
-    if (img) img.style.transform = `translate(0px, 0px) scale(1)`;
+    if (img) {
+        img.style.transform = `translate(0px, 0px) scale(1)`;
+        img.classList.remove('is-zoomed');
+    }
+    document.getElementById('image-container')?.classList.remove('is-zoomed');
+}
+
+// Zoom geometry: translate(pointX, pointY) scale(scale) around the image
+// centre. Panning is clamped so the zoomed image can't be dragged off
+// screen. Swipe-to-navigate and drag-to-close are disabled while zoomed
+// (see _viewerGestureBlocked).
+const ZOOM_MAX = 5;
+const DOUBLE_TAP_SCALE = 2.5;
+
+function _applyZoom(animate) {
+    const img = document.getElementById('modal-image');
+    const container = document.getElementById('image-container');
+    if (!img) return;
+    const s = zoomState.scale;
+    if (s <= 1.001) {
+        zoomState.scale = 1;
+        zoomState.pointX = 0;
+        zoomState.pointY = 0;
+    } else if (container) {
+        const maxX = ((s - 1) * container.clientWidth) / 2;
+        const maxY = ((s - 1) * container.clientHeight) / 2;
+        zoomState.pointX = Math.max(-maxX, Math.min(maxX, zoomState.pointX));
+        zoomState.pointY = Math.max(-maxY, Math.min(maxY, zoomState.pointY));
+    }
+    img.style.transition = animate ? 'transform 180ms ease-out' : 'none';
+    img.style.transform = `translate(${zoomState.pointX}px, ${zoomState.pointY}px) scale(${zoomState.scale})`;
+    const zoomed = zoomState.scale > 1;
+    img.classList.toggle('is-zoomed', zoomed);
+    container?.classList.toggle('is-zoomed', zoomed);
+}
+
+// Zoom to `next` keeping the image point under (cx, cy) — viewport
+// coordinates — fixed on screen.
+function _zoomAt(next, cx, cy, animate) {
+    const container = document.getElementById('image-container');
+    if (!container) return;
+    const r = container.getBoundingClientRect();
+    const mx = cx - (r.left + r.width / 2);
+    const my = cy - (r.top + r.height / 2);
+    const s0 = zoomState.scale;
+    const s1 = Math.min(Math.max(1, next), ZOOM_MAX);
+    zoomState.pointX = mx - (s1 / s0) * (mx - zoomState.pointX);
+    zoomState.pointY = my - (s1 / s0) * (my - zoomState.pointY);
+    zoomState.scale = s1;
+    _applyZoom(animate);
+}
+
+// Pointer bookkeeping for the image pane (touch + pen + mouse).
+const _imgPointers = new Map(); // pointerId → {x, y}
+let _pinch = null; // { dist, scale, midX, midY, px, py }
+let _multiTouch = false; // a 2nd finger touched down during this gesture
+let _lastTap = { t: 0, x: 0, y: 0 };
+
+/** True while the image is zoomed or a pinch is in progress. */
+function _viewerGestureBlocked() {
+    return zoomState.scale > 1 || _multiTouch || _imgPointers.size > 1;
+}
+
+let _imageGesturesWired = false;
+function _wireImageGesturesOnce() {
+    if (_imageGesturesWired) return;
+    const container = document.getElementById('image-container');
+    if (!container) return;
+    _imageGesturesWired = true;
+
+    const mid = () => {
+        const [a, b] = [..._imgPointers.values()];
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+    };
+
+    container.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        _imgPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (_imgPointers.size === 2) {
+            _multiTouch = true;
+            const m = mid();
+            _pinch = {
+                dist: m.d || 1,
+                scale: zoomState.scale,
+                midX: m.x,
+                midY: m.y,
+                px: zoomState.pointX,
+                py: zoomState.pointY,
+            };
+            _lastTap.t = 0;
+            return;
+        }
+        if (_imgPointers.size !== 1) return;
+        // Double tap (touch / pen) toggles 2.5× at the tapped point.
+        if (e.pointerType !== 'mouse') {
+            const now = Date.now();
+            if (
+                now - _lastTap.t < 300 &&
+                Math.hypot(e.clientX - _lastTap.x, e.clientY - _lastTap.y) < 30
+            ) {
+                _lastTap.t = 0;
+                if (zoomState.scale > 1) {
+                    zoomState.scale = 1;
+                    _applyZoom(true);
+                } else {
+                    _zoomAt(DOUBLE_TAP_SCALE, e.clientX, e.clientY, true);
+                }
+                return;
+            }
+            _lastTap = { t: now, x: e.clientX, y: e.clientY };
+        }
+        if (zoomState.scale > 1) {
+            zoomState.panning = true;
+            zoomState.startX = e.clientX - zoomState.pointX;
+            zoomState.startY = e.clientY - zoomState.pointY;
+            try {
+                container.setPointerCapture(e.pointerId);
+            } catch {}
+        }
+    });
+    container.addEventListener('pointermove', (e) => {
+        const p = _imgPointers.get(e.pointerId);
+        if (!p) return;
+        p.x = e.clientX;
+        p.y = e.clientY;
+        if (_pinch && _imgPointers.size >= 2) {
+            const m = mid();
+            const s1 = Math.min(Math.max(1, _pinch.scale * (m.d / _pinch.dist)), ZOOM_MAX);
+            // Keep the image point that was under the starting midpoint
+            // under the current midpoint (pinch + two-finger pan).
+            const r = container.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const k = s1 / _pinch.scale;
+            zoomState.scale = s1;
+            zoomState.pointX = m.x - cx - k * (_pinch.midX - cx - _pinch.px);
+            zoomState.pointY = m.y - cy - k * (_pinch.midY - cy - _pinch.py);
+            _applyZoom(false);
+            return;
+        }
+        if (zoomState.panning && zoomState.scale > 1) {
+            zoomState.pointX = e.clientX - zoomState.startX;
+            zoomState.pointY = e.clientY - zoomState.startY;
+            _applyZoom(false);
+        }
+    });
+    const end = (e) => {
+        if (!_imgPointers.delete(e.pointerId)) return;
+        if (_imgPointers.size < 2) _pinch = null;
+        if (_imgPointers.size === 1 && zoomState.scale > 1) {
+            // One finger left after a pinch: continue as a pan from here.
+            const [rest] = [..._imgPointers.values()];
+            zoomState.panning = true;
+            zoomState.startX = rest.x - zoomState.pointX;
+            zoomState.startY = rest.y - zoomState.pointY;
+        }
+        if (_imgPointers.size === 0) {
+            zoomState.panning = false;
+            // Keep blocking swipe/close until the next gesture starts.
+            setTimeout(() => {
+                if (_imgPointers.size === 0) _multiTouch = false;
+            }, 0);
+            if (zoomState.scale < 1.05) {
+                zoomState.scale = 1;
+                _applyZoom(true);
+            }
+        }
+    };
+    container.addEventListener('pointerup', end);
+    container.addEventListener('pointercancel', end);
 }
 
 function setupImageZoom() {
     const img = document.getElementById('modal-image');
+    _wireImageGesturesOnce();
     img.onwheel = (e) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        zoomState.scale = Math.min(Math.max(1, zoomState.scale * delta), 5);
-        img.style.transform = `scale(${zoomState.scale})`;
+        _zoomAt(zoomState.scale * delta, e.clientX, e.clientY, false);
     };
 }
 
@@ -1025,6 +1196,9 @@ class VideoPlayer {
                 this.seekRelative(isLeft ? -step : step);
                 this._flashSeekOverlay(isLeft, step);
                 this._lastTapAt = 0;
+                // The second tap's click would toggle play/pause right after
+                // the seek — swallow clicks for the next ~350 ms.
+                this._suppressClickUntil = now + 350;
             } else {
                 this._lastTapAt = now;
                 this._lastTapX = e.clientX;
@@ -1035,6 +1209,10 @@ class VideoPlayer {
         // them without toggling play — so tapping the video to "wake"
         // the controls doesn't accidentally pause.
         this.tapLayer.onclick = (e) => {
+            if (Date.now() < (this._suppressClickUntil || 0)) {
+                e.stopPropagation();
+                return;
+            }
             if (this._controlsWereHidden) {
                 this._controlsWereHidden = false;
                 this._showControls(true);
@@ -1044,6 +1222,12 @@ class VideoPlayer {
             e.stopPropagation();
         };
         this.tapLayer.ondblclick = (e) => {
+            // Touch: a double tap is the ±N s seek gesture handled in
+            // onpointerdown — it must not also toggle fullscreen.
+            if (!SUPPORTS_HOVER) {
+                e.stopPropagation();
+                return;
+            }
             if (localStorage.getItem('viewer-dbl-tap-fs') === '0') {
                 e.stopPropagation();
                 return;
@@ -1156,6 +1340,9 @@ class VideoPlayer {
         this.video.onpause = () => {
             this._refreshPlayIcons();
             this._showControls(true);
+            // Never spin over a paused clip; a resume that has to wait
+            // fires `waiting` again.
+            if (this.video.readyState >= 2) this._clearWaiting();
         };
         this.video.onended = () => {
             this._refreshPlayIcons();
@@ -1182,17 +1369,42 @@ class VideoPlayer {
                 localStorage.setItem(MUTED_LS_KEY, this.video.muted ? '1' : '0');
             } catch {}
         };
-        this.video.ontimeupdate = () => this._onTimeUpdate();
+        this.video.ontimeupdate = () => {
+            // Playback is demonstrably moving again → not buffering.
+            const t = this.video.currentTime;
+            if (this._waiting && t !== this._lastWaitTime && !this.video.paused) {
+                this._clearWaiting();
+            }
+            this._lastWaitTime = t;
+            this._onTimeUpdate();
+        };
         this.video.onprogress = () => this._renderBuffered();
         this.video.ondurationchange = () => {
             this.durTime.textContent = formatTime(this.video.duration || 0);
             this._renderBuffered();
         };
-        this.video.onwaiting = () => this._showSpinner(true);
-        this.video.onstalled = () => this._showSpinner(true);
-        this.video.oncanplay = () => this._showSpinner(false);
-        this.video.onplaying = () => this._showSpinner(false);
-        this.video.onloadeddata = () => this._showSpinner(false);
+        // Buffering spinner. `stalled` is deliberately ignored — it fires
+        // during perfectly smooth progressive playback whenever the
+        // network pauses for a moment, and nothing but canplay/playing
+        // hid the spinner again, so it sat over a playing video.
+        // `waiting` sets a flag; `playing` or currentTime advancing
+        // clears it. Cold start (no frame yet) shows the spinner at once,
+        // mid-playback waits/seeks only after 200 ms (most resolve
+        // sooner), and it never shows while paused.
+        this.video.onwaiting = () => this._markWaiting();
+        this.video.onseeking = () => {
+            if (!this.video.paused) this._markWaiting();
+        };
+        this.video.onseeked = () => {
+            if (this.video.readyState >= 3) this._clearWaiting();
+        };
+        this.video.oncanplay = () => {
+            if (this.video.paused) this._clearWaiting();
+        };
+        this.video.onplaying = () => this._clearWaiting();
+        this.video.onloadeddata = () => {
+            if (this.video.paused) this._clearWaiting();
+        };
         this.video.onerror = () => this._showError();
         this.video.onratechange = () => this._refreshSpeedUi();
 
@@ -1275,6 +1487,11 @@ class VideoPlayer {
         this.playBtn.setAttribute('aria-label', i18nT('viewer.video.play', 'Play'));
         this.centerPlay.classList.remove('hidden');
         this._hideError();
+        // Cold start: no frame yet → spinner right away (cleared by
+        // playing / loadeddata-while-paused / timeupdate).
+        this._waiting = true;
+        this._lastWaitTime = 0;
+        clearTimeout(this._spinnerTimer);
         this._showSpinner(true);
 
         // Restore persisted volume + mute + speed.
@@ -1424,6 +1641,8 @@ class VideoPlayer {
         this._filmstripLastIdx = -1;
         this.speedMenu.classList.add('hidden');
         this._hideError();
+        this._waiting = false;
+        clearTimeout(this._spinnerTimer);
         this._showSpinner(false);
     }
 
@@ -2098,6 +2317,26 @@ class VideoPlayer {
         this.spinner.classList.toggle('hidden', !on);
     }
 
+    _markWaiting() {
+        this._waiting = true;
+        clearTimeout(this._spinnerTimer);
+        if (this.video.paused && this.video.readyState >= 2) return;
+        if (this.video.readyState < 2) {
+            // Nothing to show yet (cold start / seek far outside the buffer).
+            this._showSpinner(true);
+            return;
+        }
+        this._spinnerTimer = setTimeout(() => {
+            if (this._waiting && !this.video.paused) this._showSpinner(true);
+        }, 200);
+    }
+
+    _clearWaiting() {
+        this._waiting = false;
+        clearTimeout(this._spinnerTimer);
+        this._showSpinner(false);
+    }
+
     _showError() {
         const err = this.video.error;
         // Mobile Safari (and occasionally Chrome on Android) fires a
@@ -2133,6 +2372,8 @@ class VideoPlayer {
         this.errorMsg.textContent = msg;
         this.errorOverlay.classList.remove('hidden');
         this.errorOverlay.classList.add('flex');
+        this._waiting = false;
+        clearTimeout(this._spinnerTimer);
         this._showSpinner(false);
     }
 
@@ -2393,8 +2634,68 @@ export function closeMediaViewer() {
     document.getElementById('viewer-review-meta')?.classList.add('hidden');
 }
 
+// Pin / unpin from the viewer's action bar — same endpoint + tile update
+// as the gallery tile's pin chip. Hidden for rows without a local id
+// (federated peer rows, synthetic queue files) and, via data-admin-only,
+// for guests.
+function _syncPinButton(file) {
+    const btn = document.getElementById('modal-pin');
+    if (!btn) return;
+    const canPin = file && file.id != null && !isPeerRow(file) && state.role === 'admin';
+    btn.classList.toggle('hidden', !canPin);
+    btn.classList.toggle('flex', !!canPin);
+    if (!canPin) return;
+    const pinned = !!file.pinned;
+    const label = pinned ? i18nT('favorites.unpin', 'Unpin') : i18nT('favorites.pin', 'Pin');
+    btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+    btn.title = label;
+    btn.classList.toggle('text-yellow-300', pinned);
+    const icon = btn.querySelector('i');
+    if (icon) {
+        icon.classList.toggle('ri-pushpin-2-fill', pinned);
+        icon.classList.toggle('ri-pushpin-2-line', !pinned);
+    }
+    const text = btn.querySelector('span');
+    if (text) text.textContent = label;
+}
+
+async function _togglePinCurrent() {
+    const file = state.files[state.currentFileIndex];
+    if (!file || file.id == null || isPeerRow(file)) return;
+    const btn = document.getElementById('modal-pin');
+    if (btn?.dataset.busy === '1') return;
+    if (btn) btn.dataset.busy = '1';
+    const next = !file.pinned;
+    try {
+        await api.post(`/api/downloads/${encodeURIComponent(file.id)}/pin`, { pinned: next });
+        file.pinned = next;
+        _syncPinButton(file);
+        // Keep the gallery tile (if rendered) in step.
+        const tile = document.querySelector(
+            `#media-grid .media-item[data-id="${CSS.escape(String(file.id))}"]`,
+        );
+        if (tile) {
+            tile.classList.toggle('is-pinned', next);
+            const ico = tile.querySelector('[data-tile-pin] i');
+            if (ico) {
+                ico.classList.toggle('ri-pushpin-2-fill', next);
+                ico.classList.toggle('ri-pushpin-2-line', !next);
+            }
+        }
+        showToast(
+            next ? i18nT('favorites.pinned', 'Pinned') : i18nT('favorites.unpinned', 'Unpinned'),
+            'success',
+        );
+    } catch (e) {
+        showToast(e?.message || 'Pin failed', 'error');
+    } finally {
+        if (btn) delete btn.dataset.busy;
+    }
+}
+
 export function setupViewerEvents() {
     document.getElementById('modal-close')?.addEventListener('click', closeMediaViewer);
+    document.getElementById('modal-pin')?.addEventListener('click', _togglePinCurrent);
     document.getElementById('modal-prev')?.addEventListener('click', () => navigateMedia(-1));
     document.getElementById('modal-next')?.addEventListener('click', () => navigateMedia(1));
 
@@ -2584,6 +2885,7 @@ export function setupViewerEvents() {
     const swipeArea = document.getElementById('modal-swipe');
     if (swipeArea) {
         attachSwipe(swipeArea, {
+            shouldIgnore: _viewerGestureBlocked,
             onSwipe: (dir) => {
                 // Swiping while dragging the seek bar would jump clips. The
                 // controls' pointerdown already stops bubbling, so this is
@@ -2594,6 +2896,7 @@ export function setupViewerEvents() {
             threshold: 60,
         });
         attachDragDismiss(swipeArea, {
+            shouldIgnore: _viewerGestureBlocked,
             onDismiss: closeMediaViewer,
             threshold: 100,
         });

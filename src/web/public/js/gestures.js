@@ -85,6 +85,12 @@ export function attachLongPress(host, { selector, onLongPress }) {
  * `threshold` px → call `onRefresh()` (returns a Promise; spinner shows
  * while it pends). The container needs `overscroll-behavior: contain` if
  * you want to defeat the iOS bounce.
+ *
+ * Touch input uses (passive) touch events: the container scrolls, so the
+ * browser owns the pan and cancels the pointer stream (pointercancel) as
+ * soon as a finger moves — the pointer-only version never fired on
+ * phones. Touch events keep flowing during a native pan, and passive
+ * listeners never delay scrolling. Mouse / pen keep the pointer path.
  */
 export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
     if (!container) return () => {};
@@ -103,28 +109,32 @@ export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
         container.insertBefore(indicator, container.firstChild);
     }
 
-    function down(e) {
-        if (container.scrollTop > 0) return;
-        active = true;
-        pointerId = e.pointerId;
-        startY = e.clientY;
+    const reset = () => {
+        active = false;
         dy = 0;
-    }
-    function move(e) {
-        if (!active || e.pointerId !== pointerId) return;
-        const d = e.clientY - startY;
-        if (d <= 0) {
-            active = false;
-            indicator.style.height = '0';
-            return;
+        indicator.style.height = '0';
+    };
+    const begin = (y) => {
+        if (container.scrollTop > 0) return false;
+        active = true;
+        startY = y;
+        dy = 0;
+        return true;
+    };
+    // Returns false when the gesture stopped being a pull.
+    const track = (y) => {
+        const d = y - startY;
+        if (d <= 0 || container.scrollTop > 0) {
+            reset();
+            return false;
         }
         dy = Math.min(d, threshold * 1.5);
         indicator.style.height = `${Math.min(dy, threshold)}px`;
         indicator.firstChild.style.transform = dy > threshold ? 'rotate(180deg)' : 'rotate(0deg)';
-        e.preventDefault();
-    }
-    function up(e) {
-        if (!active || e.pointerId !== pointerId) return;
+        return true;
+    };
+    const finish = () => {
+        if (!active) return;
         active = false;
         if (dy > threshold) {
             indicator.innerHTML = '<i class="ri-loader-4-line ri-spin"></i>&nbsp;Refreshing…';
@@ -137,13 +147,57 @@ export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
             indicator.style.height = '0';
         }
         dy = 0;
+    };
+
+    // Touch
+    const onTouchStart = (e) => {
+        if (e.touches.length !== 1) {
+            if (active) reset();
+            return;
+        }
+        begin(e.touches[0].clientY);
+    };
+    const onTouchMove = (e) => {
+        if (!active) return;
+        if (e.touches.length !== 1) {
+            reset();
+            return;
+        }
+        track(e.touches[0].clientY);
+    };
+    const onTouchEnd = () => finish();
+    const onTouchCancel = () => {
+        if (active) reset();
+    };
+
+    // Mouse / pen
+    function down(e) {
+        if (e.pointerType === 'touch') return;
+        if (!begin(e.clientY)) return;
+        pointerId = e.pointerId;
+    }
+    function move(e) {
+        if (!active || e.pointerType === 'touch' || e.pointerId !== pointerId) return;
+        if (track(e.clientY)) e.preventDefault();
+    }
+    function up(e) {
+        if (e.pointerType === 'touch' || e.pointerId !== pointerId) return;
+        finish();
     }
 
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: true });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchCancel, { passive: true });
     container.addEventListener('pointerdown', down);
     container.addEventListener('pointermove', move, { passive: false });
     container.addEventListener('pointerup', up);
     container.addEventListener('pointercancel', up);
     return () => {
+        container.removeEventListener('touchstart', onTouchStart);
+        container.removeEventListener('touchmove', onTouchMove);
+        container.removeEventListener('touchend', onTouchEnd);
+        container.removeEventListener('touchcancel', onTouchCancel);
         container.removeEventListener('pointerdown', down);
         container.removeEventListener('pointermove', move);
         container.removeEventListener('pointerup', up);
@@ -154,15 +208,17 @@ export function attachPullToRefresh(container, { onRefresh, threshold = 70 }) {
 /**
  * Detect a left/right swipe on `el`. Calls `onSwipe('left'|'right', dx)`
  * once when the gesture ends past `threshold` px AND the horizontal
- * displacement dominates (≥ 1.5× the vertical).
+ * displacement dominates (≥ 1.5× the vertical). `shouldIgnore()` (optional)
+ * vetoes the gesture — checked at start and end (e.g. image zoomed/pinch).
  */
-export function attachSwipe(el, { onSwipe, threshold = 60 }) {
+export function attachSwipe(el, { onSwipe, threshold = 60, shouldIgnore }) {
     let startX = 0,
         startY = 0,
         pointerId = null,
         active = false;
     function down(e) {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (shouldIgnore?.()) return;
         active = true;
         pointerId = e.pointerId;
         startX = e.clientX;
@@ -171,6 +227,7 @@ export function attachSwipe(el, { onSwipe, threshold = 60 }) {
     function up(e) {
         if (!active || e.pointerId !== pointerId) return;
         active = false;
+        if (shouldIgnore?.()) return;
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         if (Math.abs(dx) >= threshold && Math.abs(dx) > Math.abs(dy) * 1.5) {
@@ -190,15 +247,17 @@ export function attachSwipe(el, { onSwipe, threshold = 60 }) {
 /**
  * Vertical drag-to-dismiss. Drag down from inside `el` past `threshold` →
  * onDismiss(); release without crossing → snaps back. The element gets a
- * temporary translateY for visual feedback.
+ * temporary translateY for visual feedback. `shouldIgnore()` (optional)
+ * vetoes / aborts the drag (e.g. while the image is zoomed or pinched).
  */
-export function attachDragDismiss(el, { onDismiss, threshold = 80 }) {
+export function attachDragDismiss(el, { onDismiss, threshold = 80, shouldIgnore }) {
     let startY = 0,
         dy = 0,
         pointerId = null,
         active = false;
     function down(e) {
         if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (shouldIgnore?.()) return;
         active = true;
         pointerId = e.pointerId;
         startY = e.clientY;
@@ -207,6 +266,13 @@ export function attachDragDismiss(el, { onDismiss, threshold = 80 }) {
     }
     function move(e) {
         if (!active || e.pointerId !== pointerId) return;
+        if (shouldIgnore?.()) {
+            // A second finger / zoom started mid-drag: abort and snap back.
+            active = false;
+            el.style.transition = '';
+            el.style.transform = '';
+            return;
+        }
         dy = Math.max(0, e.clientY - startY);
         el.style.transform = `translateY(${dy}px)`;
     }
