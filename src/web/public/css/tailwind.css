@@ -1080,6 +1080,10 @@ video {
   height: 2.5rem;
 }
 
+.h-11 {
+  height: 2.75rem;
+}
+
 .h-12 {
   height: 3rem;
 }
@@ -1213,6 +1217,10 @@ video {
   width: 2.5rem;
 }
 
+.w-11 {
+  width: 2.75rem;
+}
+
 .w-12 {
   width: 3rem;
 }
@@ -1281,6 +1289,10 @@ video {
   width: min(85vw, 18rem);
 }
 
+.w-auto {
+  width: auto;
+}
+
 .w-fit {
   width: -moz-fit-content;
   width: fit-content;
@@ -1340,6 +1352,10 @@ video {
 
 .max-w-\[160px\] {
   max-width: 160px;
+}
+
+.max-w-\[45\%\] {
+  max-width: 45%;
 }
 
 .max-w-\[calc\(100vw-1rem\)\] {

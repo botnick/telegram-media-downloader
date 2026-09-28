@@ -1169,7 +1169,7 @@
     "queue.throttle.label": "Max Speed",
     "queue.throttle.unlimited": "Unlimited",
     "queue.chip.all": "All",
-    "queue.chip.active": "Active",
+    "queue.chip.active": "Downloading",
     "queue.chip.queued": "Queued",
     "queue.chip.paused": "Paused",
     "queue.chip.failed": "Failed",
@@ -1945,5 +1945,16 @@
     "backfill.sheet.menu_item": "Backfill this chat",
     "backfill.modal.help_sheet": "Download media from messages sent before monitoring started.",
     "backfill.modal.open_sheet": "Backfill older messages…",
-    "common.error": "Error"
+    "common.error": "Error",
+    "queue.chip.current": "Active",
+    "queue.chips_label": "Show downloads",
+    "queue.sort.label": "Sort by",
+    "queue.more": "More queue actions",
+    "queue.empty.current_title": "Nothing downloading right now",
+    "queue.empty.current_body": "Finished, failed and skipped downloads are under Done, Failed and All.",
+    "queue.empty.filter_title": "Nothing here",
+    "queue.empty.filter_body": "No downloads match this filter.",
+    "queue.empty.search_title": "No downloads match “{q}”",
+    "queue.empty.search_body": "Search looks at file names and chat names.",
+    "queue.empty.show_all": "Show all downloads"
 }

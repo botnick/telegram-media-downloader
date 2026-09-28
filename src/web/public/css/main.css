@@ -6017,3 +6017,117 @@ body:not(.in-chat) [data-chat-only] {
     outline-offset: 2px;
     border-radius: 8px;
 }
+
+/* ── Queue toolbar (js/queue.js) ──────────────────────────────────── */
+/* Status chips: one row that scrolls sideways instead of wrapping to
+   three rows on a phone. */
+.queue-chip-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -4px;
+    padding: 0 4px;
+}
+.queue-chip-row::-webkit-scrollbar {
+    display: none;
+}
+.queue-chip {
+    min-height: 36px;
+    white-space: nowrap;
+}
+@media (pointer: coarse) {
+    .queue-chip {
+        min-height: 40px;
+    }
+}
+/* Divider before the narrower status views (Downloading, Queued, …). */
+.queue-chip--divider {
+    position: relative;
+    margin-left: 11px;
+}
+.queue-chip--divider::before {
+    content: "";
+    position: absolute;
+    left: -9px;
+    top: 20%;
+    bottom: 20%;
+    width: 1px;
+    background: var(--tg-border);
+}
+.queue-chip:focus-visible,
+#queue-more-btn:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+.queue-search-input,
+.queue-sort-select {
+    min-height: 44px;
+}
+/* 16 px on phones so iOS doesn't zoom into the field. */
+@media (max-width: 639.98px) {
+    .queue-search-input {
+        font-size: 16px;
+    }
+    .queue-sort-select {
+        max-width: 38%;
+        padding-left: 10px;
+        padding-right: 6px;
+    }
+}
+.queue-global-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.queue-global-actions button {
+    min-height: 36px;
+    white-space: nowrap;
+}
+/* Inside the ⋮ menu the actions become a labelled list. */
+.queue-more-menu {
+    min-width: 240px;
+    max-width: min(300px, calc(100vw - 24px));
+}
+#queue-actions-menu-slot .queue-global-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--tg-border);
+}
+#queue-actions-menu-slot .queue-global-actions button {
+    min-height: 44px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 10px;
+    font-size: 14px;
+    border-radius: 6px;
+    background: transparent;
+}
+#queue-actions-menu-slot .queue-global-actions button i {
+    font-size: 18px;
+}
+#queue-actions-menu-slot .queue-global-actions button:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+html.theme-light #queue-actions-menu-slot .queue-global-actions button:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.queue-throttle {
+    padding: 8px 10px 10px;
+}
+.queue-throttle input[type="range"] {
+    min-height: 28px;
+}
+.queue-menu-sort {
+    padding: 8px 10px 10px;
+    border-bottom: 1px solid var(--tg-border);
+    margin-bottom: 4px;
+}
+.queue-menu-sort .queue-sort-select {
+    width: 100%;
+    max-width: none;
+}

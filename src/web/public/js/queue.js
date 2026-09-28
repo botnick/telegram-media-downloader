@@ -45,12 +45,29 @@ const RENDER_COALESCE_MS = 60; // collapse WS bursts into one rAF tick
 // downloader flagged as duplicates) — surfaces the rows that produced no
 // new bytes on disk, so the operator can see "what got skipped today".
 const STATUS_FILTERS = [
+    // Default view: everything that still has work to do. Finished rows
+    // (done / failed / duplicates) are one tap away.
+    {
+        id: 'current',
+        i18n: 'queue.chip.current',
+        fallback: 'Active',
+        match: (j) => j.status === 'active' || j.status === 'queued' || j.status === 'paused',
+    },
+    {
+        id: 'failed',
+        i18n: 'queue.chip.failed',
+        fallback: 'Failed',
+        match: (j) => j.status === 'failed',
+    },
+    { id: 'done', i18n: 'queue.chip.done', fallback: 'Done', match: (j) => j.status === 'done' },
     { id: 'all', i18n: 'queue.chip.all', fallback: 'All', match: () => true },
+    // Narrower views, after a divider.
     {
         id: 'active',
         i18n: 'queue.chip.active',
-        fallback: 'Active',
+        fallback: 'Downloading',
         match: (j) => j.status === 'active',
+        secondary: true,
     },
     {
         id: 'queued',
@@ -64,13 +81,6 @@ const STATUS_FILTERS = [
         fallback: 'Paused',
         match: (j) => j.status === 'paused',
     },
-    {
-        id: 'failed',
-        i18n: 'queue.chip.failed',
-        fallback: 'Failed',
-        match: (j) => j.status === 'failed',
-    },
-    { id: 'done', i18n: 'queue.chip.done', fallback: 'Done', match: (j) => j.status === 'done' },
     {
         id: 'dupe',
         i18n: 'queue.chip.dupe',
@@ -107,7 +117,7 @@ let maxSpeedConfig = null;
 
 // View state — survives across navigations to the same page.
 const view = {
-    filter: 'all',
+    filter: 'current', // default: downloading + queued + paused
     sort: 'addedAt', // 'addedAt' | 'size' | 'progress' | 'group' | 'filename'
     sortDir: 'desc',
     search: '',
@@ -738,11 +748,15 @@ function _chipCounts() {
     for (const j of store.values()) {
         if (j.deduped === true) dupe += 1;
     }
+    const active = statusCounts.get('active') || 0;
+    const queued = statusCounts.get('queued') || 0;
+    const paused = statusCounts.get('paused') || 0;
     return {
+        current: active + queued + paused,
         all: store.size,
-        active: statusCounts.get('active') || 0,
-        queued: statusCounts.get('queued') || 0,
-        paused: statusCounts.get('paused') || 0,
+        active,
+        queued,
+        paused,
         failed: statusCounts.get('failed') || 0,
         done: statusCounts.get('done') || 0,
         dupe,
@@ -756,8 +770,8 @@ function renderChips() {
     if (_chipsLang !== lang || host.children.length !== STATUS_FILTERS.length) {
         _chipsLang = lang;
         host.innerHTML = STATUS_FILTERS.map(
-            (f) => `<button type="button" data-chip="${f.id}"
-            class="px-2.5 py-1 text-xs rounded-full border flex items-center gap-1.5">
+            (f) => `<button type="button" data-chip="${f.id}" aria-pressed="false"
+            class="queue-chip${f.secondary ? ' queue-chip--divider' : ''} px-3 text-xs rounded-full border flex items-center gap-1.5 shrink-0">
             <span>${escapeHtml(i18nT(f.i18n, f.fallback))}</span>
             <span data-chip-count class="tabular-nums opacity-80">0</span>
         </button>`,
@@ -773,7 +787,9 @@ function renderChips() {
             // Update the URL without re-dispatching the route handler so
             // back/forward still work but we don't churn the page.
             const target =
-                view.filter === 'all' ? '#/queue' : `#/queue/${encodeURIComponent(view.filter)}`;
+                view.filter === 'current'
+                    ? '#/queue'
+                    : `#/queue/${encodeURIComponent(view.filter)}`;
             if (location.hash !== target) history.replaceState(null, '', target);
             renderChips();
             // Filter changed → row set changed → full re-render. Reset
@@ -791,10 +807,58 @@ function renderChips() {
         const id = btn.dataset.chip;
         const active = view.filter === id;
         for (const c of CHIP_ACTIVE_CLS) btn.classList.toggle(c, active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
         for (const c of CHIP_IDLE_CLS) btn.classList.toggle(c, !active);
         const countEl = btn.querySelector('[data-chip-count]');
         const n = String(counts[id] ?? 0);
         if (countEl && countEl.textContent !== n) countEl.textContent = n;
+    }
+}
+
+// Empty state for the current filter: an empty queue, an empty filter
+// (with a Show all shortcut), or a search with no match.
+function _renderEmpty() {
+    const title = document.getElementById('queue-empty-title');
+    const body = document.getElementById('queue-empty-body');
+    const btn = document.getElementById('queue-empty-show-all');
+    if (!title || !body) return;
+    let t;
+    let b;
+    let showAll = view.filter !== 'all' && store.size > 0;
+    if (store.size === 0) {
+        t = i18nT('queue.empty.title', 'Queue is empty');
+        b = i18nT(
+            'queue.empty.body',
+            'Start the engine or kick off a backfill — every download flows through here.',
+        );
+    } else if (view.search) {
+        t = i18nTf(
+            'queue.empty.search_title',
+            { q: view.search },
+            `No downloads match “${view.search}”`,
+        );
+        b = i18nT('queue.empty.search_body', 'Search looks at file names and chat names.');
+        showAll = view.filter !== 'all';
+    } else if (view.filter === 'current') {
+        t = i18nT('queue.empty.current_title', 'Nothing downloading right now');
+        b = i18nT(
+            'queue.empty.current_body',
+            'Finished, failed and skipped downloads are under Done, Failed and All.',
+        );
+    } else {
+        t = i18nT('queue.empty.filter_title', 'Nothing here');
+        b = i18nT('queue.empty.filter_body', 'No downloads match this filter.');
+    }
+    title.textContent = t;
+    body.textContent = b;
+    if (btn) {
+        btn.classList.toggle('hidden', !showAll);
+        if (!btn.dataset.wired) {
+            btn.dataset.wired = '1';
+            btn.addEventListener('click', () => {
+                document.querySelector('#queue-chips [data-chip="all"]')?.click();
+            });
+        }
     }
 }
 
@@ -813,6 +877,7 @@ function renderRows() {
     if (rows.length === 0) {
         rowsHost.innerHTML = '';
         view.rendered = 0;
+        _renderEmpty();
         if (empty) empty.classList.remove('hidden');
         if (sentinel) sentinel.classList.add('hidden');
         return;
@@ -1146,7 +1211,7 @@ function renderRow(j) {
     // bytes. Suppressed for jobs queued before multi-account routing
     // landed (no accountName) so legacy rows don't render an empty pill.
     const accountChip = j.accountName
-        ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-tg-blue/10 text-tg-blue ml-1.5 inline-flex items-center gap-0.5" title="${escapeHtml(i18nTf('queue.account.tooltip', { name: j.accountName }, `Pulled via account: ${j.accountName}`))}"><i class="ri-user-3-line"></i><span>${escapeHtml(j.accountName)}</span></span>`
+        ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-tg-blue/10 text-tg-blue ml-1.5 inline-flex items-center gap-0.5 shrink-0 max-w-[45%]" title="${escapeHtml(i18nTf('queue.account.tooltip', { name: j.accountName }, `Pulled via account: ${j.accountName}`))}"><i class="ri-user-3-line shrink-0"></i><span class="truncate">${escapeHtml(j.accountName)}</span></span>`
         : '';
 
     // Click-to-view: a finished row whose filePath we know becomes a link
@@ -1260,7 +1325,7 @@ function renderRow(j) {
             ${thumb}
             <div class="min-w-0 flex-1 md:contents">
             <div class="min-w-0">
-                <div class="text-sm text-tg-text truncate" title="${escapeHtml(name)}">${escapeHtml(name)}${accountChip}</div>
+                <div class="text-sm text-tg-text flex items-center min-w-0" title="${escapeHtml(name)}"><span class="truncate min-w-0">${escapeHtml(name)}</span>${accountChip}</div>
                 <div class="text-[11px] text-tg-textSecondary truncate flex items-center gap-1.5 flex-wrap">
                     <span class="truncate">${escapeHtml(groupName)}</span>
                     ${metaLine.map((s) => `<span class="text-tg-textSecondary/40">·</span>${s}`).join('')}
@@ -1563,6 +1628,66 @@ export async function showQueuePage(params = {}) {
     updateNavBadge();
 }
 
+// The ⋮ menu holds the speed limit, the global actions (Pause all …
+// Cancel queued) below 1440 px and the sort picker on phones — moved, not
+// copied, so their ids and listeners stay the same. Wide screens show them
+// inline next to the search box.
+function wireMoreMenu() {
+    const btn = document.getElementById('queue-more-btn');
+    const menu = document.getElementById('queue-more-menu');
+    if (!btn || !menu) return;
+    const close = () => {
+        menu.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+    };
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = menu.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // A tap on an action runs it and closes the menu; the slider stays.
+    menu.addEventListener('click', (e) => {
+        if (e.target.closest('#queue-global-actions button')) close();
+    });
+    document.addEventListener('click', (e) => {
+        if (!menu.classList.contains('open')) return;
+        if (menu.contains(e.target) || btn.contains(e.target)) return;
+        close();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && menu.classList.contains('open')) {
+            close();
+            btn.focus();
+        }
+    });
+    const moves = [
+        // [element id, inline slot, menu slot, media query for "inline"]
+        [
+            'queue-global-actions',
+            'queue-actions-inline',
+            'queue-actions-menu-slot',
+            '(min-width: 1440px)',
+        ],
+        ['queue-sort', 'queue-sort-inline', 'queue-sort-menu-slot', '(min-width: 640px)'],
+    ];
+    for (const [id, inlineId, menuId, query] of moves) {
+        const el = document.getElementById(id);
+        const mq = window.matchMedia(query);
+        const place = () => {
+            const slot = document.getElementById(mq.matches ? inlineId : menuId);
+            if (el && slot && el.parentElement !== slot) slot.appendChild(el);
+            // Hide the empty wrapper so it adds no divider / gap.
+            document
+                .getElementById(menuId)
+                ?.closest('[data-menu-slot]')
+                ?.classList.toggle('hidden', mq.matches);
+            document.getElementById(inlineId)?.classList.toggle('hidden', !mq.matches);
+        };
+        place();
+        mq.addEventListener?.('change', place);
+    }
+}
+
 let _toolbarWired = false;
 function wireOnce() {
     if (_toolbarWired) return;
@@ -1602,6 +1727,7 @@ function wireOnce() {
         .getElementById('queue-clear-finished')
         ?.addEventListener('click', () => runGlobalAction('clear-finished'));
     document.getElementById('queue-retry-all')?.addEventListener('click', () => runRetryAll());
+    wireMoreMenu();
 
     // Header "select all visible" checkbox. Tri-state: empty / partial /
     // full. Clicking from any state goes to "full"; clicking when already

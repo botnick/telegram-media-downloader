@@ -1169,7 +1169,7 @@
     "queue.throttle.label": "ความเร็วสูงสุด",
     "queue.throttle.unlimited": "ไม่จำกัด",
     "queue.chip.all": "ทั้งหมด",
-    "queue.chip.active": "กำลังทำ",
+    "queue.chip.active": "กำลังดาวน์โหลด",
     "queue.chip.queued": "รอคิว",
     "queue.chip.paused": "หยุดชั่วคราว",
     "queue.chip.failed": "ล้มเหลว",
@@ -1945,5 +1945,16 @@
     "backfill.sheet.menu_item": "ดึงย้อนหลังแชตนี้",
     "backfill.modal.help_sheet": "ดาวน์โหลดสื่อจากข้อความที่ส่งก่อนเริ่มติดตาม",
     "backfill.modal.open_sheet": "ดึงข้อความย้อนหลัง…",
-    "common.error": "ข้อผิดพลาด"
+    "common.error": "ข้อผิดพลาด",
+    "queue.chip.current": "กำลังทำงาน",
+    "queue.chips_label": "แสดงรายการดาวน์โหลด",
+    "queue.sort.label": "เรียงตาม",
+    "queue.more": "คำสั่งคิวเพิ่มเติม",
+    "queue.empty.current_title": "ตอนนี้ไม่มีรายการที่กำลังดาวน์โหลด",
+    "queue.empty.current_body": "รายการที่เสร็จแล้ว ล้มเหลว หรือข้ามไป ดูได้ที่ เสร็จสิ้น ล้มเหลว และทั้งหมด",
+    "queue.empty.filter_title": "ไม่มีรายการ",
+    "queue.empty.filter_body": "ไม่มีรายการดาวน์โหลดที่ตรงกับตัวกรองนี้",
+    "queue.empty.search_title": "ไม่พบรายการดาวน์โหลดที่ตรงกับ “{q}”",
+    "queue.empty.search_body": "การค้นหาดูจากชื่อไฟล์และชื่อแชต",
+    "queue.empty.show_all": "แสดงรายการทั้งหมด"
 }

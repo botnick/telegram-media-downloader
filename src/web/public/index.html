@@ -1943,50 +1943,86 @@
                      visible rows + a small over-scroll buffer (see
                      js/queue.js for the math). -->
                 <div id="page-queue" class="hidden max-w-5xl mx-auto px-3 sm:px-4">
-                    <!-- Top toolbar — chips, sort, search, global actions -->
+                    <!-- Top toolbar — status chips (one scrollable row; the default
+                         "Active" view shows downloading + queued + paused), then
+                         search, sort and the ⋮ menu (speed limit, and the global
+                         actions below 1280 px — js/queue.js moves them). -->
                     <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div id="queue-chips" class="flex flex-wrap gap-1.5 mb-3"></div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <div class="relative flex-1 min-w-[180px]">
-                                <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
-                                <input id="queue-search" type="text" autocomplete="off"
-                                    class="tg-input w-full pl-9 text-sm"
+                        <div id="queue-chips" class="queue-chip-row" role="toolbar" data-i18n-aria-label="queue.chips_label" aria-label="Show downloads"></div>
+                        <div class="flex items-center gap-2 mt-3">
+                            <div class="relative flex-1 min-w-0">
+                                <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary" aria-hidden="true"></i>
+                                <input id="queue-search" type="search" autocomplete="off"
+                                    class="tg-input w-full pl-9 text-sm queue-search-input"
                                     data-i18n-placeholder="queue.search_placeholder"
-                                    placeholder="Search filename or group…">
+                                    placeholder="Search filename or group…"
+                                    data-i18n-aria-label="queue.search_placeholder" aria-label="Search filename or group…">
                             </div>
-                            <select id="queue-sort" class="tg-input text-sm">
+                            <div id="queue-sort-inline" class="shrink-0">
+                            <select id="queue-sort" class="tg-input text-sm w-auto queue-sort-select"
+                                data-i18n-aria-label="queue.sort.label" aria-label="Sort by">
                                 <option value="addedAt" data-i18n="queue.sort.added">Added time</option>
                                 <option value="size" data-i18n="queue.sort.size">Size</option>
                                 <option value="progress" data-i18n="queue.sort.progress">Progress</option>
                                 <option value="group" data-i18n="queue.sort.group">Group</option>
                                 <option value="filename" data-i18n="queue.sort.filename">Filename</option>
                             </select>
-                            <div class="flex items-center gap-1.5 ml-auto">
-                                <button id="queue-pause-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.pause_all" title="Pause all">
-                                    <i class="ri-pause-line"></i><span class="hidden sm:inline" data-i18n="queue.action.pause_all">Pause all</span>
+                            </div>
+                            <div id="queue-actions-inline" class="shrink-0">
+                                <div id="queue-global-actions" class="queue-global-actions">
+                                    <button id="queue-pause-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.pause_all" title="Pause all">
+                                        <i class="ri-pause-line" aria-hidden="true"></i><span data-i18n="queue.action.pause_all">Pause all</span>
+                                    </button>
+                                    <button id="queue-resume-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.resume_all" title="Resume all">
+                                        <i class="ri-play-line" aria-hidden="true"></i><span data-i18n="queue.action.resume_all">Resume all</span>
+                                    </button>
+                                    <button id="queue-retry-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        data-i18n-title="queue.action.retry_all" title="Retry all failed" disabled>
+                                        <i class="ri-refresh-line" aria-hidden="true"></i><span data-i18n="queue.action.retry_all">Retry all</span>
+                                    </button>
+                                    <button id="queue-clear-finished" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.clear_finished" title="Clear finished">
+                                        <i class="ri-check-double-line" aria-hidden="true"></i><span data-i18n="queue.action.clear_finished">Clear finished</span>
+                                    </button>
+                                    <button id="queue-cancel-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.cancel_all" title="Cancel all queued">
+                                        <i class="ri-close-circle-line" aria-hidden="true"></i><span data-i18n="queue.action.cancel_all">Cancel queued</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="relative shrink-0">
+                                <button id="queue-more-btn" type="button"
+                                    class="w-11 h-11 rounded-lg bg-tg-bg/60 hover:bg-tg-hover flex items-center justify-center"
+                                    aria-haspopup="menu" aria-expanded="false" aria-controls="queue-more-menu"
+                                    data-i18n-aria-label="queue.more" aria-label="More queue actions"
+                                    data-i18n-title="queue.more" title="More queue actions">
+                                    <i class="ri-more-2-fill text-lg text-tg-textSecondary" aria-hidden="true"></i>
                                 </button>
-                                <button id="queue-resume-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.resume_all" title="Resume all">
-                                    <i class="ri-play-line"></i><span class="hidden sm:inline" data-i18n="queue.action.resume_all">Resume all</span>
-                                </button>
-                                <button id="queue-retry-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                                    data-i18n-title="queue.action.retry_all" title="Retry all failed" disabled>
-                                    <i class="ri-refresh-line"></i><span class="hidden sm:inline" data-i18n="queue.action.retry_all">Retry all</span>
-                                </button>
-                                <button id="queue-clear-finished" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.clear_finished" title="Clear finished">
-                                    <i class="ri-check-double-line"></i><span class="hidden sm:inline" data-i18n="queue.action.clear_finished">Clear finished</span>
-                                </button>
-                                <button id="queue-cancel-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.cancel_all" title="Cancel all queued">
-                                    <i class="ri-close-circle-line"></i><span class="hidden sm:inline" data-i18n="queue.action.cancel_all">Cancel queued</span>
-                                </button>
+                                <div id="queue-more-menu" class="view-mode-menu queue-more-menu" role="menu" aria-labelledby="queue-more-btn">
+                                    <div data-menu-slot class="queue-menu-sort">
+                                        <label for="queue-sort" class="text-xs text-tg-textSecondary flex items-center gap-1.5 mb-1">
+                                            <i class="ri-sort-desc" aria-hidden="true"></i><span data-i18n="queue.sort.label">Sort by</span>
+                                        </label>
+                                        <div id="queue-sort-menu-slot"></div>
+                                    </div>
+                                    <div data-menu-slot><div id="queue-actions-menu-slot"></div></div>
+                                    <div class="queue-throttle" role="group" aria-labelledby="queue-throttle-label">
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <label id="queue-throttle-label" for="queue-throttle" class="text-xs text-tg-textSecondary flex items-center gap-1.5">
+                                                <i class="ri-speed-up-line" aria-hidden="true"></i><span data-i18n="queue.throttle.label">Max speed</span>
+                                            </label>
+                                            <span id="queue-throttle-value" class="text-xs text-tg-text tabular-nums" data-i18n="queue.throttle.unlimited">Unlimited</span>
+                                        </div>
+                                        <input id="queue-throttle" type="range" min="0" max="52428800" step="262144" value="0" class="w-full accent-tg-blue">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -2064,22 +2100,21 @@
                                 <i class="ri-loader-4-line animate-spin mr-2"></i>
                                 <span data-i18n="queue.loading_more">Loading more…</span>
                             </div>
-                            <div id="queue-empty" class="hidden text-center py-12">
-                                <i class="ri-download-cloud-2-line text-4xl text-tg-textSecondary mb-2"></i>
-                                <p class="text-sm text-tg-textSecondary" data-i18n="queue.empty.title">Queue is empty</p>
-                                <p class="text-xs text-tg-textSecondary opacity-70 mt-1" data-i18n="queue.empty.body">Start the engine or kick off a backfill — every download flows through here.</p>
+                            <div id="queue-empty" class="hidden text-center py-12 px-4">
+                                <i class="ri-download-cloud-2-line text-4xl text-tg-textSecondary mb-2" aria-hidden="true"></i>
+                                <p id="queue-empty-title" class="text-sm text-tg-text font-medium">Queue is empty</p>
+                                <p id="queue-empty-body" class="text-xs text-tg-textSecondary mt-1 max-w-sm mx-auto">Start the engine or kick off a backfill — every download flows through here.</p>
+                                <button id="queue-empty-show-all" type="button" class="hidden tg-btn-secondary text-sm px-4 min-h-[44px] mt-4 inline-flex items-center gap-2">
+                                    <i class="ri-list-check-2" aria-hidden="true"></i><span data-i18n="queue.empty.show_all">Show all downloads</span>
+                                </button>
                             </div>
                         </div>
                     </section>
 
-                    <!-- Bottom strip: aggregate counters + speed throttle -->
+                    <!-- Bottom strip: aggregate counters. The speed limit moved
+                         into the ⋮ menu of the toolbar (same #queue-throttle). -->
                     <section class="bg-tg-panel rounded-xl p-3 mt-3 flex flex-wrap items-center gap-3">
                         <div id="queue-aggregate" class="text-xs text-tg-textSecondary tabular-nums flex items-center gap-3 flex-wrap"></div>
-                        <div class="flex items-center gap-2 ml-auto">
-                            <label for="queue-throttle" class="text-xs text-tg-textSecondary" data-i18n="queue.throttle.label">Max speed</label>
-                            <input id="queue-throttle" type="range" min="0" max="52428800" step="262144" value="0" class="w-32 accent-tg-blue">
-                            <span id="queue-throttle-value" class="text-xs text-tg-text tabular-nums w-20 text-right" data-i18n="queue.throttle.unlimited">Unlimited</span>
-                        </div>
                     </section>
                 </div>
 
