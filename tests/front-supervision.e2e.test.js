@@ -76,7 +76,12 @@ describe.skipIf(SKIP)('tgdl-core front server supervision', () => {
         dataDir = makeDataDir('tgdl-front-sup-');
         seedParity(dataDir);
         const port = await freePort();
-        srv = await startServer({ dataDir, port, env: { TGDL_CORE_BIN: bin } });
+        // The second case needs the fallback that TGDL_FRONT_REQUIRED (CI) disables.
+        srv = await startServer({
+            dataDir,
+            port,
+            env: { TGDL_CORE_BIN: bin, TGDL_FRONT_REQUIRED: '' },
+        });
         const h0 = await health(port);
         expect(h0.state).toBe('running');
 
