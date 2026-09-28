@@ -57,6 +57,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The image above is built for the runner's platform only. The
+      # tgdl-core stage cross-compiles on the build host, so checking the
+      # arm64 build of that stage needs no QEMU and takes seconds.
+      - name: tgdl-core stage builds for linux/arm64
+        shell: bash
+        run: |
+          set -e
+          docker buildx build --platform linux/arm64 --target gocore-bin \
+            -o type=local,dest=/tmp/gocore-arm64 .
+          file /tmp/gocore-arm64/tgdl-core | tee /dev/stderr | grep -q 'ARM aarch64'
+
       # Prove the image actually runs — `docker build` only verifies the
       # Dockerfile parses, not that `node src/web/server.js` can read its
       # own source. We hit a permissions bug (mode 0 on /app/src/*) that
@@ -116,6 +127,30 @@ jobs:
                 echo "FAIL: no node process running as node user after 10s of probing"
                 echo "--- final ps -ef ---"
                 echo "$PS_OUT"
+                docker logs smoke
+                docker stop smoke >/dev/null
+                exit 1
+              fi
+
+              # tgdl-core (Go companion) is baked in, runs for the node
+              # user, and the app picks it up from /app/bin (no download).
+              if ! docker exec -u node smoke /app/bin/tgdl-core version; then
+                echo "FAIL: /app/bin/tgdl-core missing or not executable"
+                docker logs smoke
+                docker stop smoke >/dev/null
+                exit 1
+              fi
+              FOUND_CORE=0
+              for j in $(seq 1 15); do
+                if docker logs smoke 2>&1 | grep -q 'tgdl-core .* running (pid .*, docker binary)'; then
+                  echo "OK: app spawned tgdl-core from /app/bin after ${j} probe(s)"
+                  FOUND_CORE=1
+                  break
+                fi
+                sleep 1
+              done
+              if [ "$FOUND_CORE" != "1" ]; then
+                echo "FAIL: the app did not start /app/bin/tgdl-core"
                 docker logs smoke
                 docker stop smoke >/dev/null
                 exit 1
