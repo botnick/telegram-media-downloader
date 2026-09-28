@@ -261,6 +261,8 @@ import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
 import { createSwrCache } from './lib/swr-cache.js';
 import { lookupEntityAcrossClients } from './lib/entity-lookup.js';
+import * as chatAccess from '../core/chat-access.js';
+import { destinationKey } from '../core/forwarder.js';
 import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
@@ -1874,7 +1876,17 @@ async function getAccountManager() {
 async function refreshAccountsAndEngine() {
     try {
         const am = await getAccountManager();
+        const before = new Set([...am.clients.keys()].map(String));
         await am.reloadAccounts();
+        // Answers from a removed account no longer count; a new account
+        // gets a (one-per-minute) re-check of every chat that can't be
+        // reached — it may be a member.
+        try {
+            const now = [...am.clients.keys()].map(String);
+            chatAccess.accountsChanged(now, { added: now.some((id) => !before.has(id)) });
+        } catch {
+            /* bookkeeping only */
+        }
         if (runtime?.state === 'running' && am.count > 0) {
             await runtime.restart({ config: loadConfig(), accountManager: am });
         }
@@ -2624,6 +2636,18 @@ app.post('/api/history', async (req, res) => {
                 code: 'ALREADY_RUNNING',
                 jobId: _activeBackfillsByGroup.get(groupKey),
             });
+        }
+        // A chat no account can read: refuse up front (no Telegram call)
+        // and say why — the dashboard shows the reason + "Check again".
+        {
+            const acc = _accessForId(groupKey, loadConfig());
+            if (chatAccess.isBlockingState(acc.state)) {
+                return res.status(409).json({
+                    error: `This chat can't be reached (${acc.state}${acc.code ? `: ${acc.code}` : ''}) — no account can read it`,
+                    code: 'CHAT_UNREACHABLE',
+                    access: acc,
+                });
+            }
         }
         // limit === 0 (or "0") means "no limit" → backfill the entire history.
         // Anything else is clamped into a sane positive range.
@@ -3378,10 +3402,41 @@ app.post('/api/queue/batch', async (req, res) => {
 
 // ====== Stories ============================================================
 
+// Stories of a chat the dashboard already knows no account can read:
+// answer from the access registry instead of spending the getEntity +
+// GetPeerStories calls. A @username is matched against the cached dialogs
+// list (no lookup); anything unknown goes to Telegram as before.
+function _storiesTargetAccess(ref) {
+    const r = String(ref || '').trim();
+    if (!r) return null;
+    let id = null;
+    if (/^-?\d+$/.test(r)) id = r;
+    else {
+        const u = r.replace(/^@/, '').toLowerCase();
+        const d = (_dialogsResponseCache.body?.dialogs || []).find(
+            (x) => String(x.username || '').toLowerCase() === u,
+        );
+        if (d) id = String(d.id);
+    }
+    if (!id) return null;
+    const access = _accessForId(id, loadConfig());
+    return chatAccess.isBlockingState(access.state) ? { id, access } : null;
+}
+
+function _storiesUnreachable(res, blocked) {
+    return res.status(409).json({
+        error: `This chat can't be reached (${blocked.access.state}) — no account can read it`,
+        code: 'CHAT_UNREACHABLE',
+        access: blocked.access,
+    });
+}
+
 app.post('/api/stories/user', async (req, res) => {
     try {
         const { username } = req.body || {};
         if (!username) return res.status(400).json({ error: 'username required' });
+        const blocked = _storiesTargetAccess(username);
+        if (blocked) return _storiesUnreachable(res, blocked);
         const am = await getAccountManager();
         if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
         const r = await listUserStories(am.getDefaultClient(), username);
@@ -3410,6 +3465,8 @@ app.post('/api/stories/download', async (req, res) => {
         if (!username || !Array.isArray(storyIds) || storyIds.length === 0) {
             return res.status(400).json({ error: 'username and storyIds required' });
         }
+        const blockedTarget = _storiesTargetAccess(username);
+        if (blockedTarget) return _storiesUnreachable(res, blockedTarget);
         const am = await getAccountManager();
         if (am.count === 0) return res.status(409).json({ error: 'No Telegram accounts loaded' });
         const client = am.getDefaultClient();
@@ -3581,6 +3638,20 @@ app.post('/api/download/url', async (req, res) => {
         for (const raw of list) {
             try {
                 const parsed = parseTelegramUrl(raw);
+                // A t.me/c/<id> link into a chat no account can read: say so
+                // without asking every account again.
+                if (/^-?\d+$/.test(String(parsed.chatRef))) {
+                    const acc = _accessForId(String(parsed.chatRef), config);
+                    if (chatAccess.isBlockingState(acc.state)) {
+                        results.push({
+                            url: raw,
+                            ok: false,
+                            error: `This chat can't be reached (${acc.state})`,
+                            code: 'CHAT_UNREACHABLE',
+                        });
+                        continue;
+                    }
+                }
                 // Try every account until one can read the chat
                 let resolved = null;
                 let workingClient = null;
@@ -3997,7 +4068,7 @@ app.get('/api/dialogs', async (req, res) => {
             _dialogsResponseCache.body &&
             Math.max(0, now - _dialogsResponseCache.at) < DIALOG_CACHE_TTL_MS
         ) {
-            return res.json(_dialogsResponseCache.body);
+            return res.json(_dialogsWithAccess(_dialogsResponseCache.body, req.role));
         }
 
         // Collect every connected client + its account metadata. Manage
@@ -4061,6 +4132,11 @@ app.get('/api/dialogs', async (req, res) => {
                 return { accountId: p.id, accountMeta: p.meta, active: a, archived: ar };
             }),
         );
+
+        // Dialogs sync — free access information: a chat that's back in an
+        // account's list is reachable again; a configured chat that shows
+        // up forbidden / migrated is recorded without another call.
+        _syncAccessFromDialogs(perClient, configGroups);
 
         // Build maps keyed by dialog id:
         //   firstDialog[id] -> { d, archived } picked on first sighting (active wins over archived)
@@ -4164,10 +4240,363 @@ app.get('/api/dialogs', async (req, res) => {
 
         const body = { success: true, dialogs: results, allowDM, accounts };
         _dialogsResponseCache = { at: now, body };
-        res.json(body);
+        res.json(_dialogsWithAccess(body, req.role));
     } catch (error) {
         console.error('GET /api/dialogs:', error);
         res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+// ---- Chat access state (src/core/chat-access.js) ---------------------------
+//
+// `access` on /api/groups, /api/dialogs and /api/chats/lookup rows:
+// `{ state: 'ok' }` for a chat nothing is known against, otherwise
+// `{ state, code, detail, migratedTo, firstSeenAt, checkedAt, nextCheckAt,
+// checks, accounts:[{id,state,code,at}] }`. Older installs' auto-disabled
+// entries (`suspended`, `_resolveFailedAt`) map to the same states with
+// `legacy: true`. Account ids are left out for guest sessions.
+
+function _accessForGroup(group, role) {
+    const a = chatAccess.effectiveAccess(group);
+    if (role === 'guest' && a.accounts) return { ...a, accounts: [] };
+    return a;
+}
+
+function _accessForId(id, config, role) {
+    const g = (config?.groups || []).find((x) => String(x.id) === String(id));
+    if (g) return _accessForGroup(g, role);
+    const a = chatAccess.accessOf(id);
+    if (role === 'guest' && a.accounts) return { ...a, accounts: [] };
+    return a;
+}
+
+// Computed per response (a Map lookup per row) so the 5-minute dialogs
+// cache never serves a stale badge.
+function _dialogsWithAccess(body, role) {
+    if (!body || !Array.isArray(body.dialogs)) return body;
+    let config = {};
+    try {
+        config = loadConfig();
+    } catch {
+        /* fall back to registry-only answers */
+    }
+    const byId = new Map((config.groups || []).map((g) => [String(g.id), g]));
+    return {
+        ...body,
+        dialogs: body.dialogs.map((d) => {
+            const g = byId.get(String(d.id));
+            let access = g ? _accessForGroup(g, role) : chatAccess.accessOf(d.id);
+            if (role === 'guest' && access.accounts) access = { ...access, accounts: [] };
+            return { ...d, access };
+        }),
+    };
+}
+
+/** perClient: [{ accountId, active, archived }] as fetched for dialogs. */
+function _syncAccessFromDialogs(perClient, configGroups) {
+    try {
+        const configIds = new Set((configGroups || []).map((g) => String(g.id)));
+        for (const p of perClient || []) {
+            if (!p || p.accountId === 'legacy') continue;
+            chatAccess.syncFromDialogs(p.accountId, [...(p.active || []), ...(p.archived || [])], {
+                configIds,
+            });
+        }
+    } catch (e) {
+        console.warn('[chat-access] dialogs sync failed:', e?.message || e);
+    }
+}
+
+// Older versions switched a chat off with `suspended` / `_resolveFailedAt`
+// when no account could open it. Once it's reachable again those flags go
+// (so it can be switched back on); `enabled` is left as the operator set it.
+function _clearLegacyAccessFlags(ids) {
+    try {
+        const want = new Set((ids || []).map(String));
+        const cfg = loadConfig();
+        let dirty = false;
+        for (const g of cfg.groups || []) {
+            if (!g || !want.has(String(g.id)) || String(g.id).startsWith('unknown:')) continue;
+            if (chatAccess.isBlocked(g.id)) continue;
+            if (g.suspended || g._resolveFailedAt || g._resolveFailedReason) {
+                delete g.suspended;
+                delete g._resolveFailedAt;
+                delete g._resolveFailedReason;
+                dirty = true;
+            }
+        }
+        if (dirty) {
+            saveConfig(cfg);
+            _dialogsResponseCache = { at: 0, body: null };
+            broadcast({ type: 'config_updated' });
+        }
+    } catch (e) {
+        console.warn('[chat-access] legacy flag cleanup failed:', e?.message || e);
+    }
+}
+
+// Access changes (polling, a download, the re-checker, a dialogs sync…)
+// fan out as one coalesced `chat_access_changed` WS event so every open
+// dashboard repaints its badges.
+const _accessChangedIds = new Set();
+let _accessFlushTimer = null;
+chatAccess.accessEvents.on('change', (e) => {
+    _accessChangedIds.add(String(e.id));
+    if (_accessFlushTimer) return;
+    _accessFlushTimer = setTimeout(() => {
+        _accessFlushTimer = null;
+        const ids = [..._accessChangedIds];
+        _accessChangedIds.clear();
+        const back = ids.filter((id) => !id.startsWith('dest:') && !chatAccess.isBlocked(id));
+        if (back.length) _clearLegacyAccessFlags(back);
+        broadcast({ type: 'chat_access_changed', ids });
+    }, 500);
+    _accessFlushTimer.unref?.();
+});
+
+/**
+ * Re-check one chat now: every account (pinned first), one call each,
+ * stopping at the first that can read it. Through the running monitor when
+ * there is one (so it re-binds the working account right away).
+ */
+async function _recheckChat(id) {
+    const idStr = String(id);
+    const config = loadConfig();
+    const cfgGroup = (config.groups || []).find((g) => String(g.id) === idStr) || null;
+    const monitor = runtime.state === 'running' ? runtime._monitor : null;
+    let r;
+    if (monitor) {
+        const mg = (monitor.config?.groups || []).find((g) => String(g.id) === idStr) ||
+            cfgGroup || { id };
+        r = await monitor.recheckGroup(mg);
+    } else {
+        let pairs = [];
+        try {
+            const am = await getAccountManager();
+            const pinned = String(cfgGroup?.monitorAccount || '');
+            pairs = [...am.clients.entries()]
+                .sort(
+                    (a, b) => (String(b[0]) === pinned ? 1 : 0) - (String(a[0]) === pinned ? 1 : 0),
+                )
+                .map(([accountId, client]) => ({ accountId, client }));
+        } catch {
+            /* no accounts — nothing to ask */
+        }
+        r = await chatAccess.probeChatAccess(cfgGroup ? cfgGroup.id : idStr, pairs, {
+            isRecheck: true,
+        });
+    }
+    if (r.client) {
+        _clearLegacyAccessFlags([idStr]);
+        // Its avatar / name can load again.
+        entityCache.delete(idStr);
+        _photoMissUntil.delete(idStr);
+        downloadProfilePhoto(idStr, { ignoreAccess: true }).catch(() => {});
+    }
+    const access = cfgGroup
+        ? _accessForGroup(loadConfig().groups.find((g) => String(g.id) === idStr) || cfgGroup)
+        : chatAccess.accessOf(idStr);
+    return {
+        id: idStr,
+        state: r.client ? 'ok' : access.state,
+        access,
+        accountId: r.accountId ?? null,
+        // No account gave a definite answer (flood wait, timeout, no
+        // account connected) — nothing was learned; try again later.
+        inconclusive: !r.client && !r.results.some((x) => x.state !== 'unknown'),
+        results: r.results,
+    };
+}
+
+// Configured chats that can't be reached (Chats → Needs attention, the
+// Settings → Tools attention list). `?countOnly=1` → just the numbers.
+app.get('/api/chats/access', (req, res) => {
+    try {
+        const config = loadConfig();
+        const items = [];
+        const byState = {};
+        for (const g of config.groups || []) {
+            if (!g || String(g.id).startsWith('unknown:')) continue;
+            const access = _accessForGroup(g, req.role);
+            if (!chatAccess.isBlockingState(access.state)) continue;
+            byState[access.state] = (byState[access.state] || 0) + 1;
+            items.push({
+                id: String(g.id),
+                name: g.name || String(g.id),
+                type: g.type || dialogsTypeFor(g.id),
+                enabled: g.enabled !== false,
+                access,
+            });
+        }
+        if (req.query.countOnly === '1') {
+            return res.json({ success: true, total: items.length, byState });
+        }
+        res.json({ success: true, total: items.length, byState, items });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || 'Internal error' });
+    }
+});
+
+// "Check again". `{id}` → checked now, answer in the response.
+// `{ids:[…]}` or `{all:true}` (every configured chat that can't be
+// reached) → a background job, one chat every 2 s so a long list is never
+// a burst; progress on `chat_access_recheck_progress` / `_done`.
+const RECHECK_BULK_GAP_MS = 2000;
+const RECHECK_BULK_MAX = 500;
+app.post('/api/chats/access/recheck', async (req, res) => {
+    const body = req.body || {};
+    if (body.id != null && body.id !== '' && !Array.isArray(body.ids) && !body.all) {
+        try {
+            const r = await _recheckChat(body.id);
+            return res.json({ success: true, ...r });
+        } catch (e) {
+            const { status, body: errBody } = tgAuthErrorBody(e);
+            return res
+                .status(status === 400 ? 500 : status)
+                .json(errBody.error ? errBody : { error: e?.message || 'Check failed' });
+        }
+    }
+    let ids = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : [];
+    if (body.all) {
+        const config = loadConfig();
+        ids = (config.groups || [])
+            .filter(
+                (g) =>
+                    g &&
+                    !String(g.id).startsWith('unknown:') &&
+                    chatAccess.isBlockingState(_accessForGroup(g).state),
+            )
+            .map((g) => String(g.id));
+    }
+    ids = [...new Set(ids)].slice(0, RECHECK_BULK_MAX);
+    if (!ids.length) return res.json({ success: true, started: false, total: 0 });
+    const tracker = _jobTrackers.chatAccessRecheck;
+    const r = tracker.tryStart(async ({ onProgress }) => {
+        const results = [];
+        let reachable = 0;
+        onProgress({ processed: 0, total: ids.length, reachable: 0 });
+        for (let i = 0; i < ids.length; i++) {
+            if (i > 0) await new Promise((r2) => setTimeout(r2, RECHECK_BULK_GAP_MS));
+            let one;
+            try {
+                one = await _recheckChat(ids[i]);
+            } catch (e) {
+                one = { id: ids[i], state: 'unknown', error: e?.message || String(e) };
+            }
+            if (one.state === 'ok') reachable += 1;
+            results.push({ id: one.id, state: one.state, inconclusive: !!one.inconclusive });
+            onProgress({ processed: i + 1, total: ids.length, reachable });
+        }
+        return { total: ids.length, reachable, results };
+    });
+    if (!r.started) {
+        return res
+            .status(409)
+            .json({ error: 'A check is already running', code: 'ALREADY_RUNNING' });
+    }
+    res.json({ success: true, started: true, total: ids.length });
+});
+
+app.get('/api/chats/access/recheck/status', (req, res) => {
+    res.json(_jobTrackers.chatAccessRecheck.getStatus());
+});
+
+// Stop monitoring (enabled:false) — config only.
+app.post('/api/chats/access/stop', async (req, res) => {
+    const ids = new Set(Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []);
+    if (!ids.size) return res.status(400).json({ error: 'ids[] required' });
+    try {
+        const config = loadConfig();
+        let n = 0;
+        for (const g of config.groups || []) {
+            if (g && ids.has(String(g.id)) && g.enabled !== false) {
+                g.enabled = false;
+                n += 1;
+            }
+        }
+        if (n) {
+            await writeConfigAtomic(config);
+            _dialogsResponseCache = { at: 0, body: null };
+            broadcast({ type: 'config_updated' });
+        }
+        res.json({ success: true, stopped: n });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || 'Internal error' });
+    }
+});
+
+// Remove from the list — the config entry only. Downloaded files and
+// their gallery rows stay; nothing is left or unsubscribed in Telegram.
+app.post('/api/chats/access/remove', async (req, res) => {
+    const ids = new Set(Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []);
+    if (!ids.size) return res.status(400).json({ error: 'ids[] required' });
+    try {
+        const config = loadConfig();
+        const before = (config.groups || []).length;
+        config.groups = (config.groups || []).filter((g) => !g || !ids.has(String(g.id)));
+        const removed = before - config.groups.length;
+        if (removed) {
+            await writeConfigAtomic(config);
+            _dialogsResponseCache = { at: 0, body: null };
+            broadcast({ type: 'config_updated' });
+        }
+        for (const id of ids) chatAccess.clearAccess(id);
+        res.json({ success: true, removed });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || 'Internal error' });
+    }
+});
+
+// A basic group upgraded to a supergroup: add the new group with the old
+// one's settings (media types, forwarding, topics, accounts, rescue) and
+// switch the old one off. Its files stay where they are.
+app.post('/api/chats/:id/follow-migration', async (req, res) => {
+    try {
+        const idStr = String(req.params.id);
+        const config = loadConfig();
+        const old = (config.groups || []).find((g) => String(g.id) === idStr);
+        if (!old) return res.status(404).json({ error: 'Chat not in the list' });
+        const access = _accessForGroup(old);
+        if (access.state !== 'migrated' || !access.migratedTo) {
+            return res
+                .status(409)
+                .json({ error: 'This chat was not moved to a new group', code: 'NOT_MIGRATED' });
+        }
+        const newId = String(access.migratedTo);
+        let target = (config.groups || []).find((g) => String(g.id) === newId);
+        const added = !target;
+        if (!target) {
+            const keep = [
+                'filters',
+                'autoForward',
+                'trackUsers',
+                'topics',
+                'rescueMode',
+                'rescueRetentionHours',
+                'monitorAccount',
+                'forwardAccount',
+                'ownerPeerId',
+                'backupPeerId',
+            ];
+            target = {
+                id: Number.isSafeInteger(Number(newId)) ? Number(newId) : newId,
+                name: old.name,
+                enabled: old.enabled !== false,
+            };
+            for (const k of keep) {
+                if (old[k] !== undefined) target[k] = JSON.parse(JSON.stringify(old[k]));
+            }
+            config.groups.push(target);
+        } else if (old.enabled !== false) {
+            target.enabled = true;
+        }
+        old.enabled = false;
+        await writeConfigAtomic(config);
+        _dialogsResponseCache = { at: 0, body: null };
+        broadcast({ type: 'config_updated' });
+        res.json({ success: true, added, group: target, previous: { id: old.id, enabled: false } });
+    } catch (e) {
+        res.status(500).json({ error: e?.message || 'Internal error' });
     }
 });
 
@@ -4203,6 +4632,7 @@ function _chatDescriptor(entity, config) {
         enabled: cfg?.enabled === true,
         suspended: cfg?.suspended === true,
         dmDisabled: isUser && config.allowDmDownloads !== true,
+        access: _accessForId(id, config),
     };
 }
 
@@ -4349,9 +4779,13 @@ const _dialogsNames = createSwrCache({
 });
 async function loadDialogsNames() {
     const clients = [];
+    const accountIdOf = new Map(); // client → accountId
     try {
         const am = await getAccountManager();
-        for (const [, c] of am.clients) clients.push(c);
+        for (const [id, c] of am.clients) {
+            clients.push(c);
+            accountIdOf.set(c, id);
+        }
     } catch {
         /* no AM — fresh install */
     }
@@ -4360,21 +4794,32 @@ async function loadDialogsNames() {
 
     // Accounts in parallel; results keep account order so first-wins
     // naming stays deterministic.
+    const live = clients.filter((c) => c?.connected);
     const perClient = await Promise.all(
-        clients
-            .filter((c) => c?.connected)
-            .map(async (client) => {
-                try {
-                    const [active, archived] = await Promise.all([
-                        client.getDialogs({ limit: 500 }).catch(() => []),
-                        client.getDialogs({ limit: 200, archived: true }).catch(() => []),
-                    ]);
-                    return [...active, ...archived];
-                } catch {
-                    return []; /* one bad client doesn't kill the whole sweep */
-                }
-            }),
+        live.map(async (client) => {
+            try {
+                const [active, archived] = await Promise.all([
+                    client.getDialogs({ limit: 500 }).catch(() => []),
+                    client.getDialogs({ limit: 200, archived: true }).catch(() => []),
+                ]);
+                return [...active, ...archived];
+            } catch {
+                return []; /* one bad client doesn't kill the whole sweep */
+            }
+        }),
     );
+    // The same free access sync /api/dialogs does (this refresh runs
+    // every few minutes while the dashboard is open).
+    try {
+        _syncAccessFromDialogs(
+            live
+                .map((c, i) => ({ accountId: accountIdOf.get(c), active: perClient[i] }))
+                .filter((p) => p.accountId),
+            loadConfig().groups,
+        );
+    } catch {
+        /* names still load */
+    }
     const byId = new Map();
     const typeById = new Map();
     for (const dialogs of perClient) {
@@ -4506,6 +4951,16 @@ app.get('/api/groups', async (req, res) => {
                     // appended below.
                     peerId: null,
                     peerName: null,
+                    // Can we still use this chat? (see _accessForGroup)
+                    access: _accessForGroup(group, req.role),
+                    // Its auto-forward destination refused our posts
+                    // (forwarding is paused until its re-check).
+                    forwardAccess: (() => {
+                        const k = destinationKey(group.autoForward?.destination);
+                        if (!k || !chatAccess.isBlocked(k)) return undefined;
+                        const a = chatAccess.accessOf(k);
+                        return { state: a.state, code: a.code, nextCheckAt: a.nextCheckAt };
+                    })(),
                 };
             }),
         );
@@ -5758,6 +6213,7 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
 
         // 4. Remove from config
         config.groups = (config.groups || []).filter((g) => String(g.id) !== String(groupId));
+        chatAccess.clearAccess(groupId);
         await writeConfigAtomic(config);
 
         // 5. Delete profile photo
@@ -6101,7 +6557,11 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         const pendingDbUpdates = [];
         onProgress({ processed: 0, total, updated: 0, stage: 'resolving' });
         for (const id of ids) {
-            const resolved = await resolveEntityAcrossAccounts(id);
+            // Chats no account can read are skipped — no name or photo to
+            // fetch, only calls to spend.
+            const resolved = chatAccess.isBlocked(id)
+                ? null
+                : await resolveEntityAcrossAccounts(id);
             if (resolved) {
                 const e = resolved.entity;
                 const realName =
@@ -9704,7 +10164,10 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
 function _classifyRecoveryGroup(g, dbStats) {
     const id = String(g.id);
     const isSynthetic = id.startsWith('unknown:');
-    const failed = !!g._resolveFailedAt;
+    // Chats the access registry has paused (no account can read them) are
+    // listed here too, with the same reason the Chats page shows.
+    const blocked = !isSynthetic && chatAccess.isBlocked(id) ? chatAccess.accessOf(id) : null;
+    const failed = !!g._resolveFailedAt || !!blocked;
     if (!isSynthetic && !failed) return null;
     const stats = dbStats.get(id) || { files: 0, lastSeen: null };
     return {
@@ -9712,8 +10175,11 @@ function _classifyRecoveryGroup(g, dbStats) {
         name: g.name || id,
         enabled: !!g.enabled,
         isSynthetic,
-        resolveFailedAt: g._resolveFailedAt || null,
-        resolveFailedReason: g._resolveFailedReason || (isSynthetic ? 'index_miss' : null),
+        resolveFailedAt: blocked?.firstSeenAt || g._resolveFailedAt || null,
+        resolveFailedReason: blocked
+            ? `access:${blocked.state}:${blocked.code || ''}`
+            : g._resolveFailedReason || (isSynthetic ? 'index_miss' : null),
+        access: blocked || null,
         monitorAccount: g.monitorAccount || null,
         fileCount: stats.files || 0,
         lastSeenAt: stats.lastSeen || null,
@@ -9869,6 +10335,7 @@ app.post('/api/maintenance/recovery/delete', async (req, res) => {
         cfg.groups = (cfg.groups || []).filter((g) => !ids.includes(String(g.id)));
         const removed = before - (cfg.groups || []).length;
         if (removed) saveConfig(cfg);
+        for (const id of ids) chatAccess.clearAccess(id);
         let purged = { totalRows: 0, totalFiles: 0 };
         if (purgeDownloads) {
             // Synchronous per-id wipe — the Recovery cleanup page already
@@ -12244,6 +12711,9 @@ async function _spawnInternalBackfill({
     const config = loadConfig();
     const group = (config.groups || []).find((g) => String(g.id) === groupKey);
     if (!group) throw new Error('Group not configured');
+    // Auto-first / catch-up backfills never start on a chat no account
+    // can read — that would only spend calls to fail.
+    if (chatAccess.isBlockingState(chatAccess.effectiveAccess(group).state)) return null;
 
     const { HistoryDownloader } = await import('../core/history.js');
     const { DownloadManager } = await import('../core/downloader.js');
@@ -12483,7 +12953,12 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         let processed = 0;
         onProgress({ processed: 0, total, updated: 0, stage: 'resolving' });
         for (const id of ids) {
-            const resolved = await resolveEntityAcrossAccounts(id, { force: true });
+            // Chats no account can read are skipped (the sidebar asks for
+            // this sweep whenever a name looks unresolved — a dead chat
+            // never resolves, so it used to be re-asked on every render).
+            const resolved = chatAccess.isBlocked(id)
+                ? null
+                : await resolveEntityAcrossAccounts(id, { force: true });
             if (resolved) {
                 const { entity } = resolved;
                 const realName =
@@ -12930,10 +13405,14 @@ function photoMissRemainingMs(idStr) {
  * Fetch + cache a chat's small profile photo. `force` (explicit operator
  * refresh) ignores the cached "no photo" / failed-lookup answers.
  */
-async function downloadProfilePhoto(groupId, { force = false } = {}) {
+async function downloadProfilePhoto(groupId, { force = false, ignoreAccess = false } = {}) {
     const idStr = String(groupId);
     const photoPath = path.join(PHOTOS_DIR, `${idStr}.jpg`);
     if (existsSync(photoPath)) return `/photos/${idStr}.jpg`;
+    // A chat no account can read has no photo to fetch — every avatar
+    // render used to re-resolve it across all accounts. Only an explicit
+    // "Check again" (ignoreAccess) asks.
+    if (!ignoreAccess && chatAccess.isBlocked(idStr)) return null;
     if (!force && photoMissRemainingMs(idStr) > 0) return null;
 
     const resolved = await resolveEntityAcrossAccounts(idStr, { force });
@@ -13135,6 +13614,13 @@ const _jobTrackers = {
         broadcast,
         log,
         eventPrefix: 'recovery_bulk',
+    }),
+    // Chats → Needs attention: "Check all again".
+    chatAccessRecheck: createJobTracker({
+        kind: 'chatAccessRecheck',
+        broadcast,
+        log,
+        eventPrefix: 'chat_access_recheck',
     }),
     // AI subsystem — three independent scans owned by the same page.
     // Event prefixes match the WS contract used by maintenance-ai.js:
