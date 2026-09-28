@@ -249,8 +249,6 @@ never silently in the Go port.
   `/refresh-info/status` (the guest allow-list matches the `/api/groups`
   prefix).
 - `DELETE /api/purge/all` (factory reset) has no `{ confirm: true }` guard.
-- `advanced.share.rateLimitMax` / `rateLimitWindowMs` never take effect
-  (the route keeps the limiter it was registered with).
 - A JSON array body to `POST /api/config` is spread into the config as index
   keys.
 - `POST /api/downloads/bulk-delete {ids:[null]}` starts a job (`Number(null)`

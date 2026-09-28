@@ -2107,14 +2107,14 @@
         "etag": "W/\"d25-18cc820d888\"",
         "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
         "pragma": "no-cache",
-        "ratelimit": "limit=60, remaining=59, reset=<s>",
-        "ratelimit-policy": "60;w=60"
+        "ratelimit": "limit=2, remaining=1, reset=<s>",
+        "ratelimit-policy": "2;w=60"
       },
       "security": "122656cc3b",
       "body": {
         "bytes": 3365
       },
-      "note": "rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter"
+      "note": "rateLimitMax=2 in config: the third request is refused"
     },
     "limited server: share request 2 of 3": {
       "route": "GET /share/:linkId",
@@ -2133,14 +2133,14 @@
         "etag": "W/\"d25-18cc820d888\"",
         "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
         "pragma": "no-cache",
-        "ratelimit": "limit=60, remaining=58, reset=<s>",
-        "ratelimit-policy": "60;w=60"
+        "ratelimit": "limit=2, remaining=0, reset=<s>",
+        "ratelimit-policy": "2;w=60"
       },
       "security": "122656cc3b",
       "body": {
         "bytes": 3365
       },
-      "note": "rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter"
+      "note": "rateLimitMax=2 in config: the third request is refused"
     },
     "limited server: share request 3 of 3": {
       "route": "GET /share/:linkId",
@@ -2149,24 +2149,19 @@
         "path": "/share/1?s=<sig:1>",
         "as": "anon"
       },
-      "status": 200,
+      "status": 429,
       "headers": {
-        "accept-ranges": "bytes",
-        "cache-control": "private, no-store, no-cache, must-revalidate",
-        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
-        "content-length": "3365",
-        "content-type": "image/jpeg",
-        "etag": "W/\"d25-18cc820d888\"",
-        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
-        "pragma": "no-cache",
-        "ratelimit": "limit=60, remaining=57, reset=<s>",
-        "ratelimit-policy": "60;w=60"
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=2, remaining=0, reset=<s>",
+        "ratelimit-policy": "2;w=60",
+        "retry-after": "<seconds>"
       },
-      "security": "122656cc3b",
+      "security": "e30ca64edb",
       "body": {
-        "bytes": 3365
+        "bytes": 44
       },
-      "note": "rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter"
+      "note": "rateLimitMax=2 in config: the third request is refused"
     }
   },
   "securityProfiles": {

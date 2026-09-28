@@ -5,7 +5,7 @@
 
 import express from 'express';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { MemoryStore as RateLimitMemoryStore } from 'express-rate-limit';
 import net from 'net';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
@@ -1983,43 +1983,62 @@ app.get('/metrics', (req, res) => {
 // behave identically to /files/*). Cache-Control: no-store keeps a
 // shared CDN/proxy from hijacking the bytes for the next visitor.
 //
-// express-rate-limit v7 does not support function values for windowMs/limit,
-// so we use static defaults and rebuild the limiter on config change.
-const _shareRateCfg = { windowMs: 60_000, limit: 60 };
+// `advanced.share.rateLimitMax` / `rateLimitWindowMs` are applied the way
+// the global API limit is (see refreshRateLimitConfig): read from config
+// at boot, every 30 s and right after POST /api/config, into an in-memory
+// copy the limiter reads per request. The route calls the current limiter
+// through a wrapper — it used to capture the boot-time instance, so a
+// rebuilt one never took effect and the configured values were ignored.
+// express-rate-limit v7 takes a function for `limit` but not for
+// `windowMs` (its MemoryStore is built with it), so a new window swaps in
+// a fresh limiter + store; a new limit alone keeps the counters.
+const SHARE_RATE_DEFAULTS = { windowMs: 60_000, limit: 60 };
+const _shareRateCfg = { ...SHARE_RATE_DEFAULTS };
+let _shareLimiterStore = null;
 function _buildShareLimiter() {
+    try {
+        _shareLimiterStore?.shutdown();
+    } catch {
+        /* old store's timer — nothing to keep */
+    }
+    _shareLimiterStore = new RateLimitMemoryStore();
     return rateLimit({
         windowMs: _shareRateCfg.windowMs,
-        limit: _shareRateCfg.limit,
+        limit: () => _shareRateCfg.limit,
+        store: _shareLimiterStore,
         standardHeaders: 'draft-7',
         legacyHeaders: false,
         message: { error: 'Too many requests — slow down.' },
     });
 }
-let shareLimiter = _buildShareLimiter();
+let _shareLimiter = _buildShareLimiter();
+const shareLimiter = (req, res, next) => _shareLimiter(req, res, next);
 
-// Tiny cache around the last-loaded config so the rate-limit getters
-// don't sync-read disk on every share request. Refreshed by the
-// config_updated WS broadcast handler below + on first use.
-let _shareConfigCache = null;
-function _currentShareConfig() {
-    if (!_shareConfigCache) {
-        try {
-            _shareConfigCache = loadConfig().advanced?.share || {};
-        } catch {
-            _shareConfigCache = {};
-        }
-    }
-    return _shareConfigCache;
-}
-function _invalidateShareConfigCache() {
-    _shareConfigCache = null;
-    const sh = _currentShareConfig();
+function _applyShareRateLimit(sh = {}) {
     const ms = Number(sh.rateLimitWindowMs);
     const lim = Number(sh.rateLimitMax);
-    _shareRateCfg.windowMs = Number.isFinite(ms) && ms > 0 ? ms : 60_000;
-    _shareRateCfg.limit = Number.isFinite(lim) && lim > 0 ? lim : 60;
-    shareLimiter = _buildShareLimiter();
+    const windowMs = Number.isFinite(ms) && ms > 0 ? Math.floor(ms) : SHARE_RATE_DEFAULTS.windowMs;
+    _shareRateCfg.limit =
+        Number.isFinite(lim) && lim > 0 ? Math.floor(lim) : SHARE_RATE_DEFAULTS.limit;
+    if (windowMs !== _shareRateCfg.windowMs) {
+        _shareRateCfg.windowMs = windowMs;
+        _shareLimiter = _buildShareLimiter();
+    }
 }
+
+// Re-read on every call (the periodic refresh must see edits made
+// elsewhere — CLI, cluster config sync). Sync on purpose: called at module
+// load, where an awaited continuation could run before later
+// declarations (the TDZ trap refreshRateLimitConfig fell into).
+function _refreshShareRateLimit() {
+    try {
+        _applyShareRateLimit(loadConfig().advanced?.share || {});
+    } catch {
+        /* keep last-known-good */
+    }
+}
+_refreshShareRateLimit();
+setInterval(_refreshShareRateLimit, 30 * 1000).unref();
 
 // v2 URL shape: `/share/<linkId>?s=<sig>` (or `/share/<linkId>/<filename>?s=<sig>`
 // when `buildShareUrlPath()` was called with a friendly slug). The signature
@@ -12446,7 +12465,7 @@ app.post('/api/config', async (req, res) => {
         // so a save takes effect immediately without a process restart.
         try {
             applyShareLimits(newConfig.advanced?.share || {});
-            _invalidateShareConfigCache();
+            _applyShareRateLimit(newConfig.advanced?.share || {});
         } catch {}
 
         // Reset the lazy AccountManager singleton if Telegram credentials

@@ -219,7 +219,7 @@ describe('admin API: revoke', () => {
 });
 
 describe('share rate limiter', () => {
-    it('config advanced.share.rateLimitMax does not reach the registered limiter today', async () => {
+    it('config advanced.share.rateLimitMax applies from boot', async () => {
         const t2 = await h.extra({
             configPatch(cfg) {
                 cfg.advanced.share = { rateLimitMax: 2, rateLimitWindowMs: 60_000 };
@@ -234,7 +234,7 @@ describe('share rate limiter', () => {
                 {
                     as: 'anon',
                     bodyMode: 'none',
-                    note: 'rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter',
+                    note: 'rateLimitMax=2 in config: the third request is refused',
                 },
             );
         }

@@ -5,7 +5,9 @@
 //     (under the file's Content-Type) instead of 416, and /share counted it
 //     as an access;
 //   - a malformed JSON body, a JSON null or a body over 2 MB answered 500
-//     instead of 400 / 413.
+//     instead of 400 / 413;
+//   - advanced.share.rateLimitMax / rateLimitWindowMs never reached the
+//     /share limiter (the route kept the one it was registered with).
 
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -63,6 +65,11 @@ beforeAll(async () => {
     const db = await import('../src/core/db.js');
     const cfg = loadConfig();
     cfg.web = { ...(cfg.web || {}), enabled: true, passwordHash: hashPassword(ADMIN_PW) };
+    // Share limiter from config: 4 requests per minute (the default is 60).
+    cfg.advanced = {
+        ...(cfg.advanced || {}),
+        share: { rateLimitMax: 4, rateLimitWindowMs: 60_000 },
+    };
     saveConfig(cfg);
     const abs = path.join(DATA, 'downloads', FILE_REL);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
@@ -140,11 +147,13 @@ describe.skipIf(SKIP)('contract findings (e2e)', () => {
         expect(ok.buf.length).toBe(10);
     });
 
+    let sharePath = '';
+
     it('/share answers 416 without counting an access', async () => {
         const created = await req('POST', '/api/share/links', { body: { downloadId } });
         expect(created.status).toBe(200);
         const link = created.json.link;
-        const sharePath = new URL(link.url).pathname + new URL(link.url).search;
+        sharePath = new URL(link.url).pathname + new URL(link.url).search;
         const count = async () =>
             (await req('GET', `/api/share/links?downloadId=${downloadId}`)).json.links.find(
                 (l) => l.id === link.id,
@@ -180,5 +189,35 @@ describe.skipIf(SKIP)('contract findings (e2e)', () => {
         const anon = await req('POST', '/api/config', { raw: '{', cookie: '' });
         expect(anon.status).toBe(400);
         expect((await req('GET', '/api/config')).json.pollingInterval).toBe(before);
+    });
+
+    it('the /share limiter follows advanced.share from boot and after a save', async () => {
+        // Two /share requests above already counted against the 4/min budget.
+        const third = await req('GET', sharePath, { cookie: '' });
+        expect(third.status).toBe(200);
+        expect(third.headers.get('ratelimit-policy')).toBe('4;w=60');
+        expect(third.headers.get('ratelimit')).toMatch(/^limit=4, remaining=1,/);
+        expect((await req('GET', sharePath, { cookie: '' })).status).toBe(200);
+        const refused = await req('GET', sharePath, { cookie: '' });
+        expect(refused.status).toBe(429);
+        expect(refused.json).toEqual({ error: 'Too many requests — slow down.' });
+
+        // A save applies at once: a new window starts a fresh budget.
+        const saved = await req('POST', '/api/config', {
+            body: { advanced: { share: { rateLimitMax: 6, rateLimitWindowMs: 120_000 } } },
+        });
+        expect(saved.status).toBe(200);
+        const after = await req('GET', sharePath, { cookie: '' });
+        expect(after.status).toBe(200);
+        expect(after.headers.get('ratelimit-policy')).toBe('6;w=120');
+        expect(after.headers.get('ratelimit')).toMatch(/^limit=6, remaining=5,/);
+
+        // A new limit alone keeps the counters of the current window: one
+        // request is already in it, so a limit of 2 leaves one more.
+        await req('POST', '/api/config', {
+            body: { advanced: { share: { rateLimitMax: 2, rateLimitWindowMs: 120_000 } } },
+        });
+        expect((await req('GET', sharePath, { cookie: '' })).status).toBe(200);
+        expect((await req('GET', sharePath, { cookie: '' })).status).toBe(429);
     });
 });
