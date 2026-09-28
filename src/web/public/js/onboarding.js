@@ -110,6 +110,11 @@ function render(hint) {
     el.querySelector('#onboarding-go').addEventListener('click', () => {
         if (hint === 'enable-group' && typeof window.navigateTo === 'function') {
             window.navigateTo('groups');
+        } else if (hint === 'add-account') {
+            // Step 2 opens the sign-in wizard right here.
+            import('./account-wizard.js')
+                .then((m) => m.openAccountWizard())
+                .catch(() => openSettings(targetMap[hint]));
         } else {
             openSettings(targetMap[hint]);
         }
