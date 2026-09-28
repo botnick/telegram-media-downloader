@@ -276,7 +276,15 @@ docker run -d --name tgdl-faces --restart unless-stopped --gpus all \
   ghcr.io/botnick/tgdl-faces:cuda-latest     # CPU: ghcr.io/botnick/tgdl-faces:latest, no --gpus
 ```
 
-In the app: **Maintenance → AI → System health → Sidecar mode → External**, or `advanced.ai.faces.sidecarUrl` / `TGDL_FACES_SIDECAR_URL`. The token goes in `TGDL_FACES_SIDECAR_TOKEN` (or `advanced.ai.faces.sidecarToken`; there is no dashboard field for it yet). Images the sidecar can't read are sent as base64, and videos are decoded by the app's ffmpeg and sent as frames. Path mapping isn't available for the faces sidecar yet, so a shared mount only helps when it is at the same path as in the app.
+In the app: **Maintenance → AI → System health → Sidecar mode → External** — URL, API token, optional path mapping → **Test** → **Apply**. Or:
+
+```bash
+TGDL_FACES_SIDECAR_URL=https://faces.example.com
+TGDL_FACES_SIDECAR_TOKEN=change-me-to-a-long-random-string
+TGDL_FACES_PATH_MAP=/app/data/downloads=/media   # only with shared storage
+```
+
+Photos the sidecar can't read are uploaded (raw with faces-service 0.5.1+, base64 before that; anything over the ~40 MB request budget is sent as a 4096 px copy and the face boxes are scaled back). Videos are decoded by the app's ffmpeg and sent as frames.
 
 ### Reverse proxy / tunnel notes
 

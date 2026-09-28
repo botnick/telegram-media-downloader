@@ -16,6 +16,7 @@ import { showToast, escapeHtml } from './utils.js';
 import { ws } from './ws.js';
 import { confirmSheet, promptSheet, openSheet } from './sheet.js';
 import { openMediaViewerForReview } from './viewer.js';
+import { renderEnvNote, renderSidecarTest, syncTokenField } from './sidecar-ui.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -675,11 +676,32 @@ function _renderStatus(status) {
     }
 
     const sidecarUrlEl = $('#ai-faces-sidecar-url');
-    if (sidecarUrlEl) {
+    if (sidecarUrlEl && document.activeElement !== sidecarUrlEl) {
         const cur = String(cfg.faces?.sidecarUrl || '');
         if (sidecarUrlEl.value !== cur) sidecarUrlEl.value = cur;
     }
+    _hydrateFacesSidecarExtras(cfg.faces || {});
     _syncFacesModeToggle();
+}
+
+// Token placeholder, path map and env-override notice for the external
+// sidecar. Skips fields the operator is editing (status polls re-render).
+function _hydrateFacesSidecarExtras(faces) {
+    const tokenEl = $('#ai-faces-sidecar-token');
+    if (tokenEl && document.activeElement !== tokenEl && !tokenEl.value) {
+        syncTokenField(tokenEl, $('#ai-faces-sidecar-token-clear'), faces.sidecarTokenSet === true);
+    }
+    const pm = $('#ai-faces-sidecar-pathmap');
+    if (pm && document.activeElement !== pm) {
+        const cur = typeof faces.pathMap === 'string' ? faces.pathMap : '';
+        if (pm.value !== cur) pm.value = cur;
+    }
+    const src = faces.sources || {};
+    renderEnvNote($('#ai-faces-sidecar-env-note'), [
+        src.url === 'env' ? 'TGDL_FACES_SIDECAR_URL' : null,
+        src.token === 'env' ? 'TGDL_FACES_SIDECAR_TOKEN' : null,
+        src.pathMap === 'env' ? 'TGDL_FACES_PATH_MAP' : null,
+    ]);
 }
 
 function _renderSidecarBadge(status) {
@@ -1061,6 +1083,7 @@ async function _applyPreset(name) {
 window._facesModeToggle = (mode) => _onFacesModeToggle(mode);
 window._facesSidecarTest = () => _onFacesSidecarTestClick();
 window._facesSidecarApply = () => _onFacesSidecarApply();
+window._facesSidecarClearToken = () => _onFacesSidecarClearToken();
 window._facesSidecarUrlInput = () => {
     const resultEl = $('#ai-faces-sidecar-test-result');
     if (resultEl) resultEl.textContent = '';
@@ -1122,20 +1145,29 @@ async function _onFacesSidecarTestClick() {
     }
     if (applyBtn) applyBtn.disabled = true;
     try {
-        const r = await api.post('/api/ai/faces/health-test', { url });
-        if (resultEl) {
-            if (r.ok) {
-                const parts = [r.model, r.version ? `v${r.version}` : null]
-                    .filter(Boolean)
-                    .join(' · ');
-                resultEl.textContent = `✓ ${parts || 'Connected'}`;
-                resultEl.className = 'text-[11px] mt-1.5 block text-green-400';
-                if (applyBtn) applyBtn.disabled = false;
-            } else {
-                resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
-                resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
-            }
-        }
+        const token = String($('#ai-faces-sidecar-token')?.value || '').trim();
+        const r = await api.post('/api/ai/faces/health-test', {
+            url,
+            ...(token ? { token } : {}),
+        });
+        const provider = Array.isArray(r.providers)
+            ? String(r.providers[0] || '').replace(/ExecutionProvider$/, '')
+            : null;
+        const ok = renderSidecarTest(resultEl, r, {
+            url,
+            parts: [r.model, provider, r.ready === false ? 'model loading' : null],
+            transferText:
+                r.transfer === 'upload'
+                    ? i18nT(
+                          'maintenance.ai.sidecar_transfer_upload',
+                          'files it can’t read are uploaded',
+                      )
+                    : i18nT(
+                          'maintenance.ai.sidecar_transfer_b64',
+                          'files it can’t read are sent as base64 (faces-service 0.5.1 uploads them raw)',
+                      ),
+        });
+        if (applyBtn) applyBtn.disabled = !ok;
     } catch (e) {
         if (resultEl) {
             resultEl.textContent = `✗ ${e?.message || 'error'}`;
@@ -1148,16 +1180,35 @@ async function _onFacesSidecarApply() {
     const el = $('#ai-faces-sidecar-url');
     const url = String(el?.value || '').trim();
     if (!url) return;
+    const tokenEl = $('#ai-faces-sidecar-token');
+    const token = String(tokenEl?.value || '').trim();
+    const pathMap = String($('#ai-faces-sidecar-pathmap')?.value || '');
     try {
         await api.post('/api/config', {
-            advanced: { ai: { faces: { sidecarUrl: url } } },
+            // A blank token field keeps the saved token (it's write-only).
+            advanced: {
+                ai: {
+                    faces: { sidecarUrl: url, pathMap, ...(token ? { sidecarToken: token } : {}) },
+                },
+            },
         });
+        if (token) syncTokenField(tokenEl, $('#ai-faces-sidecar-token-clear'), true);
         await api.post('/api/ai/faces/restart', {});
         showToast(
             i18nT('maintenance.ai.sidecar_url_saved', 'Switched to external sidecar'),
             'success',
         );
         await refreshStatus();
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _onFacesSidecarClearToken() {
+    try {
+        await api.post('/api/config', { advanced: { ai: { faces: { sidecarToken: '' } } } });
+        syncTokenField($('#ai-faces-sidecar-token'), $('#ai-faces-sidecar-token-clear'), false);
+        showToast(i18nT('maintenance.sidecar.token_cleared', 'Saved token removed'), 'success');
     } catch (e) {
         showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
     }

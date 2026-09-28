@@ -7990,6 +7990,15 @@ app.get('/api/ai/status', async (_req, res) => {
                     scanVideos: facesBlock.scanVideos === true,
                     sidecarUrl:
                         typeof facesBlock.sidecarUrl === 'string' ? facesBlock.sidecarUrl : '',
+                    // External sidecar extras. The token itself is never
+                    // returned; env vars that override a field are named.
+                    sidecarTokenSet: !!facesBlock.sidecarToken,
+                    pathMap: typeof facesBlock.pathMap === 'string' ? facesBlock.pathMap : '',
+                    sources: {
+                        url: process.env.TGDL_FACES_SIDECAR_URL?.trim() ? 'env' : 'config',
+                        token: process.env.TGDL_FACES_SIDECAR_TOKEN?.trim() ? 'env' : 'config',
+                        pathMap: process.env.TGDL_FACES_PATH_MAP?.trim() ? 'env' : 'config',
+                    },
                 },
             },
             counts,
@@ -8210,26 +8219,38 @@ app.post('/api/ai/faces/health-test', async (req, res) => {
     const probe = _sidecarHealthUrl(req.body?.url);
     if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
     try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        let r;
-        try {
-            r = await fetch(probe.url, { method: 'GET', signal: ctrl.signal });
-        } finally {
-            clearTimeout(timer);
-        }
-        if (!r.ok) return res.json({ ok: false, error: `http_${r.status}` });
-        const body = await r.json();
+        const { resolveFacesValue } = await import('../core/ai/faces-config.js');
+        const saved = _aiCfg().faces || {};
+        const token = _sidecarTestToken(
+            req.body,
+            resolveFacesValue('sidecarUrl', saved),
+            resolveFacesValue('sidecarToken', saved),
+        );
+        // An empty /detect is a cheap token check: 401 = rejected, 400
+        // (validation) = accepted or no token required.
+        const r = await probeSidecar({
+            url: probe.base,
+            token,
+            authCheck: { method: 'POST', path: '/detect', body: {} },
+        });
+        const h = r.health || {};
         res.json({
-            ok: body?.ok === true,
-            version: body?.version ?? null,
-            model: body?.model ?? null,
-            ready: body?.ready === true,
-            providers: body?.providers_resolved ?? null,
+            ok: r.ok,
+            reachable: r.reachable,
+            error: r.error,
+            version: r.version,
+            model: h.model ?? null,
+            ready: h.ready === true,
+            providers: h.providers_resolved ?? h.providers ?? null,
+            features: r.features,
+            auth: r.auth,
+            authRequired: r.authRequired,
+            // 0.5.1+ takes raw uploads; older sidecars get base64.
+            transfer: r.features.includes('upload') ? 'upload' : 'base64',
+            tokenSent: !!token,
         });
     } catch (e) {
-        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
-        res.json({ ok: false, error: msg });
+        res.json({ ok: false, error: e?.message || String(e) });
     }
 });
 
@@ -11466,6 +11487,19 @@ app.post('/api/config', async (req, res) => {
             // an operator flips master to true they get all three out of
             // the box.
             const ai = merged.ai;
+            if (ai.faces && typeof ai.faces === 'object') {
+                // External sidecar: token + app→sidecar path map, strings only.
+                if ('pathMap' in ai.faces) {
+                    ai.faces.pathMap =
+                        typeof ai.faces.pathMap === 'string' ? ai.faces.pathMap.slice(0, 4096) : '';
+                }
+                if ('sidecarToken' in ai.faces) {
+                    ai.faces.sidecarToken =
+                        typeof ai.faces.sidecarToken === 'string'
+                            ? ai.faces.sidecarToken.trim().slice(0, 256)
+                            : '';
+                }
+            }
             ai.enabled = ai.enabled === true;
             ai.semanticSearch = ai.semanticSearch !== false;
             ai.autoTags = ai.autoTags !== false;

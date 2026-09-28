@@ -950,6 +950,8 @@
     "maintenance.ai.sidecar_url_cleared": "Switched to local sidecar",
     "maintenance.ai.sidecar_test_empty": "Enter a URL first",
     "maintenance.ai.sidecar_testing": "Testing…",
+    "maintenance.ai.sidecar_transfer_upload": "files it can’t read are uploaded",
+    "maintenance.ai.sidecar_transfer_b64": "files it can’t read are sent as base64 (faces-service 0.5.1 uploads them raw)",
     "maintenance.ai.stat_indexed": "Indexed photos",
     "maintenance.ai.stat_people": "People clusters",
     "maintenance.ai.stat_last": "Last scan",

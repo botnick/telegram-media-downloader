@@ -222,7 +222,8 @@ should read the nested path.
 |---|---|---|---|
 | `backend` | `TGDL_FACES_BACKEND` | `sidecar` | `sidecar` or `disabled` — kill switch for the spawn path |
 | `sidecarUrl` | `TGDL_FACES_SIDECAR_URL` | `''` | Operator override URL; empty = compose env or local auto-spawn (see [External sidecar](#external-sidecar)) |
-| `sidecarToken` | `TGDL_FACES_SIDECAR_TOKEN` | `''` | Sent as `Authorization: Bearer …` to a sidecar started with `TGDL_FACES_API_TOKEN` |
+| `sidecarToken` | `TGDL_FACES_SIDECAR_TOKEN` | `''` | Sent as `X-API-Token` to a sidecar started with `TGDL_FACES_API_TOKEN`. Write-only in the dashboard |
+| `pathMap` | `TGDL_FACES_PATH_MAP` | `''` | `app path=sidecar path` rules (newline or `;`) for an external sidecar that mounts the downloads at a different path |
 | `autoDownload` | `TGDL_FACES_AUTO_DOWNLOAD` | `true` | `false` refuses to fetch the binary (offline mode) |
 | `minDetectionScore` | `TGDL_FACES_MIN_DETECTION_SCORE` | `0.5` | Detector score floor (0–1) |
 | `minFaceSizePx` | `TGDL_FACES_MIN_FACE_SIZE_PX` | `80` | Reject boxes smaller than this on the shorter edge |
@@ -333,15 +334,27 @@ URL-based sidecars (external URL, a custom or reachable Docker
 
 Point `sidecarUrl` (Maintenance → AI → External sidecar URL, or
 `TGDL_FACES_SIDECAR_URL`) at a sidecar on another machine — typically a
-GPU box running `ghcr.io/botnick/tgdl-faces:cuda-latest`. It does not need
+GPU box running `ghcr.io/botnick/tgdl-faces:cuda-latest`. The same panel
+takes the API token and a path mapping; **Test** reports the version,
+whether the token is accepted and how files will be sent. It does not need
 access to your downloads:
 
+- If it mounts them at a different path, set `pathMap`
+  (`/app/data/downloads=/mnt/media`, one rule per line or `;`-separated):
+  photos, batches and videos are then sent by the path the sidecar sees,
+  and read in place.
 - Photos are sent by path first. If the sidecar answers
   `path_not_allowed` (403) **or** `file_not_found` for a file that exists
   here, the file is re-sent as bytes and the client switches to bytes for
   the rest of the run. (Earlier releases stored `file_not_found` as "no
   faces" — with a remote sidecar whose allow-list matched the path, a whole
-  scan finished with zero faces.)
+  scan finished with zero faces.) Bytes go to `/detect/upload` as the raw
+  body when the sidecar's `/health` lists the `upload` feature (0.5.1+),
+  as base64 JSON otherwise.
+- Every request stays inside a ~40 MB body budget: a photo whose encoded
+  size would exceed it is sent as an upright JPEG copy of at most 4096 px
+  (boxes, landmarks and the `min_box_px` gate are scaled back to the
+  original), and video frames are grouped by size.
 - Videos the sidecar can't open by path are decoded here with ffmpeg and
   sent as frames (`/detect/batch-b64`).
 - `https://` URLs and URLs with a path prefix (reverse proxy / tunnel)
@@ -355,7 +368,9 @@ access to your downloads:
   `TGDL_FACES_API_TOKEN` in `.env` and both services pick it up). Every
   endpoint but `/health` then requires it; a mismatch stops the scan with a
   401 error instead of marking anything scanned. Sidecars before 0.5.0
-  ignore the header.
+  ignore the header. The token is sent as `X-API-Token` (the sidecar also
+  accepts `Authorization: Bearer`), so a reverse proxy's own
+  `Authorization` doesn't clash.
 - Reverse proxies have their own limits — Cloudflare, for example, ends
   proxied requests after 100 s and caps bodies at 100 MB. Keep
   `batchSize` modest for CPU-only remotes; a GPU sidecar is well inside
