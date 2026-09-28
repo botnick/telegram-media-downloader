@@ -4,6 +4,18 @@ Released as `nsfw-v<version>` tags: a GitHub Release plus container images
 `ghcr.io/botnick/tgdl-nsfw:<version>` / `:latest` (CPU, linux/amd64 + linux/arm64)
 and `:gpu-<version>` / `:gpu-latest` (CUDA, linux/amd64).
 
+## [1.2.0]
+
+Makes the sidecar safe and fast to run on another machine (GPU box, Cloudflare Tunnel, reverse proxy).
+
+### Added
+- Optional shared token: set `TGDL_NSFW_API_TOKEN` and every route except `/health` requires an `X-API-Token: <token>` (or `Authorization: Bearer <token>`) header; wrong or missing tokens get 401. Enter the same token in the app under Maintenance → NSFW → External. Unset keeps the old open behaviour, and a startup warning points it out when the port listens beyond localhost.
+- `POST /classify/upload` takes the raw image bytes as the request body — no base64 or JSON overhead. The app uses it when the sidecar can't read its files. Capped by `TGDL_NSFW_MAX_UPLOAD_MB` (default 50 → 413 above it).
+- `/health` reports `features`, `auth_required`, `path_mode` and `max_upload_bytes`, so the app picks the cheapest transfer mode and shows it in the Test result.
+
+### Changed
+- Decoding and inference run in a worker thread (one inference at a time), so `/health` keeps answering during a scan instead of timing out behind a busy event loop.
+
 ## [1.1.0]
 
 First published release.
