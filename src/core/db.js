@@ -721,6 +721,31 @@ function initSchema() {
         );
     `);
 
+    // Chat access state (src/core/chat-access.js) — one row per chat that
+    // at least one account couldn't open (left / banned / private /
+    // deleted / restricted / migrated). A chat with no row is fine. Kept
+    // out of kv['config'] so a re-check never rewrites the config (and
+    // never syncs to cluster peers, whose accounts differ). Wrapped so a
+    // read-only or odd DB can't stop the app from starting — the module
+    // falls back to memory.
+    try {
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS chat_access (
+                chat_id       TEXT    PRIMARY KEY,
+                state         TEXT    NOT NULL,
+                code          TEXT,
+                detail        TEXT,
+                migrated_to   TEXT,
+                first_seen_at INTEGER,
+                checked_at    INTEGER NOT NULL,
+                next_check_at INTEGER,
+                checks        INTEGER NOT NULL DEFAULT 0,
+                accounts      TEXT,
+                updated_at    INTEGER NOT NULL
+            );
+        `);
+    } catch {}
+
     // Dashboard session tokens. Replaces data/web-sessions.json so the GC
     // sweep can use an indexed expires_at scan instead of rewriting the
     // whole file every login/logout. Role is constrained — anything other
