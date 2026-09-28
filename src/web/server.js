@@ -10336,7 +10336,8 @@ app.post('/api/cluster/files/delete', async (req, res) => {
         }
         const r = await safeResolveDownload(row.file_path);
         let freedBytes = 0;
-        if (r.ok) {
+        // Another local row (download-time dedup) may still use the file.
+        if (r.ok && !idsWithFileInUse([Number(row.id)]).has(Number(row.id))) {
             try {
                 const { deferDelete } = await import('../core/deferred-delete.js');
                 deferDelete(r.real);
@@ -12122,7 +12123,15 @@ app.use('/files', async (req, res, next) => {
             // basename, and a 404 on one would mass-delete the other's
             // rows. Done in the background so the HTTP response isn't
             // blocked by the DB write.
-            if (r.reason === 'missing') {
+            // If the file's folder is missing as well, the disk is more likely
+            // unmounted (or the group folder renamed) than the file deleted,
+            // so leave the rows alone.
+            // ('missing' already implies the path passed the containment
+            // checks; re-check so nothing outside DOWNLOADS_DIR is probed.)
+            const downloadsRoot = path.resolve(DOWNLOADS_DIR);
+            const parentDir = path.dirname(path.resolve(downloadsRoot, reqPath));
+            const insideRoot = parentDir.startsWith(downloadsRoot + path.sep);
+            if (r.reason === 'missing' && insideRoot && existsSync(parentDir)) {
                 queueMicrotask(() => {
                     try {
                         const fwd = reqPath.replace(/\\/g, '/');

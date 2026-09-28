@@ -89,6 +89,11 @@ async function seed() {
     row('6', 'G6/images/q.jpg', 'group shared');
     row('6', 'G6/images/r.jpg', 'group only');
     ids.q7 = row('7', 'G6/images/q.jpg', 'group shared');
+    // /files 404s: g8's folder exists but the file is gone; g9's whole
+    // folder is missing (unmounted disk / renamed folder).
+    put('G8/images/other.jpg', 'still here');
+    ids.gone8 = row('8', 'G8/images/gone.jpg', 'deleted by hand');
+    ids.gone9 = row('9', 'G9/images/gone.jpg', 'folder missing');
     db.getDb().close();
     delete process.env.TGDL_DATA_DIR;
 }
@@ -166,5 +171,28 @@ describe.skipIf(SKIP)('delete paths keep shared files (e2e)', () => {
         await sleep(300);
         expect(exists('G6/images/q.jpg')).toBe(true);
         expect(exists('G6/images/r.jpg')).toBe(false);
+    });
+
+    it('a /files 404 prunes the row only when the file folder still exists', async () => {
+        const rowIds = async () => {
+            const { default: Database } = await import('better-sqlite3');
+            const d = new Database(path.join(DATA, 'db.sqlite'), { readonly: true });
+            const out = d
+                .prepare('SELECT id FROM downloads')
+                .all()
+                .map((r) => r.id);
+            d.close();
+            return out;
+        };
+        expect(
+            (await fetch(`${BASE}/files/G8/images/gone.jpg`, { headers: { cookie } })).status,
+        ).toBe(404);
+        expect(
+            (await fetch(`${BASE}/files/G9/images/gone.jpg`, { headers: { cookie } })).status,
+        ).toBe(404);
+        await sleep(500);
+        const left = await rowIds();
+        expect(left).not.toContain(ids.gone8);
+        expect(left).toContain(ids.gone9);
     });
 });
