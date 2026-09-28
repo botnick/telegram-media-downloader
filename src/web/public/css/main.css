@@ -6431,3 +6431,15 @@ html.theme-light .settings-search-hit {
         display: none;
     }
 }
+
+/* Touch screens: full 44 px targets for the gallery search row. */
+@media (pointer: coarse) {
+    .gallery-search,
+    .gallery-filter-btn {
+        height: 44px;
+    }
+    .gallery-search-clear {
+        width: 44px;
+        height: 44px;
+    }
+}
