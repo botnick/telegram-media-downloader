@@ -22,6 +22,9 @@ function deferred() {
         resolve = res;
         reject = rej;
     });
+    // cancelAuth() rejects every prompt, including ones gramJS never asked
+    // for — without a handler those surfaced as unhandled rejections.
+    promise.catch(() => {});
     return { promise, resolve, reject };
 }
 
@@ -694,17 +697,23 @@ export class AccountManager {
     //
     // Flow:
     //   beginPhoneAuth(label?)         → { sessionId, state: 'phone' }
-    //   submitPhone(sessionId, phone)   → { state: 'code' | 'error' }
-    //   submitCode(sessionId, code)     → { state: 'password' | 'done' | 'error' }
-    //   submit2fa(sessionId, password)  → { state: 'done' | 'error', accountId }
+    //   submitPhone(sessionId, phone)   → { state: 'code' | 'phone' | 'error', ... }
+    //   submitCode(sessionId, code)     → { state: 'password' | 'done' | 'code' | 'error', ... }
+    //   submit2fa(sessionId, password)  → { state: 'done' | 'password' | 'error', accountId, ... }
     //   cancelAuth(sessionId)           → { ok: true }
-    //   getAuthStatus(sessionId)        → { state, error, accountId }
+    //   getAuthStatus(sessionId)        → { state, error, code, seconds, hint, accountId }
+    //
+    // A wrong phone number / code / password keeps the same state and sets
+    // `error` + `code` (the Telegram error name, e.g. PHONE_CODE_INVALID,
+    // or FLOOD_WAIT with `seconds`); the next submit for that step retries.
 
     async beginPhoneAuth(label) {
         if (!this.config.telegram?.apiId || !this.config.telegram?.apiHash) {
-            throw new Error(
+            const e = new Error(
                 'Telegram API credentials not configured. Set telegram.apiId and telegram.apiHash in config first.',
             );
+            e.code = 'NO_API_CREDS';
+            throw e;
         }
         const requestedLabel = (label || '').trim().replace(/\s+/g, '_').toLowerCase();
         const isTempId = !requestedLabel;
@@ -720,6 +729,12 @@ export class AccountManager {
             isTempId,
             state: 'phone', // phone | code | password | done | error | cancelled
             error: null,
+            // Machine-readable reason for the last error (the Telegram RPC
+            // name, e.g. PHONE_CODE_INVALID, or FLOOD_WAIT) + the wait a
+            // flood error asks for, so the wizard can say what went wrong.
+            errorCode: null,
+            floodSeconds: null,
+            passwordHint: null,
             accountId: null,
             phoneDeferred: deferred(),
             codeDeferred: deferred(),
@@ -744,23 +759,52 @@ export class AccountManager {
                     fn(s);
                 } catch {}
         };
+        // gramJS asks again after a wrong phone number / code / password
+        // (it calls the same callback once more). Hand it a fresh deferred
+        // for the next submit — the used one is already resolved, and
+        // returning it made gramJS retry the same wrong value in a tight
+        // loop until Telegram answered FLOOD_WAIT.
+        const ask = (key, s) => {
+            if (flow[key].asked) flow[key] = deferred();
+            flow[key].asked = true;
+            setState(s);
+            return flow[key].promise;
+        };
 
         client
             .start({
-                phoneNumber: () => {
-                    setState('phone');
-                    return flow.phoneDeferred.promise;
-                },
-                phoneCode: () => {
-                    setState('code');
-                    return flow.codeDeferred.promise;
-                },
-                password: () => {
-                    setState('password');
-                    return flow.passwordDeferred.promise;
+                phoneNumber: () => ask('phoneDeferred', 'phone'),
+                phoneCode: () => ask('codeDeferred', 'code'),
+                password: (hint) => {
+                    flow.passwordHint = hint ? String(hint).slice(0, 100) : null;
+                    return ask('passwordDeferred', 'password');
                 },
                 onError: (err) => {
+                    // Cancelled: stop gramJS's retry loop. Without this a
+                    // cancel on the code step spun forever — gramJS swallows
+                    // the rejected code prompt, throws "Code is empty" and
+                    // asks again, all in microtasks.
+                    if (flow.state === 'cancelled') return true;
                     flow.error = err?.message || String(err);
+                    const seconds = Number(err?.seconds);
+                    const flood =
+                        Number.isFinite(seconds) &&
+                        seconds > 0 &&
+                        /FLOOD/i.test(`${err?.errorMessage || ''} ${flow.error}`);
+                    flow.errorCode = flood
+                        ? 'FLOOD_WAIT'
+                        : typeof err?.errorMessage === 'string'
+                          ? err.errorMessage
+                          : null;
+                    flow.floodSeconds = flood ? seconds : null;
+                    // Wake the HTTP submit that is waiting for an answer —
+                    // the state stays the same (gramJS asks again), so a
+                    // state-change wait alone would hang for 30 s.
+                    for (const fn of flow.stateWaiters)
+                        try {
+                            fn(flow.state, true);
+                        } catch {}
+                    return false;
                 },
             })
             .then(async () => {
@@ -812,7 +856,11 @@ export class AccountManager {
         return { sessionId, state: 'phone' };
     }
 
-    /** Wait for the next state transition (or timeout). */
+    /**
+     * Wait for the next state transition, or for gramJS to report an error
+     * while staying on the same step (wrong code → asks for the code again),
+     * or a timeout.
+     */
     _waitNextState(flow, timeoutMs = 30000) {
         const cur = flow.state;
         return new Promise((resolve) => {
@@ -820,8 +868,8 @@ export class AccountManager {
                 flow.stateWaiters.delete(notify);
                 resolve(flow.state);
             }, timeoutMs);
-            const notify = (s) => {
-                if (s === cur) return;
+            const notify = (s, isError = false) => {
+                if (s === cur && !isError) return;
                 clearTimeout(t);
                 flow.stateWaiters.delete(notify);
                 resolve(s);
@@ -830,15 +878,44 @@ export class AccountManager {
         });
     }
 
+    /**
+     * Answer the prompt gramJS is (or is about to be) waiting on. A prompt
+     * that was already answered gets a fresh deferred — gramJS picks it up
+     * when it asks again (see `ask` in beginPhoneAuth()).
+     */
+    _answer(flow, key, value) {
+        if (flow[key].answered) {
+            const next = deferred();
+            // gramJS hasn't re-asked yet: let its next ask() take this one.
+            flow[key] = next;
+        }
+        flow[key].answered = true;
+        flow.error = null;
+        flow.errorCode = null;
+        flow.floodSeconds = null;
+        flow[key].resolve(value);
+    }
+
+    _authResult(flow) {
+        return {
+            state: flow.state,
+            error: flow.error,
+            code: flow.errorCode,
+            seconds: flow.floodSeconds,
+            hint: flow.state === 'password' ? flow.passwordHint : null,
+            accountId: flow.accountId,
+        };
+    }
+
     async submitPhone(sessionId, phone) {
         const flow = this._authFlows.get(sessionId);
         if (!flow) throw new Error('Auth session not found');
         if (flow.state !== 'phone') throw new Error(`Wrong state: ${flow.state}`);
         const trimmed = String(phone || '').trim();
         if (!trimmed) throw new Error('Phone required');
-        flow.phoneDeferred.resolve(trimmed);
+        this._answer(flow, 'phoneDeferred', trimmed);
         await this._waitNextState(flow);
-        return { state: flow.state, error: flow.error };
+        return this._authResult(flow);
     }
 
     async submitCode(sessionId, code) {
@@ -847,18 +924,18 @@ export class AccountManager {
         if (flow.state !== 'code') throw new Error(`Wrong state: ${flow.state}`);
         const trimmed = String(code || '').trim();
         if (!trimmed) throw new Error('Code required');
-        flow.codeDeferred.resolve(trimmed);
+        this._answer(flow, 'codeDeferred', trimmed);
         await this._waitNextState(flow);
-        return { state: flow.state, error: flow.error, accountId: flow.accountId };
+        return this._authResult(flow);
     }
 
     async submit2fa(sessionId, password) {
         const flow = this._authFlows.get(sessionId);
         if (!flow) throw new Error('Auth session not found');
         if (flow.state !== 'password') throw new Error(`Wrong state: ${flow.state}`);
-        flow.passwordDeferred.resolve(String(password || ''));
+        this._answer(flow, 'passwordDeferred', String(password || ''));
         await this._waitNextState(flow);
-        return { state: flow.state, error: flow.error, accountId: flow.accountId };
+        return this._authResult(flow);
     }
 
     async cancelAuth(sessionId) {
@@ -887,6 +964,6 @@ export class AccountManager {
     getAuthStatus(sessionId) {
         const flow = this._authFlows.get(sessionId);
         if (!flow) return null;
-        return { state: flow.state, error: flow.error, accountId: flow.accountId };
+        return this._authResult(flow);
     }
 }

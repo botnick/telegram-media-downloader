@@ -75,9 +75,9 @@ cluster catalog + bridge.
 If `Owner peer` is left blank, every peer that has the group enabled
 will download it (with cross-peer dedup catching duplicates by hash).
 
-The Group Settings modal → **Accounts** tab exposes both
-`ownerPeerId` and `backupPeerId` as dropdowns whenever at least one
-peer is paired. Pick a backup peer to enable automatic failover —
+A chat's details page (Chats → the chat, or the ⚙ in its gallery) →
+**Accounts** exposes both `ownerPeerId` and `backupPeerId` as
+dropdowns whenever at least one peer is paired. Pick a backup peer to enable automatic failover —
 the backup takes over downloading if the owner stays silent past
 `cluster.failover_grace_minutes` (default 5).
 

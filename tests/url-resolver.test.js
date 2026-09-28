@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseTelegramUrl, parseUrlList, UrlParseError } from '../src/core/url-resolver.js';
+import {
+    parseTelegramUrl,
+    parseUrlList,
+    parseChatQuery,
+    UrlParseError,
+} from '../src/core/url-resolver.js';
 
 describe('parseTelegramUrl', () => {
     it('parses public channel /<chan>/<msg>', () => {
@@ -79,5 +84,71 @@ describe('parseUrlList', () => {
     it('returns [] for empty input', () => {
         expect(parseUrlList('')).toEqual([]);
         expect(parseUrlList(null)).toEqual([]);
+    });
+});
+
+describe('parseChatQuery', () => {
+    it('treats plain text as a name search', () => {
+        expect(parseChatQuery('Nature shots')).toEqual({ kind: 'name', text: 'Nature shots' });
+        expect(parseChatQuery('  ')).toEqual({ kind: 'name', text: '' });
+        expect(parseChatQuery('@x y')).toEqual({ kind: 'name', text: '@x y' });
+        expect(parseChatQuery('https://example.com/durov')).toEqual({
+            kind: 'name',
+            text: 'https://example.com/durov',
+        });
+    });
+
+    it('recognises @usernames and public links', () => {
+        const want = { kind: 'username', username: 'durov' };
+        expect(parseChatQuery('@durov')).toEqual(want);
+        expect(parseChatQuery('https://t.me/durov')).toEqual(want);
+        expect(parseChatQuery('t.me/durov')).toEqual(want);
+        expect(parseChatQuery('https://www.t.me/durov/')).toEqual(want);
+        expect(parseChatQuery('https://t.me/s/durov')).toEqual(want);
+        expect(parseChatQuery('tg://resolve?domain=durov')).toEqual(want);
+    });
+
+    it('recognises invite links', () => {
+        const want = { kind: 'invite', hash: 'AbCdEf123' };
+        expect(parseChatQuery('https://t.me/+AbCdEf123')).toEqual(want);
+        expect(parseChatQuery('t.me/joinchat/AbCdEf123')).toEqual(want);
+        expect(parseChatQuery('tg://join?invite=AbCdEf123')).toEqual(want);
+    });
+
+    it('recognises message links', () => {
+        expect(parseChatQuery('https://t.me/durov/100')).toEqual({
+            kind: 'message',
+            chatRef: '@durov',
+            messageId: 100,
+        });
+        expect(parseChatQuery('https://t.me/s/durov/100')).toEqual({
+            kind: 'message',
+            chatRef: '@durov',
+            messageId: 100,
+        });
+        expect(parseChatQuery('https://t.me/c/1234567890/55?single')).toEqual({
+            kind: 'message',
+            chatRef: '-1001234567890',
+            messageId: 55,
+        });
+        expect(parseChatQuery('tg://privatepost?channel=1234567890&post=7')).toEqual({
+            kind: 'message',
+            chatRef: '-1001234567890',
+            messageId: 7,
+        });
+    });
+
+    it('recognises private chat ids', () => {
+        const want = { kind: 'id', chatRef: '-1001234567890' };
+        expect(parseChatQuery('https://t.me/c/1234567890')).toEqual(want);
+        expect(parseChatQuery('-1001234567890')).toEqual(want);
+    });
+
+    it('flags t.me links that are not chats', () => {
+        expect(parseChatQuery('https://t.me/addstickers/Animals').kind).toBe('unsupported');
+        expect(parseChatQuery('https://t.me/+66812345678').kind).toBe('unsupported');
+        expect(parseChatQuery('https://t.me/').kind).toBe('unsupported');
+        expect(parseChatQuery('https://t.me/durov/abc').kind).toBe('unsupported');
+        expect(parseChatQuery('tg://join').kind).toBe('unsupported');
     });
 });

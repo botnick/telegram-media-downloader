@@ -6,7 +6,7 @@
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
 import { escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
-import { getThumbUrl, isPeerRow, initFileToken, fileTokenQuery } from './media-url.js';
+import { getThumbUrl, isPeerRow, initFileToken } from './media-url.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
 import { ws } from './ws.js';
@@ -62,7 +62,6 @@ import { setupDragDropLink } from './dragdrop-link.js';
 import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './mini-player.js';
 import { wireChangelogTrigger } from './changelog-viewer.js';
 import * as WakeLock from './wake-lock.js';
-import { pushOverlay, popOverlay } from './overlay-history.js';
 import {
     setupGalleryToolbar,
     syncGalleryToolbar,
@@ -129,10 +128,97 @@ function openBackfillFor(groupId, limit) {
 
 // Chat-only header actions (Backfill this chat) follow the open view.
 function _syncChatHeaderActions() {
-    document.body.classList.toggle(
-        'in-chat',
-        state.currentPage === 'viewer' && !!state.currentGroupId,
-    );
+    const inChat = state.currentPage === 'viewer' && !!state.currentGroupId;
+    document.body.classList.toggle('in-chat', inChat);
+    // Inside a chat the header's avatar + name open its details (admins).
+    const head = document.getElementById('header-avatar')?.parentElement;
+    if (!head) return;
+    const on = inChat && state.role === 'admin';
+    head.classList.toggle('chat-head-link', on);
+    if (on) {
+        head.setAttribute('role', 'button');
+        head.tabIndex = 0;
+        head.setAttribute(
+            'aria-label',
+            i18nTf(
+                'chat.details.open_for',
+                { name: state.currentGroup || '' },
+                `Chat settings: ${state.currentGroup || ''}`,
+            ),
+        );
+    } else {
+        head.removeAttribute('role');
+        head.removeAttribute('tabindex');
+        head.removeAttribute('aria-label');
+    }
+}
+
+// Ways into a chat's details page from its gallery: a settings button
+// next to "Backfill this chat" (phones: a ⋮ menu row) and a tap on the
+// chat's avatar / name in the header. Added from here rather than in
+// index.html so the header markup itself stays as it is.
+function _setupChatDetailsEntry() {
+    const open = () => {
+        if (state.currentGroupId) openGroupSettings(state.currentGroupId);
+    };
+    const label = i18nT('chat.details.open', 'Chat settings');
+    const bf = document.getElementById('backfill-chat-btn');
+    if (bf && !document.getElementById('chat-details-btn')) {
+        bf.insertAdjacentHTML(
+            'beforebegin',
+            `<button id="chat-details-btn" type="button" data-admin-only data-chat-only
+                class="hidden sm:flex w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center"
+                data-i18n-aria-label="chat.details.open" aria-label="${escapeHtml(label)}"
+                data-i18n-title="chat.details.open" title="${escapeHtml(label)}">
+                <i class="ri-settings-3-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
+            </button>`,
+        );
+        document.getElementById('chat-details-btn')?.addEventListener('click', open);
+    }
+    const row = document.querySelector('#header-overflow-menu [data-overflow="backfill-chat"]');
+    if (row && !document.querySelector('[data-overflow="chat-details"]')) {
+        row.insertAdjacentHTML(
+            'beforebegin',
+            `<button type="button" data-overflow="chat-details" data-admin-only data-chat-only role="menuitem">
+                <i class="ri-settings-3-line"></i>
+                <span class="vm-label" data-i18n="chat.details.open">${escapeHtml(label)}</span>
+            </button>`,
+        );
+        document
+            .querySelector('#header-overflow-menu [data-overflow="chat-details"]')
+            ?.addEventListener('click', open);
+    }
+    const head = document.getElementById('header-avatar')?.parentElement;
+    if (head) {
+        head.addEventListener('click', (e) => {
+            if (head.classList.contains('chat-head-link') && !e.target.closest('#role-pill'))
+                open();
+        });
+        head.addEventListener('keydown', (e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && head.classList.contains('chat-head-link')) {
+                e.preventDefault();
+                open();
+            }
+        });
+    }
+}
+
+// The Telegram account wizard (js/account-wizard.js) is a sheet. Links to
+// #/account/add inside the dashboard open it where you are; the route
+// itself (old links, a typed URL) still works — see registerRoutes().
+function openAccountWizard() {
+    return import('./account-wizard.js')
+        .then((m) => m.openAccountWizard())
+        .catch((e) => console.error('account wizard', e));
+}
+function _setupAccountWizardLinks() {
+    document.addEventListener('click', (e) => {
+        if (e.defaultPrevented || e.button !== 0) return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (!e.target.closest?.('a[href="#/account/add"]')) return;
+        e.preventDefault();
+        openAccountWizard();
+    });
 }
 
 // ============ Render coalescing ============
@@ -254,15 +340,14 @@ async function init() {
     window.saveGroupSettings = saveGroupSettings;
     window.refreshCurrentPage = refreshCurrentPage;
     window.switchGroupsTab = switchGroupsTab;
-    window.switchSettingsTab = switchSettingsTab;
-    window.toggleGroupEnabled = toggleGroupEnabled;
     window.closeSidebar = closeSidebar;
     window.confirmDeleteFile = confirmDeleteFile;
-    window.toggleFwdEnabled = toggleFwdEnabled;
     window.openBackfillSheet = openBackfillFor;
     document
         .getElementById('backfill-chat-btn')
         ?.addEventListener('click', () => openBackfillFor(state.currentGroupId));
+    _setupChatDetailsEntry();
+    _setupAccountWizardLinks();
     // Mini-player public surface — viewer.js can opt into the dock-on-
     // close behaviour by calling `window.tgdlShrinkToMini()` from the
     // modal close path. Kept on `window` (instead of imported) so the
@@ -585,7 +670,6 @@ async function init() {
     // setupFab / Settings / Viewer / etc. closures further down. Safe to
     // assign post-await because no inline onclick reaches them before
     // the operator clicks something.
-    window.toggleFwdDelete = toggleFwdDelete;
     window.openDestinationPicker = openDestinationPicker;
     window.filterDialogs = filterDialogs;
     window.filterSidebarGroups = filterSidebarGroups;
@@ -788,6 +872,20 @@ function renderPage(page, params = {}) {
         import('./maintenance-cluster.js').then((m) => m.destroy?.()).catch(() => {});
     }
     const prevPage = state.currentPage;
+    // Leaving a chat's details page: send an edit that's still waiting.
+    if (prevPage === 'chat' && page !== 'chat') {
+        _chatDetailsModule?.then((m) => m.leaveChatDetails()).catch(() => {});
+    }
+    if (page === 'chat') {
+        // The page's container is created by js/chat-details.js; make sure
+        // it's there before the show/hide pass below.
+        if (!document.getElementById('page-chat')) {
+            const el = document.createElement('div');
+            el.id = 'page-chat';
+            el.className = 'hidden';
+            document.getElementById('content-area')?.appendChild(el);
+        }
+    }
     const contentArea = document.getElementById('content-area');
     // #content-area is shared by every page. Remember where the gallery
     // was so coming back to the Library lands on the same tile, and
@@ -795,6 +893,7 @@ function renderPage(page, params = {}) {
     // the previous page was scrolled to.
     if (contentArea && prevPage !== page) {
         if (prevPage === 'viewer') _viewerScrollTop = contentArea.scrollTop;
+        if (prevPage === 'groups') _groupsScrollTop = contentArea.scrollTop;
         contentArea.scrollTop = 0;
     }
     state.currentPage = page;
@@ -872,12 +971,35 @@ function renderPage(page, params = {}) {
             }, 80);
         }
     } else if (page === 'groups') {
-        renderGroupsConfig();
+        renderGroupsConfig({ restoreScroll: prevPage === 'chat' });
         _setPageText('title', 'groups.page.title', 'Manage Groups');
         _setPageText('subtitle', 'groups.page.subtitle', 'Configure monitoring and filters');
+    } else if (page === 'chat') {
+        const name = getGroupName(params.groupId);
+        _setPageRaw('title', name);
+        _setPageText('subtitle', 'chat.details.subtitle', 'Chat settings');
+        updateHeaderAvatar(params.groupId, name);
+        loadChatDetailsModule()
+            .then((m) => {
+                if (state.currentPage !== 'chat') return;
+                m.showChatDetails({
+                    ...params,
+                    // The page learned the chat's real name (not configured,
+                    // nothing downloaded yet): put it in the header too.
+                    onName: (n) => {
+                        if (state.currentPage !== 'chat') return;
+                        _setPageRaw('title', n);
+                        updateHeaderAvatar(params.groupId, n);
+                    },
+                });
+            })
+            .catch((e) => console.error('chat details', e));
     } else if (page === 'viewer') {
         if (state.currentGroup) {
             _setPageRaw('title', state.currentGroup);
+            // Back in a chat's gallery from another page: its avatar, not
+            // the generic gallery glyph setHeaderPageIcon() just put there.
+            updateHeaderAvatar(state.currentGroupId, state.currentGroup);
             // Returning to an already-loaded group gallery: keep the grid
             // and put the scroll + file count back.
             if (prevPage !== 'viewer' && _galleryLoadedFor(_galleryViewKey())) {
@@ -1042,8 +1164,15 @@ function registerRoutes() {
     });
     router.route('/groups', () => renderPage('groups'));
     router.route('/groups/:groupId', ({ params }) => {
-        renderPage('groups');
-        openGroupSettings(params.groupId, getGroupName(params.groupId));
+        // Chat details page. `from` (the page we're coming from, unset on
+        // a deep link) lets its Back button step back instead of pushing.
+        const from = document.body.dataset.page || null;
+        renderPage('chat', {
+            groupId: params.groupId,
+            navKey: 'groups',
+            from,
+            fromGroup: from === 'viewer' ? state.currentGroupId || null : null,
+        });
     });
     router.route('/engine', () => renderPage('settings', { section: 'engine', navKey: 'engine' }));
     router.route('/settings', () => renderPage('settings'));
@@ -1105,7 +1234,16 @@ function registerRoutes() {
         }
     });
     router.route('/account/add', () => {
-        window.location.href = '/add-account.html';
+        // In-app sheet over Settings → Accounts (add-account.html still
+        // works for old links).
+        import('./account-wizard.js')
+            .then((m) =>
+                m.openAccountWizardFromRoute(() => renderPage('settings', { section: 'accounts' })),
+            )
+            .catch((e) => {
+                console.error('account wizard', e);
+                window.location.href = '/add-account.html';
+            });
     });
     router.route('/maintenance', () => renderPage('maintenance'));
     router.route('/maintenance/duplicates', () => renderPage('maintenance-duplicates'));
@@ -2612,9 +2750,9 @@ function renderGalleryEmptyState() {
                     onClick: () => openBackfillFor(groupId),
                 },
                 {
-                    label: i18nT('viewer.empty.action.group_settings', 'Group Settings'),
-                    icon: 'ri-equalizer-line',
-                    onClick: () => window.openGroupSettings?.(groupId),
+                    label: i18nT('chat.details.open', 'Chat settings'),
+                    icon: 'ri-settings-3-line',
+                    onClick: () => openGroupSettings(groupId),
                 },
                 {
                     label: i18nT('viewer.empty.action.reindex', 'Re-index from disk'),
@@ -2640,7 +2778,7 @@ function renderGalleryEmptyState() {
                 {
                     label: i18nT('viewer.empty.action.add_account', 'Add account'),
                     icon: 'ri-user-add-line',
-                    onClick: () => window.navigateTo?.('settings/accounts'),
+                    onClick: () => openAccountWizard(),
                 },
                 {
                     label: i18nT('viewer.empty.action.groups', 'Manage groups'),
@@ -3151,17 +3289,30 @@ async function setupMediaSearch() {
         const next = !allPinned;
         let ok = 0,
             failed = 0;
-        for (const f of items) {
+        // One request per batch (POST /api/downloads/pin) instead of one
+        // per file — a 500-file selection used to fire 500 requests.
+        const BATCH = 1000;
+        for (let i = 0; i < items.length; i += BATCH) {
+            const part = items.slice(i, i + BATCH);
             try {
-                await api.post(`/api/downloads/${encodeURIComponent(f.id)}/pin`, { pinned: next });
-                f.pinned = next;
-                const tile = document.querySelector(
-                    `.media-item[data-id="${CSS.escape(String(f.id))}"]`,
-                );
-                tile?.classList.toggle('is-pinned', next);
-                ok++;
+                const r = await api.post('/api/downloads/pin', {
+                    ids: part.map((f) => f.id),
+                    pinned: next,
+                });
+                const done = new Set((r?.ids || []).map(String));
+                for (const f of part) {
+                    if (!done.has(String(f.id))) {
+                        failed++;
+                        continue;
+                    }
+                    f.pinned = next;
+                    document
+                        .querySelector(`.media-item[data-id="${CSS.escape(String(f.id))}"]`)
+                        ?.classList.toggle('is-pinned', next);
+                    ok++;
+                }
             } catch {
-                failed++;
+                failed += part.length;
             }
         }
         showToast(
@@ -3195,22 +3346,65 @@ function _wireGalleryDedupDone() {
 }
 
 // ============ Groups Config Page ============
-async function renderGroupsConfig() {
+// The Chats rows come from js/add-sheet.js — the same rows (Monitor
+// switch, Backfill…, tap for the chat's details) as the + sheet.
+let _addSheetModule = null;
+let _addSheetLoaded = null;
+function loadAddSheetModule() {
+    if (!_addSheetModule) {
+        _addSheetModule = import('./add-sheet.js')
+            .then((m) => {
+                _addSheetLoaded = m;
+                return m;
+            })
+            .catch((e) => {
+                _addSheetModule = null;
+                throw e;
+            });
+    }
+    return _addSheetModule;
+}
+
+let _groupsScrollTop = 0;
+
+function _paintDialogs() {
+    const q = document.getElementById('groups-search')?.value || '';
+    if (q.trim()) filterDialogs(q);
+    else renderDialogsList(state.allDialogs || []);
+}
+
+async function renderGroupsConfig({ restoreScroll = false } = {}) {
     const list = document.getElementById('groups-config-list');
     if (!list) return;
+    const scroller = document.getElementById('content-area');
 
-    list.innerHTML = `<div class="text-center py-8 text-tg-textSecondary">${escapeHtml(i18nT('groups.loading_dialogs', 'Loading dialogs...'))}</div>`;
+    // Back from a chat's page (or a refresh): paint the list we already
+    // have — search text and scroll position intact — and update it
+    // quietly, instead of blanking it to "Loading dialogs…".
+    const cached = Array.isArray(state.allDialogs) && state.allDialogs.length > 0;
+    if (cached) {
+        await loadAddSheetModule().catch(() => {});
+        _paintDialogs();
+        if (restoreScroll && scroller) scroller.scrollTop = _groupsScrollTop;
+    } else {
+        list.classList.remove('cr-list');
+        list.innerHTML = `<div class="text-center py-8 text-tg-textSecondary">${escapeHtml(i18nT('groups.loading_dialogs', 'Loading dialogs...'))}</div>`;
+    }
 
     try {
-        const res = await api.get('/api/dialogs');
+        const [res] = await Promise.all([api.get('/api/dialogs'), loadAddSheetModule()]);
         const dialogs = res.dialogs || res || [];
         // Stash the account directory for chip rendering in renderDialogsList.
         // Only meaningful when 2+ accounts are linked — otherwise chips would
         // be visual noise (they all carry the same single label).
         state.dialogsAccounts = Array.isArray(res.accounts) ? res.accounts : [];
         state.allDialogs = dialogs;
-        renderDialogsList(dialogs);
+        if (state.currentPage !== 'groups') return;
+        const top = scroller?.scrollTop;
+        _paintDialogs();
+        if (cached && scroller && top != null) scroller.scrollTop = top;
     } catch (e) {
+        if (cached) return; // keep showing what we had
         // "No Telegram account configured yet" is not an error — it's a
         // first-run state. Surface a friendly empty-state pointing at the
         // Add Account flow instead of a red failure message.
@@ -3223,7 +3417,7 @@ async function renderGroupsConfig() {
                     'Add your Telegram account to load chats and start downloading.',
                 ),
                 actionLabel: i18nT('groups.no_account.cta', 'Add account'),
-                actionHref: '/add-account.html',
+                actionHref: '#/account/add',
             });
             return;
         }
@@ -3234,6 +3428,13 @@ async function renderGroupsConfig() {
 function renderDialogsList(dialogs) {
     const list = document.getElementById('groups-config-list');
     if (!list) return;
+    const rows = _addSheetLoaded;
+    if (!rows) {
+        loadAddSheetModule()
+            .then(() => renderDialogsList(dialogs))
+            .catch((e) => console.error('chat rows', e));
+        return;
+    }
 
     const tab = state.groupsTab || 'all';
     const filtered =
@@ -3244,6 +3445,8 @@ function renderDialogsList(dialogs) {
               : dialogs;
 
     if (filtered.length === 0) {
+        list.removeAttribute('role');
+        list.classList.remove('cr-list');
         list.innerHTML = `<div class="text-center py-8 text-tg-textSecondary">${escapeHtml(i18nT('groups.none_found', 'No groups found'))}</div>`;
         return;
     }
@@ -3264,39 +3467,10 @@ function renderDialogsList(dialogs) {
         }
     }
 
-    const rowHtml = filtered
+    list.setAttribute('role', 'list');
+    list.classList.add('cr-list');
+    list.innerHTML = filtered
         .map((d) => {
-            const typeLabel =
-                d.type === 'channel'
-                    ? i18nT('groups.type.channel', 'Channel')
-                    : d.type === 'group'
-                      ? i18nT('groups.type.group', 'Group')
-                      : d.type === 'bot'
-                        ? i18nT('groups.type.bot', 'Bot')
-                        : d.type === 'user'
-                          ? i18nT('groups.type.user', 'Direct message')
-                          : i18nT('groups.type.dialog', 'Dialog');
-            const subParts = [typeLabel];
-            if (d.members)
-                subParts.push(
-                    i18nTf('groups.members', { count: d.members }, `${d.members} members`),
-                );
-            if (d.archived) subParts.push(i18nT('groups.archived', 'archived'));
-
-            const statusPill =
-                d.inConfig && d.suspended
-                    ? { label: i18nT('groups.status.suspended', 'Suspended'), kind: 'suspended' }
-                    : d.inConfig && d.enabled
-                      ? { label: i18nT('groups.status.active', 'Active'), kind: 'active' }
-                      : d.inConfig && !d.enabled
-                        ? { label: i18nT('groups.status.paused', 'Paused'), kind: 'paused' }
-                        : { label: i18nT('groups.status.add', 'Add'), kind: 'add' };
-
-            // Canonical name — for dialogs the d.name is usually authoritative
-            // (Telegram-side title) but route through getGroupName so a config
-            // override (custom label) wins when present.
-            const dispName = getGroupName(d.id, { fallback: d.name || d.title });
-
             let accountChips = null;
             if (showChips && Array.isArray(d.accountIds) && d.accountIds.length > 0) {
                 accountChips = d.accountIds.map((id) => {
@@ -3304,51 +3478,14 @@ function renderDialogsList(dialogs) {
                     return { id, label: meta?.label || id, title: meta?.title || id };
                 });
             }
-
-            return renderChatRow({
-                id: d.id,
-                name: dispName,
-                avatarType: d.type,
-                subtitle: subParts.join(' · '),
-                statusPill,
-                accountChips,
-            });
+            return rows.renderChatResultRow(d, { accountChips });
         })
         .join('');
-    list.innerHTML = rowHtml;
-
-    // Click anywhere on the row → open the group settings sheet for that
-    // dialog. Re-resolve through the canonical store at click time.
-    list.querySelectorAll('.chat-row[data-id]').forEach((el) => {
-        const fire = () => openGroupSettings(el.dataset.id, getGroupName(el.dataset.id));
-        el.addEventListener('click', fire);
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fire();
-            }
-        });
+    // Row taps open the chat's details page; the switch and Backfill…
+    // act in place (one delegated listener, wired once).
+    rows.wireChatResultRows(list, {
+        getChat: (id) => (state.allDialogs || []).find((d) => String(d.id) === String(id)),
     });
-}
-
-// After saving one chat's settings, update just that row. Re-running
-// renderGroupsConfig() refetched every dialog from Telegram and blanked
-// the list to "Loading dialogs…", which looked like a page reload and lost
-// the search text and scroll position.
-function refreshDialogRow(id, enabled) {
-    const d = state.allDialogs?.find((x) => String(x.id) === id);
-    if (!d) {
-        renderGroupsConfig();
-        return;
-    }
-    d.inConfig = true;
-    d.enabled = !!enabled;
-    const scroller = document.getElementById('content-area');
-    const top = scroller?.scrollTop;
-    const q = document.getElementById('groups-search')?.value || '';
-    if (q.trim()) filterDialogs(q);
-    else renderDialogsList(state.allDialogs);
-    if (scroller && top != null) scroller.scrollTop = top;
 }
 
 function filterDialogs(query) {
@@ -3498,738 +3635,39 @@ function switchGroupsTab(tab) {
     if (state.allDialogs) renderDialogsList(state.allDialogs);
 }
 
-// ============ Group Settings Modal ============
-let currentEditGroup = null;
+// ============ Chat details (was: Group Settings modal) ============
+//
+// The three-tab modal is now the chat details page at #/groups/<id>
+// (js/chat-details.js, loaded on first use). These keep the old window
+// entry points working — the sidebar cog, the Chats rows, the empty
+// gallery and any custom build / console snippet that still calls them.
 
-async function openGroupSettings(groupId, groupName) {
-    // Always resolve via the canonical store — callers may pass nothing
-    // (deep-link router) or a stale label (sidebar dataset).
-    const canonical = getGroupName(groupId, { fallback: groupName });
-    currentEditGroup = { id: groupId, name: canonical };
-    groupName = canonical;
-
-    const modal = document.getElementById('group-modal');
-    if (!modal) return;
-
-    // Load current config for this group
-    const group = state.groups.find((g) => String(g.id) === String(groupId));
-    const filters = group?.filters || {};
-    const fwd = group?.autoForward || {};
-
-    // Update toggle states
-    const enableToggle = document.getElementById('group-enable-toggle');
-    const isSuspended = group?.suspended === true;
-    if (enableToggle) {
-        enableToggle.classList.toggle('active', !isSuspended && group?.enabled !== false);
-        enableToggle.classList.toggle('opacity-50', isSuspended);
-        enableToggle.classList.toggle('pointer-events-none', isSuspended);
-    }
-    const enableLabel = enableToggle?.closest('label');
-    if (enableLabel) {
-        enableLabel.classList.toggle('opacity-60', isSuspended);
-        enableLabel.classList.toggle('cursor-not-allowed', isSuspended);
-        enableLabel.classList.toggle('cursor-pointer', !isSuspended);
-    }
-    const suspendedBanner = document.getElementById('group-suspended-banner');
-    if (suspendedBanner) suspendedBanner.classList.toggle('hidden', !isSuspended);
-
-    const fwdToggle = document.getElementById('fwd-enable-toggle');
-    if (fwdToggle) fwdToggle.classList.toggle('active', fwd.enabled === true);
-
-    const fwdDeleteToggle = document.getElementById('fwd-delete-toggle');
-    if (fwdDeleteToggle)
-        fwdDeleteToggle.classList.toggle('active', fwd.deleteAfterForward === true);
-
-    // Topics
-    const topics = group?.topics || {};
-    const topicsToggle = document.getElementById('topics-enable-toggle');
-    if (topicsToggle) topicsToggle.classList.toggle('active', topics.enabled === true);
-    const topicsInput = document.getElementById('topics-ids');
-    if (topicsInput) topicsInput.value = (topics.ids || []).join(', ');
-
-    const fwdDest = document.getElementById('fwd-destination');
-    if (fwdDest) fwdDest.value = fwd.destination || '';
-
-    // Populate account pickers
-    try {
-        const accounts = await api.get('/api/accounts');
-        const monitorSelect = document.getElementById('monitor-account');
-        const forwardSelect = document.getElementById('forward-account');
-
-        const makeLabel = (a) => {
-            let label = a.id;
-            if (a.name && a.name !== a.id) label = `${a.name} (${a.id})`;
-            if (a.username) label += ` @${a.username}`;
-            if (a.isDefault) label += ' ⭐';
-            return label;
-        };
-
-        const defaultLabel = i18nT('group.accounts.default_option_star', '(Default Account ⭐)');
-        if (monitorSelect) {
-            monitorSelect.innerHTML =
-                `<option value="">${escapeHtml(defaultLabel)}</option>` +
-                accounts
-                    .map(
-                        (a) =>
-                            `<option value="${a.id}" ${group?.monitorAccount === a.id ? 'selected' : ''}>${makeLabel(a)}</option>`,
-                    )
-                    .join('');
-        }
-        if (forwardSelect) {
-            forwardSelect.innerHTML =
-                `<option value="">${escapeHtml(defaultLabel)}</option>` +
-                accounts
-                    .map(
-                        (a) =>
-                            `<option value="${a.id}" ${group?.forwardAccount === a.id ? 'selected' : ''}>${makeLabel(a)}</option>`,
-                    )
-                    .join('');
-        }
-    } catch (e) {
-        /* accounts API not available */
-    }
-
-    // Cluster routing — populate owner / backup peer dropdowns from
-    // /api/cluster/peers. The wrapper stays hidden when no peers are
-    // paired so non-cluster operators see no change.
-    try {
-        const r = await api.get('/api/cluster/peers');
-        const peers = Array.isArray(r?.peers) ? r.peers : [];
-        const wrapper = document.getElementById('group-cluster-routing');
-        const ownerSel = document.getElementById('group-owner-peer');
-        const backupSel = document.getElementById('group-backup-peer');
-        if (wrapper) {
-            if (!peers.length) {
-                wrapper.classList.add('hidden');
-            } else {
-                wrapper.classList.remove('hidden');
-                const peerLabel = (p) => {
-                    const name = p.name || p.peerId.slice(0, 12);
-                    const status = p.status === 'online' ? '🟢' : '⚪';
-                    return `${status} ${name}`;
-                };
-                const anyOpt = i18nT('group.cluster.any_peer', '(Any peer — first online wins)');
-                const noneOpt = i18nT('group.cluster.no_backup', '(No automatic failover)');
-                if (ownerSel) {
-                    ownerSel.innerHTML =
-                        `<option value="">${escapeHtml(anyOpt)}</option>` +
-                        peers
-                            .map(
-                                (p) =>
-                                    `<option value="${escapeHtml(p.peerId)}" ${
-                                        group?.ownerPeerId === p.peerId ? 'selected' : ''
-                                    }>${escapeHtml(peerLabel(p))}</option>`,
-                            )
-                            .join('');
-                }
-                if (backupSel) {
-                    backupSel.innerHTML =
-                        `<option value="">${escapeHtml(noneOpt)}</option>` +
-                        peers
-                            .map(
-                                (p) =>
-                                    `<option value="${escapeHtml(p.peerId)}" ${
-                                        group?.backupPeerId === p.peerId ? 'selected' : ''
-                                    }>${escapeHtml(peerLabel(p))}</option>`,
-                            )
-                            .join('');
-                }
-            }
-        }
-    } catch (e) {
-        /* cluster route 401 / 404 → no peers context — leave hidden */
-    }
-
-    // Populate filter checkboxes
-    const filterOptions = document.getElementById('filter-options');
-    if (filterOptions) {
-        const types = [
-            { key: 'photos', label: i18nT('group.filter.photos', 'Photos'), icon: 'ri-image-line' },
-            { key: 'videos', label: i18nT('group.filter.videos', 'Videos'), icon: 'ri-video-line' },
-            {
-                key: 'files',
-                label: i18nT('group.filter.files', 'Files / Documents'),
-                icon: 'ri-file-line',
-            },
-            { key: 'links', label: i18nT('group.filter.links', 'Links'), icon: 'ri-link' },
-            {
-                key: 'voice',
-                label: i18nT('group.filter.voice', 'Voice Messages'),
-                icon: 'ri-mic-line',
-            },
-            { key: 'gifs', label: i18nT('group.filter.gifs', 'GIFs'), icon: 'ri-file-gif-line' },
-            {
-                key: 'stickers',
-                label: i18nT('group.filter.stickers', 'Stickers'),
-                icon: 'ri-emoji-sticker-line',
-            },
-            {
-                key: 'urls',
-                label: i18nT('group.filter.urls', 'URLs in Text'),
-                icon: 'ri-links-line',
-            },
-        ];
-
-        filterOptions.innerHTML = types
-            .map((t) => {
-                const checked = filters[t.key] !== false;
-                return `
-                <label class="flex items-center justify-between p-3 bg-tg-bg rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
-                    <div class="flex items-center gap-3">
-                        <i class="${t.icon} text-tg-textSecondary"></i>
-                        <span class="text-white text-sm">${t.label}</span>
-                    </div>
-                    <div class="tg-toggle ${checked ? 'active' : ''}" data-filter="${t.key}"
-                        onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
-                </label>
-            `;
-            })
-            .join('');
-    }
-
-    // Backfill: one button opens the backfill sheet (limit + Start in one
-    // place, live progress after). It opens on top of this modal, so
-    // closing it lands back here.
-    const progressEl = document.getElementById('history-progress');
-    if (progressEl) progressEl.classList.add('hidden');
-    const backfillBtn = document.getElementById('group-backfill-btn');
-    if (backfillBtn) backfillBtn.onclick = () => openBackfillFor(groupId);
-    // Custom builds that still carry the old preset chips: open the sheet
-    // with that limit preselected.
-    document.querySelectorAll('[data-history-limit]').forEach((btn) => {
-        btn.onclick = () => {
-            const parsed = parseInt(btn.dataset.historyLimit, 10);
-            openBackfillFor(groupId, Number.isFinite(parsed) ? parsed : 100);
-        };
-    });
-
-    // Rescue Mode: populate chip group + retention input. Mode defaults to
-    // 'auto' (follow global cfg.rescue.enabled). Chip click toggles active
-    // class — the value reads back in saveGroupSettings().
-    const rescueMode =
-        group?.rescueMode === 'on' || group?.rescueMode === 'off' || group?.rescueMode === 'auto'
-            ? group.rescueMode
-            : 'auto';
-    document.querySelectorAll('#setting-rescue-mode .rescue-chip').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.rescueValue === rescueMode);
-        btn.onclick = (ev) => {
-            ev.preventDefault();
-            document
-                .querySelectorAll('#setting-rescue-mode .rescue-chip')
-                .forEach((b) => b.classList.remove('active'));
-            btn.classList.add('active');
-        };
-    });
-    const rescueHoursEl = document.getElementById('setting-rescue-hours');
-    if (rescueHoursEl) rescueHoursEl.value = group?.rescueRetentionHours || '';
-
-    // Show media tab by default
-    switchSettingsTab('media');
-    // Wire the Data tab's action buttons once per modal open. The buttons
-    // live inside the modal so re-binding on every open is harmless.
-    _wireGroupDataActions(groupId);
-    // Back (Android / browser) closes the modal instead of the page.
-    if (modal.classList.contains('hidden') && _groupModalOverlay == null) {
-        _groupModalOverlay = pushOverlay(() => closeGroupSettings());
-    }
-    modal.classList.remove('hidden');
-}
-
-// overlay-history token while Group Settings is open.
-let _groupModalOverlay = null;
-
-// Idempotent — replaces handlers via .onclick so re-opening the modal
-// for a different group always re-targets the right id.
-function _wireGroupDataActions(groupId) {
-    const delBtn = document.getElementById('group-data-delete-files-btn');
-    const purgeBtn = document.getElementById('group-data-purge-btn');
-    const more = document.getElementById('group-data-loadmore');
-    if (delBtn) {
-        delBtn.onclick = async () => {
-            const { api } = await import('./api.js');
-            const { confirmSheet } = await import('./sheet.js');
-            const ok = await confirmSheet({
-                title: i18nT('group.data.delete_files', 'Delete files only'),
-                message: i18nT(
-                    'group.data.delete_files_confirm',
-                    'Drop every download row + on-disk file for this group. Group config (filters, monitor, accounts) is kept so the next pass can re-download fresh.',
-                ),
-                confirmLabel: i18nT('group.data.delete_files', 'Delete files only'),
-                danger: true,
-            });
-            if (!ok) return;
-            try {
-                await api.post(`/api/groups/${encodeURIComponent(groupId)}/delete-files`, {});
-                const { showToast } = await import('./utils.js');
-                showToast(i18nT('group.data.delete_files_started', 'Deleting files…'), 'info');
-            } catch (e) {
-                const { showToast } = await import('./utils.js');
-                showToast(e?.data?.error || e.message || 'Failed', 'error');
-            }
-        };
-    }
-    if (purgeBtn) {
-        purgeBtn.onclick = async () => {
-            const { api } = await import('./api.js');
-            const { confirmSheet } = await import('./sheet.js');
-            const ok = await confirmSheet({
-                title: i18nT('group.data.wipe_all', 'Wipe all data'),
-                message: i18nT(
-                    'group.data.wipe_all_confirm',
-                    'Removes the group from your monitor list, drops every download row, and deletes the on-disk folder. This is destructive.',
-                ),
-                confirmLabel: i18nT('group.data.wipe_all', 'Wipe all data'),
-                danger: true,
-            });
-            if (!ok) return;
-            try {
-                await api.delete(`/api/groups/${encodeURIComponent(groupId)}/purge`);
-                const { showToast } = await import('./utils.js');
-                showToast(i18nT('group.data.wipe_started', 'Wiping group…'), 'info');
-                closeGroupSettings();
-            } catch (e) {
-                const { showToast } = await import('./utils.js');
-                showToast(e?.data?.error || e.message || 'Failed', 'error');
-            }
-        };
-    }
-    if (more) {
-        more.onclick = async () => {
-            if (!_groupDataState.hasMore || _groupDataState.groupId !== groupId) return;
-            const { api } = await import('./api.js');
-            try {
-                const r = await api.get(
-                    `/api/groups/${encodeURIComponent(groupId)}/files?limit=20&offset=${_groupDataState.offset}`,
-                );
-                const filesHost = document.getElementById('group-data-files');
-                if (filesHost && r.rows && r.rows.length) {
-                    filesHost.insertAdjacentHTML('beforeend', _renderGroupFiles(r.rows));
-                    _groupDataState.offset += r.rows.length;
-                    _groupDataState.hasMore = !!r.hasMore;
-                    if (!r.hasMore) more.classList.add('hidden');
-                }
-            } catch (e) {
-                const { showToast } = await import('./utils.js');
-                showToast(e?.data?.error || e.message || 'Failed', 'error');
-            }
-        };
-    }
-}
-
-function closeGroupSettings() {
-    const modal = document.getElementById('group-modal');
-    if (modal) modal.classList.add('hidden');
-    currentEditGroup = null;
-    if (_groupModalOverlay != null) {
-        const token = _groupModalOverlay;
-        _groupModalOverlay = null;
-        popOverlay(token);
-    }
-}
-
-async function saveGroupSettings() {
-    if (!currentEditGroup) return;
-
-    const _editedGroup = state.groups.find((g) => String(g.id) === String(currentEditGroup.id));
-    const _isSuspended = _editedGroup?.suspended === true;
-    const enabled = _isSuspended
-        ? false
-        : (document.getElementById('group-enable-toggle')?.classList.contains('active') ?? true);
-
-    // Collect filters
-    const filters = {};
-    document.querySelectorAll('#filter-options .tg-toggle[data-filter]').forEach((toggle) => {
-        filters[toggle.dataset.filter] = toggle.classList.contains('active');
-    });
-
-    // Collect forward settings
-    const fwdEnabled =
-        document.getElementById('fwd-enable-toggle')?.classList.contains('active') ?? false;
-    const fwdDelete =
-        document.getElementById('fwd-delete-toggle')?.classList.contains('active') ?? false;
-    const fwdDest = document.getElementById('fwd-destination')?.value || '';
-
-    // Collect account assignments
-    const monitorAccount = document.getElementById('monitor-account')?.value || '';
-    const forwardAccount = document.getElementById('forward-account')?.value || '';
-
-    // Cluster routing — only honoured when the cluster routing wrapper
-    // is actually visible (i.e., at least one peer is paired and the
-    // dropdowns were populated). If hidden, the dropdowns hold the
-    // empty default value, and including them in the payload would
-    // erase any existing ownerPeerId/backupPeerId that the operator
-    // set previously (e.g., before a peer was revoked). Tracking the
-    // wrapper's hidden state at save time guarantees we only push
-    // these fields when the user actually saw + chose them.
-    const clusterWrapper = document.getElementById('group-cluster-routing');
-    const clusterRoutingEditable = clusterWrapper && !clusterWrapper.classList.contains('hidden');
-    const ownerPeerId = clusterRoutingEditable
-        ? document.getElementById('group-owner-peer')?.value || ''
-        : null;
-    const backupPeerId = clusterRoutingEditable
-        ? document.getElementById('group-backup-peer')?.value || ''
-        : null;
-
-    // Topics
-    const topicsEnabled =
-        document.getElementById('topics-enable-toggle')?.classList.contains('active') ?? false;
-    const topicsRaw = document.getElementById('topics-ids')?.value || '';
-    const topicIds = topicsRaw
-        .split(',')
-        .map((s) => parseInt(s.trim(), 10))
-        .filter(Number.isFinite);
-
-    // Rescue Mode read-back. Active chip wins; default to 'auto' if none
-    // (shouldn't happen, but defensive). Hours is optional — empty string
-    // sends null so the server falls back to the global retention setting.
-    const activeRescueChip = document.querySelector('#setting-rescue-mode .rescue-chip.active');
-    const rescueMode = activeRescueChip?.dataset.rescueValue || 'auto';
-    const rescueHoursRaw = document.getElementById('setting-rescue-hours')?.value;
-    const rescueHoursParsed = parseInt(rescueHoursRaw, 10);
-    const rescueRetentionHours =
-        Number.isFinite(rescueHoursParsed) && rescueHoursParsed > 0 ? rescueHoursParsed : null;
-
-    const data = {
-        name: currentEditGroup.name,
-        enabled,
-        filters,
-        autoForward: {
-            enabled: fwdEnabled,
-            destination: fwdDest,
-            deleteAfterForward: fwdDelete,
-        },
-        topics: {
-            enabled: topicsEnabled,
-            // When the user enables the filter and supplies a list, treat it
-            // as a whitelist (only those topics are monitored). Empty list
-            // with the filter on still passes everything through, matching
-            // the Topics-tab help text.
-            mode: topicsEnabled && topicIds.length > 0 ? 'whitelist' : 'all',
-            ids: topicIds,
-        },
-        monitorAccount: monitorAccount || null,
-        forwardAccount: forwardAccount || null,
-        rescueMode,
-        rescueRetentionHours,
-    };
-
-    // Cluster routing fields are only included in the payload when the
-    // cluster wrapper is visible — see clusterRoutingEditable above. If
-    // hidden (no peers paired), we do NOT send these keys so the server
-    // leaves any existing value untouched. The PUT handler already treats
-    // an empty string as "delete the field", which is the desired UX
-    // for explicit user clearing.
-    if (clusterRoutingEditable) {
-        data.ownerPeerId = ownerPeerId || null;
-        data.backupPeerId = backupPeerId || null;
-    }
-
-    try {
-        const savedId = String(currentEditGroup.id);
-        await api.put(`/api/groups/${currentEditGroup.id}`, data);
-        showToast(i18nT('group.modal.saved_toast', 'Group settings saved!'), 'success');
-        closeGroupSettings();
-        await loadGroups();
-        if (state.currentPage === 'groups') refreshDialogRow(savedId, enabled);
-    } catch (e) {
-        showToast(
-            i18nTf('group.modal.save_failed', { msg: e.message }, 'Failed to save: ' + e.message),
-            'error',
-        );
-    }
-}
-
-function switchSettingsTab(tab) {
-    // Tab count collapsed from 5 to 3 (Filters / Routing / Data):
-    //   - Topics moved into the Filters tab
-    //   - Accounts + Cluster moved into the Routing tab
-    // The legacy `accounts` / `topics` tab IDs no longer have matching
-    // header buttons; the `?.` chain below is intentionally tolerant in
-    // case any code path or deep-link still passes them.
-    document.getElementById('content-media')?.classList.toggle('hidden', tab !== 'media');
-    document.getElementById('content-forward')?.classList.toggle('hidden', tab !== 'forward');
-    document.getElementById('content-data')?.classList.toggle('hidden', tab !== 'data');
-
-    document.getElementById('tab-media')?.classList.toggle('active', tab === 'media');
-    document.getElementById('tab-forward')?.classList.toggle('active', tab === 'forward');
-    document.getElementById('tab-data')?.classList.toggle('active', tab === 'data');
-
-    // Lazy-load the Data tab — only fetch stats + files when the operator
-    // clicks into it, so the modal stays cheap to open for groups they
-    // never look at. Use `currentEditGroup.id` (set on modal open) NOT
-    // `state.currentGroupId` (set on sidebar selection) — the two can
-    // disagree when the operator opens settings from a non-sidebar entry
-    // point (Manage Groups action sheet, deep-link, Maintenance page),
-    // which was the cause of "Recent files don't show" reports: the
-    // modal queried `/api/groups/<wrong-id>/files`, got empty rows, and
-    // rendered the empty state.
-    if (tab === 'data') {
-        const id = currentEditGroup?.id ?? state.currentGroupId;
-        if (id) _loadGroupDataTab(id).catch(() => {});
-    }
-}
-
-// State for the Data tab — limited per-modal-open scope.
-let _groupDataState = { groupId: null, offset: 0, hasMore: false };
-async function _loadGroupDataTab(groupId) {
-    if (!groupId) return;
-    _groupDataState = { groupId, offset: 0, hasMore: false };
-    const { api } = await import('./api.js');
-    const statsHost = document.getElementById('group-data-stats');
-    const filesHost = document.getElementById('group-data-files');
-    const more = document.getElementById('group-data-loadmore');
-    if (statsHost) {
-        statsHost.innerHTML = `<div class="col-span-full text-center text-xs text-tg-textSecondary py-3"><i class="ri-loader-4-line animate-spin"></i> ${_escape(i18nT('common.loading', 'Loading…'))}</div>`;
-    }
-    if (filesHost) filesHost.innerHTML = '';
-    if (more) more.classList.add('hidden');
-    try {
-        const stats = await api.get(`/api/groups/${encodeURIComponent(groupId)}/stats`);
-        if (statsHost) statsHost.innerHTML = _renderGroupStats(stats);
-        const files = await api.get(`/api/groups/${encodeURIComponent(groupId)}/files?limit=20`);
-        if (filesHost) filesHost.innerHTML = _renderGroupFiles(files.rows || []);
-        _groupDataState.offset = (files.rows || []).length;
-        _groupDataState.hasMore = !!files.hasMore;
-        if (more) more.classList.toggle('hidden', !files.hasMore);
-        // Header counter: "20 / 1,240" — quick orientation for how
-        // much of the catalogue is visible in the strip.
-        const counter = document.getElementById('group-data-files-count');
-        if (counter) {
-            const shown = (files.rows || []).length;
-            const total = Number(files.total) || shown;
-            counter.textContent = `${shown.toLocaleString()} / ${total.toLocaleString()}`;
-        }
-    } catch (e) {
-        if (statsHost) {
-            statsHost.innerHTML = `<div class="col-span-full text-center text-xs text-red-300 py-3">${_escape(e?.data?.error || e.message || 'Failed')}</div>`;
-        }
-    }
-}
-function _escape(s) {
-    return String(s || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-function _formatBytes(n) {
-    n = Number(n) || 0;
-    if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
-    return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-}
-function _renderGroupStats(s) {
-    const totalFiles = (s.totalFiles || 0).toLocaleString();
-    const size = _formatBytes(s.totalBytes);
-    const last = s.lastDownloadAt
-        ? new Date(s.lastDownloadAt).toLocaleString()
-        : i18nT('common.never', 'Never');
-    const types = s.byType || {};
-    return `
-        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
-            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.total">Files</div>
-            <div class="text-xl font-semibold text-tg-text tabular-nums">${totalFiles}</div>
-        </div>
-        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
-            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.size">Size</div>
-            <div class="text-xl font-semibold text-tg-text tabular-nums">${_escape(size)}</div>
-        </div>
-        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
-            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.types">Types</div>
-            <div class="text-xs text-tg-text tabular-nums">${_escape(
-                ['photo', 'video', 'audio', 'document']
-                    .map((k) => `${k[0]}:${types[k] || 0}`)
-                    .join(' · '),
-            )}</div>
-        </div>
-        <div class="bg-tg-bg/40 rounded-lg p-3 text-center">
-            <div class="text-[10px] uppercase text-tg-textSecondary tracking-wide" data-i18n="group.data.stat.last">Last download</div>
-            <div class="text-[11px] text-tg-text tabular-nums">${_escape(last)}</div>
-        </div>`;
-}
-// Compact "5 min ago" style. Fall back to absolute date for older items
-// so the operator can still tell a week-old row apart from a month-old.
-function _relativeTime(unixOrIso) {
-    const t =
-        typeof unixOrIso === 'string' ? new Date(unixOrIso).getTime() : Number(unixOrIso) || 0;
-    if (!t) return '';
-    const diffSec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (diffSec < 60) return `${diffSec}s ago`;
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-    if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
-    return new Date(t).toLocaleDateString();
-}
-
-function _renderGroupFiles(rows) {
-    if (!rows || !rows.length) {
-        return `<div class="text-center py-8">
-            <i class="ri-inbox-line text-3xl text-tg-textSecondary/40 block mb-1.5"></i>
-            <div class="text-xs text-tg-textSecondary">${_escape(i18nT('group.data.empty', 'No files yet.'))}</div>
-        </div>`;
-    }
-    return rows
-        .map((r) => {
-            const whenAbs = r.created_at ? new Date(r.created_at).toLocaleString() : '';
-            const whenRel = _relativeTime(r.created_at);
-            const fileType = r.file_type || 'document';
-            const isImage = fileType === 'photo' || fileType === 'image' || fileType === 'sticker';
-            const isVideo = fileType === 'video';
-            const isAudio = fileType === 'audio';
-            // Thumbnail container — `aspect-square rounded-md` with a subtle
-            // ring on hover. Image/video share the same shape (12×12) so
-            // rows align cleanly even when types are mixed. Audio + document
-            // get a type-tinted icon tile (no `/api/thumbs/<id>` fetch, no
-            // wasted 404).
-            const typeIcon = isAudio ? 'ri-music-2-line' : 'ri-file-text-line';
-            const typeTint = isAudio
-                ? 'bg-purple-500/15 text-purple-300'
-                : 'bg-tg-blue/15 text-tg-blue';
-            const thumb =
-                isImage || isVideo
-                    ? `<div class="relative w-12 h-12 rounded-md overflow-hidden shrink-0 bg-tg-bg/60">
-                        <img src="/api/thumbs/${r.id}?w=320" alt=""
-                          class="w-full h-full object-cover"
-                          loading="lazy" decoding="async"
-                          onerror="this.style.display='none';this.parentElement.classList.add('is-broken')">
-                        ${isVideo ? '<i class="ri-play-fill text-white text-base absolute inset-0 m-auto w-fit h-fit drop-shadow-md pointer-events-none"></i>' : ''}
-                       </div>`
-                    : `<div class="w-12 h-12 rounded-md ${typeTint} flex items-center justify-center shrink-0">
-                        <i class="${typeIcon} text-lg"></i>
-                       </div>`;
-            const nsfwChip =
-                Number(r.nsfw_score) >= 0.7
-                    ? `<span class="text-[9px] px-1 py-0.5 rounded bg-red-500/20 text-red-300 shrink-0 font-medium" title="NSFW score ${Number(r.nsfw_score).toFixed(2)}">NSFW</span>`
-                    : '';
-            // Type chip — small uppercase label so a heterogeneous list
-            // (photos + videos + audio + docs all mixed) is scannable.
-            const typeLabel = isImage
-                ? 'IMG'
-                : isVideo
-                  ? 'VID'
-                  : isAudio
-                    ? 'AUD'
-                    : (r.file_name || '').split('.').pop()?.toUpperCase()?.slice(0, 4) || 'DOC';
-            const filePath = (r.file_path || '').replace(/\\/g, '/');
-            const _ftq = fileTokenQuery();
-            const href = filePath
-                ? `/files/${encodeURI(filePath)}?inline=1${_ftq ? '&' + _ftq : ''}`
-                : null;
-            const open = href
-                ? `onclick="window.open('${_escape(href)}','_blank','noopener,noreferrer')"`
-                : '';
-            return `
-                <div class="group flex items-center gap-2.5 p-1.5 rounded-md hover:bg-tg-hover/40 cursor-pointer transition-colors" ${open} title="${_escape(whenAbs)}">
-                    ${thumb}
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-[9px] px-1 py-0.5 rounded bg-tg-bg/50 text-tg-textSecondary font-mono shrink-0">${_escape(typeLabel)}</span>
-                            <span class="text-xs text-tg-text truncate" title="${_escape(r.file_name || '')}">${_escape(r.file_name || '(unnamed)')}</span>
-                            ${nsfwChip}
-                        </div>
-                        <div class="text-[10px] text-tg-textSecondary tabular-nums mt-0.5 flex items-center gap-1.5">
-                            <span>${_escape(_formatBytes(r.file_size))}</span>
-                            <span class="opacity-50">·</span>
-                            <span>${_escape(whenRel)}</span>
-                        </div>
-                    </div>
-                    <i class="ri-external-link-line text-tg-textSecondary/0 group-hover:text-tg-textSecondary/70 transition-colors text-sm shrink-0"></i>
-                </div>`;
-        })
-        .join('');
-}
-
-function toggleGroupEnabled(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    const toggle = document.getElementById('group-enable-toggle');
-    if (toggle) toggle.classList.toggle('active');
-}
-
-function toggleFwdEnabled(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    const toggle = document.getElementById('fwd-enable-toggle');
-    if (toggle) toggle.classList.toggle('active');
-}
-
-function toggleFwdDelete(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    const toggle = document.getElementById('fwd-delete-toggle');
-    if (toggle) toggle.classList.toggle('active');
-}
-
-async function openDestinationPicker() {
-    const target = document.getElementById('fwd-destination');
-    if (!target) return;
-
-    const root = document.createElement('div');
-    root.innerHTML = `
-        <input id="dest-search" type="text" placeholder="${escapeHtml(i18nT('picker.search_placeholder', 'Search by name…'))}" class="tg-input w-full text-sm mb-3" autofocus>
-        <div id="dest-list" class="text-sm overflow-y-auto" style="max-height: 60vh">
-            <div class="text-tg-textSecondary p-2">${escapeHtml(i18nT('picker.loading', 'Loading dialogs…'))}</div>
-        </div>`;
-    const handle = openSheet({
-        title: i18nT('picker.title', 'Pick a destination'),
-        content: root,
-        size: 'md',
-    });
-    const list = root.querySelector('#dest-list');
-    const search = root.querySelector('#dest-search');
-
-    let dialogs = [];
-    try {
-        const r = await api.get('/api/dialogs');
-        dialogs = r.dialogs || [];
-    } catch (e) {
-        if (e?.data?.error === 'no_account') {
-            list.innerHTML = `<div class="p-3 text-sm text-tg-textSecondary">${escapeHtml(i18nT('picker.no_account', 'Add a Telegram account first to pick a forward destination.'))} <a href="/add-account.html" class="text-tg-blue hover:underline">${escapeHtml(i18nT('groups.no_account.cta', 'Add account'))}</a></div>`;
-            return;
-        }
-        list.innerHTML = `<div class="text-red-400 p-2">${escapeHtml(i18nTf('picker.failed', { msg: e.message }, `Failed to load dialogs: ${e.message}`))}</div>`;
-        return;
-    }
-
-    const render = () => {
-        const q = search.value.trim().toLowerCase();
-        const filtered = dialogs.filter(
-            (d) => !q || (d.name || '').toLowerCase().includes(q) || String(d.id).includes(q),
-        );
-        const presets = `
-            <button data-pick="me" type="button" class="w-full text-left px-3 py-2 rounded hover:bg-tg-hover text-tg-text">
-                <span class="text-tg-blue">${escapeHtml(i18nT('picker.saved_messages', '📥 Saved Messages'))}</span>
-                <div class="text-[11px] text-tg-textSecondary">${escapeHtml(i18nT('picker.saved_messages_help', 'value: '))}<code>me</code></div>
-            </button>
-            <button data-pick="" type="button" class="w-full text-left px-3 py-2 rounded hover:bg-tg-hover text-tg-text">
-                ${escapeHtml(i18nT('picker.default_storage', 'Default storage channel'))}
-                <div class="text-[11px] text-tg-textSecondary">${escapeHtml(i18nT('picker.default_storage_help', 'leave the field empty'))}</div>
-            </button>
-            <hr class="border-tg-border my-2">`;
-        list.innerHTML =
-            presets +
-            filtered
-                .map(
-                    (d) => `
-            <button data-pick="${escapeHtml(String(d.id))}" type="button" class="w-full text-left px-3 py-2 rounded hover:bg-tg-hover text-tg-text">
-                <div class="truncate">${escapeHtml(getGroupName(d.id, { fallback: d.name || d.title }))}</div>
-                <div class="text-[11px] text-tg-textSecondary">${escapeHtml(d.type || 'chat')} · <code>${escapeHtml(String(d.id))}</code></div>
-            </button>
-        `,
-                )
-                .join('');
-        list.querySelectorAll('button[data-pick]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                target.value = btn.dataset.pick;
-                handle.close();
-            });
+let _chatDetailsModule = null;
+function loadChatDetailsModule() {
+    if (!_chatDetailsModule) {
+        _chatDetailsModule = import('./chat-details.js').catch((e) => {
+            _chatDetailsModule = null;
+            throw e;
         });
-    };
+    }
+    return _chatDetailsModule;
+}
 
-    render();
-    search.addEventListener('input', render);
-    setTimeout(() => search.focus(), 60);
+function openGroupSettings(groupId) {
+    if (groupId == null || groupId === '') return;
+    navigateTo(`groups/${encodeURIComponent(String(groupId))}`);
+}
+
+// Nothing to close any more — the page saves as you go. Kept for callers
+// like the backfill sheet's "Backfill page" link.
+function closeGroupSettings() {}
+
+function saveGroupSettings() {
+    return loadChatDetailsModule().then((m) => m.saveChatDetailsNow());
+}
+
+function openDestinationPicker() {
+    return loadChatDetailsModule().then((m) => m.openDestinationPicker());
 }
 
 // ============ Delete File ============
@@ -4659,79 +4097,17 @@ function setupFab() {
     applyVisibility(getMonitorStatusLatest());
     subscribeMonitorStatus(applyVisibility);
 
-    // Action catalogue keyed by id so the per-hint policy below can pick
-    // and order without duplicating definitions.
-    const catalog = () => ({
-        'paste-link': {
-            icon: 'ri-link-m',
-            label: i18nT('fab.paste_link', 'Paste a Telegram link'),
-            sub: i18nT('fab.paste_link_sub', 'Download from a t.me/... URL'),
-            run: () => document.getElementById('paste-url-btn')?.click(),
-        },
-        stories: {
-            icon: 'ri-camera-line',
-            label: i18nT('fab.stories', 'Stories'),
-            sub: i18nT('fab.stories_sub', "Save someone's active Stories"),
-            run: () => document.getElementById('stories-btn')?.click(),
-        },
-        'add-account': {
-            icon: 'ri-user-add-line',
-            label: i18nT('fab.add_account', 'Add Telegram account'),
-            sub: i18nT('fab.add_account_sub', 'Phone → OTP → 2FA wizard'),
-            run: () => {
-                window.location.href = '/add-account.html';
-            },
-        },
-        'browse-chats': {
-            icon: 'ri-chat-3-line',
-            label: i18nT('fab.browse_chats', 'Browse chats'),
-            sub: i18nT('fab.browse_chats_sub', 'Pick a chat to monitor or backfill'),
-            run: () => navigateTo('groups'),
-        },
-    });
-
-    // Order + filter actions by where the user is in onboarding so the
-    // first row is always the next thing that moves them forward. Keeps
-    // the sheet short on early stages instead of dumping four greyed-out
-    // actions and letting the user guess.
-    const itemsForHint = (hint) => {
-        const c = catalog();
-        if (hint === 'add-account') return [c['add-account']];
-        if (hint === 'enable-group')
-            return [c['browse-chats'], c['paste-link'], c.stories, c['add-account']];
-        return [c['paste-link'], c.stories, c['browse-chats'], c['add-account']];
-    };
-
-    fab.addEventListener('click', () => {
-        const hint = getMonitorStatusLatest()?.hint || null;
-        const items = itemsForHint(hint);
-
-        const list = document.createElement('div');
-        list.className = 'flex flex-col';
-        for (const it of items) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className =
-                'flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-tg-hover active:bg-tg-hover/80 text-left w-full transition-colors';
-            btn.innerHTML = `
-                <i class="${it.icon} text-2xl text-tg-blue shrink-0 w-9 text-center" aria-hidden="true"></i>
-                <div class="min-w-0 flex-1">
-                    <div class="text-tg-text font-medium text-sm">${escapeHtml(it.label)}</div>
-                    <div class="text-tg-textSecondary text-xs truncate">${escapeHtml(it.sub)}</div>
-                </div>
-                <i class="ri-arrow-right-s-line text-tg-textSecondary opacity-50 shrink-0" aria-hidden="true"></i>`;
-            btn.addEventListener('click', () => {
-                handle.close();
-                setTimeout(it.run, 80); // let the sheet close before triggering the next UI
-            });
-            list.appendChild(btn);
-        }
-        const handle = openSheet({
-            title: i18nT('fab.actions', 'Quick Actions'),
-            content: list,
-            size: 'sm',
-        });
-    });
+    // The + button opens the Add sheet (js/add-sheet.js): find a chat by
+    // name / @username / t.me link, monitor or backfill it, download a
+    // message link — plus the old quick actions (paste links, Stories,
+    // add an account, browse chats) under "More".
+    const openAdd = () =>
+        loadAddSheetModule()
+            .then((m) => m.openAddSheet())
+            .catch((e) => console.error('add sheet', e));
+    fab.addEventListener('click', openAdd);
+    // Wider screens have no FAB: the Chats page's "Add chat or link".
+    document.getElementById('groups-add-btn')?.addEventListener('click', openAdd);
 }
 
 function setupPasteUrl() {

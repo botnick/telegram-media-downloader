@@ -5,12 +5,12 @@
 //   #/viewer/<groupId>            ← open viewer scoped to one group
 //   #/viewer/<groupId>/<fileId>   ← open the modal viewer at one file
 //   #/groups                      ← Groups page
-//   #/groups/<groupId>            ← Groups page + open settings sheet
+//   #/groups/<groupId>            ← chat details page (js/chat-details.js)
 //   #/engine
 //   #/settings                    ← Settings page
 //   #/settings/<section>          ← Settings page + scroll to a section
 //   #/stories
-//   #/account/add
+//   #/account/add                 ← account wizard sheet over Settings → Accounts
 //
 // Patterns are registered with route(pattern, handler). Path segments
 // prefixed with ":" become named params (e.g. "/viewer/:groupId/:fileId").

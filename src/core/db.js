@@ -1770,6 +1770,43 @@ export function setDownloadPinned(id, pinned) {
 }
 
 /**
+ * Set `pinned` on many rows in one transaction (gallery bulk Pin).
+ * Invalid / duplicate ids are skipped. Returns the ids of the rows that
+ * exist (whether or not their flag actually changed).
+ *
+ * @param {Array<number|string>} ids
+ * @param {boolean} pinned
+ * @returns {number[]}
+ */
+export function setDownloadsPinned(ids, pinned) {
+    const clean = [
+        ...new Set(
+            (Array.isArray(ids) ? ids : [])
+                .map(Number)
+                .filter((n) => Number.isSafeInteger(n) && n > 0),
+        ),
+    ];
+    if (!clean.length) return [];
+    const db = getDb();
+    const found = [];
+    const CHUNK = 500; // well under SQLite's bound-parameter limit
+    db.transaction(() => {
+        for (let i = 0; i < clean.length; i += CHUNK) {
+            const part = clean.slice(i, i + CHUNK);
+            const marks = part.map(() => '?').join(',');
+            const rows = db.prepare(`SELECT id FROM downloads WHERE id IN (${marks})`).all(...part);
+            if (!rows.length) continue;
+            db.prepare(`UPDATE downloads SET pinned = ? WHERE id IN (${marks})`).run(
+                pinned ? 1 : 0,
+                ...part,
+            );
+            for (const r of rows) found.push(r.id);
+        }
+    })();
+    return found;
+}
+
+/**
  * Lookup helper for the bulk-zip endpoint and other id-based admin tools.
  * Returns the row or null. Cheap (PK lookup); safe to call N times in a row.
  */
