@@ -700,12 +700,17 @@ python main.py                        # default: 0.0.0.0:8012
 TGDL_NSFW_PORT=9000 python main.py    # custom port
 ```
 
-Or use the GPU Dockerfile:
+Or run a published image (`nsfw-v*` releases):
 
 ```bash
-docker build -f Dockerfile.gpu -t nsfw-sidecar .
-docker run --gpus all -p 8012:8012 nsfw-sidecar
+# CPU (linux/amd64 + linux/arm64)
+docker run -p 8012:8012 -v /path/to/downloads:/downloads:ro \
+  -e TGDL_NSFW_ALLOW_ROOTS=/downloads ghcr.io/botnick/tgdl-nsfw:latest
+# NVIDIA GPU (linux/amd64)
+docker run --gpus all -p 8012:8012 ghcr.io/botnick/tgdl-nsfw:gpu-latest
 ```
+
+`TGDL_NSFW_ALLOW_ROOTS` is only needed for path mode (the sidecar reading files directly, at the same paths the app uses); without it the app sends images as base64. To build locally instead: `docker build -f Dockerfile.gpu -t nsfw-sidecar .`
 
 ### Configuration
 
