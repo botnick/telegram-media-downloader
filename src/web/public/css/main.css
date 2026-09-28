@@ -6959,6 +6959,9 @@ html.theme-light #queue-actions-menu-slot .queue-global-actions button:hover {
     margin: 0;
     background: transparent;
 }
+.settings-top-bar .settings-chip {
+    min-height: 44px;
+}
 .settings-search {
     position: relative;
     display: flex;

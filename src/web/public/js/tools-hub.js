@@ -566,21 +566,24 @@ function statusPill(info) {
     return `<span class="tool-pill" data-tone="muted">${escapeHtml(i18nT('maintenance.hub.state.idle', 'Idle'))}</span>`;
 }
 
+// Screen readers hear "Build · Thumbnails", not three bare "Build"s.
+const srName = (tool) => `<span class="sr-only"> · ${escapeHtml(tr(TOOLS[tool].name))}</span>`;
+
 function cardActions(tool, info) {
     const href = toolHref(tool);
     const busy = _pending.has(tool);
     let primary = '';
     if (info.running) {
         primary = info.stop
-            ? `<button type="button" class="tool-btn" data-act="stop" data-tool="${tool}"${busy ? ' disabled' : ''}><i class="ri-stop-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('tools.run.stop', 'Stop'))}</span></button>`
+            ? `<button type="button" class="tool-btn" data-act="stop" data-tool="${tool}"${busy ? ' disabled' : ''}><i class="ri-stop-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('tools.run.stop', 'Stop'))}</span>${srName(tool)}</button>`
             : '';
     } else if (info.run && !info.off) {
-        primary = `<button type="button" class="tool-btn is-primary" data-act="run" data-tool="${tool}"${busy ? ' disabled' : ''}><i class="${info.run.icon || 'ri-play-line'}" aria-hidden="true"></i><span>${escapeHtml(info.run.label)}</span></button>`;
+        primary = `<button type="button" class="tool-btn is-primary" data-act="run" data-tool="${tool}"${busy ? ' disabled' : ''}><i class="${info.run.icon || 'ri-play-line'}" aria-hidden="true"></i><span>${escapeHtml(info.run.label)}</span>${srName(tool)}</button>`;
     }
     const openLabel = info.off
         ? i18nT('tools.run.setup', 'Set up')
         : i18nT('maintenance.hub.open', 'Open');
-    return `${primary}<a class="tool-btn${primary ? '' : ' is-primary'}" href="${href}">${escapeHtml(openLabel)}<i class="ri-arrow-right-s-line" aria-hidden="true"></i></a>`;
+    return `${primary}<a class="tool-btn${primary ? '' : ' is-primary'}" href="${href}">${escapeHtml(openLabel)}${srName(tool)}<i class="ri-arrow-right-s-line" aria-hidden="true"></i></a>`;
 }
 
 // "43 of 100" while a job runs, when the tracker reports counts.
@@ -810,8 +813,8 @@ function renderAttention(items) {
                           ? 'ri-information-fill'
                           : 'ri-alert-fill';
                 const action = a.run
-                    ? `<button type="button" class="tool-btn" data-attn-run="${a.tool}">${escapeHtml(a.label)}</button>`
-                    : `<a class="tool-btn" href="${toolHref(a.tool)}">${escapeHtml(a.label)}<i class="ri-arrow-right-s-line" aria-hidden="true"></i></a>`;
+                    ? `<button type="button" class="tool-btn" data-attn-run="${a.tool}">${escapeHtml(a.label)}${srName(a.tool)}</button>`
+                    : `<a class="tool-btn" href="${toolHref(a.tool)}">${escapeHtml(a.label)}${srName(a.tool)}<i class="ri-arrow-right-s-line" aria-hidden="true"></i></a>`;
                 return `<li class="tools-attn" data-tone="${a.tone}">
                     <i class="${icon} tools-attn-icon" aria-hidden="true"></i>
                     <span class="tools-attn-text"><span class="tools-attn-tool">${escapeHtml(tr(TOOLS[a.tool].name))}</span>${escapeHtml(a.text)}</span>

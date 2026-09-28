@@ -121,8 +121,17 @@ function _syncLibraryLinks(page) {
     for (const a of document.querySelectorAll('a[data-library-link]')) a.setAttribute('href', href);
 }
 
+// The active place for assistive tech too (renderPage sets .active).
+function _syncCurrentPlace() {
+    for (const a of document.querySelectorAll('.sidebar-nav .nav-item, .bottom-nav-item')) {
+        if (a.classList.contains('active')) a.setAttribute('aria-current', 'page');
+        else a.removeAttribute('aria-current');
+    }
+}
+
 /** Called by renderPage() after the page is visible. */
 export function syncShell(page) {
+    _syncCurrentPlace();
     _syncChatsTabs(page);
     _syncToolStrip(page);
     _syncLibraryLinks(page);
