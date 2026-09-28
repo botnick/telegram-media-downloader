@@ -1,0 +1,2258 @@
+{
+  "entries": {
+    "people default": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people sort=name asc": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?sort=name&dir=asc",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "asc",
+          "people": [
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "name",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people sort=name desc": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?sort=name&dir=desc",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "name",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people sort=avg_quality": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?sort=avg_quality",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "avg_quality",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people unknown sort falls back": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?sort=bogus&dir=sideways",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people limit=1 offset=1": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?limit=1&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people limit clamps (0 → default)": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?limit=0&offset=-5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people scope=federated (peers unreachable)": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people?scope=federated",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "peerErrors": 2,
+          "people": [
+            {
+              "_peerId": "local",
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "_peerId": "local",
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "_peerId": "local",
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "federated",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "people as guest → 403": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "people as anon → 401": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "person photos as guest → 403": {
+      "route": "GET /api/ai/people/:id/photos",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people/1/photos",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "faces of row 1": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "downloadId": 1,
+          "faces": [
+            {
+              "h": 90,
+              "id": 1,
+              "person_id": 1,
+              "person_label": "Alice",
+              "quality_score": 0.97,
+              "w": 90,
+              "x": 100,
+              "y": 80
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "faces of row 4 (unassigned face)": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/4",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "downloadId": 4,
+          "faces": [
+            {
+              "h": 50,
+              "id": 6,
+              "person_id": null,
+              "person_label": null,
+              "quality_score": 0.42,
+              "w": 50,
+              "x": 150,
+              "y": 90
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "faces of row 10 (none)": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/10",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "downloadId": 10,
+          "faces": [],
+          "success": true
+        }
+      }
+    },
+    "faces of unknown row": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/9999",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "downloadId": 9999,
+          "faces": [],
+          "success": true
+        }
+      }
+    },
+    "faces by-download bad id → 400": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/abc",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid download id"
+        }
+      }
+    },
+    "faces by-download id 0 → 400": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/0",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid download id"
+        }
+      }
+    },
+    "group-by-person": {
+      "route": "GET /api/ai/group-by-person",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/group-by-person",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groups": [
+            {
+              "cover_download_id": 1,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice"
+            },
+            {
+              "cover_download_id": 3,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob"
+            },
+            {
+              "cover_download_id": 14,
+              "face_count": 1,
+              "id": 3,
+              "label": null
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "group-by-person limit=1": {
+      "route": "GET /api/ai/group-by-person",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/group-by-person?limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groups": [
+            {
+              "cover_download_id": 1,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "photos of person 1": {
+      "route": "GET /api/ai/people/:id/photos",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people/1/photos",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "face_h": 80,
+              "face_id": 2,
+              "face_w": 80,
+              "face_x": 60,
+              "face_y": 120,
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "message_id": 102
+            },
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "face_h": 90,
+              "face_id": 1,
+              "face_w": 90,
+              "face_x": 100,
+              "face_y": 80,
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101
+            }
+          ],
+          "personId": 1,
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "photos of person 2 limit=1 offset=1": {
+      "route": "GET /api/ai/people/:id/photos",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people/2/photos?limit=1&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "face_h": 60,
+              "face_id": 3,
+              "face_w": 60,
+              "face_x": 40,
+              "face_y": 40,
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "message_id": 103
+            }
+          ],
+          "personId": 2,
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "photos of unknown person": {
+      "route": "GET /api/ai/people/:id/photos",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people/999/photos",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [],
+          "personId": 999,
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "photos of bad person id → 400": {
+      "route": "GET /api/ai/people/:id/photos",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people/abc/photos",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid person id"
+        }
+      }
+    },
+    "person 1 face crop (default 160)": {
+      "route": "GET /api/ai/person/:id/face",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/person/1/face",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 160,
+          "height": 160
+        }
+      }
+    },
+    "person 2 face crop w=64": {
+      "route": "GET /api/ai/person/:id/face",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/person/2/face?w=64",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 64,
+          "height": 64
+        }
+      }
+    },
+    "person 3 face crop w=9999 clamps to 512": {
+      "route": "GET /api/ai/person/:id/face",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/person/3/face?w=9999",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 512,
+          "height": 512
+        }
+      }
+    },
+    "person crop unknown person → 404": {
+      "route": "GET /api/ai/person/:id/face",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/person/999/face",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no face found"
+        }
+      }
+    },
+    "person crop bad id → 400": {
+      "route": "GET /api/ai/person/:id/face",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/person/abc/face",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid person id"
+        }
+      }
+    },
+    "face 1 crop (default 128)": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/1/crop",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 128,
+          "height": 128
+        }
+      }
+    },
+    "face 3 crop w=200 (png source)": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/3/crop?w=200",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 200,
+          "height": 200
+        }
+      }
+    },
+    "face 6 crop w=10 clamps to 64": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/6/crop?w=10",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 64,
+          "height": 64
+        }
+      }
+    },
+    "face 7 crop (video frame at 1.0 s)": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/7/crop",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 128,
+          "height": 128
+        }
+      }
+    },
+    "face 1 crop again (served from the crop cache)": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/1/crop",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=604800, immutable",
+        "content-type": "image/jpeg",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "jpeg",
+          "width": 128,
+          "height": 128
+        }
+      }
+    },
+    "face crop unknown face → 404": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/999/crop",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "face not found"
+        }
+      }
+    },
+    "face crop bad id → 400": {
+      "route": "GET /api/ai/faces/:id/crop",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/x/crop",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid face id"
+        }
+      }
+    },
+    "rename person 3": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/3",
+        "as": "admin",
+        "body": {
+          "label": "  Carol  "
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "id": 3,
+          "label": "Carol",
+          "success": true
+        }
+      }
+    },
+    "rename person 2 to a 120-char label (truncated to 100)": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/2",
+        "as": "admin",
+        "body": {
+          "label": "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "id": 2,
+          "label": "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+          "success": true
+        }
+      }
+    },
+    "rename person 2 to empty (label cleared)": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/2",
+        "as": "admin",
+        "body": {
+          "label": "   "
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "id": 2,
+          "label": "",
+          "success": true
+        }
+      }
+    },
+    "rename person 2 back": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/2",
+        "as": "admin",
+        "body": {
+          "label": "Bob"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "id": 2,
+          "label": "Bob",
+          "success": true
+        }
+      }
+    },
+    "rename unknown person → 404": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/999",
+        "as": "admin",
+        "body": {
+          "label": "Nobody"
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "person not found"
+        }
+      }
+    },
+    "rename bad id → 400": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/abc",
+        "as": "admin",
+        "body": {
+          "label": "x"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid person id"
+        }
+      }
+    },
+    "rename as guest → 403": {
+      "route": "PATCH /api/ai/people/:id",
+      "request": {
+        "method": "PATCH",
+        "path": "/api/ai/people/3",
+        "as": "guest",
+        "body": {
+          "label": "Guest"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "merge without otherId → 400": {
+      "route": "POST /api/ai/people/:id/merge",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/merge",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "id + otherId required and must differ"
+        }
+      }
+    },
+    "merge into itself → 400": {
+      "route": "POST /api/ai/people/:id/merge",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/merge",
+        "as": "admin",
+        "body": {
+          "otherId": 1
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "id + otherId required and must differ"
+        }
+      }
+    },
+    "merge Carol (3) into Alice (1)": {
+      "route": "POST /api/ai/people/:id/merge",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/merge",
+        "as": "admin",
+        "body": {
+          "otherId": 3
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "deleted": 1,
+          "moved": 1,
+          "other": 3,
+          "success": true,
+          "target": 1
+        }
+      }
+    },
+    "merge an already-merged person": {
+      "route": "POST /api/ai/people/:id/merge",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/merge",
+        "as": "admin",
+        "body": {
+          "otherId": 3
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "deleted": 0,
+          "moved": 0,
+          "other": 3,
+          "success": true,
+          "target": 1
+        }
+      }
+    },
+    "people after merge": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.89,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 3,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": "<time:ms>",
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": "<time:ms>",
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "split without faceIds → 400": {
+      "route": "POST /api/ai/people/:id/split",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/split",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "faceIds required (non-empty array)"
+        }
+      }
+    },
+    "split unknown faces → 404": {
+      "route": "POST /api/ai/people/:id/split",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/split",
+        "as": "admin",
+        "body": {
+          "faceIds": [
+            999
+          ]
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no faces matched the supplied ids"
+        }
+      }
+    },
+    "split face 5 out with newLabel": {
+      "route": "POST /api/ai/people/:id/split",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/split",
+        "as": "admin",
+        "body": {
+          "faceIds": [
+            5
+          ],
+          "newLabel": "Carol again"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "moved": 1,
+          "personId": 4,
+          "success": true
+        }
+      }
+    },
+    "split face 2 out with legacy label field": {
+      "route": "POST /api/ai/people/:id/split",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/1/split",
+        "as": "admin",
+        "body": {
+          "faceIds": [
+            2
+          ],
+          "label": "Alice twin"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "moved": 1,
+          "personId": 5,
+          "success": true
+        }
+      }
+    },
+    "split without a label": {
+      "route": "POST /api/ai/people/:id/split",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/people/2/split",
+        "as": "admin",
+        "body": {
+          "faceIds": [
+            4
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "moved": 1,
+          "personId": 6,
+          "success": true
+        }
+      }
+    },
+    "reassign face 6 to Bob": {
+      "route": "POST /api/ai/faces/:id/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/6/reassign",
+        "as": "admin",
+        "body": {
+          "personId": 2
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "newPersonId": 2,
+          "ok": true,
+          "oldPersonId": null,
+          "success": true
+        }
+      }
+    },
+    "reassign face 6 to nobody (null)": {
+      "route": "POST /api/ai/faces/:id/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/6/reassign",
+        "as": "admin",
+        "body": {
+          "personId": null
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "newPersonId": null,
+          "ok": true,
+          "oldPersonId": 2,
+          "success": true
+        }
+      }
+    },
+    "reassign face 7 with empty string (unassign)": {
+      "route": "POST /api/ai/faces/:id/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/7/reassign",
+        "as": "admin",
+        "body": {
+          "personId": ""
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "newPersonId": null,
+          "ok": true,
+          "oldPersonId": null,
+          "success": true
+        }
+      }
+    },
+    "reassign bad personId → 400": {
+      "route": "POST /api/ai/faces/:id/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/6/reassign",
+        "as": "admin",
+        "body": {
+          "personId": "abc"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid personId"
+        }
+      }
+    },
+    "reassign unknown face → 404": {
+      "route": "POST /api/ai/faces/:id/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/999/reassign",
+        "as": "admin",
+        "body": {
+          "personId": 1
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "face not found"
+        }
+      }
+    },
+    "reassign bad face id → 400": {
+      "route": "POST /api/ai/faces/:id/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/x/reassign",
+        "as": "admin",
+        "body": {
+          "personId": 1
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid face id"
+        }
+      }
+    },
+    "faces of row 4 after reassign": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/4",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "downloadId": 4,
+          "faces": [
+            {
+              "h": 50,
+              "id": 6,
+              "person_id": null,
+              "person_label": null,
+              "quality_score": 0.42,
+              "w": 50,
+              "x": 150,
+              "y": 90
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "delete person 2": {
+      "route": "DELETE /api/ai/people/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/ai/people/2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "id": 2,
+          "success": true
+        }
+      }
+    },
+    "delete person 2 again → 404": {
+      "route": "DELETE /api/ai/people/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/ai/people/2",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "person not found"
+        }
+      }
+    },
+    "delete bad id → 400": {
+      "route": "DELETE /api/ai/people/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/ai/people/abc",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid person id"
+        }
+      }
+    },
+    "delete as guest → 403": {
+      "route": "DELETE /api/ai/people/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/ai/people/1",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "people after repairs": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.97,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": "<time:ms>",
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": "<time:ms>",
+              "face_count": 1,
+              "id": 4,
+              "label": "Carol again",
+              "updated_at": "<time:ms>",
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.91,
+              "cover_download_id": 2,
+              "cover_face_id": 2,
+              "cover_h": 80,
+              "cover_w": 80,
+              "cover_x": 60,
+              "cover_y": 120,
+              "created_at": "<time:ms>",
+              "face_count": 1,
+              "id": 5,
+              "label": "Alice twin",
+              "updated_at": "<time:ms>",
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.83,
+              "cover_download_id": 9,
+              "cover_face_id": 4,
+              "cover_h": 100,
+              "cover_w": 100,
+              "cover_x": 120,
+              "cover_y": 100,
+              "created_at": "<time:ms>",
+              "face_count": 1,
+              "id": 6,
+              "label": null,
+              "updated_at": "<time:ms>",
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "group-by-person after repairs": {
+      "route": "GET /api/ai/group-by-person",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/group-by-person",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groups": [
+            {
+              "cover_download_id": 1,
+              "face_count": 1,
+              "id": 1,
+              "label": "Alice"
+            },
+            {
+              "cover_download_id": 14,
+              "face_count": 1,
+              "id": 4,
+              "label": "Carol again"
+            },
+            {
+              "cover_download_id": 2,
+              "face_count": 1,
+              "id": 5,
+              "label": "Alice twin"
+            },
+            {
+              "cover_download_id": 9,
+              "face_count": 1,
+              "id": 6,
+              "label": null
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "faces of row 3 after delete (person_id nulled)": {
+      "route": "GET /api/ai/faces/by-download/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/by-download/3",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "downloadId": 3,
+          "faces": [
+            {
+              "h": 60,
+              "id": 3,
+              "person_id": null,
+              "person_label": null,
+              "quality_score": 0.88,
+              "w": 60,
+              "x": 40,
+              "y": 40
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "ws events around rename + reassign (+ faces/reindex marker)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "ts": "<time:ms>",
+          "type": "ai_faces_reindexed"
+        }
+      ]
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
