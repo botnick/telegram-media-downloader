@@ -269,11 +269,12 @@ The app's sprite settings (interval, tile width, columns, format, quality) apply
 docker run -d --name tgdl-faces --restart unless-stopped --gpus all \
   -p 8011:8011 \
   -e TGDL_FACES_HOST=0.0.0.0 -e TGDL_FACES_PORT=8011 \
+  -e TGDL_FACES_API_TOKEN=change-me-to-a-long-random-string \
   -e TGDL_FACES_MODELS_DIR=/models -v tgdl-faces-models:/models \
-  ghcr.io/botnick/tgdl-faces:cuda-latest     # :latest = CPU, :openvino-latest = Intel
+  ghcr.io/botnick/tgdl-faces:cuda-latest     # CPU: ghcr.io/botnick/tgdl-faces:latest, no --gpus
 ```
 
-In the app: **Maintenance → AI → System health → Sidecar mode → External**, or `advanced.ai.faces.sidecarUrl` / `TGDL_FACES_SIDECAR_URL`. The faces sidecar has **no token support yet** — keep it on a private network or VPN (Tailscale, WireGuard), not on a public tunnel. Images and video frames it can't read are sent as base64.
+In the app: **Maintenance → AI → System health → Sidecar mode → External**, or `advanced.ai.faces.sidecarUrl` / `TGDL_FACES_SIDECAR_URL`. The token goes in `TGDL_FACES_SIDECAR_TOKEN` (or `advanced.ai.faces.sidecarToken`; there is no dashboard field for it yet). Images the sidecar can't read are sent as base64, and videos are decoded by the app's ffmpeg and sent as frames. Path mapping isn't available for the faces sidecar yet, so a shared mount only helps when it is at the same path as in the app.
 
 ### Reverse proxy / tunnel notes
 
