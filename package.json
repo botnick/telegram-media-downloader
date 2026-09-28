@@ -68,12 +68,12 @@
     "dependencies": {
         "@aws-sdk/client-s3": "^3.1097.0",
         "@aws-sdk/lib-storage": "^3.1097.0",
-        "@huggingface/transformers": "^4.2.0",
+        "@huggingface/transformers": "^4.3.0",
         "better-sqlite3": "^12.11.1",
         "express": "^4.22.2",
         "express-rate-limit": "^7.4.1",
         "helmet": "^8.3.0",
-        "sharp": "^0.35.3",
+        "sharp": "^0.35.5",
         "ssh2-sftp-client": "^11.0.0",
         "telegram": "^2.19.0",
         "ws": "^8.21.1"
