@@ -6446,13 +6446,16 @@ app.get('/api/thumbs/:id', async (req, res) => {
         }
 
         res.setHeader('Content-Type', 'image/webp');
-        // Browser cache for an hour + must-revalidate so stale entries
-        // (e.g. a 404 the client cached before this URL had a real thumb
-        // on disk) get rechecked against Last-Modified instead of being
-        // served forever from the local cache. `immutable` was the wrong
-        // hint for this URL: the same id+width can legitimately serve
-        // different bytes after a source replacement or a manual purge.
-        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        // Fresh for a day, then served stale while the browser revalidates
+        // in the background for up to 30 days. The 1 h must-revalidate
+        // policy made every gallery scroll after an hour a round of
+        // blocking 304 checks per tile. `immutable` stays wrong for this
+        // URL: the same id+width can legitimately serve different bytes
+        // after a source replacement or a manual purge — the mtime-based
+        // ETag / Last-Modified below catch that on revalidation. A 404 is
+        // sent with no-store (above), so a missing thumb is never cached.
+        // `private`: thumbnails sit behind the dashboard login.
+        res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=2592000');
         // ETag derived from mtime + size so a regenerated thumb produces
         // a different validator and the browser can't reuse the old
         // body byte-for-byte under a 304.
