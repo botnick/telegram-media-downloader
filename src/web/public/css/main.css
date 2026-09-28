@@ -281,6 +281,11 @@ html.theme-light .bottom-nav {
 html.theme-light .bottom-nav-item {
     color: #65737e;
 }
+/* The rule above out-ranks `.bottom-nav-item.active`, so the active
+   place lost its colour in the light theme. */
+html.theme-light .bottom-nav-item.active {
+    color: var(--tg-blue);
+}
 
 /* Video player controls — the player chrome still needs a dark
    gradient over the video (so white controls remain legible
