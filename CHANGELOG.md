@@ -4,42 +4,8 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
-### Fixed — integrity sweep could wipe the library
-- **An unmounted or unreadable downloads disk no longer deletes your library.** The integrity sweep (runs 30 s after boot and hourly) treated any `stat` error as "file deleted" and pruned those downloads — with a split-disk setup, an HDD that isn't mounted yet, or a network share that dropped, that meant every row (plus faces, NSFW scores, pins). It now skips entirely when the downloads folder can't be read, only counts `ENOENT`/`ENOTDIR` as missing, and automatic runs refuse to prune when more than half the library looks missing (Maintenance → Verify files still prunes on demand).
-- Downloads stored through a federated-dedup reference (`_clusterref/…`) or under a custom `download.path` outside `data/downloads` were pruned on every sweep; they're kept now.
-- Pruning is done in chunks with yields instead of one transaction, which blocked the server for ~35 s at 150k dead rows (long enough to fail the Docker healthcheck).
-
-### Performance
-- **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
-- **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
-- The NSFW model is released after 5 minutes idle instead of staying loaded for the life of the process.
-
-### Memory
-- **Telegram session cache no longer grows forever.** gramJS added a fresh copy of every user/chat it saw to an in-memory set that never de-duplicated — tens of MB per day per account on a monitoring install. It now keeps one entry per peer.
-- **Discarded Telegram clients are fully shut down** (`destroy()` instead of `disconnect()`), so reloads, removed accounts and failed logins no longer leave clients running in the background. A revoked legacy session no longer opens a new connection on every avatar request.
-- **Dropbox backups stream large files** instead of holding up to 150 MB per file in memory (3 in parallel); S3/SFTP libraries load only when such a destination is used (~16 MB less at boot).
-- Idle hash workers are released after a minute; the libvips operation cache is off (thumbnails are cached on disk); the Docker image sets `MALLOC_ARENA_MAX=2` to curb native-memory fragmentation.
-
-### Fixed — duplicates / deleting files
-- **Maintenance → Duplicates showed nothing after a scan.** The status endpoint dropped the found sets from its response and kept reporting `running: true` after the scan finished, so the page rendered an empty result (or a scan that never ended) since v2.x's WS-payload trim.
-- **Deleting could remove a file another download still used.** Download-time dedup stores a repeat download — often from another group — as a reference to the file already on disk. Deleting that duplicate from the gallery, from Duplicates (whose default "keep oldest" selected it), from NSFW review, or deleting a group's files removed the shared file and left the kept download pointing at nothing. Files are now only removed once no remaining download uses them; deleting a group's files keeps files other groups still use.
-- The duplicate finder lists one entry per physical copy and no longer reports downloads that already share one file (nothing to reclaim), so "reclaimable" sizes are accurate.
-- The disk rotator, the Rescue-mode sweeper and cluster conflict resolution / peer delete requests also no longer delete a file that another download still uses.
-- Opening a missing file in the gallery (404) no longer drops its download when the file's whole folder is missing too — that's an unmounted disk or a renamed folder, not a deleted file.
-- After a restart, Maintenance → Duplicates rebuilds the list from the hashes already stored instead of staying empty until a full re-scan.
-
-### Security
-- **NSFW sidecar path mode is now default-deny.** With `TGDL_NSFW_ALLOW_ROOTS` unset, `nsfw-service` used to read any path it was sent — and it listens on `0.0.0.0` without auth. It now matches the faces sidecar: path mode only for files under `TGDL_NSFW_ALLOW_ROOTS`, otherwise 403 and the app falls back to `image_b64` automatically. **Action:** if the sidecar shares the downloads directory with the app, set `TGDL_NSFW_ALLOW_ROOTS` to keep the faster path mode. Decoder / internal error messages are logged instead of returned.
-- `telegram-notify.yml` runs with an empty `GITHUB_TOKEN` permission set.
-- **Download-queue spillover stored Telegram credentials in the database.** Jobs spilled past the "History spillover threshold" were serialised with their Telegram client — API hash and auth key in plaintext in `db.sqlite` — and could not be downloaded after being reloaded. The spillover is removed (the history walker's backpressure already keeps the queue bounded), the old table is dropped with its pages zeroed, and the setting is gone. No action needed.
-- File tokens issued before this release keep working (as guest) until they expire, so open dashboard tabs aren't affected by the token change above.
-- **Guest sessions could reach admin-only `/files/?peer=` fetches.** `GET /api/files/token` is on the guest allowlist, and any valid file token made `/files/` treat the request as admin, bypassing the guest block on federated peer files. File tokens now carry the minting session's role in their HMAC, and `/files/` applies that role. Tokens issued before the upgrade stop verifying; the SPA falls back to cookie auth and refreshes its token on its normal schedule.
-- **Sidecar URL probes** (`POST /api/maintenance/nsfw/sidecar-test`, `POST /api/ai/faces/health-test`) now parse the admin-supplied URL with `URL`, reject embedded credentials and inputs over 2048 chars, and trim trailing slashes without the quadratic `/\/+$/` regex.
-- **LIKE patterns didn't escape `\`.** Folder-rename path rewrites and file search escaped `%` / `_` but not the escape character itself, so a folder name containing `\` could match — and rewrite — another folder's `file_path` rows.
-
 ### Added
 - **Back closes the open overlay.** Android's system Back, the browser Back button and the iOS PWA edge swipe now close the media viewer, a bottom sheet or the Group Settings modal (topmost first) instead of leaving the page underneath. Closing an overlay with ✕ / Esc / swipe consumes its history entry, so the next Back still goes to the previous page; navigating from an overlay (e.g. Group Settings → Backfill shortcut, FAB → Browse chats) waits for that step so it can't be undone.
-
 - **Pinch and double-tap zoom in the image viewer** (touch / pen), with panning while zoomed; the mouse-wheel zoom now zooms toward the cursor. Swipe-to-navigate and drag-down-to-close are paused while zoomed or pinching.
 - **Pin / unpin from the viewer's action bar** (admins, local files) — same endpoint as the tile's pin chip; the gallery tile updates in place.
 
@@ -68,12 +34,54 @@ All notable changes to this project are documented here. The format is based on 
 - **Deleting from the viewer could delete-then-hide the wrong file.** `file_deleted` is broadcast before the HTTP response returns, so the index-based splice removed the neighbour too. The file is now removed by identity and the viewer advances to the next item instead of closing.
 - **Empty gap in the viewer.** The never-populated preview strip reserved a 72 px band between the media and the info bar.
 - **One tap on a sidebar chat could open it several times / send several monitor-toggle PUTs.** Click + keydown handlers were re-attached to every row on each sidebar render, but rows keep their DOM when nothing changed, so after N `config_updated` events a tap ran N times. The list now uses one delegated listener, the ▶/⏸ toggle ignores repeat taps while its PUT is in flight, and Enter/Space on the row's inner buttons no longer also opens the chat.
+
+
+## [2.25.0] — 2026-09-29
+
+Data-safety, security and performance release — nothing can wipe or orphan your library any more (unmounted disks, shared files, duplicates), NSFW scans no longer freeze the dashboard or restart Docker containers, memory leaks fixed, and a redesigned release-notes viewer. No action needed when updating.
+
+### Fixed — integrity sweep could wipe the library
+- **An unmounted or unreadable downloads disk no longer deletes your library.** The integrity sweep (runs 30 s after boot and hourly) treated any `stat` error as "file deleted" and pruned those downloads — with a split-disk setup, an HDD that isn't mounted yet, or a network share that dropped, that meant every row (plus faces, NSFW scores, pins). It now skips entirely when the downloads folder can't be read, only counts `ENOENT`/`ENOTDIR` as missing, and automatic runs refuse to prune when more than half the library looks missing (Maintenance → Verify files still prunes on demand).
+- Downloads stored through a federated-dedup reference (`_clusterref/…`) or under a custom `download.path` outside `data/downloads` were pruned on every sweep; they're kept now.
+- Pruning is done in chunks with yields instead of one transaction, which blocked the server for ~35 s at 150k dead rows (long enough to fail the Docker healthcheck).
+
+### Fixed — duplicates / deleting files
+- **Maintenance → Duplicates showed nothing after a scan.** The status endpoint dropped the found sets from its response and kept reporting `running: true` after the scan finished, so the page rendered an empty result (or a scan that never ended) since v2.x's WS-payload trim.
+- **Deleting could remove a file another download still used.** Download-time dedup stores a repeat download — often from another group — as a reference to the file already on disk. Deleting that duplicate from the gallery, from Duplicates (whose default "keep oldest" selected it), from NSFW review, or deleting a group's files removed the shared file and left the kept download pointing at nothing. Files are now only removed once no remaining download uses them; deleting a group's files keeps files other groups still use.
+- The duplicate finder lists one entry per physical copy and no longer reports downloads that already share one file (nothing to reclaim), so "reclaimable" sizes are accurate.
+- The disk rotator, the Rescue-mode sweeper and cluster conflict resolution / peer delete requests also no longer delete a file that another download still uses.
+- Opening a missing file in the gallery (404) no longer drops its download when the file's whole folder is missing too — that's an unmounted disk or a renamed folder, not a deleted file.
+- After a restart, Maintenance → Duplicates rebuilds the list from the hashes already stored instead of staying empty until a full re-scan.
+
+### Security
+- **NSFW sidecar path mode is now default-deny.** With `TGDL_NSFW_ALLOW_ROOTS` unset, `nsfw-service` used to read any path it was sent — and it listens on `0.0.0.0` without auth. It now matches the faces sidecar: path mode only for files under `TGDL_NSFW_ALLOW_ROOTS`, otherwise 403 and the app falls back to `image_b64` automatically. **Action:** if the sidecar shares the downloads directory with the app, set `TGDL_NSFW_ALLOW_ROOTS` to keep the faster path mode. Decoder / internal error messages are logged instead of returned.
+- `telegram-notify.yml` runs with an empty `GITHUB_TOKEN` permission set.
+- **Download-queue spillover stored Telegram credentials in the database.** Jobs spilled past the "History spillover threshold" were serialised with their Telegram client — API hash and auth key in plaintext in `db.sqlite` — and could not be downloaded after being reloaded. The spillover is removed (the history walker's backpressure already keeps the queue bounded), the old table is dropped with its pages zeroed, and the setting is gone. No action needed.
+- File tokens issued before this release keep working (as guest) until they expire, so open dashboard tabs aren't affected by the token change above.
+- **Guest sessions could reach admin-only `/files/?peer=` fetches.** `GET /api/files/token` is on the guest allowlist, and any valid file token made `/files/` treat the request as admin, bypassing the guest block on federated peer files. File tokens now carry the minting session's role in their HMAC, and `/files/` applies that role. Tokens issued before the upgrade stop verifying; the SPA falls back to cookie auth and refreshes its token on its normal schedule.
+- **Sidecar URL probes** (`POST /api/maintenance/nsfw/sidecar-test`, `POST /api/ai/faces/health-test`) now parse the admin-supplied URL with `URL`, reject embedded credentials and inputs over 2048 chars, and trim trailing slashes without the quadratic `/\/+$/` regex.
+- **LIKE patterns didn't escape `\`.** Folder-rename path rewrites and file search escaped `%` / `_` but not the escape character itself, so a folder name containing `\` could match — and rewrite — another folder's `file_path` rows.
+
+### Performance
+- **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
+- **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
+- The NSFW model is released after 5 minutes idle instead of staying loaded for the life of the process.
+
+### Memory
+- **Telegram session cache no longer grows forever.** gramJS added a fresh copy of every user/chat it saw to an in-memory set that never de-duplicated — tens of MB per day per account on a monitoring install. It now keeps one entry per peer.
+- **Discarded Telegram clients are fully shut down** (`destroy()` instead of `disconnect()`), so reloads, removed accounts and failed logins no longer leave clients running in the background. A revoked legacy session no longer opens a new connection on every avatar request.
+- **Dropbox backups stream large files** instead of holding up to 150 MB per file in memory (3 in parallel); S3/SFTP libraries load only when such a destination is used (~16 MB less at boot).
+- Idle hash workers are released after a minute; the libvips operation cache is off (thumbnails are cached on disk); the Docker image sets `MALLOC_ARENA_MAX=2` to curb native-memory fragmentation.
+
+### Changed
+- **Redesigned release notes** (click the version in the status bar): one card per version with its date and summary, sections tagged by kind (Security, Fixed, Performance, …) with counts on collapsed cards, the installed version marked, older versions collapsed, and a search box. Maintainer-only details (the empty "Unreleased" heading, service-worker cache versions) are no longer shown.
+
+### Fixed
 - **`npm run pre-download-models` failed with `Cannot find module`** ([#64](https://github.com/botnick/telegram-media-downloader/issues/64)). `scripts/pre-download-models.js` was referenced since v2.15 but never committed. It now exists and seeds the NSFW model cache with the configured model + precision (no-op when an NSFW sidecar is configured). The Docker build no longer runs it: `/app/data` is hidden by the `./data` bind-mount at runtime, so a build-time download never reached the running container. See [DEPLOY.md](docs/DEPLOY.md#split-disk-setup) for offline seeding.
 - **NSFW "Precision" setting was ignored.** Scans and preloads always loaded the `q8` variant because the server dropped `advanced.nsfw.dtype` when building the scan config.
 
 ### Service worker
-- `VERSION = 'v2246'` — evicts the old shell/asset caches so upgraded clients drop the Play-CDN-era `main.css` / JS and precache the new `/css/tailwind.css`. Asset URLs are still cache-busted by `?v=<package version>`, so the release must bump `package.json` as usual.
-
+- `VERSION = 'v2250'`
 ## [2.24.5] — 2026-05-31
 
 Hardening follow-up to v2.24.4 — connection-leak + revoked-session fixes from an adversarial audit of the reconnect/self-heal code.
