@@ -94,3 +94,16 @@ describe('purgeAllThumbs scope', () => {
         expect(removed).toBe(0);
     });
 });
+
+describe('THUMB_CACHE_CONTROL', () => {
+    // Regenerated thumbnails (source replaced, cache purged + rebuilt) must
+    // show up within the old 1 h freshness window; SWR only removes the
+    // blocking 304 after that. Private: thumbs sit behind the login.
+    it('keeps 1 h freshness, adds stale-while-revalidate, never public', () => {
+        const cc = thumbs.THUMB_CACHE_CONTROL;
+        expect(cc).toMatch(/\bprivate\b/);
+        expect(cc).toMatch(/\bmax-age=3600\b/);
+        expect(cc).toMatch(/\bstale-while-revalidate=\d+/);
+        expect(cc).not.toMatch(/public|immutable/);
+    });
+});

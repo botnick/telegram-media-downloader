@@ -125,6 +125,111 @@ function _readPackageVersion() {
     }
 }
 
+// Indexes added after v2.24.5. CREATE INDEX on an existing library is one
+// synchronous statement (~0.4 s for all four at 150k rows on SSD, roughly
+// linear, several seconds per index on a 1M+ row library on a NAS disk), so
+// on a big DB they are NOT built inside initSchema — that would delay the
+// first healthcheck after an upgrade. initSchema builds them inline only
+// for small libraries (fresh installs, tests); otherwise the web server
+// builds the missing ones one at a time after it is listening
+// (buildDeferredIndex). Every query is correct without them, just slower,
+// and IF NOT EXISTS makes an interrupted build simply resume next boot.
+export const DEFERRED_INDEXES = [
+    // Bulk delete / 404 auto-prune / single-file delete / backup resolve a
+    // row by its exact stored path; without this each lookup is a full
+    // table scan (~15 ms at 150k rows — seconds for a 1000-tile delete).
+    {
+        name: 'idx_file_path',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_file_path ON downloads(file_path)',
+    },
+    // Per-group aggregates behind the sidebar (/api/groups, /api/downloads)
+    // and the group-name refresh passes: GROUP BY group_id reading only
+    // group_name + file_size never touches the table b-tree.
+    {
+        name: 'idx_group_name_size',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_group_name_size ON downloads(group_id, group_name, file_size)',
+    },
+    // Pinned-first with a type tab: WHERE file_type = ? ORDER BY pinned DESC, created_at DESC, id DESC
+    {
+        name: 'idx_gallery_type_pinned_date',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_gallery_type_pinned_date ON downloads(file_type, pinned DESC, created_at DESC, id DESC)',
+    },
+    // Per-group pinned-first: WHERE group_id = ? ORDER BY pinned DESC, created_at DESC
+    {
+        name: 'idx_gallery_group_pinned_date',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_gallery_group_pinned_date ON downloads(group_id, pinned DESC, created_at DESC, id DESC)',
+    },
+];
+// Below this many rows (by MAX(id), an O(log n) upper bound) all deferred
+// indexes build inline in well under 150 ms.
+const DEFERRED_INDEX_INLINE_MAX_ROWS = 50_000;
+
+/** Deferred indexes that don't exist yet, in build order. */
+export function listMissingDeferredIndexes() {
+    const have = new Set(
+        getDb()
+            .prepare(
+                `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'downloads'`,
+            )
+            .all()
+            .map((r) => r.name),
+    );
+    return DEFERRED_INDEXES.filter((idx) => !have.has(idx.name));
+}
+
+// kv marker written (and committed) before each background CREATE INDEX
+// and removed afterwards. CREATE INDEX is one transaction, so a process
+// killed mid-build (e.g. autoheal restarting a container whose healthcheck
+// the build starved, on a huge library on a slow disk) leaves no index but
+// does leave the marker — the next start then skips that build instead of
+// walking into the same kill again and again.
+const INDEX_ATTEMPT_KV_PREFIX = 'index_build_attempt:';
+
+/**
+ * Build one deferred index (no-op if it already exists).
+ * @returns {number} elapsed ms
+ */
+export function buildDeferredIndex(name) {
+    const idx = DEFERRED_INDEXES.find((i) => i.name === name);
+    if (!idx) throw new Error(`unknown deferred index ${name}`);
+    const marker = INDEX_ATTEMPT_KV_PREFIX + idx.name;
+    kvSet(marker, { startedAt: Date.now() });
+    const t0 = Date.now();
+    try {
+        getDb().exec(idx.sql);
+    } finally {
+        // Also on a thrown error: this process survived, so the attempt
+        // wasn't the kind that kills it — retrying later is safe.
+        kvDelete(marker);
+    }
+    return Date.now() - t0;
+}
+
+/**
+ * What the background builder should do at startup:
+ *   build        — missing indexes to build now
+ *   interrupted  — missing indexes whose previous attempt never finished
+ *                  (process killed mid-build); not retried automatically
+ * Stale markers of indexes that did get built are cleared.
+ * @returns {{ build: object[], interrupted: Array<object & { attemptedAt: number|null }> }}
+ */
+export function planDeferredIndexBuilds() {
+    const missing = new Set(listMissingDeferredIndexes().map((i) => i.name));
+    const build = [];
+    const interrupted = [];
+    for (const idx of DEFERRED_INDEXES) {
+        const key = INDEX_ATTEMPT_KV_PREFIX + idx.name;
+        const marker = kvGet(key);
+        if (!missing.has(idx.name)) {
+            if (marker != null) kvDelete(key);
+            continue;
+        }
+        if (marker != null) interrupted.push({ ...idx, attemptedAt: marker.startedAt ?? null });
+        else build.push(idx);
+    }
+    return { build, interrupted };
+}
+
 function initSchema() {
     // Downloads Table
     db.exec(`
@@ -257,6 +362,18 @@ function initSchema() {
         db.exec(
             'CREATE INDEX IF NOT EXISTS idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, id DESC)',
         );
+    } catch {}
+    // Newer indexes: built right here on small libraries, after the web
+    // server is listening on big ones (see DEFERRED_INDEXES).
+    try {
+        const maxId = db.prepare('SELECT MAX(id) AS m FROM downloads').get()?.m || 0;
+        if (maxId <= DEFERRED_INDEX_INLINE_MAX_ROWS) {
+            for (const idx of DEFERRED_INDEXES) {
+                try {
+                    db.exec(idx.sql);
+                } catch {}
+            }
+        }
     } catch {}
     // Seekbar scan: WHERE file_type = 'video' AND file_path IS NOT NULL (LEFT JOIN seekbar_sprites)
     try {
@@ -1621,6 +1738,56 @@ export function deleteDownloadsBy(opts) {
     return removed;
 }
 
+// Bound parameters per IN (…) list — under SQLite's historical 999 cap.
+const PATH_LOOKUP_CHUNK = 800;
+
+/**
+ * Resolve download rows by their stored `file_path`. The downloader writes
+ * the host's native separator (`\` on Windows) while the SPA always sends
+ * `/`, so every input is matched in both forms with `file_path IN (…)` —
+ * an `idx_file_path` seek per form instead of the old per-path
+ * `REPLACE(file_path, '\', '/') = ?` full-table scan.
+ *
+ * @param {string[]} paths
+ * @returns {Array<{ id: number, file_path: string }>}
+ */
+export function findDownloadsByPaths(paths) {
+    const wanted = new Set(); // forward-slash forms
+    const forms = new Set();
+    for (const p of Array.isArray(paths) ? paths : []) {
+        if (typeof p !== 'string' || !p) continue;
+        const fwd = p.replace(/\\/g, '/');
+        wanted.add(fwd);
+        forms.add(fwd);
+        forms.add(fwd.replace(/\//g, '\\'));
+    }
+    const lookup = (sql, values) => {
+        const rows = [];
+        for (let i = 0; i < values.length; i += PATH_LOOKUP_CHUNK) {
+            const chunk = values.slice(i, i + PATH_LOOKUP_CHUNK);
+            const stmt = getDb().prepare(sql.replace('%IN%', chunk.map(() => '?').join(',')));
+            rows.push(...stmt.all(...chunk));
+        }
+        return rows;
+    };
+    const out = lookup('SELECT id, file_path FROM downloads WHERE file_path IN (%IN%)', [...forms]);
+    const found = new Set(out.map((r) => String(r.file_path).replace(/\\/g, '/')));
+    const missing = [...wanted].filter((p) => !found.has(p));
+    if (missing.length) {
+        // A row stored with mixed separators matches neither form. The old
+        // per-path REPLACE() lookup found those, so keep doing it for the
+        // leftovers only — one table pass per chunk, not one per path.
+        const ids = new Set(out.map((r) => r.id));
+        for (const r of lookup(
+            `SELECT id, file_path FROM downloads WHERE REPLACE(file_path, '\\', '/') IN (%IN%)`,
+            missing,
+        )) {
+            if (!ids.has(r.id)) out.push(r);
+        }
+    }
+    return out;
+}
+
 export function purgeOrphanPeople() {
     getDb()
         .prepare(
@@ -1666,8 +1833,8 @@ export function getOldestDownloads(count = 50) {
 }
 
 /**
- * Per-group stats card backing query — single index-only scan over
- * `idx_group_message`. Returns the totals the Group → Data tab renders
+ * Per-group stats card backing query — a group_id index range scan, never
+ * a full-table pass. Returns the totals the Group → Data tab renders
  * above its file strip. Cheap enough to call on every modal open.
  *
  * Shape:
@@ -1709,7 +1876,7 @@ export function getGroupStats(groupId) {
 }
 
 /**
- * Paginated file list for the Group → Data tab. Uses `idx_group_message`
+ * Paginated file list for the Group → Data tab. Uses `idx_gallery_group_date`
  * for the WHERE filter + the index's natural ordering for the LIMIT/OFFSET
  * scan, so a 100k-row group still opens the modal in <500 ms.
  */

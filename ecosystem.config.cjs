@@ -46,13 +46,18 @@ module.exports = {
             error_file: 'data/logs/pm2-err.log',
             merge_logs: true,
             time: true,
+            // UV_THREADPOOL_SIZE: libuv's worker pool (fs, crypto, dns and
+            // every sharp thumbnail job) is sized once at process start —
+            // the default of 4 is easily saturated by a gallery scroll.
             env: {
                 NODE_ENV: 'production',
                 PORT: 3000,
+                UV_THREADPOOL_SIZE: 16,
             },
             env_staging: {
                 NODE_ENV: 'staging',
                 PORT: 3010,
+                UV_THREADPOOL_SIZE: 16,
             },
         },
     ],

@@ -7,6 +7,9 @@
 
 set -u
 COMMAND=${TGDL_RUN:-monitor}
+# libuv's worker pool (fs, crypto, dns, sharp thumbnails) is sized once at
+# process start; the default of 4 is easily saturated.
+export UV_THREADPOOL_SIZE="${UV_THREADPOOL_SIZE:-16}"
 MAX_CRASHES=10
 RESET_WINDOW=60
 LOG_DIR="data/logs"
