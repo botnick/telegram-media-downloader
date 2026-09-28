@@ -173,11 +173,15 @@ export async function resolveConflict(conflictId, keep) {
                         'SELECT sprite_path, meta_path FROM seekbar_sprites WHERE download_id = ?',
                     )
                     .get(id);
-                try {
-                    const { deferDelete } = await import('../deferred-delete.js');
-                    deferDelete(abs);
-                } catch {
-                    await fs.unlink(abs).catch(() => {});
+                // Another local row (download-time dedup) may still use the file.
+                const { idsWithFileInUse } = await import('../dedup.js');
+                if (!idsWithFileInUse([id]).has(id)) {
+                    try {
+                        const { deferDelete } = await import('../deferred-delete.js');
+                        deferDelete(abs);
+                    } catch {
+                        await fs.unlink(abs).catch(() => {});
+                    }
                 }
                 getDb().prepare('DELETE FROM downloads WHERE id = ?').run(id);
                 purgeThumbsForDownload(id).catch(() => {});
