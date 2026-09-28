@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on 
 - **Dropbox backups stream large files** instead of holding up to 150 MB per file in memory (3 in parallel); S3/SFTP libraries load only when such a destination is used (~16 MB less at boot).
 - Idle hash workers are released after a minute; the libvips operation cache is off (thumbnails are cached on disk); the Docker image sets `MALLOC_ARENA_MAX=2` to curb native-memory fragmentation.
 
+### Fixed — duplicates / deleting files
+- **Maintenance → Duplicates showed nothing after a scan.** The status endpoint dropped the found sets from its response and kept reporting `running: true` after the scan finished, so the page rendered an empty result (or a scan that never ended) since v2.x's WS-payload trim.
+- **Deleting could remove a file another download still used.** Download-time dedup stores a repeat download — often from another group — as a reference to the file already on disk. Deleting that duplicate from the gallery, from Duplicates (whose default "keep oldest" selected it), from NSFW review, or deleting a group's files removed the shared file and left the kept download pointing at nothing. Files are now only removed once no remaining download uses them; deleting a group's files keeps files other groups still use.
+- The duplicate finder lists one entry per physical copy and no longer reports downloads that already share one file (nothing to reclaim), so "reclaimable" sizes are accurate.
+
 ### Security
 - **NSFW sidecar path mode is now default-deny.** With `TGDL_NSFW_ALLOW_ROOTS` unset, `nsfw-service` used to read any path it was sent — and it listens on `0.0.0.0` without auth. It now matches the faces sidecar: path mode only for files under `TGDL_NSFW_ALLOW_ROOTS`, otherwise 403 and the app falls back to `image_b64` automatically. **Action:** if the sidecar shares the downloads directory with the app, set `TGDL_NSFW_ALLOW_ROOTS` to keep the faster path mode. Decoder / internal error messages are logged instead of returned.
 - `telegram-notify.yml` runs with an empty `GITHUB_TOKEN` permission set.

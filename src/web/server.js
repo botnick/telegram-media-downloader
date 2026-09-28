@@ -80,6 +80,9 @@ import * as integrity from '../core/integrity.js';
 import {
     findDuplicates as dedupFindDuplicates,
     deleteByIds as dedupDeleteByIds,
+    expandToSharedRefs,
+    idsWithFileInUse,
+    removeGroupFolder,
 } from '../core/dedup.js';
 import {
     ensureShareSecret,
@@ -4792,7 +4795,12 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         // id-keyed delete path that already works everywhere. Files still
         // unlink off disk via the path because the OS treats `/` and `\`
         // identically on Windows path resolution.
+        //
+        // A path names a file, and several rows can point at one file
+        // (download-time dedup), so take every row for the path — deleting
+        // the file must not leave another row pointing at nothing.
         const resolvedIdsFromPaths = [];
+        const idsByPath = new Map();
         if (pathList.length) {
             const db = getDb();
             const stmt = db.prepare(
@@ -4801,15 +4809,24 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             for (const p of pathList) {
                 const norm = String(p || '').replace(/\\/g, '/');
                 if (!norm) continue;
-                const row = stmt.get(norm);
-                if (row?.id) resolvedIdsFromPaths.push(row.id);
+                const pathIds = stmt.all(norm).map((row) => row.id);
+                idsByPath.set(p, pathIds);
+                resolvedIdsFromPaths.push(...pathIds);
             }
         }
+        const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
+        // Rows whose file another (not deleted) row still uses: drop the
+        // row, keep the file.
+        const fileInUse = idsWithFileInUse(allIds);
         const total = idList.length + pathList.length;
         let processed = 0;
         let unlinked = 0;
         onProgress({ processed: 0, total, stage: 'deleting_files' });
         for (const p of pathList) {
+            if ((idsByPath.get(p) || []).some((id) => fileInUse.has(id))) {
+                processed += 1;
+                continue;
+            }
             const sr = await safeResolveDownload(p);
             if (sr.ok) {
                 try {
@@ -4850,6 +4867,10 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             const folderById = new Map();
             for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
             for (const row of rows) {
+                if (fileInUse.has(row.id)) {
+                    processed += 1;
+                    continue;
+                }
                 // Prefer the stored file_path — it's the authoritative
                 // record of where the downloader wrote the file. Fall back
                 // to the reconstructed candidate ONLY when file_path is
@@ -4893,7 +4914,6 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 }
             }
         }
-        const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
         const seekbarMap = collectSeekbarPaths(allIds);
         const dbDeleted = deleteDownloadsBy({ ids: allIds });
         onProgress({ processed: total, total, stage: 'purging_cache' });
@@ -5394,7 +5414,8 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
             };
             filesDeleted = countFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
-            await fs.rm(folderPath, { recursive: true, force: true });
+            // Files other groups still use (download-time dedup) stay.
+            filesDeleted -= await removeGroupFolder(groupId, folderPath);
             onProgress({
                 stage: 'deleting_files',
                 groupId,
@@ -5534,7 +5555,8 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
             };
             filesDeleted = countFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
-            await fs.rm(folderPath, { recursive: true, force: true });
+            // Files other groups still use (download-time dedup) stay.
+            filesDeleted -= await removeGroupFolder(groupId, folderPath);
             onProgress({
                 stage: 'deleting_files',
                 groupId,
@@ -6223,7 +6245,10 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
         let processed = 0;
         onProgress({ processed: 0, total, stage: 'deleting' });
         for (let off = 0; off < cleanIds.length; off += BATCH) {
-            const slice = cleanIds.slice(off, off + BATCH);
+            // Each listed id is one physical copy; take every row that uses
+            // that file with it, or the file can't be freed.
+            const listed = cleanIds.slice(off, off + BATCH);
+            const slice = expandToSharedRefs(listed);
             const seekbarMap = collectSeekbarPaths(slice);
             const part = dedupDeleteByIds(slice);
             aggregate.removed += part.removed || 0;
@@ -6237,7 +6262,7 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
                     await purgeSeekbarForDownload(id, seekbarMap.get(id));
                 } catch {}
             }
-            processed += slice.length;
+            processed += listed.length;
             onProgress({ processed, total, stage: 'deleting' });
             await new Promise((r) => setImmediate(r));
         }

@@ -48,6 +48,16 @@ function resolveStoredPath(stored) {
     return null;
 }
 
+// Identity of the physical file a row points at. Download-time dedup makes
+// several rows share one file, so rows — not files — can repeat within a
+// hash. Rows whose file is missing fall back to their normalised stored
+// path so they still group together.
+function fileKey(stored) {
+    const abs = resolveStoredPath(stored);
+    const key = abs ? path.resolve(abs) : String(stored || '').replace(/\\/g, '/');
+    return process.platform === 'win32' ? key.toLowerCase() : key;
+}
+
 // Wrap the canonical helper so existing call sites in this file keep
 // the same name. Hashing semantics are owned by `core/checksum.js`.
 // Catch-up dedup hashes thousands of multi-MB files in a row — route
@@ -203,8 +213,11 @@ export async function findDuplicates(opts = {}) {
     allDupes.sort((a, b) => b.max_size * (b.cnt - 1) - a.max_size * (a.cnt - 1) || b.cnt - a.cnt);
     const duplicates = allDupes;
 
-    // Build the file-detail sets for each duplicate hash. Yields every
-    // 50 sets so WS progress events keep flowing.
+    // Build the file-detail sets for each duplicate hash — one entry per
+    // physical copy (its oldest row), skipping hashes whose rows all share
+    // a single file: there's nothing to reclaim there, and offering those
+    // rows for deletion would delete the file the kept row uses. Yields
+    // every 25 sets so WS progress events keep flowing.
     const sets = [];
     const filesQ = db.prepare(`
         SELECT id, group_id, group_name, file_name, file_path, file_size,
@@ -217,22 +230,31 @@ export async function findDuplicates(opts = {}) {
     for (let i = 0; i < duplicates.length; i++) {
         if (signal?.aborted) break;
         const d = duplicates[i];
-        const files = filesQ.all(d.hash).map((r) => ({
-            id: r.id,
-            groupId: r.group_id,
-            groupName: r.group_name,
-            fileName: r.file_name,
-            filePath: r.file_path,
-            fileSize: r.file_size,
-            fileType: r.file_type,
-            createdAt: r.created_at,
-        }));
-        sets.push({
-            hash: d.hash,
-            fileSize: d.max_size || 0,
-            count: d.cnt,
-            files,
-        });
+        const seen = new Set();
+        const files = [];
+        for (const r of filesQ.all(d.hash)) {
+            const key = fileKey(r.file_path);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            files.push({
+                id: r.id,
+                groupId: r.group_id,
+                groupName: r.group_name,
+                fileName: r.file_name,
+                filePath: r.file_path,
+                fileSize: r.file_size,
+                fileType: r.file_type,
+                createdAt: r.created_at,
+            });
+        }
+        if (files.length > 1) {
+            sets.push({
+                hash: d.hash,
+                fileSize: d.max_size || 0,
+                count: files.length,
+                files,
+            });
+        }
         if ((i + 1) % SETS_BATCH === 0) {
             if (onProgress)
                 onProgress({
@@ -246,6 +268,11 @@ export async function findDuplicates(opts = {}) {
         }
     }
 
+    // Re-rank now that counts are physical copies, not rows.
+    sets.sort(
+        (a, b) => b.fileSize * (b.count - 1) - a.fileSize * (a.count - 1) || b.count - a.count,
+    );
+
     if (onProgress) onProgress({ stage: 'done', processed: total, total, hashed, errored });
 
     return {
@@ -256,52 +283,115 @@ export async function findDuplicates(opts = {}) {
     };
 }
 
-/**
- * Delete the requested rows + their on-disk files in one transactional
- * sweep. Caller is the admin endpoint — UI shows the diff (kept vs
- * deleted) and an explicit confirm before reaching here.
- *
- * @param {number[]} ids
- * @returns {{ removed: number, freedBytes: number, missingFiles: number }}
- */
 // Chunk size for `IN (?,?,…)` clauses. SQLite caps bound parameters at
 // SQLITE_MAX_VARIABLE_NUMBER (32766 in modern builds, 999 in older ones);
 // 500 stays well clear of both and keeps each prepared statement small.
 const SQL_IN_CHUNK = 500;
+
+function selectIn(db, sqlPrefix, values) {
+    const out = [];
+    for (let i = 0; i < values.length; i += SQL_IN_CHUNK) {
+        const slice = values.slice(i, i + SQL_IN_CHUNK);
+        const ph = slice.map(() => '?').join(',');
+        for (const r of db.prepare(`${sqlPrefix} (${ph})`).all(...slice)) out.push(r);
+    }
+    return out;
+}
+
+/**
+ * Delete the requested rows and their on-disk files. Caller is an admin
+ * endpoint — the UI shows the diff (kept vs deleted) and an explicit
+ * confirm before reaching here.
+ *
+ * Several rows can point at one physical file (download-time dedup), so a
+ * file is only removed once no row outside this batch still uses it.
+ *
+ * @param {number[]} ids
+ * @returns {{ removed: number, freedBytes: number, missingFiles: number }}
+ */
+const ROW_COLS = 'SELECT id, file_name, file_path, file_size FROM downloads WHERE';
+
+// Rows sharing a physical file always share its file name (the dedup'd row
+// stores the existing file's name and path), so one name lookup per chunk
+// finds every row that could still be using one of `rows`' files.
+function rowsWithSameName(db, rows) {
+    const names = [...new Set(rows.map((r) => r.file_name).filter(Boolean))];
+    return selectIn(db, `${ROW_COLS} file_name IN`, names);
+}
+
+/**
+ * Ids (from `ids`) whose file is still used by a row NOT in `ids` — callers
+ * deleting those rows must leave the file on disk.
+ * @param {number[]} ids
+ * @returns {Set<number>}
+ */
+export function idsWithFileInUse(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return new Set();
+    const db = getDb();
+    const rows = selectIn(db, `${ROW_COLS} id IN`, ids);
+    const batch = new Set(rows.map((r) => r.id));
+    const used = new Set();
+    for (const r of rowsWithSameName(db, rows)) {
+        if (!batch.has(r.id)) used.add(fileKey(r.file_path));
+    }
+    return new Set(rows.filter((r) => used.has(fileKey(r.file_path))).map((r) => r.id));
+}
+
+/**
+ * `ids` plus every other row that uses the same physical file as one of
+ * them. The duplicate finder lists one row per physical copy, so removing a
+ * copy has to remove all of its rows for the file to actually be freed.
+ * @param {number[]} ids
+ * @returns {number[]}
+ */
+export function expandToSharedRefs(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    const db = getDb();
+    const rows = selectIn(db, `${ROW_COLS} id IN`, ids);
+    const keys = new Set(rows.map((r) => fileKey(r.file_path)));
+    const out = new Set(rows.map((r) => r.id));
+    for (const r of rowsWithSameName(db, rows)) {
+        if (keys.has(fileKey(r.file_path))) out.add(r.id);
+    }
+    return [...out];
+}
 
 export function deleteByIds(ids) {
     if (!Array.isArray(ids) || ids.length === 0) {
         return { removed: 0, freedBytes: 0, missingFiles: 0 };
     }
     const db = getDb();
-    const rows = [];
-    for (let i = 0; i < ids.length; i += SQL_IN_CHUNK) {
-        const slice = ids.slice(i, i + SQL_IN_CHUNK);
-        const ph = slice.map(() => '?').join(',');
-        const part = db
-            .prepare(`SELECT id, file_path, file_size FROM downloads WHERE id IN (${ph})`)
-            .all(...slice);
-        for (const r of part) rows.push(r);
+    const rows = selectIn(db, `${ROW_COLS} id IN`, ids);
+    const sameName = rowsWithSameName(db, rows);
+    const batch = new Set(rows.map((r) => r.id));
+    const stillUsed = new Set();
+    for (const r of sameName) {
+        if (!batch.has(r.id)) stillUsed.add(fileKey(r.file_path));
     }
 
     let freed = 0;
     let missing = 0;
     const idsToDrop = [];
+    const handled = new Set();
     for (const r of rows) {
-        const abs = resolveStoredPath(r.file_path);
-        if (abs) {
-            try {
-                const moved = deferDelete(abs);
-                freed += Number(r.file_size) || 0;
-                idsToDrop.push(r.id);
-                if (!moved) missing++;
-            } catch {
-                // EPERM etc. — skip the row so user can retry.
-            }
-        } else {
-            missing++;
-            freed += Number(r.file_size) || 0;
+        const key = fileKey(r.file_path);
+        if (stillUsed.has(key) || handled.has(key)) {
             idsToDrop.push(r.id);
+            continue;
+        }
+        handled.add(key);
+        const abs = resolveStoredPath(r.file_path);
+        if (!abs) {
+            missing++;
+            idsToDrop.push(r.id);
+            continue;
+        }
+        try {
+            if (deferDelete(abs)) freed += Number(r.file_size) || 0;
+            else missing++;
+            idsToDrop.push(r.id);
+        } catch {
+            // EPERM etc. — skip the row so user can retry.
         }
     }
 
@@ -313,4 +403,50 @@ export function deleteByIds(ids) {
         removed += r.changes;
     }
     return { removed, freedBytes: freed, missingFiles: missing };
+}
+
+/**
+ * Delete a group's download folder, except files that rows of OTHER groups
+ * still point at — download-time dedup stores a later download from another
+ * group as a reference to the file already in this folder.
+ *
+ * @param {string} groupId
+ * @param {string} folderAbs  absolute path of the group's folder
+ * @returns {Promise<number>} number of files kept
+ */
+export async function removeGroupFolder(groupId, folderAbs) {
+    const esc = (s) => s.replace(/\\/g, '/').replace(/[\\%_]/g, '\\$&');
+    const rel = path.relative(DEFAULT_DOWNLOAD_ROOT, folderAbs);
+    const used = new Set(
+        getDb()
+            .prepare(`
+            SELECT file_path FROM downloads
+             WHERE group_id != ?
+               AND (REPLACE(file_path, '\\', '/') LIKE ? ESCAPE '\\'
+                    OR REPLACE(file_path, '\\', '/') LIKE ? ESCAPE '\\')
+        `)
+            .all(String(groupId), `${esc(rel)}/%`, `${esc(path.resolve(folderAbs))}/%`)
+            .map((r) => fileKey(r.file_path)),
+    );
+    if (!used.size) {
+        await fs.promises.rm(folderAbs, { recursive: true, force: true });
+        return 0;
+    }
+    let kept = 0;
+    const walk = async (dir) => {
+        for (const ent of await fs.promises.readdir(dir, { withFileTypes: true })) {
+            const p = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+                await walk(p);
+                await fs.promises.rmdir(p).catch(() => {});
+            } else if (used.has(fileKey(p))) {
+                kept++;
+            } else {
+                await fs.promises.rm(p, { force: true });
+            }
+        }
+    };
+    await walk(folderAbs);
+    await fs.promises.rmdir(folderAbs).catch(() => {});
+    return kept;
 }
