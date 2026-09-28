@@ -1,0 +1,1699 @@
+{
+  "entries": {
+    "delete without path → 400": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Path required"
+        }
+      }
+    },
+    "delete traversal → 403": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=..%2Fdb.sqlite",
+        "as": "admin"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Access denied"
+        }
+      }
+    },
+    "delete missing file → 404": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Alpha%20Photos%2Fimages%2Fnope.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "File not found"
+        }
+      }
+    },
+    "delete path in body is ignored → 400": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file",
+        "as": "admin",
+        "body": {
+          "path": "Alpha Photos/images/IMG_0003.png"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Path required"
+        }
+      }
+    },
+    "delete guest → 403": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Alpha%20Photos%2Fimages%2FIMG_0003.png",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "delete anon → 401": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Alpha%20Photos%2Fimages%2FIMG_0003.png",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "delete IMG_0003.png": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Alpha%20Photos%2Fimages%2FIMG_0003.png",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "ws events: delete single-owner file": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "path": "Alpha Photos/images/IMG_0003.png",
+          "type": "file_deleted"
+        }
+      ]
+    },
+    "deleted file is gone from /files": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0003.png",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "delete shared file ?id=15": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Delta%20Mixed%2Fimages%2FIMG_0014.jpg&id=15",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "ws events: delete one reference of a shared file": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "id": 15,
+          "type": "file_deleted"
+        }
+      ]
+    },
+    "shared file still served": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Delta%20Mixed/images/IMG_0014.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0014.jpg\"; filename*=UTF-8''IMG_0014.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "delta group after ?id= delete": {
+      "route": "GET /api/downloads/:groupId",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/-1001000000004",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0017.jpg",
+              "id": 17,
+              "modified": "2024-04-04 10:00:00",
+              "name": "IMG_0017.jpg",
+              "path": "Delta Mixed/images/IMG_0017.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": 4102444800000,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "id": 16,
+              "modified": "2024-04-03 10:00:00",
+              "name": "ภาพทดสอบ รูป.jpg",
+              "path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "id": 14,
+              "modified": "2024-04-01 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 3,
+          "totalPages": 1
+        }
+      }
+    },
+    "delete shared file without id": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Delta%20Mixed%2Fimages%2FIMG_0014.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "ws events: delete last reference": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "path": "Delta Mixed/images/IMG_0014.jpg",
+          "type": "file_deleted"
+        }
+      ]
+    },
+    "shared file gone after last reference": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Delta%20Mixed/images/IMG_0014.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "delete IMG_0002 with id of row 5": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Alpha%20Photos%2Fimages%2FIMG_0002.jpg&id=5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "alpha group after mismatched-id delete": {
+      "route": "GET /api/downloads/:groupId",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/-1001000000001",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": 2,
+              "extension": ".mp4",
+              "fullPath": "Alpha Photos/videos/VID_0006.mp4",
+              "id": 6,
+              "modified": "2024-01-15 10:00:00",
+              "name": "VID_0006.mp4",
+              "path": "Alpha Photos/videos/VID_0006.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0005.jpg",
+              "id": 5,
+              "modified": "2024-01-14 10:00:00",
+              "name": "IMG_0005.jpg",
+              "path": "Alpha Photos/images/IMG_0005.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3970,
+              "sizeFormatted": "3.88 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Alpha Photos/images/IMG_0004.webp",
+              "id": 4,
+              "modified": "2024-01-13 10:00:00",
+              "name": "IMG_0004.webp",
+              "path": "Alpha Photos/images/IMG_0004.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0001.jpg",
+              "id": 1,
+              "modified": "2024-01-10 10:00:00",
+              "name": "IMG_0001.jpg",
+              "path": "Alpha Photos/images/IMG_0001.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 4,
+          "totalPages": 1
+        }
+      }
+    },
+    "delete IMG_0001 (shared link, face)": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file?path=Alpha%20Photos%2Fimages%2FIMG_0001.jpg&id=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "share links after cascade": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:1>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "people after cascade": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.83,
+              "cover_download_id": 9,
+              "cover_face_id": 4,
+              "cover_h": 100,
+              "cover_w": 100,
+              "cover_x": 120,
+              "cover_y": 100,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "bulk-delete empty body → 400": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids or paths required"
+        }
+      }
+    },
+    "bulk-delete empty lists → 400": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "ids": [],
+          "paths": []
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids or paths required"
+        }
+      }
+    },
+    "bulk-delete null id coerces to 0 → 200": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "x",
+            null
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 1,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "bulk-delete paths not an array → 400": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "paths": "Alpha Photos/images/IMG_0004.webp"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids or paths required"
+        }
+      }
+    },
+    "bulk-delete guest → 403": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "guest",
+        "body": {
+          "ids": [
+            4
+          ]
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "bulk-delete ids 4 + 6 + unknown": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            4,
+            6,
+            9999
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 3,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws events: bulk-delete by ids": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "progress": {},
+          "result": {
+            "dbDeleted": 0,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 3
+          },
+          "result": {
+            "dbDeleted": 0,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 3,
+          "progress": {
+            "processed": 3,
+            "stage": "purging_cache",
+            "total": 3
+          },
+          "result": {
+            "dbDeleted": 0,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "purging_cache",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "count": 3,
+          "dbDeleted": 2,
+          "type": "bulk_delete",
+          "unlinked": 2
+        },
+        {
+          "dbDeleted": 2,
+          "durationMs": "<durationMs:number>",
+          "kind": "dedupDelete",
+          "requested": 3,
+          "type": "dedup_delete_done",
+          "unlinked": 2
+        }
+      ]
+    },
+    "bulk-deleted photo is gone": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0004.webp",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "bulk-deleted video sprite is gone": {
+      "route": "GET /api/seekbar/meta/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/meta/6",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "bulk-delete paths": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "paths": [
+            "Beta Videos/videos/VID_0008.mp4",
+            "Nowhere/x.jpg"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 2,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws events: bulk-delete by paths": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 3,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "progress": {},
+          "result": {
+            "dbDeleted": 2,
+            "requested": 3,
+            "unlinked": 2
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 3,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 2
+          },
+          "result": {
+            "dbDeleted": 2,
+            "requested": 3,
+            "unlinked": 2
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "total": 2,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 3,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "stage": "deleting_files",
+            "total": 2
+          },
+          "result": {
+            "dbDeleted": 2,
+            "requested": 3,
+            "unlinked": 2
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "total": 2,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 3,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "stage": "purging_cache",
+            "total": 2
+          },
+          "result": {
+            "dbDeleted": 2,
+            "requested": 3,
+            "unlinked": 2
+          },
+          "running": true,
+          "stage": "purging_cache",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "total": 2,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "count": 1,
+          "dbDeleted": 1,
+          "type": "bulk_delete",
+          "unlinked": 1
+        },
+        {
+          "dbDeleted": 1,
+          "durationMs": "<durationMs:number>",
+          "kind": "dedupDelete",
+          "requested": 2,
+          "type": "dedup_delete_done",
+          "unlinked": 1
+        }
+      ]
+    },
+    "beta group after path delete": {
+      "route": "GET /api/downloads/:groupId",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/-1001000000002",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Beta Videos/images/IMG_0009.jpg",
+              "id": 9,
+              "modified": "2024-02-03 10:00:00",
+              "name": "IMG_0009.jpg",
+              "path": "Beta Videos/images/IMG_0009.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0007.mp4",
+              "id": 7,
+              "modified": "2024-02-01 10:00:00",
+              "name": "VID_0007.mp4",
+              "path": "Beta Videos/videos/VID_0007.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            }
+          ],
+          "page": 1,
+          "total": 2,
+          "totalPages": 1
+        }
+      }
+    },
+    "bulk-delete row 9 (file shared with row 21)": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            9
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 1,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws events: bulk-delete one reference of a shared file": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 4,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "progress": {},
+          "result": {
+            "dbDeleted": 1,
+            "requested": 2,
+            "unlinked": 1
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 3,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 4,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 1
+          },
+          "result": {
+            "dbDeleted": 1,
+            "requested": 2,
+            "unlinked": 1
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 3,
+          "total": 1,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 4,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "stage": "purging_cache",
+            "total": 1
+          },
+          "result": {
+            "dbDeleted": 1,
+            "requested": 2,
+            "unlinked": 1
+          },
+          "running": true,
+          "stage": "purging_cache",
+          "startedAt": "<time:ms>",
+          "successes": 3,
+          "total": 1,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "count": 1,
+          "dbDeleted": 1,
+          "type": "bulk_delete",
+          "unlinked": 0
+        },
+        {
+          "dbDeleted": 1,
+          "durationMs": "<durationMs:number>",
+          "kind": "dedupDelete",
+          "requested": 1,
+          "type": "dedup_delete_done",
+          "unlinked": 0
+        }
+      ]
+    },
+    "shared file still served after bulk-delete": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Beta%20Videos/images/IMG_0009.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0009.jpg\"; filename*=UTF-8''IMG_0009.jpg",
+        "content-length": "2679",
+        "content-type": "image/jpeg",
+        "etag": "W/\"a77-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+        "bytes": 2679
+      }
+    },
+    "bulk-delete the shared path": {
+      "route": "POST /api/downloads/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-delete",
+        "as": "admin",
+        "body": {
+          "paths": [
+            "Beta Videos/images/IMG_0009.jpg"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 1,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws events: bulk-delete by path takes every row of the file": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 5,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "progress": {},
+          "result": {
+            "dbDeleted": 1,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 4,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 5,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 1
+          },
+          "result": {
+            "dbDeleted": 1,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 4,
+          "total": 1,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 5,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "stage": "deleting_files",
+            "total": 1
+          },
+          "result": {
+            "dbDeleted": 1,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 4,
+          "total": 1,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "attempts": 5,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "stage": "purging_cache",
+            "total": 1
+          },
+          "result": {
+            "dbDeleted": 1,
+            "requested": 1,
+            "unlinked": 0
+          },
+          "running": true,
+          "stage": "purging_cache",
+          "startedAt": "<time:ms>",
+          "successes": 4,
+          "total": 1,
+          "type": "dedup_delete_progress"
+        },
+        {
+          "count": 1,
+          "dbDeleted": 1,
+          "type": "bulk_delete",
+          "unlinked": 1
+        },
+        {
+          "dbDeleted": 1,
+          "durationMs": "<durationMs:number>",
+          "kind": "dedupDelete",
+          "requested": 1,
+          "type": "dedup_delete_done",
+          "unlinked": 1
+        }
+      ]
+    },
+    "shared file gone after path bulk-delete": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Beta%20Videos/images/IMG_0009.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "aggregate after deletes": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "enabled": true,
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "sizeFormatted": "3.88 KB",
+            "totalFiles": 1,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "photoUrl": null,
+            "sizeFormatted": "2.12 KB",
+            "totalFiles": 1,
+            "type": null
+          },
+          {
+            "enabled": false,
+            "id": "-1001000000003",
+            "name": "Gamma Docs",
+            "photoUrl": null,
+            "sizeFormatted": "653 B",
+            "totalFiles": 4,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "photoUrl": null,
+            "sizeFormatted": "5.77 KB",
+            "totalFiles": 2,
+            "type": null
+          },
+          {
+            "enabled": false,
+            "id": "-1001000000005",
+            "name": "Epsilon Archive",
+            "photoUrl": null,
+            "sizeFormatted": "8.1 KB",
+            "totalFiles": 3,
+            "type": null
+          }
+        ]
+      }
+    },
+    "all-media after deletes": {
+      "route": "GET /api/downloads/all",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/all?limit=100",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Epsilon Archive/videos/VID_0020.mp4",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 20,
+              "modified": "2024-05-03 10:00:00",
+              "name": "VID_0020.mp4",
+              "path": "Epsilon Archive/videos/VID_0020.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Epsilon Archive/images/IMG_0019.webp",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 19,
+              "modified": "2024-05-02 10:00:00",
+              "name": "IMG_0019.webp",
+              "path": "Epsilon Archive/images/IMG_0019.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": 1715299200000,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Epsilon Archive/images/IMG_0018.png",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 18,
+              "modified": "2024-05-01 10:00:00",
+              "name": "IMG_0018.png",
+              "path": "Epsilon Archive/images/IMG_0018.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0017.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 17,
+              "modified": "2024-04-04 10:00:00",
+              "name": "IMG_0017.jpg",
+              "path": "Delta Mixed/images/IMG_0017.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": 4102444800000,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 16,
+              "modified": "2024-04-03 10:00:00",
+              "name": "ภาพทดสอบ รูป.jpg",
+              "path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".gz",
+              "fullPath": "Gamma Docs/documents/notes.txt.gz",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 13,
+              "modified": "2024-03-04 10:00:00",
+              "name": "notes.txt.gz",
+              "path": "Gamma Docs/documents/notes.txt.gz",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 55,
+              "sizeFormatted": "55 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".zip",
+              "fullPath": "Gamma Docs/documents/bundle.zip",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 12,
+              "modified": "2024-03-03 10:00:00",
+              "name": "bundle.zip",
+              "path": "Gamma Docs/documents/bundle.zip",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 246,
+              "sizeFormatted": "246 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".txt",
+              "fullPath": "Gamma Docs/documents/notes.txt",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 11,
+              "modified": "2024-03-02 10:00:00",
+              "name": "notes.txt",
+              "path": "Gamma Docs/documents/notes.txt",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 38,
+              "sizeFormatted": "38 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".pdf",
+              "fullPath": "Gamma Docs/documents/report.pdf",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 10,
+              "modified": "2024-03-01 10:00:00",
+              "name": "report.pdf",
+              "path": "Gamma Docs/documents/report.pdf",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 314,
+              "sizeFormatted": "314 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0007.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 7,
+              "modified": "2024-02-01 10:00:00",
+              "name": "VID_0007.mp4",
+              "path": "Beta Videos/videos/VID_0007.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0005.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 5,
+              "modified": "2024-01-14 10:00:00",
+              "name": "IMG_0005.jpg",
+              "path": "Alpha Photos/images/IMG_0005.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3970,
+              "sizeFormatted": "3.88 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 11,
+          "totalPages": 1
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

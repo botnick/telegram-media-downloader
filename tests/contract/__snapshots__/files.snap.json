@@ -1,0 +1,2235 @@
+{
+  "entries": {
+    "photo as attachment": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "photo inline": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?inline=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "png inline": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0003.png?inline=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"IMG_0003.png\"; filename*=UTF-8''IMG_0003.png",
+        "content-length": "4820",
+        "content-type": "image/png",
+        "etag": "W/\"12d4-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+        "bytes": 4820
+      }
+    },
+    "webp inline": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0004.webp?inline=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"IMG_0004.webp\"; filename*=UTF-8''IMG_0004.webp",
+        "content-length": "1300",
+        "content-type": "image/webp",
+        "etag": "W/\"514-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+        "bytes": 1300
+      }
+    },
+    "video inline": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+        "bytes": 2414
+      }
+    },
+    "pdf inline": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/report.pdf?inline=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"report.pdf\"; filename*=UTF-8''report.pdf",
+        "content-length": "314",
+        "content-type": "application/pdf",
+        "etag": "W/\"13a-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+        "bytes": 314
+      }
+    },
+    "text file": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/notes.txt",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt",
+        "content-length": "38",
+        "content-type": "text/plain; charset=UTF-8",
+        "etag": "W/\"26-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+        "bytes": 38
+      }
+    },
+    "gzip file": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/notes.txt.gz",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"notes.txt.gz\"; filename*=UTF-8''notes.txt.gz",
+        "content-length": "55",
+        "content-type": "application/gzip",
+        "etag": "W/\"37-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "26f7bdea33497913221a07e8ad18922c8c3c57542cb1b2d3437152947e625e0a",
+        "bytes": 55
+      }
+    },
+    "zip file": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/bundle.zip",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"bundle.zip\"; filename*=UTF-8''bundle.zip",
+        "content-length": "246",
+        "content-type": "application/zip",
+        "etag": "W/\"f6-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "58aa53bb557ed5cb1738381da9c3cb4cd4d8297bcec93abbdd535440663c8723",
+        "bytes": 246
+      }
+    },
+    "unicode file name": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Delta%20Mixed/images/%E0%B8%A0%E0%B8%B2%E0%B8%9E%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A%20%E0%B8%A3%E0%B8%B9%E0%B8%9B.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"________ ___.jpg\"; filename*=UTF-8''%E0%B8%A0%E0%B8%B2%E0%B8%9E%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A%20%E0%B8%A3%E0%B8%B9%E0%B8%9B.jpg",
+        "content-length": "3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+        "bytes": 3228
+      }
+    },
+    "legacy data/downloads/ prefix": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/data/downloads/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "HEAD photo": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "HEAD",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "guest GET photo": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?inline=1",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "text file with accept-encoding gzip": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/notes.txt",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "gzip, deflate, br"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt",
+        "content-length": "38",
+        "content-type": "text/plain; charset=UTF-8",
+        "etag": "W/\"26-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+        "bytes": 38
+      }
+    },
+    "POST to a file path": {
+      "route": null,
+      "request": {
+        "method": "POST",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "If-None-Match matching → 304": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin",
+        "headers": {
+          "if-none-match": "W/\"d25-18cc820d888\""
+        }
+      },
+      "status": 304,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "If-None-Match stale → 200": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin",
+        "headers": {
+          "if-none-match": "W/\"0-0\""
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "If-Modified-Since = Last-Modified → 304": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin",
+        "headers": {
+          "if-modified-since": "Tue, 02 Jan 2024 03:04:05 GMT"
+        }
+      },
+      "status": 304,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "range first 100 bytes": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=0-99"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "100",
+        "content-range": "bytes 0-99/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7f2c6c36fad93dd73a6c959a3d7acab421f8b5068706ee67ef804db4800611d9",
+        "bytes": 100
+      }
+    },
+    "range open-ended": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=2000-"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "414",
+        "content-range": "bytes 2000-2413/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "cda00033f3965e7a33bf0e9be63e844bb708aa207ea0bf5a5d64e3f24dd9948c",
+        "bytes": 414
+      }
+    },
+    "range suffix": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=-50"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "50",
+        "content-range": "bytes 2364-2413/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "fe2dff0b3df9f7253d7702e1f174fc91a34965e0c2a17c4c57957a1c1cc6f288",
+        "bytes": 50
+      }
+    },
+    "range last byte": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=2413-2413"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "1",
+        "content-range": "bytes 2413-2413/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "44bd7ae60f478fae1061e11a7739f4b94d1daf917982d33b6fc8a01a63f89c21",
+        "bytes": 1
+      }
+    },
+    "range end past EOF is clamped": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=2400-9999"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "14",
+        "content-range": "bytes 2400-2413/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "43187b0305d046ef6b1b298be911899452ae2cccdd6e3c092b3670402389ab2a",
+        "bytes": 14
+      }
+    },
+    "range unsatisfiable": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=5000-6000"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-range": "bytes */2414",
+        "content-type": "video/mp4; charset=utf-8",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "{\"error\":\"Range Not Satisfiable\"}"
+      },
+      "note": "today: 500 from the global error handler, not 416"
+    },
+    "range multiple ranges": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=0-9,20-29"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+        "bytes": 2414
+      }
+    },
+    "range malformed unit": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "items=0-5"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+        "bytes": 2414
+      }
+    },
+    "range inverted": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=50-10"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-range": "bytes */2414",
+        "content-type": "video/mp4; charset=utf-8",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "{\"error\":\"Range Not Satisfiable\"}"
+      },
+      "note": "today: 500 from the global error handler, not 416"
+    },
+    "If-Range matching etag honours range": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "if-range": "W/\"96e-18cc820d888\"",
+          "range": "bytes=0-9"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "10",
+        "content-range": "bytes 0-9/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7a0b11dbb94fd5859f5b2dae56af394008565367eb7fc264e45f173d0b66b137",
+        "bytes": 10
+      }
+    },
+    "If-Range stale etag → full body": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
+        "as": "admin",
+        "headers": {
+          "if-range": "W/\"0-0\"",
+          "range": "bytes=0-9"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+        "bytes": 2414
+      }
+    },
+    "HEAD with range": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "HEAD",
+        "path": "/files/Alpha%20Photos/videos/VID_0006.mp4",
+        "as": "admin",
+        "headers": {
+          "range": "bytes=0-9"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "content-length": "10",
+        "content-range": "bytes 0-9/2414",
+        "content-type": "video/mp4",
+        "etag": "W/\"96e-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "encoded ../ traversal → 403": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/..%2F..%2Fdb.sqlite",
+        "as": "admin"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "encoded dot-dot segment → 403": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/%2e%2e%2fdb.sqlite",
+        "as": "admin"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "nested traversal → 403": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/..%2F..%2F..%2Fdb.sqlite",
+        "as": "admin"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "encoded absolute path": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/%2Fetc%2Fpasswd",
+        "as": "admin"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "NUL byte → 400": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos%00.jpg",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Bad request"
+      }
+    },
+    "bad percent-encoding → 400": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/%E0%A4%A",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Bad request"
+      }
+    },
+    "bare /files/ falls through": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /files/</pre>\n</body>\n</html>\n"
+      }
+    },
+    "file not in DB, folder exists → 404": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/nope.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "deleted-on-disk file → 404": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Epsilon%20Archive/images/IMG_0018.png?inline=1",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "ws events from the 404 auto-prune": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "autoPruned": true,
+          "path": "Epsilon Archive/images/IMG_0018.png",
+          "type": "file_deleted"
+        }
+      ]
+    },
+    "epsilon group after auto-prune": {
+      "route": "GET /api/downloads/:groupId",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/-1001000000005",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Epsilon Archive/videos/VID_0020.mp4",
+              "id": 20,
+              "modified": "2024-05-03 10:00:00",
+              "name": "VID_0020.mp4",
+              "path": "Epsilon Archive/videos/VID_0020.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Epsilon Archive/images/IMG_0019.webp",
+              "id": 19,
+              "modified": "2024-05-02 10:00:00",
+              "name": "IMG_0019.webp",
+              "path": "Epsilon Archive/images/IMG_0019.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": 1715299200000,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 2,
+          "totalPages": 1
+        }
+      }
+    },
+    "file in a missing folder → 404": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Ghost%20Folder/images/ghost.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "ghost group row still listed": {
+      "route": "GET /api/downloads/:groupId",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/-1001000000009",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Ghost Folder/images/ghost.jpg",
+              "id": 21,
+              "modified": "2024-06-01 10:00:00",
+              "name": "ghost.jpg",
+              "path": "Ghost Folder/images/ghost.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 10,
+              "sizeFormatted": "10 B",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    },
+    "files/token admin": {
+      "route": "GET /api/files/token",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/token",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "exp": "<time:s>",
+          "token": "<filetoken:1>"
+        }
+      }
+    },
+    "files/token guest": {
+      "route": "GET /api/files/token",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/token",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "exp": "<time:s>",
+          "token": "<filetoken:2>"
+        }
+      }
+    },
+    "files/token anon → 401": {
+      "route": "GET /api/files/token",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/token",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "anon with minted admin token": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?inline=1&token=<filetoken:1>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "anon with self-minted guest token": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?token=4102444800.HeFLoVV5Ku8qVakuwr19hm0n7YHUYc_cLzINtRbIlWo",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "anon with legacy role-less token": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?token=4102444800.QeN2dqFU-XcuSZIq8_PGHComy2GM2cSMODtWKORG7nk",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "anon with expired token → login redirect": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?token=1700000000.ne24Q7lPXHhJUOZsa5a9IPzP8lOE7eY0f1b7ta9EuzU",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "anon with forged token → login redirect": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?token=4102444800.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "anon with malformed token → login redirect": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?token=garbage",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "token does not open /api routes": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads?token=4102444800.9N6t-ERj4oHZqg9CZdiM9kWeuDtiHbgTjyx2LkflNwQ",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "guest-role token cannot use ?peer=": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?peer=00000000-0000-4000-8000-0000000000a1&token=4102444800.HeFLoVV5Ku8qVakuwr19hm0n7YHUYc_cLzINtRbIlWo",
+        "as": "anon"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "admin-role token reaches the ?peer= branch": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg?peer=no-such-peer&token=4102444800.9N6t-ERj4oHZqg9CZdiM9kWeuDtiHbgTjyx2LkflNwQ",
+        "as": "anon"
+      },
+      "status": 410,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Peer revoked"
+      }
+    },
+    "?peer= unknown → 410": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Remote%20Chat/images/R_0501.jpg?peer=nope",
+        "as": "admin"
+      },
+      "status": 410,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Peer revoked"
+      }
+    },
+    "?peer= guest → 403": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Remote%20Chat/images/R_0501.jpg?peer=00000000-0000-4000-8000-0000000000a1",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "?peer= proxy-mode peer unreachable → 502": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Remote%20Chat/images/R_0501.jpg?peer=00000000-0000-4000-8000-0000000000a1",
+        "as": "admin"
+      },
+      "status": 502,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "storage_offline",
+          "message": "fetch failed"
+        }
+      }
+    },
+    "?peer= direct-mode peer unreachable → 502": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Remote%20Chat/images/R_0501.jpg?peer=00000000-0000-4000-8000-0000000000b2",
+        "as": "admin"
+      },
+      "status": 502,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "storage_offline",
+          "message": "fetch failed"
+        }
+      }
+    },
+    "_clusterref cached row, peer unreachable → 502": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/_clusterref/00000000-0000-4000-8000-0000000000a1/501",
+        "as": "admin"
+      },
+      "status": 502,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "storage_offline",
+          "message": "fetch failed"
+        }
+      }
+    },
+    "_clusterref unknown remote id → 404": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/_clusterref/00000000-0000-4000-8000-0000000000a1/999",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Cluster file not found in catalog cache"
+      }
+    },
+    "_clusterref unknown peer → 404": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/_clusterref/no-such-peer/501",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Cluster file not found in catalog cache"
+      }
+    },
+    "thumb jpg": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-1-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 213
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb jpg cache hit": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-1-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 213
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb portrait jpg": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-2-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 480
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb png": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/3",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-3-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 200,
+          "height": 200
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb webp": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/4",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-4-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 240
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb w=120 clamps to the one width": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/1?w=120",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-1-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 213
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb video frame": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/6",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-6-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 160,
+          "height": 120
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb guest": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/9",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-9-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 320
+        }
+      },
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb If-None-Match → 304": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/1",
+        "as": "admin",
+        "headers": {
+          "if-none-match": "\"thumb-1-320-<mtime-ms>\""
+        }
+      },
+      "status": 304,
+      "headers": {
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-1-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null,
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size); request etag is the live one"
+    },
+    "thumb If-Modified-Since → 304": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/1",
+        "as": "admin",
+        "headers": {
+          "if-modified-since": "<time:http>"
+        }
+      },
+      "status": 304,
+      "headers": {
+        "cache-control": "private, max-age=3600, stale-while-revalidate=2592000",
+        "content-type": "image/webp",
+        "etag": "\"thumb-1-320-<mtime-ms>\"",
+        "last-modified": "<http-date>",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null,
+      "note": "etag mtime part masked (thumb generated at request time); content-length dropped (derived WebP, encoder-dependent size)"
+    },
+    "thumb of a document → 404": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/10",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "No thumb"
+      }
+    },
+    "thumb unknown id → 404": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/9999",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "No thumb"
+      }
+    },
+    "thumb bad id → 400": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/abc",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Bad id"
+      }
+    },
+    "thumb id 0 → 400": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/0",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Bad id"
+      }
+    },
+    "thumb anon → 401": {
+      "route": "GET /api/thumbs/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/thumbs/1",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "archive-list without path → 400": {
+      "route": "GET /api/files/archive-list",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/archive-list",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "path required"
+        }
+      }
+    },
+    "archive-list missing file → 404": {
+      "route": "GET /api/files/archive-list",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/archive-list?path=Gamma%20Docs%2Fdocuments%2Fnope.zip",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "File not found"
+        }
+      }
+    },
+    "archive-list traversal → 403": {
+      "route": "GET /api/files/archive-list",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/archive-list?path=..%2Fdb.sqlite",
+        "as": "admin"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Forbidden"
+        }
+      }
+    },
+    "archive-list single-stream .gz": {
+      "route": "GET /api/files/archive-list",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/archive-list?path=Gamma%20Docs%2Fdocuments%2Fnotes.txt.gz",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [],
+          "name": "notes.txt.gz",
+          "reason": "single_stream",
+          "supported": false
+        }
+      }
+    },
+    "archive-list unknown format": {
+      "route": "GET /api/files/archive-list",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/archive-list?path=Gamma%20Docs%2Fdocuments%2Freport.pdf",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [],
+          "name": "report.pdf",
+          "reason": "unknown_format",
+          "supported": false
+        }
+      }
+    },
+    "archive-list guest → 403": {
+      "route": "GET /api/files/archive-list",
+      "request": {
+        "method": "GET",
+        "path": "/api/files/archive-list?path=Gamma%20Docs%2Fdocuments%2Fnotes.txt.gz",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "bulk-zip without ids → 400": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids required"
+        }
+      }
+    },
+    "bulk-zip empty ids → 400": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "ids": []
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids required"
+        }
+      }
+    },
+    "bulk-zip non-numeric ids → 404": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "a",
+            null
+          ]
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No matching files"
+        }
+      }
+    },
+    "bulk-zip unknown ids → 404": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "ids": [
+            9999
+          ]
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No matching files"
+        }
+      }
+    },
+    "bulk-zip only unreachable files → 404": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "ids": [
+            21
+          ]
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No accessible files in selection"
+        }
+      }
+    },
+    "bulk-zip over the entry cap → 413": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "<large request body>": {
+            "sha256": "8fde1a57766aff8d2f1527c5e7ec663663cae1eb9bbad67fee4bed5128ffc165",
+            "chars": 382113
+          }
+        }
+      },
+      "status": 413,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Too many files in one ZIP (cap 65534). Split into smaller batches."
+        }
+      },
+      "note": "request body is 65 535 ids 1..65535"
+    },
+    "bulk-zip guest → 403": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "guest",
+        "body": {
+          "ids": [
+            1
+          ]
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "bulk-zip one group with a name collision": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "ids": [
+            14,
+            15,
+            16
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-disposition": "attachment; filename=\"tgdl-Delta_Mixed-3files-<YYYY-MM-DD-HH-MM>.zip\"; filename*=UTF-8''tgdl-Delta_Mixed-3files-<YYYY-MM-DD-HH-MM>.zip",
+        "content-type": "application/zip",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "zip": {
+          "entries": [
+            {
+              "name": "Delta_Mixed/IMG_0014.jpg",
+              "size": 3365,
+              "crc32": "a0a7a58d",
+              "method": 0
+            },
+            {
+              "name": "Delta_Mixed/IMG_0014 (1).jpg",
+              "size": 3365,
+              "crc32": "a0a7a58d",
+              "method": 0
+            },
+            {
+              "name": "Delta_Mixed/ภาพทดสอบ รูป.jpg",
+              "size": 3228,
+              "crc32": "3c023802",
+              "method": 0
+            }
+          ]
+        }
+      },
+      "note": "content-disposition timestamp masked: archive name carries the current UTC minute"
+    },
+    "bulk-zip across groups (library)": {
+      "route": "POST /api/downloads/bulk-zip",
+      "request": {
+        "method": "POST",
+        "path": "/api/downloads/bulk-zip",
+        "as": "admin",
+        "body": {
+          "ids": [
+            1,
+            6,
+            10,
+            9999,
+            21
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-disposition": "attachment; filename=\"tgdl-library-3files-<YYYY-MM-DD-HH-MM>.zip\"; filename*=UTF-8''tgdl-library-3files-<YYYY-MM-DD-HH-MM>.zip",
+        "content-type": "application/zip",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "zip": {
+          "entries": [
+            {
+              "name": "Alpha_Photos/IMG_0001.jpg",
+              "size": 3365,
+              "crc32": "a0a7a58d",
+              "method": 0
+            },
+            {
+              "name": "Alpha_Photos/VID_0006.mp4",
+              "size": 2414,
+              "crc32": "6b5527c3",
+              "method": 0
+            },
+            {
+              "name": "Gamma_Docs/report.pdf",
+              "size": 314,
+              "crc32": "7e6da643",
+              "method": 0
+            }
+          ]
+        }
+      },
+      "note": "content-disposition timestamp masked: archive name carries the current UTC minute"
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "29db244183": {
+      "content-security-policy": "default-src 'none'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
