@@ -141,6 +141,12 @@ afterAll(async () => {
 }, 30_000);
 
 describe.skipIf(SKIP)('delete paths keep shared files (e2e)', () => {
+    it('rebuilds duplicate sets from stored hashes without a scan', async () => {
+        const r = await api('GET', '/api/maintenance/dedup/sets');
+        expect(r.status).toBe(200);
+        expect(r.json.duplicateSets.map((s) => s.files.map((f) => f.id))).toEqual([[ids.a, ids.c]]);
+    });
+
     it('duplicate scan reports one entry per physical copy and finishes', async () => {
         await api('POST', '/api/maintenance/dedup/scan');
         const st = await waitIdle('/api/maintenance/dedup/status');
