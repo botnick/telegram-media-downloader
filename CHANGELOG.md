@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- The status bar's chat count dropped to 0 after the periodic stats update, which only carries file and disk totals. Missing fields now keep their last value.
+
 ## [2.28.0] — 2026-09-29
 
 A new layout with four places — Library, Chats, Queue, Settings — plus a chat details page instead of the settings dialog, one Add box for chats, @usernames and t.me links, an in-app account sign-in, Tools under Settings, and a go-anywhere palette (Ctrl+K). Also the first Go component, tgdl-core, which checks file hashes alongside Node in shadow mode.
