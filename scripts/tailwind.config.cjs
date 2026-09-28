@@ -22,6 +22,13 @@ module.exports = {
             '../src/web/public/locales/*.json',
         ],
     },
+    // Utilities that are only ever assigned from JS at runtime by modules
+    // that may not spell them out literally (e.g. the release-notes sheet
+    // in changelog-viewer.js). Pinned so they can never drop out of the
+    // build if the last literal use elsewhere goes away. Classes composed
+    // dynamically (`bg-${x}`) must be added here too — the scanner can't
+    // see them.
+    safelist: ['hidden', 'text-tg-text', 'text-sm', 'text-tg-textSecondary', 'text-red-400'],
     theme: {
         extend: {
             colors: {
