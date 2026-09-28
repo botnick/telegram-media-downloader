@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format is based on 
 - **Wrong page count with "Pinned" on in a group's gallery.** The per-group total ignored the pinned filter, so pagination kept offering pages of nothing.
 - **Finished maintenance jobs could still look "running".** Status endpoints for re-index, thumbnail build and video optimise laid the last progress tick over the job's own state, so a stale `stage` / `running` from progress could win. The job's own `running` / `stage` / `error` now always take precedence, and a finished job's saved progress no longer carries `running: true`.
 - **Docker: DNS failures (`EAI_AGAIN`) on hosts that mount `/etc/hosts` / `/etc/resolv.conf` as `0640`.** The app runs as `node` and couldn't read them, so every lookup failed. The entrypoint now makes `/etc/hosts`, `/etc/resolv.conf` and `/etc/hostname` world-readable (they hold no secrets) before dropping privileges.
+- **"Disk Quota Exceeded" on every download, even after deleting files.** The downloader's disk-usage counter only ever went up, so once an install had downloaded `maxTotalSize` (default 50 GB) over its lifetime, every download failed — deletes and auto-rotate didn't help. The quota check now also reads the catalogue's total size (once a minute) and pulls the counter down to it, so deleting or rotating files lets downloads resume. A file shared by several downloads (duplicate detection) still counts once for new downloads. No action needed.
 
 ## [2.25.0] — 2026-09-29
 
