@@ -647,6 +647,16 @@ class Worker {
                 if (head && !dest.encryption && head.size === localSize && localSize > 0) {
                     queue.markDone(job.id, { bytes: head.size, remotePath });
                     _bumpDestStats(this.destinationId, head.size, 1);
+                    if (job.snapshot_path && dest.mode === 'snapshot') {
+                        await _applySnapshotRetention(
+                            dest,
+                            job,
+                            remotePath,
+                            head.size,
+                            provider,
+                            ctx,
+                        );
+                    }
                     _broadcast({
                         type: 'backup_done',
                         destinationId: this.destinationId,
@@ -685,7 +695,17 @@ class Worker {
                 ctx,
             );
             queue.markDone(job.id, { bytes: result.bytes, remotePath: result.remotePath });
-            _bumpDestStats(this.destinationId, result.bytes, 1, true);
+            _bumpDestStats(this.destinationId, result.bytes, 1);
+            if (job.snapshot_path && dest.mode === 'snapshot') {
+                await _applySnapshotRetention(
+                    dest,
+                    job,
+                    result.remotePath || remotePath,
+                    result.bytes,
+                    provider,
+                    ctx,
+                );
+            }
             _broadcast({
                 type: 'backup_done',
                 destinationId: this.destinationId,
@@ -836,18 +856,7 @@ async function _kickSnapshotRun(dest) {
             remotePath,
         });
         _wakeWorker(dest.id);
-        // Apply retention — keep the last N archives on the remote.
-        // Done after a short delay so the just-uploaded file is included
-        // in the listing.
-        setTimeout(() => {
-            _applyRetention(dest.id).catch((e) => {
-                _log({
-                    source: 'backup',
-                    level: 'warn',
-                    msg: `retention prune failed for #${dest.id}: ${e.message}`,
-                });
-            });
-        }, 60 * 1000);
+        // Retention runs once the upload lands — see _applySnapshotRetention.
         _log({
             source: 'backup',
             level: 'info',
@@ -1014,39 +1023,91 @@ async function _writeTarGz(srcDir, archivePath) {
     await finished;
 }
 
-async function _applyRetention(destinationId) {
-    const dest = _loadDestRow(destinationId);
-    if (!dest || !dest.enabled) return;
-    if (dest.mode !== 'snapshot') return;
-    const keep = Math.max(1, Number(dest.retain_count) || 7);
-    let cfg;
-    try {
-        cfg = _decryptCfgOrThrow(dest);
-    } catch {
-        return;
-    }
-    const ProviderClass = PROVIDER_CLASSES[dest.provider];
-    if (!ProviderClass) return;
-    const provider = new ProviderClass();
-    const ctx = { destinationId, log: _log, signal: new AbortController().signal };
-    try {
-        await provider.init(cfg, ctx);
-        const items = [];
-        for await (const item of provider.list('snapshots/', ctx)) {
-            items.push(item);
-        }
-        items.sort((a, b) => b.mtime - a.mtime);
-        const toDelete = items.slice(keep);
-        for (const item of toDelete) {
-            await provider.delete(item.name, ctx).catch(() => {});
-            _log({
-                source: 'backup',
-                level: 'info',
-                msg: `retention pruned ${item.name} on #${destinationId}`,
+// Archives this module names — retention never touches anything else.
+const SNAPSHOT_NAME_RE = /^snapshot-\d{8}-\d{6}\.tar\.gz$/;
+
+/**
+ * Snapshot-mode retention, run right after a snapshot upload landed (or
+ * was skipped because the remote already had it):
+ *   1. delete the local staging archive under data/backups/, unless another
+ *      queued job still needs the same file;
+ *   2. prune remote `snapshots/snapshot-YYYYMMDD-HHMMSS.tar.gz` down to
+ *      retain_count (newest by the timestamp in the name — some providers
+ *      report mtime 0);
+ *   3. set the Files / Size counters to what's left on the remote.
+ * Never throws — the upload itself already succeeded.
+ */
+async function _applySnapshotRetention(dest, job, remotePath, bytes, provider, ctx) {
+    const destId = dest.id;
+    const warn = (msg) => _log({ source: 'backup', level: 'warn', msg });
+
+    const local = job.snapshot_path;
+    if (
+        path.dirname(path.resolve(local)) === path.resolve(SNAPSHOTS_DIR) &&
+        SNAPSHOT_NAME_RE.test(path.basename(local))
+    ) {
+        const stillQueued = getDb()
+            .prepare(`
+            SELECT 1 FROM backup_jobs
+             WHERE snapshot_path = ? AND id != ? AND status IN ('pending', 'uploading')
+             LIMIT 1
+        `)
+            .get(local, job.id);
+        if (!stillQueued) {
+            await fsp.unlink(local).catch((e) => {
+                if (e.code !== 'ENOENT') warn(`could not delete ${local}: ${e.message}`);
             });
         }
-    } finally {
-        await provider.close().catch(() => {});
+    }
+
+    try {
+        const snaps = [];
+        for await (const item of provider.list('snapshots/', ctx)) {
+            const name = String(item.name || '')
+                .replace(/\\/g, '/')
+                .replace(/^\/+/, '');
+            const base = path.posix.basename(name);
+            if (name === `snapshots/${base}` && SNAPSHOT_NAME_RE.test(base)) {
+                snaps.push({ name, base, size: Number(item.size) || 0 });
+            }
+        }
+        // A listing can lag the upload that just finished.
+        const uploaded = path.posix.basename(String(remotePath).replace(/\\/g, '/'));
+        if (SNAPSHOT_NAME_RE.test(uploaded) && !snaps.some((s) => s.base === uploaded)) {
+            snaps.push({ name: `snapshots/${uploaded}`, base: uploaded, size: Number(bytes) || 0 });
+        }
+        snaps.sort((a, b) => (a.base < b.base ? 1 : a.base > b.base ? -1 : 0));
+
+        const keep = Math.max(1, Number(dest.retain_count) || 7);
+        const remaining = snaps.slice(0, keep);
+        let pruned = 0;
+        for (const item of snaps.slice(keep)) {
+            try {
+                await provider.delete(item.name, ctx);
+                pruned += 1;
+            } catch (e) {
+                remaining.push(item);
+                warn(`retention could not delete ${item.name} on #${destId}: ${e.message}`);
+            }
+        }
+        const failed = snaps.length - keep - pruned;
+        _log({
+            source: 'backup',
+            level: 'info',
+            msg:
+                `retention on #${destId}: listed ${snaps.length}, kept ${Math.min(keep, snaps.length)}, ` +
+                `pruned ${pruned}${failed > 0 ? `, ${failed} delete(s) failed` : ''}`,
+        });
+        const totalBytes = remaining.reduce((sum, s) => sum + s.size, 0);
+        getDb()
+            .prepare('UPDATE backup_destinations SET total_files = ?, total_bytes = ? WHERE id = ?')
+            .run(remaining.length, totalBytes, Number(destId));
+        _broadcast({
+            type: 'backup_destination_updated',
+            destination: _scrubDest(_loadDestRow(destId)),
+        });
+    } catch (e) {
+        warn(`retention failed for #${destId}: ${e.message}`);
     }
 }
 

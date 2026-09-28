@@ -143,3 +143,127 @@ describe('mirror Run now', () => {
         manager.removeDestination(destId);
     });
 });
+
+describe('snapshot retention', () => {
+    const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+
+    function seedRemote(root, rels) {
+        for (const [rel, size] of rels) {
+            const abs = path.join(root, ...rel.split('/'));
+            fs.mkdirSync(path.dirname(abs), { recursive: true });
+            fs.writeFileSync(abs, Buffer.alloc(size, 1));
+        }
+    }
+    function stageArchive(name, size) {
+        fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+        const abs = path.join(BACKUPS_DIR, name);
+        fs.writeFileSync(abs, Buffer.alloc(size, 2));
+        return abs;
+    }
+    async function upload(destId, localPath) {
+        const jobId = queue.enqueue({
+            destinationId: destId,
+            snapshotPath: localPath,
+            remotePath: `snapshots/${path.basename(localPath)}`,
+        });
+        manager._wake(destId);
+        await waitForEvent((m) => m.type === 'backup_done' && m.jobId === jobId);
+        return jobId;
+    }
+    const listRemote = (root) =>
+        fs
+            .readdirSync(path.join(root, 'snapshots'), { recursive: true })
+            .map((p) => p.split(path.sep).join('/'));
+
+    it('prunes old remote snapshots, deletes the staging archive, reconciles counters', async () => {
+        const root = path.join(REMOTE_ROOT, 'snap');
+        seedRemote(root, [
+            ['snapshots/snapshot-20260101-000000.tar.gz', 10],
+            ['snapshots/snapshot-20260102-000000.tar.gz', 10],
+            ['snapshots/snapshot-20260103-000000.tar.gz', 10],
+            ['snapshots/snapshot-20260104-000000.tar.gz', 40],
+            ['snapshots/notes.txt', 5],
+            ['snapshots/snapshot-manual.tar.gz', 5],
+            ['snapshots/old/snapshot-20250101-000000.tar.gz', 5],
+        ]);
+        const destId = manager.addDestination({
+            name: 'snap',
+            provider: 'local',
+            config: { rootPath: root },
+            mode: 'snapshot',
+            cron: NEVER,
+            retainCount: 2,
+        });
+        db.prepare(
+            'UPDATE backup_destinations SET total_files = 99, total_bytes = 9999 WHERE id = ?',
+        ).run(destId);
+        const local = stageArchive('snapshot-20260928-120000.tar.gz', 100);
+        await upload(destId, local);
+
+        expect(listRemote(root).sort()).toEqual(
+            [
+                'notes.txt',
+                'old',
+                'old/snapshot-20250101-000000.tar.gz',
+                'snapshot-20260104-000000.tar.gz',
+                'snapshot-20260928-120000.tar.gz',
+                'snapshot-manual.tar.gz',
+            ].sort(),
+        );
+        expect(fs.existsSync(local)).toBe(false);
+        const row = destRow(destId);
+        expect(row.total_files).toBe(2);
+        expect(row.total_bytes).toBe(140);
+        manager.removeDestination(destId);
+    });
+
+    it('keeps a staging archive another destination still has queued', async () => {
+        const root = path.join(REMOTE_ROOT, 'shared');
+        const destId = manager.addDestination({
+            name: 'snap-a',
+            provider: 'local',
+            config: { rootPath: root },
+            mode: 'snapshot',
+            cron: NEVER,
+            retainCount: 2,
+        });
+        const otherId = manager.addDestination({
+            name: 'snap-b',
+            provider: 'local',
+            config: { rootPath: path.join(REMOTE_ROOT, 'shared-b') },
+            mode: 'snapshot',
+            cron: NEVER,
+        });
+        manager.pause(otherId);
+        const local = stageArchive('snapshot-20260928-130000.tar.gz', 50);
+        queue.enqueue({ destinationId: otherId, snapshotPath: local, remotePath: 'snapshots/x' });
+        await upload(destId, local);
+
+        expect(fs.existsSync(path.join(root, 'snapshots', path.basename(local)))).toBe(true);
+        expect(fs.existsSync(local)).toBe(true);
+        manager.removeDestination(destId);
+        manager.removeDestination(otherId);
+    });
+
+    it('leaves manual destinations alone', async () => {
+        const root = path.join(REMOTE_ROOT, 'manual');
+        seedRemote(root, [
+            ['snapshots/snapshot-20260101-000000.tar.gz', 10],
+            ['snapshots/snapshot-20260102-000000.tar.gz', 10],
+        ]);
+        const destId = manager.addDestination({
+            name: 'manual',
+            provider: 'local',
+            config: { rootPath: root },
+            mode: 'manual',
+            retainCount: 1,
+        });
+        const local = stageArchive('snapshot-20260928-140000.tar.gz', 30);
+        await upload(destId, local);
+
+        expect(listRemote(root)).toHaveLength(3);
+        expect(fs.existsSync(local)).toBe(true);
+        expect(destRow(destId).total_files).toBe(1);
+        manager.removeDestination(destId);
+    });
+});

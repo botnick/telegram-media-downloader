@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format is based on 
 ### Fixed
 - **Backup mirror "Run now" failed with "This database connection is busy".** The catch-up walk held a SQLite cursor open while queueing upload jobs on the same connection. It now walks the library in batches of 500 and yields between them, so a large library no longer stalls the dashboard either.
 - **A backup job whose local file is gone no longer errors the whole destination.** A missing or unreadable file (deleted, rotated away) now fails that one job immediately instead of retrying five times and then flagging the destination as errored. A successful mirror "Run now" also clears a stale error badge.
+- **Snapshot backups: retention now actually keeps "Retain copies" archives.** Pruning ran on a 60 s timer instead of after the upload, logged failed deletes as "pruned", and could touch any file under `snapshots/`. It now runs right after each snapshot upload, only considers `snapshots/snapshot-YYYYMMDD-HHMMSS.tar.gz`, logs listed / kept / pruned counts honestly, and resets the destination's Files / Size to what is left on the remote. The local staging copy in `data/backups/` is deleted once uploaded (never while another destination still has it queued). Manual-mode destinations are unchanged. Staging archives left behind by earlier versions are not touched — delete old `data/backups/snapshot-*.tar.gz` files by hand if you want the space back.
 
 ## [2.25.0] — 2026-09-29
 
