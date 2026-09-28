@@ -4,8 +4,6 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
-Chats you can't use any more — deleted, banned, private, restricted, left, or moved to a new group — are now handled one standard way: the app stops spending Telegram calls on them, says why in plain words, and brings them back by itself when they're reachable again.
-
 ### Added
 - **One standard for chats that can't be reached.** Every configured chat now has an access state: *Not a member*, *Banned*, *Private*, *Deleted*, *Restricted* (by Telegram, with its reason) or *Moved* (a group upgraded to a supergroup, with the new id). It's worked out from Telegram's own answers (`CHANNEL_PRIVATE`, `CHANNEL_INVALID`, `USER_BANNED_IN_CHANNEL`, a forbidden or migrated chat in the dialogs list, the "moved to" service message, …) per account, and kept with the error code, when it was first seen, last checked and which accounts were asked. A chat is only paused when **no** account can read it — if another account still can, that one takes over and the chat keeps downloading.
 - **Paused chats cost nothing.** Polling, live updates, the download queue (no more five retries per file), backfill (including the automatic first and catch-up backfills), avatar and name lookups, Stories and auto-forwarding skip them with a local check — no Telegram call. Each one is checked again on its own, one chat a minute at most: after 1 hour, 6 hours, then daily. A dialogs refresh that shows the chat again, or a live message from it, flips it back to normal right away, and adding an account re-checks them all (one a minute).
@@ -22,6 +20,7 @@ Chats you can't use any more — deleted, banned, private, restricted, left, or 
 - **A flood wait or timeout at startup could switch a healthy chat off for good** — the startup check treated any error as "no account can open it". Only a definite answer from Telegram counts now.
 - A restart no longer asks Telegram about each chat twice (the startup check's newest message is reused) and no longer re-asks about chats already known to be unreachable.
 - The sidebar no longer makes the server re-resolve every chat on each list refresh because of a name that can't resolve (typically a dead chat).
+- The status bar's chat count dropped to 0 after the periodic stats update, which only carries file and disk totals. Missing fields now keep their last value.
 
 ## [2.28.0] — 2026-09-29
 

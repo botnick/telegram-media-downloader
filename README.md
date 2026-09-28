@@ -50,20 +50,28 @@
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/queue.webp" alt="Download queue with live progress, speed and ETA"></td>
-    <td width="50%"><img src="docs/screenshots/chats.webp" alt="Chats page: pick which channels and groups to monitor"></td>
+    <td width="50%"><img src="docs/screenshots/chats.webp" alt="Chats: pick which channels and groups to monitor"></td>
+    <td width="50%"><img src="docs/screenshots/chat-details.webp" alt="Chat details: monitoring, what to download, forwarding, storage"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Chats</b> — monitor channels, groups and DMs; backfill history</td>
+    <td align="center"><b>Chat details</b> — what to download, forwarding, storage, in one page</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/queue.webp" alt="Download queue with live progress, speed and ETA"></td>
+    <td><img src="docs/screenshots/palette.webp" alt="Go-anywhere palette (Ctrl+K)"></td>
   </tr>
   <tr>
     <td align="center"><b>Queue</b> — live progress, speed, ETA; pause, retry or cancel any file</td>
-    <td align="center"><b>Chats</b> — choose which channels, groups and DMs to monitor</td>
+    <td align="center"><b>Ctrl+K</b> — jump to any page, tool, setting or chat</td>
   </tr>
   <tr>
     <td><img src="docs/screenshots/viewer.webp" alt="Full-screen media viewer"></td>
-    <td><img src="docs/screenshots/maintenance.webp" alt="Maintenance hub: duplicates, thumbnails, NSFW review, AI faces, backups, cluster"></td>
+    <td><img src="docs/screenshots/tools.webp" alt="Tools: library health, safety and AI, backup and sync, system"></td>
   </tr>
   <tr>
     <td align="center"><b>Viewer</b> — swipe / arrow keys, pin, share link, download</td>
-    <td align="center"><b>Maintenance</b> — duplicates, thumbnails, NSFW review, AI faces, backups, cluster</td>
+    <td align="center"><b>Tools</b> — duplicates, thumbnails, NSFW review, AI faces, backups, cluster</td>
   </tr>
 </table>
 
