@@ -21,7 +21,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getDb } from './db.js';
-import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
+import { sha256OfFile } from './checksum.js';
 import { getDownloadsDir } from './paths.js';
 import { deferDelete } from './deferred-delete.js';
 
@@ -60,15 +60,10 @@ function fileKey(stored) {
 
 // Wrap the canonical helper so existing call sites in this file keep
 // the same name. Hashing semantics are owned by `core/checksum.js`.
-// Catch-up dedup hashes thousands of multi-MB files in a row — route
-// them through the worker pool so a 2-hour scan doesn't pin the event
-// loop for the full duration.
-async function hashFile(absPath) {
-    try {
-        return await sha256OfFileViaPool(absPath);
-    } catch {
-        return await sha256OfFile(absPath);
-    }
+// tgdl-core does the reading and hashing, so a 2-hour catch-up scan never
+// pins the event loop.
+function hashFile(absPath) {
+    return sha256OfFile(absPath);
 }
 
 /**

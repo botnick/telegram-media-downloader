@@ -17,7 +17,7 @@ import {
     kvGet,
     kvSet,
 } from './db.js';
-import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
+import { sha256OfFile } from './checksum.js';
 import { accessOf, classifyChatError, isBlocked, recordResult } from './chat-access.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
@@ -969,14 +969,9 @@ export class DownloadManager extends EventEmitter {
         let storedSize = size;
         let bytesAddedToDisk = size;
         try {
-            // Hash on a worker thread so the main event loop stays free
-            // during multi-GB post-write hashing. Falls back automatically
-            // to the in-process streamer if the pool is disabled.
-            try {
-                fileHash = await sha256OfFileViaPool(filePath);
-            } catch {
-                fileHash = await sha256OfFile(filePath);
-            }
+            // tgdl-core hashes it, so the main event loop stays free
+            // during multi-GB post-write hashing.
+            fileHash = await sha256OfFile(filePath);
             // Match on hash AND size — size match guards against the
             // (vanishingly improbable) SHA-256 collision and rejects rows
             // with a NULL/zero size from older downloader versions.

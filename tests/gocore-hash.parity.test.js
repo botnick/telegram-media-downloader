@@ -1,39 +1,30 @@
-// Go (tgdl-core) vs Node SHA-256 parity.
+// SHA-256 is computed by tgdl-core only. Every digest must equal
+// crypto.createHash('sha256') over the file (the reference the removed
+// worker pool used), and a file that can't be read must fail the way fs
+// would (same err.code and message).
 //
-// Every file is hashed by crypto.createHash (reference), the Node
-// streamer (checksum.sha256OfFile), the worker pool (hash-worker.hashFile)
-// and tgdl-core (POST /v1/hash); all four must agree exactly. Then the
-// routed path (sha256OfFileViaPool) is checked in `on` and `shadow` modes.
-//
-// Runs with TGDL_GO_CORE_TEST=1 (CI's "node + tgdl-core" jobs); skipped
-// otherwise. The files live under the data dir's downloads folder, which
-// the app passes to tgdl-core as an allowed root.
+// The files live under the data dir's downloads folder, which the app
+// passes to tgdl-core as an allowed root; one lives outside, which the app
+// hashes in-process (EOUTSIDE) — also with the same digest.
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'crypto';
+import { createReadStream } from 'fs';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { findOrBuildGoCore } from './helpers/gocore-bin.js';
+import { requireCoreBin } from './helpers/gocore-raw.js';
 
 const MiB = 1024 * 1024;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-gocore-parity-'));
-// TGDL_DATA_DIR/downloads is an allowed root; OUTSIDE is not.
 const DOWNLOADS = path.join(TMP, 'data', 'downloads');
 const OUTSIDE = path.join(TMP, 'elsewhere');
-const ENV_KEYS = [
-    'TGDL_CORE_BIN',
-    'TGDL_GO_CORE',
-    'TGDL_GO_FEATURES',
-    'TGDL_DATA_DIR',
-    'TGDL_DOWNLOADS_DIR',
-    'TGDL_CORE_ALLOW_ROOTS',
-];
-const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
-let bin = null;
-let spawnMod, client, router, checksum, hashWorker;
+let spawnMod;
+let client;
+let checksum;
+let metrics;
 const files = []; // { name, abs, size, expected }
 
 function addFile(rel, buf) {
@@ -56,9 +47,31 @@ function patterned(n, seed) {
     return b;
 }
 
+/** What the removed Node paths did: stream through crypto. */
+function nodeStreamHash(p) {
+    return new Promise((resolve, reject) => {
+        const h = crypto.createHash('sha256');
+        const s = createReadStream(p);
+        s.on('error', reject);
+        s.on('data', (c) => h.update(c));
+        s.on('end', () => resolve(h.digest('hex')));
+    });
+}
+
+function counter(name, labels) {
+    const want = Object.entries(labels)
+        .map(([k, v]) => `${k}="${v}"`)
+        .sort()
+        .join(',');
+    for (const line of metrics.render().split('\n')) {
+        const m = /^([a-z_]+)\{([^}]*)\} (\S+)$/.exec(line);
+        if (m && m[1] === name && m[2].split(',').sort().join(',') === want) return Number(m[3]);
+    }
+    return 0;
+}
+
 beforeAll(async () => {
-    bin = await findOrBuildGoCore();
-    if (!bin) return;
+    requireCoreBin();
     addFile('empty.bin', Buffer.alloc(0));
     addFile('one.bin', Buffer.from([0x42]));
     addFile('exact-1MiB.bin', patterned(MiB, 1));
@@ -68,156 +81,89 @@ beforeAll(async () => {
     addFile('ไฟล์ทดสอบภาษาไทย.jpg', patterned(4096, 4));
     addFile('🎬 clip 😀 ✨.mp4', patterned(70_000, 5));
     addFile(path.join('โฟลเดอร์ 📁', 'ซ้อน 🎉.png'), patterned(12_345, 6));
-    // Past Windows' MAX_PATH (260).
     let deep = '';
-    while (path.join(DOWNLOADS, deep).length < 300) {
+    while (path.join(DOWNLOADS, deep).length < 300)
         deep = path.join(deep, `segment-${'x'.repeat(30)}`);
-    }
     addFile(path.join(deep, 'long-path-ยาว.bin'), patterned(3 * MiB + 17, 7));
 
-    process.env.TGDL_CORE_BIN = bin;
-    process.env.TGDL_GO_CORE = 'on';
-    delete process.env.TGDL_GO_FEATURES;
     delete process.env.TGDL_DOWNLOADS_DIR;
     delete process.env.TGDL_CORE_ALLOW_ROOTS;
     process.env.TGDL_DATA_DIR = path.join(TMP, 'data');
-
     spawnMod = await import('../src/core/gocore/spawn.js');
     client = await import('../src/core/gocore/client.js');
-    router = await import('../src/core/gocore/hash.js');
     checksum = await import('../src/core/checksum.js');
-    hashWorker = await import('../src/core/hash-worker.js');
-    router._resetForTests();
-    client._resetForTests();
+    ({ metrics } = await import('../src/core/metrics.js'));
     const ok = await spawnMod.startGoCore();
     if (!ok)
         throw new Error(`tgdl-core did not start: ${JSON.stringify(spawnMod.getGoCoreStatus())}`);
 }, 300_000);
 
 afterAll(async () => {
-    try {
-        spawnMod?.stopGoCore();
-    } catch {}
-    try {
-        await hashWorker?.shutdownHashPool();
-    } catch {}
-    for (const k of ENV_KEYS) {
-        if (savedEnv[k] === undefined) delete process.env[k];
-        else process.env[k] = savedEnv[k];
-    }
+    spawnMod?.stopGoCore();
+    delete process.env.TGDL_DATA_DIR;
     await new Promise((r) => setTimeout(r, 200));
     fs.rmSync(TMP, { recursive: true, force: true });
 });
 
-describe('tgdl-core hash parity with Node', () => {
-    it('has a long path over 260 characters in the set', ({ skip }) => {
-        if (!bin) skip();
+describe('tgdl-core SHA-256', () => {
+    it('includes a path over 260 characters', () => {
         expect(Math.max(...files.map((f) => f.abs.length))).toBeGreaterThan(260);
     });
 
-    it('Go, the Node streamer and the worker pool agree byte for byte', {
-        timeout: 120_000,
-    }, async ({ skip }) => {
-        if (!bin) skip();
+    it('equals crypto.createHash over the file, byte for byte', { timeout: 120_000 }, async () => {
+        const before = counter('tgdl_gocore_calls_total', { feature: 'hash', result: 'ok' });
         for (const f of files) {
-            const [streamer, pool, go] = await Promise.all([
+            const [viaApp, reference, raw] = await Promise.all([
                 checksum.sha256OfFile(f.abs),
-                hashWorker.hashFile(f.abs),
+                nodeStreamHash(f.abs),
                 client.hashFile(f.abs, { timeoutMs: 60_000 }),
             ]);
-            expect(streamer, f.name).toBe(f.expected);
-            expect(pool, f.name).toBe(f.expected);
-            expect(go.sha256, f.name).toBe(f.expected);
-            expect(go.size, f.name).toBe(f.size);
-            const st = fs.statSync(f.abs);
-            expect(Math.abs(go.mtimeMs - st.mtimeMs), f.name).toBeLessThan(1);
+            expect(reference, f.name).toBe(f.expected);
+            expect(viaApp, f.name).toBe(f.expected);
+            expect(raw.sha256, f.name).toBe(f.expected);
+            expect(raw.size, f.name).toBe(f.size);
+            expect(Math.abs(raw.mtimeMs - fs.statSync(f.abs).mtimeMs), f.name).toBeLessThan(1);
         }
+        // Every digest above came from Go (twice per file).
+        const after = counter('tgdl_gocore_calls_total', { feature: 'hash', result: 'ok' });
+        expect(after - before).toBe(files.length * 2);
     });
 
-    it('routes sha256OfFileViaPool to Go in `on` mode', { timeout: 120_000 }, async ({ skip }) => {
-        if (!bin) skip();
-        const before = router.getHashStats();
-        for (const f of files) {
-            expect(await checksum.sha256OfFileViaPool(f.abs), f.name).toBe(f.expected);
-        }
-        const after = router.getHashStats();
-        expect(after.go - before.go).toBe(files.length);
-        expect(after.fallbacks).toBe(before.fallbacks);
-    });
-
-    it('stays correct under concurrent load', { timeout: 120_000 }, async ({ skip }) => {
-        if (!bin) skip();
+    it('stays correct under concurrent load', { timeout: 120_000 }, async () => {
         const jobs = [];
         for (let i = 0; i < 4; i++) for (const f of files) jobs.push(f);
-        const out = await Promise.all(jobs.map((f) => checksum.sha256OfFileViaPool(f.abs)));
-        out.forEach((hex, i) => {
-            expect(hex, jobs[i].name).toBe(jobs[i].expected);
-        });
+        const out = await Promise.all(jobs.map((f) => checksum.sha256OfFile(f.abs)));
+        out.forEach((hex, i) => expect(hex, jobs[i].name).toBe(jobs[i].expected));
     });
 
-    it('shadow mode returns Node digests and records zero mismatches', {
-        timeout: 120_000,
-    }, async ({ skip }) => {
-        if (!bin) skip();
-        process.env.TGDL_GO_CORE = 'shadow';
-        try {
-            router._setTuningForTests({ sampleEvery: 1 });
-            const before = router.getHashStats();
-            for (const f of files) {
-                expect(await checksum.sha256OfFileViaPool(f.abs), f.name).toBe(f.expected);
-                await router._drainForTests();
-            }
-            const after = router.getHashStats();
-            // Every file ≤ 256 MB is sampled and compared.
-            expect(after.parityChecks - before.parityChecks).toBe(files.length);
-            expect(after.parityMismatches).toBe(0);
-            expect(after.go).toBe(before.go);
-        } finally {
-            process.env.TGDL_GO_CORE = 'on';
-            router._setTuningForTests({ sampleEvery: 20 });
-        }
-    });
-
-    it('only reads inside its allowed roots; Node hashes the rest', async ({ skip }) => {
-        if (!bin) skip();
+    it('a file outside the allowed roots is hashed in-process, same digest', async () => {
         expect(spawnMod.getGoCoreStatus().allowRoots).toContain(path.resolve(DOWNLOADS));
         fs.mkdirSync(OUTSIDE, { recursive: true });
         const outsideFile = path.join(OUTSIDE, 'not-a-download.bin');
         const buf = patterned(10_000, 9);
         fs.writeFileSync(outsideFile, buf);
-        const want = crypto.createHash('sha256').update(buf).digest('hex');
         await expect(client.hashFile(outsideFile)).rejects.toMatchObject({
             kind: 'outside',
             code: 'EOUTSIDE',
             status: 403,
         });
-        // `..` out of the root is refused the same way.
         await expect(
             client.hashFile(path.join(DOWNLOADS, '..', '..', 'elsewhere', 'not-a-download.bin')),
         ).rejects.toMatchObject({ code: 'EOUTSIDE' });
-        const before = router.getHashStats();
-        expect(await checksum.sha256OfFileViaPool(outsideFile)).toBe(want);
-        const after = router.getHashStats();
-        expect(after.outside - before.outside).toBe(1);
-        expect(after.fallbacks - before.fallbacks).toBe(1);
-        expect(client.breakerState('hash').recentFailures).toBe(0);
+        expect(await checksum.sha256OfFile(outsideFile)).toBe(
+            crypto.createHash('sha256').update(buf).digest('hex'),
+        );
     });
 
-    it('reports the same failure as Node for a missing file', async ({ skip }) => {
-        if (!bin) skip();
-        const missing = path.join(DOWNLOADS, 'does-not-exist.bin');
-        const nodeErr = await checksum.sha256OfFile(missing).catch((e) => e);
-        const routedErr = await checksum.sha256OfFileViaPool(missing).catch((e) => e);
-        expect(nodeErr.code).toBe('ENOENT');
-        // The worker pool forwards only the message; that is unchanged.
-        expect(routedErr.message).toMatch(/ENOENT/);
-        await expect(client.hashFile(missing)).rejects.toMatchObject({
-            kind: 'file',
-            code: 'ENOENT',
-        });
-        await expect(client.hashFile(DOWNLOADS)).rejects.toMatchObject({
-            kind: 'file',
-            code: 'EISDIR',
-        });
+    it('fails like fs for a file that cannot be read', async () => {
+        for (const p of [path.join(DOWNLOADS, 'does-not-exist.bin'), DOWNLOADS]) {
+            const nodeErr = await nodeStreamHash(p).catch((e) => e);
+            const goErr = await checksum.sha256OfFile(p).catch((e) => e);
+            expect(goErr).toBeInstanceOf(Error);
+            expect({ code: goErr.code, message: goErr.message }).toEqual({
+                code: nodeErr.code,
+                message: nodeErr.message,
+            });
+        }
     });
 });

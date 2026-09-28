@@ -1,0 +1,348 @@
+// tgdl-core is the only implementation now, so what matters is how every
+// failure surfaces:
+//
+//   - a file that can't be read fails exactly like fs (err.code, message);
+//   - a path outside the allowed roots is answered in-process, same result;
+//   - tgdl-core unavailable (missing binary, too old, not started) is a
+//     GoCoreError with status 503 and a message that says how to fix it —
+//     and the integrity sweep prunes nothing in that case;
+//   - a malformed / truncated answer is an error, never a wrong result;
+//   - a crash mid-request fails the requests in flight, calls made while
+//     it restarts wait for it, and it never outlives its parent.
+//
+// Most cases use a fake tgdl-core (a local HTTP server); the last group
+// runs the real binary.
+
+import { spawn } from 'child_process';
+import crypto from 'crypto';
+import fs from 'fs';
+import http from 'http';
+import os from 'os';
+import path from 'path';
+import readline from 'readline';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+
+import { requireCoreBin } from './helpers/gocore-raw.js';
+
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-gocore-client-'));
+const DOWNLOADS = path.join(TMP, 'data', 'downloads');
+const FILE = path.join(DOWNLOADS, 'sample ไทย 🎬.bin');
+const PAYLOAD = crypto.randomBytes(3 * 1024 * 1024 + 11);
+const EXPECTED = crypto.createHash('sha256').update(PAYLOAD).digest('hex');
+const savedBin = process.env.TGDL_CORE_BIN;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+let client;
+let checksum;
+let gofs;
+let spawnMod;
+let faces;
+const servers = [];
+
+/** A fake tgdl-core. `routes[path](req, raw, res)`; /health is built in. */
+async function fakeCore(routes, { features = ['hash', 'stat', 'walk', 'dbscan'] } = {}) {
+    const srv = http.createServer((req, res) => {
+        if (req.url === '/health') {
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ ok: true, service: 'tgdl-core', version: '9.9.9', features }));
+            return;
+        }
+        const chunks = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', () => {
+            const route = routes[req.url.split('?')[0]];
+            if (!route) return json(res, 404, { error: { code: 'ENOTFOUND' } });
+            route(req, Buffer.concat(chunks), res);
+        });
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    servers.push(srv);
+    client.setEndpoint(`http://127.0.0.1:${srv.address().port}`, 'tok', features, '9.9.9');
+    client.markHealthy({ features, version: '9.9.9' });
+    return srv;
+}
+
+function json(res, status, body) {
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+}
+
+beforeAll(async () => {
+    fs.mkdirSync(DOWNLOADS, { recursive: true });
+    fs.writeFileSync(FILE, PAYLOAD);
+    process.env.TGDL_DATA_DIR = path.join(TMP, 'data');
+    delete process.env.TGDL_DOWNLOADS_DIR;
+    delete process.env.TGDL_CORE_ALLOW_ROOTS;
+    client = await import('../src/core/gocore/client.js');
+    spawnMod = await import('../src/core/gocore/spawn.js');
+    checksum = await import('../src/core/checksum.js');
+    gofs = await import('../src/core/gocore/fs.js');
+    faces = await import('../src/core/ai/faces.js');
+});
+
+afterEach(async () => {
+    spawnMod.stopGoCore();
+    spawnMod._resetForTests();
+    client._resetForTests();
+    process.env.TGDL_CORE_BIN = savedBin;
+    while (servers.length) {
+        const s = servers.pop();
+        s.closeAllConnections?.();
+        await new Promise((r) => s.close(r));
+    }
+});
+
+afterAll(async () => {
+    try {
+        (await import('../src/core/db.js')).getDb().close();
+    } catch {}
+    delete process.env.TGDL_DATA_DIR;
+    await sleep(200);
+    try {
+        fs.rmSync(TMP, { recursive: true, force: true });
+    } catch {}
+});
+
+describe('answers from a (fake) tgdl-core', () => {
+    it('a file error (422) becomes the error fs would throw', async () => {
+        const missing = path.join(DOWNLOADS, 'nope.bin');
+        await fakeCore({
+            '/v1/hash': (req, raw, res) =>
+                json(res, 422, { error: { code: 'ENOENT', message: 'ENOENT: gone' } }),
+        });
+        const err = await checksum.sha256OfFile(missing).catch((e) => e);
+        const want = await fs.promises.open(missing).catch((e) => e);
+        expect({ code: err.code, syscall: err.syscall, message: err.message }).toEqual({
+            code: want.code,
+            syscall: want.syscall,
+            message: want.message,
+        });
+    });
+
+    it('EOUTSIDE (403) is answered in-process with the same digest', async () => {
+        let calls = 0;
+        await fakeCore({
+            '/v1/hash': (req, raw, res) => {
+                calls++;
+                json(res, 403, { error: { code: 'EOUTSIDE', message: 'outside' } });
+            },
+        });
+        expect(await checksum.sha256OfFile(FILE)).toBe(EXPECTED);
+        expect(calls).toBe(1);
+    });
+
+    it('stat-batch: EOUTSIDE entries are answered by fs.stat, the rest as sent', async () => {
+        await fakeCore({
+            '/v1/fs/stat-batch': (req, raw, res) => {
+                const { paths } = JSON.parse(raw);
+                json(res, 200, {
+                    results: paths.map((p, i) =>
+                        i === 0 ? { code: 'EOUTSIDE' } : { code: 'ENOENT' },
+                    ),
+                });
+            },
+        });
+        const st = fs.statSync(FILE);
+        const res = await gofs.statMany([FILE, path.join(DOWNLOADS, 'x')]);
+        expect(res).toEqual([
+            { ok: true, size: st.size, mtimeMs: st.mtimeMs, isFile: true, isDir: false },
+            { code: 'ENOENT' },
+        ]);
+    });
+
+    it('malformed or truncated answers are errors, never results', async () => {
+        await fakeCore({
+            '/v1/hash': (req, raw, res) => json(res, 200, { sha256: 'nothex', size: 1 }),
+            '/v1/fs/stat-batch': (req, raw, res) => json(res, 200, { results: [] }),
+            '/v1/fs/walk': (req, raw, res) => {
+                res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+                res.end('{"t":"d","p":"a"}\n'); // no "end" line
+            },
+            '/v1/dbscan': (req, raw, res) => {
+                res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+                res.end(
+                    '{"t":"result","count":2,"noiseCount":0,"starts":"","members":"","centroids":""}\n',
+                );
+            },
+        });
+        await expect(checksum.sha256OfFile(FILE)).rejects.toMatchObject({ kind: 'protocol' });
+        await expect(gofs.statMany([FILE])).rejects.toMatchObject({ kind: 'protocol' });
+        await expect(gofs.walkTree(DOWNLOADS)).rejects.toMatchObject({ kind: 'protocol' });
+        const data = new Float32Array(4);
+        await expect(
+            faces.clusterFacesOffThread({ data, n: 2, dim: 2 }, { eps: 1, minPts: 2 }),
+        ).rejects.toMatchObject({ kind: 'protocol' });
+    });
+
+    it('server errors keep their kind; nothing is retried into a wrong answer', async () => {
+        await fakeCore({
+            '/v1/hash': (req, raw, res) => json(res, 500, { error: { code: 'EINTERNAL' } }),
+            '/v1/fs/stat-batch': (req, raw, res) => json(res, 401, { error: { code: 'EAUTH' } }),
+            '/v1/fs/walk': (req, raw, res) => json(res, 503, { error: { code: 'EQUEUEFULL' } }),
+        });
+        await expect(checksum.sha256OfFile(FILE)).rejects.toMatchObject({ kind: 'server' });
+        await expect(gofs.statMany([FILE])).rejects.toMatchObject({ kind: 'auth', status: 401 });
+        await expect(gofs.walkTree(DOWNLOADS)).rejects.toMatchObject({ kind: 'busy' });
+    });
+
+    it('a dropped connection or a timeout is an error', async () => {
+        await fakeCore({
+            '/v1/hash': (req) => req.socket.destroy(),
+            '/v1/fs/stat-batch': () => {
+                /* never answers */
+            },
+        });
+        await expect(checksum.sha256OfFile(FILE)).rejects.toMatchObject({ kind: 'transport' });
+        await expect(client.statBatch([FILE], { timeoutMs: 300 })).rejects.toMatchObject({
+            kind: 'timeout',
+        });
+    });
+
+    it('a dbscan error line is an error', async () => {
+        await fakeCore({
+            '/v1/dbscan': (req, raw, res) => {
+                res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+                res.end(
+                    '{"t":"progress","done":1,"n":2}\n{"t":"error","code":"EINTERNAL","message":"boom"}\n',
+                );
+            },
+        });
+        await expect(
+            faces.clusterFacesOffThread(
+                { data: new Float32Array(4), n: 2, dim: 2 },
+                { eps: 1, minPts: 2 },
+            ),
+        ).rejects.toMatchObject({ kind: 'server', message: 'boom' });
+    });
+
+    it('an older tgdl-core without a feature: 503 that says to update', async () => {
+        await fakeCore({}, { features: ['hash'] });
+        const err = await gofs.statMany([FILE]).catch((e) => e);
+        expect(err).toMatchObject({ kind: 'unavailable', status: 503 });
+        expect(err.message).toMatch(/does not support "stat"/);
+    });
+});
+
+describe('tgdl-core missing', () => {
+    it('every feature rejects with 503 and the fix; the sweep prunes nothing', async () => {
+        process.env.TGDL_CORE_BIN = path.join(TMP, 'no-such-dir', 'tgdl-core');
+        const t0 = Date.now();
+        const errs = await Promise.all([
+            checksum.sha256OfFile(FILE).catch((e) => e),
+            gofs.statMany([FILE]).catch((e) => e),
+            gofs.walkTree(DOWNLOADS).catch((e) => e),
+            faces
+                .clusterFacesOffThread(
+                    { data: new Float32Array(4), n: 2, dim: 2 },
+                    { eps: 1, minPts: 2 },
+                )
+                .catch((e) => e),
+        ]);
+        expect(Date.now() - t0).toBeLessThan(5_000); // no long wait: it is not starting
+        for (const e of errs) {
+            expect(e).toMatchObject({
+                kind: 'unavailable',
+                status: 503,
+                code: 'TGDL_CORE_UNAVAILABLE',
+            });
+            expect(e.message).toMatch(/Fix:.*TGDL_CORE_BIN/);
+        }
+        expect(spawnMod.getGoCoreStatus().state).toBe('binary_missing');
+        expect(spawnMod.getCoreBanner()).toMatchObject({ state: 'binary_missing' });
+
+        // Integrity: a row whose file is gone must NOT be pruned when the
+        // stat can't be answered at all.
+        const dbApi = await import('../src/core/db.js');
+        const db = dbApi.getDb();
+        db.exec('DELETE FROM downloads');
+        db.prepare(
+            `INSERT INTO downloads (group_id, group_name, message_id, file_name, file_size, file_type, file_path)
+             VALUES ('g', 'g', 1, 'gone.jpg', 5, 'photo', 'g/gone.jpg')`,
+        ).run();
+        const integrity = await import('../src/core/integrity.js');
+        const res = await integrity.sweep();
+        expect(res).toMatchObject({ skipped: true, reason: 'core_unavailable', pruned: 0 });
+        expect(db.prepare('SELECT COUNT(*) AS n FROM downloads').get().n).toBe(1);
+    });
+});
+
+describe('real tgdl-core', () => {
+    it('crash mid-request: in-flight calls fail, calls during the restart wait, then all is well', {
+        timeout: 60_000,
+    }, async () => {
+        process.env.TGDL_CORE_BIN = requireCoreBin();
+        const big = path.join(DOWNLOADS, 'big.bin');
+        const buf = crypto.randomBytes(96 * 1024 * 1024);
+        fs.writeFileSync(big, buf);
+        const bigHex = crypto.createHash('sha256').update(buf).digest('hex');
+        expect(await spawnMod.startGoCore()).toBe(true);
+        const { pid, restarts } = spawnMod.getGoCoreStatus();
+
+        const inflight = [];
+        for (let i = 0; i < 4; i++) inflight.push(checksum.sha256OfFile(big).catch((e) => e));
+        await sleep(15);
+        process.kill(pid, 'SIGKILL');
+        const out = await Promise.all(inflight);
+        for (const r of out) {
+            // Either it finished before the kill (then it is right) or it failed.
+            if (typeof r === 'string') expect(r).toBe(bigHex);
+            else expect(r).toMatchObject({ name: 'GoCoreError' });
+        }
+        // Called while tgdl-core is down and restarting: waits, then answers.
+        await sleep(100);
+        expect(await checksum.sha256OfFile(FILE)).toBe(EXPECTED);
+        const st = spawnMod.getGoCoreStatus();
+        expect(st.state).toBe('running');
+        expect(st.pid).not.toBe(pid);
+        expect(st.restarts).toBe(restarts + 1);
+    });
+
+    it('wrong token: an auth error, not a result', { timeout: 30_000 }, async () => {
+        process.env.TGDL_CORE_BIN = requireCoreBin();
+        expect(await spawnMod.startGoCore()).toBe(true);
+        const ep = client.getEndpoint();
+        client.setEndpoint(ep.url, 'definitely-not-the-token', ep.features, ep.version);
+        client.markHealthy({ features: ep.features });
+        await expect(client.hashFile(FILE)).rejects.toMatchObject({ kind: 'auth', status: 401 });
+    });
+
+    it('exits when its parent dies (no orphan)', { timeout: 30_000 }, async () => {
+        const bin = requireCoreBin();
+        const script = `
+            const { spawn } = require('child_process');
+            const c = spawn(process.argv[1], ['serve'], {
+                env: { ...process.env, TGDL_CORE_TOKEN: 't', TGDL_CORE_WATCH_STDIN: '1' },
+                stdio: ['pipe', 'pipe', 'inherit'],
+                windowsHide: true,
+            });
+            c.stdout.once('data', () => console.log('PID ' + c.pid));
+            setInterval(() => {}, 1000);
+        `;
+        const parent = spawn(process.execPath, ['-e', script, bin], {
+            stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        const line = await new Promise((resolve, reject) => {
+            const rl = readline.createInterface({ input: parent.stdout });
+            rl.on('line', (l) => l.startsWith('PID ') && resolve(l));
+            setTimeout(() => reject(new Error('no PID line')), 15_000);
+        });
+        const goPid = Number(line.slice(4));
+        const alive = (p) => {
+            try {
+                process.kill(p, 0);
+            } catch {
+                return false;
+            }
+            try {
+                return !/^\d+ \(.*\) Z/.test(fs.readFileSync(`/proc/${p}/stat`, 'utf8'));
+            } catch {
+                return true;
+            }
+        };
+        expect(alive(goPid)).toBe(true);
+        parent.kill('SIGKILL');
+        const t0 = Date.now();
+        while (alive(goPid) && Date.now() - t0 < 10_000) await sleep(50);
+        expect(alive(goPid)).toBe(false);
+    });
+});

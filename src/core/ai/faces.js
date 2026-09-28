@@ -240,84 +240,53 @@ export function clusterFaces(faces, opts = {}) {
     return clusterFlat(data, n, dim, weights, _resolveClusterOpts(opts));
 }
 
-// Below this many points the worker round-trip (spawn + module load,
-// ~30-60 ms) costs more than the clustering itself.
-const OFF_THREAD_MIN_POINTS = 256;
+// The old worker path only reported progress from this many points up
+// (smaller inputs ran inline, silently); the scan log keeps that.
+const PROGRESS_MIN_POINTS = 256;
 
 /**
- * Cluster pre-packed embeddings on a worker thread so a large library
- * (O(N²) — minutes at 50 k faces) can't starve the event loop, which is
- * what the container healthcheck watches. Falls back to the calling
- * thread for tiny inputs or when a worker can't be started.
+ * Cluster pre-packed embeddings in tgdl-core (Go, all cores) so a large
+ * library (O(N²)) can't starve the event loop, which is what the
+ * container healthcheck watches. Label-for-label and byte-for-byte the
+ * same result as `clusterFlat()` (a faithful port of dbscan.js).
  *
- * `data` is transferred to the worker (zero-copy) and is detached on
- * return — callers must not reuse it.
+ * Rejects with an AbortError when `signal` fires (tgdl-core stops too),
+ * and with a GoCoreError (status 503, message with the fix) when
+ * tgdl-core isn't available.
  *
  * @param {{data: Float32Array, n: number, dim: number, weights?: Float64Array}} flat
  * @param {object} opts  `{ eps, minPts, signal?, onProgress?(done, n) }`
- * @returns {Promise<{clusters: {memberIdxs: Int32Array|number[], centroid: Float32Array, faceCount: number}[], noiseCount: number}>}
+ * @returns {Promise<{clusters: {memberIdxs: Int32Array, centroid: Float32Array, faceCount: number}[], noiseCount: number}>}
  */
 export async function clusterFacesOffThread(flat, opts = {}) {
     const { eps, minPts } = _resolveClusterOpts(opts);
     const { data, n, dim } = flat;
     const weights = flat.weights || null;
     const signal = opts.signal || null;
-    const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null;
+    const onProgress =
+        typeof opts.onProgress === 'function' && n >= PROGRESS_MIN_POINTS ? opts.onProgress : null;
     if (signal?.aborted) throw _abortError();
 
-    const inline = () => {
-        const { clusters, noise } = clusterFlat(data, n, dim, weights, { eps, minPts });
-        return { clusters, noiseCount: noise.length };
-    };
-    if (n < OFF_THREAD_MIN_POINTS || opts.inline === true) return inline();
-
-    let worker;
+    await import('../gocore/spawn.js'); // supervision + start-on-first-use
+    const { dbscan: coreDbscan } = await import('../gocore/client.js');
+    let r;
     try {
-        const { Worker } = await import('node:worker_threads');
-        worker = new Worker(new URL('./cluster-worker.js', import.meta.url));
-    } catch {
-        return inline();
+        r = await coreDbscan({ data, n, dim, weights, eps, minPts }, { onProgress, signal });
+    } catch (e) {
+        if (signal?.aborted || e?.kind === 'aborted') throw _abortError();
+        throw e;
     }
-    return await new Promise((resolve, reject) => {
-        let settled = false;
-        const finish = (fn, value) => {
-            if (settled) return;
-            settled = true;
-            if (signal) signal.removeEventListener('abort', onAbort);
-            worker.terminate().catch(() => {});
-            fn(value);
-        };
-        const onAbort = () => finish(reject, _abortError());
-        if (signal) signal.addEventListener('abort', onAbort, { once: true });
-        worker.on('message', (msg) => {
-            if (msg?.type === 'progress') {
-                try {
-                    onProgress?.(msg.done, msg.n);
-                } catch {}
-                return;
-            }
-            if (msg?.type === 'error') return finish(reject, new Error(msg.message));
-            if (msg?.type !== 'result') return;
-            // Unpack: members concatenated in cluster order + offsets.
-            const clusters = [];
-            for (let c = 0; c < msg.count; c++) {
-                const memberIdxs = msg.members.subarray(msg.starts[c], msg.starts[c + 1]);
-                clusters.push({
-                    memberIdxs,
-                    centroid: msg.centroids.slice(c * dim, (c + 1) * dim),
-                    faceCount: memberIdxs.length,
-                });
-            }
-            finish(resolve, { clusters, noiseCount: msg.noiseCount });
+    // Unpack: members concatenated in cluster order + offsets.
+    const clusters = [];
+    for (let c = 0; c < r.count; c++) {
+        const memberIdxs = r.members.subarray(r.starts[c], r.starts[c + 1]);
+        clusters.push({
+            memberIdxs,
+            centroid: r.centroids.slice(c * dim, (c + 1) * dim),
+            faceCount: memberIdxs.length,
         });
-        worker.on('error', (e) => finish(reject, e));
-        worker.on('exit', (code) => {
-            if (!settled) finish(reject, new Error(`cluster worker exited with code ${code}`));
-        });
-        const transfer = [data.buffer];
-        if (weights?.buffer) transfer.push(weights.buffer);
-        worker.postMessage({ type: 'cluster', data, n, dim, weights, eps, minPts }, transfer);
-    });
+    }
+    return { clusters, noiseCount: r.noiseCount };
 }
 
 function _abortError() {

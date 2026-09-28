@@ -644,6 +644,8 @@
     "common.remove": "Remove",
     "maintenance.dedup.already_running": "A dedup scan is already running on another client.",
     "maintenance.dedup.scan_failed": "Dedup scan failed: {msg}",
+    "core.banner.title": "tgdl-core, the app's file engine, isn't running",
+    "core.banner.body": "File hashing and duplicate checks, Verify files, Re-index from disk and face grouping are paused until it runs. Everything else works.",
     "onboard.configure_api.title": "Step 1 of 3 — paste your Telegram API credentials",
     "onboard.configure_api.body_html": "Get apiId + apiHash from <a href=\"https://my.telegram.org\" target=\"_blank\" rel=\"noopener\" class=\"underline\">my.telegram.org</a>, then save them under Settings → Telegram API.",
     "onboard.configure_api.action": "Open Settings",

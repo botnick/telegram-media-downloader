@@ -1,0 +1,129 @@
+{
+    "counters": {
+        "scanned": 16,
+        "added": 13,
+        "skipped": 3,
+        "errors": 0,
+        "groups": 5
+    },
+    "rows": [
+        {
+            "group_id": "-1001234",
+            "group_name": "Main",
+            "message_id": 55,
+            "file_name": ".hidden_55.jpg",
+            "file_size": 55,
+            "file_type": "photo",
+            "file_path": "-1001234/images/.hidden_55.jpg"
+        },
+        {
+            "group_id": "-1001234",
+            "group_name": "Main",
+            "message_id": 101,
+            "file_name": "2024-01-02T03_04_05_101.jpg",
+            "file_size": 10,
+            "file_type": "photo",
+            "file_path": "-1001234/images/2024-01-02T03_04_05_101.jpg"
+        },
+        {
+            "group_id": "-1001234",
+            "group_name": "Main",
+            "message_id": -4241630167,
+            "file_name": "Photo_Upper.JPG",
+            "file_size": 21,
+            "file_type": "photo",
+            "file_path": "-1001234/images/Photo_Upper.JPG"
+        },
+        {
+            "group_id": "-1001234",
+            "group_name": "Main",
+            "message_id": 7,
+            "file_name": "_underscore_7.png",
+            "file_size": 7,
+            "file_type": "photo",
+            "file_path": "-1001234/images/_underscore_7.png"
+        },
+        {
+            "group_id": "-1001234",
+            "group_name": "Main",
+            "message_id": 303,
+            "file_name": "loose_303.bin",
+            "file_size": 33,
+            "file_type": "document",
+            "file_path": "-1001234/loose_303.bin"
+        },
+        {
+            "group_id": "-1001234",
+            "group_name": "Main",
+            "message_id": 202,
+            "file_name": "ไทย_202.mp4",
+            "file_size": 202,
+            "file_type": "video",
+            "file_path": "-1001234/videos/ไทย_202.mp4"
+        },
+        {
+            "group_id": "unknown:.hidden-group",
+            "group_name": ".hidden-group",
+            "message_id": 909,
+            "file_name": "h_909.jpg",
+            "file_size": 99,
+            "file_type": "photo",
+            "file_path": ".hidden-group/images/h_909.jpg"
+        },
+        {
+            "group_id": "unknown:My Channel",
+            "group_name": "My Channel",
+            "message_id": 404,
+            "file_name": "report_404.pdf",
+            "file_size": 44,
+            "file_type": "document",
+            "file_path": "My Channel/documents/report_404.pdf"
+        },
+        {
+            "group_id": "unknown:My Channel",
+            "group_name": "My Channel",
+            "message_id": 606,
+            "file_name": "s_606.webp",
+            "file_size": 66,
+            "file_type": "photo",
+            "file_path": "My Channel/stickers/s_606.webp"
+        },
+        {
+            "group_id": "unknown:My Channel",
+            "group_name": "My Channel",
+            "message_id": 505,
+            "file_name": "x_505.txt",
+            "file_size": 55,
+            "file_type": "document",
+            "file_path": "My Channel/weird-folder/x_505.txt"
+        },
+        {
+            "group_id": "unknown:Unknown Group",
+            "group_name": "Unknown Group",
+            "message_id": 1,
+            "file_name": "z_1.jpg",
+            "file_size": 1,
+            "file_type": "photo",
+            "file_path": "Unknown Group/Zeta/z_1.jpg"
+        },
+        {
+            "group_id": "unknown:Unknown Group",
+            "group_name": "Unknown Group",
+            "message_id": 2,
+            "file_name": "a_2.jpg",
+            "file_size": 2,
+            "file_type": "photo",
+            "file_path": "Unknown Group/alpha/a_2.jpg"
+        },
+        {
+            "group_id": "unknown:Unknown Group",
+            "group_name": "Unknown Group",
+            "message_id": 707,
+            "file_name": "g_707.mp4",
+            "file_size": 77,
+            "file_type": "video",
+            "file_path": "Unknown Group/gifs/g_707.mp4"
+        }
+    ],
+    "diskUsage": 899
+}

@@ -1,20 +1,21 @@
-// Boot with tgdl-core unavailable: the dashboard must come up exactly as
-// before, and /api/auth_check must answer right away.
+// tgdl-core is required, but the app must still boot without it: the
+// dashboard and /api/auth_check work at once, the problem and its fix are
+// reported (health block, banner field, log), the features that need
+// tgdl-core answer 503 with the fix — and nothing crash-loops.
 //
-//   1. TGDL_GO_CORE unset (default shadow) and no binary
-//      (TGDL_CORE_BIN points nowhere).
-//   2. TGDL_GO_CORE unset, TGDL_CORE_BIN unset, and the release download
-//      hangs forever (TGDL_CORE_RELEASE_URL → a server that never
-//      answers). In a tree with `npm run build:core` output the dev binary
-//      is found first instead; either way boot must not wait.
+//   1. No binary (TGDL_CORE_BIN points nowhere).
+//   2. No TGDL_CORE_BIN and the release download hangs forever
+//      (TGDL_CORE_RELEASE_URL → a server that never answers). In a tree
+//      with `npm run build:core` output the dev binary is found first
+//      instead; either way boot must not wait.
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import http from 'http';
 import net from 'net';
 import os from 'os';
 import path from 'path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const SERVER_PATH = path.join(REPO_ROOT, 'src', 'web', 'server.js');
@@ -67,8 +68,6 @@ async function bootServer(extraEnv) {
     dirs.push(dataDir);
     const port = await freePort();
     const env = { ...process.env, ...extraEnv, PORT: String(port), TGDL_DATA_DIR: dataDir };
-    delete env.TGDL_GO_CORE;
-    delete env.TGDL_GO_FEATURES;
     for (const [k, v] of Object.entries(extraEnv)) if (v === undefined) delete env[k];
     env.NODE_ENV = 'test';
     env.TGDL_DISABLE_AUTOSTART = '1';
@@ -126,28 +125,62 @@ async function authCheckLatencies(base, n = 10) {
 }
 
 describe.skipIf(SKIP)('boot without a usable tgdl-core', () => {
-    it('no binary: boots normally, auth_check answers at once, Node hashes', {
+    it('no binary: boots, reports the fix, Go-only features answer 503', {
         timeout: 90_000,
     }, async () => {
         const s = await bootServer({
             TGDL_CORE_BIN: path.join(os.tmpdir(), 'tgdl-no-such-dir', 'tgdl-core'),
+            // Old switches are harmless.
+            TGDL_GO_CORE: 'shadow',
+            TGDL_GO_FEATURES: 'hash=on,bogus=maybe',
         });
         expect(s.bootMs).toBeLessThan(30_000);
         const lat = await authCheckLatencies(s.base);
         expect(Math.max(...lat)).toBeLessThan(500);
 
         const cookie = await login(s.base);
-        const h = await (
-            await fetch(`${s.base}/api/system/health`, { headers: { cookie } })
-        ).json();
-        // Existing fields untouched, goCore added.
+        const get = async (url) => (await fetch(`${s.base}${url}`, { headers: { cookie } })).json();
+        const post = (url) =>
+            fetch(`${s.base}${url}`, {
+                method: 'POST',
+                headers: { cookie, 'content-type': 'application/json' },
+                body: '{}',
+            });
+
+        const h = await get('/api/system/health');
         for (const k of ['process', 'system', 'disk', 'database', 'connections']) {
             expect(h).toHaveProperty(k);
         }
-        expect(h.goCore.mode).toBe('shadow');
-        expect(h.goCore.modeSource).toBe('default');
         expect(h.goCore.state).toBe('binary_missing');
-        expect(h.goCore.features.hash.active).toBe('node');
+        expect(h.goCore.problem.fix).toMatch(/TGDL_CORE_BIN/);
+        expect(h.goCore.features.hash.available).toBe(false);
+
+        // The dashboard banner gets the fix (no local paths).
+        const mon = await get('/api/monitor/status');
+        expect(mon.core).toEqual({ state: 'binary_missing', fix: h.goCore.problem.fix });
+
+        for (const url of [
+            '/api/maintenance/files/verify',
+            '/api/maintenance/reindex',
+            '/api/maintenance/dedup/scan',
+            '/api/ai/faces/recluster',
+        ]) {
+            const r = await post(url);
+            expect(r.status, url).toBe(503);
+            const body = await r.json();
+            expect(body.code).toBe('TGDL_CORE_UNAVAILABLE');
+            expect(body.error).toMatch(/Fix:/);
+        }
+
+        // The rest of the dashboard is unaffected.
+        const stats = await fetch(`${s.base}/api/stats`, { headers: { cookie } });
+        expect(stats.status).toBe(200);
+
+        // Reported once, with the fix; the old env switches are noted, not errors.
+        await sleep(300);
+        expect(s.log()).toMatch(/\[go-core\].*missing.*Fix:/);
+        expect(s.log()).toMatch(/TGDL_GO_CORE \/ TGDL_GO_FEATURES no longer change anything/);
+        expect(s.child.exitCode).toBe(null);
     });
 
     it('download hanging (or dev binary present): boot and auth_check unaffected', {
@@ -166,5 +199,10 @@ describe.skipIf(SKIP)('boot without a usable tgdl-core', () => {
             await fetch(`${s.base}/api/system/health`, { headers: { cookie } })
         ).json();
         expect(['downloading', 'starting', 'running']).toContain(h.goCore.state);
+        // Still starting: no banner yet.
+        const mon = await (
+            await fetch(`${s.base}/api/monitor/status`, { headers: { cookie } })
+        ).json();
+        if (h.goCore.state !== 'running') expect(mon.core).toBe(null);
     });
 });
