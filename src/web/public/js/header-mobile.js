@@ -90,6 +90,7 @@ function setupOverflowMenu() {
     const ACTIONS = {
         'paste-url': () => document.getElementById('paste-url-btn')?.click(),
         stories: () => document.getElementById('stories-btn')?.click(),
+        'backfill-chat': () => document.getElementById('backfill-chat-btn')?.click(),
         refresh: () => document.getElementById('refresh-btn')?.click(),
         'vm-grid': () => document.querySelector('#view-mode-menu [data-vm="grid"]')?.click(),
         'vm-compact': () => document.querySelector('#view-mode-menu [data-vm="compact"]')?.click(),

@@ -5512,3 +5512,934 @@ body {
 #preview-strip-container:not(:has(#preview-strip > *)) {
     display: none;
 }
+
+/* ── Gallery toolbar: search + Sort & filter (js/gallery-toolbar.js) ──
+   Phones: the search row sits above the type tabs (order -1, full
+   width). md+: one row — tabs left, search + filter button right. */
+.gallery-search-row {
+    order: -1;
+    flex: 1 0 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 6px 4px;
+    min-width: 0;
+}
+@media (min-width: 768px) {
+    .gallery-search-row {
+        order: 0;
+        flex: 0 1 380px;
+        margin-left: auto;
+        padding: 6px 8px 6px 12px;
+    }
+    #gallery-scope-chip:not(.hidden) ~ .gallery-search-row {
+        margin-left: 4px;
+    }
+}
+.gallery-search {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--tg-panel);
+    border: 1px solid transparent;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+.gallery-search:focus-within {
+    border-color: var(--tg-blue);
+    box-shadow: 0 0 0 3px rgba(42, 171, 238, 0.18);
+}
+.gallery-search-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 17px;
+    color: var(--tg-textSecondary);
+    pointer-events: none;
+}
+#gallery-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 8px 0 38px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--tg-text);
+    /* 16 px on phones so iOS doesn't zoom into the field on focus. */
+    font-size: 16px;
+}
+@media (min-width: 640px) {
+    #gallery-search-input {
+        font-size: 14px;
+    }
+}
+#gallery-search-input::-webkit-search-cancel-button,
+#gallery-search-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+.gallery-search-count {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    font-size: 12px;
+    color: var(--tg-textSecondary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.gallery-search-clear {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tg-textSecondary);
+    font-size: 18px;
+    border-radius: 10px;
+}
+.gallery-search-clear:hover {
+    color: var(--tg-text);
+}
+.gallery-filter-btn {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 44px;
+    height: 40px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 10px;
+    background: var(--tg-panel);
+    color: var(--tg-text);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+.gallery-filter-btn i {
+    font-size: 18px;
+    color: var(--tg-textSecondary);
+}
+.gallery-filter-btn:hover {
+    background: var(--tg-hover);
+}
+.gallery-filter-btn.is-active {
+    background: rgba(42, 171, 238, 0.16);
+    color: var(--tg-blue);
+}
+.gallery-filter-btn.is-active i {
+    color: var(--tg-blue);
+}
+.gallery-filter-dot {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--tg-blue);
+    box-shadow: 0 0 0 2px var(--tg-bg);
+}
+/* Phones: icon-only button (the dot shows a non-default order/filter);
+   the label is still announced through aria-label. */
+@media (max-width: 639.98px) {
+    .gallery-filter-btn {
+        padding: 0;
+        width: 44px;
+    }
+    .gallery-filter-label {
+        display: none;
+    }
+}
+@media (min-width: 640px) {
+    .gallery-filter-dot {
+        display: none;
+    }
+}
+#media-tabs .tab-item:focus-visible,
+.gallery-filter-btn:focus-visible,
+.gallery-search-clear:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: -2px;
+}
+
+/* Sort & filter sheet */
+.gf-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.gf-heading {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary);
+}
+.gf-seg {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--tg-bg);
+    border: 1px solid var(--tg-border);
+}
+.gf-seg-btn {
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
+    border-radius: 9px;
+    color: var(--tg-textSecondary);
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: center;
+    min-width: 0;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+.gf-seg-btn span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.gf-seg-btn i {
+    font-size: 18px;
+}
+.gf-seg-btn:hover {
+    color: var(--tg-text);
+}
+.gf-seg-btn[aria-checked="true"] {
+    background: var(--tg-blue);
+    color: #fff;
+}
+.gf-list {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    border: 1px solid var(--tg-border);
+    overflow: hidden;
+}
+.gf-option {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    text-align: left;
+    color: var(--tg-text);
+    font-size: 14px;
+    background: transparent;
+    transition: background 0.15s ease;
+}
+.gf-option + .gf-option {
+    border-top: 1px solid var(--tg-border);
+}
+.gf-option:hover {
+    background: var(--tg-hover);
+}
+.gf-option-icon {
+    font-size: 18px;
+    color: var(--tg-textSecondary);
+}
+.gf-option-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.gf-option-check {
+    font-size: 18px;
+    color: var(--tg-blue);
+    opacity: 0;
+}
+.gf-option[aria-checked="true"] .gf-option-check,
+.gf-option[aria-checked="true"] .gf-option-icon {
+    opacity: 1;
+    color: var(--tg-blue);
+}
+.gf-seg-btn:focus-visible,
+.gf-option:focus-visible,
+.gf-reset:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: -2px;
+}
+.gf-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.gf-reset {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    margin-left: -12px;
+    border-radius: 10px;
+    color: var(--tg-blue);
+    font-size: 14px;
+    font-weight: 500;
+}
+.gf-reset:disabled {
+    color: var(--tg-textSecondary);
+    opacity: 0.5;
+    cursor: default;
+}
+.gf-done {
+    min-height: 44px;
+    min-width: 96px;
+}
+
+/* Chat-only header actions (Backfill this chat) — app.js toggles
+   body.in-chat while a chat's gallery is open. */
+body:not(.in-chat) [data-chat-only] {
+    display: none !important;
+}
+
+/* ── One-step backfill sheet (js/backfill.js → openBackfillSheet) ── */
+.bf-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.bf-chat,
+.bf-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.bf-chat-icon {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(42, 171, 238, 0.14);
+    color: var(--tg-blue);
+    font-size: 20px;
+}
+.bf-chat-name,
+.bf-status-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--tg-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bf-help {
+    margin-top: 2px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--tg-textSecondary);
+}
+.bf-label {
+    margin-bottom: -6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary);
+}
+.bf-preset {
+    font-size: 13px;
+}
+.bf-custom-input {
+    /* 16 px on phones so iOS doesn't zoom into the field. */
+    font-size: 16px;
+    min-height: 44px;
+}
+@media (min-width: 640px) {
+    .bf-custom-input {
+        font-size: 14px;
+    }
+}
+.bf-warn {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--tg-orange);
+}
+.bf-warn.hidden {
+    display: none;
+}
+.bf-error {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--tg-red);
+    overflow-wrap: anywhere;
+}
+.bf-start {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 15px;
+}
+.bf-link {
+    align-self: center;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--tg-blue);
+}
+.bf-status > i {
+    flex: 0 0 auto;
+    font-size: 28px;
+    line-height: 1;
+}
+.bf-ok {
+    color: var(--tg-green);
+}
+.bf-bad {
+    color: var(--tg-red);
+}
+.bf-muted {
+    color: var(--tg-textSecondary);
+}
+.bf-spin {
+    color: var(--tg-blue);
+    animation: bf-spin 1s linear infinite;
+}
+@keyframes bf-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.bf-bar {
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--tg-bg);
+    border: 1px solid var(--tg-border);
+}
+.bf-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--tg-blue);
+    transition: width 0.3s ease;
+}
+.bf-bar-fill.is-indeterminate {
+    animation: bf-slide 1.4s ease-in-out infinite;
+}
+@keyframes bf-slide {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(340%);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .bf-spin,
+    .bf-bar-fill.is-indeterminate {
+        animation: none;
+    }
+}
+.bf-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 13px;
+    color: var(--tg-textSecondary);
+    font-variant-numeric: tabular-nums;
+}
+.bf-stats b {
+    color: var(--tg-text);
+    font-weight: 600;
+}
+.bf-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.bf-action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+}
+.bf-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.bf-cancel {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    margin-left: -12px;
+    border-radius: 10px;
+    color: var(--tg-red);
+    font-size: 14px;
+    font-weight: 500;
+}
+.bf-cancel:disabled {
+    opacity: 0.5;
+}
+.bf-close {
+    min-height: 44px;
+    min-width: 96px;
+}
+.bf-link:focus-visible,
+.bf-cancel:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+    border-radius: 8px;
+}
+
+/* ── Queue toolbar (js/queue.js) ──────────────────────────────────── */
+/* Status chips: one row that scrolls sideways instead of wrapping to
+   three rows on a phone. */
+.queue-chip-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -4px;
+    padding: 0 4px;
+}
+.queue-chip-row::-webkit-scrollbar {
+    display: none;
+}
+.queue-chip {
+    min-height: 36px;
+    white-space: nowrap;
+}
+@media (pointer: coarse) {
+    .queue-chip {
+        min-height: 40px;
+    }
+}
+/* Divider before the narrower status views (Downloading, Queued, …). */
+.queue-chip--divider {
+    position: relative;
+    margin-left: 11px;
+}
+.queue-chip--divider::before {
+    content: "";
+    position: absolute;
+    left: -9px;
+    top: 20%;
+    bottom: 20%;
+    width: 1px;
+    background: var(--tg-border);
+}
+.queue-chip:focus-visible,
+#queue-more-btn:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+.queue-search-input,
+.queue-sort-select {
+    min-height: 44px;
+}
+/* 16 px on phones so iOS doesn't zoom into the field. */
+@media (max-width: 639.98px) {
+    .queue-search-input {
+        font-size: 16px;
+    }
+    .queue-sort-select {
+        max-width: 38%;
+        padding-left: 10px;
+        padding-right: 6px;
+    }
+}
+.queue-global-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.queue-global-actions button {
+    min-height: 36px;
+    white-space: nowrap;
+}
+/* Inside the ⋮ menu the actions become a labelled list. */
+.queue-more-menu {
+    min-width: 240px;
+    max-width: min(300px, calc(100vw - 24px));
+}
+#queue-actions-menu-slot .queue-global-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--tg-border);
+}
+#queue-actions-menu-slot .queue-global-actions button {
+    min-height: 44px;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 10px;
+    font-size: 14px;
+    border-radius: 6px;
+    background: transparent;
+}
+#queue-actions-menu-slot .queue-global-actions button i {
+    font-size: 18px;
+}
+#queue-actions-menu-slot .queue-global-actions button:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+html.theme-light #queue-actions-menu-slot .queue-global-actions button:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+.queue-throttle {
+    padding: 8px 10px 10px;
+}
+.queue-throttle input[type="range"] {
+    min-height: 28px;
+}
+.queue-menu-sort {
+    padding: 8px 10px 10px;
+    border-bottom: 1px solid var(--tg-border);
+    margin-bottom: 4px;
+}
+.queue-menu-sort .queue-sort-select {
+    width: 100%;
+    max-width: none;
+}
+
+/* ── Settings search (js/settings-search.js) ─────────────────────── */
+.settings-top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--tg-bg, #17212b);
+    margin: 0 0 16px;
+    padding-top: 4px;
+}
+.settings-top-bar .settings-chip-nav {
+    position: static;
+    margin: 0;
+}
+.settings-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 44px;
+    margin-bottom: 4px;
+    border-radius: 10px;
+    background: var(--tg-panel);
+    border: 1px solid transparent;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+.settings-search:focus-within {
+    border-color: var(--tg-blue);
+    box-shadow: 0 0 0 3px rgba(42, 171, 238, 0.18);
+}
+.settings-search-icon {
+    position: absolute;
+    left: 13px;
+    font-size: 17px;
+    color: var(--tg-textSecondary);
+    pointer-events: none;
+}
+#settings-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 8px 0 40px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--tg-text);
+    font-size: 16px;
+}
+@media (min-width: 640px) {
+    #settings-search-input {
+        font-size: 14px;
+    }
+}
+#settings-search-input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+.settings-search-clear {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--tg-textSecondary);
+}
+.settings-search-clear:hover {
+    color: var(--tg-text);
+}
+/* While searching: chips, PWA button and the save pill step aside. */
+#page-settings.is-searching .settings-chip-nav,
+#page-settings.is-searching #pwa-install-btn,
+#page-settings.is-searching #settings-autosave-status {
+    display: none !important;
+}
+.settings-search-miss {
+    display: none !important;
+}
+.settings-search-hit {
+    border-radius: 4px;
+    background: rgba(255, 196, 0, 0.18);
+    box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.18);
+}
+html.theme-light .settings-search-hit {
+    background: rgba(255, 196, 0, 0.32);
+    box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.32);
+}
+.settings-search-status {
+    margin: -8px 2px 12px;
+    font-size: 13px;
+    color: var(--tg-textSecondary);
+}
+.settings-search-elsewhere {
+    margin: 0 0 16px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--tg-panel);
+}
+.settings-search-elsewhere-title {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary);
+}
+.settings-search-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.settings-search-link {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px 0 14px;
+    border-radius: 999px;
+    background: var(--tg-bg);
+    border: 1px solid var(--tg-border);
+    color: var(--tg-text);
+    font-size: 14px;
+}
+.settings-search-link:hover {
+    border-color: var(--tg-blue);
+    color: var(--tg-blue);
+}
+.settings-search-clear:focus-visible,
+.settings-search-link:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+/* The sticky bar is taller now (search + chips): land section jumps
+   below it. */
+.settings-section {
+    scroll-margin-top: 112px;
+}
+.settings-search-status.is-empty {
+    margin: 8px 0 24px;
+    padding: 40px 16px;
+    text-align: center;
+    font-size: 14px;
+    border-radius: 12px;
+    background: var(--tg-panel);
+}
+.settings-search-status.is-empty::before {
+    content: "\f0d1"; /* ri-search-line (remixicon 4.0.0) */
+    display: block;
+    margin-bottom: 8px;
+    font-family: "remixicon", sans-serif;
+    font-size: 40px;
+    line-height: 1;
+    color: var(--tg-textSecondary);
+}
+
+/* ── Gallery selection bar + first-visit tip ─────────────────────── */
+.selection-icon-btn {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 20px;
+    color: var(--tg-textSecondary);
+}
+.selection-icon-btn:hover {
+    background: var(--tg-hover);
+    color: var(--tg-text);
+}
+.selection-text-btn {
+    min-height: 40px;
+    padding: 0 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.selection-text-btn:disabled,
+.selection-action:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.selection-action {
+    min-height: 36px;
+    white-space: nowrap;
+}
+.selection-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: var(--tg-border);
+}
+#selection-bar button:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+@media (max-width: 767.98px) {
+    #selection-bar .selection-sep {
+        display: none;
+    }
+    #selection-count {
+        flex: 1 1 auto;
+    }
+}
+.select-hint {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    margin: 0 0 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(42, 171, 238, 0.1);
+    border: 1px solid rgba(42, 171, 238, 0.25);
+}
+.select-hint.hidden {
+    display: none;
+}
+.select-hint-icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(42, 171, 238, 0.18);
+    color: var(--tg-blue);
+    font-size: 20px;
+}
+.select-hint-text {
+    flex: 1 1 200px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--tg-textSecondary);
+}
+.select-hint-text strong {
+    font-size: 14px;
+    color: var(--tg-text);
+    font-weight: 600;
+}
+.select-hint-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+.select-hint-btn {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--tg-text);
+    background: var(--tg-panel);
+}
+.select-hint-btn.is-primary {
+    background: var(--tg-blue);
+    color: #fff;
+}
+.select-hint-btn:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+/* Select mode: the select badge owns the top-left corner — the pin chip
+   (same spot, higher z-index) hid the ✓ of pinned tiles. Move it to the
+   top-right as a read-only marker while selecting. */
+.media-grid.in-select-mode .media-item .pin-chip {
+    left: auto;
+    right: 6px;
+    pointer-events: none;
+}
+#selection-count {
+    white-space: nowrap;
+}
+.selection-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+/* Phones: count + Select all / Clear on the first row, the actions on
+   their own row underneath. */
+@media (max-width: 767.98px) {
+    #selection-bar .selection-actions {
+        flex: 1 0 100%;
+        justify-content: center;
+        gap: 12px;
+    }
+}
+/* Phones: ✕ already clears + leaves select mode; drop "Clear" to keep
+   the bar at two rows. */
+@media (max-width: 767.98px) {
+    #selection-bar #selection-clear {
+        display: none;
+    }
+}
+
+/* Touch screens: full 44 px targets for the gallery search row. */
+@media (pointer: coarse) {
+    .gallery-search,
+    .gallery-filter-btn {
+        height: 44px;
+    }
+    .gallery-search-clear {
+        width: 44px;
+        height: 44px;
+    }
+}

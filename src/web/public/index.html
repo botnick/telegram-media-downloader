@@ -498,20 +498,17 @@
                             <button id="group-data-loadmore" type="button" class="text-[11px] text-tg-blue hover:underline mt-1.5 hidden" data-i18n="group.data.loadmore">Load more</button>
                         </div>
 
-                        <!-- 3. Backfill — preset chip row, deep-links to /#/backfill -->
+                        <!-- 3. Backfill — one button; the backfill sheet (js/backfill.js)
+                             picks the limit and starts the job in one place. -->
                         <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
-                            <h4 class="text-tg-text text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                            <h4 class="text-tg-text text-sm font-medium mb-1 flex items-center gap-1.5">
                                 <i class="ri-history-line text-tg-blue"></i>
                                 <span data-i18n="backfill.modal.title">Backfill history</span>
                             </h4>
-                            <div class="grid grid-cols-6 gap-1 text-[11px]">
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="5" data-i18n="backfill.preset.last_5">5</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="10" data-i18n="backfill.preset.last_10">10</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="100" data-i18n="backfill.preset.last_100">100</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="1000" data-i18n="backfill.preset.last_1k">1k</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="10000" data-i18n="backfill.preset.last_10k">10k</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="0" data-i18n="backfill.preset.all">All</button>
-                            </div>
+                            <p class="text-[11px] text-tg-textSecondary mb-2 leading-snug" data-i18n="backfill.modal.help_sheet">Download media from messages sent before monitoring started.</p>
+                            <button id="group-backfill-btn" type="button" class="tg-btn-secondary w-full min-h-[44px] text-sm inline-flex items-center justify-center gap-2">
+                                <i class="ri-download-2-line" aria-hidden="true"></i><span data-i18n="backfill.modal.open_sheet">Backfill older messages…</span>
+                            </button>
                             <p id="history-progress" class="text-[11px] text-tg-textSecondary mt-1.5 hidden"></p>
                         </div>
 
@@ -649,6 +646,15 @@
                         <i class="ri-checkbox-multiple-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
 
+                    <!-- Backfill this chat — only while a chat's gallery is open
+                         (body.in-chat). Phones: in the ⋮ menu below. -->
+                    <button id="backfill-chat-btn" type="button" data-admin-only data-chat-only
+                        class="hidden sm:flex w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center"
+                        data-i18n-aria-label="backfill.sheet.header_btn" aria-label="Backfill older messages of this chat"
+                        data-i18n-title="backfill.sheet.header_btn" title="Backfill older messages of this chat">
+                        <i class="ri-history-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
+                    </button>
+
                     <!-- Desktop-only buttons. On <640px these collapse into the
                          overflow menu below — keeps a 320 px iPhone SE header
                          from cramming nine 44 px tap targets onto one row. -->
@@ -716,6 +722,10 @@
                                 <i class="ri-camera-line"></i>
                                 <span class="vm-label" data-i18n="header.stories">Download Telegram Stories</span>
                             </button>
+                            <button type="button" data-overflow="backfill-chat" data-admin-only data-chat-only role="menuitem">
+                                <i class="ri-history-line"></i>
+                                <span class="vm-label" data-i18n="backfill.sheet.menu_item">Backfill this chat</span>
+                            </button>
                             <div class="border-t border-tg-border my-1"></div>
                             <button type="button" data-overflow="vm-grid" role="menuitem">
                                 <i class="ri-layout-grid-line"></i>
@@ -739,21 +749,19 @@
                 </div>
             </header>
 
-            <!-- Media Tabs -->
-            <div id="media-tabs" class="flex border-b border-tg-border bg-tg-bg px-1">
+            <!-- Gallery toolbar: search box + Sort & filter button, then the
+                 type tabs. Phones: search on its own row above the tabs;
+                 md+: one row, tabs left and search right. The search box
+                 (js/gallery-toolbar.js) searches file + chat names of the
+                 open chat or All Media and keeps the type tab / pinned
+                 filter. The old Pinned chip lives in Sort & filter now,
+                 together with the type and the layout. -->
+            <div id="media-tabs" class="gallery-toolbar relative flex flex-wrap items-center border-b border-tg-border bg-tg-bg px-1">
                 <div class="tab-item active" data-type="all" data-i18n="viewer.tab.all">All</div>
                 <div class="tab-item" data-type="images" data-i18n="viewer.tab.images">Photos</div>
                 <div class="tab-item" data-type="videos" data-i18n="viewer.tab.videos">Videos</div>
                 <div class="tab-item" data-type="documents" data-i18n="viewer.tab.documents">Files</div>
                 <div class="tab-item" data-type="audio" data-i18n="viewer.tab.audio">Audio</div>
-                <!-- Pinned: independent toggle (sits next to the type tabs but
-                     reads as a chip, since it stacks with the type filter
-                     instead of replacing it). -->
-                <div class="tab-item tab-item--toggle" data-pinned-toggle
-                     data-i18n-title="favorites.filter_title" title="Show only pinned"
-                     role="button" tabindex="0" aria-pressed="false">
-                    <i class="ri-pushpin-2-line mr-1" aria-hidden="true"></i><span data-i18n="favorites.filter">Pinned</span>
-                </div>
                 <!-- Gallery scope chip — federated gallery toggle (Layer 1).
                      Hidden by default; app.js reveals it once it knows the
                      cluster has at least one paired peer. The popover menu
@@ -768,6 +776,29 @@
                 <!-- Popover menu, positioned absolutely under the chip. -->
                 <div id="gallery-scope-menu" class="hidden absolute right-2 mt-9 z-30 bg-tg-panel border border-tg-border/40 rounded-lg shadow-lg min-w-[12rem] py-1"
                      role="menu" aria-labelledby="gallery-scope-chip"></div>
+                <div id="gallery-search-row" class="gallery-search-row">
+                    <div class="gallery-search" role="search">
+                        <i class="ri-search-line gallery-search-icon" aria-hidden="true"></i>
+                        <!-- biome-ignore lint/a11y/useValidAutocomplete: deliberate autofill defence, see #sidebar-groups-search -->
+                        <input type="search" id="gallery-search-input" name="gallery-q" autocomplete="nope"
+                            autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                            data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+                            data-i18n-placeholder="gallery.search.placeholder" placeholder="Search files and chats"
+                            data-i18n-aria-label="gallery.search.label" aria-label="Search the library by file name or chat name">
+                        <span id="gallery-search-count" class="gallery-search-count hidden" aria-live="polite"></span>
+                        <button type="button" id="gallery-search-clear" class="gallery-search-clear hidden"
+                            data-i18n-aria-label="gallery.search.clear" aria-label="Clear search"
+                            data-i18n-title="gallery.search.clear" title="Clear search">
+                            <i class="ri-close-circle-fill" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <button type="button" id="gallery-filter-btn" class="gallery-filter-btn" aria-haspopup="dialog"
+                        data-i18n-title="gallery.filter.title" title="Sort &amp; filter" aria-label="Sort &amp; filter">
+                        <i class="ri-equalizer-line" aria-hidden="true"></i>
+                        <span id="gallery-filter-label" class="gallery-filter-label">Filter</span>
+                        <span id="gallery-filter-dot" class="gallery-filter-dot hidden" aria-hidden="true"></span>
+                    </button>
+                </div>
             </div>
 
             <!-- Content Area -->
@@ -828,6 +859,21 @@
                      hidden class, so the browser painted it before the
                      router could swap. -->
                 <div id="page-viewer" class="hidden">
+                    <!-- First-visit tip on touch screens (app.js
+                         _maybeShowSelectHint): long-press is how you select
+                         several files. Remembered in localStorage once
+                         dismissed or once select mode has been used. -->
+                    <div id="select-hint" class="select-hint hidden" role="note">
+                        <span class="select-hint-icon" aria-hidden="true"><i class="ri-checkbox-multiple-line"></i></span>
+                        <div class="select-hint-text">
+                            <strong data-i18n="viewer.select_hint.title">Select several at once</strong>
+                            <span data-i18n="viewer.select_hint.body">Press and hold a photo, then tap more to download, pin or delete them together.</span>
+                        </div>
+                        <div class="select-hint-actions">
+                            <button id="select-hint-try" type="button" class="select-hint-btn is-primary" data-i18n="viewer.select_hint.try">Try it</button>
+                            <button id="select-hint-dismiss" type="button" class="select-hint-btn" data-i18n="viewer.select_hint.dismiss">Got it</button>
+                        </div>
+                    </div>
                     <div id="media-grid" class="media-grid"></div>
                     <!-- Drag-to-select rubber-band rectangle. Single shared
                          element managed by gallery-select.js — kept outside
@@ -903,6 +949,26 @@
                          updates the hash; an IntersectionObserver at the
                          bottom of the page mirrors active section back
                          to the chip via [aria-selected]. -->
+                    <!-- Sticky top bar: settings search (js/settings-search.js) +
+                         the section chips. While a query is typed the chips
+                         hide, non-matching cards hide, matching labels are
+                         highlighted and tools on other pages are listed. -->
+                    <div class="settings-top-bar">
+                    <div class="settings-search" role="search">
+                        <i class="ri-search-line settings-search-icon" aria-hidden="true"></i>
+                        <!-- biome-ignore lint/a11y/useValidAutocomplete: deliberate autofill defence, see #sidebar-groups-search -->
+                        <input type="search" id="settings-search-input" name="settings-q" autocomplete="nope"
+                            autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                            data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+                            data-i18n-placeholder="settings.search.placeholder" placeholder="Search settings"
+                            data-i18n-aria-label="settings.search.label" aria-label="Search settings by name"
+                            aria-describedby="settings-search-status">
+                        <button type="button" id="settings-search-clear" class="settings-search-clear hidden"
+                            data-i18n-aria-label="settings.search.clear" aria-label="Clear search"
+                            data-i18n-title="settings.search.clear" title="Clear search">
+                            <i class="ri-close-circle-fill" aria-hidden="true"></i>
+                        </button>
+                    </div>
                     <nav class="settings-chip-nav" role="tablist" aria-label="Settings sections">
                         <!-- Trimmed in v2.9: 10 chips → 5. Engine card +
                              Maintenance card moved to a header Session menu /
@@ -935,6 +1001,9 @@
                             <span data-i18n="settings.security">Security</span>
                         </button>
                     </nav>
+                    </div>
+                    <p id="settings-search-status" class="settings-search-status hidden" role="status" aria-live="polite"></p>
+                    <div id="settings-search-elsewhere" class="settings-search-elsewhere hidden"></div>
 
                     <!-- PWA install affordance — hidden until the browser
                          fires `beforeinstallprompt` (handled in js/pwa.js).
@@ -1767,7 +1836,7 @@
                     </div>
 
                     <!-- Danger Zone -->
-                    <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4" data-admin-only>
+                    <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4" data-admin-only data-settings-search-card>
                         <h3 class="text-red-400 font-medium mb-2 flex items-center gap-2">
                             <i class="ri-error-warning-line"></i> <span data-i18n="settings.danger.title">Danger Zone</span>
                         </h3>
@@ -1912,50 +1981,86 @@
                      visible rows + a small over-scroll buffer (see
                      js/queue.js for the math). -->
                 <div id="page-queue" class="hidden max-w-5xl mx-auto px-3 sm:px-4">
-                    <!-- Top toolbar — chips, sort, search, global actions -->
+                    <!-- Top toolbar — status chips (one scrollable row; the default
+                         "Active" view shows downloading + queued + paused), then
+                         search, sort and the ⋮ menu (speed limit, and the global
+                         actions below 1280 px — js/queue.js moves them). -->
                     <section class="bg-tg-panel rounded-xl p-3 mb-3">
-                        <div id="queue-chips" class="flex flex-wrap gap-1.5 mb-3"></div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <div class="relative flex-1 min-w-[180px]">
-                                <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary"></i>
-                                <input id="queue-search" type="text" autocomplete="off"
-                                    class="tg-input w-full pl-9 text-sm"
+                        <div id="queue-chips" class="queue-chip-row" role="toolbar" data-i18n-aria-label="queue.chips_label" aria-label="Show downloads"></div>
+                        <div class="flex items-center gap-2 mt-3">
+                            <div class="relative flex-1 min-w-0">
+                                <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-tg-textSecondary" aria-hidden="true"></i>
+                                <input id="queue-search" type="search" autocomplete="off"
+                                    class="tg-input w-full pl-9 text-sm queue-search-input"
                                     data-i18n-placeholder="queue.search_placeholder"
-                                    placeholder="Search filename or group…">
+                                    placeholder="Search filename or group…"
+                                    data-i18n-aria-label="queue.search_placeholder" aria-label="Search filename or group…">
                             </div>
-                            <select id="queue-sort" class="tg-input text-sm">
+                            <div id="queue-sort-inline" class="shrink-0">
+                            <select id="queue-sort" class="tg-input text-sm w-auto queue-sort-select"
+                                data-i18n-aria-label="queue.sort.label" aria-label="Sort by">
                                 <option value="addedAt" data-i18n="queue.sort.added">Added time</option>
                                 <option value="size" data-i18n="queue.sort.size">Size</option>
                                 <option value="progress" data-i18n="queue.sort.progress">Progress</option>
                                 <option value="group" data-i18n="queue.sort.group">Group</option>
                                 <option value="filename" data-i18n="queue.sort.filename">Filename</option>
                             </select>
-                            <div class="flex items-center gap-1.5 ml-auto">
-                                <button id="queue-pause-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.pause_all" title="Pause all">
-                                    <i class="ri-pause-line"></i><span class="hidden sm:inline" data-i18n="queue.action.pause_all">Pause all</span>
+                            </div>
+                            <div id="queue-actions-inline" class="shrink-0">
+                                <div id="queue-global-actions" class="queue-global-actions">
+                                    <button id="queue-pause-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.pause_all" title="Pause all">
+                                        <i class="ri-pause-line" aria-hidden="true"></i><span data-i18n="queue.action.pause_all">Pause all</span>
+                                    </button>
+                                    <button id="queue-resume-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.resume_all" title="Resume all">
+                                        <i class="ri-play-line" aria-hidden="true"></i><span data-i18n="queue.action.resume_all">Resume all</span>
+                                    </button>
+                                    <button id="queue-retry-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        data-i18n-title="queue.action.retry_all" title="Retry all failed" disabled>
+                                        <i class="ri-refresh-line" aria-hidden="true"></i><span data-i18n="queue.action.retry_all">Retry all</span>
+                                    </button>
+                                    <button id="queue-clear-finished" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.clear_finished" title="Clear finished">
+                                        <i class="ri-check-double-line" aria-hidden="true"></i><span data-i18n="queue.action.clear_finished">Clear finished</span>
+                                    </button>
+                                    <button id="queue-cancel-all" type="button"
+                                        class="px-3 py-1.5 text-xs rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 flex items-center gap-1.5"
+                                        data-i18n-title="queue.action.cancel_all" title="Cancel all queued">
+                                        <i class="ri-close-circle-line" aria-hidden="true"></i><span data-i18n="queue.action.cancel_all">Cancel queued</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="relative shrink-0">
+                                <button id="queue-more-btn" type="button"
+                                    class="w-11 h-11 rounded-lg bg-tg-bg/60 hover:bg-tg-hover flex items-center justify-center"
+                                    aria-haspopup="menu" aria-expanded="false" aria-controls="queue-more-menu"
+                                    data-i18n-aria-label="queue.more" aria-label="More queue actions"
+                                    data-i18n-title="queue.more" title="More queue actions">
+                                    <i class="ri-more-2-fill text-lg text-tg-textSecondary" aria-hidden="true"></i>
                                 </button>
-                                <button id="queue-resume-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.resume_all" title="Resume all">
-                                    <i class="ri-play-line"></i><span class="hidden sm:inline" data-i18n="queue.action.resume_all">Resume all</span>
-                                </button>
-                                <button id="queue-retry-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                                    data-i18n-title="queue.action.retry_all" title="Retry all failed" disabled>
-                                    <i class="ri-refresh-line"></i><span class="hidden sm:inline" data-i18n="queue.action.retry_all">Retry all</span>
-                                </button>
-                                <button id="queue-clear-finished" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-tg-bg/60 hover:bg-tg-hover text-tg-text flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.clear_finished" title="Clear finished">
-                                    <i class="ri-check-double-line"></i><span class="hidden sm:inline" data-i18n="queue.action.clear_finished">Clear finished</span>
-                                </button>
-                                <button id="queue-cancel-all" type="button"
-                                    class="px-3 py-1.5 text-xs rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 flex items-center gap-1.5"
-                                    data-i18n-title="queue.action.cancel_all" title="Cancel all queued">
-                                    <i class="ri-close-circle-line"></i><span class="hidden sm:inline" data-i18n="queue.action.cancel_all">Cancel queued</span>
-                                </button>
+                                <div id="queue-more-menu" class="view-mode-menu queue-more-menu" role="menu" aria-labelledby="queue-more-btn">
+                                    <div data-menu-slot class="queue-menu-sort">
+                                        <label for="queue-sort" class="text-xs text-tg-textSecondary flex items-center gap-1.5 mb-1">
+                                            <i class="ri-sort-desc" aria-hidden="true"></i><span data-i18n="queue.sort.label">Sort by</span>
+                                        </label>
+                                        <div id="queue-sort-menu-slot"></div>
+                                    </div>
+                                    <div data-menu-slot><div id="queue-actions-menu-slot"></div></div>
+                                    <div class="queue-throttle" role="group" aria-labelledby="queue-throttle-label">
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <label id="queue-throttle-label" for="queue-throttle" class="text-xs text-tg-textSecondary flex items-center gap-1.5">
+                                                <i class="ri-speed-up-line" aria-hidden="true"></i><span data-i18n="queue.throttle.label">Max speed</span>
+                                            </label>
+                                            <span id="queue-throttle-value" class="text-xs text-tg-text tabular-nums" data-i18n="queue.throttle.unlimited">Unlimited</span>
+                                        </div>
+                                        <input id="queue-throttle" type="range" min="0" max="52428800" step="262144" value="0" class="w-full accent-tg-blue">
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </section>
@@ -2033,22 +2138,21 @@
                                 <i class="ri-loader-4-line animate-spin mr-2"></i>
                                 <span data-i18n="queue.loading_more">Loading more…</span>
                             </div>
-                            <div id="queue-empty" class="hidden text-center py-12">
-                                <i class="ri-download-cloud-2-line text-4xl text-tg-textSecondary mb-2"></i>
-                                <p class="text-sm text-tg-textSecondary" data-i18n="queue.empty.title">Queue is empty</p>
-                                <p class="text-xs text-tg-textSecondary opacity-70 mt-1" data-i18n="queue.empty.body">Start the engine or kick off a backfill — every download flows through here.</p>
+                            <div id="queue-empty" class="hidden text-center py-12 px-4">
+                                <i class="ri-download-cloud-2-line text-4xl text-tg-textSecondary mb-2" aria-hidden="true"></i>
+                                <p id="queue-empty-title" class="text-sm text-tg-text font-medium">Queue is empty</p>
+                                <p id="queue-empty-body" class="text-xs text-tg-textSecondary mt-1 max-w-sm mx-auto">Start the engine or kick off a backfill — every download flows through here.</p>
+                                <button id="queue-empty-show-all" type="button" class="hidden tg-btn-secondary text-sm px-4 min-h-[44px] mt-4 inline-flex items-center gap-2">
+                                    <i class="ri-list-check-2" aria-hidden="true"></i><span data-i18n="queue.empty.show_all">Show all downloads</span>
+                                </button>
                             </div>
                         </div>
                     </section>
 
-                    <!-- Bottom strip: aggregate counters + speed throttle -->
+                    <!-- Bottom strip: aggregate counters. The speed limit moved
+                         into the ⋮ menu of the toolbar (same #queue-throttle). -->
                     <section class="bg-tg-panel rounded-xl p-3 mt-3 flex flex-wrap items-center gap-3">
                         <div id="queue-aggregate" class="text-xs text-tg-textSecondary tabular-nums flex items-center gap-3 flex-wrap"></div>
-                        <div class="flex items-center gap-2 ml-auto">
-                            <label for="queue-throttle" class="text-xs text-tg-textSecondary" data-i18n="queue.throttle.label">Max speed</label>
-                            <input id="queue-throttle" type="range" min="0" max="52428800" step="262144" value="0" class="w-32 accent-tg-blue">
-                            <span id="queue-throttle-value" class="text-xs text-tg-text tabular-nums w-20 text-right" data-i18n="queue.throttle.unlimited">Unlimited</span>
-                        </div>
                     </section>
                 </div>
 
@@ -4248,20 +4352,36 @@
         </div>
     </div>
 
-    <!-- Selection footer (shown when items are selected) -->
-    <div id="selection-bar" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 bg-tg-panel border border-tg-border rounded-full px-4 py-2 shadow-xl z-40 flex items-center gap-3 text-sm">
-        <span id="selection-count" class="text-tg-text">0 selected</span>
-        <button id="selection-all" class="text-tg-blue hover:text-tg-text" data-i18n-title="viewer.selection.select_all_title" title="Select every visible tile (Ctrl/⌘+A)" data-i18n="viewer.selection.select_all">Select all</button>
-        <button id="selection-clear" class="text-tg-textSecondary hover:text-tg-text" data-i18n="viewer.selection.clear">Clear</button>
-        <button id="selection-zip" class="px-3 py-1 rounded bg-tg-blue/20 text-tg-blue hover:bg-tg-blue/30">
-            <i class="ri-archive-line"></i> <span data-i18n="viewer.selection.zip">Download ZIP</span>
+    <!-- Selection bar — every bulk action in one place. Shown while select
+         mode is on (long-press a tile, the ☑ header button, Ctrl/Shift-click,
+         drag-select) and whenever something is selected. ✕ leaves select
+         mode; "Select all N" loads the rest of the view first. -->
+    <div id="selection-bar" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 bg-tg-panel border border-tg-border rounded-full px-2 py-1.5 shadow-xl z-40 flex items-center gap-1 text-sm"
+         role="toolbar" data-i18n-aria-label="viewer.selection.toolbar" aria-label="Selected files">
+        <button id="selection-exit" type="button" class="selection-icon-btn"
+            data-i18n-aria-label="viewer.selection.done" aria-label="Done selecting"
+            data-i18n-title="viewer.selection.done" title="Done selecting">
+            <i class="ri-close-line" aria-hidden="true"></i>
         </button>
-        <button id="selection-pin" class="px-3 py-1 rounded bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30" data-admin-only>
-            <i class="ri-pushpin-2-line"></i> <span data-i18n="favorites.pin">Pin</span>
+        <span id="selection-count" class="text-tg-text font-medium px-1 tabular-nums" aria-live="polite">0 selected</span>
+        <button id="selection-all" type="button" class="selection-text-btn text-tg-blue hover:text-tg-text" data-i18n-title="viewer.selection.select_all_title" title="Select every loaded file (Ctrl/⌘+A)" data-i18n="viewer.selection.select_all">Select all</button>
+        <button id="selection-all-matching" type="button" class="selection-text-btn hidden text-tg-blue hover:text-tg-text">Select all</button>
+        <button id="selection-clear" type="button" class="selection-text-btn text-tg-textSecondary hover:text-tg-text" data-i18n="viewer.selection.clear">Clear</button>
+        <span class="selection-sep" aria-hidden="true"></span>
+        <div class="selection-actions">
+        <button id="selection-zip" type="button" class="selection-action px-3 py-1 rounded-full bg-tg-blue/20 text-tg-blue hover:bg-tg-blue/30"
+            data-i18n-title="viewer.selection.zip" title="Download ZIP">
+            <i class="ri-archive-line" aria-hidden="true"></i> <span data-i18n="viewer.selection.zip">Download ZIP</span>
         </button>
-        <button id="selection-delete" class="px-3 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30" data-admin-only>
-            <i class="ri-delete-bin-line"></i> <span data-i18n="viewer.selection.delete">Delete</span>
+        <button id="selection-pin" type="button" class="selection-action px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30" data-admin-only
+            data-i18n-title="favorites.pin" title="Pin">
+            <i class="ri-pushpin-2-line" aria-hidden="true"></i> <span data-i18n="favorites.pin">Pin</span>
         </button>
+        <button id="selection-delete" type="button" class="selection-action px-3 py-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30" data-admin-only
+            data-i18n-title="viewer.selection.delete" title="Delete">
+            <i class="ri-delete-bin-line" aria-hidden="true"></i> <span data-i18n="viewer.selection.delete">Delete</span>
+        </button>
+        </div>
     </div>
 
     <!-- Drag-drop overlay for t.me URLs. Hidden by default; the SPA toggles

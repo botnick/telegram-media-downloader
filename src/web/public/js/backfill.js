@@ -23,7 +23,7 @@ import { api } from './api.js';
 import { ws } from './ws.js';
 import { escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf, applyToDOM as applyI18n } from './i18n.js';
-import { confirmSheet } from './sheet.js';
+import { confirmSheet, openSheet } from './sheet.js';
 import { whenHistoryIdle } from './overlay-history.js';
 
 const PRESETS = [
@@ -110,6 +110,346 @@ export function deepLinkFromModal(groupId, limit) {
     whenHistoryIdle(() => {
         location.hash = `#/backfill/${encodeURIComponent(String(groupId))}`;
     });
+}
+
+// ────────────────────────────────────────────────────────────────────
+// One-step backfill sheet — pick how far back + Start in one place, then
+// follow the job's progress right there. Opened from Group Settings →
+// Data, the empty chat gallery and the chat header menu. The Backfill
+// page keeps the full picture (every running job + history).
+// ────────────────────────────────────────────────────────────────────
+
+const SHEET_PRESETS = [
+    { value: 100, key: 'backfill.preset.last_100', fallback: 'Last 100' },
+    { value: 1000, key: 'backfill.preset.last_1k', fallback: 'Last 1k' },
+    { value: 10000, key: 'backfill.preset.last_10k', fallback: 'Last 10k' },
+    { value: 0, key: 'backfill.preset.all', fallback: 'All' },
+];
+
+/**
+ * @param {string} groupId
+ * @param {{ limit?: number }} [opts]  preselected limit (0 = all history)
+ */
+export function openBackfillSheet(groupId, opts = {}) {
+    const gid = String(groupId);
+    const groupName = getGroupName(gid, { fallback: gid });
+    const initial = Number.isFinite(Number(opts.limit)) ? Number(opts.limit) : 100;
+    let limit = SHEET_PRESETS.some((p) => p.value === initial) ? initial : 100;
+    let custom = SHEET_PRESETS.some((p) => p.value === initial) ? '' : String(initial);
+    let jobId = null;
+    let job = null; // { processed, downloaded, limit, state, error, startedAt }
+    let timer = null;
+    const unsubs = [];
+
+    const root = document.createElement('div');
+    root.className = 'bf-sheet';
+    const handle = openSheet({
+        title: i18nT('backfill.sheet.title', 'Backfill older messages'),
+        content: root,
+        size: 'sm',
+        onClose: () => {
+            for (const u of unsubs) u();
+            if (timer) clearInterval(timer);
+        },
+    });
+
+    const effective = () => {
+        if (custom.trim()) {
+            const v = parseInt(custom, 10);
+            if (!Number.isFinite(v) || v < 1) return null;
+            return Math.min(50000, v);
+        }
+        return limit;
+    };
+
+    const targetLabel = (lim) =>
+        lim === null || lim === 0
+            ? i18nT('backfill.sheet.target_all', 'All history')
+            : i18nTf('backfill.preset.last_n', { n: formatLimit(lim) }, `Last ${formatLimit(lim)}`);
+
+    function renderForm(message) {
+        const lim = effective();
+        root.innerHTML = `
+            <div class="bf-chat">
+                <span class="bf-chat-icon" aria-hidden="true"><i class="ri-chat-history-line"></i></span>
+                <div class="min-w-0">
+                    <div class="bf-chat-name">${escapeHtml(groupName)}</div>
+                    <div class="bf-help">${escapeHtml(i18nT('backfill.sheet.help', 'Download photos, videos and files from messages sent before monitoring started. They go through the download queue.'))}</div>
+                </div>
+            </div>
+            <div class="bf-label" id="bf-limit-label">${escapeHtml(i18nT('backfill.sheet.how_far', 'How far back?'))}</div>
+            <div class="gf-seg" role="radiogroup" aria-labelledby="bf-limit-label">
+                ${SHEET_PRESETS.map(
+                    (
+                        p,
+                    ) => `<button type="button" role="radio" class="gf-seg-btn bf-preset" data-bf-limit="${p.value}"
+                        aria-checked="${!custom.trim() && p.value === limit ? 'true' : 'false'}"><span>${escapeHtml(i18nT(p.key, p.fallback))}</span></button>`,
+                ).join('')}
+            </div>
+            <label class="bf-custom">
+                <span class="sr-only">${escapeHtml(i18nT('backfill.start.custom_limit_placeholder', 'Custom limit (1–50,000)'))}</span>
+                <input type="number" inputmode="numeric" min="1" max="50000" class="tg-input bf-custom-input"
+                    data-bf-custom value="${escapeHtml(custom)}"
+                    placeholder="${escapeHtml(i18nT('backfill.sheet.custom_placeholder', 'Or type a number of messages (1–50,000)'))}">
+            </label>
+            <p class="bf-warn ${lim === 0 ? '' : 'hidden'}" data-bf-warn>
+                <i class="ri-error-warning-line" aria-hidden="true"></i>
+                <span>${escapeHtml(i18nT('backfill.start.warn_all', 'Pulling all history may download tens of thousands of files and take hours.'))}</span>
+            </p>
+            ${message ? `<p class="bf-error" role="alert">${escapeHtml(message)}</p>` : ''}
+            <button type="button" class="tg-btn bf-start" data-bf-start ${lim === null ? 'disabled' : ''}>
+                <i class="ri-download-2-line" aria-hidden="true"></i>
+                <span>${escapeHtml(i18nT('backfill.start.button', 'Start backfill'))}</span>
+            </button>
+            <a class="bf-link" href="#/backfill" data-bf-page>
+                <i class="ri-history-line" aria-hidden="true"></i>
+                <span>${escapeHtml(i18nT('backfill.sheet.see_all', 'All backfills and history'))}</span>
+                <i class="ri-arrow-right-s-line" aria-hidden="true"></i>
+            </a>`;
+    }
+
+    function renderProgress() {
+        const j = job || {};
+        const processed = j.processed || 0;
+        const downloaded = j.downloaded || 0;
+        const pct =
+            j.limit && j.limit > 0 ? Math.min(100, Math.round((processed / j.limit) * 100)) : null;
+        const st = j.state || 'running';
+        const title =
+            st === 'done'
+                ? i18nT('backfill.sheet.done', 'Backfill finished')
+                : st === 'error'
+                  ? i18nT('backfill.sheet.failed', 'Backfill failed')
+                  : st === 'cancelled'
+                    ? i18nT('backfill.sheet.cancelled', 'Backfill cancelled')
+                    : i18nT('backfill.sheet.running', 'Backfill running');
+        const icon =
+            st === 'done'
+                ? 'ri-checkbox-circle-fill bf-ok'
+                : st === 'error'
+                  ? 'ri-error-warning-fill bf-bad'
+                  : st === 'cancelled'
+                    ? 'ri-stop-circle-fill bf-muted'
+                    : 'ri-loader-4-line bf-spin';
+        const elapsed = formatElapsed(Date.now() - (j.startedAt || Date.now()));
+        root.innerHTML = `
+            <div class="bf-status" role="status" aria-live="polite">
+                <i class="${icon}" aria-hidden="true"></i>
+                <div class="min-w-0">
+                    <div class="bf-status-title">${escapeHtml(title)}</div>
+                    <div class="bf-help">${escapeHtml(groupName)} · ${escapeHtml(targetLabel(j.limit))}</div>
+                </div>
+            </div>
+            <div class="bf-bar" aria-hidden="true"><div class="bf-bar-fill ${pct === null && st === 'running' ? 'is-indeterminate' : ''}" style="width:${pct === null ? (st === 'running' ? 30 : 100) : pct}%"></div></div>
+            <div class="bf-stats">
+                <span><b>${processed.toLocaleString()}</b> ${escapeHtml(i18nT('backfill.sheet.checked', 'messages checked'))}</span>
+                <span><b>${downloaded.toLocaleString()}</b> ${escapeHtml(i18nT('backfill.sheet.queued', 'files downloaded'))}</span>
+                <span data-bf-elapsed>${escapeHtml(i18nTf('backfill.row.elapsed', { t: elapsed }, `elapsed ${elapsed}`))}</span>
+            </div>
+            ${st === 'error' && j.error ? `<p class="bf-error" role="alert">${escapeHtml(j.error)}</p>` : ''}
+            <p class="bf-help">${escapeHtml(
+                st === 'running'
+                    ? i18nT(
+                          'backfill.sheet.keeps_running',
+                          'You can close this — the backfill keeps running. Follow it on the Backfill page; new files appear in the Queue and in this chat.',
+                      )
+                    : i18nT(
+                          'backfill.sheet.find_files',
+                          'New files are in this chat’s gallery. The Backfill page keeps the history.',
+                      ),
+            )}</p>
+            <div class="bf-actions">
+                <a class="tg-btn-secondary bf-action" href="#/backfill" data-bf-page>
+                    <i class="ri-history-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('backfill.sheet.open_page', 'Backfill page'))}</span>
+                </a>
+                <a class="tg-btn-secondary bf-action" href="#/queue" data-bf-page>
+                    <i class="ri-download-cloud-2-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('backfill.sheet.open_queue', 'Queue'))}</span>
+                </a>
+            </div>
+            <div class="bf-footer">
+                ${
+                    st === 'running'
+                        ? `<button type="button" class="bf-cancel" data-bf-cancel>
+                            <i class="ri-stop-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('backfill.sheet.cancel', 'Stop backfill'))}</span>
+                        </button>`
+                        : '<span></span>'
+                }
+                <button type="button" class="tg-btn bf-close" data-bf-close>${escapeHtml(i18nT(st === 'running' ? 'backfill.sheet.close_running' : 'common.done', st === 'running' ? 'Close' : 'Done'))}</button>
+            </div>`;
+    }
+
+    async function start() {
+        const lim = effective();
+        if (lim === null) {
+            renderForm(i18nT('backfill.start.warn_limit', 'Enter a valid limit.'));
+            return;
+        }
+        const btn = root.querySelector('[data-bf-start]');
+        if (btn) {
+            btn.disabled = true;
+            const span = btn.querySelector('span');
+            if (span) span.textContent = i18nT('backfill.start.button_running', 'Starting…');
+        }
+        try {
+            const r = await api.post('/api/history', { groupId: gid, limit: lim });
+            jobId = r?.jobId || null;
+            job = {
+                processed: 0,
+                downloaded: 0,
+                limit: lim === 0 ? null : lim,
+                state: 'running',
+                startedAt: Date.now(),
+            };
+            if (jobId) {
+                activeJobs.set(jobId, {
+                    id: jobId,
+                    group: groupName,
+                    groupId: gid,
+                    ...job,
+                });
+            }
+            // No toast — the sheet itself switches to the live progress view.
+            follow();
+        } catch (e) {
+            if (e?.status === 409 && e?.data?.code === 'ALREADY_RUNNING') {
+                // Follow the job that's already running instead of failing.
+                jobId = e.data.jobId || null;
+                const known = jobId ? activeJobs.get(jobId) : null;
+                job = {
+                    processed: known?.processed || 0,
+                    downloaded: known?.downloaded || 0,
+                    limit: known?.limit ?? null,
+                    state: 'running',
+                    startedAt: known?.startedAt || Date.now(),
+                };
+                showToast(
+                    i18nT(
+                        'backfill.already_running',
+                        'A backfill is already running for this group',
+                    ),
+                    'info',
+                );
+                follow();
+                return;
+            }
+            renderForm(e?.data?.error || e?.message || i18nT('common.error', 'Error'));
+        }
+    }
+
+    // Live progress for this job from the same WS events the page uses.
+    function follow() {
+        renderProgress();
+        const mine = (m) => m && jobId && String(m.jobId) === String(jobId);
+        unsubs.push(
+            ws.on('history_progress', (m) => {
+                if (!mine(m)) return;
+                job.processed = m.processed ?? job.processed;
+                job.downloaded = m.downloaded ?? job.downloaded;
+                if (m.limit !== undefined) job.limit = m.limit;
+                if (m.startedAt) job.startedAt = m.startedAt;
+                renderProgress();
+            }),
+            ws.on('history_done', (m) => {
+                if (!mine(m)) return;
+                job.processed = m.processed ?? job.processed;
+                job.downloaded = m.downloaded ?? job.downloaded;
+                job.state = 'done';
+                renderProgress();
+            }),
+            ws.on('history_error', (m) => {
+                if (!mine(m)) return;
+                job.state = 'error';
+                job.error = m.error || '';
+                renderProgress();
+            }),
+            ws.on('history_cancelled', (m) => {
+                if (!mine(m)) return;
+                job.state = 'cancelled';
+                renderProgress();
+            }),
+        );
+        timer = setInterval(() => {
+            if (job?.state !== 'running') return;
+            const el = root.querySelector('[data-bf-elapsed]');
+            const t = formatElapsed(Date.now() - (job.startedAt || Date.now()));
+            if (el) el.textContent = i18nTf('backfill.row.elapsed', { t }, `elapsed ${t}`);
+        }, 1000);
+    }
+
+    root.addEventListener('click', async (e) => {
+        const preset = e.target.closest('[data-bf-limit]');
+        if (preset) {
+            limit = parseInt(preset.dataset.bfLimit, 10);
+            custom = '';
+            renderForm();
+            root.querySelector(`[data-bf-limit="${limit}"]`)?.focus();
+            return;
+        }
+        if (e.target.closest('[data-bf-start]')) {
+            start();
+            return;
+        }
+        if (e.target.closest('[data-bf-page]')) {
+            // Let the link navigate; the sheet steps back over its own
+            // history entry first so the route change isn't undone.
+            e.preventDefault();
+            const href = e.target.closest('[data-bf-page]').getAttribute('href');
+            handle.close();
+            // Group Settings may sit under the sheet — close it too.
+            window.closeGroupSettings?.();
+            whenHistoryIdle(() => {
+                location.hash = href;
+            });
+            return;
+        }
+        if (e.target.closest('[data-bf-close]')) {
+            handle.close();
+            return;
+        }
+        if (e.target.closest('[data-bf-cancel]') && jobId) {
+            const btn = e.target.closest('[data-bf-cancel]');
+            btn.disabled = true;
+            try {
+                await api.post(`/api/history/${encodeURIComponent(jobId)}/cancel`, {});
+                if (job?.state === 'running') job.state = 'cancelling';
+                const title = root.querySelector('.bf-status-title');
+                if (title) title.textContent = i18nT('backfill.row.cancelling', 'cancelling…');
+            } catch (err) {
+                btn.disabled = false;
+                showToast(
+                    i18nTf(
+                        'backfill.row.cancel_failed',
+                        { msg: err.message },
+                        `Cancel failed: ${err.message}`,
+                    ),
+                    'error',
+                );
+            }
+        }
+    });
+    root.addEventListener('input', (e) => {
+        if (!e.target.matches('[data-bf-custom]')) return;
+        custom = e.target.value;
+        const lim = effective();
+        root.querySelectorAll('[data-bf-limit]').forEach((b) =>
+            b.setAttribute(
+                'aria-checked',
+                !custom.trim() && Number(b.dataset.bfLimit) === limit ? 'true' : 'false',
+            ),
+        );
+        root.querySelector('[data-bf-warn]')?.classList.toggle('hidden', lim !== 0);
+        const startBtn = root.querySelector('[data-bf-start]');
+        if (startBtn) startBtn.disabled = lim === null;
+    });
+    root.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.target.matches('[data-bf-custom]')) {
+            e.preventDefault();
+            start();
+        }
+    });
+
+    renderForm();
+    return handle;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -611,20 +951,9 @@ async function startBackfill() {
             }))
         )
             return;
-    } else {
-        if (
-            !(await confirmSheet({
-                title: i18nT('backfill.start.title', 'Start a new backfill'),
-                message: i18nTf(
-                    'group.backfill.confirm_n',
-                    { n: lim, name: groupName },
-                    `Download the last ${lim} messages of "${groupName}" into the queue?`,
-                ),
-                confirmLabel: i18nT('backfill.start.button', 'Start backfill'),
-            }))
-        )
-            return;
     }
+    // A limited backfill starts straight away — the chat and the limit are
+    // right above the button, and a running job can be cancelled.
 
     if (btn) {
         btn.disabled = true;

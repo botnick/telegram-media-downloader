@@ -1363,15 +1363,48 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
     return { files: rows, total };
 }
 
+// Optional narrowing shared by the local and federated search paths:
+// group, gallery type tab (`images` / `videos` / `documents` / `audio`)
+// and pinned-only. `col` prefixes the column names (`d.` for the aliased
+// local query, '' for the bare federated sub-selects).
+function _searchNarrowing(opts, col) {
+    const parts = [];
+    const params = [];
+    if (opts.groupId) {
+        parts.push(`${col}group_id = ?`);
+        params.push(String(opts.groupId));
+    }
+    const fileType =
+        opts.type && opts.type !== 'all' ? _FEDERATED_TYPE_MAP[opts.type] || null : null;
+    if (fileType) {
+        parts.push(`${col}file_type = ?`);
+        params.push(fileType);
+    }
+    if (opts.pinnedOnly) parts.push(`${col}pinned = 1`);
+    return { parts, params };
+}
+
+// `%` / `_` in the user's text are literal characters in a file name, not
+// wildcards.
+function _likePattern(raw) {
+    return `%${String(raw).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
 /**
- * Full-text-ish search over downloaded files. LIKE-based; cheap on the
- * sub-100k row counts we expect.
+ * Search downloaded files by file name / chat name. FTS5 prefix match
+ * first; when that finds nothing (a word in the middle of a file name,
+ * scripts without spaces such as Thai) or FTS5 is unavailable, a
+ * substring LIKE match.
  *
  * @param {string} query  user input
  * @param {object} [opts]
  * @param {number} [opts.limit=50]
  * @param {number} [opts.offset=0]
  * @param {string} [opts.groupId]  optional restrict to one group
+ * @param {string} [opts.type]     'all' | 'images' | 'videos' | 'documents' | 'audio'
+ * @param {boolean} [opts.pinnedOnly]
+ * @param {boolean} [opts.pinnedFirst]
+ * @param {'relevance'|'newest'} [opts.order='relevance']  FTS rank or newest first
  */
 export function searchDownloads(query, opts = {}) {
     const limit = Math.max(1, Math.min(500, parseInt(opts.limit, 10) || 50));
@@ -1380,6 +1413,10 @@ export function searchDownloads(query, opts = {}) {
     if (!raw) return { files: [], total: 0 };
 
     const db = getDb();
+    const narrow = _searchNarrowing(opts, 'd.');
+    const extraWhere = narrow.parts.length ? ` AND ${narrow.parts.join(' AND ')}` : '';
+    const pinnedOrder = opts.pinnedFirst ? 'd.pinned DESC, ' : '';
+    const newestOrder = `${pinnedOrder}d.created_at DESC, d.id DESC`;
 
     // Try FTS5 first (fast). Falls back to LIKE if FTS table doesn't exist
     // (e.g. SQLite build without FTS5 extension — rare but possible).
@@ -1392,42 +1429,40 @@ export function searchDownloads(query, opts = {}) {
             .map((t) => `"${t}"*`)
             .join(' ');
         if (ftsQuery) {
-            const groupFilter = opts.groupId ? ' AND d.group_id = ?' : '';
-            const params = [ftsQuery, ...(opts.groupId ? [String(opts.groupId)] : [])];
-            const rows = db
-                .prepare(
-                    `SELECT d.*, sb.duration_sec FROM downloads d
-                     LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id
-                     INNER JOIN downloads_fts fts ON fts.rowid = d.id
-                     WHERE downloads_fts MATCH ?${groupFilter}
-                     ORDER BY fts.rank
-                     LIMIT ? OFFSET ?`,
-                )
-                .all(...params, limit, offset);
+            const params = [ftsQuery, ...narrow.params];
+            const orderBy = opts.order === 'newest' ? newestOrder : `${pinnedOrder}fts.rank`;
             const total = db
                 .prepare(
                     `SELECT COUNT(*) as c FROM downloads d
                      INNER JOIN downloads_fts fts ON fts.rowid = d.id
-                     WHERE downloads_fts MATCH ?${groupFilter}`,
+                     WHERE downloads_fts MATCH ?${extraWhere}`,
                 )
                 .get(...params).c;
-            return { files: rows, total };
+            if (total > 0) {
+                const rows = db
+                    .prepare(
+                        `SELECT d.*, sb.duration_sec FROM downloads d
+                         LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id
+                         INNER JOIN downloads_fts fts ON fts.rowid = d.id
+                         WHERE downloads_fts MATCH ?${extraWhere}
+                         ORDER BY ${orderBy}
+                         LIMIT ? OFFSET ?`,
+                    )
+                    .all(...params, limit, offset);
+                return { files: rows, total };
+            }
         }
     } catch {
         // FTS unavailable — fall through to LIKE
     }
 
-    // LIKE fallback
-    const q = `%${raw}%`;
-    const params = [q, q];
-    let where = '(d.file_name LIKE ? OR d.group_name LIKE ?)';
-    if (opts.groupId) {
-        where += ' AND d.group_id = ?';
-        params.push(String(opts.groupId));
-    }
+    // LIKE fallback — substring match, newest first.
+    const q = _likePattern(raw);
+    const params = [q, q, ...narrow.params];
+    const where = `(d.file_name LIKE ? ESCAPE '\\' OR d.group_name LIKE ? ESCAPE '\\')${extraWhere}`;
     const rows = db
         .prepare(
-            `SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id WHERE ${where} ORDER BY d.created_at DESC LIMIT ? OFFSET ?`,
+            `SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id WHERE ${where} ORDER BY ${newestOrder} LIMIT ? OFFSET ?`,
         )
         .all(...params, limit, offset);
     const total = db
@@ -1644,28 +1679,32 @@ export function searchDownloadsFederated(query, opts = {}) {
     }
     const lim = Math.max(1, Math.min(500, parseInt(opts.limit, 10) || 50));
     const off = Math.max(0, parseInt(opts.offset, 10) || 0);
-    const q = `%${String(query || '').trim()}%`;
+    const q = _likePattern(String(query || '').trim());
 
-    const localWhereParts = ['(file_name LIKE ? OR group_name LIKE ?)'];
-    const peerWhereParts = ['(file_name LIKE ? OR group_name LIKE ?)'];
-    const localParams = [q, q];
-    const peerParams = [q, q];
-    if (opts.groupId) {
-        const gid = String(opts.groupId);
-        localWhereParts.push('group_id = ?');
-        peerWhereParts.push('group_id = ?');
-        localParams.push(gid);
-        peerParams.push(gid);
+    const match = "(file_name LIKE ? ESCAPE '\\' OR group_name LIKE ? ESCAPE '\\')";
+    // Group / type / pinned narrowing. Peer rows are never pinned, so a
+    // pinned-only search drops the peer side entirely.
+    const narrow = _searchNarrowing({ ...opts, pinnedOnly: false }, '');
+    const localWhereParts = [match, ...narrow.parts];
+    const peerWhereParts = [match, ...narrow.parts];
+    const localParams = [q, q, ...narrow.params];
+    const peerParams = [q, q, ...narrow.params];
+    if (opts.pinnedOnly) {
+        localWhereParts.push('pinned = 1');
+        peerWhereParts.push('0 = 1');
     }
     const localWhere = ' WHERE ' + localWhereParts.join(' AND ');
     const peerWhere = ' WHERE ' + peerWhereParts.join(' AND ');
+    const orderBy = opts.pinnedFirst
+        ? 'pinned DESC, sort_ts DESC, id DESC'
+        : 'sort_ts DESC, id DESC';
 
     const sql = `
         SELECT * FROM (
             SELECT ${_FED_COLS_LOCAL} FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id${localWhere}
             UNION ALL
             SELECT ${_FED_COLS_PEER} FROM peer_downloads${peerWhere}
-        ) ORDER BY sort_ts DESC, id DESC LIMIT ? OFFSET ?
+        ) ORDER BY ${orderBy} LIMIT ? OFFSET ?
     `;
     const countSql = `
         SELECT

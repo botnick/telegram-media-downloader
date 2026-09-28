@@ -63,6 +63,17 @@ import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './m
 import { wireChangelogTrigger } from './changelog-viewer.js';
 import * as WakeLock from './wake-lock.js';
 import { pushOverlay, popOverlay } from './overlay-history.js';
+import {
+    setupGalleryToolbar,
+    syncGalleryToolbar,
+    resetGallerySearch,
+    clearGallerySearch,
+    setSearchResultCount,
+    formatResultCount,
+    isPinnedFirst,
+    pinnedQs,
+    getPinnedMode,
+} from './gallery-toolbar.js';
 
 // ============ Lazy page modules ============
 //
@@ -105,6 +116,23 @@ function loadBackfillModule() {
             });
     }
     return _backfillModule;
+}
+
+// The one-step backfill sheet for a chat (Group Settings, empty chat
+// gallery, chat header). `limit` preselects a preset (0 = all history).
+function openBackfillFor(groupId, limit) {
+    if (!groupId) return;
+    loadBackfillModule()
+        .then((m) => m.openBackfillSheet(groupId, limit == null ? {} : { limit }))
+        .catch((e) => console.error('backfill sheet', e));
+}
+
+// Chat-only header actions (Backfill this chat) follow the open view.
+function _syncChatHeaderActions() {
+    document.body.classList.toggle(
+        'in-chat',
+        state.currentPage === 'viewer' && !!state.currentGroupId,
+    );
 }
 
 // ============ Render coalescing ============
@@ -231,6 +259,10 @@ async function init() {
     window.closeSidebar = closeSidebar;
     window.confirmDeleteFile = confirmDeleteFile;
     window.toggleFwdEnabled = toggleFwdEnabled;
+    window.openBackfillSheet = openBackfillFor;
+    document
+        .getElementById('backfill-chat-btn')
+        ?.addEventListener('click', () => openBackfillFor(state.currentGroupId));
     // Mini-player public surface — viewer.js can opt into the dock-on-
     // close behaviour by calling `window.tgdlShrinkToMini()` from the
     // modal close path. Kept on `window` (instead of imported) so the
@@ -381,8 +413,7 @@ async function init() {
                 const fresh = getGroupName(state.currentGroupId);
                 if (fresh && fresh !== state.currentGroup) {
                     state.currentGroup = fresh;
-                    const t = document.getElementById('page-title');
-                    if (t) t.textContent = fresh;
+                    _setPageRaw('title', fresh);
                 }
             }
         }
@@ -678,11 +709,16 @@ async function init() {
     // phase so they take precedence over app.js's per-tile delegation.
     setupGallerySelect({
         onChange: () => updateSelectionBar(),
+        onSelectMode: () => updateSelectionBar(),
+        // Every loaded file of the view, not only the tiles the DOM window
+        // holds right now.
+        allPaths: () => _selectableFiles().map((f) => f.fullPath),
         deleteSelected: () => {
             const btn = document.getElementById('selection-delete');
             if (btn) btn.click();
         },
     });
+    _setupSelectHint();
     setupToggleA11y();
 
     // Initialise i18n + the language picker. The fall-through is English so
@@ -763,6 +799,8 @@ function renderPage(page, params = {}) {
     }
     state.currentPage = page;
     document.body.dataset.page = page;
+    _syncChatHeaderActions();
+    updateSelectionBar();
     state.currentRouteParams = params;
 
     // Allow callers to override the highlighted nav slot independent of the
@@ -807,18 +845,15 @@ function renderPage(page, params = {}) {
                 if (state.role === 'admin') Settings.setupAutoSave();
             })
             .catch((e) => console.error('settings page', e));
+        import('./settings-search.js')
+            .then((m) => m.initSettingsSearch())
+            .catch((e) => console.error('settings search', e));
         // Engine controls live in the admin-only System section; guests
         // never see the card, and `initEngine` polls /api/monitor/status
         // (admin-gated) so skip it for them.
         if (state.role === 'admin') initEngine();
-        document.getElementById('page-title').textContent = i18nT(
-            'settings.page.title',
-            'Settings',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
-            'settings.page.subtitle',
-            'System Configuration',
-        );
+        _setPageText('title', 'settings.page.title', 'Settings');
+        _setPageText('subtitle', 'settings.page.subtitle', 'System Configuration');
         // Optional deep-link: #/settings/<section> scrolls to that section.
         // Prefer #settings-<anchor> (unique by construction on the chip-nav
         // wrappers) over a [data-settings-section] match — the latter can
@@ -838,17 +873,11 @@ function renderPage(page, params = {}) {
         }
     } else if (page === 'groups') {
         renderGroupsConfig();
-        document.getElementById('page-title').textContent = i18nT(
-            'groups.page.title',
-            'Manage Groups',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
-            'groups.page.subtitle',
-            'Configure monitoring and filters',
-        );
+        _setPageText('title', 'groups.page.title', 'Manage Groups');
+        _setPageText('subtitle', 'groups.page.subtitle', 'Configure monitoring and filters');
     } else if (page === 'viewer') {
         if (state.currentGroup) {
-            document.getElementById('page-title').textContent = state.currentGroup;
+            _setPageRaw('title', state.currentGroup);
             // Returning to an already-loaded group gallery: keep the grid
             // and put the scroll + file count back.
             if (prevPage !== 'viewer' && _galleryLoadedFor(_galleryViewKey())) {
@@ -858,21 +887,16 @@ function renderPage(page, params = {}) {
             showAllMedia();
         }
     } else if (page === 'backfill') {
-        document.getElementById('page-title').textContent = i18nT(
-            'backfill.page.title',
-            'Backfill',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
-            'backfill.page.subtitle',
-            'Pull older messages into the queue',
-        );
+        _setPageText('title', 'backfill.page.title', 'Backfill');
+        _setPageText('subtitle', 'backfill.page.subtitle', 'Pull older messages into the queue');
         // Show the page first; backfill module loads server state then renders.
         loadBackfillModule()
             .then((m) => m.showBackfillPage(params))
             .catch((e) => console.error('backfill page', e));
     } else if (page === 'queue') {
-        document.getElementById('page-title').textContent = i18nT('queue.page.title', 'Queue');
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'queue.page.title', 'Queue');
+        _setPageText(
+            'subtitle',
             'queue.page.subtitle',
             'Active + pending + recently finished downloads',
         );
@@ -883,11 +907,9 @@ function renderPage(page, params = {}) {
         // sub-pages, now one). Power users keep the per-feature deep
         // links: /maintenance/duplicates etc. still resolve to their
         // dedicated pages directly.
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.hub.title',
-            'Maintenance',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.hub.title', 'Maintenance');
+        _setPageText(
+            'subtitle',
             'maintenance.hub.subtitle',
             'Catalogue, thumbnails, NSFW review, logs, backup destinations',
         );
@@ -895,11 +917,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-hub', e));
     } else if (page === 'maintenance-duplicates') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.duplicates.title',
-            'Find duplicate files',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.duplicates.title', 'Find duplicate files');
+        _setPageText(
+            'subtitle',
             'maintenance.duplicates.subtitle',
             'Hash every file and reclaim space from byte-identical copies',
         );
@@ -907,11 +927,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-duplicates', e));
     } else if (page === 'maintenance-thumbs') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.thumbs.page_title',
-            'Build thumbnails',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.thumbs.page_title', 'Build thumbnails');
+        _setPageText(
+            'subtitle',
             'maintenance.thumbs.subtitle',
             'Generate WebP previews for older files',
         );
@@ -919,11 +937,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-thumbs', e));
     } else if (page === 'maintenance-seekbar') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.seekbar.page_title',
-            'Seekbar previews',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.seekbar.page_title', 'Seekbar previews');
+        _setPageText(
+            'subtitle',
             'maintenance.seekbar.subtitle',
             'Generate WebP sprite sheets for video hover-preview thumbnails.',
         );
@@ -931,11 +947,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-seekbar', e));
     } else if (page === 'maintenance-video') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.video.page_title',
-            'Optimise videos for streaming',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.video.page_title', 'Optimise videos for streaming');
+        _setPageText(
+            'subtitle',
             'maintenance.video.subtitle',
             'Rewrite MP4s with `+faststart` so the HTML5 player can seek + play audio without buffering the whole file.',
         );
@@ -943,11 +957,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-video', e));
     } else if (page === 'maintenance-nsfw') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.nsfw.page_title',
-            'NSFW review',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.nsfw.page_title', 'NSFW review');
+        _setPageText(
+            'subtitle',
             'maintenance.nsfw.subtitle',
             "Five-tier classifier review — keep what's confidently 18+, delete what's confidently not, eyeball the borderline cases.",
         );
@@ -955,11 +967,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-nsfw', e));
     } else if (page === 'maintenance-ai') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.ai.page_title',
-            'AI Face Clustering',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.ai.page_title', 'AI Face Clustering');
+        _setPageText(
+            'subtitle',
             'maintenance.ai.subtitle',
             'Face clustering groups people across your library — all running locally.',
         );
@@ -967,11 +977,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-ai', e));
     } else if (page === 'maintenance-logs') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.logs.page_title',
-            'Log viewer',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.logs.page_title', 'Log viewer');
+        _setPageText(
+            'subtitle',
             'maintenance.logs.subtitle',
             'Realtime tail of every backend log source',
         );
@@ -979,11 +987,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-logs', e));
     } else if (page === 'maintenance-backup') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.backup.page_title',
-            'Backup destinations',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.backup.page_title', 'Backup destinations');
+        _setPageText(
+            'subtitle',
             'maintenance.backup.subtitle',
             'Mirror new downloads to S3 / SFTP / local NAS storage',
         );
@@ -991,11 +997,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-backup', e));
     } else if (page === 'maintenance-cluster') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.cluster.page_title',
-            'Cluster',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.cluster.page_title', 'Cluster');
+        _setPageText(
+            'subtitle',
             'maintenance.cluster.subtitle',
             'Federate multiple instances. Files, downloads, and dedup span every paired peer.',
         );
@@ -1003,11 +1007,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-cluster', e));
     } else if (page === 'maintenance-recovery') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.recovery.page_title',
-            'Recovery cleanup',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.recovery.page_title', 'Recovery cleanup');
+        _setPageText(
+            'subtitle',
             'maintenance.recovery.subtitle',
             'Resolve, disable, or delete groups that no loaded account can access.',
         );
@@ -1015,11 +1017,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-recovery', e));
     } else if (page === 'maintenance-updates') {
-        document.getElementById('page-title').textContent = i18nT(
-            'update.history.title',
-            'Update history',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'update.history.title', 'Update history');
+        _setPageText(
+            'subtitle',
             'update.history.help',
             'Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.',
         );
@@ -1503,15 +1503,13 @@ function openGroup(groupId, groupName) {
     // out everything else for the new group.
     resetGalleryFilter();
 
-    document.getElementById('page-title').textContent = state.currentGroup;
-    document.getElementById('page-subtitle').textContent = i18nT(
-        'viewer.subtitle.loading',
-        'Loading...',
-    );
+    _setPageRaw('title', state.currentGroup);
+    _setPageText('subtitle', 'viewer.subtitle.loading', 'Loading...');
     // Mirror the sidebar avatar into the header so the user sees which
     // chat they're inside. Falls back to a coloured initial when there's
     // no profile photo cached yet.
     updateHeaderAvatar(groupId, state.currentGroup);
+    _syncChatHeaderActions();
     navigateTo('viewer');
     loadGroupFiles(groupId);
 }
@@ -1636,21 +1634,85 @@ function updateHeaderAvatar(groupId, displayName) {
 }
 
 // What the gallery grid currently shows. Set when page 1 of a view lands;
-// any change to group / type filter / pinned / scope produces a different
-// key, and AI-search results (which replace the list) clear it.
+// any change to group / type filter / pinned / scope / search query
+// produces a different key, and AI-search results (which replace the
+// list) clear it.
 let _loadedViewKey = null;
 let _galleryTotal = null;
 let _viewerScrollTop = 0;
+// Bumped by every page-1 gallery load; a response whose sequence is no
+// longer current (the user typed another letter, switched tab/chat) is
+// dropped instead of painting over the newer view.
+let _galleryLoadSeq = 0;
 
 function _galleryViewKey() {
-    const pinnedFirst = localStorage.getItem('tgdl-pinned-first') === '1' ? 1 : 0;
     return [
         state.currentGroupId || '',
         state.currentFilter || 'all',
         state.pinnedFilter ? 1 : 0,
-        pinnedFirst,
+        isPinnedFirst() ? 1 : 0,
         _galleryScopeQs(),
+        state.searchQuery || '',
     ].join('|');
+}
+
+// Page title / subtitle in the header. A translated string keeps its i18n
+// key on the element, so the language loading (or switching) after the
+// first render re-translates it instead of falling back to the markup's
+// "Viewer"; a dynamic text (a chat's name, "12 files") drops the key.
+function _setPageText(which, key, fallback) {
+    const el = document.getElementById(`page-${which}`);
+    if (!el) return;
+    el.dataset.i18n = key;
+    el.dataset.i18nFallback = fallback;
+    el.textContent = i18nT(key, fallback);
+}
+function _setPageRaw(which, text) {
+    const el = document.getElementById(`page-${which}`);
+    if (!el) return;
+    el.removeAttribute('data-i18n');
+    el.removeAttribute('data-i18n-fallback');
+    el.textContent = text;
+}
+
+// Header subtitle for the gallery: "N files", or "N results" while the
+// toolbar holds a search query.
+function _setGallerySubtitle(total) {
+    if (total == null) return;
+    _setPageRaw(
+        'subtitle',
+        state.searchQuery
+            ? formatResultCount(total)
+            : i18nTf('viewer.subtitle.files', { count: total }, `${total} files`),
+    );
+}
+
+// URL for one page of the current gallery view: the chat / All Media feed,
+// or the search endpoint while the toolbar holds a query. Both honour the
+// type tab, the pinned mode and the federation scope.
+function _galleryPageUrl(groupId, opts = {}) {
+    const type = state.currentFilter && state.currentFilter !== 'all' ? state.currentFilter : 'all';
+    const common = `page=${opts.page ?? state.page}&limit=${opts.limit ?? FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinnedQs()}${_galleryScopeQs()}`;
+    if (state.searchQuery) {
+        const g = groupId ? `&groupId=${encodeURIComponent(groupId)}` : '';
+        return `/api/downloads/search?q=${encodeURIComponent(state.searchQuery)}&order=newest&${common}${g}`;
+    }
+    return groupId
+        ? `/api/downloads/${encodeURIComponent(groupId)}?${common}`
+        : `/api/downloads/all?${common}`;
+}
+
+// Refetch page 1 of whatever the gallery shows (filter / search change).
+function _reloadGallery() {
+    state.page = 1;
+    state.hasMore = true;
+    state.files = [];
+    if (state.currentPage === 'viewer') {
+        if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
+        else loadAllFiles();
+    } else {
+        renderMediaGrid();
+    }
 }
 
 // True when the grid already holds `key`'s files — and `state.files` is
@@ -1668,19 +1730,14 @@ function _galleryLoadedFor(key) {
 // Put back the bits of gallery chrome other pages overwrite (the subtitle
 // file count) and the scroll position the user left at.
 function _restoreGalleryChrome() {
-    const sub = document.getElementById('page-subtitle');
-    if (sub && _galleryTotal != null) {
-        sub.textContent = i18nTf(
-            'viewer.subtitle.files',
-            { count: _galleryTotal },
-            `${_galleryTotal} files`,
-        );
-    }
+    _setGallerySubtitle(_galleryTotal);
     const contentArea = document.getElementById('content-area');
     if (contentArea) contentArea.scrollTop = _viewerScrollTop;
     _recheckLoadMore();
 }
 
+// `opts.keepFilters` carries the type tab + search query over from a chat
+// ("Search all media" in the no-results state).
 // `opts.force` re-fetches even when the All Media grid is already loaded
 // (pull-to-refresh, purge). Plain calls — the Library tab, the sidebar
 // "All Media" row, the #/viewer route — keep the loaded grid, its type
@@ -1696,22 +1753,21 @@ function showAllMedia(opts) {
     // foreign-group click. Without this, "All Media" after viewing a
     // peer-owned group would still be filtered to that peer.
     state.viewerPeerScope = null;
+    _syncChatHeaderActions();
     const reuse = !force && wasAllMedia && _galleryLoadedFor(_galleryViewKey());
     if (!reuse) {
         state.page = 1;
         state.hasMore = true;
         state.files = [];
-        resetGalleryFilter();
+        // Coming from a chat: All Media starts unfiltered. Refreshing All
+        // Media itself (pull-to-refresh, purge) keeps the active type tab
+        // and search query.
+        if (!wasAllMedia && !opts?.keepFilters) resetGalleryFilter();
     }
+    syncGalleryToolbar();
 
-    document.getElementById('page-title').textContent = i18nT(
-        'viewer.all_media.title',
-        'All Media',
-    );
-    document.getElementById('page-subtitle').textContent = i18nT(
-        'viewer.all_media.subtitle',
-        'All downloaded files',
-    );
+    _setPageText('title', 'viewer.all_media.title', 'All Media');
+    _setPageText('subtitle', 'viewer.all_media.subtitle', 'All downloaded files');
     // Header avatar back to the generic gallery glyph — switching from
     // a per-group view used to leave that chat's avatar in the header.
     updateHeaderAvatar(null, null);
@@ -1819,6 +1875,10 @@ async function initGalleryScope() {
             return;
         }
         _renderGalleryScopeMenu();
+        // #media-tabs is the positioned parent; on phones the chip sits in
+        // the second row (under the search box), so anchor to the chip.
+        menu.style.top = `${chip.offsetTop + chip.offsetHeight + 6}px`;
+        menu.style.marginTop = '0';
         menu.classList.remove('hidden');
         chip.setAttribute('aria-expanded', 'true');
         // Click-outside dismisses. Use `once` so the listener auto-cleans.
@@ -1933,26 +1993,38 @@ function _renderGalleryScopeMenu() {
     });
 }
 
-async function loadAllFiles() {
+function loadAllFiles() {
+    return _loadGalleryPage(null);
+}
+
+// ============ Media Loading ============
+function loadGroupFiles(groupId) {
+    return _loadGalleryPage(groupId);
+}
+
+// One page of the gallery — a chat (groupId) or All Media (null), or the
+// search results for either while the toolbar holds a query.
+async function _loadGalleryPage(groupId) {
     state.loading = true;
-    const grid = document.getElementById('media-grid');
-    if (state.page === 1 && grid) {
-        _clearGalleryGrid(grid, renderGallerySkeletons(12));
+    const seq = state.page === 1 ? ++_galleryLoadSeq : _galleryLoadSeq;
+
+    // Show 12 skeleton tiles for the very first page so users don't stare
+    // at an empty grid for the duration of the network round-trip. Page 2+
+    // adds rows so we don't replace what's already there.
+    if (state.page === 1) {
+        const grid = document.getElementById('media-grid');
+        if (grid) _clearGalleryGrid(grid, renderGallerySkeletons(12));
         const contentArea = document.getElementById('content-area');
         if (contentArea) contentArea.scrollTop = 0;
+        document.getElementById('empty-state')?.classList.add('hidden');
     }
 
     try {
-        const type =
-            state.currentFilter && state.currentFilter !== 'all' ? state.currentFilter : 'all';
-        const pinQs = state.pinnedFilter ? '&pinned=1' : '';
-        const pinFirstQs =
-            localStorage.getItem('tgdl-pinned-first') === '1' ? '&pinnedFirst=1' : '';
-        const scopeQs = _galleryScopeQs();
         const viewKey = _galleryViewKey();
-        const res = await api.get(
-            `/api/downloads/all?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}${scopeQs}`,
-        );
+        const res = await api.get(_galleryPageUrl(groupId));
+        // A newer page-1 load (another search letter, tab, chat) started
+        // while this one was in flight — its result is stale.
+        if (seq !== _galleryLoadSeq) return;
         const newFiles = res?.files || [];
 
         let appendFromIndex = 0;
@@ -1976,71 +2048,14 @@ async function loadAllFiles() {
         if (state.page > 1) renderMediaGrid({ append: true, fromIndex: appendFromIndex });
         else renderMediaGrid();
         _galleryTotal = total;
-        document.getElementById('page-subtitle').textContent = i18nTf(
-            'viewer.subtitle.files',
-            { count: total },
-            `${total} files`,
-        );
+        _setGallerySubtitle(total);
+        if (state.searchQuery) setSearchResultCount(total);
     } catch (e) {
-        showToast(i18nT('viewer.error.load', 'Error loading files'), 'error');
-    } finally {
-        state.loading = false;
-    }
-}
-
-// ============ Media Loading ============
-async function loadGroupFiles(groupId) {
-    state.loading = true;
-
-    // Show 12 skeleton tiles for the very first page so users don't stare
-    // at an empty grid for the duration of the network round-trip. Page 2+
-    // adds rows so we don't replace what's already there.
-    if (state.page === 1) {
-        const grid = document.getElementById('media-grid');
-        if (grid) _clearGalleryGrid(grid, renderGallerySkeletons(12));
-        const contentArea = document.getElementById('content-area');
-        if (contentArea) contentArea.scrollTop = 0;
-        document.getElementById('empty-state')?.classList.add('hidden');
-    }
-
-    try {
-        const type =
-            state.currentFilter && state.currentFilter !== 'all' ? state.currentFilter : 'all';
-        const pinQs = state.pinnedFilter ? '&pinned=1' : '';
-        const pinFirstQs =
-            localStorage.getItem('tgdl-pinned-first') === '1' ? '&pinnedFirst=1' : '';
-        const scopeQs = _galleryScopeQs();
-        const viewKey = _galleryViewKey();
-        const res = await api.get(
-            `/api/downloads/${encodeURIComponent(groupId)}?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}${scopeQs}`,
-        );
-        const newFiles = res.files || [];
-
-        let appendFromIndex = 0;
-        if (state.page === 1) {
-            _loadedViewKey = viewKey;
-            state.files = newFiles;
-        } else {
-            appendFromIndex = state.files.length;
-            state.files = state.files.concat(newFiles);
+        if (seq === _galleryLoadSeq) {
+            showToast(i18nT('viewer.error.load', 'Error loading files'), 'error');
         }
-
-        // Off-by-one safety same as loadAllFiles — short last page no
-        // longer keeps pagination armed forever.
-        const total = Number(res.total) || state.files.length;
-        state.hasMore = newFiles.length === FILES_PER_PAGE && state.files.length < total;
-        if (state.page > 1) renderMediaGrid({ append: true, fromIndex: appendFromIndex });
-        else renderMediaGrid();
-        _galleryTotal = total;
-        document.getElementById('page-subtitle').textContent = i18nTf(
-            'viewer.subtitle.files',
-            { count: total },
-            `${total} files`,
-        );
-    } catch (e) {
-        showToast(i18nT('viewer.error.load', 'Error loading files'), 'error');
     } finally {
-        state.loading = false;
+        if (seq === _galleryLoadSeq) state.loading = false;
     }
 }
 
@@ -2405,6 +2420,9 @@ function renderMediaGrid(opts = {}) {
     // A short page may leave the load-more sentinel inside the prefetch
     // margin, where the IntersectionObserver never fires again.
     _recheckLoadMore();
+    _maybeShowSelectHint();
+    // The "N of M selected" wording depends on how much is loaded.
+    if (state.selected?.size || state.selectMode) updateSelectionBar();
 }
 
 let _gridDelegated = false;
@@ -2516,7 +2534,65 @@ function renderGalleryEmptyState() {
         body,
         icon,
         actions = [];
-    if (groupId) {
+    // What narrows the list right now ("Photos · Pinned only"). Pinned
+    // first only re-orders, so it never explains an empty result.
+    const activeFilters = [];
+    if ((state.currentFilter || 'all') !== 'all') {
+        const tab = document.querySelector(
+            `#media-tabs .tab-item[data-type="${state.currentFilter}"]`,
+        );
+        activeFilters.push(tab?.textContent.trim() || state.currentFilter);
+    }
+    if (getPinnedMode() === 'only')
+        activeFilters.push(i18nT('gallery.filter.state_only', 'Pinned only'));
+    const clearFiltersAction = {
+        label: i18nT('gallery.filter.clear_filters', 'Clear filters'),
+        icon: 'ri-filter-off-line',
+        onClick: () => {
+            state.pinnedFilter = false;
+            state.currentFilter = 'all';
+            _paintTypeTabs();
+            syncGalleryToolbar();
+            _reloadGallery();
+        },
+    };
+    if (state.searchQuery) {
+        icon = 'ri-search-line';
+        title = i18nTf(
+            'gallery.search.empty_title',
+            { q: state.searchQuery },
+            `No results for “${state.searchQuery}”`,
+        );
+        body = i18nT(
+            'gallery.search.empty_body',
+            'Search looks at file names and chat names. Check the spelling or try a shorter word.',
+        );
+        if (activeFilters.length) {
+            body += ` ${i18nTf('gallery.search.empty_filters', { filters: activeFilters.join(' · ') }, `Filters are on too: ${activeFilters.join(' · ')}.`)}`;
+        }
+        actions.push({
+            label: i18nT('gallery.search.clear', 'Clear search'),
+            icon: 'ri-close-circle-line',
+            onClick: () => clearGallerySearch(),
+        });
+        if (groupId) {
+            actions.push({
+                label: i18nT('gallery.search.everywhere', 'Search all media'),
+                icon: 'ri-gallery-line',
+                onClick: () => showAllMedia({ keepFilters: true }),
+            });
+        }
+        if (activeFilters.length) actions.push(clearFiltersAction);
+    } else if (activeFilters.length) {
+        icon = 'ri-filter-off-line';
+        title = i18nT('gallery.filter.empty_title', 'Nothing matches these filters');
+        body = i18nTf(
+            'gallery.filter.empty_body',
+            { filters: activeFilters.join(' · ') },
+            `Filters on: ${activeFilters.join(' · ')}. Clear them to see everything.`,
+        );
+        actions.push(clearFiltersAction);
+    } else if (groupId) {
         icon = 'ri-folder-open-line';
         title = i18nT('viewer.empty.group_title', 'No downloaded media for this group yet');
         body = isAdmin
@@ -2533,7 +2609,7 @@ function renderGalleryEmptyState() {
                 {
                     label: i18nT('viewer.empty.action.backfill', 'Run Backfill'),
                     icon: 'ri-history-line',
-                    onClick: () => window.navigateTo?.('backfill'),
+                    onClick: () => openBackfillFor(groupId),
                 },
                 {
                     label: i18nT('viewer.empty.action.group_settings', 'Group Settings'),
@@ -2586,8 +2662,8 @@ function renderGalleryEmptyState() {
             .map(
                 (a, i) => `
             <button type="button" data-action-idx="${i}"
-                class="tg-btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
-                <i class="${a.icon}"></i><span>${a.label}</span>
+                class="tg-btn-secondary text-sm px-4 min-h-[44px] flex items-center gap-2">
+                <i class="${a.icon}" aria-hidden="true"></i><span>${escapeHtml(a.label)}</span>
             </button>
         `,
             )
@@ -2654,15 +2730,154 @@ function toggleSelection(path) {
     updateSelectionBar();
 }
 
+// Files of the current gallery view that can be selected (type tab applied).
+function _selectableFiles() {
+    const files = Array.isArray(state.files) ? state.files : [];
+    const f = state.currentFilter || 'all';
+    return f === 'all' ? files : files.filter((x) => x.type === f);
+}
+
+// "Select all N" beyond the loaded pages is offered up to this many files;
+// past it the list is too big to hold and act on in one go.
+const SELECT_ALL_MAX = 5000;
+
+// One bar for everything selection: shown while select mode is on (so
+// "0 selected" still explains itself and offers Done) and whenever files
+// are selected. Buttons that need a selection are disabled at 0.
 function updateSelectionBar() {
     const bar = document.getElementById('selection-bar');
     const count = state.selected ? state.selected.size : 0;
-    document.getElementById('selection-count').textContent = i18nTf(
-        'viewer.selection.count',
-        { count },
-        `${count} selected`,
-    );
-    if (bar) bar.classList.toggle('hidden', count === 0);
+    const onGallery = state.currentPage === 'viewer';
+    const show = onGallery && (count > 0 || !!state.selectMode);
+    const countEl = document.getElementById('selection-count');
+    const loaded = _selectableFiles().length;
+    const total = Number(_galleryTotal) || loaded;
+    if (countEl) {
+        if (count === 0) {
+            countEl.textContent = window.matchMedia?.('(pointer: coarse)').matches
+                ? i18nT('viewer.selection.prompt', 'Tap items to select')
+                : i18nT('viewer.selection.prompt_click', 'Click to select');
+        } else if (count >= loaded && total > count) {
+            countEl.textContent = i18nTf(
+                'viewer.selection.count_of',
+                { count: count.toLocaleString(), total: total.toLocaleString() },
+                `${count.toLocaleString()} of ${total.toLocaleString()} selected`,
+            );
+        } else {
+            countEl.textContent = i18nTf(
+                'viewer.selection.count',
+                { count: count.toLocaleString() },
+                `${count.toLocaleString()} selected`,
+            );
+        }
+    }
+    // "Select all 1,234" — every loaded file is selected but the view has
+    // more on the server.
+    const allMatching = document.getElementById('selection-all-matching');
+    if (allMatching) {
+        const offer = count > 0 && count >= loaded && total > loaded && total <= SELECT_ALL_MAX;
+        allMatching.classList.toggle('hidden', !offer);
+        if (offer && !allMatching.disabled) {
+            allMatching.textContent = i18nTf(
+                'viewer.selection.select_all_n',
+                { count: total.toLocaleString() },
+                `Select all ${total.toLocaleString()}`,
+            );
+        }
+    }
+    document
+        .getElementById('selection-all')
+        ?.classList.toggle('hidden', count > 0 && count >= loaded);
+    for (const id of ['selection-clear', 'selection-zip', 'selection-pin', 'selection-delete']) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = count === 0;
+    }
+    if (bar) bar.classList.toggle('hidden', !show);
+    if (state.selectMode) _dismissSelectHint();
+}
+
+// Load every file of the current view (up to SELECT_ALL_MAX) so "Select
+// all N" really selects all of them, not just the pages scrolled so far.
+async function _selectEveryMatchingFile() {
+    const btn = document.getElementById('selection-all-matching');
+    const total = Number(_galleryTotal) || 0;
+    if (!total || total > SELECT_ALL_MAX) return;
+    const viewKey = _galleryViewKey();
+    const groupId = state.currentGroupId;
+    const LIMIT = 200;
+    const out = [];
+    const seen = new Set();
+    if (btn) btn.disabled = true;
+    try {
+        for (let p = 1; p <= Math.ceil(total / LIMIT); p++) {
+            if (btn) {
+                btn.textContent = i18nTf(
+                    'viewer.selection.loading_all',
+                    { n: out.length.toLocaleString(), total: total.toLocaleString() },
+                    `Loading ${out.length.toLocaleString()} / ${total.toLocaleString()}…`,
+                );
+            }
+            const res = await api.get(_galleryPageUrl(groupId, { page: p, limit: LIMIT }));
+            // The user switched view meanwhile — drop it.
+            if (_galleryViewKey() !== viewKey || state.currentPage !== 'viewer') return;
+            const rows = res?.files || [];
+            for (const f of rows) {
+                const k = `${f.peer_id || 'self'}|${f.id}|${f.fullPath}`;
+                if (seen.has(k)) continue;
+                seen.add(k);
+                out.push(f);
+            }
+            if (rows.length < LIMIT) break;
+        }
+        state.files = out;
+        state.hasMore = false;
+        _galleryTotal = Math.max(total, out.length);
+        renderMediaGrid({ keepScroll: true });
+        selectAllVisible();
+    } catch (e) {
+        showToast(e?.message || i18nT('viewer.error.load', 'Error loading files'), 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+        updateSelectionBar();
+    }
+}
+
+// First-visit tip on touch screens: selecting several files is behind a
+// long-press, which nobody finds by accident. Dismissed with "Got it" or
+// automatically once select mode has been used; remembered per browser.
+const SELECT_HINT_KEY = 'tgdl-hint-select-seen';
+function _selectHintSeen() {
+    try {
+        return localStorage.getItem(SELECT_HINT_KEY) === '1';
+    } catch {
+        return true;
+    }
+}
+function _dismissSelectHint() {
+    const el = document.getElementById('select-hint');
+    if (el && !el.classList.contains('hidden')) el.classList.add('hidden');
+    try {
+        if (localStorage.getItem(SELECT_HINT_KEY) !== '1')
+            localStorage.setItem(SELECT_HINT_KEY, '1');
+    } catch {}
+}
+function _maybeShowSelectHint() {
+    const el = document.getElementById('select-hint');
+    if (!el || _selectHintSeen()) return;
+    const touch = window.matchMedia?.('(pointer: coarse)').matches;
+    const show =
+        touch &&
+        state.currentPage === 'viewer' &&
+        !state.selectMode &&
+        _selectableFiles().length > 1;
+    el.classList.toggle('hidden', !show);
+}
+function _setupSelectHint() {
+    document.getElementById('select-hint-dismiss')?.addEventListener('click', _dismissSelectHint);
+    document.getElementById('select-hint-try')?.addEventListener('click', () => {
+        _dismissSelectHint();
+        document.getElementById('select-mode-btn')?.click();
+    });
 }
 
 // Group files into Telegram-style time sections. Accepts an array of
@@ -2784,6 +2999,14 @@ async function setupMediaSearch() {
         }
         updateSelectionBar();
     });
+
+    document.getElementById('selection-exit')?.addEventListener('click', () => {
+        exitSelectMode();
+        updateSelectionBar();
+    });
+    document
+        .getElementById('selection-all-matching')
+        ?.addEventListener('click', () => _selectEveryMatchingFile());
 
     selClear?.addEventListener('click', () => {
         if (state.selected) state.selected.clear();
@@ -3464,22 +3687,19 @@ async function openGroupSettings(groupId, groupName) {
             .join('');
     }
 
-    // Wire history backfill quick-shortcut buttons. Clicking a preset
-    // closes the modal and deep-links to #/backfill/<id> with the chat
-    // preselected and the limit applied — the dedicated Backfill page
-    // takes it from there (confirm + start). This keeps the modal as a
-    // discoverability handle while moving the real surface elsewhere.
+    // Backfill: one button opens the backfill sheet (limit + Start in one
+    // place, live progress after). It opens on top of this modal, so
+    // closing it lands back here.
     const progressEl = document.getElementById('history-progress');
     if (progressEl) progressEl.classList.add('hidden');
+    const backfillBtn = document.getElementById('group-backfill-btn');
+    if (backfillBtn) backfillBtn.onclick = () => openBackfillFor(groupId);
+    // Custom builds that still carry the old preset chips: open the sheet
+    // with that limit preselected.
     document.querySelectorAll('[data-history-limit]').forEach((btn) => {
         btn.onclick = () => {
-            const raw = btn.dataset.historyLimit;
-            const parsed = parseInt(raw, 10);
-            const limit = Number.isFinite(parsed) ? parsed : 100;
-            closeGroupSettings();
-            loadBackfillModule()
-                .then((m) => m.deepLinkFromModal(groupId, limit))
-                .catch((e) => console.error('backfill deep link', e));
+            const parsed = parseInt(btn.dataset.historyLimit, 10);
+            openBackfillFor(groupId, Number.isFinite(parsed) ? parsed : 100);
         };
     });
 
@@ -4072,69 +4292,52 @@ async function confirmDeleteFile() {
     }
 }
 
-// Reset the All / Photos / Videos / Files / Audio tab back to "All"
-// and re-paint the tab UI to match. Called whenever we enter a fresh
-// gallery view (All Media or per-group) so a stale tab choice from
-// the previous view doesn't silently filter the new content.
+// Reset the All / Photos / Videos / Files / Audio tab back to "All" and
+// drop the search query, then re-paint the tab UI to match. Called
+// whenever we enter a fresh gallery view (All Media or per-group) so a
+// stale tab choice or query from the previous view doesn't silently
+// filter the new content. The pinned mode (Sort & filter) is a
+// preference and stays.
 function resetGalleryFilter() {
     state.currentFilter = 'all';
-    document.querySelectorAll('#media-tabs .tab-item').forEach((t) => {
-        t.classList.toggle('active', (t.dataset.type || 'all') === 'all');
+    _paintTypeTabs();
+    resetGallerySearch();
+}
+
+function _paintTypeTabs() {
+    const cur = state.currentFilter || 'all';
+    document.querySelectorAll('#media-tabs .tab-item[data-type]').forEach((t) => {
+        const on = (t.dataset.type || 'all') === cur;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+}
+
+// Switch the type filter (tab click or the Sort & filter sheet). The
+// filter is applied server-side: reset pagination + re-fetch with the new
+// ?type=. Filtering client-side hid everything past the first page (the
+// "Photos shows 30" symptom).
+function setGalleryType(type) {
+    state.currentFilter = type || 'all';
+    _paintTypeTabs();
+    _reloadGallery();
 }
 
 // ============ Media Tabs ============
 function setupMediaTabs() {
-    document.querySelectorAll('#media-tabs .tab-item').forEach((tab) => {
-        tab.addEventListener('click', () => {
-            // The pinned toggle is a chip, NOT a type tab — it stacks with
-            // the type filter instead of replacing it. Handle it separately.
-            if (tab.dataset.pinnedToggle !== undefined) {
-                const next = tab.getAttribute('aria-pressed') !== 'true';
-                tab.setAttribute('aria-pressed', next ? 'true' : 'false');
-                state.pinnedFilter = next;
-                state.page = 1;
-                state.hasMore = true;
-                state.files = [];
-                if (state.currentPage === 'viewer') {
-                    if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
-                    else loadAllFiles();
-                } else {
-                    renderMediaGrid();
-                }
-                return;
-            }
-            document.querySelectorAll('#media-tabs .tab-item').forEach((t) => {
-                if (t.dataset.pinnedToggle !== undefined) return; // leave the chip alone
-                t.classList.remove('active');
-            });
-            tab.classList.add('active');
-            state.currentFilter = tab.dataset.type || 'all';
-            // Server-side filter: reset pagination + re-fetch with the new
-            // ?type=. Without this, switching tabs would only filter what
-            // we've already paginated client-side, hiding everything past
-            // the first page (the "Photos shows 30" symptom).
-            state.page = 1;
-            state.hasMore = true;
-            state.files = [];
-            if (state.currentPage === 'viewer') {
-                if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
-                else loadAllFiles();
-            } else {
-                renderMediaGrid();
+    document.querySelectorAll('#media-tabs .tab-item[data-type]').forEach((tab) => {
+        tab.setAttribute('role', 'button');
+        tab.tabIndex = 0;
+        tab.addEventListener('click', () => setGalleryType(tab.dataset.type || 'all'));
+        tab.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                tab.click();
             }
         });
-        // Keyboard activation for the pinned chip (role="button" on a div).
-        // The gallery-scope chip wires its own in initGalleryScope().
-        if (tab.dataset.pinnedToggle !== undefined) {
-            tab.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    tab.click();
-                }
-            });
-        }
     });
+    _paintTypeTabs();
+    setupGalleryToolbar({ reload: _reloadGallery, setType: setGalleryType });
 }
 
 // ============ Utils ============
@@ -4243,10 +4446,10 @@ async function _runSimilarSearch(downloadId) {
         } catch (e) {
             console.warn('renderMediaGrid after similar search:', e);
         }
-        const title = document.getElementById('page-title');
-        if (title) {
-            title.textContent = `🔍 ${i18nT('viewer.find_similar', 'Similar')} — ${mapped.length} ${i18nT('common.results', 'results')}`;
-        }
+        _setPageRaw(
+            'title',
+            `🔍 ${i18nT('viewer.find_similar', 'Similar')} — ${mapped.length} ${i18nT('common.results', 'results')}`,
+        );
     } catch (e) {
         showToast(`${i18nT('common.error', 'Error')}: ${e.message}`, 'error');
     }
@@ -4319,9 +4522,7 @@ async function _runSemanticSearch(q) {
         }
         // Update the page title so the operator knows they're in
         // search-results mode.
-        const title = document.getElementById('page-title');
-        if (title)
-            title.textContent = `🔍 "${q}" — ${mapped.length} ${i18nT('common.results', 'results')}`;
+        _setPageRaw('title', `🔍 "${q}" — ${mapped.length} ${i18nT('common.results', 'results')}`);
     } catch (e) {
         showToast(`${i18nT('common.error', 'Error')}: ${e.message}`, 'error');
     }

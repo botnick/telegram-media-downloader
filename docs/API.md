@@ -67,7 +67,7 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `GET`    | `/api/downloads`                    | Aggregate per group. |
 | `GET`    | `/api/downloads/all`                | Cross-group All-Media list, paginated. `?page=&limit=&type=`. **`?include=local\|peers\|all`** (admin-only) UNIONs `peer_downloads` into the result; **`?peerId=<id>`** narrows to one peer. Each row carries `peer_id` (`'self'` or peer's id) + `peer_name`. Default `local` is backward-compatible. |
 | `GET`    | `/api/downloads/:groupId`           | Paginated rows for one group. `?type=images\|videos\|documents\|audio`. Same `?include=` / `?peerId=` federation params as `/all`. |
-| `GET`    | `/api/downloads/search`             | `?q=…&page=&limit=&groupId=`. Same `?include=` federation param. |
+| `GET`    | `/api/downloads/search`             | `?q=…&page=&limit=&groupId=`. Optional `type=` (`images` / `videos` / `documents` / `audio`), `pinned=1`, `pinnedFirst=1` (same as the gallery feeds) and `order=newest` (default: FTS relevance). File name / chat name prefix match, falling back to a substring match when that finds nothing. Same `?include=` federation param. |
 | `POST`   | `/api/downloads/bulk-delete`        | `{ids?, paths?}`. Also purges thumbnail cache for every removed id. |
 | `DELETE` | `/api/file?path=…`                  | Single file. |
 | `DELETE` | `/api/purge/all`                    | Factory reset. |
