@@ -1,0 +1,1937 @@
+{
+  "entries": {
+    "purge group guest → 403": {
+      "route": "DELETE /api/groups/:id/purge",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/groups/-1001000000007/purge",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "purge group anon → 401": {
+      "route": "DELETE /api/groups/:id/purge",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/groups/-1001000000007/purge",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "delete-files guest → 403": {
+      "route": "POST /api/groups/:id/delete-files",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/-1001000000007/delete-files",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "purge all guest → 403": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "purge all anon → 401": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "purge all status guest → 403": {
+      "route": "GET /api/purge/all/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/purge/all/status",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "group purge status guest (allow-listed prefix)": {
+      "route": "GET /api/groups/:id/purge/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000007/purge/status",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1001000000007",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "purge status zeta idle": {
+      "route": "GET /api/groups/:id/purge/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000007/purge/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1001000000007",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "delete-files zeta": {
+      "route": "POST /api/groups/:id/delete-files",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/-1001000000007/delete-files",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groupId": "-1001000000007",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws delete-files zeta": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1001000000007",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000007",
+          "kind": "groupPurge:-1001000000007",
+          "progress": {
+            "groupId": "-1001000000007",
+            "stage": "counting"
+          },
+          "result": null,
+          "running": true,
+          "stage": "counting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000007",
+          "kind": "groupPurge:-1001000000007",
+          "processed": 0,
+          "progress": {
+            "groupId": "-1001000000007",
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 3
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 3,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000007",
+          "kind": "groupPurge:-1001000000007",
+          "processed": 2,
+          "progress": {
+            "groupId": "-1001000000007",
+            "processed": 2,
+            "stage": "deleting_files",
+            "total": 2
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 2,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000007",
+          "kind": "groupPurge:-1001000000007",
+          "progress": {
+            "groupId": "-1001000000007",
+            "processed": 2,
+            "stage": "deleting_rows",
+            "total": 2
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000007",
+          "kind": "groupPurge:-1001000000007",
+          "progress": {
+            "groupId": "-1001000000007",
+            "processed": 2,
+            "stage": "done",
+            "total": 2
+          },
+          "result": null,
+          "running": true,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "deletedDownloads": 3,
+          "deletedQueue": 0,
+          "filesDeleted": 2,
+          "groupId": "-1001000000007",
+          "groupName": "Zeta Real",
+          "type": "group_files_deleted"
+        },
+        {
+          "deletedDownloads": 3,
+          "deletedQueue": 0,
+          "durationMs": "<durationMs:number>",
+          "filesDeleted": 2,
+          "groupId": "-1001000000007",
+          "groupName": "Zeta Real",
+          "kind": "groupPurge:-1001000000007",
+          "type": "group_purge_done"
+        }
+      ]
+    },
+    "purge status zeta after delete-files": {
+      "route": "GET /api/groups/:id/purge/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000007/purge/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "groupPurge:-1001000000007",
+          "progress": {
+            "groupId": "-1001000000007",
+            "processed": 2,
+            "stage": "done",
+            "total": 2
+          },
+          "result": {
+            "deletedDownloads": 3,
+            "deletedQueue": 0,
+            "filesDeleted": 2,
+            "groupId": "-1001000000007",
+            "groupName": "Zeta Real"
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "zeta Z1 file gone": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Zeta_Real/images/Z1.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "zeta Z2 kept (used by beta)": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Zeta_Real/images/Z2.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"Z2.jpg\"; filename*=UTF-8''Z2.jpg",
+        "content-length": "3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+        "bytes": 3228
+      }
+    },
+    "stats zeta after delete-files": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000007/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {},
+          "firstMessageId": null,
+          "lastDownloadAt": null,
+          "lastMessageId": null,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "stats beta keeps its reference row": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000002/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {
+            "photo": 2,
+            "video": 2
+          },
+          "firstMessageId": 107,
+          "lastDownloadAt": "2024-07-14 10:00:00",
+          "lastMessageId": 299,
+          "success": true,
+          "totalBytes": 10492,
+          "totalFiles": 4
+        }
+      }
+    },
+    "delete-files empty group": {
+      "route": "POST /api/groups/:id/delete-files",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/-1009999999999/delete-files",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groupId": "-1009999999999",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws delete-files empty group": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1009999999999",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1009999999999",
+          "kind": "groupPurge:-1009999999999",
+          "progress": {
+            "groupId": "-1009999999999",
+            "stage": "counting"
+          },
+          "result": null,
+          "running": true,
+          "stage": "counting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1009999999999",
+          "kind": "groupPurge:-1009999999999",
+          "progress": {
+            "groupId": "-1009999999999",
+            "stage": "deleting_rows"
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1009999999999",
+          "kind": "groupPurge:-1009999999999",
+          "progress": {
+            "groupId": "-1009999999999",
+            "stage": "done"
+          },
+          "result": null,
+          "running": true,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "deletedDownloads": 0,
+          "deletedQueue": 0,
+          "filesDeleted": 0,
+          "groupId": "-1009999999999",
+          "groupName": "unknown",
+          "type": "group_files_deleted"
+        },
+        {
+          "deletedDownloads": 0,
+          "deletedQueue": 0,
+          "durationMs": "<durationMs:number>",
+          "filesDeleted": 0,
+          "groupId": "-1009999999999",
+          "groupName": "unknown",
+          "kind": "groupPurge:-1009999999999",
+          "type": "group_purge_done"
+        }
+      ]
+    },
+    "purge eta": {
+      "route": "DELETE /api/groups/:id/purge",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/groups/-1001000000008/purge",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groupId": "-1001000000008",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws purge eta": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1001000000008",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000008",
+          "kind": "groupPurge:-1001000000008",
+          "progress": {
+            "groupId": "-1001000000008",
+            "stage": "counting"
+          },
+          "result": null,
+          "running": true,
+          "stage": "counting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000008",
+          "kind": "groupPurge:-1001000000008",
+          "processed": 0,
+          "progress": {
+            "groupId": "-1001000000008",
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 2
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 2,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000008",
+          "kind": "groupPurge:-1001000000008",
+          "processed": 2,
+          "progress": {
+            "groupId": "-1001000000008",
+            "processed": 2,
+            "stage": "deleting_files",
+            "total": 2
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 2,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000008",
+          "kind": "groupPurge:-1001000000008",
+          "progress": {
+            "groupId": "-1001000000008",
+            "processed": 2,
+            "stage": "deleting_rows",
+            "total": 2
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "groupId": "-1001000000008",
+          "type": "group_purged"
+        },
+        {
+          "deleted": {
+            "dbRecords": 2,
+            "files": 2,
+            "group": "Eta Real",
+            "queueRecords": 0
+          },
+          "durationMs": "<durationMs:number>",
+          "groupId": "-1001000000008",
+          "kind": "groupPurge:-1001000000008",
+          "type": "group_purge_done"
+        }
+      ]
+    },
+    "purge status eta done": {
+      "route": "GET /api/groups/:id/purge/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000008/purge/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "groupPurge:-1001000000008",
+          "progress": {
+            "groupId": "-1001000000008",
+            "processed": 2,
+            "stage": "deleting_rows",
+            "total": 2
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 2,
+              "files": 2,
+              "group": "Eta Real",
+              "queueRecords": 0
+            },
+            "groupId": "-1001000000008"
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "eta file gone": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Eta_Real/images/E1.png",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "eta avatar gone": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000008/photo",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Not found"
+      }
+    },
+    "eta share link cascaded away": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?downloadId=25",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [],
+          "offset": 0,
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "stats eta after purge": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000008/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {},
+          "firstMessageId": null,
+          "lastDownloadAt": null,
+          "lastMessageId": null,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "purge gamma (blocked chat)": {
+      "route": "DELETE /api/groups/:id/purge",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/groups/-1001000000003/purge",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groupId": "-1001000000003",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws purge gamma": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1001000000003",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000003",
+          "kind": "groupPurge:-1001000000003",
+          "progress": {
+            "groupId": "-1001000000003",
+            "stage": "counting"
+          },
+          "result": null,
+          "running": true,
+          "stage": "counting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1001000000003",
+          "kind": "groupPurge:-1001000000003",
+          "progress": {
+            "groupId": "-1001000000003",
+            "stage": "deleting_rows"
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "groupId": "-1001000000003",
+          "type": "group_purged"
+        },
+        {
+          "deleted": {
+            "dbRecords": 4,
+            "files": 0,
+            "group": "Gamma Docs",
+            "queueRecords": 0
+          },
+          "durationMs": "<durationMs:number>",
+          "groupId": "-1001000000003",
+          "kind": "groupPurge:-1001000000003",
+          "type": "group_purge_done"
+        }
+      ]
+    },
+    "ws purge gamma access change": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "ids": [
+            "-1001000000003"
+          ],
+          "type": "chat_access_changed"
+        }
+      ]
+    },
+    "gamma file still on disk": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/notes.txt",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt",
+        "content-type": "text/plain; charset=UTF-8",
+        "etag": "W/\"26-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Contract fixture text file.\nLine two.\n"
+      }
+    },
+    "stats gamma after purge": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000003/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {},
+          "firstMessageId": null,
+          "lastDownloadAt": null,
+          "lastMessageId": null,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "access list after gamma purge": {
+      "route": "GET /api/chats/access",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byState": {},
+          "items": [],
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "purge unknown group": {
+      "route": "DELETE /api/groups/:id/purge",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/groups/-1009999999998/purge",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groupId": "-1009999999998",
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws purge unknown group": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupPurge:-1009999999998",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1009999999998",
+          "kind": "groupPurge:-1009999999998",
+          "progress": {
+            "groupId": "-1009999999998",
+            "stage": "counting"
+          },
+          "result": null,
+          "running": true,
+          "stage": "counting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "groupId": "-1009999999998",
+          "kind": "groupPurge:-1009999999998",
+          "progress": {
+            "groupId": "-1009999999998",
+            "stage": "deleting_rows"
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "group_purge_progress"
+        },
+        {
+          "groupId": "-1009999999998",
+          "type": "group_purged"
+        },
+        {
+          "deleted": {
+            "dbRecords": 0,
+            "files": 0,
+            "group": "unknown",
+            "queueRecords": 0
+          },
+          "durationMs": "<durationMs:number>",
+          "groupId": "-1009999999998",
+          "kind": "groupPurge:-1009999999998",
+          "type": "group_purge_done"
+        }
+      ]
+    },
+    "purge status unknown group": {
+      "route": "GET /api/groups/:id/purge/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1009999999998/purge/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "groupPurge:-1009999999998",
+          "progress": {
+            "groupId": "-1009999999998",
+            "stage": "deleting_rows"
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 0,
+              "files": 0,
+              "group": "unknown",
+              "queueRecords": 0
+            },
+            "groupId": "-1009999999998"
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "groups after purges": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "rescueMode": "on",
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000007",
+            "name": "Zeta Real",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          }
+        ]
+      }
+    },
+    "purge all status idle": {
+      "route": "GET /api/purge/all/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/purge/all/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "purge all": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws purge all": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 5,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "stage": "deleting_files",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 5,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "stage": "deleting_files",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 5,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 3,
+          "progress": {
+            "processed": 3,
+            "stage": "deleting_files",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 5,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 4,
+          "progress": {
+            "processed": 4,
+            "stage": "deleting_files",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 5,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 5,
+          "progress": {
+            "processed": 5,
+            "stage": "deleting_files",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 5,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {
+            "processed": 5,
+            "stage": "deleting_rows",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {
+            "processed": 5,
+            "stage": "purging_cache",
+            "total": 5
+          },
+          "result": null,
+          "running": true,
+          "stage": "purging_cache",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "purge_all_progress"
+        },
+        {
+          "type": "purge_all"
+        },
+        {
+          "deleted": {
+            "dbRecords": 20,
+            "files": 27,
+            "queueRecords": 0
+          },
+          "durationMs": "<durationMs:number>",
+          "kind": "purgeAll",
+          "type": "purge_all_done"
+        }
+      ]
+    },
+    "purge all status done": {
+      "route": "GET /api/purge/all/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/purge/all/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "purgeAll",
+          "progress": {
+            "processed": 5,
+            "stage": "purging_cache",
+            "total": 5
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 20,
+              "files": 27,
+              "queueRecords": 0
+            }
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "groups after purge all": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": []
+      }
+    },
+    "downloads after purge all": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": []
+      }
+    },
+    "alpha avatar gone after purge all": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/photo",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Not found"
+      }
+    },
+    "alpha file gone after purge all": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "purge all again (empty library)": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws purge all again": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {},
+          "result": {
+            "deleted": {
+              "dbRecords": 20,
+              "files": 27,
+              "queueRecords": 0
+            }
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_files",
+            "total": 0
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 20,
+              "files": 27,
+              "queueRecords": 0
+            }
+          },
+          "running": true,
+          "stage": "deleting_files",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 0,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {
+            "processed": 0,
+            "stage": "deleting_rows",
+            "total": 0
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 20,
+              "files": 27,
+              "queueRecords": 0
+            }
+          },
+          "running": true,
+          "stage": "deleting_rows",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "type": "purge_all_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {
+            "processed": 0,
+            "stage": "purging_cache",
+            "total": 0
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 20,
+              "files": 27,
+              "queueRecords": 0
+            }
+          },
+          "running": true,
+          "stage": "purging_cache",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "type": "purge_all_progress"
+        },
+        {
+          "type": "purge_all"
+        },
+        {
+          "deleted": {
+            "dbRecords": 0,
+            "files": 0,
+            "queueRecords": 0
+          },
+          "durationMs": "<durationMs:number>",
+          "kind": "purgeAll",
+          "type": "purge_all_done"
+        }
+      ]
+    },
+    "purge all status after second run": {
+      "route": "GET /api/purge/all/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/purge/all/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "purgeAll",
+          "progress": {
+            "processed": 0,
+            "stage": "purging_cache",
+            "total": 0
+          },
+          "result": {
+            "deleted": {
+              "dbRecords": 0,
+              "files": 0,
+              "queueRecords": 0
+            }
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 2
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

@@ -1,0 +1,757 @@
+{
+  "entries": {
+    "GET update/status": {
+      "route": "GET /api/update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "available": false,
+          "inDocker": false,
+          "overlayStallMs": 120000,
+          "watchtowerConfigured": false,
+          "watchtowerUrl": null
+        }
+      }
+    },
+    "GET update/status guest (no auth gate)": {
+      "route": "GET /api/update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/status",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "available": false,
+          "inDocker": false,
+          "overlayStallMs": 120000,
+          "watchtowerConfigured": false,
+          "watchtowerUrl": null
+        }
+      }
+    },
+    "GET update/status anon (no auth gate)": {
+      "route": "GET /api/update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/status",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "available": false,
+          "inDocker": false,
+          "overlayStallMs": 120000,
+          "watchtowerConfigured": false,
+          "watchtowerUrl": null
+        }
+      }
+    },
+    "GET auto-update/status (idle)": {
+      "route": "GET /api/auto-update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/auto-update/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "autoUpdate",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "GET auto-update/status guest (no auth gate)": {
+      "route": "GET /api/auto-update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/auto-update/status",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "autoUpdate",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "GET update/history": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            },
+            {
+              "backup_bytes": 1024,
+              "backup_path": "data/backups/db-2024-06-09.sqlite",
+              "error_code": null,
+              "error_msg": null,
+              "finished_at": 1717891320000,
+              "from_instance_id": "00000000-0000-4000-8000-00000000000e",
+              "from_version": "2.27.0",
+              "id": 1,
+              "started_at": 1717891200000,
+              "status": "success",
+              "to_version": "2.27.1"
+            }
+          ]
+        }
+      }
+    },
+    "GET update/history limit=1": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history?limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            }
+          ]
+        }
+      }
+    },
+    "GET update/history limit=0 (defaults to 25)": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history?limit=0",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            },
+            {
+              "backup_bytes": 1024,
+              "backup_path": "data/backups/db-2024-06-09.sqlite",
+              "error_code": null,
+              "error_msg": null,
+              "finished_at": 1717891320000,
+              "from_instance_id": "00000000-0000-4000-8000-00000000000e",
+              "from_version": "2.27.0",
+              "id": 1,
+              "started_at": 1717891200000,
+              "status": "success",
+              "to_version": "2.27.1"
+            }
+          ]
+        }
+      }
+    },
+    "GET update/history limit=abc": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history?limit=abc",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            },
+            {
+              "backup_bytes": 1024,
+              "backup_path": "data/backups/db-2024-06-09.sqlite",
+              "error_code": null,
+              "error_msg": null,
+              "finished_at": 1717891320000,
+              "from_instance_id": "00000000-0000-4000-8000-00000000000e",
+              "from_version": "2.27.0",
+              "id": 1,
+              "started_at": 1717891200000,
+              "status": "success",
+              "to_version": "2.27.1"
+            }
+          ]
+        }
+      }
+    },
+    "GET update/history limit=-5 (clamped to 1)": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history?limit=-5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            }
+          ]
+        }
+      }
+    },
+    "GET update/history guest (no auth gate)": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            },
+            {
+              "backup_bytes": 1024,
+              "backup_path": "data/backups/db-2024-06-09.sqlite",
+              "error_code": null,
+              "error_msg": null,
+              "finished_at": 1717891320000,
+              "from_instance_id": "00000000-0000-4000-8000-00000000000e",
+              "from_version": "2.27.0",
+              "id": 1,
+              "started_at": 1717891200000,
+              "status": "success",
+              "to_version": "2.27.1"
+            }
+          ]
+        }
+      }
+    },
+    "POST update guest (no auth gate) → started": {
+      "route": "POST /api/update",
+      "request": {
+        "method": "POST",
+        "path": "/api/update",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "POST update anon (no auth gate) → started": {
+      "route": "POST /api/update",
+      "request": {
+        "method": "POST",
+        "path": "/api/update",
+        "as": "anon",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "POST update (not in Docker)": {
+      "route": "POST /api/update",
+      "request": {
+        "method": "POST",
+        "path": "/api/update",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws events of a failed update run": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "autoUpdate",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "update_progress"
+        },
+        {
+          "level": "info",
+          "msg": "autoUpdate starting",
+          "source": "autoUpdate",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "error": "Auto-update only works inside Docker (the dashboard process is not running in a container).",
+          "kind": "autoUpdate",
+          "type": "update_done"
+        },
+        {
+          "level": "error",
+          "msg": "autoUpdate failed: Auto-update only works inside Docker (the dashboard process is not running in a container).",
+          "source": "autoUpdate",
+          "ts": "<time:ms>",
+          "type": "log"
+        }
+      ],
+      "note": "log events filtered to source=autoUpdate"
+    },
+    "GET auto-update/status after failure": {
+      "route": "GET /api/auto-update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/auto-update/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": "Auto-update only works inside Docker (the dashboard process is not running in a container).",
+          "failures": 1,
+          "finishedAt": "<time:ms>",
+          "kind": "autoUpdate",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "error",
+          "startedAt": "<time:ms>",
+          "successes": 0
+        }
+      }
+    },
+    "GET update/history after failure": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history?limit=2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "history": [
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "AUTO_UPDATE_UNAVAILABLE",
+              "error_msg": "Auto-update only works inside Docker (the dashboard process is not running in a container).",
+              "finished_at": "<time:ms>",
+              "from_instance_id": null,
+              "from_version": "<version>",
+              "id": 3,
+              "started_at": "<time:ms>",
+              "status": "failed",
+              "to_version": null
+            },
+            {
+              "backup_bytes": null,
+              "backup_path": null,
+              "error_code": "WATCHTOWER_UNREACHABLE",
+              "error_msg": "watchtower did not answer",
+              "finished_at": 1717977601000,
+              "from_instance_id": null,
+              "from_version": "2.27.1",
+              "id": 2,
+              "started_at": 1717977600000,
+              "status": "failed",
+              "to_version": null
+            }
+          ]
+        }
+      }
+    },
+    "logs/recent source=autoUpdate": {
+      "route": "GET /api/maintenance/logs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/recent?source=autoUpdate",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bufferSize": 2000,
+          "logs": [
+            {
+              "level": "info",
+              "msg": "autoUpdate starting",
+              "source": "autoUpdate",
+              "ts": "<time:ms>"
+            },
+            {
+              "level": "error",
+              "msg": "autoUpdate failed: Auto-update only works inside Docker (the dashboard process is not running in a container).",
+              "source": "autoUpdate",
+              "ts": "<time:ms>"
+            }
+          ],
+          "total": "<masked:number>"
+        }
+      },
+      "masked": {
+        "total": "number of lines the process has logged since boot — depends on async boot ordering"
+      }
+    },
+    "logs/recent source=autoUpdate level=error limit=1": {
+      "route": "GET /api/maintenance/logs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/recent?source=autoUpdate&level=error&limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bufferSize": 2000,
+          "logs": [
+            {
+              "level": "error",
+              "msg": "autoUpdate failed: Auto-update only works inside Docker (the dashboard process is not running in a container).",
+              "source": "autoUpdate",
+              "ts": "<time:ms>"
+            }
+          ],
+          "total": "<masked:number>"
+        }
+      },
+      "masked": {
+        "total": "number of lines the process has logged since boot — depends on async boot ordering"
+      }
+    },
+    "POST update again": {
+      "route": "POST /api/update",
+      "request": {
+        "method": "POST",
+        "path": "/api/update",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "GET auto-update/status after second failure": {
+      "route": "GET /api/auto-update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/auto-update/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": "Auto-update only works inside Docker (the dashboard process is not running in a container).",
+          "failures": 2,
+          "finishedAt": "<time:ms>",
+          "kind": "autoUpdate",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "error",
+          "startedAt": "<time:ms>",
+          "successes": 0
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

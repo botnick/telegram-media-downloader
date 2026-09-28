@@ -1,0 +1,2 @@
+Contract fixture text file.
+Line two.

@@ -1,0 +1,1020 @@
+{
+  "entries": {
+    "stories/user without username → 400": {
+      "route": "POST /api/stories/user",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/user",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "username required"
+        }
+      }
+    },
+    "stories/user for an unreachable chat id → 409": {
+      "route": "POST /api/stories/user",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/user",
+        "as": "admin",
+        "body": {
+          "username": "-1001000000003"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "access": {
+            "accounts": [],
+            "checkedAt": 1717718400000,
+            "checks": 1,
+            "code": "USER_NOT_PARTICIPANT",
+            "detail": "account left the chat",
+            "firstSeenAt": 1717718400000,
+            "migratedTo": null,
+            "nextCheckAt": 4102444800000,
+            "state": "left"
+          },
+          "code": "CHAT_UNREACHABLE",
+          "error": "This chat can't be reached (left) — no account can read it"
+        }
+      }
+    },
+    "stories/user without API creds → 503": {
+      "route": "POST /api/stories/user",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/user",
+        "as": "admin",
+        "body": {
+          "username": "@someone"
+        }
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "stories/user guest → 403": {
+      "route": "POST /api/stories/user",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/user",
+        "as": "guest",
+        "body": {
+          "username": "@someone"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "stories/all without API creds → 503": {
+      "route": "POST /api/stories/all",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "stories/all anon → 401": {
+      "route": "POST /api/stories/all",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/all",
+        "as": "anon",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "stories/download without body → 400": {
+      "route": "POST /api/stories/download",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/download",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "username and storyIds required"
+        }
+      }
+    },
+    "stories/download empty storyIds → 400": {
+      "route": "POST /api/stories/download",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/download",
+        "as": "admin",
+        "body": {
+          "storyIds": [],
+          "username": "@someone"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "username and storyIds required"
+        }
+      }
+    },
+    "stories/download storyIds not an array → 400": {
+      "route": "POST /api/stories/download",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/download",
+        "as": "admin",
+        "body": {
+          "storyIds": 5,
+          "username": "@someone"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "username and storyIds required"
+        }
+      }
+    },
+    "stories/download unreachable chat → 409": {
+      "route": "POST /api/stories/download",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/download",
+        "as": "admin",
+        "body": {
+          "storyIds": [
+            1
+          ],
+          "username": "-1001000000003"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "access": {
+            "accounts": [],
+            "checkedAt": 1717718400000,
+            "checks": 1,
+            "code": "USER_NOT_PARTICIPANT",
+            "detail": "account left the chat",
+            "firstSeenAt": 1717718400000,
+            "migratedTo": null,
+            "nextCheckAt": 4102444800000,
+            "state": "left"
+          },
+          "code": "CHAT_UNREACHABLE",
+          "error": "This chat can't be reached (left) — no account can read it"
+        }
+      }
+    },
+    "stories/download without API creds → 500": {
+      "route": "POST /api/stories/download",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/download",
+        "as": "admin",
+        "body": {
+          "storyIds": [
+            1,
+            2
+          ],
+          "username": "@someone"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "download/url without body → 400": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Provide url or urls"
+        }
+      }
+    },
+    "download/url blank url → 400": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "admin",
+        "body": {
+          "url": " \n \n "
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Provide url or urls"
+        }
+      }
+    },
+    "download/url empty urls array → 400": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "admin",
+        "body": {
+          "urls": []
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Provide url or urls"
+        }
+      }
+    },
+    "download/url single link without API creds → 500": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "admin",
+        "body": {
+          "url": "https://t.me/somechannel/42"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "download/url bulk list without API creds → 500": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "admin",
+        "body": {
+          "urls": [
+            "https://t.me/c/1000000003/7",
+            "not a link"
+          ]
+        }
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "download/url guest → 403": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "guest",
+        "body": {
+          "url": "https://t.me/somechannel/42"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "proxy/test without body → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "host and port required"
+        }
+      }
+    },
+    "proxy/test missing port → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "proxy.example.com"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "host and port required"
+        }
+      }
+    },
+    "proxy/test non-string host → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": 12345,
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid host"
+        }
+      }
+    },
+    "proxy/test over-long host → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.com",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid host"
+        }
+      }
+    },
+    "proxy/test private host localhost → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "localhost",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host 127.0.0.1 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "127.0.0.1",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host 10.1.2.3 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "10.1.2.3",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host 192.168.1.10 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "192.168.1.10",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host 172.20.0.1 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "172.20.0.1",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host nas.local → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "nas.local",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host box.internal → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "box.internal",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test private host ::1 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "::1",
+          "port": 1080
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private / loopback / link-local addresses are not allowed for proxy probes."
+        }
+      }
+    },
+    "proxy/test port 0 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "proxy.example.com",
+          "port": 0
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "host and port required"
+        }
+      }
+    },
+    "proxy/test port 70000 → 400": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "proxy.example.com",
+          "port": 70000
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "port must be 1-65535"
+        }
+      }
+    },
+    "proxy/test guest → 403": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "guest",
+        "body": {
+          "host": "proxy.example.com",
+          "port": 1080
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "proxy/test unresolvable host → ok:false": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "proxy.invalid",
+          "port": 1080
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "<masked:string>",
+          "ok": false
+        }
+      },
+      "masked": {
+        "error": "socket/resolver error text is runtime-specific"
+      }
+    },
+    "proxy/test public IP refused → ok:false": {
+      "route": "POST /api/proxy/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/proxy/test",
+        "as": "admin",
+        "body": {
+          "host": "203.0.113.5",
+          "port": "1080"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "<masked:string>",
+          "ok": false
+        }
+      },
+      "masked": {
+        "error": "socket/resolver error text is runtime-specific"
+      }
+    },
+    "[creds] stories/user → 409": {
+      "route": "POST /api/stories/user",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/user",
+        "as": "admin",
+        "body": {
+          "username": "@someone"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    },
+    "[creds] stories/all → 409": {
+      "route": "POST /api/stories/all",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    },
+    "[creds] stories/download → 409": {
+      "route": "POST /api/stories/download",
+      "request": {
+        "method": "POST",
+        "path": "/api/stories/download",
+        "as": "admin",
+        "body": {
+          "storyIds": [
+            1
+          ],
+          "username": "@someone"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    },
+    "[creds] download/url → 409": {
+      "route": "POST /api/download/url",
+      "request": {
+        "method": "POST",
+        "path": "/api/download/url",
+        "as": "admin",
+        "body": {
+          "url": "https://t.me/somechannel/42"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

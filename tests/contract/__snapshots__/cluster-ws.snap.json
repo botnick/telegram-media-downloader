@@ -1,0 +1,895 @@
+{
+  "entries": {
+    "upgrade by credentials": {
+      "ws": "cluster",
+      "upgrade": {
+        "noParams": 401,
+        "badSig": 401,
+        "staleTs": 401,
+        "wrongKey": 401,
+        "peerWithoutSecret": 401,
+        "unknownPeer": 401,
+        "clusterTokenInsteadOfPairSecret": 401,
+        "validPairSecret": "open"
+      }
+    },
+    "inbound before engine start": {
+      "ws": "cluster",
+      "sent": [
+        "download_added",
+        "peer_status"
+      ],
+      "received": [],
+      "events": [],
+      "note": "the relay to dashboard clients is only wired by the lazy /api/cluster engine starter"
+    },
+    "peer catalog has the pushed row": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=00000000-0000-4000-8000-0000000000a1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "cached_at": "<time:ms>",
+              "created_at": 1722506400000,
+              "file_hash": null,
+              "file_name": "R_0900.jpg",
+              "file_path": "Remote Chat/images/R_0900.jpg",
+              "file_size": 1900,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 900,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 900,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632002000,
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "R_0503.jpg",
+              "file_path": "Remote Chat/images/R_0503.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9003,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 503,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632001000,
+              "file_hash": null,
+              "file_name": "R_0502.mp4",
+              "file_path": "Remote Chat/videos/R_0502.mp4",
+              "file_size": 54321,
+              "file_type": "video",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9002,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 502,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632000000,
+              "file_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "file_name": "R_0501.jpg",
+              "file_path": "Remote Chat/images/R_0501.jpg",
+              "file_size": 12345,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9001,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 501,
+              "status": "completed"
+            }
+          ],
+          "total": 4
+        }
+      }
+    },
+    "failover run (starts engines; beta never seen → nothing to take over)": {
+      "route": "POST /api/cluster/failover/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/failover/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "applied": []
+        }
+      }
+    },
+    "outbound connect": {
+      "ws": "cluster",
+      "sent": [],
+      "received": [],
+      "connections": [
+        {
+          "path": "/ws/cluster",
+          "peer": "00000000-0000-4000-8000-00000000c0de",
+          "connectSigValid": true
+        }
+      ],
+      "events": [
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "status": "online",
+          "type": "peer_status"
+        }
+      ]
+    },
+    "inbound event relay": {
+      "ws": "cluster",
+      "sent": [
+        "ping",
+        "download_added",
+        "download_updated",
+        "download_deleted",
+        "group_added",
+        "group_changed",
+        "group_removed",
+        "config_changed",
+        "failover_requested",
+        "failover_completed",
+        "peer_status",
+        "brand_new_event"
+      ],
+      "received": [],
+      "connectEvents": [
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "status": "online",
+          "type": "peer_status"
+        }
+      ],
+      "steps": [
+        {
+          "step": "ping",
+          "sent": "ping",
+          "events": []
+        },
+        {
+          "step": "download_added",
+          "sent": "download_added",
+          "events": [
+            {
+              "op": "add",
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "row": {
+                "created_at": "2024-08-01 10:00:00",
+                "file_hash": null,
+                "file_name": "R_0901.jpg",
+                "file_path": "Remote Chat/images/R_0901.jpg",
+                "file_size": 1901,
+                "file_type": "photo",
+                "group_id": "-1009000000001",
+                "group_name": "Remote Chat",
+                "id": 901,
+                "message_id": 901,
+                "nsfw_score": null,
+                "status": "completed"
+              },
+              "type": "peer_catalog_update"
+            }
+          ]
+        },
+        {
+          "step": "download_updated",
+          "sent": "download_updated",
+          "events": [
+            {
+              "op": "update",
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "row": {
+                "created_at": "2024-08-01 10:00:00",
+                "file_hash": null,
+                "file_name": "R_0901b.jpg",
+                "file_path": "Remote Chat/images/R_0901b.jpg",
+                "file_size": 4242,
+                "file_type": "photo",
+                "group_id": "-1009000000001",
+                "group_name": "Remote Chat",
+                "id": 901,
+                "message_id": 901,
+                "nsfw_score": null,
+                "status": "completed"
+              },
+              "type": "peer_catalog_update"
+            }
+          ]
+        },
+        {
+          "step": "download_deleted",
+          "sent": "download_deleted",
+          "events": [
+            {
+              "op": "delete",
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "remoteId": 901,
+              "type": "peer_catalog_update"
+            }
+          ]
+        },
+        {
+          "step": "download_deleted without remote_id",
+          "sent": "download_deleted",
+          "events": []
+        },
+        {
+          "step": "group_added",
+          "sent": "group_added",
+          "events": [
+            {
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "peer_groups_update"
+            }
+          ]
+        },
+        {
+          "step": "group_changed",
+          "sent": "group_changed",
+          "events": [
+            {
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "peer_groups_update"
+            }
+          ]
+        },
+        {
+          "step": "group_removed",
+          "sent": "group_removed",
+          "events": [
+            {
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "peer_groups_update"
+            }
+          ]
+        },
+        {
+          "step": "config_changed (local policy → skipped)",
+          "sent": "config_changed",
+          "events": [
+            {
+              "action": "skipped",
+              "payload": {
+                "key": "rescue",
+                "peer_id": "00000000-0000-4000-8000-0000000000a1",
+                "ts": 1717200000000,
+                "value": {
+                  "enabled": true
+                }
+              },
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "cluster_config_changed"
+            }
+          ]
+        },
+        {
+          "step": "config_changed (replicated key → applied)",
+          "sent": "config_changed",
+          "events": [
+            {
+              "action": "applied",
+              "payload": {
+                "key": "pollingInterval",
+                "peer_id": "00000000-0000-4000-8000-0000000000a1",
+                "ts": 1717200000000,
+                "value": 42
+              },
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "cluster_config_changed"
+            }
+          ]
+        },
+        {
+          "step": "config_changed (same ts again → skipped)",
+          "sent": "config_changed",
+          "events": [
+            {
+              "action": "skipped",
+              "payload": {
+                "key": "pollingInterval",
+                "peer_id": "00000000-0000-4000-8000-0000000000a1",
+                "ts": 1717200000000,
+                "value": 43
+              },
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "cluster_config_changed"
+            }
+          ]
+        },
+        {
+          "step": "failover_requested",
+          "sent": "failover_requested",
+          "events": [
+            {
+              "payload": {
+                "group_id": "-1001000000002"
+              },
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "stage": "failover_requested",
+              "type": "cluster_failover"
+            }
+          ]
+        },
+        {
+          "step": "failover_completed",
+          "sent": "failover_completed",
+          "events": [
+            {
+              "payload": {
+                "group_id": "-1001000000002"
+              },
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "stage": "failover_completed",
+              "type": "cluster_failover"
+            }
+          ]
+        },
+        {
+          "step": "peer_status",
+          "sent": "peer_status",
+          "events": [
+            {
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "status": "draining",
+              "type": "peer_status"
+            }
+          ]
+        },
+        {
+          "step": "unknown type → cluster_event",
+          "sent": "brand_new_event",
+          "events": [
+            {
+              "kind": "brand_new_event",
+              "payload": {
+                "x": 1
+              },
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "cluster_event"
+            }
+          ]
+        },
+        {
+          "step": "first delivery",
+          "sent": "group_changed",
+          "events": [
+            {
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "type": "peer_groups_update"
+            }
+          ]
+        },
+        {
+          "step": "replayed signature → ignored",
+          "sent": "group_changed",
+          "events": []
+        },
+        {
+          "step": "bad signature → ignored (audited)",
+          "sent": "group_changed",
+          "events": []
+        },
+        {
+          "step": "missing sig → ignored",
+          "sent": "group_changed",
+          "events": []
+        }
+      ],
+      "events": [
+        {
+          "op": "add",
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "row": {
+            "created_at": "2024-08-01 10:00:00",
+            "file_hash": null,
+            "file_name": "R_0901.jpg",
+            "file_path": "Remote Chat/images/R_0901.jpg",
+            "file_size": 1901,
+            "file_type": "photo",
+            "group_id": "-1009000000001",
+            "group_name": "Remote Chat",
+            "id": 901,
+            "message_id": 901,
+            "nsfw_score": null,
+            "status": "completed"
+          },
+          "type": "peer_catalog_update"
+        },
+        {
+          "op": "update",
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "row": {
+            "created_at": "2024-08-01 10:00:00",
+            "file_hash": null,
+            "file_name": "R_0901b.jpg",
+            "file_path": "Remote Chat/images/R_0901b.jpg",
+            "file_size": 4242,
+            "file_type": "photo",
+            "group_id": "-1009000000001",
+            "group_name": "Remote Chat",
+            "id": 901,
+            "message_id": 901,
+            "nsfw_score": null,
+            "status": "completed"
+          },
+          "type": "peer_catalog_update"
+        },
+        {
+          "op": "delete",
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "remoteId": 901,
+          "type": "peer_catalog_update"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "peer_groups_update"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "peer_groups_update"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "peer_groups_update"
+        },
+        {
+          "action": "skipped",
+          "payload": {
+            "key": "rescue",
+            "peer_id": "00000000-0000-4000-8000-0000000000a1",
+            "ts": 1717200000000,
+            "value": {
+              "enabled": true
+            }
+          },
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "cluster_config_changed"
+        },
+        {
+          "action": "applied",
+          "payload": {
+            "key": "pollingInterval",
+            "peer_id": "00000000-0000-4000-8000-0000000000a1",
+            "ts": 1717200000000,
+            "value": 42
+          },
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "cluster_config_changed"
+        },
+        {
+          "action": "skipped",
+          "payload": {
+            "key": "pollingInterval",
+            "peer_id": "00000000-0000-4000-8000-0000000000a1",
+            "ts": 1717200000000,
+            "value": 43
+          },
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "cluster_config_changed"
+        },
+        {
+          "payload": {
+            "group_id": "-1001000000002"
+          },
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "stage": "failover_requested",
+          "type": "cluster_failover"
+        },
+        {
+          "payload": {
+            "group_id": "-1001000000002"
+          },
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "stage": "failover_completed",
+          "type": "cluster_failover"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "status": "draining",
+          "type": "peer_status"
+        },
+        {
+          "kind": "brand_new_event",
+          "payload": {
+            "x": 1
+          },
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "cluster_event"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "type": "peer_groups_update"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "status": "online",
+          "type": "peer_status"
+        },
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "status": "offline",
+          "type": "peer_status"
+        }
+      ],
+      "closeEvents": [
+        {
+          "peerId": "00000000-0000-4000-8000-0000000000a1",
+          "status": "offline",
+          "type": "peer_status"
+        }
+      ]
+    },
+    "config after replicated change (derived)": {
+      "derived": {
+        "pollingInterval": 42,
+        "rescueEnabled": false
+      }
+    },
+    "peer catalog after inbound events": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=00000000-0000-4000-8000-0000000000a1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "cached_at": "<time:ms>",
+              "created_at": 1722506400000,
+              "file_hash": null,
+              "file_name": "R_0900.jpg",
+              "file_path": "Remote Chat/images/R_0900.jpg",
+              "file_size": 1900,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 900,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 900,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632002000,
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "R_0503.jpg",
+              "file_path": "Remote Chat/images/R_0503.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9003,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 503,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632001000,
+              "file_hash": null,
+              "file_name": "R_0502.mp4",
+              "file_path": "Remote Chat/videos/R_0502.mp4",
+              "file_size": 54321,
+              "file_type": "video",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9002,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 502,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632000000,
+              "file_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "file_name": "R_0501.jpg",
+              "file_path": "Remote Chat/images/R_0501.jpg",
+              "file_size": 12345,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9001,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha",
+              "remote_id": 501,
+              "status": "completed"
+            }
+          ],
+          "total": 4
+        }
+      }
+    },
+    "audit ws_event failures": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit?kind=ws_event",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "bad sig for group_changed",
+              "id": 5,
+              "kind": "ws_event",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            }
+          ]
+        }
+      },
+      "unordered": [
+        "entries"
+      ]
+    },
+    "save a replicated config key": {
+      "route": "POST /api/config",
+      "request": {
+        "method": "POST",
+        "path": "/api/config",
+        "as": "admin",
+        "body": {
+          "pollingInterval": 11
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "mark beta last seen long ago": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000b2",
+        "as": "admin",
+        "body": {
+          "lastSeenAt": 1717200000000
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peer": {
+            "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+            "id": 2,
+            "lastSeenAt": 1717200000000,
+            "migrationRequired": true,
+            "name": "peer-beta",
+            "notes": null,
+            "pairedAt": 1717200001000,
+            "peerId": "00000000-0000-4000-8000-0000000000b2",
+            "role": "admin",
+            "status": "offline",
+            "streamMode": "direct",
+            "url": "http://peer-beta.invalid:3000",
+            "version": "2.26.3",
+            "wsLastSeen": null
+          }
+        }
+      }
+    },
+    "failover run (takes over Gamma Docs)": {
+      "route": "POST /api/cluster/failover/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/failover/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "applied": [
+            {
+              "fromPeerId": "00000000-0000-4000-8000-0000000000b2",
+              "groupId": "-1001000000003",
+              "toPeerId": "00000000-0000-4000-8000-00000000c0de"
+            }
+          ]
+        }
+      }
+    },
+    "outbound event push": {
+      "ws": "cluster",
+      "sent": [],
+      "received": [
+        {
+          "payload": {
+            "remote_id": 12
+          },
+          "sig": "<hex64:1>",
+          "ts": "<time:ms>",
+          "type": "download_deleted",
+          "sigValid": true
+        },
+        {
+          "payload": {
+            "key": "pollingInterval",
+            "peer_id": "00000000-0000-4000-8000-00000000c0de",
+            "policy": "cluster",
+            "ts": "<time:ms>",
+            "value": 11
+          },
+          "sig": "<hex64:2>",
+          "ts": "<time:ms>",
+          "type": "config_changed",
+          "sigValid": true
+        },
+        {
+          "payload": {
+            "from_peer_id": "00000000-0000-4000-8000-0000000000b2",
+            "group_id": "-1001000000003",
+            "to_peer_id": "00000000-0000-4000-8000-00000000c0de",
+            "ts": "<time:ms>"
+          },
+          "sig": "<hex64:3>",
+          "ts": "<time:ms>",
+          "type": "failover_completed",
+          "sigValid": true
+        }
+      ],
+      "events": [
+        {
+          "type": "config_updated"
+        }
+      ]
+    },
+    "failover log after takeover": {
+      "route": "GET /api/cluster/failover-log",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/failover-log",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "from_peer_id": "00000000-0000-4000-8000-0000000000b2",
+              "group_id": "-1001000000003",
+              "id": 2,
+              "reason": "owner_offline",
+              "to_peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "ts": "<time:ms>"
+            },
+            {
+              "from_peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "group_id": "-1001000000002",
+              "id": 1,
+              "reason": "peer offline",
+              "to_peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "ts": 1717549200000
+            }
+          ]
+        }
+      }
+    },
+    "Gamma Docs ownership after failover (derived)": {
+      "derived": {
+        "ownerPeerId": "00000000-0000-4000-8000-00000000c0de",
+        "backupPeerId": "00000000-0000-4000-8000-00000000c0de",
+        "failoverAtIsRecent": true
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

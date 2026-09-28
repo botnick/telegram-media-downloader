@@ -1,0 +1,1318 @@
+{
+  "entries": {
+    "GET system/health": {
+      "route": "GET /api/system/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/system/health",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "connections": {
+            "wsClients": 0
+          },
+          "database": {
+            "journalMode": "wal",
+            "sizeMB": 0,
+            "walPages": 0
+          },
+          "disk": null,
+          "goCore": {
+            "allowRoots": null,
+            "binary": null,
+            "error": null,
+            "expectedVersion": "0.1.0",
+            "features": {
+              "hash": {
+                "active": "node",
+                "breaker": {
+                  "openedAt": null,
+                  "recentFailures": 0,
+                  "state": "closed",
+                  "trips": 0
+                },
+                "demoted": false,
+                "fallbacks": 0,
+                "go": 0,
+                "lastMismatch": null,
+                "mode": "off",
+                "node": 0,
+                "outside": 0,
+                "parityChecks": 0,
+                "parityMismatches": 0,
+                "paritySkipped": 0,
+                "sampleEvery": 20,
+                "sampleMaxBytes": 268435456,
+                "source": "env"
+              }
+            },
+            "mode": "off",
+            "modeSource": "env",
+            "pid": null,
+            "restarts": 0,
+            "since": "<time:ms>",
+            "state": "disabled",
+            "version": null
+          },
+          "process": {
+            "memoryMB": {
+              "external": "<external:number>",
+              "heapTotal": "<heapTotal:number>",
+              "heapUsed": "<heapUsed:number>",
+              "rss": "<rss:number>"
+            },
+            "nodeVersion": "<masked:string>",
+            "pid": "<pid:number>",
+            "uptime": "<uptime:number>"
+          },
+          "system": {
+            "arch": "<masked:string>",
+            "cpuCount": "<masked:number>",
+            "cpuModel": "<masked:string>",
+            "freeMemMB": "<masked:number>",
+            "hostname": "<masked:string>",
+            "loadAvg": "<masked:object>",
+            "platform": "<masked:string>",
+            "totalMemMB": "<masked:number>",
+            "usedMemPercent": "<masked:number>"
+          }
+        }
+      },
+      "masked": {
+        "process.nodeVersion": "runtime version of the host",
+        "system.platform": "host OS",
+        "system.arch": "host CPU architecture",
+        "system.hostname": "host name",
+        "system.cpuCount": "host CPU count",
+        "system.cpuModel": "host CPU model",
+        "system.loadAvg": "host load average",
+        "system.totalMemMB": "host memory",
+        "system.freeMemMB": "host memory",
+        "system.usedMemPercent": "host memory"
+      }
+    },
+    "GET system/health with one WS client": {
+      "route": "GET /api/system/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/system/health",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "connections": {
+            "wsClients": 1
+          },
+          "database": {
+            "journalMode": "wal",
+            "sizeMB": 0,
+            "walPages": 0
+          },
+          "disk": null,
+          "goCore": {
+            "allowRoots": null,
+            "binary": null,
+            "error": null,
+            "expectedVersion": "0.1.0",
+            "features": {
+              "hash": {
+                "active": "node",
+                "breaker": {
+                  "openedAt": null,
+                  "recentFailures": 0,
+                  "state": "closed",
+                  "trips": 0
+                },
+                "demoted": false,
+                "fallbacks": 0,
+                "go": 0,
+                "lastMismatch": null,
+                "mode": "off",
+                "node": 0,
+                "outside": 0,
+                "parityChecks": 0,
+                "parityMismatches": 0,
+                "paritySkipped": 0,
+                "sampleEvery": 20,
+                "sampleMaxBytes": 268435456,
+                "source": "env"
+              }
+            },
+            "mode": "off",
+            "modeSource": "env",
+            "pid": null,
+            "restarts": 0,
+            "since": "<time:ms>",
+            "state": "disabled",
+            "version": null
+          },
+          "process": {
+            "memoryMB": {
+              "external": "<external:number>",
+              "heapTotal": "<heapTotal:number>",
+              "heapUsed": "<heapUsed:number>",
+              "rss": "<rss:number>"
+            },
+            "nodeVersion": "<masked:string>",
+            "pid": "<pid:number>",
+            "uptime": "<uptime:number>"
+          },
+          "system": {
+            "arch": "<masked:string>",
+            "cpuCount": "<masked:number>",
+            "cpuModel": "<masked:string>",
+            "freeMemMB": "<masked:number>",
+            "hostname": "<masked:string>",
+            "loadAvg": "<masked:object>",
+            "platform": "<masked:string>",
+            "totalMemMB": "<masked:number>",
+            "usedMemPercent": "<masked:number>"
+          }
+        }
+      },
+      "masked": {
+        "process.nodeVersion": "runtime version of the host",
+        "system.platform": "host OS",
+        "system.arch": "host CPU architecture",
+        "system.hostname": "host name",
+        "system.cpuCount": "host CPU count",
+        "system.cpuModel": "host CPU model",
+        "system.loadAvg": "host load average",
+        "system.totalMemMB": "host memory",
+        "system.freeMemMB": "host memory",
+        "system.usedMemPercent": "host memory"
+      }
+    },
+    "GET system/health guest → 403": {
+      "route": "GET /api/system/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/system/health",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "GET system/health anon → 401": {
+      "route": "GET /api/system/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/system/health",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "GET stats admin": {
+      "route": "GET /api/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 1,
+          "apiConfigured": false,
+          "diskUsage": 47942,
+          "diskUsageFormatted": "46.82 KB",
+          "enabledGroups": 3,
+          "maxDiskSize": "50GB",
+          "peerStats": [
+            {
+              "online": false,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "peerName": "peer-alpha",
+              "totalFiles": 3,
+              "totalSize": 70031,
+              "totalSizeFormatted": "68.39 KB"
+            }
+          ],
+          "telegramConnected": false,
+          "totalFiles": 20,
+          "totalGroups": 4,
+          "totalSize": 47942
+        }
+      }
+    },
+    "GET stats guest": {
+      "route": "GET /api/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/stats",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 1,
+          "apiConfigured": false,
+          "diskUsage": 47942,
+          "diskUsageFormatted": "46.82 KB",
+          "enabledGroups": 3,
+          "maxDiskSize": "50GB",
+          "peerStats": [],
+          "telegramConnected": false,
+          "totalFiles": 20,
+          "totalGroups": 4,
+          "totalSize": 47942
+        }
+      }
+    },
+    "GET stats admin again (role switch recomputes)": {
+      "route": "GET /api/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 1,
+          "apiConfigured": false,
+          "diskUsage": 47942,
+          "diskUsageFormatted": "46.82 KB",
+          "enabledGroups": 3,
+          "maxDiskSize": "50GB",
+          "peerStats": [
+            {
+              "online": false,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "peerName": "peer-alpha",
+              "totalFiles": 3,
+              "totalSize": 70031,
+              "totalSizeFormatted": "68.39 KB"
+            }
+          ],
+          "telegramConnected": false,
+          "totalFiles": 20,
+          "totalGroups": 4,
+          "totalSize": 47942
+        }
+      }
+    },
+    "GET stats anon → 401": {
+      "route": "GET /api/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/stats",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "GET rescue/stats": {
+      "route": "GET /api/rescue/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/rescue/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastSweepCleared": 0,
+          "pending": 1,
+          "rescued": 1
+        }
+      }
+    },
+    "GET rescue/stats guest → 403": {
+      "route": "GET /api/rescue/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/rescue/stats",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "GET maintenance/logs": {
+      "route": "GET /api/maintenance/logs",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "modified": "2024-01-03T12:00:00.000Z",
+              "name": "app.log",
+              "size": 291
+            },
+            {
+              "modified": "2024-01-02T12:00:00.000Z",
+              "name": "บันทึก.log",
+              "size": 40
+            },
+            {
+              "modified": "2024-01-01T12:00:00.000Z",
+              "name": "old.log",
+              "size": 5
+            }
+          ]
+        }
+      }
+    },
+    "GET maintenance/logs guest → 403": {
+      "route": "GET /api/maintenance/logs",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "logs/download without name → 400": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid log name"
+        }
+      }
+    },
+    "logs/download with a slash → 400": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=..%2Fdb.sqlite",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid log name"
+        }
+      }
+    },
+    "logs/download with a backslash → 400": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=..%5Capp.log",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid log name"
+        }
+      }
+    },
+    "logs/download non-.log → 400": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=notes.txt",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid log name"
+        }
+      }
+    },
+    "logs/download missing file → 404": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=nope.log",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Log not found"
+        }
+      }
+    },
+    "logs/download app.log (default 5000 lines)": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=app.log",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-disposition": "attachment; filename=\"app.log\"; filename*=UTF-8''app.log",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "2024-01-03 line 1\n2024-01-03 line 2\n2024-01-03 line 3\n2024-01-03 line 4\n2024-01-03 line 5\n2024-01-03 line 6\n2024-01-03 line 7\n2024-01-03 line 8\n2024-01-03 line 9\n2024-01-03 line 10\n2024-01-03 line 11\n2024-01-03 line 12\n2024-01-03 line 13\n2024-01-03 line 14\n2024-01-03 line 15\n"
+      }
+    },
+    "logs/download app.log lines=2 (clamped to 10)": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=app.log&lines=2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-disposition": "attachment; filename=\"app.log\"; filename*=UTF-8''app.log",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "2024-01-03 line 7\n2024-01-03 line 8\n2024-01-03 line 9\n2024-01-03 line 10\n2024-01-03 line 11\n2024-01-03 line 12\n2024-01-03 line 13\n2024-01-03 line 14\n2024-01-03 line 15\n"
+      }
+    },
+    "logs/download app.log lines=12": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=app.log&lines=12",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-disposition": "attachment; filename=\"app.log\"; filename*=UTF-8''app.log",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "2024-01-03 line 5\n2024-01-03 line 6\n2024-01-03 line 7\n2024-01-03 line 8\n2024-01-03 line 9\n2024-01-03 line 10\n2024-01-03 line 11\n2024-01-03 line 12\n2024-01-03 line 13\n2024-01-03 line 14\n2024-01-03 line 15\n"
+      }
+    },
+    "logs/download old.log (no trailing newline)": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=old.log",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-disposition": "attachment; filename=\"old.log\"; filename*=UTF-8''old.log",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "a\nb\nc"
+      }
+    },
+    "logs/download unicode name": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=%E0%B8%9A%E0%B8%B1%E0%B8%99%E0%B8%97%E0%B8%B6%E0%B8%81.log",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-disposition": "attachment; filename=\"______.log\"; filename*=UTF-8''%E0%B8%9A%E0%B8%B1%E0%B8%99%E0%B8%97%E0%B8%B6%E0%B8%81.log",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "บรรทัดแรก\nsecond line\n"
+      }
+    },
+    "logs/download guest → 403": {
+      "route": "GET /api/maintenance/logs/download",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/download?name=app.log",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "logs/recent unknown source": {
+      "route": "GET /api/maintenance/logs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/recent?source=__none__",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bufferSize": 2000,
+          "logs": [],
+          "total": "<masked:number>"
+        }
+      },
+      "masked": {
+        "total": "number of lines the process has logged since boot — depends on async boot ordering"
+      }
+    },
+    "logs/recent unknown source, error level, limit": {
+      "route": "GET /api/maintenance/logs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/recent?source=__none__,__other__&level=error&limit=5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bufferSize": 2000,
+          "logs": [],
+          "total": "<masked:number>"
+        }
+      },
+      "masked": {
+        "total": "number of lines the process has logged since boot — depends on async boot ordering"
+      }
+    },
+    "logs/recent guest → 403": {
+      "route": "GET /api/maintenance/logs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/logs/recent",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "session/export without confirm → 400": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "accountId": "broken",
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "session/export without password → 400": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "accountId": "broken",
+          "confirm": true
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password required"
+        }
+      }
+    },
+    "session/export wrong password → 403": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "accountId": "broken",
+          "confirm": true,
+          "password": "not-the-password"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid password"
+        }
+      }
+    },
+    "session/export with the GUEST password passes the password gate": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "confirm": true,
+          "password": "contract-guest-pass"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid password"
+        }
+      },
+      "note": "the re-auth guard uses loginVerify, which accepts the guest password too"
+    },
+    "session/export missing accountId → 400": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "accountId required"
+        }
+      }
+    },
+    "session/export path-like accountId → 400": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "accountId": "../secret",
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid accountId"
+        }
+      }
+    },
+    "session/export unknown account → 404": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "accountId": "nobody",
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Session file not found for that account"
+        }
+      }
+    },
+    "session/export undecryptable blob → 500": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "admin",
+        "body": {
+          "accountId": "broken",
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unsupported state or unable to authenticate data"
+        }
+      }
+    },
+    "session/export guest → 403": {
+      "route": "POST /api/maintenance/session/export",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/session/export",
+        "as": "guest",
+        "body": {
+          "accountId": "broken",
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "revoke-all without confirm → 400": {
+      "route": "POST /api/maintenance/sessions/revoke-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/sessions/revoke-all",
+        "as": "admin",
+        "body": {
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "revoke-all without password → 400": {
+      "route": "POST /api/maintenance/sessions/revoke-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/sessions/revoke-all",
+        "as": "admin",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password required"
+        }
+      }
+    },
+    "revoke-all wrong password → 403": {
+      "route": "POST /api/maintenance/sessions/revoke-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/sessions/revoke-all",
+        "as": "admin",
+        "body": {
+          "confirm": true,
+          "password": "nope-nope-nope"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid password"
+        }
+      }
+    },
+    "revoke-all guest → 403": {
+      "route": "POST /api/maintenance/sessions/revoke-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/sessions/revoke-all",
+        "as": "guest",
+        "body": {
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "revoke-all anon → 401": {
+      "route": "POST /api/maintenance/sessions/revoke-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/sessions/revoke-all",
+        "as": "anon",
+        "body": {
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "revoke-all": {
+      "route": "POST /api/maintenance/sessions/revoke-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/sessions/revoke-all",
+        "as": "admin",
+        "body": {
+          "confirm": true,
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "",
+            "attributes": {
+              "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+              "httponly": true,
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "ws after revoke-all (open guest socket)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "sessions_revoked"
+        }
+      ]
+    },
+    "auth_check admin after revoke-all": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "auth_check guest after revoke-all": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "GET stats with the revoked admin cookie → 401": {
+      "route": "GET /api/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/stats",
+        "as": "admin"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

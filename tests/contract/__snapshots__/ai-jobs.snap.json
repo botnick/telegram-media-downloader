@@ -1,0 +1,2576 @@
+{
+  "entries": {
+    "ai status": {
+      "route": "GET /api/ai/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bgQueue": {
+            "backfill": 0,
+            "realtime": 0
+          },
+          "config": {
+            "enabled": true,
+            "faceClustering": true,
+            "faces": {
+              "detectorModel": "buffalo_l",
+              "pathMap": "",
+              "providers": "auto",
+              "scanVideos": false,
+              "sidecarTokenSet": false,
+              "sidecarUrl": "",
+              "sources": {
+                "pathMap": "config",
+                "token": "config",
+                "url": "config"
+              }
+            },
+            "facesDetector": "tiny",
+            "facesDetectorModel": "buffalo_l",
+            "facesEpsilon": 1.05,
+            "facesMinPoints": 2,
+            "federateFaces": false,
+            "fileTypes": [
+              "photo"
+            ]
+          },
+          "counts": {
+            "indexed": 6,
+            "noiseFaces": 2,
+            "peopleCount": 3,
+            "totalEligible": 13,
+            "totalFaces": 7,
+            "unindexed": 7,
+            "withEmbedding": 0,
+            "withFaces": 7,
+            "withTags": 0
+          },
+          "models": {
+            "faces": {
+              "bundled": true,
+              "dim": 512,
+              "dtype": "fp32",
+              "enabled": true,
+              "id": "insightface buffalo_l (Python sidecar)",
+              "loaded": true,
+              "mode": null,
+              "modeLabel": null,
+              "preset": "buffalo_l",
+              "providers": null,
+              "providersRequested": "auto",
+              "source": "bundled",
+              "version": "0.5.0"
+            }
+          },
+          "qualityBackfillPending": 1,
+          "scans": {
+            "faces": {
+              "clusterProgress": 0,
+              "error": null,
+              "faceCount": 0,
+              "finishedAt": null,
+              "noiseFaces": 0,
+              "peopleCount": 0,
+              "phase": "A",
+              "running": false,
+              "scanned": 0,
+              "startedAt": null,
+              "total": 0,
+              "waitingForSidecar": false
+            }
+          },
+          "success": true,
+          "trackers": {
+            "aiPeople": {
+              "attempts": 0,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": 0,
+              "kind": "aiPeople",
+              "progress": {},
+              "result": null,
+              "running": false,
+              "stage": "idle",
+              "startedAt": 0,
+              "successes": 0
+            },
+            "qualityBackfill": {
+              "attempts": 0,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": 0,
+              "kind": "qualityBackfill",
+              "progress": {},
+              "result": null,
+              "running": false,
+              "stage": "idle",
+              "startedAt": 0,
+              "successes": 0
+            }
+          }
+        }
+      }
+    },
+    "scan status faces": {
+      "route": "GET /api/ai/scan/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/scan/status?feature=faces",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": {
+            "clusterProgress": 0,
+            "error": null,
+            "faceCount": 0,
+            "finishedAt": null,
+            "noiseFaces": 0,
+            "peopleCount": 0,
+            "phase": "A",
+            "running": false,
+            "scanned": 0,
+            "startedAt": null,
+            "total": 0,
+            "waitingForSidecar": false
+          },
+          "success": true
+        }
+      }
+    },
+    "scan status without feature → 400": {
+      "route": "GET /api/ai/scan/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/scan/status",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "feature must be embed|tags|faces"
+        }
+      }
+    },
+    "scan status removed feature embed → 400": {
+      "route": "GET /api/ai/scan/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/scan/status?feature=embed",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "feature must be embed|tags|faces"
+        }
+      }
+    },
+    "ai status as guest → 403": {
+      "route": "GET /api/ai/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/status",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "ai status as anon → 401": {
+      "route": "GET /api/ai/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/status",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "provider-probe without sidecar → 503": {
+      "route": "GET /api/ai/faces/provider-probe",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/provider-probe",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "SIDECAR_OFFLINE",
+          "error": "Face sidecar not running"
+        }
+      }
+    },
+    "preload-model without sidecar → 503": {
+      "route": "POST /api/ai/preload-model/:name",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/preload-model/buffalo_l",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "sidecar not running"
+        }
+      }
+    },
+    "preload-model status without sidecar → 503": {
+      "route": "GET /api/ai/preload-model/:name/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/preload-model/buffalo_l/status",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "sidecar not running"
+        }
+      }
+    },
+    "detect-test without downloadId → 400": {
+      "route": "POST /api/ai/detect-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/detect-test",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "downloadId must be a positive integer"
+        }
+      }
+    },
+    "detect-test downloadId 0 → 400": {
+      "route": "POST /api/ai/detect-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/detect-test",
+        "as": "admin",
+        "body": {
+          "downloadId": 0
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "downloadId must be a positive integer"
+        }
+      }
+    },
+    "detect-test unknown row → 404": {
+      "route": "POST /api/ai/detect-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/detect-test",
+        "as": "admin",
+        "body": {
+          "downloadId": 9999
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NOT_FOUND",
+          "error": "download not found"
+        }
+      }
+    },
+    "detect-test row 1 (no sidecar → raw null)": {
+      "route": "POST /api/ai/detect-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/detect-test",
+        "as": "admin",
+        "body": {
+          "downloadId": 1
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "absPath": "<DATA>/downloads/Alpha Photos/images/IMG_0001.jpg",
+          "downloadId": 1,
+          "error": null,
+          "filePath": "Alpha Photos/images/IMG_0001.jpg",
+          "fileType": "photo",
+          "raw": null,
+          "rawCount": null,
+          "success": true,
+          "warnings": []
+        }
+      }
+    },
+    "detect-test row 21 (file missing on disk)": {
+      "route": "POST /api/ai/detect-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/detect-test",
+        "as": "admin",
+        "body": {
+          "downloadId": 21
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "absPath": null,
+          "downloadId": 21,
+          "error": "file_not_found_on_disk",
+          "filePath": "Alpha Photos/images/GONE.jpg",
+          "fileType": "photo",
+          "raw": null,
+          "rawCount": null,
+          "success": true,
+          "warnings": []
+        }
+      }
+    },
+    "health-test without url → 400": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "url_required",
+          "ok": false
+        }
+      }
+    },
+    "health-test ftp url → 400": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "url": "ftp://faces.example"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid_scheme",
+          "ok": false
+        }
+      }
+    },
+    "health-test url with credentials → 400": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "url": "http://u:p@faces.example"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid_url",
+          "ok": false
+        }
+      }
+    },
+    "health-test garbage url → 400": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "url": "not a url"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid_url",
+          "ok": false
+        }
+      }
+    },
+    "health-test unreachable host": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "url": "http://faces.invalid:9"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "unknown",
+          "authRequired": null,
+          "error": "fetch failed",
+          "features": [],
+          "model": null,
+          "ok": false,
+          "providers": null,
+          "reachable": false,
+          "ready": false,
+          "tokenSent": false,
+          "transfer": "base64",
+          "version": null
+        }
+      }
+    },
+    "health-test fake sidecar with the right token": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "token": "fake-token",
+          "url": "<fake-sidecar>/"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "ok",
+          "authRequired": true,
+          "error": null,
+          "features": [
+            "upload",
+            "path"
+          ],
+          "model": "buffalo_l",
+          "ok": true,
+          "providers": [
+            "CPUExecutionProvider"
+          ],
+          "reachable": true,
+          "ready": true,
+          "tokenSent": true,
+          "transfer": "upload",
+          "version": "0.9.9-fake"
+        }
+      }
+    },
+    "health-test fake sidecar without a token": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "url": "<fake-sidecar>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "failed",
+          "authRequired": true,
+          "error": "token_required",
+          "features": [
+            "upload",
+            "path"
+          ],
+          "model": "buffalo_l",
+          "ok": false,
+          "providers": [
+            "CPUExecutionProvider"
+          ],
+          "reachable": true,
+          "ready": true,
+          "tokenSent": false,
+          "transfer": "upload",
+          "version": "0.9.9-fake"
+        }
+      }
+    },
+    "health-test fake sidecar with a wrong token": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "token": "nope",
+          "url": "<fake-sidecar>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "failed",
+          "authRequired": true,
+          "error": "token_rejected",
+          "features": [
+            "upload",
+            "path"
+          ],
+          "model": "buffalo_l",
+          "ok": false,
+          "providers": [
+            "CPUExecutionProvider"
+          ],
+          "reachable": true,
+          "ready": true,
+          "tokenSent": true,
+          "transfer": "upload",
+          "version": "0.9.9-fake"
+        }
+      }
+    },
+    "health-test proxy page instead of a sidecar": {
+      "route": "POST /api/ai/faces/health-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/health-test",
+        "as": "admin",
+        "body": {
+          "url": "<fake-sidecar>/not-a-sidecar"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "unknown",
+          "authRequired": null,
+          "error": "not a sidecar (text/html)",
+          "features": [],
+          "model": null,
+          "ok": false,
+          "providers": null,
+          "reachable": true,
+          "ready": false,
+          "tokenSent": false,
+          "transfer": "base64",
+          "version": null
+        }
+      }
+    },
+    "scan start without feature → 400": {
+      "route": "POST /api/ai/scan/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/start",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "feature must be embed|tags|faces"
+        }
+      }
+    },
+    "scan start removed feature tags → 400": {
+      "route": "POST /api/ai/scan/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/start",
+        "as": "admin",
+        "body": {
+          "feature": "tags"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "feature must be embed|tags|faces"
+        }
+      }
+    },
+    "scan start faces": {
+      "route": "POST /api/ai/scan/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/start",
+        "as": "admin",
+        "body": {
+          "feature": "faces"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "scan status while waiting": {
+      "route": "GET /api/ai/scan/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/scan/status?feature=faces",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": {
+            "clusterProgress": 0,
+            "error": null,
+            "faceCount": 0,
+            "finishedAt": null,
+            "noiseFaces": 0,
+            "peopleCount": 0,
+            "phase": "A",
+            "running": true,
+            "scanned": 0,
+            "startedAt": "<time:ms>",
+            "total": 7,
+            "waitingForSidecar": true
+          },
+          "success": true
+        }
+      }
+    },
+    "scan start again → 409": {
+      "route": "POST /api/ai/scan/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/start",
+        "as": "admin",
+        "body": {
+          "feature": "faces"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "ALREADY_RUNNING",
+          "error": "Scan already running"
+        }
+      }
+    },
+    "recluster while scanning → 409": {
+      "route": "POST /api/ai/faces/recluster",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/recluster",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "scan_running",
+          "message": "A face scan is already in progress."
+        }
+      }
+    },
+    "faces/reindex while scanning → 409": {
+      "route": "POST /api/ai/faces/reindex",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/reindex",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "scan_running",
+          "message": "A face scan is already in progress. Cancel it before reindexing."
+        }
+      }
+    },
+    "scan cancel without feature → 400": {
+      "route": "POST /api/ai/scan/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/cancel",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "feature must be embed|tags|faces"
+        }
+      }
+    },
+    "scan cancel faces": {
+      "route": "POST /api/ai/scan/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/cancel",
+        "as": "admin",
+        "body": {
+          "feature": "faces"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cancelled": true,
+          "success": true
+        }
+      }
+    },
+    "scan status after cancel": {
+      "route": "GET /api/ai/scan/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/scan/status?feature=faces",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": {
+            "clusterProgress": 0,
+            "error": null,
+            "faceCount": 0,
+            "finishedAt": "<time:ms>",
+            "noiseFaces": 0,
+            "peopleCount": 0,
+            "phase": "A",
+            "running": false,
+            "scanned": 0,
+            "startedAt": "<time:ms>",
+            "total": 7,
+            "waitingForSidecar": false
+          },
+          "success": true
+        }
+      }
+    },
+    "scan cancel when idle": {
+      "route": "POST /api/ai/scan/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/cancel",
+        "as": "admin",
+        "body": {
+          "feature": "faces"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cancelled": false,
+          "success": true
+        }
+      }
+    },
+    "people untouched after the cancelled scan": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "ws events: faces scan start → cancel": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "ai_people_progress",
+          "collapsed": true
+        },
+        {
+          "clusterProgress": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "faceCount": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "aiPeople",
+          "noiseFaces": 0,
+          "peopleCount": 0,
+          "phase": "A",
+          "running": false,
+          "scanned": 0,
+          "startedAt": "<time:ms>",
+          "total": 7,
+          "type": "ai_people_done",
+          "waitingForSidecar": false
+        }
+      ],
+      "collapsed": [
+        "ai_people_progress"
+      ]
+    },
+    "ws events: faces scan start → cancel (sidecar status only)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "ok": false,
+          "state": "disabled",
+          "type": "ai_faces_status"
+        }
+      ]
+    },
+    "backfill-quality start": {
+      "route": "POST /api/ai/backfill-quality",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/backfill-quality",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "snapshot": {
+            "attempts": 1,
+            "durationMs": "<durationMs:number>",
+            "error": null,
+            "failures": 0,
+            "finishedAt": 0,
+            "kind": "qualityBackfill",
+            "progress": {},
+            "result": null,
+            "running": true,
+            "stage": "starting",
+            "startedAt": "<time:ms>",
+            "successes": 0
+          },
+          "started": true
+        }
+      }
+    },
+    "backfill-quality status after run": {
+      "route": "GET /api/ai/backfill-quality/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/backfill-quality/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "qualityBackfill",
+          "progress": {
+            "errors": 0,
+            "processed": 1,
+            "total": 1,
+            "updated": 0
+          },
+          "result": {
+            "errors": 0,
+            "processed": 1,
+            "total": 1,
+            "updated": 0
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "ws events: quality backfill": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "quality_backfill_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "errors": 0,
+          "kind": "qualityBackfill",
+          "processed": 1,
+          "total": 1,
+          "type": "quality_backfill_done",
+          "updated": 0
+        }
+      ],
+      "collapsed": [
+        "quality_backfill_progress"
+      ]
+    },
+    "faces restart": {
+      "route": "POST /api/ai/faces/restart",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/restart",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "ws events: faces restart (backend disabled)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "ok": false,
+          "state": "disabled",
+          "type": "ai_faces_status"
+        }
+      ]
+    },
+    "faces/reindex": {
+      "route": "POST /api/ai/faces/reindex",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/reindex",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "people after faces/reindex": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "ai/reindex": {
+      "route": "POST /api/ai/reindex",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/reindex",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cancelled": 0,
+          "embeddings": 0,
+          "faces": 0,
+          "people": 0,
+          "requeued": 1,
+          "success": true,
+          "tags": 0
+        }
+      }
+    },
+    "ai status after reindex": {
+      "route": "GET /api/ai/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bgQueue": {
+            "backfill": 0,
+            "realtime": 0
+          },
+          "config": {
+            "enabled": true,
+            "faceClustering": true,
+            "faces": {
+              "detectorModel": "buffalo_l",
+              "pathMap": "",
+              "providers": "auto",
+              "scanVideos": false,
+              "sidecarTokenSet": false,
+              "sidecarUrl": "",
+              "sources": {
+                "pathMap": "config",
+                "token": "config",
+                "url": "config"
+              }
+            },
+            "facesDetector": "tiny",
+            "facesDetectorModel": "buffalo_l",
+            "facesEpsilon": 1.05,
+            "facesMinPoints": 2,
+            "federateFaces": false,
+            "fileTypes": [
+              "photo"
+            ]
+          },
+          "counts": {
+            "indexed": 0,
+            "noiseFaces": 0,
+            "peopleCount": 0,
+            "totalEligible": 13,
+            "totalFaces": 0,
+            "unindexed": 13,
+            "withEmbedding": 0,
+            "withFaces": 0,
+            "withTags": 0
+          },
+          "models": {
+            "faces": {
+              "bundled": true,
+              "dim": 512,
+              "dtype": "fp32",
+              "enabled": true,
+              "id": "insightface buffalo_l (Python sidecar)",
+              "loaded": true,
+              "mode": null,
+              "modeLabel": null,
+              "preset": "buffalo_l",
+              "providers": null,
+              "providersRequested": "auto",
+              "source": "bundled",
+              "version": "0.5.0"
+            }
+          },
+          "qualityBackfillPending": 1,
+          "scans": {
+            "faces": {
+              "clusterProgress": 0,
+              "error": null,
+              "faceCount": 0,
+              "finishedAt": "<time:ms>",
+              "noiseFaces": 0,
+              "peopleCount": 0,
+              "phase": "A",
+              "running": false,
+              "scanned": 0,
+              "startedAt": "<time:ms>",
+              "total": 7,
+              "waitingForSidecar": false
+            }
+          },
+          "success": true,
+          "trackers": {
+            "aiPeople": {
+              "attempts": 1,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": "<time:ms>",
+              "kind": "aiPeople",
+              "progress": {
+                "clusterProgress": 0,
+                "error": null,
+                "faceCount": 0,
+                "finishedAt": "<time:ms>",
+                "noiseFaces": 0,
+                "peopleCount": 0,
+                "phase": "A",
+                "scanned": 0,
+                "startedAt": "<time:ms>",
+                "total": 7,
+                "waitingForSidecar": false
+              },
+              "result": {
+                "clusterProgress": 0,
+                "error": null,
+                "faceCount": 0,
+                "finishedAt": "<time:ms>",
+                "noiseFaces": 0,
+                "peopleCount": 0,
+                "phase": "A",
+                "running": false,
+                "scanned": 0,
+                "startedAt": "<time:ms>",
+                "total": 7,
+                "waitingForSidecar": false
+              },
+              "running": false,
+              "stage": "done",
+              "startedAt": "<time:ms>",
+              "successes": 1
+            },
+            "qualityBackfill": {
+              "attempts": 1,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": "<time:ms>",
+              "kind": "qualityBackfill",
+              "progress": {
+                "errors": 0,
+                "processed": 1,
+                "total": 1,
+                "updated": 0
+              },
+              "result": {
+                "errors": 0,
+                "processed": 1,
+                "total": 1,
+                "updated": 0
+              },
+              "running": false,
+              "stage": "done",
+              "startedAt": "<time:ms>",
+              "successes": 1
+            }
+          }
+        }
+      }
+    },
+    "ws events: faces/reindex + ai/reindex": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "ts": "<time:ms>",
+          "type": "ai_faces_reindexed"
+        },
+        {
+          "embeddings": 0,
+          "faces": 0,
+          "people": 0,
+          "requeued": 1,
+          "tags": 0,
+          "type": "ai_reindex"
+        }
+      ]
+    },
+    "auto-scan without action → 400": {
+      "route": "POST /api/ai/auto-scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/auto-scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "action must be one of: start, pause, stop"
+        }
+      }
+    },
+    "auto-scan bad action → 400": {
+      "route": "POST /api/ai/auto-scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/auto-scan",
+        "as": "admin",
+        "body": {
+          "action": "resume"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "action must be one of: start, pause, stop"
+        }
+      }
+    },
+    "auto-scan start": {
+      "route": "POST /api/ai/auto-scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/auto-scan",
+        "as": "admin",
+        "body": {
+          "action": "START"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": "running",
+          "success": true
+        }
+      }
+    },
+    "auto-scan pause": {
+      "route": "POST /api/ai/auto-scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/auto-scan",
+        "as": "admin",
+        "body": {
+          "action": "pause"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": "paused",
+          "success": true
+        }
+      }
+    },
+    "auto-scan stop": {
+      "route": "POST /api/ai/auto-scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/auto-scan",
+        "as": "admin",
+        "body": {
+          "action": "stop"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": "idle",
+          "success": true
+        }
+      }
+    },
+    "auto-scan as guest → 403": {
+      "route": "POST /api/ai/auto-scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/auto-scan",
+        "as": "guest",
+        "body": {
+          "action": "start"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "external: ai status": {
+      "route": "GET /api/ai/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bgQueue": {
+            "backfill": 0,
+            "realtime": 0
+          },
+          "config": {
+            "enabled": true,
+            "faceClustering": true,
+            "faces": {
+              "detectorModel": "buffalo_l",
+              "pathMap": "",
+              "providers": "auto",
+              "scanVideos": false,
+              "sidecarTokenSet": false,
+              "sidecarUrl": "http://faces.invalid:9",
+              "sources": {
+                "pathMap": "config",
+                "token": "config",
+                "url": "config"
+              }
+            },
+            "facesDetector": "tiny",
+            "facesDetectorModel": "buffalo_l",
+            "facesEpsilon": 1.05,
+            "facesMinPoints": 2,
+            "federateFaces": false,
+            "fileTypes": [
+              "photo"
+            ]
+          },
+          "counts": {
+            "indexed": 6,
+            "noiseFaces": 2,
+            "peopleCount": 3,
+            "totalEligible": 12,
+            "totalFaces": 7,
+            "unindexed": 6,
+            "withEmbedding": 0,
+            "withFaces": 7,
+            "withTags": 0
+          },
+          "models": {
+            "faces": {
+              "bundled": true,
+              "dim": 512,
+              "dtype": "fp32",
+              "enabled": true,
+              "id": "insightface buffalo_l (Python sidecar)",
+              "loaded": true,
+              "mode": "external",
+              "modeLabel": "external URL",
+              "preset": "buffalo_l",
+              "providers": null,
+              "providersRequested": "auto",
+              "source": "bundled",
+              "version": "0.5.0"
+            }
+          },
+          "qualityBackfillPending": 0,
+          "scans": {
+            "faces": {
+              "clusterProgress": 0,
+              "error": null,
+              "faceCount": 0,
+              "finishedAt": null,
+              "noiseFaces": 0,
+              "peopleCount": 0,
+              "phase": "A",
+              "running": false,
+              "scanned": 0,
+              "startedAt": null,
+              "total": 0,
+              "waitingForSidecar": false
+            }
+          },
+          "success": true,
+          "trackers": {
+            "aiPeople": {
+              "attempts": 0,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": 0,
+              "kind": "aiPeople",
+              "progress": {},
+              "result": null,
+              "running": false,
+              "stage": "idle",
+              "startedAt": 0,
+              "successes": 0
+            },
+            "qualityBackfill": {
+              "attempts": 0,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": 0,
+              "kind": "qualityBackfill",
+              "progress": {},
+              "result": null,
+              "running": false,
+              "stage": "idle",
+              "startedAt": 0,
+              "successes": 0
+            }
+          }
+        }
+      }
+    },
+    "external: doctor": {
+      "route": "GET /api/ai/doctor",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/doctor",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "checks": [
+            {
+              "detail": "sidecar at http://faces.invalid:9 is not reachable",
+              "id": "sidecar",
+              "label": "Python face sidecar",
+              "status": "fail"
+            },
+            {
+              "detail": "no Python on PATH (using prebuilt binary)",
+              "id": "python",
+              "label": "Host Python",
+              "status": "info"
+            },
+            {
+              "detail": "not yet downloaded — `docker compose --profile faces up` or `pip install -e faces-service/` from the repo root, then restart",
+              "id": "binary",
+              "label": "Prebuilt sidecar binary",
+              "status": "info"
+            },
+            {
+              "detail": "unable to probe (sidecar offline)",
+              "id": "provider",
+              "label": "Inference provider",
+              "status": "warn"
+            },
+            {
+              "detail": "unable to probe (sidecar offline)",
+              "id": "model",
+              "label": "Model loaded",
+              "status": "warn"
+            },
+            {
+              "detail": "6/12 (50%) · with faces 7",
+              "id": "indexed",
+              "label": "Photos indexed",
+              "status": "ok"
+            }
+          ],
+          "richHealth": {
+            "detSize": null,
+            "dim": null,
+            "model": null,
+            "ok": false,
+            "platform": null,
+            "providersRequested": null,
+            "providersResolved": null,
+            "python": null,
+            "ready": false,
+            "version": null
+          },
+          "success": true
+        }
+      }
+    },
+    "external: health (alias of doctor)": {
+      "route": "GET /api/ai/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/health",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "checks": [
+            {
+              "detail": "sidecar at http://faces.invalid:9 is not reachable",
+              "id": "sidecar",
+              "label": "Python face sidecar",
+              "status": "fail"
+            },
+            {
+              "detail": "no Python on PATH (using prebuilt binary)",
+              "id": "python",
+              "label": "Host Python",
+              "status": "info"
+            },
+            {
+              "detail": "not yet downloaded — `docker compose --profile faces up` or `pip install -e faces-service/` from the repo root, then restart",
+              "id": "binary",
+              "label": "Prebuilt sidecar binary",
+              "status": "info"
+            },
+            {
+              "detail": "unable to probe (sidecar offline)",
+              "id": "provider",
+              "label": "Inference provider",
+              "status": "warn"
+            },
+            {
+              "detail": "unable to probe (sidecar offline)",
+              "id": "model",
+              "label": "Model loaded",
+              "status": "warn"
+            },
+            {
+              "detail": "6/12 (50%) · with faces 7",
+              "id": "indexed",
+              "label": "Photos indexed",
+              "status": "ok"
+            }
+          ],
+          "richHealth": {
+            "detSize": null,
+            "dim": null,
+            "model": null,
+            "ok": false,
+            "platform": null,
+            "providersRequested": null,
+            "providersResolved": null,
+            "python": null,
+            "ready": false,
+            "version": null
+          },
+          "success": true
+        }
+      }
+    },
+    "external: provider-probe": {
+      "route": "GET /api/ai/faces/provider-probe",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/faces/provider-probe",
+        "as": "admin"
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "fetch failed"
+        }
+      }
+    },
+    "external: preload-model": {
+      "route": "POST /api/ai/preload-model/:name",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/preload-model/buffalo_l",
+        "as": "admin"
+      },
+      "status": 502,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "fetch failed"
+        }
+      }
+    },
+    "external: preload-model status": {
+      "route": "GET /api/ai/preload-model/:name/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/preload-model/buffalo_l/status",
+        "as": "admin"
+      },
+      "status": 502,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "fetch failed"
+        }
+      }
+    },
+    "external: detect-test row 2": {
+      "route": "POST /api/ai/detect-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/detect-test",
+        "as": "admin",
+        "body": {
+          "downloadId": 2
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "absPath": "<DATA>/downloads/Alpha Photos/images/IMG_0002.jpg",
+          "downloadId": 2,
+          "error": null,
+          "filePath": "Alpha Photos/images/IMG_0002.jpg",
+          "fileType": "photo",
+          "raw": null,
+          "rawCount": null,
+          "success": true,
+          "warnings": [
+            "[warn] sidecar POST http://faces.invalid:9/detect attempt 1/3 failed: fetch failed — sidecar unreachable, aborting",
+            "[warn] detect path-mode failed for <DATA>/downloads/Alpha Photos/images/IMG_0002.jpg: fetch failed"
+          ]
+        }
+      }
+    },
+    "external: scan start faces": {
+      "route": "POST /api/ai/scan/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/start",
+        "as": "admin",
+        "body": {
+          "feature": "faces"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "external: scan status after failure": {
+      "route": "GET /api/ai/scan/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/scan/status?feature=faces",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "state": {
+            "clusterProgress": 0,
+            "error": "face sidecar unavailable (scan start) — gave up after 0 s. Files not scanned yet stay queued for the next scan.",
+            "faceCount": 0,
+            "finishedAt": "<time:ms>",
+            "noiseFaces": 0,
+            "peopleCount": 0,
+            "phase": "A",
+            "running": false,
+            "scanned": 0,
+            "startedAt": "<time:ms>",
+            "total": 6,
+            "waitingForSidecar": false
+          },
+          "success": true
+        }
+      }
+    },
+    "external: recluster": {
+      "route": "POST /api/ai/faces/recluster",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/recluster",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "external: people untouched": {
+      "route": "GET /api/ai/people",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/people",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dir": "desc",
+          "people": [
+            {
+              "avg_quality": 0.94,
+              "cover_download_id": 1,
+              "cover_face_id": 1,
+              "cover_h": 90,
+              "cover_w": 90,
+              "cover_x": 100,
+              "cover_y": 80,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 1,
+              "label": "Alice",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.855,
+              "cover_download_id": 3,
+              "cover_face_id": 3,
+              "cover_h": 60,
+              "cover_w": 60,
+              "cover_x": 40,
+              "cover_y": 40,
+              "created_at": 1717286400000,
+              "face_count": 2,
+              "id": 2,
+              "label": "Bob",
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            },
+            {
+              "avg_quality": 0.79,
+              "cover_download_id": 14,
+              "cover_face_id": 5,
+              "cover_h": 70,
+              "cover_w": 70,
+              "cover_x": 200,
+              "cover_y": 60,
+              "created_at": 1717286400000,
+              "face_count": 1,
+              "id": 3,
+              "label": null,
+              "updated_at": 1717286400000,
+              "video_face_count": 0
+            }
+          ],
+          "scope": "local",
+          "sort": "face_count",
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "external: ws events for scan + recluster giving up": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "ai_people_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "error": "face sidecar unavailable (scan start) — gave up after 0 s. Files not scanned yet stay queued for the next scan.",
+          "kind": "aiPeople",
+          "type": "ai_people_done"
+        },
+        {
+          "type": "ai_people_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "error": "face sidecar unavailable (scan start) — gave up after 0 s. Files not scanned yet stay queued for the next scan.",
+          "kind": "aiPeople",
+          "type": "ai_people_done"
+        }
+      ],
+      "collapsed": [
+        "ai_people_progress"
+      ]
+    },
+    "external: install-deps": {
+      "route": "POST /api/ai/faces/install-deps",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/install-deps",
+        "as": "admin",
+        "body": {
+          "force": "cpu"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true
+        }
+      }
+    },
+    "external: faces restart": {
+      "route": "POST /api/ai/faces/restart",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/faces/restart",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "external: ws events around install-deps (+ restart marker)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "mode": "external",
+          "ok": true,
+          "type": "ai_faces_status",
+          "url": "http://faces.invalid:9"
+        },
+        {
+          "error": "sidecar at http://faces.invalid:9 is not reachable",
+          "mode": "external",
+          "ok": false,
+          "type": "ai_faces_status",
+          "url": "http://faces.invalid:9"
+        }
+      ]
+    },
+    "off: scan start → 503": {
+      "route": "POST /api/ai/scan/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/ai/scan/start",
+        "as": "admin",
+        "body": {
+          "feature": "faces"
+        }
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "AI_DISABLED",
+          "error": "AI subsystem disabled — enable it in Maintenance → AI first."
+        }
+      }
+    },
+    "off: ai status": {
+      "route": "GET /api/ai/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bgQueue": {
+            "backfill": 0,
+            "realtime": 0
+          },
+          "config": {
+            "enabled": false,
+            "faceClustering": true,
+            "faces": {
+              "detectorModel": "buffalo_l",
+              "pathMap": "",
+              "providers": "auto",
+              "scanVideos": false,
+              "sidecarTokenSet": false,
+              "sidecarUrl": "",
+              "sources": {
+                "pathMap": "config",
+                "token": "config",
+                "url": "config"
+              }
+            },
+            "facesDetector": "tiny",
+            "facesDetectorModel": "buffalo_l",
+            "facesEpsilon": 1.05,
+            "facesMinPoints": 2,
+            "federateFaces": false,
+            "fileTypes": [
+              "photo"
+            ]
+          },
+          "counts": {
+            "indexed": 6,
+            "noiseFaces": 2,
+            "peopleCount": 3,
+            "totalEligible": 12,
+            "totalFaces": 7,
+            "unindexed": 6,
+            "withEmbedding": 0,
+            "withFaces": 7,
+            "withTags": 0
+          },
+          "models": {
+            "faces": {
+              "bundled": true,
+              "dim": 512,
+              "dtype": "fp32",
+              "enabled": true,
+              "id": "insightface buffalo_l (Python sidecar)",
+              "loaded": true,
+              "mode": null,
+              "modeLabel": null,
+              "preset": "buffalo_l",
+              "providers": null,
+              "providersRequested": "auto",
+              "source": "bundled",
+              "version": "0.5.0"
+            }
+          },
+          "qualityBackfillPending": 0,
+          "scans": {
+            "faces": {
+              "clusterProgress": 0,
+              "error": null,
+              "faceCount": 0,
+              "finishedAt": null,
+              "noiseFaces": 0,
+              "peopleCount": 0,
+              "phase": "A",
+              "running": false,
+              "scanned": 0,
+              "startedAt": null,
+              "total": 0,
+              "waitingForSidecar": false
+            }
+          },
+          "success": true,
+          "trackers": {
+            "aiPeople": {
+              "attempts": 0,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": 0,
+              "kind": "aiPeople",
+              "progress": {},
+              "result": null,
+              "running": false,
+              "stage": "idle",
+              "startedAt": 0,
+              "successes": 0
+            },
+            "qualityBackfill": {
+              "attempts": 0,
+              "durationMs": "<durationMs:number>",
+              "error": null,
+              "failures": 0,
+              "finishedAt": 0,
+              "kind": "qualityBackfill",
+              "progress": {},
+              "result": null,
+              "running": false,
+              "stage": "idle",
+              "startedAt": 0,
+              "successes": 0
+            }
+          }
+        }
+      }
+    },
+    "off: doctor": {
+      "route": "GET /api/ai/doctor",
+      "request": {
+        "method": "GET",
+        "path": "/api/ai/doctor",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "checks": [
+            {
+              "detail": "disabled",
+              "id": "sidecar",
+              "label": "Python face sidecar",
+              "status": "info"
+            },
+            {
+              "detail": "no Python on PATH (using prebuilt binary)",
+              "id": "python",
+              "label": "Host Python",
+              "status": "info"
+            },
+            {
+              "detail": "not yet downloaded — `docker compose --profile faces up` or `pip install -e faces-service/` from the repo root, then restart",
+              "id": "binary",
+              "label": "Prebuilt sidecar binary",
+              "status": "info"
+            },
+            {
+              "detail": "unable to probe (sidecar offline)",
+              "id": "provider",
+              "label": "Inference provider",
+              "status": "warn"
+            },
+            {
+              "detail": "unable to probe (sidecar offline)",
+              "id": "model",
+              "label": "Model loaded",
+              "status": "warn"
+            },
+            {
+              "detail": "6/12 (50%) · with faces 7",
+              "id": "indexed",
+              "label": "Photos indexed",
+              "status": "ok"
+            }
+          ],
+          "richHealth": {
+            "detSize": null,
+            "dim": null,
+            "model": null,
+            "ok": false,
+            "platform": null,
+            "providersRequested": null,
+            "providersResolved": null,
+            "python": null,
+            "ready": false,
+            "version": null
+          },
+          "success": true
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

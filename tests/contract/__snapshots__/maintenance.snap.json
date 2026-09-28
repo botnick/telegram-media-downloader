@@ -1,0 +1,993 @@
+{
+  "entries": {
+    "guest POST db/integrity → 403": {
+      "route": "POST /api/maintenance/db/integrity",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/db/integrity",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest GET files/verify/status → 403": {
+      "route": "GET /api/maintenance/files/verify/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/files/verify/status",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "anon GET reindex/status → 401": {
+      "route": "GET /api/maintenance/reindex/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/reindex/status",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "anon POST db/vacuum → 401": {
+      "route": "POST /api/maintenance/db/vacuum",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/db/vacuum",
+        "as": "anon",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "db/integrity/status idle": {
+      "route": "GET /api/maintenance/db/integrity/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/db/integrity/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dbIntegrity",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "db/integrity: start": {
+      "route": "POST /api/maintenance/db/integrity",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/db/integrity",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "db/integrity: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "db_integrity_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "dbIntegrity",
+          "messages": [
+            "ok"
+          ],
+          "ok": true,
+          "type": "db_integrity_done"
+        }
+      ],
+      "collapsed": [
+        "db_integrity_progress"
+      ]
+    },
+    "db/integrity/status after run": {
+      "route": "GET /api/maintenance/db/integrity/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/db/integrity/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "dbIntegrity",
+          "progress": {},
+          "result": {
+            "messages": [
+              "ok"
+            ],
+            "ok": true
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "files/verify/stats before any run": {
+      "route": "GET /api/maintenance/files/verify/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/files/verify/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastRun": null
+        }
+      }
+    },
+    "files/verify/status idle": {
+      "route": "GET /api/maintenance/files/verify/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/files/verify/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "filesVerify",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "files/verify: start": {
+      "route": "POST /api/maintenance/files/verify",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/files/verify",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "files/verify: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "files_verify_progress",
+          "collapsed": true
+        },
+        {
+          "pruned": 1,
+          "scanned": 20,
+          "type": "integrity_swept"
+        },
+        {
+          "type": "files_verify_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "filesVerify",
+          "pruned": 1,
+          "scanned": 20,
+          "sizeFixed": 1,
+          "type": "files_verify_done"
+        }
+      ],
+      "collapsed": [
+        "files_verify_progress"
+      ]
+    },
+    "files/verify/status after run": {
+      "route": "GET /api/maintenance/files/verify/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/files/verify/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "filesVerify",
+          "progress": {
+            "processed": 20,
+            "pruned": 1,
+            "scanned": 20,
+            "sizeFixed": 1,
+            "stage": "done",
+            "total": 20
+          },
+          "result": {
+            "pruned": 1,
+            "scanned": 20,
+            "sizeFixed": 1
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "files/verify/stats after run": {
+      "route": "GET /api/maintenance/files/verify/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/files/verify/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastRun": {
+            "finishedAt": "<time:ms>",
+            "removed": 0,
+            "scanned": 20
+          }
+        }
+      },
+      "note": "lastRun.removed stays 0 although a row was pruned: the summary reads result.removed/dropped, the sweep returns `pruned`"
+    },
+    "Gamma Docs downloads after the sweep": {
+      "route": "GET /api/downloads/:groupId",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/-1001000000003",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".gz",
+              "fullPath": "Gamma Docs/documents/notes.txt.gz",
+              "id": 13,
+              "modified": "2024-03-04 10:00:00",
+              "name": "notes.txt.gz",
+              "path": "Gamma Docs/documents/notes.txt.gz",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 55,
+              "sizeFormatted": "55 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".zip",
+              "fullPath": "Gamma Docs/documents/bundle.zip",
+              "id": 12,
+              "modified": "2024-03-03 10:00:00",
+              "name": "bundle.zip",
+              "path": "Gamma Docs/documents/bundle.zip",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 246,
+              "sizeFormatted": "246 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".pdf",
+              "fullPath": "Gamma Docs/documents/report.pdf",
+              "id": 10,
+              "modified": "2024-03-01 10:00:00",
+              "name": "report.pdf",
+              "path": "Gamma Docs/documents/report.pdf",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 314,
+              "sizeFormatted": "314 B",
+              "type": "documents"
+            }
+          ],
+          "page": 1,
+          "total": 3,
+          "totalPages": 1
+        }
+      },
+      "note": "Gamma Docs after the sweep: notes.txt row gone"
+    },
+    "reindex/stats before any run": {
+      "route": "GET /api/maintenance/reindex/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/reindex/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastRun": null
+        }
+      }
+    },
+    "reindex/status idle": {
+      "route": "GET /api/maintenance/reindex/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/reindex/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "reindex",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "reindex (first): start": {
+      "route": "POST /api/maintenance/reindex",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/reindex",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": true,
+          "started": true
+        }
+      }
+    },
+    "reindex (first): ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "reindex_progress",
+          "collapsed": true
+        },
+        {
+          "added": 18,
+          "errors": 0,
+          "finishedAt": "<time:ms>",
+          "groups": 5,
+          "scanned": 18,
+          "skipped": 0,
+          "startedAt": "<time:ms>",
+          "type": "reindex_done"
+        },
+        {
+          "added": 18,
+          "durationMs": "<durationMs:number>",
+          "errors": 0,
+          "finishedAt": "<time:ms>",
+          "groups": 5,
+          "kind": "reindex",
+          "scanned": 18,
+          "skipped": 0,
+          "startedAt": "<time:ms>",
+          "type": "reindex_done"
+        }
+      ],
+      "collapsed": [
+        "reindex_progress"
+      ]
+    },
+    "reindex/status after first run": {
+      "route": "GET /api/maintenance/reindex/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/reindex/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "added": 18,
+          "attempts": 1,
+          "currentGroup": "<masked:string>",
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errors": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "groups": 5,
+          "kind": "reindex",
+          "processed": 5,
+          "progress": {
+            "added": 18,
+            "currentGroup": "<masked:string>",
+            "errors": 0,
+            "groups": 5,
+            "processed": 5,
+            "scanned": 18,
+            "skipped": 0,
+            "startedAt": "<time:ms>",
+            "total": 5
+          },
+          "result": {
+            "added": 18,
+            "errors": 0,
+            "finishedAt": "<time:ms>",
+            "groups": 5,
+            "scanned": 18,
+            "skipped": 0,
+            "startedAt": "<time:ms>"
+          },
+          "running": false,
+          "scanned": 18,
+          "skipped": 0,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 5
+        }
+      },
+      "masked": {
+        "currentGroup": "last folder processed; folder walk order is the filesystem readdir order (NTFS alphabetical, ext4 hash order)",
+        "progress.currentGroup": "last folder processed; folder walk order is the filesystem readdir order (NTFS alphabetical, ext4 hash order)"
+      }
+    },
+    "reindex/stats after first run": {
+      "route": "GET /api/maintenance/reindex/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/reindex/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastRun": {
+            "added": 18,
+            "finishedAt": "<time:ms>",
+            "scanned": 18
+          }
+        }
+      }
+    },
+    "reindex (second): start": {
+      "route": "POST /api/maintenance/reindex",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/reindex",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": true,
+          "started": true
+        }
+      }
+    },
+    "reindex (second): ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "reindex_progress",
+          "collapsed": true
+        },
+        {
+          "added": 0,
+          "errors": 0,
+          "finishedAt": "<time:ms>",
+          "groups": 5,
+          "scanned": 18,
+          "skipped": 18,
+          "startedAt": "<time:ms>",
+          "type": "reindex_done"
+        },
+        {
+          "added": 0,
+          "durationMs": "<durationMs:number>",
+          "errors": 0,
+          "finishedAt": "<time:ms>",
+          "groups": 5,
+          "kind": "reindex",
+          "scanned": 18,
+          "skipped": 18,
+          "startedAt": "<time:ms>",
+          "type": "reindex_done"
+        }
+      ],
+      "collapsed": [
+        "reindex_progress"
+      ]
+    },
+    "reindex/status after second run": {
+      "route": "GET /api/maintenance/reindex/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/reindex/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "added": 0,
+          "attempts": 2,
+          "currentGroup": "<masked:string>",
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errors": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "groups": 5,
+          "kind": "reindex",
+          "processed": 5,
+          "progress": {
+            "added": 0,
+            "currentGroup": "<masked:string>",
+            "errors": 0,
+            "groups": 5,
+            "processed": 5,
+            "scanned": 18,
+            "skipped": 18,
+            "startedAt": "<time:ms>",
+            "total": 5
+          },
+          "result": {
+            "added": 0,
+            "errors": 0,
+            "finishedAt": "<time:ms>",
+            "groups": 5,
+            "scanned": 18,
+            "skipped": 18,
+            "startedAt": "<time:ms>"
+          },
+          "running": false,
+          "scanned": 18,
+          "skipped": 18,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 2,
+          "total": 5
+        }
+      },
+      "masked": {
+        "currentGroup": "last folder processed; folder walk order is the filesystem readdir order (NTFS alphabetical, ext4 hash order)",
+        "progress.currentGroup": "last folder processed; folder walk order is the filesystem readdir order (NTFS alphabetical, ext4 hash order)"
+      }
+    },
+    "db/vacuum without confirm → 400": {
+      "route": "POST /api/maintenance/db/vacuum",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/db/vacuum",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "db/vacuum confirm:\"yes\" → 400": {
+      "route": "POST /api/maintenance/db/vacuum",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/db/vacuum",
+        "as": "admin",
+        "body": {
+          "confirm": "yes"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "db/vacuum/status idle": {
+      "route": "GET /api/maintenance/db/vacuum/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/db/vacuum/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dbVacuum",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "db/vacuum: start": {
+      "route": "POST /api/maintenance/db/vacuum",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/db/vacuum",
+        "as": "admin",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "db/vacuum: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "db_vacuum_progress",
+          "collapsed": true
+        },
+        {
+          "afterBytes": "<masked:number>",
+          "beforeBytes": "<masked:number>",
+          "durationMs": "<durationMs:number>",
+          "kind": "dbVacuum",
+          "reclaimedBytes": "<masked:number>",
+          "type": "db_vacuum_done"
+        }
+      ],
+      "masked": {
+        "beforeBytes": "SQLite page accounting: depends on the free-list/WAL state left by every earlier write (config JSON size, kv rows) — implementation detail; relation checked separately",
+        "afterBytes": "SQLite page accounting: depends on the free-list/WAL state left by every earlier write (config JSON size, kv rows) — implementation detail; relation checked separately",
+        "reclaimedBytes": "SQLite page accounting: depends on the free-list/WAL state left by every earlier write (config JSON size, kv rows) — implementation detail; relation checked separately"
+      },
+      "collapsed": [
+        "db_vacuum_progress"
+      ]
+    },
+    "db/vacuum/status after run": {
+      "route": "GET /api/maintenance/db/vacuum/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/db/vacuum/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "dbVacuum",
+          "progress": {},
+          "result": {
+            "afterBytes": "<masked:number>",
+            "beforeBytes": "<masked:number>",
+            "reclaimedBytes": "<masked:number>"
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      },
+      "masked": {
+        "result.beforeBytes": "SQLite page accounting: depends on the free-list/WAL state left by every earlier write (config JSON size, kv rows) — implementation detail; relation checked separately",
+        "result.afterBytes": "SQLite page accounting: depends on the free-list/WAL state left by every earlier write (config JSON size, kv rows) — implementation detail; relation checked separately",
+        "result.reclaimedBytes": "SQLite page accounting: depends on the free-list/WAL state left by every earlier write (config JSON size, kv rows) — implementation detail; relation checked separately"
+      }
+    },
+    "db/vacuum result relations": {
+      "route": "GET /api/maintenance/db/vacuum/status",
+      "derived": {
+        "allIntegers": true,
+        "afterNotLarger": true,
+        "reclaimedIsDifference": true,
+        "pageMultiple": true
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

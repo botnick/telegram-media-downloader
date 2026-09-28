@@ -1,0 +1,1928 @@
+{
+  "entries": {
+    "access list": {
+      "route": "GET /api/chats/access",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byState": {
+            "left": 1,
+            "migrated": 1,
+            "private": 1
+          },
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "id": "-1001000000003",
+              "name": "Gamma Docs",
+              "type": null
+            },
+            {
+              "access": {
+                "accounts": [
+                  {
+                    "at": 1717804800000,
+                    "code": "CHAT_MIGRATED",
+                    "id": "acc-1",
+                    "state": "migrated"
+                  }
+                ],
+                "checkedAt": 1717804800000,
+                "checks": 0,
+                "code": "CHAT_MIGRATED",
+                "detail": null,
+                "firstSeenAt": 1717804800000,
+                "migratedTo": "-1001000000098",
+                "nextCheckAt": 4102444800000,
+                "state": "migrated"
+              },
+              "enabled": true,
+              "id": "-1001000000004",
+              "name": "Delta Mixed",
+              "type": null
+            },
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1718841600000,
+                "checks": 0,
+                "code": "CHANNEL_PRIVATE",
+                "detail": null,
+                "firstSeenAt": 1718841600000,
+                "legacy": true,
+                "migratedTo": null,
+                "nextCheckAt": null,
+                "state": "private"
+              },
+              "enabled": false,
+              "id": "-1001000000006",
+              "name": "Zeta Suspended",
+              "type": null
+            }
+          ],
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "access countOnly": {
+      "route": "GET /api/chats/access",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access?countOnly=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byState": {
+            "left": 1,
+            "migrated": 1,
+            "private": 1
+          },
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "access guest → 403": {
+      "route": "GET /api/chats/access",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "access anon → 401": {
+      "route": "GET /api/chats/access",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "dialogs no account → 503": {
+      "route": "GET /api/dialogs",
+      "request": {
+        "method": "GET",
+        "path": "/api/dialogs",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "message": "No Telegram account configured"
+        }
+      }
+    },
+    "dialogs fresh=1 no account → 503": {
+      "route": "GET /api/dialogs",
+      "request": {
+        "method": "GET",
+        "path": "/api/dialogs?fresh=1",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "message": "No Telegram account configured"
+        }
+      }
+    },
+    "dialogs guest → 403": {
+      "route": "GET /api/dialogs",
+      "request": {
+        "method": "GET",
+        "path": "/api/dialogs",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "lookup without q → 400": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "q required"
+        }
+      }
+    },
+    "lookup blank q → 400": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=%20%20%20",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "q required"
+        }
+      }
+    },
+    "lookup plain name → kind name": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=Some%20Chat%20Name",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "chat": null,
+          "kind": "name"
+        }
+      }
+    },
+    "lookup t.me phone link → 422": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=https%3A%2F%2Ft.me%2F%2B123456789",
+        "as": "admin"
+      },
+      "status": 422,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Not a chat link",
+          "kind": "unsupported"
+        }
+      }
+    },
+    "lookup private link without id → 422": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=https%3A%2F%2Ft.me%2Fc%2Fabc%2F5",
+        "as": "admin"
+      },
+      "status": 422,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Private-channel link without a chat id",
+          "kind": "unsupported"
+        }
+      }
+    },
+    "lookup non-chat path → 422": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=https%3A%2F%2Ft.me%2Faddstickers%2FFoo",
+        "as": "admin"
+      },
+      "status": 422,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Not a chat link",
+          "kind": "unsupported"
+        }
+      }
+    },
+    "lookup @username → 503 no_account": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=%40some_channel",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "username",
+          "message": null
+        }
+      }
+    },
+    "lookup message link → 503 with message": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=https%3A%2F%2Ft.me%2Fsome_channel%2F42",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "message",
+          "message": {
+            "messageId": 42,
+            "topicId": null,
+            "url": "https://t.me/some_channel/42"
+          }
+        }
+      }
+    },
+    "lookup topic message link → 503 with topic": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=https%3A%2F%2Ft.me%2Fc%2F1234567890%2F10%2F77",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "message",
+          "message": {
+            "messageId": 77,
+            "topicId": 10,
+            "url": "https://t.me/c/1234567890/10/77"
+          }
+        }
+      }
+    },
+    "lookup invite link → 503": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=https%3A%2F%2Ft.me%2F%2BAbCdEfGhIjK",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "invite",
+          "message": null
+        }
+      }
+    },
+    "lookup joinchat link → 503": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=t.me%2Fjoinchat%2FAbCdEf",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "invite",
+          "message": null
+        }
+      }
+    },
+    "lookup -100 id → 503": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=-1001234567890",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "id",
+          "message": null
+        }
+      }
+    },
+    "lookup guest → 403": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=%40some_channel",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "recheck one blocked chat": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "id": "-1001000000003"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "access": {
+            "accounts": [],
+            "checkedAt": 1717718400000,
+            "checks": 1,
+            "code": "USER_NOT_PARTICIPANT",
+            "detail": "account left the chat",
+            "firstSeenAt": 1717718400000,
+            "migratedTo": null,
+            "nextCheckAt": 4102444800000,
+            "state": "left"
+          },
+          "accountId": null,
+          "id": "-1001000000003",
+          "inconclusive": true,
+          "results": [],
+          "state": "left",
+          "success": true
+        }
+      }
+    },
+    "recheck one unknown chat": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "id": "-1009999999999"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "access": {
+            "state": "ok"
+          },
+          "accountId": null,
+          "id": "-1009999999999",
+          "inconclusive": true,
+          "results": [],
+          "state": "ok",
+          "success": true
+        }
+      }
+    },
+    "recheck nothing to do": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": false,
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "recheck empty ids": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "ids": []
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": false,
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "recheck guest → 403": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "guest",
+        "body": {
+          "id": "-1001000000003"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "recheck status idle": {
+      "route": "GET /api/chats/access/recheck/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access/recheck/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "recheck bulk ids start": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000003",
+            "-1001000000004",
+            "-1001000000003"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "recheck bulk while running → 409": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "all": true
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "ALREADY_RUNNING",
+          "error": "A check is already running"
+        }
+      }
+    },
+    "ws bulk recheck": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "reachable": 0,
+            "total": 2
+          },
+          "reachable": 0,
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 2,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "reachable": 0,
+            "total": 2
+          },
+          "reachable": 0,
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 2,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "reachable": 0,
+            "total": 2
+          },
+          "reachable": 0,
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 2,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "chatAccessRecheck",
+          "reachable": 0,
+          "results": [
+            {
+              "id": "-1001000000003",
+              "inconclusive": true,
+              "state": "left"
+            },
+            {
+              "id": "-1001000000004",
+              "inconclusive": true,
+              "state": "migrated"
+            }
+          ],
+          "total": 2,
+          "type": "chat_access_recheck_done"
+        }
+      ]
+    },
+    "recheck status done": {
+      "route": "GET /api/chats/access/recheck/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access/recheck/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "chatAccessRecheck",
+          "progress": {
+            "processed": 2,
+            "reachable": 0,
+            "total": 2
+          },
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              }
+            ],
+            "total": 2
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "recheck all (every blocked configured chat)": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "all": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "ws recheck all": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "progress": {},
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              }
+            ],
+            "total": 2
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "reachable": 0,
+            "total": 3
+          },
+          "reachable": 0,
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              }
+            ],
+            "total": 2
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "reachable": 0,
+            "total": 3
+          },
+          "reachable": 0,
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              }
+            ],
+            "total": 2
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "reachable": 0,
+            "total": 3
+          },
+          "reachable": 0,
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              }
+            ],
+            "total": 2
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "chatAccessRecheck",
+          "processed": 3,
+          "progress": {
+            "processed": 3,
+            "reachable": 0,
+            "total": 3
+          },
+          "reachable": 0,
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              }
+            ],
+            "total": 2
+          },
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3,
+          "type": "chat_access_recheck_progress"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "chatAccessRecheck",
+          "reachable": 0,
+          "results": [
+            {
+              "id": "-1001000000003",
+              "inconclusive": true,
+              "state": "left"
+            },
+            {
+              "id": "-1001000000004",
+              "inconclusive": true,
+              "state": "migrated"
+            },
+            {
+              "id": "-1001000000006",
+              "inconclusive": true,
+              "state": "private"
+            }
+          ],
+          "total": 3,
+          "type": "chat_access_recheck_done"
+        }
+      ]
+    },
+    "recheck status after all": {
+      "route": "GET /api/chats/access/recheck/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access/recheck/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "chatAccessRecheck",
+          "progress": {
+            "processed": 3,
+            "reachable": 0,
+            "total": 3
+          },
+          "result": {
+            "reachable": 0,
+            "results": [
+              {
+                "id": "-1001000000003",
+                "inconclusive": true,
+                "state": "left"
+              },
+              {
+                "id": "-1001000000004",
+                "inconclusive": true,
+                "state": "migrated"
+              },
+              {
+                "id": "-1001000000006",
+                "inconclusive": true,
+                "state": "private"
+              }
+            ],
+            "total": 3
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 2
+        }
+      }
+    },
+    "stop without ids → 400": {
+      "route": "POST /api/chats/access/stop",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/stop",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "stop delta": {
+      "route": "POST /api/chats/access/stop",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/stop",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000004",
+            "-1009999999999"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "stopped": 1,
+          "success": true
+        }
+      }
+    },
+    "stop already disabled gamma": {
+      "route": "POST /api/chats/access/stop",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/stop",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000003"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "stopped": 0,
+          "success": true
+        }
+      }
+    },
+    "ws stop": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "config_updated"
+        }
+      ]
+    },
+    "remove without ids → 400": {
+      "route": "POST /api/chats/access/remove",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/remove",
+        "as": "admin",
+        "body": {
+          "ids": "nope"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "remove gamma": {
+      "route": "POST /api/chats/access/remove",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/remove",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000003"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "removed": 1,
+          "success": true
+        }
+      }
+    },
+    "ws remove": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "config_updated"
+        },
+        {
+          "ids": [
+            "-1001000000003"
+          ],
+          "type": "chat_access_changed"
+        }
+      ]
+    },
+    "remove unknown id": {
+      "route": "POST /api/chats/access/remove",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/remove",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1009999999999"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "removed": 0,
+          "success": true
+        }
+      }
+    },
+    "access list after stop + remove": {
+      "route": "GET /api/chats/access",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/access",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byState": {
+            "migrated": 1,
+            "private": 1
+          },
+          "items": [
+            {
+              "access": {
+                "accounts": [
+                  {
+                    "at": 1717804800000,
+                    "code": "CHAT_MIGRATED",
+                    "id": "acc-1",
+                    "state": "migrated"
+                  }
+                ],
+                "checkedAt": 1717804800000,
+                "checks": 0,
+                "code": "CHAT_MIGRATED",
+                "detail": null,
+                "firstSeenAt": 1717804800000,
+                "migratedTo": "-1001000000098",
+                "nextCheckAt": 4102444800000,
+                "state": "migrated"
+              },
+              "enabled": false,
+              "id": "-1001000000004",
+              "name": "Delta Mixed",
+              "type": null
+            },
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1718841600000,
+                "checks": 0,
+                "code": "CHANNEL_PRIVATE",
+                "detail": null,
+                "firstSeenAt": 1718841600000,
+                "legacy": true,
+                "migratedTo": null,
+                "nextCheckAt": null,
+                "state": "private"
+              },
+              "enabled": false,
+              "id": "-1001000000006",
+              "name": "Zeta Suspended",
+              "type": null
+            }
+          ],
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "follow-migration unknown chat → 404": {
+      "route": "POST /api/chats/:id/follow-migration",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/-1009999999999/follow-migration",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Chat not in the list"
+        }
+      }
+    },
+    "follow-migration not migrated → 409": {
+      "route": "POST /api/chats/:id/follow-migration",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/-1001000000006/follow-migration",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NOT_MIGRATED",
+          "error": "This chat was not moved to a new group"
+        }
+      }
+    },
+    "follow-migration delta": {
+      "route": "POST /api/chats/:id/follow-migration",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/-1001000000004/follow-migration",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "added": true,
+          "group": {
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000098,
+            "name": "Delta Mixed",
+            "rescueMode": "on"
+          },
+          "previous": {
+            "enabled": false,
+            "id": "-1001000000004"
+          },
+          "success": true
+        }
+      }
+    },
+    "ws follow-migration": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "config_updated"
+        }
+      ]
+    },
+    "follow-migration delta again (target exists)": {
+      "route": "POST /api/chats/:id/follow-migration",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/-1001000000004/follow-migration",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "added": false,
+          "group": {
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000098,
+            "name": "Delta Mixed",
+            "rescueMode": "on"
+          },
+          "previous": {
+            "enabled": false,
+            "id": "-1001000000004"
+          },
+          "success": true
+        }
+      }
+    },
+    "follow-migration guest → 403": {
+      "route": "POST /api/chats/:id/follow-migration",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/-1001000000004/follow-migration",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "groups after migration": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "accounts": [
+                {
+                  "at": 1717804800000,
+                  "code": "CHAT_MIGRATED",
+                  "id": "acc-1",
+                  "state": "migrated"
+                }
+              ],
+              "checkedAt": 1717804800000,
+              "checks": 0,
+              "code": "CHAT_MIGRATED",
+              "detail": null,
+              "firstSeenAt": 1717804800000,
+              "migratedTo": "-1001000000098",
+              "nextCheckAt": 4102444800000,
+              "state": "migrated"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "rescueMode": "on",
+            "type": null
+          },
+          {
+            "_resolveFailedAt": 1718841600000,
+            "_resolveFailedReason": "resolve:CHANNEL_PRIVATE",
+            "access": {
+              "accounts": [],
+              "checkedAt": 1718841600000,
+              "checks": 0,
+              "code": "CHANNEL_PRIVATE",
+              "detail": null,
+              "firstSeenAt": 1718841600000,
+              "legacy": true,
+              "migratedTo": null,
+              "nextCheckAt": null,
+              "state": "private"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000006",
+            "name": "Zeta Suspended",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "suspended": true,
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000098,
+            "name": "Delta Mixed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "rescueMode": "on",
+            "type": null
+          }
+        ]
+      }
+    },
+    "dialogs session file, no creds → 503 not_connected": {
+      "route": "GET /api/dialogs",
+      "request": {
+        "method": "GET",
+        "path": "/api/dialogs",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "not_connected",
+          "message": "Telegram client not connected"
+        }
+      }
+    },
+    "lookup session file, no creds → 503": {
+      "route": "GET /api/chats/lookup",
+      "request": {
+        "method": "GET",
+        "path": "/api/chats/lookup?q=%40some_channel",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "no_account",
+          "kind": "username",
+          "message": null
+        }
+      }
+    },
+    "recheck one with session file, no creds": {
+      "route": "POST /api/chats/access/recheck",
+      "request": {
+        "method": "POST",
+        "path": "/api/chats/access/recheck",
+        "as": "admin",
+        "body": {
+          "id": "-1001000000003"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "access": {
+            "accounts": [],
+            "checkedAt": 1717718400000,
+            "checks": 1,
+            "code": "USER_NOT_PARTICIPANT",
+            "detail": "account left the chat",
+            "firstSeenAt": 1717718400000,
+            "migratedTo": null,
+            "nextCheckAt": 4102444800000,
+            "state": "left"
+          },
+          "accountId": null,
+          "id": "-1001000000003",
+          "inconclusive": true,
+          "results": [],
+          "state": "left",
+          "success": true
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

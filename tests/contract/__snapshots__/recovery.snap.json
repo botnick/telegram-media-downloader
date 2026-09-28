@@ -1,0 +1,1202 @@
+{
+  "entries": {
+    "guest GET recovery/list → 403": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "anon POST recovery/disable → 401": {
+      "route": "POST /api/maintenance/recovery/disable",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/disable",
+        "as": "anon",
+        "body": {
+          "ids": [
+            "-1001000000009"
+          ]
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "recovery/list": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "fileCount": 4,
+              "id": "-1001000000003",
+              "isSynthetic": false,
+              "lastSeenAt": "2024-03-04 10:00:00",
+              "monitorAccount": null,
+              "name": "Gamma Docs",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1717718400000,
+              "resolveFailedReason": "access:left:USER_NOT_PARTICIPANT"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 1,
+              "id": "unknown:Lost Folder",
+              "isSynthetic": true,
+              "lastSeenAt": "2024-07-03 10:00:00",
+              "monitorAccount": null,
+              "name": "Lost Folder",
+              "recoveryIgnored": false,
+              "resolveFailedAt": null,
+              "resolveFailedReason": "index_miss"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 0,
+              "id": "-1001000000009",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": "acc-old",
+              "name": "Zeta Broken",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719792000000,
+              "resolveFailedReason": "CHANNEL_PRIVATE"
+            }
+          ],
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "recovery/list showIgnored=1": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list?showIgnored=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "fileCount": 4,
+              "id": "-1001000000003",
+              "isSynthetic": false,
+              "lastSeenAt": "2024-03-04 10:00:00",
+              "monitorAccount": null,
+              "name": "Gamma Docs",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1717718400000,
+              "resolveFailedReason": "access:left:USER_NOT_PARTICIPANT"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 1,
+              "id": "unknown:Lost Folder",
+              "isSynthetic": true,
+              "lastSeenAt": "2024-07-03 10:00:00",
+              "monitorAccount": null,
+              "name": "Lost Folder",
+              "recoveryIgnored": false,
+              "resolveFailedAt": null,
+              "resolveFailedReason": "index_miss"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 0,
+              "id": "-1001000000009",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": "acc-old",
+              "name": "Zeta Broken",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719792000000,
+              "resolveFailedReason": "CHANNEL_PRIVATE"
+            },
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 0,
+              "id": "-1001000000010",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": null,
+              "name": "Eta Ignored",
+              "recoveryIgnored": true,
+              "resolveFailedAt": 1719878400000,
+              "resolveFailedReason": "USERNAME_NOT_OCCUPIED"
+            }
+          ],
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "recovery/list countOnly=1": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list?countOnly=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "recovery/list countOnly=1 showIgnored=1": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list?countOnly=1&showIgnored=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "recovery/status idle": {
+      "route": "GET /api/maintenance/recovery/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "recoveryBulk",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "recovery/resolve without ids → 400": {
+      "route": "POST /api/maintenance/recovery/resolve",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/resolve",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/disable without ids → 400": {
+      "route": "POST /api/maintenance/recovery/disable",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/disable",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/delete without ids → 400": {
+      "route": "POST /api/maintenance/recovery/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/delete",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/reassign without ids → 400": {
+      "route": "POST /api/maintenance/recovery/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/reassign",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/ignore without ids → 400": {
+      "route": "POST /api/maintenance/recovery/ignore",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/ignore",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/unignore without ids → 400": {
+      "route": "POST /api/maintenance/recovery/unignore",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/unignore",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/disable ids not an array → 400": {
+      "route": "POST /api/maintenance/recovery/disable",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/disable",
+        "as": "admin",
+        "body": {
+          "ids": "-1001000000009"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids[] required"
+        }
+      }
+    },
+    "recovery/reassign without monitorAccount → 400": {
+      "route": "POST /api/maintenance/recovery/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/reassign",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000009"
+          ]
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "monitorAccount required"
+        }
+      }
+    },
+    "recovery/resolve": {
+      "route": "POST /api/maintenance/recovery/resolve",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/resolve",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "unknown:Lost Folder",
+            "-1001000000009",
+            "no-such-group"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "recovery/resolve: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "recovery_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "recoveryBulk",
+          "note": "monitor not running",
+          "op": "resolve",
+          "resolved": 0,
+          "results": [],
+          "type": "recovery_bulk_done"
+        }
+      ],
+      "collapsed": [
+        "recovery_bulk_progress"
+      ]
+    },
+    "recovery/status after resolve": {
+      "route": "GET /api/maintenance/recovery/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "recoveryBulk",
+          "progress": {},
+          "result": {
+            "note": "monitor not running",
+            "op": "resolve",
+            "resolved": 0,
+            "results": []
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "recovery/disable": {
+      "route": "POST /api/maintenance/recovery/disable",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/disable",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "unknown:Lost Folder",
+            "no-such-group"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "disabled": 1,
+          "success": true
+        }
+      }
+    },
+    "recovery/disable unknown only": {
+      "route": "POST /api/maintenance/recovery/disable",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/disable",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "no-such-group"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "disabled": 0,
+          "success": true
+        }
+      }
+    },
+    "recovery/list after disable": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "fileCount": 4,
+              "id": "-1001000000003",
+              "isSynthetic": false,
+              "lastSeenAt": "2024-03-04 10:00:00",
+              "monitorAccount": null,
+              "name": "Gamma Docs",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1717718400000,
+              "resolveFailedReason": "access:left:USER_NOT_PARTICIPANT"
+            },
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 1,
+              "id": "unknown:Lost Folder",
+              "isSynthetic": true,
+              "lastSeenAt": "2024-07-03 10:00:00",
+              "monitorAccount": null,
+              "name": "Lost Folder",
+              "recoveryIgnored": false,
+              "resolveFailedAt": null,
+              "resolveFailedReason": "index_miss"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 0,
+              "id": "-1001000000009",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": "acc-old",
+              "name": "Zeta Broken",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719792000000,
+              "resolveFailedReason": "CHANNEL_PRIVATE"
+            }
+          ],
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "recovery/ignore": {
+      "route": "POST /api/maintenance/recovery/ignore",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/ignore",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "unknown:Lost Folder"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ignored": 1,
+          "success": true
+        }
+      }
+    },
+    "recovery/list after ignore": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "fileCount": 4,
+              "id": "-1001000000003",
+              "isSynthetic": false,
+              "lastSeenAt": "2024-03-04 10:00:00",
+              "monitorAccount": null,
+              "name": "Gamma Docs",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1717718400000,
+              "resolveFailedReason": "access:left:USER_NOT_PARTICIPANT"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 0,
+              "id": "-1001000000009",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": "acc-old",
+              "name": "Zeta Broken",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719792000000,
+              "resolveFailedReason": "CHANNEL_PRIVATE"
+            }
+          ],
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "recovery/unignore": {
+      "route": "POST /api/maintenance/recovery/unignore",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/unignore",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "unknown:Lost Folder",
+            "-1001000000010"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true,
+          "unignored": 2
+        }
+      }
+    },
+    "recovery/list after unignore": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "fileCount": 4,
+              "id": "-1001000000003",
+              "isSynthetic": false,
+              "lastSeenAt": "2024-03-04 10:00:00",
+              "monitorAccount": null,
+              "name": "Gamma Docs",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1717718400000,
+              "resolveFailedReason": "access:left:USER_NOT_PARTICIPANT"
+            },
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 1,
+              "id": "unknown:Lost Folder",
+              "isSynthetic": true,
+              "lastSeenAt": "2024-07-03 10:00:00",
+              "monitorAccount": null,
+              "name": "Lost Folder",
+              "recoveryIgnored": false,
+              "resolveFailedAt": null,
+              "resolveFailedReason": "index_miss"
+            },
+            {
+              "access": null,
+              "enabled": true,
+              "fileCount": 0,
+              "id": "-1001000000009",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": "acc-old",
+              "name": "Zeta Broken",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719792000000,
+              "resolveFailedReason": "CHANNEL_PRIVATE"
+            },
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 0,
+              "id": "-1001000000010",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": null,
+              "name": "Eta Ignored",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719878400000,
+              "resolveFailedReason": "USERNAME_NOT_OCCUPIED"
+            }
+          ],
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "recovery/reassign": {
+      "route": "POST /api/maintenance/recovery/reassign",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/reassign",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000009"
+          ],
+          "monitorAccount": 42
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "monitorAccount": 42,
+          "reassigned": 1,
+          "success": true
+        }
+      }
+    },
+    "recovery/list after reassign": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": {
+                "accounts": [],
+                "checkedAt": 1717718400000,
+                "checks": 1,
+                "code": "USER_NOT_PARTICIPANT",
+                "detail": "account left the chat",
+                "firstSeenAt": 1717718400000,
+                "migratedTo": null,
+                "nextCheckAt": 4102444800000,
+                "state": "left"
+              },
+              "enabled": false,
+              "fileCount": 4,
+              "id": "-1001000000003",
+              "isSynthetic": false,
+              "lastSeenAt": "2024-03-04 10:00:00",
+              "monitorAccount": null,
+              "name": "Gamma Docs",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1717718400000,
+              "resolveFailedReason": "access:left:USER_NOT_PARTICIPANT"
+            },
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 1,
+              "id": "unknown:Lost Folder",
+              "isSynthetic": true,
+              "lastSeenAt": "2024-07-03 10:00:00",
+              "monitorAccount": null,
+              "name": "Lost Folder",
+              "recoveryIgnored": false,
+              "resolveFailedAt": null,
+              "resolveFailedReason": "index_miss"
+            },
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 0,
+              "id": "-1001000000010",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": null,
+              "name": "Eta Ignored",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719878400000,
+              "resolveFailedReason": "USERNAME_NOT_OCCUPIED"
+            }
+          ],
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "recovery/delete with purgeDownloads": {
+      "route": "POST /api/maintenance/recovery/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "unknown:Lost Folder"
+          ],
+          "purgeDownloads": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "purgeDownloads": true,
+          "removed": 1,
+          "success": true,
+          "totalFiles": 0,
+          "totalRows": 1
+        }
+      }
+    },
+    "recovery/delete again (already gone)": {
+      "route": "POST /api/maintenance/recovery/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "unknown:Lost Folder"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "purgeDownloads": false,
+          "removed": 0,
+          "success": true,
+          "totalFiles": 0,
+          "totalRows": 0
+        }
+      }
+    },
+    "recovery/delete paused chat (no purge)": {
+      "route": "POST /api/maintenance/recovery/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/recovery/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "-1001000000003"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "purgeDownloads": false,
+          "removed": 1,
+          "success": true,
+          "totalFiles": 0,
+          "totalRows": 0
+        }
+      }
+    },
+    "recovery/delete paused chat: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "ids": [
+            "-1001000000003"
+          ],
+          "type": "chat_access_changed"
+        }
+      ]
+    },
+    "recovery/list after deletes": {
+      "route": "GET /api/maintenance/recovery/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/recovery/list?showIgnored=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "items": [
+            {
+              "access": null,
+              "enabled": false,
+              "fileCount": 0,
+              "id": "-1001000000010",
+              "isSynthetic": false,
+              "lastSeenAt": null,
+              "monitorAccount": null,
+              "name": "Eta Ignored",
+              "recoveryIgnored": false,
+              "resolveFailedAt": 1719878400000,
+              "resolveFailedReason": "USERNAME_NOT_OCCUPIED"
+            }
+          ],
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "Gamma rows are kept without purgeDownloads": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000003/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {
+            "document": 4
+          },
+          "firstMessageId": 110,
+          "lastDownloadAt": "2024-03-04 10:00:00",
+          "lastMessageId": 113,
+          "success": true,
+          "totalBytes": 653,
+          "totalFiles": 4
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
