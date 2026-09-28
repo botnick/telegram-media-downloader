@@ -61,7 +61,6 @@ export async function installPwa() {
         const msg = isIos
             ? 'Tap the Share button ⎋ then "Add to Home Screen"'
             : 'Use your browser menu to install this app';
-        const toastEl = document.querySelector('.toast-container') || document.body;
         if (typeof window.showToast === 'function') {
             window.showToast(msg, 'info');
         } else {

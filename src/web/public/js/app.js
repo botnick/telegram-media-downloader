@@ -5,15 +5,8 @@
 
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
-import { createAvatar, escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
-import {
-    getThumbUrl,
-    getMediaUrl,
-    getDownloadUrl,
-    isPeerRow,
-    initFileToken,
-    fileTokenQuery,
-} from './media-url.js';
+import { escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
+import { getThumbUrl, isPeerRow, initFileToken, fileTokenQuery } from './media-url.js';
 import * as Settings from './settings.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
@@ -1654,6 +1647,12 @@ async function initGalleryScope() {
             };
             document.addEventListener('click', onDocClick);
         }, 0);
+    });
+    chip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            chip.click();
+        }
     });
 }
 
@@ -3853,6 +3852,16 @@ function setupMediaTabs() {
                 renderMediaGrid();
             }
         });
+        // Keyboard activation for the pinned chip (role="button" on a div).
+        // The gallery-scope chip wires its own in initGalleryScope().
+        if (tab.dataset.pinnedToggle !== undefined) {
+            tab.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    tab.click();
+                }
+            });
+        }
     });
 }
 
@@ -4165,7 +4174,6 @@ function setupFab() {
     };
     applyVisibility(getMonitorStatusLatest());
     subscribeMonitorStatus(applyVisibility);
-
 
     // Action catalogue keyed by id so the per-hint policy below can pick
     // and order without duplicating definitions.

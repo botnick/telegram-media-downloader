@@ -948,6 +948,20 @@ export async function preloadClassifier(cfg, onProgress, onLog) {
 }
 
 /**
+ * Awaitable counterpart to preloadClassifier() for
+ * `scripts/pre-download-models.js`: loads the configured classifier —
+ * downloading it into the cache dir on a cold cache — and resolves once
+ * it's ready. Throws on failure instead of recording it in _loadState.
+ */
+export async function downloadClassifier(cfg, onProgress, onLog) {
+    await _loadClassifier(cfg, onProgress, onLog);
+    return {
+        model: cfg.model || NSFW_DEFAULTS.model,
+        cacheDir: _resolveCacheDirAbs(cfg.cacheDir),
+    };
+}
+
+/**
  * Wipe the on-disk model cache + drop any in-process pipeline so the next
  * load re-downloads a clean copy. Returns the bytes freed so the UI can
  * show a confirmation toast.

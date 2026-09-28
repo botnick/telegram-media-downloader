@@ -281,10 +281,11 @@
                                 was suggesting saved emails because the field defaulted to
                                 type=text inside a focusable input. Belt-and-braces because no
                                 single attribute covers every vendor:
-                                  - `type="search"` signals search semantics, not a username.
-                                  - `autocomplete="off"` is the basic switch.
+                                  - `type="search"` signals search semantics, not a username
+                                    (it already maps to the `searchbox` role for AT).
+                                  - `autocomplete="nope"` — an unknown token Chrome can't map to
+                                    a saved field; it ignores plain `off` on credential-like inputs.
                                   - `name="filter"` avoids Chrome's email/username heuristic.
-                                  - `role="searchbox"` reinforces the semantic for AT + browsers.
                                   - `data-form-type="other"` mutes Bitwarden's "is-this-a-login"
                                     detector; `data-lpignore`, `data-1p-ignore`, `data-bwignore`
                                     cover LastPass / 1Password / Bitwarden variants explicitly.
@@ -293,9 +294,8 @@
                             <input type="text" name="prevent_autofill" autocomplete="username"
                                 tabindex="-1" aria-hidden="true"
                                 style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none">
-                            <input type="search" id="sidebar-groups-search" name="filter"
-                                role="searchbox"
-                                autocomplete="nope"
+                            <!-- biome-ignore lint/a11y/useValidAutocomplete: deliberate autofill defence, see comment above -->
+                            <input type="search" id="sidebar-groups-search" name="filter" autocomplete="nope"
                                 spellcheck="false"
                                 data-form-type="other"
                                 data-lpignore="true"
@@ -610,7 +610,7 @@
                         <h1 id="page-title" class="font-medium text-tg-text truncate text-sm sm:text-base" data-i18n="nav.viewer">Viewer</h1>
                         <p id="page-subtitle" class="text-xs text-tg-textSecondary truncate hidden sm:block" data-i18n="nav.viewer_sub">View downloaded files</p>
                     </div>
-                    <span id="role-pill" class="role-pill hidden shrink-0" aria-label="Account role"></span>
+                    <span id="role-pill" class="role-pill hidden shrink-0" title="Account role"></span>
                 </div>
 
                 <div class="flex items-center gap-0.5 sm:gap-1 shrink-0">
@@ -765,7 +765,7 @@
                      instead of replacing it). -->
                 <div class="tab-item tab-item--toggle" data-pinned-toggle
                      data-i18n-title="favorites.filter_title" title="Show only pinned"
-                     role="button" aria-pressed="false">
+                     role="button" tabindex="0" aria-pressed="false">
                     <i class="ri-pushpin-2-line mr-1" aria-hidden="true"></i><span data-i18n="favorites.filter">Pinned</span>
                 </div>
                 <!-- Gallery scope chip — federated gallery toggle (Layer 1).
@@ -773,7 +773,7 @@
                      cluster has at least one paired peer. The popover menu
                      is rendered into #gallery-scope-menu lazily on click. -->
                 <div id="gallery-scope-chip" class="tab-item tab-item--toggle hidden ml-auto"
-                     data-admin-only role="button" aria-haspopup="menu" aria-expanded="false"
+                     data-admin-only role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false"
                      data-i18n-title="gallery.scope.label" title="Scope">
                     <i class="ri-broadcast-line mr-1" aria-hidden="true"></i>
                     <span id="gallery-scope-label" data-i18n="gallery.scope.this_peer">This peer</span>
@@ -895,8 +895,9 @@
                             <input type="text" name="prevent_autofill_2" autocomplete="username"
                                 tabindex="-1" aria-hidden="true"
                                 style="position:absolute;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none">
-                            <input type="search" id="groups-search" name="filter" role="searchbox"
-                                autocomplete="nope" spellcheck="false"
+                            <!-- biome-ignore lint/a11y/useValidAutocomplete: deliberate autofill defence, see #sidebar-groups-search -->
+                            <input type="search" id="groups-search" name="filter" autocomplete="nope"
+                                spellcheck="false"
                                 data-form-type="other"
                                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
                                 class="w-full bg-tg-panel border border-tg-border rounded-lg pl-10 pr-4 py-2 text-tg-text focus:ring-1 focus:ring-tg-blue focus:border-tg-blue outline-none"
@@ -3512,7 +3513,7 @@
                     </section>
 
                     <!-- People — face clusters grid -->
-                    <section id="ai-pane-people" class="bg-tg-panel rounded-xl p-4 mb-3" role="region" aria-label="Face clusters">
+                    <section id="ai-pane-people" class="bg-tg-panel rounded-xl p-4 mb-3" aria-label="Face clusters">
 
                         <!-- Header row -->
                         <div class="flex items-center justify-between mb-4">
@@ -4574,7 +4575,7 @@
                          from the same WebP sprite used by hover previews.
                          Clicking a cell seeks to that timestamp.
                          JS: _renderFilmstrip() in viewer.js. -->
-                    <div id="video-filmstrip" class="hidden" aria-label="Timeline thumbnails">
+                    <div id="video-filmstrip" class="hidden" role="group" aria-label="Timeline thumbnails">
                         <div class="filmstrip-time-float" id="filmstrip-time-float"></div>
                         <div class="filmstrip-wrap">
                             <button id="filmstrip-prev" type="button" class="filmstrip-arrow" aria-label="Scroll left" tabindex="-1">

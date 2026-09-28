@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Security
+- **Guest sessions could reach admin-only `/files/?peer=` fetches.** `GET /api/files/token` is on the guest allowlist, and any valid file token made `/files/` treat the request as admin, bypassing the guest block on federated peer files. File tokens now carry the minting session's role in their HMAC, and `/files/` applies that role. Tokens issued before the upgrade stop verifying; the SPA falls back to cookie auth and refreshes its token on its normal schedule.
+- **Sidecar URL probes** (`POST /api/maintenance/nsfw/sidecar-test`, `POST /api/ai/faces/health-test`) now parse the admin-supplied URL with `URL`, reject embedded credentials and inputs over 2048 chars, and trim trailing slashes without the quadratic `/\/+$/` regex.
+- **LIKE patterns didn't escape `\`.** Folder-rename path rewrites and file search escaped `%` / `_` but not the escape character itself, so a folder name containing `\` could match — and rewrite — another folder's `file_path` rows.
+
+### Fixed
+- **`npm run pre-download-models` failed with `Cannot find module`** ([#64](https://github.com/botnick/telegram-media-downloader/issues/64)). `scripts/pre-download-models.js` was referenced since v2.15 but never committed. It now exists and seeds the NSFW model cache with the configured model + precision (no-op when an NSFW sidecar is configured). The Docker build no longer runs it: `/app/data` is hidden by the `./data` bind-mount at runtime, so a build-time download never reached the running container. See [DEPLOY.md](docs/DEPLOY.md#split-disk-setup) for offline seeding.
+- **NSFW "Precision" setting was ignored.** Scans and preloads always loaded the `q8` variant because the server dropped `advanced.nsfw.dtype` when building the scan config.
+
 ## [2.24.5] — 2026-05-31
 
 Hardening follow-up to v2.24.4 — connection-leak + revoked-session fixes from an adversarial audit of the reconnect/self-heal code.

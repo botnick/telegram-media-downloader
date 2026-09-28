@@ -286,6 +286,15 @@ Store `db.sqlite`, sessions, logs, and backups on a fast SSD while large media f
 | `downloads/` | HDD | Large sequential writes, rarely random |
 | `models/` (NSFW / faces) | Either | Read-once then cached |
 
+The NSFW classifier model (~85 MB at the default `q8` precision) is downloaded lazily on the first NSFW scan. For offline or firewalled deployments, seed `models/` once while online:
+
+```bash
+npm run pre-download-models                                                        # bare metal
+docker compose exec -u node telegram-downloader npm run pre-download-models        # Docker
+```
+
+It fetches the model and precision configured under **Maintenance → NSFW review** and is a no-op when an external NSFW sidecar is configured.
+
 **Docker (two bind-mounts):**
 
 ```yaml

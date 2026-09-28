@@ -165,19 +165,11 @@ export async function migrateFolders(downloadPath) {
                 db.prepare(`
                     UPDATE downloads SET file_path = ? || substr(file_path, ?)
                      WHERE file_path LIKE ? ESCAPE '\\'
-                `).run(
-                    newPosix,
-                    oldPosix.length + 1,
-                    oldPosix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%',
-                );
+                `).run(newPosix, oldPosix.length + 1, oldPosix.replace(/[\\%_]/g, '\\$&') + '%');
                 db.prepare(`
                     UPDATE downloads SET file_path = ? || substr(file_path, ?)
                      WHERE file_path LIKE ? ESCAPE '\\'
-                `).run(
-                    newPrefix,
-                    oldPrefix.length + 1,
-                    oldPrefix.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%',
-                );
+                `).run(newPrefix, oldPrefix.length + 1, oldPrefix.replace(/[\\%_]/g, '\\$&') + '%');
             } catch {
                 /* DB update is best-effort */
             }
