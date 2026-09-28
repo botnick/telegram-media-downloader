@@ -2783,6 +2783,10 @@ app.post('/api/history', async (req, res) => {
                 if (_activeBackfillsByGroup.get(groupKey) === jobId) {
                     _activeBackfillsByGroup.delete(groupKey);
                 }
+                // Same grace-window eviction as the success path — failed
+                // jobs are persisted above, so keeping them in memory
+                // forever only grew the map (and GET /api/history).
+                setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
             });
 
         log({
@@ -11916,6 +11920,10 @@ async function _spawnInternalBackfill({
             saveHistoryJobsToStore();
             if (_activeBackfillsByGroup.get(groupKey) === jobId)
                 _activeBackfillsByGroup.delete(groupKey);
+            // Evict like the success path; a group that fails its catch-up
+            // on every boot / gap check otherwise accumulated one entry per
+            // attempt for the life of the process.
+            setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
         });
     return jobId;
 }
