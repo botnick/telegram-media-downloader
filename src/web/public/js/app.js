@@ -118,6 +118,23 @@ function loadBackfillModule() {
     return _backfillModule;
 }
 
+// The one-step backfill sheet for a chat (Group Settings, empty chat
+// gallery, chat header). `limit` preselects a preset (0 = all history).
+function openBackfillFor(groupId, limit) {
+    if (!groupId) return;
+    loadBackfillModule()
+        .then((m) => m.openBackfillSheet(groupId, limit == null ? {} : { limit }))
+        .catch((e) => console.error('backfill sheet', e));
+}
+
+// Chat-only header actions (Backfill this chat) follow the open view.
+function _syncChatHeaderActions() {
+    document.body.classList.toggle(
+        'in-chat',
+        state.currentPage === 'viewer' && !!state.currentGroupId,
+    );
+}
+
 // ============ Render coalescing ============
 //
 // WebSocket events arrive in bursts — a single backfill run can fire
@@ -242,6 +259,10 @@ async function init() {
     window.closeSidebar = closeSidebar;
     window.confirmDeleteFile = confirmDeleteFile;
     window.toggleFwdEnabled = toggleFwdEnabled;
+    window.openBackfillSheet = openBackfillFor;
+    document
+        .getElementById('backfill-chat-btn')
+        ?.addEventListener('click', () => openBackfillFor(state.currentGroupId));
     // Mini-player public surface — viewer.js can opt into the dock-on-
     // close behaviour by calling `window.tgdlShrinkToMini()` from the
     // modal close path. Kept on `window` (instead of imported) so the
@@ -774,6 +795,7 @@ function renderPage(page, params = {}) {
     }
     state.currentPage = page;
     document.body.dataset.page = page;
+    _syncChatHeaderActions();
     state.currentRouteParams = params;
 
     // Allow callers to override the highlighted nav slot independent of the
@@ -1523,6 +1545,7 @@ function openGroup(groupId, groupName) {
     // chat they're inside. Falls back to a coloured initial when there's
     // no profile photo cached yet.
     updateHeaderAvatar(groupId, state.currentGroup);
+    _syncChatHeaderActions();
     navigateTo('viewer');
     loadGroupFiles(groupId);
 }
@@ -1745,6 +1768,7 @@ function showAllMedia(opts) {
     // foreign-group click. Without this, "All Media" after viewing a
     // peer-owned group would still be filtered to that peer.
     state.viewerPeerScope = null;
+    _syncChatHeaderActions();
     const reuse = !force && wasAllMedia && _galleryLoadedFor(_galleryViewKey());
     if (!reuse) {
         state.page = 1;
@@ -2603,7 +2627,7 @@ function renderGalleryEmptyState() {
                 {
                     label: i18nT('viewer.empty.action.backfill', 'Run Backfill'),
                     icon: 'ri-history-line',
-                    onClick: () => window.navigateTo?.('backfill'),
+                    onClick: () => openBackfillFor(groupId),
                 },
                 {
                     label: i18nT('viewer.empty.action.group_settings', 'Group Settings'),
@@ -3514,22 +3538,19 @@ async function openGroupSettings(groupId, groupName) {
             .join('');
     }
 
-    // Wire history backfill quick-shortcut buttons. Clicking a preset
-    // closes the modal and deep-links to #/backfill/<id> with the chat
-    // preselected and the limit applied — the dedicated Backfill page
-    // takes it from there (confirm + start). This keeps the modal as a
-    // discoverability handle while moving the real surface elsewhere.
+    // Backfill: one button opens the backfill sheet (limit + Start in one
+    // place, live progress after). It opens on top of this modal, so
+    // closing it lands back here.
     const progressEl = document.getElementById('history-progress');
     if (progressEl) progressEl.classList.add('hidden');
+    const backfillBtn = document.getElementById('group-backfill-btn');
+    if (backfillBtn) backfillBtn.onclick = () => openBackfillFor(groupId);
+    // Custom builds that still carry the old preset chips: open the sheet
+    // with that limit preselected.
     document.querySelectorAll('[data-history-limit]').forEach((btn) => {
         btn.onclick = () => {
-            const raw = btn.dataset.historyLimit;
-            const parsed = parseInt(raw, 10);
-            const limit = Number.isFinite(parsed) ? parsed : 100;
-            closeGroupSettings();
-            loadBackfillModule()
-                .then((m) => m.deepLinkFromModal(groupId, limit))
-                .catch((e) => console.error('backfill deep link', e));
+            const parsed = parseInt(btn.dataset.historyLimit, 10);
+            openBackfillFor(groupId, Number.isFinite(parsed) ? parsed : 100);
         };
     });
 

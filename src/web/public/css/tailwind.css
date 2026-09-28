@@ -1506,10 +1506,6 @@ video {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.grid-cols-6 {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-
 .grid-cols-\[32px_40px_minmax\(0\2c 2\.5fr\)_90px_minmax\(140px\2c 1\.4fr\)_80px_70px_90px_120px\] {
   grid-template-columns: 32px 40px minmax(0,2.5fr) 90px minmax(140px,1.4fr) 80px 70px 90px 120px;
 }

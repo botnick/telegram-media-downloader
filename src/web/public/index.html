@@ -498,20 +498,17 @@
                             <button id="group-data-loadmore" type="button" class="text-[11px] text-tg-blue hover:underline mt-1.5 hidden" data-i18n="group.data.loadmore">Load more</button>
                         </div>
 
-                        <!-- 3. Backfill — preset chip row, deep-links to /#/backfill -->
+                        <!-- 3. Backfill — one button; the backfill sheet (js/backfill.js)
+                             picks the limit and starts the job in one place. -->
                         <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
-                            <h4 class="text-tg-text text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                            <h4 class="text-tg-text text-sm font-medium mb-1 flex items-center gap-1.5">
                                 <i class="ri-history-line text-tg-blue"></i>
                                 <span data-i18n="backfill.modal.title">Backfill history</span>
                             </h4>
-                            <div class="grid grid-cols-6 gap-1 text-[11px]">
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="5" data-i18n="backfill.preset.last_5">5</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="10" data-i18n="backfill.preset.last_10">10</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="100" data-i18n="backfill.preset.last_100">100</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="1000" data-i18n="backfill.preset.last_1k">1k</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="10000" data-i18n="backfill.preset.last_10k">10k</button>
-                                <button class="tg-btn-secondary py-1 px-1" data-history-limit="0" data-i18n="backfill.preset.all">All</button>
-                            </div>
+                            <p class="text-[11px] text-tg-textSecondary mb-2 leading-snug" data-i18n="backfill.modal.help_sheet">Download media from messages sent before monitoring started.</p>
+                            <button id="group-backfill-btn" type="button" class="tg-btn-secondary w-full min-h-[44px] text-sm inline-flex items-center justify-center gap-2">
+                                <i class="ri-download-2-line" aria-hidden="true"></i><span data-i18n="backfill.modal.open_sheet">Backfill older messages…</span>
+                            </button>
                             <p id="history-progress" class="text-[11px] text-tg-textSecondary mt-1.5 hidden"></p>
                         </div>
 
@@ -649,6 +646,15 @@
                         <i class="ri-checkbox-multiple-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                     </button>
 
+                    <!-- Backfill this chat — only while a chat's gallery is open
+                         (body.in-chat). Phones: in the ⋮ menu below. -->
+                    <button id="backfill-chat-btn" type="button" data-admin-only data-chat-only
+                        class="hidden sm:flex w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover items-center justify-center"
+                        data-i18n-aria-label="backfill.sheet.header_btn" aria-label="Backfill older messages of this chat"
+                        data-i18n-title="backfill.sheet.header_btn" title="Backfill older messages of this chat">
+                        <i class="ri-history-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
+                    </button>
+
                     <!-- Desktop-only buttons. On <640px these collapse into the
                          overflow menu below — keeps a 320 px iPhone SE header
                          from cramming nine 44 px tap targets onto one row. -->
@@ -715,6 +721,10 @@
                             <button type="button" data-overflow="stories" data-admin-only role="menuitem">
                                 <i class="ri-camera-line"></i>
                                 <span class="vm-label" data-i18n="header.stories">Download Telegram Stories</span>
+                            </button>
+                            <button type="button" data-overflow="backfill-chat" data-admin-only data-chat-only role="menuitem">
+                                <i class="ri-history-line"></i>
+                                <span class="vm-label" data-i18n="backfill.sheet.menu_item">Backfill this chat</span>
                             </button>
                             <div class="border-t border-tg-border my-1"></div>
                             <button type="button" data-overflow="vm-grid" role="menuitem">

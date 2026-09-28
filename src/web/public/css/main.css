@@ -5806,3 +5806,214 @@ body {
     min-height: 44px;
     min-width: 96px;
 }
+
+/* Chat-only header actions (Backfill this chat) — app.js toggles
+   body.in-chat while a chat's gallery is open. */
+body:not(.in-chat) [data-chat-only] {
+    display: none !important;
+}
+
+/* ── One-step backfill sheet (js/backfill.js → openBackfillSheet) ── */
+.bf-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.bf-chat,
+.bf-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.bf-chat-icon {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(42, 171, 238, 0.14);
+    color: var(--tg-blue);
+    font-size: 20px;
+}
+.bf-chat-name,
+.bf-status-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--tg-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bf-help {
+    margin-top: 2px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--tg-textSecondary);
+}
+.bf-label {
+    margin-bottom: -6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary);
+}
+.bf-preset {
+    font-size: 13px;
+}
+.bf-custom-input {
+    /* 16 px on phones so iOS doesn't zoom into the field. */
+    font-size: 16px;
+    min-height: 44px;
+}
+@media (min-width: 640px) {
+    .bf-custom-input {
+        font-size: 14px;
+    }
+}
+.bf-warn {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--tg-orange);
+}
+.bf-warn.hidden {
+    display: none;
+}
+.bf-error {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--tg-red);
+    overflow-wrap: anywhere;
+}
+.bf-start {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 15px;
+}
+.bf-link {
+    align-self: center;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--tg-blue);
+}
+.bf-status > i {
+    flex: 0 0 auto;
+    font-size: 28px;
+    line-height: 1;
+}
+.bf-ok {
+    color: var(--tg-green);
+}
+.bf-bad {
+    color: var(--tg-red);
+}
+.bf-muted {
+    color: var(--tg-textSecondary);
+}
+.bf-spin {
+    color: var(--tg-blue);
+    animation: bf-spin 1s linear infinite;
+}
+@keyframes bf-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.bf-bar {
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--tg-bg);
+    border: 1px solid var(--tg-border);
+}
+.bf-bar-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--tg-blue);
+    transition: width 0.3s ease;
+}
+.bf-bar-fill.is-indeterminate {
+    animation: bf-slide 1.4s ease-in-out infinite;
+}
+@keyframes bf-slide {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(340%);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .bf-spin,
+    .bf-bar-fill.is-indeterminate {
+        animation: none;
+    }
+}
+.bf-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 13px;
+    color: var(--tg-textSecondary);
+    font-variant-numeric: tabular-nums;
+}
+.bf-stats b {
+    color: var(--tg-text);
+    font-weight: 600;
+}
+.bf-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+.bf-action {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+}
+.bf-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.bf-cancel {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    margin-left: -12px;
+    border-radius: 10px;
+    color: var(--tg-red);
+    font-size: 14px;
+    font-weight: 500;
+}
+.bf-cancel:disabled {
+    opacity: 0.5;
+}
+.bf-close {
+    min-height: 44px;
+    min-width: 96px;
+}
+.bf-link:focus-visible,
+.bf-cancel:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+    border-radius: 8px;
+}
