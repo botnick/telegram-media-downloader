@@ -7,6 +7,20 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Api } from 'telegram';
 import { colorize } from '../cli/colors.js';
+import * as chatAccess from './chat-access.js';
+
+/**
+ * Registry key for a forward destination: `dest:<chat id>` or
+ * `dest:@username`. Namespaced on purpose — "can't post there" (e.g.
+ * CHAT_WRITE_FORBIDDEN) must never pause *reading* the same chat when it's
+ * also monitored. Saved Messages and the auto storage channel have none.
+ */
+export function destinationKey(destination) {
+    const d = String(destination ?? '').trim();
+    if (!d || d === 'storage' || d === 'me' || d === 'saved') return null;
+    if (/^-?\d+$/.test(d)) return `dest:${d}`;
+    return `dest:@${d.replace(/^@/, '').toLowerCase()}`;
+}
 
 export class AutoForwarder {
     constructor(client, config, accountManager = null) {
@@ -31,11 +45,38 @@ export class AutoForwarder {
 
         const settings = groupConfig.autoForward;
 
+        // Source chat unreachable: nothing new should be arriving from it,
+        // and it's paused everywhere else — stay consistent.
+        if (chatAccess.isBlocked(groupId)) return;
+
+        // Destination we already know we can't post to (deleted, left,
+        // no posting rights…): skip the upload until its re-check time
+        // comes — that forward is the re-check.
+        const destKey = destinationKey(settings.destination);
+        const destWasBlocked = destKey ? chatAccess.isBlocked(destKey) : false;
+        if (destWasBlocked && !chatAccess.isDue(destKey)) {
+            if (this._lastSkipLog?.get(destKey) !== chatAccess.accessOf(destKey).checkedAt) {
+                (this._lastSkipLog ||= new Map()).set(
+                    destKey,
+                    chatAccess.accessOf(destKey).checkedAt,
+                );
+                console.log(
+                    colorize(
+                        `⏸  [AutoForward] Skipping — destination ${settings.destination} can't be posted to (${chatAccess.accessOf(destKey).state}). Change it in the chat's Forward to settings.`,
+                        'yellow',
+                    ),
+                );
+            }
+            return;
+        }
+
         // Use per-group forward account if configured
         const fwdClient =
             this.accountManager && groupConfig.forwardAccount
                 ? this.accountManager.getClient(groupConfig.forwardAccount)
                 : this.client;
+        const fwdAccountId =
+            groupConfig.forwardAccount || this.accountManager?.getIdForClient?.(fwdClient) || null;
 
         console.log(colorize(`➡️  [AutoForward] Processing for ${groupName}...`, 'cyan'));
 
@@ -84,6 +125,7 @@ export class AutoForwarder {
             const dest = settings.destination || 'Storage Channel';
             const tail = sentMsgId ? ` (msg #${sentMsgId})` : '';
             console.log(colorize(`✅ [AutoForward] Sent to ${dest}${tail}`, 'green'));
+            if (destKey) chatAccess.markReachable(destKey, fwdAccountId);
 
             // 5. Cleanup (if enabled). Isolate the unlink in its own
             // try/catch so a successful upload isn't reported as failed
@@ -111,6 +153,16 @@ export class AutoForwarder {
             }
         } catch (error) {
             console.log(colorize(`❌ [AutoForward] Error: ${error.message}`, 'red'));
+            // Can't post there (left, banned, deleted, no rights): remember
+            // it so the next files aren't uploaded just to be refused.
+            if (destKey) {
+                const cls = chatAccess.classifyAccessError(error);
+                if (cls.definite) {
+                    chatAccess.recordResult(destKey, fwdAccountId, cls, {
+                        isRecheck: destWasBlocked,
+                    });
+                }
+            }
         }
     }
 

@@ -89,7 +89,10 @@ export function renderChatRow(opts) {
 
     const meta = [];
     if (t) meta.push(`<span>${escapeHtml(t)}</span>`);
-    if (statusPill) {
+    if (statusPill?.html) {
+        // Pre-rendered, already-escaped badge (the chat access badge).
+        meta.push(statusPill.html);
+    } else if (statusPill) {
         const cls = `status-pill status-pill-${statusPill.kind || 'add'}`;
         meta.push(`<span class="${cls}">${escapeHtml(statusPill.label)}</span>`);
     }

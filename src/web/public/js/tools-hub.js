@@ -481,8 +481,31 @@ const LOADERS = {
     },
 
     async recovery() {
-        const r = await get('/api/maintenance/recovery/list?countOnly=1');
+        const [r, acc] = await Promise.all([
+            get('/api/maintenance/recovery/list?countOnly=1'),
+            get('/api/chats/access?countOnly=1'),
+        ]);
         const n = Number(r?.total || 0);
+        // Chats no account can read any more (left, banned, private,
+        // deleted, restricted, moved) — reviewed on Chats → Needs attention.
+        const unreachable = Number(acc?.total || 0);
+        if (unreachable) {
+            const text = i18nTf(
+                'access.tools.count',
+                { n: num(unreachable) },
+                `${num(unreachable)} chats can't be reached`,
+            );
+            return {
+                line: text,
+                tone: 'warn',
+                attention: {
+                    text,
+                    tone: 'warn',
+                    label: i18nT('tools.run.review', 'Review'),
+                    href: '#/groups?tab=attention',
+                },
+            };
+        }
         if (!n) return { line: i18nT('tools.recovery.clean', 'Nothing to clean up'), tone: 'ok' };
         const line = i18nTf(
             'tools.recovery.count',
@@ -814,7 +837,7 @@ function renderAttention(items) {
                           : 'ri-alert-fill';
                 const action = a.run
                     ? `<button type="button" class="tool-btn" data-attn-run="${a.tool}">${escapeHtml(a.label)}${srName(a.tool)}</button>`
-                    : `<a class="tool-btn" href="${toolHref(a.tool)}">${escapeHtml(a.label)}${srName(a.tool)}<i class="ri-arrow-right-s-line" aria-hidden="true"></i></a>`;
+                    : `<a class="tool-btn" href="${escapeHtml(a.href || toolHref(a.tool))}">${escapeHtml(a.label)}${srName(a.tool)}<i class="ri-arrow-right-s-line" aria-hidden="true"></i></a>`;
                 return `<li class="tools-attn" data-tone="${a.tone}">
                     <i class="${icon} tools-attn-icon" aria-hidden="true"></i>
                     <span class="tools-attn-text"><span class="tools-attn-tool">${escapeHtml(tr(TOOLS[a.tool].name))}</span>${escapeHtml(a.text)}</span>

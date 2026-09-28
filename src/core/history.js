@@ -11,6 +11,22 @@ import { getMessageIdRange } from './db.js';
 import { BACKPRESSURE_CAP_DEFAULT } from './constants.js';
 import { resolveConfigDownloadPath } from './paths.js';
 import { loadConfig, saveConfig } from '../config/manager.js';
+import * as chatAccess from './chat-access.js';
+
+/**
+ * The error a backfill fails with when no account can read the chat —
+ * `code: 'CHAT_UNREACHABLE'`, `access` = the chat's access state. The
+ * message keeps the "No available account has access" wording older
+ * callers match on.
+ */
+export function chatUnreachableError(groupId, access = chatAccess.accessOf(groupId)) {
+    const err = new Error(
+        `No available account has access to this group (${access.state}${access.code ? `: ${access.code}` : ''})`,
+    );
+    err.code = 'CHAT_UNREACHABLE';
+    err.access = access;
+    return err;
+}
 
 export class HistoryDownloader extends EventEmitter {
     constructor(client, downloader, config, accountManager = null) {
@@ -60,16 +76,18 @@ export class HistoryDownloader extends EventEmitter {
             ? this.config.groups.find((g) => String(g.id) === String(groupId))
             : null;
 
-        for (const acctClient of this._orderedClientsForGroup(group)) {
-            try {
-                const history = await acctClient.getMessages(groupId, { limit: 1 });
-                if (history) {
-                    this._rememberGroupAccount(group, acctClient);
-                    return acctClient;
-                }
-            } catch (e) {
-                // This client can't access the group, try next
-            }
+        // One getMessages(limit 1) per account, stopping at the first that
+        // can read; every answer is classified + recorded (chat-access.js).
+        const pairs = this._orderedClientsForGroup(group).map((client) => ({
+            accountId: this.accountManager.getIdForClient?.(client) ?? null,
+            client,
+        }));
+        const r = await chatAccess.probeChatAccess(group ? group.id : groupId, pairs, {
+            isRecheck: chatAccess.isBlocked(groupId),
+        });
+        if (r.client) {
+            this._rememberGroupAccount(group, r.client);
+            return r.client;
         }
         return null; // No client can access
     }
@@ -185,6 +203,10 @@ export class HistoryDownloader extends EventEmitter {
     }
 
     async downloadHistory(groupId, options = {}) {
+        // A chat no account can read: refuse before a single call. The
+        // dashboard shows the reason (and "Check again") instead.
+        if (chatAccess.isBlocked(groupId)) throw chatUnreachableError(groupId);
+
         this.running = true;
         this.cancelFlag = false;
         this.stats = { processed: 0, downloaded: 0, skipped: 0, urls: 0 };
@@ -256,10 +278,12 @@ export class HistoryDownloader extends EventEmitter {
         this.downloader.start();
 
         let lastId = offsetId;
+        let workingClient = null;
 
         try {
-            const workingClient = await this.discoverClientForGroup(groupId);
+            workingClient = await this.discoverClientForGroup(groupId);
             if (!workingClient) {
+                if (chatAccess.isBlocked(groupId)) throw chatUnreachableError(groupId);
                 throw new Error('No available account has access to this group');
             }
 
@@ -393,6 +417,31 @@ export class HistoryDownloader extends EventEmitter {
                 }
             }
         } catch (error) {
+            // Lost the chat mid-walk (kicked, went private, deleted): record
+            // it so polling / avatars / the next backfill stop asking.
+            if (workingClient && !error?.access) {
+                const cls = chatAccess.classifyChatError(groupId, error);
+                if (cls.definite) {
+                    chatAccess.recordResult(
+                        group.id,
+                        this.accountManager?.getIdForClient?.(workingClient) ?? null,
+                        cls,
+                    );
+                    // Another account may still read it — one try each, so
+                    // the chat isn't paused on one account's word.
+                    if (this.accountManager && cls.state !== 'migrated') {
+                        const others = this._orderedClientsForGroup(group)
+                            .filter((c) => c !== workingClient)
+                            .map((client) => ({
+                                accountId: this.accountManager.getIdForClient?.(client) ?? null,
+                                client,
+                            }));
+                        if (others.length) {
+                            await chatAccess.probeChatAccess(group.id, others).catch(() => {});
+                        }
+                    }
+                }
+            }
             this.emit('error', error);
             // Re-throw so the Promise returned by downloadHistory rejects.
             // Without this re-throw, server.js's `.then(...).catch(...)`

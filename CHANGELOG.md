@@ -4,7 +4,22 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **One standard for chats that can't be reached.** Every configured chat now has an access state: *Not a member*, *Banned*, *Private*, *Deleted*, *Restricted* (by Telegram, with its reason) or *Moved* (a group upgraded to a supergroup, with the new id). It's worked out from Telegram's own answers (`CHANNEL_PRIVATE`, `CHANNEL_INVALID`, `USER_BANNED_IN_CHANNEL`, a forbidden or migrated chat in the dialogs list, the "moved to" service message, …) per account, and kept with the error code, when it was first seen, last checked and which accounts were asked. A chat is only paused when **no** account can read it — if another account still can, that one takes over and the chat keeps downloading.
+- **Paused chats cost nothing.** Polling, live updates, the download queue (no more five retries per file), backfill (including the automatic first and catch-up backfills), avatar and name lookups, Stories and auto-forwarding skip them with a local check — no Telegram call. Each one is checked again on its own, one chat a minute at most: after 1 hour, 6 hours, then daily. A dialogs refresh that shows the chat again, or a live message from it, flips it back to normal right away, and adding an account re-checks them all (one a minute).
+- **The same badge everywhere** — the Chats list, the sidebar, the Add sheet, the chat page and Recovery cleanup.
+- **Chat page banner** saying what happened and what to do, what Telegram said, since when, when it's checked next and which accounts were asked, with **Check again**, **Follow the new group** (moved groups: adds the new group with the same settings and turns the old one off), **Switch account** (with 2+ accounts), **Stop monitoring** and **Remove from list** (the list entry only — downloaded files stay, nothing changes in Telegram). The Monitoring switch reads "Paused — this chat can't be reached" and Backfill is off. A forward destination that refuses our posts gets a note, and forwarding to it pauses instead of uploading every file to be refused.
+- **Chats → Needs attention** (with a count; `#/groups?tab=attention`) lists every configured chat that can't be reached — also the ones that dropped out of your dialogs list — with Check all again, Stop monitoring all and Remove all from list. The other tabs show a one-line pointer to it, and Settings → Tools lists "N chats can't be reached".
+- The backfill sheet refuses such a chat with the reason and a Check again button instead of failing after the fact.
+- API: `access` on `/api/groups`, `/api/dialogs` and `/api/chats/lookup` rows; `GET /api/chats/access`, `POST /api/chats/access/recheck` (one chat now, or all in the background), `POST /api/chats/access/stop`, `POST /api/chats/access/remove`, `POST /api/chats/:id/follow-migration` (admin only); `POST /api/history` answers `409 CHAT_UNREACHABLE`; WS `chat_access_changed`. See [docs/API.md](docs/API.md#chat-access).
+
+### Changed
+- **A chat no account can open is paused, not switched off.** Older versions set `enabled:false` (and `suspended` for banned chats) at startup and never looked again; now the monitoring setting stays yours and the chat resumes by itself when it's reachable. Entries older versions switched off keep their setting, show the same badge, and lose the old flags once they're reachable again (so they can be switched back on). Unresolved `unknown:` recovery entries are auto-disabled as before.
+
 ### Fixed
+- **A flood wait or timeout at startup could switch a healthy chat off for good** — the startup check treated any error as "no account can open it". Only a definite answer from Telegram counts now.
+- A restart no longer asks Telegram about each chat twice (the startup check's newest message is reused) and no longer re-asks about chats already known to be unreachable.
+- The sidebar no longer makes the server re-resolve every chat on each list refresh because of a name that can't resolve (typically a dead chat).
 - The status bar's chat count dropped to 0 after the periodic stats update, which only carries file and disk totals. Missing fields now keep their last value.
 
 ## [2.28.0] — 2026-09-29

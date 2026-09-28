@@ -8473,3 +8473,251 @@ html.theme-light .settings-search-hit {
         height: 44px;
     }
 }
+
+/* ---- Chat access state (js/chat-access.js) -----------------------------
+   One badge for a chat no account can read — same look in the Chats list,
+   the sidebar, the Add sheet and the chat page. Red for "gone / shut out",
+   blue for "moved" (a basic group upgraded to a supergroup). */
+.access-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+    background: rgba(229, 57, 53, 0.16);
+    color: #ff6b66;
+}
+.access-badge i {
+    font-size: 12px;
+    line-height: 1;
+}
+.access-badge span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.access-badge[data-access="migrated"] {
+    background: rgba(42, 171, 238, 0.16);
+    color: #5cc3f5;
+}
+html.theme-light .access-badge {
+    background: rgba(185, 28, 28, 0.1);
+    color: #b91c1c;
+}
+html.theme-light .access-badge[data-access="migrated"] {
+    background: rgba(14, 120, 194, 0.1);
+    color: #0b5c96;
+}
+.chat-row .access-badge--compact {
+    padding: 0 6px;
+    font-size: 10.5px;
+}
+
+/* Chat page banner: what happened, what to do, the actions. */
+.cd-banner.cd-access {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid rgba(229, 57, 53, 0.35);
+    background: rgba(229, 57, 53, 0.08);
+    color: var(--tg-text);
+}
+.cd-banner.cd-access[data-access="migrated"] {
+    border-color: rgba(42, 171, 238, 0.4);
+    background: rgba(42, 171, 238, 0.08);
+}
+.cd-access-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--tg-red);
+}
+.cd-banner.cd-access[data-access="migrated"] .cd-access-head {
+    color: var(--tg-blue);
+}
+.cd-access-head i {
+    font-size: 18px;
+}
+.cd-access-text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--tg-text);
+}
+.cd-access-meta {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--tg-textSecondary);
+    overflow-wrap: anywhere;
+}
+.cd-access-meta:empty {
+    display: none;
+}
+.cd-access-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+}
+.cd-access-actions .tg-btn,
+.cd-access-actions .tg-btn-secondary {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    font-size: 13.5px;
+}
+.cd-access-actions .cd-access-quiet {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 13.5px;
+    color: var(--tg-textSecondary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.cd-access-actions .cd-access-quiet:hover {
+    color: var(--tg-text);
+}
+.cd-access-actions button[disabled] {
+    opacity: 0.6;
+    cursor: progress;
+}
+.cd-fwd-warn {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--tg-red);
+}
+
+/* Chats → Needs attention: the explanation + bulk actions on top. */
+.groups-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--tg-red);
+    color: #fff;
+    vertical-align: 1px;
+}
+.groups-tab-count.hidden {
+    display: none;
+}
+.attn-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--tg-border);
+    background: var(--tg-panel);
+}
+.attn-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--tg-text);
+}
+.attn-panel-title i {
+    color: var(--tg-red);
+    font-size: 18px;
+}
+.attn-panel-body {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--tg-textSecondary);
+}
+.attn-panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.attn-panel-actions .tg-btn,
+.attn-panel-actions .tg-btn-secondary {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    font-size: 13.5px;
+}
+.attn-panel-status {
+    font-size: 12.5px;
+    color: var(--tg-textSecondary);
+}
+.attn-panel-status:empty {
+    display: none;
+}
+.attn-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 32px 12px;
+    color: var(--tg-textSecondary);
+    font-size: 14px;
+    text-align: center;
+}
+.attn-empty i {
+    font-size: 28px;
+    color: var(--tg-green);
+}
+/* Backfill sheet refusing a chat that can't be reached. */
+.bf-refuse {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+/* Other Chats tabs: a one-line pointer to Needs attention. */
+.attn-notice-wrap {
+    margin-bottom: 12px;
+}
+.attn-notice {
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(229, 57, 53, 0.35);
+    background: rgba(229, 57, 53, 0.08);
+    color: var(--tg-text);
+    font-size: 13.5px;
+    text-align: left;
+}
+.attn-notice:hover {
+    background: rgba(229, 57, 53, 0.14);
+}
+.attn-notice > i {
+    color: var(--tg-red);
+    font-size: 18px;
+}
+.attn-notice-text {
+    flex: 1;
+    min-width: 0;
+}
+.attn-notice-cta {
+    display: inline-flex;
+    align-items: center;
+    font-weight: 600;
+    color: var(--tg-blue);
+    white-space: nowrap;
+}

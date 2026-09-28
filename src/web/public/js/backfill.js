@@ -25,6 +25,14 @@ import { escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf, applyToDOM as applyI18n } from './i18n.js';
 import { confirmSheet, openSheet } from './sheet.js';
 import { whenHistoryIdle } from './overlay-history.js';
+import {
+    accessAdvice,
+    accessBadgeHtml,
+    accessFor,
+    accessReason,
+    isBlockedAccess,
+    recheckChat,
+} from './chat-access.js';
 
 const PRESETS = [
     { value: 100, key: 'backfill.preset.last_100', fallback: 'Last 100' },
@@ -208,6 +216,29 @@ export function openBackfillSheet(groupId, opts = {}) {
             </a>`;
     }
 
+    // A chat no account can read: say so instead of offering Start (the
+    // server refuses it too — CHAT_UNREACHABLE — without a Telegram call).
+    function renderRefusal(access) {
+        root.innerHTML = `
+            <div class="bf-refuse">
+                <div class="bf-chat">
+                    <span class="bf-chat-icon" aria-hidden="true"><i class="ri-chat-history-line"></i></span>
+                    <div class="min-w-0">
+                        <div class="bf-chat-name">${escapeHtml(groupName)}</div>
+                        ${accessBadgeHtml(access)}
+                    </div>
+                </div>
+                <p class="bf-error" role="alert">${escapeHtml(i18nT('access.backfill.refused', "Backfill can't start — no account can read this chat."))}</p>
+                <p class="bf-help">${escapeHtml(accessReason(access))} ${escapeHtml(accessAdvice(access))}</p>
+                <div class="bf-actions">
+                    <button type="button" class="tg-btn bf-action" data-bf-recheck>
+                        <i class="ri-refresh-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.recheck', 'Check again'))}</span>
+                    </button>
+                    <button type="button" class="tg-btn-secondary bf-action" data-bf-close>${escapeHtml(i18nT('backfill.sheet.close_running', 'Close'))}</button>
+                </div>
+            </div>`;
+    }
+
     function renderProgress() {
         const j = job || {};
         const processed = j.processed || 0;
@@ -332,6 +363,10 @@ export function openBackfillSheet(groupId, opts = {}) {
                 follow();
                 return;
             }
+            if (e?.status === 409 && e?.data?.code === 'CHAT_UNREACHABLE') {
+                renderRefusal(e.data.access || accessFor(gid));
+                return;
+            }
             renderForm(e?.data?.error || e?.message || i18nT('common.error', 'Error'));
         }
     }
@@ -387,6 +422,19 @@ export function openBackfillSheet(groupId, opts = {}) {
         }
         if (e.target.closest('[data-bf-start]')) {
             start();
+            return;
+        }
+        const recheck = e.target.closest('[data-bf-recheck]');
+        if (recheck) {
+            recheck.disabled = true;
+            try {
+                const r = await recheckChat(gid, { name: groupName });
+                if (r?.state === 'ok') renderForm();
+                else renderRefusal(r?.access || accessFor(gid));
+            } catch (err) {
+                recheck.disabled = false;
+                showToast(err?.data?.error || err?.message || 'Failed', 'error');
+            }
             return;
         }
         if (e.target.closest('[data-bf-page]')) {
@@ -448,7 +496,9 @@ export function openBackfillSheet(groupId, opts = {}) {
         }
     });
 
-    renderForm();
+    const access = accessFor(gid);
+    if (isBlockedAccess(access)) renderRefusal(access);
+    else renderForm();
     return handle;
 }
 
@@ -987,6 +1037,13 @@ async function startBackfill() {
             showToast(
                 i18nT('backfill.already_running', 'A backfill is already running for this group'),
                 'warning',
+            );
+        } else if (e?.status === 409 && e?.data?.code === 'CHAT_UNREACHABLE') {
+            const a = e.data.access || accessFor(selectedGroupId);
+            showToast(
+                `${i18nT('access.backfill.refused', "Backfill can't start — no account can read this chat.")} ${accessReason(a)}`,
+                'warning',
+                8000,
             );
         } else {
             showToast(
