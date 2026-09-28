@@ -251,6 +251,14 @@ export async function startTarget(opts = {}) {
     if (TARGET === 'url') {
         baseUrl = process.env.CONTRACT_URL;
         if (!baseUrl) throw new Error('CONTRACT_TARGET=url needs CONTRACT_URL');
+        const custom = ['configPatch', 'afterDb', 'beforeStart', 'env', 'nodeEnv'].filter(
+            (k) => opts[k] !== undefined,
+        );
+        if (custom.length || opts.extra) {
+            throw new Error(
+                `CONTRACT_TARGET=url attaches to one hand-started server; this scenario needs a server of its own (${custom.join(', ') || 'extra target'}) — run it with CONTRACT_TARGET=node|go`,
+            );
+        }
         port = Number(new URL(baseUrl).port) || 80;
         dataDir = process.env.CONTRACT_DATA_DIR || null;
         const ref = buildSeed(fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-contract-ref-')));
@@ -605,7 +613,7 @@ export function useContract(fileUrl, opts = {}) {
          * same snapshot file; stopped after the last test.
          */
         async extra(extraOpts = {}) {
-            const t = await startTarget(extraOpts);
+            const t = await startTarget({ ...extraOpts, extra: true });
             t.store = store;
             extras.push(t);
             return t;

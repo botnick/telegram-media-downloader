@@ -18,7 +18,7 @@ npm run contract:schema               # re-freeze fixtures/schema.sql after a DB
 
 | Variable | Meaning |
 |---|---|
-| `CONTRACT_TARGET` | `node` (default): spawns `node src/web/server.js`. `go`: spawns `$CONTRACT_GO_BIN` (default `core-service/bin/tgdl-server[.exe]`). `url`: attaches to `$CONTRACT_URL` (nothing spawned or seeded; `$CONTRACT_DATA_DIR` enables path masking). |
+| `CONTRACT_TARGET` | `node` (default): spawns `node src/web/server.js`. `go`: spawns `$CONTRACT_GO_BIN` (default `core-service/bin/tgdl-server[.exe]`). `url`: attaches to `$CONTRACT_URL` (nothing spawned or seeded — seed the server's data dir with `node scripts/contract-seed.mjs <dir>` and restart it between files; `$CONTRACT_DATA_DIR` enables path masking; scenarios that need their own seed/env/extra server refuse to run). |
 | `CONTRACT_UPDATE=1` | Record instead of compare (Node only — use `npm run test:contract:update`). |
 | `CONTRACT_WORKERS` | Files run in parallel (default 4). Each file runs its own server(s). |
 
@@ -284,3 +284,22 @@ never silently in the Go port.
   (`data/models`) ignore `TGDL_DATA_DIR` and live under `<repo>/data`.
 - Face crops and sprites send `Pragma: no-cache` together with
   `Cache-Control: … immutable`; `/files/*` answers any HTTP method.
+- Cluster: `POST /api/cluster/sign-url` stores `expires_at` in ms but signs
+  seconds, so every minted direct-stream URL answers `401 bad_sig`;
+  `GET /api/cluster/peer-thumbs/:id` sends a JSON object labelled
+  `image/webp` (with the absolute thumb-cache path) instead of the image;
+  the pairing-code handshake always fails (`401 bad_signature`: the
+  initiator signs with the code-derived secret, the receiver only accepts
+  the per-pair secret or the cluster token); the lazy engine starter is
+  registered after the cluster routes, so sync / WS channel / discovery /
+  failover only start after `POST /api/cluster/failover/run` or an unknown
+  `/api/cluster` path, and inbound `/ws/cluster` events reach the DB but not
+  the dashboard until then; the legacy cluster-token fallback verifies any
+  `X-Peer-Id`.
+- Express' own errors (e.g. an undecodable path parameter) go through the
+  last-resort handler and answer 500 instead of their status.
+- Backup: `unlock` accepts any passphrase (even empty); `run` on a disabled
+  or unknown destination answers `200 started:true`; `DELETE` of an unknown
+  destination still broadcasts `backup_destination_removed`.
+- Sprite / meta 404s send `Cache-Control: no-store` for a missing sprite but
+  `no-store, max-age=0` for a bad id.
