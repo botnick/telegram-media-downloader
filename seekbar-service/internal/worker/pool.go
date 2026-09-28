@@ -31,6 +31,15 @@ type Job struct {
 	Error    string `json:"error,omitempty"`
 	Retries  int    `json:"retries"`
 	Priority int    `json:"priority"` // 0 = realtime, 1 = backfill
+	// Source is "path" (a file the sidecar can read) or "upload" (a file
+	// the caller sent in chunks; deleted once the job settles).
+	Source string `json:"source,omitempty"`
+	// Params are per-job overrides of the thumb config (nil = defaults),
+	// so a caller's settings apply without restarting the sidecar.
+	Params *JobParams `json:"params,omitempty"`
+	// Overwrite overrides storage.overwrite for this job ("" = default).
+	// A caller that keeps its own cache sends "always".
+	Overwrite string `json:"overwrite,omitempty"`
 	// Result fields (populated on done)
 	SpritePath  string  `json:"sprite_path,omitempty"`
 	MetaPath    string  `json:"meta_path,omitempty"`
@@ -42,9 +51,82 @@ type Job struct {
 	TileH       int     `json:"tile_h,omitempty"`
 	IntervalSec float64 `json:"interval_sec,omitempty"`
 	Bytes       int64   `json:"bytes,omitempty"`
+	Format      string  `json:"format,omitempty"` // webp | jpg
 	CreatedAt   int64   `json:"created_at"`
 	StartedAt   int64   `json:"started_at,omitempty"`
 	FinishedAt  int64   `json:"finished_at,omitempty"`
+}
+
+// JobParams overrides the service's thumb config for one job. Zero values
+// (and out-of-range ones, see Clamp) fall back to the service defaults.
+type JobParams struct {
+	IntervalSec float64 `json:"interval_sec,omitempty"`
+	TileW       int     `json:"tile_w,omitempty"`
+	Cols        int     `json:"cols,omitempty"`
+	MaxTiles    int     `json:"max_tiles,omitempty"`
+	Format      string  `json:"format,omitempty"`
+	Quality     int     `json:"quality,omitempty"`
+}
+
+// Clamp drops values outside the ranges the service accepts from env, so
+// a bad request can't produce a gigantic sprite. Returns nil when nothing
+// usable is left.
+func (jp *JobParams) Clamp() *JobParams {
+	if jp == nil {
+		return nil
+	}
+	out := *jp
+	if out.IntervalSec != 0 && (out.IntervalSec < 0.5 || out.IntervalSec > 600) {
+		out.IntervalSec = 0
+	}
+	if out.TileW != 0 && (out.TileW < 40 || out.TileW > 800) {
+		out.TileW = 0
+	}
+	if out.Cols != 0 && (out.Cols < 2 || out.Cols > 50) {
+		out.Cols = 0
+	}
+	if out.MaxTiles != 0 && (out.MaxTiles < 4 || out.MaxTiles > 2000) {
+		out.MaxTiles = 0
+	}
+	if out.Quality != 0 && (out.Quality < 1 || out.Quality > 100) {
+		out.Quality = 0
+	}
+	switch out.Format {
+	case "", "webp", "jpeg", "jpg":
+	default:
+		out.Format = ""
+	}
+	if out == (JobParams{}) {
+		return nil
+	}
+	return &out
+}
+
+// thumbFor merges a job's overrides onto the service defaults.
+func thumbFor(base config.ThumbConfig, jp *JobParams) config.ThumbConfig {
+	t := base
+	if jp == nil {
+		return t
+	}
+	if jp.IntervalSec > 0 {
+		t.IntervalSec = jp.IntervalSec
+	}
+	if jp.TileW > 0 {
+		t.Width = jp.TileW
+	}
+	if jp.Cols > 0 {
+		t.Columns = jp.Cols
+	}
+	if jp.MaxTiles > 0 {
+		t.MaxTiles = jp.MaxTiles
+	}
+	if jp.Format != "" {
+		t.Format = jp.Format
+	}
+	if jp.Quality > 0 {
+		t.Quality = jp.Quality
+	}
+	return t
 }
 
 // SpriteMeta is the JSON sidecar written alongside each sprite. The
@@ -245,6 +327,7 @@ func (p *Pool) worker(ctx context.Context) {
 		// Job was cancelled via the HTTP cancel endpoint before it was
 		// picked up — count it as done but don't invoke ffmpeg.
 		if j.Status == "cancelled" {
+			p.cleanupUpload(j)
 			d := int(atomic.AddInt32(&p.done, 1))
 			if p.onProgress != nil {
 				p.mu.Lock()
@@ -256,6 +339,7 @@ func (p *Pool) worker(ctx context.Context) {
 		}
 		atomic.AddInt32(&p.running, 1)
 		p.processJob(ctx, j)
+		p.cleanupUpload(j)
 		atomic.AddInt32(&p.running, -1)
 		d := int(atomic.AddInt32(&p.done, 1))
 		if p.onProgress != nil {
@@ -267,19 +351,40 @@ func (p *Pool) worker(ctx context.Context) {
 	}
 }
 
+// cleanupUpload removes an uploaded source once its job has settled.
+func (p *Pool) cleanupUpload(j *Job) {
+	if j.Source == "upload" && j.SrcPath != "" {
+		if err := os.Remove(j.SrcPath); err != nil && !os.IsNotExist(err) {
+			p.log.Warn("upload cleanup failed", "video_id", j.VideoID, "err", err)
+		}
+	}
+}
+
 func (p *Pool) processJob(ctx context.Context, j *Job) {
 	cfg := p.cfg
 	outDir := cfg.Storage.OutputDir
+	thumb := thumbFor(cfg.Thumb, j.Params)
 
 	ext := "webp"
-	if cfg.Thumb.Format == "jpeg" || cfg.Thumb.Format == "jpg" {
+	if thumb.Format == "jpeg" || thumb.Format == "jpg" {
 		ext = "jpg"
 	}
+	j.Format = ext
 	dstPath := filepath.Join(outDir, j.VideoID+"."+ext)
 	metaPath := filepath.Join(outDir, j.VideoID+".json")
+	// An uploaded source is a fresh temp file every time: the caller
+	// already decided the sprite is stale, so skip the cache shortcuts.
+	policy := cfg.Storage.Overwrite
+	switch j.Overwrite {
+	case "never", "if-changed", "always":
+		policy = j.Overwrite
+	}
+	if j.Source == "upload" {
+		policy = "always"
+	}
 
 	// Overwrite policy check.
-	if cfg.Storage.Overwrite == "never" {
+	if policy == "never" {
 		if fileExists(dstPath) && fileExists(metaPath) {
 			j.Status = "done"
 			j.SpritePath = dstPath
@@ -298,10 +403,12 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 	}
 	j.Duration = dur
 
-	plan := ffmpeg.Plan(dur, cfg.Thumb.IntervalSec, cfg.Thumb.Columns, cfg.Thumb.MaxTiles, cfg.Thumb.Width)
+	plan := ffmpeg.Plan(dur, thumb.IntervalSec, thumb.Columns, thumb.MaxTiles, thumb.Width)
 
 	// if-changed: compare source size/mtime with prior meta.
-	if cfg.Storage.Overwrite == "if-changed" && fileExists(metaPath) {
+	// The sprite itself must still be there — a meta file alone (sprite
+	// deleted, or meta written by the parent app) is not a cache hit.
+	if policy == "if-changed" && fileExists(metaPath) && fileExists(dstPath) {
 		if prior, ok := readMeta(metaPath); ok {
 			si, _ := os.Stat(j.SrcPath)
 			if si != nil && prior.SourceSize == si.Size() && prior.SourceMtime == si.ModTime().UnixMilli() {
@@ -331,8 +438,8 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 		threadsPerJob = 2
 	}
 	tmpPath := ffmpeg.TempPath(dstPath)
-	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs, p.hwBackend, threadsPerJob)
-	cpuArgs := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, cfg.Thumb.Format, cfg.Thumb.Quality, nil, cfg.FFmpeg.ExtraArgs, "", threadsPerJob)
+	args := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, thumb.Format, thumb.Quality, p.hwArgs, cfg.FFmpeg.ExtraArgs, p.hwBackend, threadsPerJob)
+	cpuArgs := ffmpeg.BuildArgs(j.SrcPath, tmpPath, plan, thumb.Format, thumb.Quality, nil, cfg.FFmpeg.ExtraArgs, "", threadsPerJob)
 
 	var lastErr error
 	maxAttempts := cfg.Jobs.MaxRetries + 1

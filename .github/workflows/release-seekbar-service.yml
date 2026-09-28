@@ -8,6 +8,10 @@
 # archive to the GitHub Release. `src/core/seekbar/spawn.js` resolves
 # these tarballs at runtime under
 #   https://github.com/botnick/telegram-media-downloader/releases/download/seekbar-v<VER>/<slug>.tar.gz
+#
+# Also publishes the container image for running the sidecar on another
+# machine: ghcr.io/botnick/tgdl-seekbar:<tag> + :latest
+# (linux/amd64 + linux/arm64, ffmpeg from Debian).
 
 name: release-seekbar-service
 
@@ -18,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build-binaries:
@@ -96,3 +101,31 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  image:
+    name: image (linux/amd64 + linux/arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build + push
+        uses: docker/build-push-action@v7
+        with:
+          context: ./seekbar-service
+          file: ./seekbar-service/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/botnick/tgdl-seekbar:${{ github.ref_name }}
+            ghcr.io/botnick/tgdl-seekbar:latest
+          cache-from: type=gha,scope=seekbar
+          cache-to: type=gha,mode=max,scope=seekbar

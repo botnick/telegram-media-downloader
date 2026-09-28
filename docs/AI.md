@@ -829,14 +829,22 @@ docker run -p 8012:8012 -v /path/to/downloads:/downloads:ro \
 docker run --gpus all -p 8012:8012 ghcr.io/botnick/tgdl-nsfw:gpu-latest
 ```
 
-`TGDL_NSFW_ALLOW_ROOTS` is only needed for path mode (the sidecar reading files directly, at the same paths the app uses); without it the app sends images as base64. To build locally instead: `docker build -f Dockerfile.gpu -t nsfw-sidecar .`
+`TGDL_NSFW_ALLOW_ROOTS` is only needed for path mode (the sidecar reading files directly); without it the app sends the images. To build locally instead: `docker build -f Dockerfile.gpu -t nsfw-sidecar .`
+
+Running it on another machine (GPU box, Cloudflare Tunnel, reverse proxy with a path prefix): see [DEPLOY.md → Running a sidecar on another machine](DEPLOY.md#running-a-sidecar-on-another-machine).
 
 ### Configuration
 
 | Config key | Env var | Default | Description |
 |---|---|---|---|
-| `advanced.nsfw.sidecarUrl` | `TGDL_NSFW_SIDECAR_URL` | `''` | External classifier URL; empty = local WASM |
-| — (sidecar env) | `TGDL_NSFW_ALLOW_ROOTS` | `''` | Comma-separated directories the sidecar may read in path mode. Empty = path mode off (every request uses `image_b64`) |
+| `advanced.nsfw.sidecarUrl` | `TGDL_NSFW_SIDECAR_URL` | `''` | External classifier URL (a reverse-proxy path prefix like `https://host/nsfw` is fine); empty = built-in classifier |
+| `advanced.nsfw.apiToken` | `TGDL_NSFW_API_TOKEN` | `''` | Sent as `X-API-Token`; must match the sidecar's `TGDL_NSFW_API_TOKEN`. Write-only in the dashboard |
+| `advanced.nsfw.pathMap` | `TGDL_NSFW_PATH_MAP` | `''` | `app path=sidecar path` rules (newline or `;`), for a sidecar that mounts the downloads at a different path |
+| — (sidecar env) | `TGDL_NSFW_ALLOW_ROOTS` | `''` | Comma-separated directories the sidecar may read in path mode. Empty = path mode off (images are uploaded) |
+| — (sidecar env) | `TGDL_NSFW_API_TOKEN` | `''` | Require this token on every route but `/health` (1.2.0+) |
+| — (sidecar env) | `TGDL_NSFW_MAX_UPLOAD_MB` | `50` | Cap for `/classify/upload` bodies |
+
+Env vars win over the dashboard values, one by one; the dashboard shows a notice when that happens.
 
 Set via **Maintenance → NSFW → External classifier URL** in the dashboard, or via env var for Docker deployments.
 
@@ -844,8 +852,9 @@ Set via **Maintenance → NSFW → External classifier URL** in the dashboard, o
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | `{ok, model, ready, version, device, uptime_sec}` |
+| `GET` | `/health` | `{ok, model, ready, version, device, uptime_sec, features, auth_required, path_mode}` (always open) |
 | `POST` | `/classify` | `{path \| image_b64}` → `{score, label}` |
+| `POST` | `/classify/upload` | raw image bytes → `{score, label}` (1.2.0+) |
 | `POST` | `/classify/batch` | `{files[]}` → `{results[]}` |
 
-The Node client (`src/core/nsfw-client.js`) tries path mode first; if the sidecar returns 403 (the path is outside `TGDL_NSFW_ALLOW_ROOTS`, or the sidecar runs on a different machine), it falls back to sending the image as base64. When the sidecar shares the downloads directory with the app (same host or a shared mount), set `TGDL_NSFW_ALLOW_ROOTS` to that directory to keep the faster path mode.
+The Node client (`src/core/nsfw-client.js`) sends the path first (rewritten through the path map). A 403 (outside `TGDL_NSFW_ALLOW_ROOTS`) switches the session to sending image bytes; a `file_not_found` (the sidecar allows the path but doesn't have the file) sends just that image. Bytes go to `/classify/upload` when the sidecar lists the `upload` feature, as base64 JSON otherwise; images over 1.5 MB are downscaled to 1024 px first (the model looks at 224–384 px), which keeps requests far below proxy limits. Video tiles are always sent as bytes. A 401 is reported once in the log as a token problem.

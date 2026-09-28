@@ -167,7 +167,9 @@ func BuildArgs(srcAbs, dstTmp string, plan SpritePlan, format string, quality in
 		if qv > 31 {
 			qv = 31
 		}
-		args = append(args, "-q:v", strconv.Itoa(qv))
+		// The output is a randomised `.tmp.<hex>` name, so ffmpeg can't
+		// guess the container from the extension — name it explicitly.
+		args = append(args, "-q:v", strconv.Itoa(qv), "-c:v", "mjpeg", "-f", "mjpeg")
 	default:
 		// libwebp encoder flags:
 		//   -deadline realtime -cpu-used 8 → fastest encode path; the
@@ -319,6 +321,10 @@ func ReadImageDims(path string) (w, h int, err error) {
 				continue
 			}
 			marker := data[i+1]
+			// SOI, TEM, RSTn and fill bytes carry no length field.
+			if marker == 0xD8 || marker == 0x01 || marker == 0xFF || (marker >= 0xD0 && marker <= 0xD7) {
+				continue
+			}
 			// SOF0 = 0xC0, SOF1 = 0xC1, SOF2 = 0xC2 (progressive)
 			if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
 				// segHeight = big-endian uint16 at i+5, segWidth at i+7
