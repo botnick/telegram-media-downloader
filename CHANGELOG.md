@@ -26,6 +26,7 @@ All notable changes to this project are documented here. The format is based on 
 - The duplicate finder lists one entry per physical copy and no longer reports downloads that already share one file (nothing to reclaim), so "reclaimable" sizes are accurate.
 - The disk rotator, the Rescue-mode sweeper and cluster conflict resolution / peer delete requests also no longer delete a file that another download still uses.
 - Opening a missing file in the gallery (404) no longer drops its download when the file's whole folder is missing too — that's an unmounted disk or a renamed folder, not a deleted file.
+- After a restart, Maintenance → Duplicates rebuilds the list from the hashes already stored instead of staying empty until a full re-scan.
 
 ### Security
 - **NSFW sidecar path mode is now default-deny.** With `TGDL_NSFW_ALLOW_ROOTS` unset, `nsfw-service` used to read any path it was sent — and it listens on `0.0.0.0` without auth. It now matches the faces sidecar: path mode only for files under `TGDL_NSFW_ALLOW_ROOTS`, otherwise 403 and the app falls back to `image_b64` automatically. **Action:** if the sidecar shares the downloads directory with the app, set `TGDL_NSFW_ALLOW_ROOTS` to keep the faster path mode. Decoder / internal error messages are logged instead of returned.

@@ -80,6 +80,7 @@ import * as integrity from '../core/integrity.js';
 import {
     findDuplicates as dedupFindDuplicates,
     deleteByIds as dedupDeleteByIds,
+    buildDuplicateSets,
     expandToSharedRefs,
     idsWithFileInUse,
     removeGroupFolder,
@@ -6171,6 +6172,17 @@ app.get('/api/maintenance/dedup/status', async (req, res) => {
         out.result = { ...snap.result, duplicateSets: snap.result.duplicateSets };
     }
     res.json(out);
+});
+
+// Duplicate sets rebuilt from the hashes already stored in the DB. The last
+// scan's result only lives in memory, so after a restart the Duplicates
+// page would stay empty until a full re-scan; this needs no hashing.
+app.get('/api/maintenance/dedup/sets', async (req, res) => {
+    try {
+        res.json({ duplicateSets: await buildDuplicateSets() });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Library hash-coverage stats — total rows, how many already have a SHA-256

@@ -160,6 +160,32 @@ export async function findDuplicates(opts = {}) {
         if (page.length < PAGE_SIZE) break;
     }
 
+    const sets = await buildDuplicateSets({ onProgress, signal, hashed, errored });
+
+    if (onProgress) onProgress({ stage: 'done', processed: total, total, hashed, errored });
+
+    return {
+        scanned: total,
+        hashed,
+        errored,
+        duplicateSets: sets,
+    };
+}
+
+/**
+ * Group already-hashed rows into duplicate sets — the second half of
+ * findDuplicates(), without hashing anything. Used to rebuild the
+ * Duplicates page from stored hashes after a restart (the last scan's
+ * result only lives in memory).
+ *
+ * @param {Object} [opts]
+ * @param {Function} [opts.onProgress]
+ * @param {AbortSignal} [opts.signal]
+ * @param {number} [opts.hashed]   passed through to progress events
+ * @param {number} [opts.errored]  passed through to progress events
+ */
+export async function buildDuplicateSets({ onProgress, signal, hashed = 0, errored = 0 } = {}) {
+    const db = getDb();
     // Second pass: paginated GROUP BY — scan the file_hash index in order,
     // grouping 5000 distinct hashes per page. Each page blocks ~10-50ms
     // instead of the old single-query approach that blocked 3-15s on 1M rows.
@@ -273,14 +299,7 @@ export async function findDuplicates(opts = {}) {
         (a, b) => b.fileSize * (b.count - 1) - a.fileSize * (a.count - 1) || b.count - a.count,
     );
 
-    if (onProgress) onProgress({ stage: 'done', processed: total, total, hashed, errored });
-
-    return {
-        scanned: total,
-        hashed,
-        errored,
-        duplicateSets: sets,
-    };
+    return sets;
 }
 
 // Chunk size for `IN (?,?,…)` clauses. SQLite caps bound parameters at

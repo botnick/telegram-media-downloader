@@ -483,6 +483,12 @@ async function _recoverScanState() {
             const wasAborted = !!r.result.aborted;
             _setScanUi(false, { resume: wasAborted });
             _renderSets(r.result.duplicateSets);
+        } else {
+            // No result in server memory (fresh start): rebuild the list
+            // from the hashes a previous scan stored instead of showing
+            // an empty page until the next full scan.
+            const s = await api.get('/api/maintenance/dedup/sets');
+            if (s?.duplicateSets?.length) _renderSets(s.duplicateSets);
         }
     } catch {
         /* non-fatal */
