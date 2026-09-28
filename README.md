@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/botnick/telegram-media-downloader?label=Version&color=blue&style=for-the-badge" alt="Version">
+  <a href="https://github.com/botnick/telegram-media-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/botnick/telegram-media-downloader?label=Version&color=blue&style=for-the-badge" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/Tests-5700+-brightgreen?style=for-the-badge" alt="Tests">
+  <a href="https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader"><img src="https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker image on ghcr.io"></a>
+  <a href="https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/botnick/telegram-media-downloader/ci.yml?branch=main&label=CI&style=for-the-badge" alt="CI status"></a>
 </p>
 
 <h1 align="center">Telegram Media Downloader</h1>
@@ -20,7 +20,15 @@
   <a href="docs/CLUSTER.md">Cluster</a> &bull;
   <a href="docs/AI.md">AI Faces</a> &bull;
   <a href="docs/API.md">API</a> &bull;
-  <a href="docs/DEPLOY.md">Deploy</a>
+  <a href="docs/DEPLOY.md">Deploy</a> &bull;
+  <a href="docs/README.md">All docs</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/library-light.webp">
+    <img src="docs/screenshots/library.webp" alt="Library: every downloaded photo and video, grouped by date, with the chat list on the left" width="100%">
+  </picture>
 </p>
 
 ---
@@ -40,53 +48,32 @@
 
 ## Dashboard Preview
 
-```
- ┌──────────────────────────────────────────────────────────────────────┐
- │  Telegram Media Downloader            [link] [stories] [search]  ⚙ │
- ├──────────────────────────────────────────────────────────────────────┤
- │  Monitor: ● Running     Queue: 3     Active: 2     Disk: 47.2 GB   │
- ├──────────┬───────────────────────────────────────────────────────────┤
- │          │                                                          │
- │ Gallery  │  ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐     │
- │ Queue    │  │ ▶ 1:23│ │       │ │ ▶ 0:45│ │       │ │ ▶ 3:10│     │
- │ Backfill │  │  img  │ │  img  │ │  img  │ │  img  │ │  img  │     │
- │ Settings │  └───────┘ └───────┘ └───────┘ └───────┘ └───────┘     │
- │ Maint.   │  ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌───────┐     │
- │  ├ Dupes │  │       │ │ ▶ 2:05│ │       │ │       │ │ ▶ 0:30│     │
- │  ├ NSFW  │  │  img  │ │  img  │ │  img  │ │  img  │ │  img  │     │
- │  ├ AI    │  └───────┘ └───────┘ └───────┘ └───────┘ └───────┘     │
- │  ├ Video │                                                          │
- │  └ Logs  │  Photos  Videos  Files  Audio        Grid ▪ Compact     │
- │          │                                                          │
- └──────────┴───────────────────────────────────────────────────────────┘
-```
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/queue.webp" alt="Download queue with live progress, speed and ETA"></td>
+    <td width="50%"><img src="docs/screenshots/chats.webp" alt="Chats page: pick which channels and groups to monitor"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Queue</b> — live progress, speed, ETA; pause, retry or cancel any file</td>
+    <td align="center"><b>Chats</b> — choose which channels, groups and DMs to monitor</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/viewer.webp" alt="Full-screen media viewer"></td>
+    <td><img src="docs/screenshots/maintenance.webp" alt="Maintenance hub: duplicates, thumbnails, NSFW review, AI faces, backups, cluster"></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Viewer</b> — swipe / arrow keys, pin, share link, download</td>
+    <td align="center"><b>Maintenance</b> — duplicates, thumbnails, NSFW review, AI faces, backups, cluster</td>
+  </tr>
+</table>
 
-```
- ┌──────────────────────────────────────────────────────────────────────┐
- │  Queue                                          Speed: ████░ 12MB/s │
- ├──────────────────────────────────────────────────────────────────────┤
- │  ✓  vacation_photo_001.jpg     Tech News       1.2 MB   Done       │
- │  ↓  meeting_recording.mp4     Work Group      245 MB   ████▒ 67%  │
- │  ↓  presentation.pdf          Documents        8.4 MB   ██▒── 34%  │
- │  ◷  voice_message_042.ogg     Family Chat     340 KB   Queued      │
- │  ◷  sticker_pack.webp         Memes           128 KB   Queued      │
- │  ◷  annual_report.xlsx        Finance         2.1 MB   Queued      │
- └──────────────────────────────────────────────────────────────────────┘
-```
-
-```
- ┌──────────────────────────────────────────────────────────────────────┐
- │  AI Face Clustering — People                                        │
- ├──────────────────────────────────────────────────────────────────────┤
- │                                                                      │
- │   (•‿•)       (•‿•)       (•‿•)       (•‿•)       (•‿•)            │
- │   Alice       Bob         Carol       David       Unknown           │
- │   127 faces   84 faces    56 faces    43 faces    12 faces          │
- │   ▎▎ video    ▎▎ video                                              │
- │                                                                      │
- │  [All] [Unlabeled] [Video]            Model: buffalo_l  [Scan]      │
- └──────────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <img src="docs/screenshots/mobile-library.webp" alt="Library on a phone" width="24%">
+  <img src="docs/screenshots/mobile-viewer.webp" alt="Viewer on a phone" width="24%">
+  <img src="docs/screenshots/mobile-queue.webp" alt="Queue on a phone" width="24%">
+  <img src="docs/screenshots/mobile-chats-light.webp" alt="Chats on a phone, light theme" width="24%">
+</p>
+<p align="center"><sub>Installable as a PWA — the same dashboard on a phone, in dark or light theme. Screenshots use generated demo images and fictional chat names.</sub></p>
 
 ---
 

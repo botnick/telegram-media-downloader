@@ -1645,17 +1645,36 @@ function _cmpSemver(a, b) {
     return 0;
 }
 
+// The repo also publishes sidecar releases (faces-v*, nsfw-v*, seekbar-v*),
+// and GitHub's "latest release" can point at one of them — so list the
+// recent releases and take the highest app tag (vX.Y.Z) instead.
+const APP_RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
+
 async function _fetchLatestRelease() {
     if (typeof fetch !== 'function') return null;
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5000);
     try {
-        const r = await fetch(`https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases/latest`, {
-            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'tgdl-update-check' },
-            signal: ctrl.signal,
-        });
+        const r = await fetch(
+            `https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases?per_page=30`,
+            {
+                headers: {
+                    Accept: 'application/vnd.github+json',
+                    'User-Agent': 'tgdl-update-check',
+                },
+                signal: ctrl.signal,
+            },
+        );
         if (!r.ok) return null;
-        const j = await r.json();
+        const list = await r.json();
+        let j = null;
+        for (const rel of Array.isArray(list) ? list : []) {
+            if (rel?.draft || rel?.prerelease || !APP_RELEASE_TAG.test(rel?.tag_name || '')) {
+                continue;
+            }
+            if (!j || _cmpSemver(rel.tag_name, j.tag_name) > 0) j = rel;
+        }
+        if (!j) return null;
         return {
             tag: j.tag_name,
             name: j.name || j.tag_name,

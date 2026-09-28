@@ -129,6 +129,9 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: faces-service/dist/${{ matrix.archive }}
+          # Sidecar releases must never become the repo's "Latest" release —
+          # that slot belongs to the app (vX.Y.Z tags).
+          make_latest: false
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
