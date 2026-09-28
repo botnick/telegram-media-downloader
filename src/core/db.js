@@ -198,6 +198,13 @@ function initSchema() {
         db.exec('DROP INDEX IF EXISTS idx_group_id');
         db.exec('DROP INDEX IF EXISTS idx_group_message');
     } catch {}
+    // Bulk delete / 404 auto-prune / single-file delete / backup resolve a
+    // row by its exact stored path. Without this each lookup was a full
+    // table scan (~15 ms at 150k rows, so a 1000-tile delete blocked the
+    // event loop for seconds).
+    try {
+        db.exec('CREATE INDEX IF NOT EXISTS idx_file_path ON downloads(file_path)');
+    } catch {}
     // Covering index for the per-group aggregates behind the sidebar
     // (/api/groups, /api/downloads) and the group-name refresh passes:
     // GROUP BY group_id reading only group_name + file_size never touches
@@ -1644,6 +1651,41 @@ export function deleteDownloadsBy(opts) {
     }
     if (removed > 0) purgeOrphanPeople();
     return removed;
+}
+
+// Bound parameters per IN (…) list — under SQLite's historical 999 cap.
+const PATH_LOOKUP_CHUNK = 800;
+
+/**
+ * Resolve download rows by their stored `file_path`. The downloader writes
+ * the host's native separator (`\` on Windows) while the SPA always sends
+ * `/`, so every input is matched in both forms with `file_path IN (…)` —
+ * an `idx_file_path` seek per form instead of the old per-path
+ * `REPLACE(file_path, '\', '/') = ?` full-table scan.
+ *
+ * @param {string[]} paths
+ * @returns {Array<{ id: number, file_path: string }>}
+ */
+export function findDownloadsByPaths(paths) {
+    const forms = new Set();
+    for (const p of Array.isArray(paths) ? paths : []) {
+        if (typeof p !== 'string' || !p) continue;
+        const fwd = p.replace(/\\/g, '/');
+        forms.add(fwd);
+        forms.add(fwd.replace(/\//g, '\\'));
+    }
+    const all = Array.from(forms);
+    const out = [];
+    for (let i = 0; i < all.length; i += PATH_LOOKUP_CHUNK) {
+        const chunk = all.slice(i, i + PATH_LOOKUP_CHUNK);
+        const rows = getDb()
+            .prepare(
+                `SELECT id, file_path FROM downloads WHERE file_path IN (${chunk.map(() => '?').join(',')})`,
+            )
+            .all(...chunk);
+        for (const r of rows) out.push(r);
+    }
+    return out;
 }
 
 export function purgeOrphanPeople() {

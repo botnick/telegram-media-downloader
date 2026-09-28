@@ -2620,8 +2620,18 @@ async function setupMediaSearch() {
         // existing `bulk_delete` WS broadcast (already wired further up).
         // Final toast comes from `dedup_delete_done` (shared tracker).
         const set = new Set(paths);
+        // Own tiles go by DB id (an indexed lookup server-side); only peer
+        // tiles / rows without an id still travel as paths.
+        const byPath = new Map((state.files || []).map((f) => [f.fullPath, f]));
+        const ids = [];
+        const pathsLeft = [];
+        for (const p of paths) {
+            const f = byPath.get(p);
+            if (f && f.id != null && (f.peer_id || 'self') === 'self') ids.push(f.id);
+            else pathsLeft.push(p);
+        }
         try {
-            const r = await api.post('/api/downloads/bulk-delete', { paths });
+            const r = await api.post('/api/downloads/bulk-delete', { ids, paths: pathsLeft });
             if (!r?.started && !r?.success) throw new Error('Failed to start');
             state.selected.clear();
             state.files = (state.files || []).filter((f) => !set.has(f.fullPath));
@@ -3787,7 +3797,11 @@ async function confirmDeleteFile() {
         return;
 
     try {
-        await api.delete(`/api/file?path=${encodeURIComponent(file.fullPath)}`);
+        const idQuery =
+            file.id != null && (file.peer_id || 'self') === 'self'
+                ? `&id=${encodeURIComponent(file.id)}`
+                : '';
+        await api.delete(`/api/file?path=${encodeURIComponent(file.fullPath)}${idQuery}`);
         state.files.splice(state.currentFileIndex, 1);
         Viewer.closeMediaViewer();
         renderMediaGrid();

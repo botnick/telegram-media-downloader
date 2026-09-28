@@ -43,6 +43,7 @@ import {
     backfillGroupNames,
     searchDownloads,
     deleteDownloadsBy,
+    findDownloadsByPaths,
     purgeOrphanPeople,
     createShareLink,
     getShareLinkForServe,
@@ -4792,10 +4793,13 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         // downloader writes file_path with the OS-native separator (which
         // on Windows is `\`), so `DELETE WHERE file_path = ?` against the
         // raw frontend string never matches the row. Resolve to ids up
-        // front via a slash-insensitive comparison, then merge into the
-        // id-keyed delete path that already works everywhere. Files still
-        // unlink off disk via the path because the OS treats `/` and `\`
-        // identically on Windows path resolution.
+        // front (both separator forms, indexed — the old per-path
+        // REPLACE(file_path, …) comparison was a full scan each, ~7 s of
+        // frozen event loop for 1000 paths at 150k rows), then merge into
+        // the id-keyed delete path that already works everywhere. Files
+        // still unlink off disk via the path because the OS treats `/` and
+        // `\` identically on Windows path resolution. The SPA sends ids for
+        // its own tiles; paths stay for older clients + peer tiles.
         //
         // A path names a file, and several rows can point at one file
         // (download-time dedup), so take every row for the path — deleting
@@ -4803,14 +4807,16 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         const resolvedIdsFromPaths = [];
         const idsByPath = new Map();
         if (pathList.length) {
-            const db = getDb();
-            const stmt = db.prepare(
-                "SELECT id FROM downloads WHERE REPLACE(file_path, '\\', '/') = ?",
-            );
+            const idsByNorm = new Map();
+            for (const row of findDownloadsByPaths(pathList.map((p) => String(p || '')))) {
+                const norm = String(row.file_path).replace(/\\/g, '/');
+                if (!idsByNorm.has(norm)) idsByNorm.set(norm, []);
+                idsByNorm.get(norm).push(row.id);
+            }
             for (const p of pathList) {
                 const norm = String(p || '').replace(/\\/g, '/');
                 if (!norm) continue;
-                const pathIds = stmt.all(norm).map((row) => row.id);
+                const pathIds = idsByNorm.get(norm) || [];
                 idsByPath.set(p, pathIds);
                 resolvedIdsFromPaths.push(...pathIds);
             }
@@ -4858,12 +4864,18 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             // any drift (group renamed in UI, special chars sanitised
             // differently, custom file_path from the downloader) made
             // safeResolveDownload return ENOENT and the file survived
-            // on disk while the DB row got dropped.
-            const rows = db
-                .prepare(
-                    `SELECT id, group_id, group_name, file_name, file_type, file_path FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`,
-                )
-                .all(...idList);
+            // on disk while the DB row got dropped. Chunked so a huge
+            // gallery selection can't overflow SQLite's bound-parameter cap.
+            const selectRows = (chunk) =>
+                db
+                    .prepare(
+                        `SELECT id, group_id, group_name, file_name, file_type, file_path FROM downloads WHERE id IN (${chunk.map(() => '?').join(',')})`,
+                    )
+                    .all(...chunk);
+            const rows = [];
+            for (let i = 0; i < idList.length; i += 500) {
+                rows.push(...selectRows(idList.slice(i, i + 500)));
+            }
             const config = loadConfig();
             const folderById = new Map();
             for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
@@ -5117,6 +5129,45 @@ app.delete('/api/file', async (req, res) => {
                 .json({ error: r.reason === 'missing' ? 'File not found' : 'Access denied' });
         }
 
+        // Resolve the DB row(s) for THIS file before it's moved away, so an
+        // SPA-supplied `?id=` can be checked against the real on-disk path.
+        // Capture ids first so we can wipe their cached thumbnails; a stale
+        // thumb pointing at a deleted file would otherwise serve bytes from
+        // cache until the next "Rebuild thumbnails". This used to match
+        // every row sharing the basename, so deleting `photo_123.jpg` in one
+        // group also dropped another group's row for its own file.
+        const db = getDb();
+        const fileName = path.basename(r.real);
+        let matchingIds = [];
+        const idParam = parseInt(req.query.id, 10);
+        if (Number.isInteger(idParam) && idParam > 0) {
+            const row = db
+                .prepare('SELECT id, file_name, file_path FROM downloads WHERE id = ?')
+                .get(idParam);
+            const hasDir = /[\\/]/.test(row?.file_path || '');
+            if (row && hasDir) {
+                const own = await safeResolveDownload(row.file_path);
+                if (own.ok && own.real === r.real) matchingIds = [row.id];
+            } else if (row && row.file_name === fileName) {
+                matchingIds = [row.id];
+            }
+        }
+        if (!matchingIds.length) {
+            matchingIds = findDownloadsByPaths([String(filePath)]).map((row) => row.id);
+        }
+        if (!matchingIds.length) {
+            // Legacy rows written before file_path carried the folder only
+            // know their basename — match those, but never a row that has a
+            // real stored path (that one belongs to some other folder).
+            matchingIds = db
+                .prepare(
+                    `SELECT id FROM downloads WHERE file_name = ?
+                        AND (file_path IS NULL OR (instr(file_path, '/') = 0 AND instr(file_path, '\\') = 0))`,
+                )
+                .all(fileName)
+                .map((row) => row.id);
+        }
+
         try {
             const { deferDelete } = await import('../core/deferred-delete.js');
             deferDelete(r.real);
@@ -5125,18 +5176,11 @@ app.delete('/api/file', async (req, res) => {
         }
         console.log(`🗑️ Deleted: ${filePath}`);
 
-        // Remove from DB (by basename — the DB stores filenames, not paths).
-        // Capture matching ids first so we can wipe their cached thumbnails;
-        // a stale thumb pointing at a deleted file would otherwise serve
-        // bytes from cache until the next "Rebuild thumbnails".
-        const db = getDb();
-        const fileName = path.basename(r.real);
-        const matchingIds = db
-            .prepare('SELECT id FROM downloads WHERE file_name = ?')
-            .all(fileName)
-            .map((row) => row.id);
         const seekbarMap = collectSeekbarPaths(matchingIds);
-        db.prepare('DELETE FROM downloads WHERE file_name = ?').run(fileName);
+        const delStmt = db.prepare('DELETE FROM downloads WHERE id = ?');
+        db.transaction((ids) => {
+            for (const id of ids) delStmt.run(id);
+        })(matchingIds);
         for (const id of matchingIds) {
             try {
                 await purgeThumbsForDownload(id);

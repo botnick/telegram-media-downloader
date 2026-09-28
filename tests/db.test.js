@@ -199,3 +199,60 @@ describe('pinned queries', () => {
         expect(oldest.every((f) => f.pinned === 0)).toBe(true);
     });
 });
+
+describe('findDownloadsByPaths', () => {
+    it('matches both separator forms through idx_file_path', () => {
+        downloadsApi.insertDownload({
+            groupId: '-100777',
+            groupName: 'Paths',
+            messageId: 1,
+            fileName: 'win.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: String.raw`Paths\images\win.jpg`,
+        });
+        downloadsApi.insertDownload({
+            groupId: '-100777',
+            groupName: 'Paths',
+            messageId: 2,
+            fileName: 'posix.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: 'Paths/images/posix.jpg',
+        });
+        // Same basename in another folder must never be picked up.
+        downloadsApi.insertDownload({
+            groupId: '-100778',
+            groupName: 'Other',
+            messageId: 1,
+            fileName: 'win.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: 'Other/images/win.jpg',
+        });
+        const rows = downloadsApi.findDownloadsByPaths([
+            'Paths/images/win.jpg',
+            String.raw`Paths\images\posix.jpg`,
+            'missing/x.jpg',
+            '',
+            null,
+        ]);
+        expect(rows.map((r) => r.file_path).sort()).toEqual([
+            'Paths/images/posix.jpg',
+            String.raw`Paths\images\win.jpg`,
+        ]);
+        const plan = db
+            .prepare('EXPLAIN QUERY PLAN SELECT id FROM downloads WHERE file_path IN (?, ?)')
+            .all('a', 'b')
+            .map((r) => r.detail)
+            .join(' | ');
+        expect(plan).toContain('idx_file_path');
+    });
+
+    it('chunks large inputs under the bound-parameter cap', () => {
+        const paths = Array.from({ length: 1500 }, (_, i) => `bulk/images/f${i}.jpg`);
+        paths.push('Paths/images/posix.jpg');
+        const rows = downloadsApi.findDownloadsByPaths(paths);
+        expect(rows.map((r) => r.file_path)).toEqual(['Paths/images/posix.jpg']);
+    });
+});
