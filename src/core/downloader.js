@@ -1041,8 +1041,12 @@ export class DownloadManager extends EventEmitter {
             }
         } catch (e) {
             // Hash failed (very rare — file disappeared between rename and
-            // open). Fall through and store the row with the new file path.
-            console.warn('[downloader] dedup hash failed:', e?.message || e);
+            // open — or tgdl-core isn't running, which the [go-core] log and
+            // the dashboard banner already report). Fall through and store
+            // the row with the new file path.
+            if (e?.kind !== 'unavailable') {
+                console.warn('[downloader] dedup hash failed:', e?.message || e);
+            }
         }
 
         // Fallback dedup: same filename + size in the same group catches
