@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Changed
+- **Redesigned release notes** (click the version in the status bar): one card per version with its date and summary, sections tagged by kind (Security, Fixed, Performance, …) with counts on collapsed cards, the installed version marked, older versions collapsed, and a search box. Maintainer-only details (the empty "Unreleased" heading, service-worker cache versions) are no longer shown.
+
 ### Fixed — integrity sweep could wipe the library
 - **An unmounted or unreadable downloads disk no longer deletes your library.** The integrity sweep (runs 30 s after boot and hourly) treated any `stat` error as "file deleted" and pruned those downloads — with a split-disk setup, an HDD that isn't mounted yet, or a network share that dropped, that meant every row (plus faces, NSFW scores, pins). It now skips entirely when the downloads folder can't be read, only counts `ENOENT`/`ENOTDIR` as missing, and automatic runs refuse to prune when more than half the library looks missing (Maintenance → Verify files still prunes on demand).
 - Downloads stored through a federated-dedup reference (`_clusterref/…`) or under a custom `download.path` outside `data/downloads` were pruned on every sweep; they're kept now.
