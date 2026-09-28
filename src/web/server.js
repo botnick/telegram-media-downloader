@@ -13452,7 +13452,7 @@ async function downloadProfilePhoto(groupId, { force = false, ignoreAccess = fal
         _photoMissUntil.set(idStr, Date.now() + PHOTO_MISS_TTL_MS);
         lruCap(_photoMissUntil, PHOTO_MISS_MAX);
     } catch (e) {
-        console.log(`Error processing ${idStr}:`, e.message);
+        console.log('Error processing %s:', idStr, e.message);
     }
     return null;
 }
