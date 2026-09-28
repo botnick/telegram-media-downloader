@@ -23,6 +23,7 @@ import { confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { loadAdvanced, setupAutoSave } from './settings.js';
 import { openMediaViewerForReview } from './viewer.js';
+import { renderEnvNote, renderSidecarTest, syncTokenField } from './sidecar-ui.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1216,6 +1217,12 @@ function _renderModelStatus({ state = 'idle', label = '', progress = null, file 
 async function _refreshModelStatus() {
     try {
         const r = await api.get('/api/maintenance/nsfw/model-status');
+        const src = r?.sidecar?.sources || {};
+        renderEnvNote(document.getElementById('nsfw-sidecar-env-note'), [
+            src.url === 'env' ? 'TGDL_NSFW_SIDECAR_URL' : null,
+            src.token === 'env' ? 'TGDL_NSFW_API_TOKEN' : null,
+            src.pathMap === 'env' ? 'TGDL_NSFW_PATH_MAP' : null,
+        ]);
         const state =
             r?.state === 'ready'
                 ? 'ready'
@@ -1243,6 +1250,22 @@ async function _refreshModelStatus() {
     }
 }
 
+function _nsfwTransferText(r) {
+    if (r.pathMode === true) {
+        return i18nT(
+            'maintenance.nsfw.sidecar_transfer_path',
+            'path mode (the sidecar reads files, uploads the rest)',
+        );
+    }
+    if (r.transfer === 'upload') {
+        return i18nT('maintenance.nsfw.sidecar_transfer_upload', 'images uploaded to the sidecar');
+    }
+    return i18nT(
+        'maintenance.nsfw.sidecar_transfer_b64',
+        'images sent as base64 (update the sidecar to nsfw-v1.2.0 for raw uploads)',
+    );
+}
+
 async function _onNsfwSidecarTestClick() {
     const el = document.getElementById('setting-adv-nsfw-sidecar-url');
     const resultEl = document.getElementById('nsfw-sidecar-test-result');
@@ -1265,20 +1288,17 @@ async function _onNsfwSidecarTestClick() {
     }
     if (applyBtn) applyBtn.disabled = true;
     try {
-        const r = await api.post('/api/maintenance/nsfw/sidecar-test', { url });
-        if (resultEl) {
-            if (r.ok) {
-                const parts = [r.model, r.version ? `v${r.version}` : null]
-                    .filter(Boolean)
-                    .join(' · ');
-                resultEl.textContent = `✓ ${parts || 'Connected'}`;
-                resultEl.className = 'text-[11px] mt-1.5 block text-green-400';
-                if (applyBtn) applyBtn.disabled = false;
-            } else {
-                resultEl.textContent = `✗ ${r.error || 'unreachable'}`;
-                resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
-            }
-        }
+        const token = String(document.getElementById('nsfw-sidecar-token')?.value || '').trim();
+        const r = await api.post('/api/maintenance/nsfw/sidecar-test', {
+            url,
+            ...(token ? { token } : {}),
+        });
+        const ok = renderSidecarTest(resultEl, r, {
+            url,
+            parts: [r.model, r.device],
+            transferText: _nsfwTransferText(r),
+        });
+        if (applyBtn) applyBtn.disabled = !ok;
     } catch (e) {
         if (resultEl) {
             resultEl.textContent = `✗ ${e?.message || 'error'}`;
@@ -1324,17 +1344,56 @@ async function _onNsfwSidecarApply() {
     const el = document.getElementById('setting-adv-nsfw-sidecar-url');
     const url = String(el?.value || '').trim();
     if (!url) return;
+    const tokenEl = document.getElementById('nsfw-sidecar-token');
+    const token = String(tokenEl?.value || '').trim();
+    const pathMap = String(document.getElementById('nsfw-sidecar-pathmap')?.value || '');
     try {
         await api.post('/api/config', {
-            advanced: { nsfw: { sidecarUrl: url } },
+            // A blank token field keeps the saved token (it's write-only).
+            advanced: {
+                nsfw: { sidecarUrl: url, pathMap, ...(token ? { apiToken: token } : {}) },
+            },
         });
+        if (token) {
+            syncTokenField(tokenEl, document.getElementById('nsfw-sidecar-token-clear'), true);
+        }
         showToast(
             i18nT('maintenance.nsfw.sidecar_url_saved', 'Switched to external classifier'),
             'success',
         );
+        _refreshModelStatus();
     } catch (e) {
         showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
     }
+}
+
+async function _onNsfwSidecarClearToken() {
+    try {
+        await api.post('/api/config', { advanced: { nsfw: { apiToken: '' } } });
+        syncTokenField(
+            document.getElementById('nsfw-sidecar-token'),
+            document.getElementById('nsfw-sidecar-token-clear'),
+            false,
+        );
+        showToast(i18nT('maintenance.sidecar.token_cleared', 'Saved token removed'), 'success');
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+// Token placeholder, path map and mode toggle from the saved config.
+function _hydrateNsfwSidecar(cfg) {
+    const ns = cfg?.advanced?.nsfw || {};
+    syncTokenField(
+        document.getElementById('nsfw-sidecar-token'),
+        document.getElementById('nsfw-sidecar-token-clear'),
+        ns.apiTokenSet === true,
+    );
+    const pm = document.getElementById('nsfw-sidecar-pathmap');
+    if (pm && document.activeElement !== pm) {
+        pm.value = typeof ns.pathMap === 'string' ? ns.pathMap : '';
+    }
+    _syncNsfwModeToggle();
 }
 
 function _syncNsfwModeToggle() {
@@ -1447,6 +1506,7 @@ function _syncMediaKindButtons() {
 window._nsfwModeToggle = (mode) => _onNsfwModeToggle(mode);
 window._nsfwSidecarTest = () => _onNsfwSidecarTestClick();
 window._nsfwSidecarApply = () => _onNsfwSidecarApply();
+window._nsfwSidecarClearToken = () => _onNsfwSidecarClearToken();
 window._nsfwSidecarUrlInput = () => {
     const resultEl = $('nsfw-sidecar-test-result');
     if (resultEl) resultEl.textContent = '';
@@ -1584,6 +1644,7 @@ export function init() {
         try {
             const cfg = await api.get('/api/config');
             loadAdvanced(cfg);
+            _hydrateNsfwSidecar(cfg);
         } catch {
             /* best-effort — input still typeable, autosave still works */
         }

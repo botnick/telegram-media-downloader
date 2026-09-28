@@ -3055,6 +3055,17 @@
                                         <i class="ri-wifi-line"></i><span data-i18n="maintenance.nsfw.sidecar_test">Test</span>
                                     </button>
                                 </div>
+                                <p id="nsfw-sidecar-env-note" class="hidden text-[10.5px] text-yellow-400 mt-1"></p>
+                                <!-- Token + path map: saved only by Apply (ids stay
+                                     outside the `setting-*` autosave net). -->
+                                <label for="nsfw-sidecar-token" class="text-tg-text text-xs block mt-2 mb-1" data-i18n="maintenance.sidecar.token">API token</label>
+                                <div class="flex items-stretch gap-2">
+                                    <input id="nsfw-sidecar-token" type="password" class="tg-input flex-1 text-sm" autocomplete="new-password" spellcheck="false" data-i18n-placeholder="maintenance.sidecar.token_placeholder" placeholder="Optional — the token set on the sidecar" oninput="window._nsfwSidecarUrlInput?.()">
+                                    <button id="nsfw-sidecar-token-clear" type="button" class="hidden tg-btn-input-secondary shrink-0 text-xs" onclick="window._nsfwSidecarClearToken?.()" data-i18n="maintenance.sidecar.token_clear">Clear saved token</button>
+                                </div>
+                                <label for="nsfw-sidecar-pathmap" class="text-tg-text text-xs block mt-2 mb-1" data-i18n="maintenance.sidecar.path_map">Path mapping (optional)</label>
+                                <textarea id="nsfw-sidecar-pathmap" rows="2" class="tg-input w-full text-xs font-mono" spellcheck="false" placeholder="/app/data/downloads=/mnt/media" oninput="window._nsfwSidecarUrlInput?.()"></textarea>
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.sidecar.path_map_help">One rule per line: app path = the same folder as the sidecar sees it. Lets a sidecar with a shared mount read files directly; without it, files are uploaded to the sidecar.</p>
                                 <span id="nsfw-sidecar-test-result" class="text-[11px] mt-1.5 block"></span>
                                 <button id="nsfw-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled onclick="window._nsfwSidecarApply?.()">
                                     <i class="ri-check-line"></i><span data-i18n="maintenance.nsfw.sidecar_apply">Apply</span>

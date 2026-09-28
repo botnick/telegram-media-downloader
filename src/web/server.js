@@ -139,6 +139,7 @@ import {
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
+import { normalizeSidecarUrl, probeSidecar } from '../core/sidecar-remote.js';
 import {
     startScan as nsfwStartScan,
     cancelScan as nsfwCancelScan,
@@ -149,6 +150,8 @@ import {
     classifierReady as nsfwClassifierReady,
     setBlocklistDeleteCallback as nsfwSetBlocklistDeleteCallback,
     initNsfwSidecar,
+    getNsfwSidecarInfo,
+    getNsfwSidecarSources,
     NSFW_DEFAULTS,
     getNsfwStats,
     getNsfwDeleteCandidates,
@@ -7311,30 +7314,57 @@ function _sidecarHealthUrl(raw) {
     return { url: u.href };
 }
 
-// Server-side health probe for an arbitrary NSFW sidecar URL (CORS proxy).
+// Token for a sidecar Test button: the one typed in the form, else the saved
+// one when the URL under test is the saved URL (so the operator doesn't
+// have to re-enter a write-only secret just to re-test).
+function _sidecarTestToken(body, savedUrl, savedToken) {
+    if (typeof body?.token === 'string' && body.token.trim()) return body.token.trim();
+    if (body?.useSavedToken === false) return '';
+    const same =
+        savedUrl && normalizeSidecarUrl(body?.url) === normalizeSidecarUrl(String(savedUrl));
+    return same ? savedToken || '' : '';
+}
+
+// Server-side probe for an NSFW sidecar URL (CORS proxy): reachable?
+// version? token accepted? path mode or upload mode?
 app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
     const probe = _sidecarHealthUrl(req.body?.url);
     if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
     try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        let r;
-        try {
-            r = await fetch(probe.url, { method: 'GET', signal: ctrl.signal });
-        } finally {
-            clearTimeout(timer);
-        }
-        if (!r.ok) return res.json({ ok: false, error: `http_${r.status}` });
-        const body = await r.json();
+        const saved = loadConfig().advanced?.nsfw || {};
+        const token = _sidecarTestToken(
+            req.body,
+            process.env.TGDL_NSFW_SIDECAR_URL || saved.sidecarUrl,
+            process.env.TGDL_NSFW_API_TOKEN || saved.apiToken,
+        );
+        // An empty /classify is a cheap token check: 401 = rejected,
+        // 400 missing_input = accepted (or no token required).
+        const r = await probeSidecar({
+            url: req.body.url,
+            token,
+            authCheck: { method: 'POST', path: '/classify', body: {} },
+        });
+        const h = r.health || {};
+        const features = r.features;
         res.json({
-            ok: body?.ok === true,
-            version: body?.version ?? null,
-            model: body?.model ?? null,
-            ready: body?.ready === true,
+            ok: r.ok,
+            reachable: r.reachable,
+            error: r.error,
+            version: r.version,
+            model: h.model ?? null,
+            ready: h.ready === true,
+            device: h.device ?? null,
+            features,
+            auth: r.auth,
+            authRequired: r.authRequired,
+            // Path mode needs TGDL_NSFW_ALLOW_ROOTS on the sidecar (older
+            // sidecars don't say); otherwise images travel as bytes.
+            pathMode: typeof h.path_mode === 'boolean' ? h.path_mode : null,
+            transfer: features.includes('upload') ? 'upload' : 'base64',
+            tokenSent: !!token,
         });
     } catch (e) {
-        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
-        res.json({ ok: false, error: msg });
+        res.json({ ok: false, error: e?.message || String(e) });
     }
 });
 
@@ -7342,7 +7372,11 @@ app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
 // /maintenance/nsfw page so the model-status pill reflects reality
 // even between WS messages.
 app.get('/api/maintenance/nsfw/model-status', async (req, res) => {
-    res.json({ success: true, ...nsfwClassifierReady() });
+    res.json({
+        success: true,
+        ...nsfwClassifierReady(),
+        sidecar: { ...getNsfwSidecarInfo(), sources: getNsfwSidecarSources() },
+    });
 });
 
 // Wipe the cached weights on disk. Confirm-gated in the UI; safe-by-
@@ -11024,6 +11058,9 @@ app.get('/api/maintenance/config/raw', async (req, res) => {
         if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
         if (config.web?.password) config.web.password = '••••••• (redacted)';
         if (config.proxy?.password) config.proxy.password = '••••••• (redacted)';
+        for (const block of [config.advanced?.nsfw, config.advanced?.seekbar]) {
+            if (block?.apiToken) block.apiToken = '••••••• (redacted)';
+        }
         if (Array.isArray(config.accounts)) {
             // Phone numbers are stored alongside the metadata; keep but show
             // the user what they're about to download.
@@ -11050,6 +11087,12 @@ app.get('/api/config', async (req, res) => {
         if (safe.web) {
             delete safe.web.password;
             delete safe.web.passwordHash;
+        }
+        // Sidecar tokens are write-only from the dashboard's point of view.
+        for (const block of [safe.advanced?.nsfw, safe.advanced?.seekbar]) {
+            if (!block || typeof block !== 'object') continue;
+            block.apiTokenSet = !!block.apiToken;
+            delete block.apiToken;
         }
         if (Array.isArray(safe.accounts)) {
             safe.accounts = safe.accounts.map((a) => ({
@@ -11347,6 +11390,12 @@ app.post('/api/config', async (req, res) => {
                 .map((s) => String(s).toLowerCase())
                 .filter((s) => ALLOWED_TYPES.includes(s));
             if (!ns.fileTypes.length) ns.fileTypes = NSFW_DEFAULTS.fileTypes.slice();
+            // External sidecar: URL, shared token, app→sidecar path map.
+            // GET /api/config never returns the token (apiTokenSet instead).
+            ns.sidecarUrl = typeof ns.sidecarUrl === 'string' ? ns.sidecarUrl.trim() : '';
+            ns.apiToken = typeof ns.apiToken === 'string' ? ns.apiToken.trim().slice(0, 256) : '';
+            ns.pathMap = typeof ns.pathMap === 'string' ? ns.pathMap.slice(0, 4096) : '';
+            delete ns.apiTokenSet;
 
             // AI subsystem (semantic search + auto-tag + face clustering).
             // All values are config-driven — same posture as NSFW. Master
@@ -11516,6 +11565,8 @@ app.post('/api/config', async (req, res) => {
             // it alongside the dashboard passwordHash).
             sk.sidecarUrl = typeof sk.sidecarUrl === 'string' ? sk.sidecarUrl.trim() : '';
             sk.apiToken = typeof sk.apiToken === 'string' ? sk.apiToken.trim().slice(0, 256) : '';
+            sk.pathMap = typeof sk.pathMap === 'string' ? sk.pathMap.slice(0, 4096) : '';
+            delete sk.apiTokenSet;
 
             newConfig.advanced = merged;
         }
@@ -11679,8 +11730,13 @@ app.post('/api/config', async (req, res) => {
             }
         }
 
-        // Re-init NSFW sidecar when the URL changes.
-        if (req.body.advanced?.nsfw?.sidecarUrl !== undefined) {
+        // Re-init the NSFW sidecar client when its URL / token / path map change.
+        const nsIn = req.body.advanced?.nsfw || {};
+        if (
+            nsIn.sidecarUrl !== undefined ||
+            nsIn.apiToken !== undefined ||
+            nsIn.pathMap !== undefined
+        ) {
             try {
                 initNsfwSidecar(loadConfig());
             } catch {}
