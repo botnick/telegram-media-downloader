@@ -18,35 +18,6 @@
         })();
     </script>
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        // Same Telegram colour tokens as login.html / index.html so the
-        // add-account screen matches the dashboard end-to-end.
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        tg: {
-                            blue: '#2AABEE',
-                            darkBlue: '#229ED9',
-                            bg: '#17212B',
-                            sidebar: '#0E1621',
-                            panel: '#242F3D',
-                            hover: '#2B5278',
-                            border: '#0D1117',
-                            text: '#F5F5F5',
-                            textSecondary: '#8B9BAA',
-                            green: '#4FAE4E',
-                            red: '#E53935',
-                            orange: '#FF9800',
-                            lightBg: '#182533'
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.0.0/fonts/remixicon.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -85,8 +56,8 @@
         body {
             background: var(--tg-bg);
             color: var(--tg-text);
-            min-height: 100dvh;
             min-height: 100vh;
+            min-height: 100dvh;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         code { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -143,7 +114,8 @@
             border: 1px solid var(--tg-border);
             border-radius: 10px;
             color: var(--tg-text);
-            font-size: 15px;
+            /* 16 px: anything smaller makes iOS Safari zoom the page on focus */
+            font-size: 16px;
             outline: none;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
@@ -283,6 +255,10 @@
             .tg-btn-primary:active { transform: none; }
         }
     </style>
+    <!-- Prebuilt Tailwind utilities (`npm run build:css`). Kept last in
+         <head> so utilities win same-specificity ties, exactly like the
+         old Play CDN <style> that was appended at the end of <head>. -->
+    <link rel="stylesheet" href="/css/tailwind.css">
 </head>
 
 <body class="flex items-center justify-center px-4">

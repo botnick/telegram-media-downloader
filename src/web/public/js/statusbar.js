@@ -4,10 +4,7 @@ import { api } from './api.js';
 import { ws } from './ws.js';
 import { formatBytes, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
-import {
-    subscribe as subscribeMonitorStatus,
-    refreshNow as refreshMonitorStatus,
-} from './monitor-status.js';
+import { subscribe as subscribeMonitorStatus } from './monitor-status.js';
 import { openSheet, confirmSheet } from './sheet.js';
 
 const $ = (id) => document.getElementById(id);
@@ -245,18 +242,11 @@ export function initStatusBar() {
         );
     });
     ws.on('monitor_state', (m) => applyState(m.state));
-    ws.on('*', (m) => {
-        // refresh counters on relevant events; ignore most chatter to avoid stalls
-        if (
-            m.type &&
-            /^(download_complete|history_done|file_deleted|group_purged|purge_all|monitor_event)$/.test(
-                m.type,
-            )
-        ) {
-            refreshMonitorStatus();
-            refreshStats();
-        }
-    });
+    // No per-event refetch: queue / active counters ride the 3 s
+    // `monitor_status_push` and file / disk / group counters ride the
+    // server's debounced `stats_update` push (both wired above). The old
+    // listener refetched /api/monitor/status + /api/stats on every
+    // download_complete / file_deleted — a request flood during backfills.
 
     // Auto-update — server fires this right BEFORE watchtower kills the
     // container. We surface a full-screen overlay so the operator knows
@@ -353,7 +343,7 @@ export async function _openUpdateChooser(latest, releaseUrl) {
                                  'update.no_watchtower',
                                  'Watchtower sidecar is not configured. See docker-compose.yml comments to enable the auto-update profile.',
                              )
-                   }">
+}">
               <i class="ri-download-cloud-2-line"></i><span>${i18nT('update.install_disabled', 'Install (unavailable)')}</span>
            </button>`;
 

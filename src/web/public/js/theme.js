@@ -10,6 +10,20 @@ function effectiveScheme(setting) {
     return mql.matches ? 'light' : 'dark';
 }
 
+// Browser / OS status-bar colour — matches the #content-header background
+// of each scheme. index.html ships one <meta name="theme-color"> per
+// prefers-color-scheme; when the user forces a theme both carry that
+// theme's colour so the bar doesn't follow the OS instead of the app.
+const THEME_COLORS = { dark: '#17212B', light: '#FFFFFF' };
+
+function syncThemeColor(setting, scheme) {
+    const forced = setting === 'light' || setting === 'dark';
+    for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+        const ownScheme = /light/.test(meta.getAttribute('media') || '') ? 'light' : 'dark';
+        meta.setAttribute('content', THEME_COLORS[forced ? scheme : ownScheme]);
+    }
+}
+
 function apply(setting) {
     const scheme = effectiveScheme(setting);
     ROOT.classList.toggle('theme-light', scheme === 'light');
@@ -18,6 +32,7 @@ function apply(setting) {
     // Tell the browser so form controls and built-in scrollbars adapt too.
     const meta = document.querySelector('meta[name="color-scheme"]');
     if (meta) meta.setAttribute('content', scheme);
+    syncThemeColor(setting, scheme);
     document.dispatchEvent(new CustomEvent('themechange', { detail: { setting, scheme } }));
 }
 

@@ -190,26 +190,17 @@ export function handleEngineWsMessage(msg) {
         setTimeout(refresh, 100);
         return;
     }
+    // A backfill finishing is a one-off lifecycle change worth an
+    // immediate refresh. Everything chatty — history_progress,
+    // download_start / _complete / _error, queue_length — used to refetch
+    // /api/monitor/status on EVERY event (dozens per second during a
+    // backfill). The server already pushes the full snapshot every 3 s
+    // (`monitor_status_push`, see monitor-status.js), which is what the
+    // Engine card's counters render from, so those events need no fetch.
     if (
-        msg.type === 'history_progress' ||
         msg.type === 'history_done' ||
         msg.type === 'history_error' ||
         msg.type === 'history_cancelled'
-    ) {
-        refresh();
-        return;
-    }
-    // server.js does `broadcast({type:'monitor_event', ...e})` where `e` is
-    // `{type, payload}` — the spread overwrites the outer type, so engine
-    // events arrive at the WS as `{type:'download_progress', payload:{...}}`
-    // (or _complete / _error / _start, etc.). The Engine card's headline
-    // counters are refreshed via the shared monitor-status poller, so we
-    // only need to forward lifecycle/queue-length deltas here.
-    if (
-        msg.type === 'download_complete' ||
-        msg.type === 'download_start' ||
-        msg.type === 'download_error' ||
-        msg.type === 'queue_length'
     ) {
         refresh();
     }

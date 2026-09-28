@@ -93,6 +93,14 @@ const store = new Map();
 // O(1) status counts for the chips. Patched by upsert/remove so the
 // header chip render is always cheap.
 const statusCounts = new Map();
+// Bumped on every change that can alter the filtered / sorted row set
+// (add, remove, status flip) so getFilteredSorted() only re-sorts then.
+let _storeVersion = 0;
+// Finished rows (done / failed) are history, not work. Keep the newest
+// MAX_FINISHED so a long session with a busy monitor doesn't grow the
+// store (and every O(n) chip / aggregate pass) without bound.
+const MAX_FINISHED = 500;
+let _finishedCount = 0;
 let globalPaused = false;
 let engineRunning = false;
 let maxSpeedConfig = null;
@@ -142,13 +150,16 @@ function scheduleRender() {
         _renderScheduled = false;
         _renderStructural = false;
         requestAnimationFrame(() => {
-            if (view.visible) {
-                if (structural) renderRows();
-                else patchRenderedRows();
-            }
+            // The nav badge is the only Queue UI outside #page-queue. While
+            // the page is hidden, skip everything else — chips, totals,
+            // sparkline, row patches, full re-sorts — showQueuePage()
+            // repaints it all from the store on the next visit.
+            updateNavBadge();
+            if (!view.visible) return;
+            if (structural) renderRows();
+            else patchRenderedRows();
             renderChips();
             renderAggregate();
-            updateNavBadge();
             // Refresh batch-action button state alongside other toolbar
             // counters — cheap (looks at statusCounts) and always
             // surfaces "Retry all" the moment a job lands in `failed`.
@@ -168,6 +179,10 @@ function scheduleStructuralRender() {
 
 function bumpStatus(status, delta) {
     if (!status) return;
+    _storeVersion++;
+    if (status === 'done' || status === 'failed') {
+        _finishedCount = Math.max(0, _finishedCount + delta);
+    }
     const cur = statusCounts.get(status) || 0;
     const next = Math.max(0, cur + delta);
     if (next === 0) statusCounts.delete(status);
@@ -187,12 +202,28 @@ function upsert(entry) {
         store.set(entry.key, { ...entry });
         bumpStatus(entry.status, 1);
     }
+    if (_finishedCount > MAX_FINISHED + 50) _pruneFinished();
+}
+
+// Drop the oldest finished rows (by finish / add time) down to
+// MAX_FINISHED. Runs in batches (the +50 slack above) so the sort isn't
+// paid on every completion.
+function _pruneFinished() {
+    const finished = [];
+    for (const j of store.values()) {
+        if (j.status === 'done' || j.status === 'failed') finished.push(j);
+    }
+    if (finished.length <= MAX_FINISHED) return;
+    finished.sort((a, b) => (a.finishedAt || a.addedAt || 0) - (b.finishedAt || b.addedAt || 0));
+    for (let i = 0; i < finished.length - MAX_FINISHED; i++) remove(finished[i].key);
+    scheduleStructuralRender();
 }
 
 function remove(key) {
     const prev = store.get(key);
     if (!prev) return;
     bumpStatus(prev.status, -1);
+    _storeVersion++;
     store.delete(key);
     // A removed row can never be acted on again — drop it from the
     // selection so the floating-bar count and "select all" tri-state
@@ -431,6 +462,8 @@ async function loadSnapshot() {
         // Wipe local state and rebuild from the authoritative server snapshot.
         store.clear();
         statusCounts.clear();
+        _finishedCount = 0;
+        _storeVersion++;
         globalPaused = !!snap.globalPaused;
         engineRunning = !!snap.engineRunning;
         maxSpeedConfig = snap.maxSpeed ?? null;
@@ -635,7 +668,7 @@ let _filteredCache = null;
 let _filteredCacheTag = '';
 
 function getFilteredSorted() {
-    const tag = `${view.filter}|${view.sort}|${view.sortDir}|${view.search}|${store.size}`;
+    const tag = `${view.filter}|${view.sort}|${view.sortDir}|${view.search}|${_storeVersion}`;
     if (tag === _filteredCacheTag && _filteredCache) return _filteredCache;
     const filterFn = (STATUS_FILTERS.find((f) => f.id === view.filter) || STATUS_FILTERS[0]).match;
     const q = view.search.trim().toLowerCase();
@@ -682,41 +715,59 @@ function invalidateFilterCache() {
 }
 
 // ============ Render ============
-function renderChips() {
-    const host = document.getElementById('queue-chips');
-    if (!host) return;
-    const total = store.size;
+// Chips are built once (per language) with a single delegated click
+// listener; later renders only patch the counts via textContent and flip
+// the active classes. Rebuilding them via innerHTML on every 150 ms tick
+// re-created 8 buttons and re-attached 8 listeners each time.
+const CHIP_ACTIVE_CLS = ['bg-tg-blue/20', 'text-tg-blue', 'border-tg-blue/40'];
+const CHIP_IDLE_CLS = [
+    'bg-tg-bg/40',
+    'text-tg-textSecondary',
+    'border-transparent',
+    'hover:text-tg-text',
+];
+let _chipsLang = null;
+let _chipsWired = false;
+
+function _chipCounts() {
     // `deduped` is a cross-cutting flag, not a status — statusCounts tracks
     // active/queued/paused/failed/done only. Count it by sweeping the store
-    // at render time (O(n) where n = store.size, capped by sliding window).
-    // Without this the "Duplicate" chip always showed 0 even when rows
-    // carried the orange Duplicate badge.
-    let dupeCount = 0;
+    // (O(n), n bounded by MAX_FINISHED + live jobs). Without this the
+    // "Duplicate" chip always showed 0 even when rows carried the badge.
+    let dupe = 0;
     for (const j of store.values()) {
-        if (j.deduped === true) dupeCount += 1;
+        if (j.deduped === true) dupe += 1;
     }
-    const counts = {
-        all: total,
+    return {
+        all: store.size,
         active: statusCounts.get('active') || 0,
         queued: statusCounts.get('queued') || 0,
         paused: statusCounts.get('paused') || 0,
         failed: statusCounts.get('failed') || 0,
         done: statusCounts.get('done') || 0,
-        dupe: dupeCount,
+        dupe,
     };
-    host.innerHTML = STATUS_FILTERS.map((f) => {
-        const active = view.filter === f.id;
-        const cls = active
-            ? 'bg-tg-blue/20 text-tg-blue border-tg-blue/40'
-            : 'bg-tg-bg/40 text-tg-textSecondary border-transparent hover:text-tg-text';
-        return `<button type="button" data-chip="${f.id}"
-            class="px-2.5 py-1 text-xs rounded-full border ${cls} flex items-center gap-1.5">
+}
+
+function renderChips() {
+    const host = document.getElementById('queue-chips');
+    if (!host) return;
+    const lang = i18nT('queue.chip.all', 'All');
+    if (_chipsLang !== lang || host.children.length !== STATUS_FILTERS.length) {
+        _chipsLang = lang;
+        host.innerHTML = STATUS_FILTERS.map(
+            (f) => `<button type="button" data-chip="${f.id}"
+            class="px-2.5 py-1 text-xs rounded-full border flex items-center gap-1.5">
             <span>${escapeHtml(i18nT(f.i18n, f.fallback))}</span>
-            <span class="tabular-nums opacity-80">${counts[f.id] ?? 0}</span>
-        </button>`;
-    }).join('');
-    host.querySelectorAll('[data-chip]').forEach((btn) => {
-        btn.addEventListener('click', () => {
+            <span data-chip-count class="tabular-nums opacity-80">0</span>
+        </button>`,
+        ).join('');
+    }
+    if (!_chipsWired) {
+        _chipsWired = true;
+        host.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('[data-chip]');
+            if (!btn || !host.contains(btn)) return;
             view.filter = btn.dataset.chip;
             invalidateFilterCache();
             // Update the URL without re-dispatching the route handler so
@@ -734,7 +785,17 @@ function renderChips() {
             const vp = document.getElementById('queue-viewport');
             if (vp) vp.scrollTop = 0;
         });
-    });
+    }
+    const counts = _chipCounts();
+    for (const btn of host.children) {
+        const id = btn.dataset.chip;
+        const active = view.filter === id;
+        for (const c of CHIP_ACTIVE_CLS) btn.classList.toggle(c, active);
+        for (const c of CHIP_IDLE_CLS) btn.classList.toggle(c, !active);
+        const countEl = btn.querySelector('[data-chip-count]');
+        const n = String(counts[id] ?? 0);
+        if (countEl && countEl.textContent !== n) countEl.textContent = n;
+    }
 }
 
 // Full re-render — wipes the rows host, paints INITIAL_RENDER rows, and
@@ -958,8 +1019,13 @@ function patchRenderedRows() {
     // there are any (e.g. monitor just started a fresh download), force
     // a structural re-render so they appear.
     const filtered = getFilteredSorted();
+    // The DOM holds the window [from, view.rendered) — appendNextPage()
+    // drops rows off the top past MAX_DOM_ROWS. Compare against that
+    // window only; comparing against [0, view.rendered) made every tick
+    // after a trim look "diverged" and snap the list back to the top.
+    const from = Math.max(0, view.rendered - _renderedKeys.size);
     const filteredKeys = new Set();
-    for (let i = 0; i < Math.min(filtered.length, view.rendered); i++) {
+    for (let i = from; i < Math.min(filtered.length, view.rendered); i++) {
         filteredKeys.add(filtered[i].key);
     }
     // If the rendered window's set of keys diverged from the filtered
@@ -976,7 +1042,7 @@ function patchRenderedRows() {
     }
     // Patch in place. Each `[data-key]` row has a small set of named
     // child nodes the patcher knows about; update only those.
-    for (const job of filtered.slice(0, view.rendered)) {
+    for (const job of filtered.slice(from, view.rendered)) {
         const rowEl = rowsHost.querySelector(`[data-key="${CSS.escape(job.key)}"]`);
         if (!rowEl) continue;
         _patchRowNode(rowEl, job);
@@ -1211,7 +1277,7 @@ function renderRow(j) {
                     <span class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(sizeStr)}</span>
                     <span data-row-meta class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(speedStr !== '—' ? speedStr : '')}</span>
                     <span data-row-status data-status="${escapeHtml(j.status)}" class="text-[10px] px-1.5 py-0.5 rounded-full ${pillCls} ml-auto">${escapeHtml(pillLabel)}</span>
-                    ${actions.length ? `<span class="flex items-center gap-0.5">${actions.join('')}</span>` : ''}
+                    ${actions.length ? `<span class="flex items-center gap-1.5">${actions.join('')}</span>` : ''}
                 </div>
                 <div data-row-pct class="hidden md:block text-[10px] text-tg-textSecondary tabular-nums mt-0.5">${escapeHtml(pctLabel)}</div>
             </div>
@@ -1223,9 +1289,11 @@ function renderRow(j) {
         </div>`;
 }
 
+// 36 px on touch layouts (was 28 px — too small / too close together to
+// hit reliably next to each other), the compact 28 px on the md+ table.
 function actionBtn(action, icon, label, extraCls = '') {
     return `<button type="button" data-row-action="${action}"
-        class="w-7 h-7 rounded flex items-center justify-center text-tg-textSecondary hover:text-tg-text hover:bg-tg-bg/60 ${extraCls}"
+        class="w-9 h-9 md:w-7 md:h-7 rounded flex items-center justify-center text-tg-textSecondary hover:text-tg-text hover:bg-tg-bg/60 ${extraCls}"
         title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><i class="${icon}"></i></button>`;
 }
 
@@ -1288,7 +1356,8 @@ function _pushSpeed(bps) {
 
 function _speedSparkline() {
     const len = _speedHistory.length;
-    const max = Math.max(1, ...Array.from(_speedHistory));
+    let max = 1;
+    for (const v of _speedHistory) if (v > max) max = v;
     const w = 120;
     const h = 24;
     const step = w / (len - 1);

@@ -724,8 +724,9 @@ html.theme-light .unread-pill.muted {
 /* Engine pill pulse halo — alpha 0.20 was invisible on a near-white
    header. Bump alpha + recolour for the light surface. */
 html.theme-light .engine-status-pill[data-state="running"] .engine-status-dot {
-    box-shadow: 0 0 0 2px rgba(0, 138, 110, 0.45);
-    animation-name: engine-pulse-light;
+    box-shadow: none;
+    --engine-pulse-color: rgba(0, 138, 110, 0.45);
+    --engine-pulse-min-opacity: 0.4444;
 }
 html.theme-light .engine-status-pill[data-state="error"] .engine-status-dot {
     box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.4);
@@ -737,15 +738,6 @@ html.theme-light .engine-status-pill[data-state="stopping"] .engine-status-dot {
 }
 html.theme-light .engine-status-pill .engine-status-dot {
     box-shadow: 0 0 0 2px rgba(75, 85, 99, 0.3);
-}
-@keyframes engine-pulse-light {
-    0%,
-    100% {
-        box-shadow: 0 0 0 2px rgba(0, 138, 110, 0.45);
-    }
-    50% {
-        box-shadow: 0 0 0 4px rgba(0, 138, 110, 0.2);
-    }
 }
 
 /* Brand utilities used as solid backgrounds (primary CTA, FAB,
@@ -1006,6 +998,15 @@ html.theme-light .badge-pending {
    DISPLAY:NONE in grid/compact and revealed in list. CSS Grid for
    the list keeps columns aligned; hover fills the row background.
 */
+
+/* The gallery keeps a bounded DOM window (js/gallery-virtual.js): rows
+   scrolled far away are swapped for a spacer of the same measured height
+   and re-inserted on the way back. The window pins the visible rows
+   itself, so browser scroll anchoring must not "correct" the scroll
+   position on top of that (Chrome/Firefox would otherwise double-shift). */
+#content-area {
+    overflow-anchor: none;
+}
 
 /* GRID mode (default) */
 .media-grid {
@@ -1950,44 +1951,56 @@ html.theme-light .ai-mode-btn.active {
 }
 .engine-state-dot[data-state="running"] {
     background: #4caf50;
-    animation: engine-pulse-green 2s ease-in-out infinite;
+    --engine-ping-color: rgba(76, 175, 80, 0.55);
+    --engine-ping-duration: 2s;
 }
 .engine-state-dot[data-state="starting"] {
     background: #2aabee;
-    animation: engine-pulse-blue 1.2s ease-in-out infinite;
+    --engine-ping-color: rgba(42, 171, 238, 0.55);
+    --engine-ping-duration: 1.2s;
 }
 .engine-state-dot[data-state="stopping"] {
     background: #f4c430;
 }
 .engine-state-dot[data-state="error"] {
     background: #ef5350;
-    animation: engine-pulse-red 1.6s ease-in-out infinite;
+    --engine-ping-color: rgba(239, 83, 80, 0.55);
+    --engine-ping-duration: 1.6s;
 }
-@keyframes engine-pulse-green {
+/* Ping ring as a pseudo-element animating transform + opacity (compositor
+   only) instead of box-shadow (a repaint every frame). The 8px ring grows
+   to 20px — the old 0 → 6px spread — while fading out. */
+.engine-state-dot[data-state="running"],
+.engine-state-dot[data-state="starting"],
+.engine-state-dot[data-state="error"] {
+    position: relative;
+}
+.engine-state-dot[data-state="running"]::after,
+.engine-state-dot[data-state="starting"]::after,
+.engine-state-dot[data-state="error"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--engine-ping-color);
+    pointer-events: none;
+    animation: engine-ping var(--engine-ping-duration, 2s) ease-in-out infinite;
+}
+@keyframes engine-ping {
     0%,
     100% {
-        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.55);
+        transform: scale(1);
+        opacity: 1;
     }
     50% {
-        box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
+        transform: scale(2.5);
+        opacity: 0;
     }
 }
-@keyframes engine-pulse-blue {
-    0%,
-    100% {
-        box-shadow: 0 0 0 0 rgba(42, 171, 238, 0.55);
-    }
-    50% {
-        box-shadow: 0 0 0 6px rgba(42, 171, 238, 0);
-    }
-}
-@keyframes engine-pulse-red {
-    0%,
-    100% {
-        box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.55);
-    }
-    50% {
-        box-shadow: 0 0 0 6px rgba(239, 83, 80, 0);
+@media (prefers-reduced-motion: reduce) {
+    .engine-state-dot::after {
+        animation: none;
+        display: none;
     }
 }
 
@@ -2669,7 +2682,21 @@ input[type="range"].tg-range::-moz-range-track,
 }
 .engine-status-pill[data-state="running"] .engine-status-dot {
     background: var(--tg-green, #4fae4e);
-    box-shadow: 0 0 0 2px rgba(79, 174, 78, 0.2);
+    /* The pulsing ring is the ::after below. Animating box-shadow here
+       repainted the header on every frame for as long as the monitor
+       ran; transform + opacity on a pseudo-element stay on the
+       compositor. Same look: a 2px ring at 20% that breathes out to
+       4px at 10%. */
+    box-shadow: none;
+    position: relative;
+}
+.engine-status-pill[data-state="running"] .engine-status-dot::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: var(--engine-pulse-color, rgba(79, 174, 78, 0.2));
+    pointer-events: none;
     animation: engine-pulse 2.4s ease-in-out infinite;
 }
 .engine-status-pill[data-state="error"] {
@@ -2693,10 +2720,13 @@ input[type="range"].tg-range::-moz-range-track,
 @keyframes engine-pulse {
     0%,
     100% {
-        box-shadow: 0 0 0 2px rgba(79, 174, 78, 0.2);
+        transform: scale(1);
+        opacity: 1;
     }
     50% {
-        box-shadow: 0 0 0 4px rgba(79, 174, 78, 0.1);
+        /* 12px ring → 16px, 20% → 10% alpha (light theme: 45% → 20%) */
+        transform: scale(1.3333);
+        opacity: var(--engine-pulse-min-opacity, 0.5);
     }
 }
 @media (max-width: 420px) {
@@ -2712,7 +2742,7 @@ input[type="range"].tg-range::-moz-range-track,
     .engine-status-pill .engine-status-dot {
         transition: none;
     }
-    .engine-status-pill[data-state="running"] .engine-status-dot {
+    .engine-status-pill[data-state="running"] .engine-status-dot::after {
         animation: none;
     }
 }
@@ -5294,4 +5324,191 @@ html[data-contrast="more"] .media-item {
 :fullscreen #video-skip-fwd {
     width: 44px;
     height: 44px;
+}
+
+/* ============================================================
+   Mobile viewport + safe areas (phones, installed PWA)
+   ============================================================ */
+
+/* 100vh on iOS/Android is the LARGEST viewport (toolbars hidden), so
+   bottom-anchored UI slid under the browser toolbar. Prefer the dynamic
+   viewport; browsers without dvh keep the Tailwind h-screen (100vh). */
+@supports (height: 100dvh) {
+    body.h-screen {
+        height: 100dvh;
+    }
+    #gallery-scope-menu {
+        max-height: calc(100dvh - 8rem);
+    }
+    .sheet-card {
+        max-height: 85dvh;
+    }
+}
+
+/* viewport-fit=cover (index.html) lets the page draw under notches and
+   the home indicator; these keep content inside the safe area. In
+   portrait the left/right insets are 0, in landscape they clear the
+   notch. */
+body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+.bottom-nav {
+    /* border-box: grow by the inset instead of squeezing the icons */
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+/* id selector: the element also carries Tailwind px-3, which loads later */
+#status-bar {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+#media-modal {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+#modal-top-bar {
+    padding-top: max(1rem, env(safe-area-inset-top));
+}
+#modal-bottom-controls {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.sheet-card {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+@media (max-width: 767.98px) {
+    #sidebar {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+    }
+}
+/* iOS draws white status-bar text (black-translucent) over the page.
+   Over the light theme's white header that text was invisible, so give
+   the inset strip a dark band. Zero-height outside notched standalone. */
+@media (display-mode: standalone) {
+    html.theme-light #content-header,
+    html.theme-light #sidebar {
+        box-shadow: inset 0 env(safe-area-inset-top) 0 0 #17212b;
+    }
+}
+
+/* Group Settings modal: never taller than the visible screen — header,
+   tabs and footer stay put, only the body scrolls. */
+.group-modal-card {
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+}
+
+/* Floating bars above the bottom nav + status bar on phones. The gallery
+   selection bar used to sit at bottom:32px — under the bottom nav — and
+   ran off-screen at 360 px; the Queue batch bar and the FAB overlapped
+   the status bar. */
+@media (max-width: 767.98px) {
+    #selection-bar,
+    #queue-selection-bar {
+        bottom: calc(56px + 28px + 8px + env(safe-area-inset-bottom));
+        left: calc(8px + env(safe-area-inset-left));
+        right: calc(8px + env(safe-area-inset-right));
+        transform: none;
+        max-width: none;
+        flex-wrap: wrap;
+        justify-content: center;
+        row-gap: 6px;
+    }
+    #selection-bar {
+        border-radius: 16px;
+        padding: 8px 10px;
+        column-gap: 10px;
+    }
+    /* Icon-only action buttons; the label stays for screen readers. */
+    #selection-zip > span,
+    #selection-pin > span,
+    #selection-delete > span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    #selection-zip,
+    #selection-pin,
+    #selection-delete {
+        min-width: 44px;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .fab {
+        bottom: calc(56px + 28px + 12px + env(safe-area-inset-bottom));
+        right: calc(16px + env(safe-area-inset-right));
+    }
+    /* The FAB would sit on top of a floating selection bar. */
+    body:has(#selection-bar:not(.hidden)) .fab,
+    body:has(#queue-selection-bar:not(.hidden)) .fab {
+        display: none;
+    }
+}
+
+/* Viewer media panes own their gestures (swipe prev/next, drag-down to
+   close, pinch / double-tap zoom). `touch-action: manipulation` on
+   <body> let the browser claim the pan first and cancel the pointer
+   stream. Text / code / PDF / markdown panes keep native scrolling. */
+#image-container,
+#video-tap-layer,
+#audio-container,
+#fallback-container,
+#office-container {
+    touch-action: none;
+}
+#modal-image.is-zoomed {
+    cursor: grab;
+}
+/* Face boxes are laid out for the unzoomed image — hide them while
+   zoomed instead of drawing them in the wrong place. */
+#image-container.is-zoomed #face-overlay-layer {
+    visibility: hidden;
+}
+
+/* Bottom sheets: a finger-sized grab area around the 36×4 handle, and a
+   44 px close button. */
+.sheet-handle {
+    position: relative;
+}
+.sheet-header .sheet-handle {
+    position: absolute;
+}
+.sheet-handle::before {
+    content: "";
+    position: absolute;
+    left: -60px;
+    right: -60px;
+    top: -10px;
+    bottom: -16px;
+    touch-action: none;
+}
+.sheet-close {
+    min-width: 44px;
+    min-height: 44px;
+    margin-right: -10px;
+}
+
+/* Touch screens have no hover: keep the mini-player controls visible, and
+   don't leave an invisible (but tappable) pin target on unpinned tiles. */
+@media (hover: none) {
+    .mini-player-bar {
+        opacity: 1;
+    }
+    .media-item:not(.is-pinned) .pin-chip {
+        display: none;
+    }
+}
+
+/* Nothing fills the viewer's preview strip yet — don't reserve a 72 px
+   empty band between the media and the info bar. */
+#preview-strip-container:not(:has(#preview-strip > *)) {
+    display: none;
 }
