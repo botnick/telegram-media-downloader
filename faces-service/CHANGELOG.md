@@ -40,6 +40,10 @@ existing People groups keep clustering the same way.
   answer instantly while every worker thread is busy.
 
 ### Fixed
+- **The PyInstaller binary re-downloaded its own model.** It bundles
+  buffalo_l, but the Node app points `TGDL_FACES_MODELS_DIR` at an empty
+  `data/faces-service/models`, so the first load fetched ~280 MB again.
+  The bundled pack is used while the configured directory has none.
 - **EXIF-rotated photos were rotated twice.** `cv2.imdecode` already
   applies the Orientation tag (OpenCV ≥ 4.x, verified 4.10 and 4.13); the
   sidecar rotated again, so phone portraits reached the detector sideways

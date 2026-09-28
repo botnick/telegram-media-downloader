@@ -252,3 +252,17 @@ def test_api_token_required_when_configured(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv("TGDL_FACES_API_TOKEN")
     with TestClient(app_mod.app) as c:
         assert c.get("/info").status_code == 200  # default: no auth, as before
+
+
+# ── Bundled model pack (PyInstaller) ─────────────────────────────────────────
+
+
+def test_bundled_models_root(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    monkeypatch.delattr(insight.sys, "_MEIPASS", raising=False)
+    assert insight._bundled_models_root() is None
+    pack = tmp_path / "tgdl_faces_models" / "models" / insight.MODEL_NAME
+    pack.mkdir(parents=True)
+    monkeypatch.setattr(insight.sys, "_MEIPASS", str(tmp_path), raising=False)
+    assert insight._bundled_models_root() is None  # directory without weights
+    (pack / "det_10g.onnx").write_bytes(b"x")
+    assert insight._bundled_models_root() == tmp_path / "tgdl_faces_models"

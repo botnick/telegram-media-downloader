@@ -270,6 +270,20 @@ def cpu_budget() -> int:
     return max(1, effective_cpu_count() - reserve)
 
 
+def _bundled_models_root() -> Path | None:
+    """Model root baked into a PyInstaller build, if this is one.
+
+    The release workflow adds the pre-downloaded pack with
+    ``--add-data <models>:tgdl_faces_models``, i.e.
+    ``<_MEIPASS>/tgdl_faces_models/models/<name>/*.onnx``.
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if not base:
+        return None
+    root = Path(base) / "tgdl_faces_models"
+    return root if any((root / "models" / MODEL_NAME).glob("*.onnx")) else None
+
+
 def _resolve_max_concurrency() -> int:
     explicit = _env_int("TGDL_FACES_MAX_CONCURRENCY", lo=1)
     if explicit:
@@ -705,6 +719,17 @@ def get_app() -> Any:
                     nested.rmdir()
                 except OSError:
                     pass
+
+            # The PyInstaller binary ships buffalo_l inside the bundle, but
+            # the Node app points TGDL_FACES_MODELS_DIR at an empty
+            # data/faces-service/models — so every fresh install downloaded
+            # the ~280 MB pack again on first load. Use the bundled copy
+            # while the configured directory doesn't have the model.
+            if not any(target_dir.glob("*.onnx")):
+                bundled = _bundled_models_root()
+                if bundled is not None:
+                    _LOG.info("using the model pack bundled with the binary: %s", bundled)
+                    models_dir = bundled
 
             requested = os.environ.get("TGDL_FACES_PROVIDERS", "auto").strip() or "auto"
             det_size = _resolve_det_size()
