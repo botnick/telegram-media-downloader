@@ -102,7 +102,10 @@ import {
     DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
     thumbKindTypes,
     hasCachedThumb,
+    resolveFfmpegBin,
 } from '../core/thumbs.js';
+import { createFaceCropper } from '../core/ai/face-crops.js';
+import { detectFacesInImage as aiDetectFacesInImage } from '../core/ai/faces-client.js';
 import {
     buildAllSeekbar,
     getMetaForDownload as getSeekbarMetaForDownload,
@@ -8144,6 +8147,7 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
             ).run(...types);
         });
         tx();
+        _purgeFaceCropCache();
         broadcast({ type: 'ai_faces_reindexed', ts: Date.now() });
         res.json({ success: true });
     } catch (e) {
@@ -8371,42 +8375,23 @@ app.get('/api/ai/group-by-person', async (req, res) => {
     }
 });
 
-// Extract a single frame from a video file as a raw image buffer using ffmpeg.
-// Used by the face crop endpoints when the source is a video file.
-async function _extractVideoFrame(videoPath) {
-    const { execFile } = await import('child_process');
-    const { resolveFfmpegBin } = await import('../core/thumbs.js');
-    const ffmpeg = resolveFfmpegBin();
-    return new Promise((resolve, reject) => {
-        execFile(
-            ffmpeg,
-            ['-i', videoPath, '-vframes', '1', '-f', 'image2', '-vcodec', 'png', 'pipe:1'],
-            { encoding: 'buffer', maxBuffer: 20 * 1024 * 1024, timeout: 10000 },
-            (err, stdout) => {
-                if (err) return reject(err);
-                resolve(stdout);
-            },
-        );
-    });
-}
+// ---- Face crops ------------------------------------------------------------
+//
+// Cached on disk, concurrency-capped, video-frame-aware — see
+// src/core/ai/face-crops.js for the why. `TGDL_FACE_CROP_CONCURRENCY`
+// (default 4) bounds how many crops render at once.
+const _faceCropper = createFaceCropper({
+    cacheDir: path.join(DATA_DIR, 'thumbs', 'face-crops'),
+    concurrency: Number(process.env.TGDL_FACE_CROP_CONCURRENCY) || 4,
+    resolveFfmpeg: resolveFfmpegBin,
+    // Legacy video rows: find the frame whose face matches the stored
+    // embedding. Null (sidecar away) makes the cropper fall back uncached.
+    detectInImage: (jpeg) => aiDetectFacesInImage(jpeg, _aiCfg()),
+});
 
-// Crop a face from an image buffer (or file path) with padding.
-async function _cropFace(source, row, size) {
-    const pad = 0.4;
-    const meta = await sharp(source, { failOn: 'none' }).metadata();
-    const imgW = meta.width || 9999;
-    const imgH = meta.height || 9999;
-    const left = Math.max(0, Math.round(row.x - row.w * pad));
-    const top = Math.max(0, Math.round(row.y - row.h * pad));
-    const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-    const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-    const width = Math.max(1, right - left);
-    const height = Math.max(1, bottom - top);
-    return sharp(source, { failOn: 'none' })
-        .extract({ left, top, width, height })
-        .resize(size, size, { fit: 'cover', position: 'centre' })
-        .jpeg({ quality: 82, progressive: true })
-        .toBuffer();
+/** Drop every cached crop (after a reindex the boxes are all new anyway). */
+function _purgeFaceCropCache() {
+    _faceCropper.purge();
 }
 
 // Face crop for person avatar — best (highest-quality/largest) face for this person.
@@ -8421,7 +8406,8 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path, d.file_type
+                `SELECT f.x, f.y, f.w, f.h, f.exif_oriented, f.frame_time_sec, f.embedding,
+                        d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.person_id = ?
@@ -8438,21 +8424,7 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        let buf;
-        if (row.file_type === 'video') {
-            const frameBuf = await _extractVideoFrame(resolved.real);
-            try {
-                buf = await _cropFace(frameBuf, row, size);
-            } catch {
-                buf = await sharp(frameBuf, { failOn: 'none' })
-                    .resize(size, size, { fit: 'cover', position: 'attention' })
-                    .jpeg({ quality: 82, progressive: true })
-                    .toBuffer();
-            }
-        } else {
-            buf = await _cropFace(resolved.real, row, size);
-        }
-
+        const buf = await _faceCropper.crop(row, resolved.real, size);
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
@@ -8467,7 +8439,8 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 });
 
 // Face crop for an individual face (used in the per-person photo gallery).
-// Crops the face bbox from the source image with the same 40% padding.
+// Crops the face bbox from the source image with the same 40% padding;
+// video faces go through the same frame-aware path as the avatar.
 app.get('/api/ai/faces/:id/crop', async (req, res) => {
     try {
         const faceId = Number(req.params.id);
@@ -8477,7 +8450,8 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path
+                `SELECT f.x, f.y, f.w, f.h, f.exif_oriented, f.frame_time_sec, f.embedding,
+                        d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.id = ?`,
@@ -8491,24 +8465,7 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        const pad = 0.4;
-        const meta = await sharp(resolved.real, { failOn: 'none' }).metadata();
-        const imgW = meta.width || 9999;
-        const imgH = meta.height || 9999;
-
-        const left = Math.max(0, Math.round(row.x - row.w * pad));
-        const top = Math.max(0, Math.round(row.y - row.h * pad));
-        const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-        const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-        const width = Math.max(1, right - left);
-        const height = Math.max(1, bottom - top);
-
-        const buf = await sharp(resolved.real, { failOn: 'none' })
-            .extract({ left, top, width, height })
-            .resize(size, size, { fit: 'cover', position: 'centre' })
-            .jpeg({ quality: 82, progressive: true })
-            .toBuffer();
-
+        const buf = await _faceCropper.crop(row, resolved.real, size);
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
@@ -8766,6 +8723,7 @@ app.post('/api/ai/reindex', async (req, res) => {
         // Settle one tick so the scan loops see the abort signal.
         if (cancelled) await new Promise((r) => setTimeout(r, 100));
         const r = resetAllAiData();
+        _purgeFaceCropCache();
         log({
             source: 'ai',
             level: 'info',
