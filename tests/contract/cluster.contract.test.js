@@ -239,12 +239,14 @@ describe('identity, token, pairing code', () => {
         const res = await ex('pairing-code', 'POST', '/api/cluster/identity/pairing-code', {
             mask: { code: 'random 8-char pairing code (crypto.randomBytes)' },
         });
+        // `expiresAt` is the server's clock + 5 min; the test reads its own
+        // clock afterwards. Two processes can disagree by a few ms (seen on
+        // Windows), so the upper bound allows 1 s of skew.
+        const left = res.json.expiresAt - Date.now();
         h.t.store.record('pairing-code shape (derived)', {
             derived: {
                 code: /^[0-9A-HJ-NP-Z]{8}$/.test(res.json.code),
-                ttlMs:
-                    res.json.expiresAt - Date.now() > 4 * 60_000 &&
-                    res.json.expiresAt - Date.now() <= 5 * 60_000,
+                ttlMs: left > 4 * 60_000 && left <= 5 * 60_000 + 1_000,
             },
         });
     });
