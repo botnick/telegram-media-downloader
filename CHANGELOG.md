@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format is based on 
 - **Scheduled snapshots ran twice per slot.** The cron check ticks every 30 s and a matching minute contains two ticks, so a `0 3 * * *` destination built and uploaded two archives each night (halving what "Retain copies" covered). It now fires once per matching minute.
 - **Editing a backup destination wiped its saved credentials.** The Edit form says "leave blank to keep" but the server replaced the whole provider config, so saving any change (or clicking Test connection in the form) dropped every secret you didn't retype. Blank secrets now keep their stored values, and the form pre-fills the non-secret fields (host, bucket, paths, …) instead of showing them empty. If an earlier edit already wiped a destination's secrets, re-enter them once.
 - **Wrong page count with "Pinned" on in a group's gallery.** The per-group total ignored the pinned filter, so pagination kept offering pages of nothing.
+- **Finished maintenance jobs could still look "running".** Status endpoints for re-index, thumbnail build and video optimise laid the last progress tick over the job's own state, so a stale `stage` / `running` from progress could win. The job's own `running` / `stage` / `error` now always take precedence, and a finished job's saved progress no longer carries `running: true`.
 
 ## [2.25.0] — 2026-09-29
 

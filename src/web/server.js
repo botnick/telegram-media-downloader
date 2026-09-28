@@ -193,7 +193,7 @@ import {
     startSessionGc,
 } from '../core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from '../core/logger.js';
-import { createJobTracker } from '../core/job-tracker.js';
+import { createJobTracker, flattenStatus } from '../core/job-tracker.js';
 import {
     getSelfPeerId,
     getSelfPeerName,
@@ -5994,8 +5994,7 @@ app.post('/api/maintenance/reindex', async (req, res) => {
 });
 
 app.get('/api/maintenance/reindex/status', async (req, res) => {
-    const snap = _jobTrackers.reindex.getStatus();
-    res.json({ ...snap, ...(snap.progress || {}) });
+    res.json(flattenStatus(_jobTrackers.reindex.getStatus()));
 });
 
 app.get('/api/maintenance/reindex/stats', async (req, res) => {
@@ -6526,8 +6525,7 @@ app.post('/api/maintenance/thumbs/build/cancel', async (req, res) => {
 });
 
 app.get('/api/maintenance/thumbs/build/status', async (req, res) => {
-    const snap = _jobTrackers.thumbsBuild.getStatus();
-    res.json({ ...snap, ...(snap.progress || {}) });
+    res.json(flattenStatus(_jobTrackers.thumbsBuild.getStatus()));
 });
 
 app.get('/api/maintenance/thumbs/build/stats', async (req, res) => {
@@ -6958,8 +6956,7 @@ app.post('/api/maintenance/faststart/scan', async (req, res) => {
 });
 
 app.get('/api/maintenance/faststart/status', async (req, res) => {
-    const snap = _jobTrackers.faststart.getStatus();
-    res.json({ ...snap, ...(snap.progress || {}) });
+    res.json(flattenStatus(_jobTrackers.faststart.getStatus()));
 });
 
 app.get('/api/maintenance/faststart/stats', async (req, res) => {
