@@ -29,7 +29,7 @@
         })();
     </script>
 
-    <!-- Pre-boot route guard — runs BEFORE Tailwind / module scripts so the
+    <!-- Pre-boot route guard — runs BEFORE the stylesheets / module scripts so the
          first paint never shows the wrong page. The full DOM-aware version
          lives at the end of <body> where every #page-* div has been
          parsed; here we just inject a `<style>` that hides every page
@@ -50,33 +50,6 @@
                 document.documentElement.dataset.prebooting = '1';
             } catch {}
         })();
-    </script>
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        tg: {
-                            blue: '#2AABEE',
-                            darkBlue: '#229ED9',
-                            bg: '#17212B',
-                            sidebar: '#0E1621',
-                            panel: '#242F3D',
-                            hover: '#2B5278',
-                            border: '#0D1117',
-                            text: '#F5F5F5',
-                            textSecondary: '#8B9BAA',
-                            green: '#4FAE4E',
-                            red: '#E53935',
-                            orange: '#FF9800',
-                            lightBg: '#182533'
-                        }
-                    }
-                }
-            }
-        }
     </script>
 
     <link href="https://cdn.jsdelivr.net/npm/remixicon@4.0.0/fonts/remixicon.css" rel="stylesheet">
@@ -148,10 +121,15 @@
          the service worker shell cache. The SW also picks /css/* up via the
          isStaticAsset filter in sw.js. -->
     <link rel="stylesheet" href="/css/main.css">
-    <!-- v2.5.1 — cache-bust bump for thumbnail opacity fix. Tile thumbs
-         used to stay invisible at opacity:0 because the IntersectionObserver
-         that adds `.loaded` doesn't fire for native loading="lazy" imgs;
-         the new app.js flips the class from inline onload/onerror handlers. -->
+    <!-- Prebuilt Tailwind utilities (`npm run build:css`, generated from
+         scripts/tailwind.config.cjs — do not edit by hand). Replaces the
+         in-browser Play CDN, which recompiled CSS on every load and on
+         every DOM mutation. It MUST stay after main.css: the Play CDN
+         appended its <style> at the end of <head>, so utilities have
+         always won same-specificity ties against main.css (e.g. `.hidden`
+         vs `.role-pill { display:flex }`). Flipping the order changes
+         ~900 computed values across the page. -->
+    <link rel="stylesheet" href="/css/tailwind.css">
 
     <!-- Modulepreload — kick off the SPA's hot-path import graph in
          parallel instead of waiting for the discover-then-fetch waterfall

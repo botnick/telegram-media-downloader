@@ -27,6 +27,7 @@ const SHELL_URLS = [
     '/index.html',
     '/manifest.webmanifest',
     '/css/main.css',
+    '/css/tailwind.css',
     '/icons/icon-192.png',
     '/icons/icon-512.png',
     '/icons/icon-192-maskable.png',
@@ -117,7 +118,7 @@ self.addEventListener('fetch', (event) => {
 
     // Only handle GETs from same-origin. Everything else passes through to
     // the network unmodified (POST /api/login, WebSocket upgrade, CDN
-    // requests for Tailwind/Remixicon, etc.).
+    // requests for Remixicon / Google Fonts, etc.).
     if (req.method !== 'GET') return;
     let url;
     try {
