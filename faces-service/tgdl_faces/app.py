@@ -20,6 +20,7 @@ The Node client switches on ``code``; the human text is for logs.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import time
@@ -337,6 +338,38 @@ async def _request_logging(
         elapsed_ms,
     )
     return response
+
+
+# Liveness stays open so container healthchecks / uptime probes work
+# without the secret.
+_PUBLIC_PATHS = frozenset({"/health"})
+
+
+@app.middleware("http")
+async def _require_api_token(
+    request: Request,
+    call_next: Any,
+) -> Response:
+    """Optional shared-secret auth for a sidecar exposed beyond localhost.
+
+    ``TGDL_FACES_API_TOKEN`` unset (the default) = no auth, as before. When
+    set, every endpoint except ``/health`` needs ``Authorization: Bearer
+    <token>`` or ``X-API-Token: <token>`` — otherwise anyone who can reach
+    the port can burn its CPU/GPU or read files under the allow-list. The
+    Node side sends it from ``faces.sidecarToken`` / ``TGDL_FACES_SIDECAR_TOKEN``.
+    """
+    token = os.environ.get("TGDL_FACES_API_TOKEN", "").strip()
+    if token and request.url.path not in _PUBLIC_PATHS:
+        auth = request.headers.get("authorization", "")
+        got = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+        got = got or request.headers.get("x-api-token", "").strip()
+        if not hmac.compare_digest(got.encode("utf-8"), token.encode("utf-8")):
+            return _error(
+                "missing or invalid API token",
+                code="unauthorized",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+    return await call_next(request)
 
 
 # --- exception handlers -----------------------------------------------------

@@ -231,3 +231,24 @@ def test_video_faces_carry_frame_time(monkeypatch: pytest.MonkeyPatch) -> None:
     body = json.loads(resp.body)
     assert body["faces"][0]["frame_time_sec"] == 2.5
     assert body["image_w"] == 64 and body["image_h"] == 48
+
+
+# ── Optional API token ───────────────────────────────────────────────────────
+
+
+def test_api_token_required_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from tgdl_faces import app as app_mod
+
+    monkeypatch.setenv("TGDL_FACES_API_TOKEN", "s3cret")
+    with TestClient(app_mod.app) as c:
+        assert c.get("/health").status_code == 200  # liveness stays open
+        r = c.get("/info")
+        assert r.status_code == 401 and r.json()["code"] == "unauthorized"
+        assert c.get("/info", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert c.get("/info", headers={"Authorization": "Bearer s3cret"}).status_code == 200
+        assert c.get("/info", headers={"X-API-Token": "s3cret"}).status_code == 200
+    monkeypatch.delenv("TGDL_FACES_API_TOKEN")
+    with TestClient(app_mod.app) as c:
+        assert c.get("/info").status_code == 200  # default: no auth, as before

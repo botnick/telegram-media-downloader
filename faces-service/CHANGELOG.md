@@ -47,6 +47,9 @@ existing People groups keep clustering the same way.
   for all eight orientations.
 
 ### Added
+- Optional API token: with `TGDL_FACES_API_TOKEN` set, every endpoint
+  except `/health` requires `Authorization: Bearer <token>` (or
+  `X-API-Token`) and answers 401 otherwise. Unset = no auth, as before.
 - Photo results carry `exif_oriented: true` (face boxes are in the
   displayed, EXIF-oriented frame), so the Node app can crop them
   correctly while keeping its old crop path for rows from older sidecars.
