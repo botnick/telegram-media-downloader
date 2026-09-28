@@ -76,7 +76,7 @@ import {
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager, hasAccountSessions } from '../core/accounts.js';
-import { loadConfig, saveConfig } from '../config/manager.js';
+import { loadConfig, saveConfig, watchConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
@@ -96,6 +96,7 @@ import {
     applyShareLimits,
     verifyFileToken,
     mintFileToken,
+    getShareSecretForFront,
 } from '../core/share.js';
 import {
     getOrCreateThumb,
@@ -141,6 +142,14 @@ import {
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
 import { getGoCoreStatus, startGoCore, stopGoCore } from '../core/gocore/spawn.js';
+import {
+    frontStats,
+    frontToken,
+    getFrontStatus,
+    pushFrontState,
+    startFront,
+    stopFront,
+} from '../core/gocore/front.js';
 import { sanitizeConfigBlock as sanitizeGoCoreConfig } from '../core/gocore/flags.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
 import { normalizeSidecarUrl, probeSidecar } from '../core/sidecar-remote.js';
@@ -267,6 +276,14 @@ import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
+    captureHelmetHeaders,
+    frontRequestMiddleware,
+    installClientAddressView,
+    installSendAccel,
+    markAccel,
+    stripFrontHeaders,
+} from './lib/front-bridge.js';
+import {
     recordClusterAudit,
     listClusterAudit,
     listOwnDownloadsSince,
@@ -380,6 +397,7 @@ process.on('uncaughtException', (err) => {
     console.error('Uncaught exception:', err);
     try {
         server.close();
+        _publicServer?.close();
     } catch {}
     setTimeout(() => process.exit(1), 5000).unref();
 });
@@ -478,7 +496,11 @@ function parseCookieHeader(header) {
     return out;
 }
 
-server.on('upgrade', async (req, socket, head) => {
+server.on('upgrade', _onUpgrade);
+async function _onUpgrade(req, socket, head) {
+    // Requests tunnelled by the tgdl-core front server carry two private
+    // headers; nothing below looks at the client address, so just drop them.
+    stripFrontHeaders(req);
     try {
         // Cluster WS channel — peer-to-peer, HMAC-authenticated via
         // signed query-string. Skip the cookie/session check entirely.
@@ -538,7 +560,7 @@ server.on('upgrade', async (req, socket, head) => {
             socket.destroy();
         } catch {}
     }
-});
+}
 
 // Telegram client
 let telegramClient = null;
@@ -574,6 +596,16 @@ if (_trustProxyRaw === undefined) {
         /^\d+$/.test(_trustProxyRaw) ? parseInt(_trustProxyRaw, 10) : _trustProxyRaw,
     );
 }
+
+// tgdl-core front server (src/core/gocore/front.js): requests it proxies
+// arrive from 127.0.0.1 with the client's socket address in a private,
+// token-checked header. This must stay the first middleware — it removes
+// those headers — and req.ip / req.protocol / req.hostname then evaluate
+// the `trust proxy` setting above against the real client, exactly as if
+// it had connected here directly (see lib/front-bridge.js).
+installClientAddressView(app);
+installSendAccel();
+app.use(frontRequestMiddleware(frontToken));
 
 // Force HTTPS — opt-in via config.web.forceHttps (default off, plain HTTP).
 // Skips localhost so it doesn't lock you out of local dev. `req.secure`
@@ -635,54 +667,55 @@ app.use(async (req, res, next) => {
 // `frame-src: 'self'` lets the viewer's PDF container point an iframe
 // at `/files/<path>?inline=1#toolbar=1` so the browser's native PDF
 // viewer renders it without leaving the dashboard.
-app.use(
-    helmet({
-        // HSTS managed by the forceHttps middleware above — helmet must not
-        // override the max-age=0 clear header when the operator disables HTTPS.
-        hsts: false,
-        contentSecurityPolicy: {
-            useDefaults: true,
-            directives: {
-                'default-src': ["'self'"],
-                'script-src': [
-                    "'self'",
-                    "'unsafe-inline'",
-                    'https://cdn.jsdelivr.net',
-                    'https://cdnjs.cloudflare.com',
-                ],
-                // The SPA uses inline onclick / oninput handlers in index.html
-                // (toggle UI, range-slider value updaters, modal close-buttons).
-                // Helmet's defaults set script-src-attr to 'none' which would
-                // block them; allow inline here until the markup is migrated to
-                // addEventListener.
-                'script-src-attr': ["'unsafe-inline'"],
-                'style-src': [
-                    "'self'",
-                    "'unsafe-inline'",
-                    'https://cdn.jsdelivr.net',
-                    'https://cdnjs.cloudflare.com',
-                    'https://fonts.googleapis.com',
-                ],
-                'style-src-attr': ["'unsafe-inline'"],
-                'font-src': [
-                    "'self'",
-                    'data:',
-                    'https://fonts.gstatic.com',
-                    'https://cdn.jsdelivr.net',
-                ],
-                'img-src': ["'self'", 'data:', 'blob:'],
-                'media-src': ["'self'", 'blob:'],
-                'connect-src': ["'self'", 'ws:', 'wss:'],
-                'object-src': ["'none'"],
-                'frame-src': ["'self'"],
-                'frame-ancestors': ["'self'"],
-                'upgrade-insecure-requests': null,
-            },
+const _helmet = helmet({
+    // HSTS managed by the forceHttps middleware above — helmet must not
+    // override the max-age=0 clear header when the operator disables HTTPS.
+    hsts: false,
+    contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+            'default-src': ["'self'"],
+            'script-src': [
+                "'self'",
+                "'unsafe-inline'",
+                'https://cdn.jsdelivr.net',
+                'https://cdnjs.cloudflare.com',
+            ],
+            // The SPA uses inline onclick / oninput handlers in index.html
+            // (toggle UI, range-slider value updaters, modal close-buttons).
+            // Helmet's defaults set script-src-attr to 'none' which would
+            // block them; allow inline here until the markup is migrated to
+            // addEventListener.
+            'script-src-attr': ["'unsafe-inline'"],
+            'style-src': [
+                "'self'",
+                "'unsafe-inline'",
+                'https://cdn.jsdelivr.net',
+                'https://cdnjs.cloudflare.com',
+                'https://fonts.googleapis.com',
+            ],
+            'style-src-attr': ["'unsafe-inline'"],
+            'font-src': [
+                "'self'",
+                'data:',
+                'https://fonts.gstatic.com',
+                'https://cdn.jsdelivr.net',
+            ],
+            'img-src': ["'self'", 'data:', 'blob:'],
+            'media-src': ["'self'", 'blob:'],
+            'connect-src': ["'self'", 'ws:', 'wss:'],
+            'object-src': ["'none'"],
+            'frame-src': ["'self'"],
+            'frame-ancestors': ["'self'"],
+            'upgrade-insecure-requests': null,
         },
-        crossOriginEmbedderPolicy: false,
-        crossOriginResourcePolicy: { policy: 'same-origin' },
-    }),
-);
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+});
+app.use(_helmet);
+// The same headers, for tgdl-core's own responses (pushed as front state).
+const _helmetHeaderList = captureHelmetHeaders(_helmet);
 
 // Dynamic CSP: re-inject upgrade-insecure-requests only when forceHttps is
 // active and the response is already on a secure channel. Helmet's static
@@ -2068,6 +2101,8 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
         // Hand off to express's static-style sendFile which supports Range.
         // sendFile sets Content-Type from the extension, which is what we
         // want — sniff-protection lives in helmet's nosniff header.
+        // Through the tgdl-core front server the bytes are streamed by it.
+        markAccel(req, res);
         return res.sendFile(r.real, (err) => {
             if (err && !res.headersSent) next(err);
         });
@@ -2140,8 +2175,26 @@ function _serveCacheBusted(reqPath, mime, rewrite, res) {
         }
     }
     res.setHeader('Content-Type', mime);
-    res.send(body);
+    res.send(_frontProblem && mime.startsWith('text/html') ? _withFrontBanner(body) : body);
     return true;
+}
+
+// Shown on every page while this process serves PORT itself because the
+// tgdl-core front server isn't running (see _serveOnPortDirectly).
+function _withFrontBanner(html) {
+    const esc = (v) =>
+        String(v).replace(
+            /[&<>"']/g,
+            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+    const banner =
+        '<div id="tgdl-core-banner" role="alert" style="position:sticky;top:0;z-index:2147483647;' +
+        'padding:10px 16px;background:#7f1d1d;color:#fff;font:14px/1.45 system-ui,sans-serif;text-align:center">' +
+        '<strong>tgdl-core is not running</strong> (' +
+        esc(_frontProblem) +
+        '). The dashboard works, but videos, images and thumbnails are served by the slower built-in server. ' +
+        'Reinstall (the Docker image and <code>npm install</code> include tgdl-core) or run <code>npm run build:core</code>, then restart.</div>';
+    return html.replace(/<body[^>]*>/i, (m) => m + banner);
 }
 
 app.use((req, res, next) => {
@@ -2187,7 +2240,14 @@ app.use((req, res, next) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/files/')) return next();
     return _publicStatic(req, res, next);
 });
-app.use('/photos', express.static(PHOTOS_DIR));
+app.use(
+    '/photos',
+    (req, res, next) => {
+        markAccel(req, res);
+        next();
+    },
+    express.static(PHOTOS_DIR),
+);
 
 // Serve CHANGELOG.md from the project root for the in-app changelog
 // viewer (changelog-viewer.js). Read on every request so a `git pull`
@@ -3923,6 +3983,17 @@ app.get('/api/system/health', async (req, res) => {
             goCore: (() => {
                 try {
                     return getGoCoreStatus();
+                } catch {
+                    return null;
+                }
+            })(),
+            goCoreFront: await (async () => {
+                try {
+                    return {
+                        ...getFrontStatus(),
+                        servedByNode: _frontProblem,
+                        stats: await frontStats(),
+                    };
                 } catch {
                     return null;
                 }
@@ -7190,6 +7261,7 @@ app.get('/api/thumbs/:id', async (req, res) => {
         if (req.headers['if-none-match'] === etag || req.headers['if-modified-since'] === lastMod) {
             return res.status(304).end();
         }
+        markAccel(req, res);
         return res.sendFile(thumb.path, (err) => {
             if (err && !res.headersSent) res.status(500).end();
         });
@@ -13213,12 +13285,18 @@ app.use('/files', async (req, res, next) => {
                 const cachePath = await _heicInlineCache(r.real);
                 res.setHeader('Content-Type', 'image/jpeg');
                 res.setHeader('Cache-Control', 'private, max-age=86400');
+                markAccel(req, res);
                 return res.sendFile(cachePath);
             } catch (e) {
                 console.warn('[heic] inline transcode failed:', baseName, e?.message || e);
                 // Fall through to raw .heic — Safari users still get the file.
             }
         }
+        // With the tgdl-core front server, send still decides status and
+        // headers here, and tgdl-core streams the bytes (lib/front-bridge.js).
+        // Most local file requests never reach this line: tgdl-core answers
+        // them itself.
+        markAccel(req, res);
         res.sendFile(r.real);
     } catch (e) {
         next();
@@ -13799,8 +13877,8 @@ const PORT = process.env.PORT || 3000;
 // Without this, EADDRINUSE made the container exit silently with no clue
 // where to look. Print a clear message + exit non-zero so docker-compose
 // surfaces the failure instead of looping a hidden restart.
-server.on('error', (e) => {
-    if (e.code === 'EADDRINUSE') {
+function _fatalListen(e) {
+    if (e?.code === 'EADDRINUSE') {
         console.error(
             `\n[fatal] Port ${PORT} is already in use. Stop the other process or set PORT=<free> in the environment.\n`,
         );
@@ -13808,8 +13886,107 @@ server.on('error', (e) => {
         console.error('[fatal] HTTP server error:', e?.message || e);
     }
     process.exit(1);
-});
-server.listen(PORT, async () => {
+}
+server.on('error', _fatalListen);
+
+// ---- tgdl-core front server ----------------------------------------------
+//
+// tgdl-core (`tgdl-core front`, core-service/internal/front) owns PORT: it
+// serves /files, /photos and thumbnail cache hits itself — so video keeps
+// playing while this event loop is busy — and proxies everything else to
+// `server`, which listens on 127.0.0.1 only. Responses are the ones this
+// process would give (tests/front-parity.e2e.test.js); requests keep their
+// client address (lib/front-bridge.js).
+//
+// When tgdl-core can't run — binary missing, fails to start, or keeps
+// exiting — this process binds PORT itself (`_publicServer`), serves
+// everything as before, logs why and shows a banner in the dashboard.
+let _publicServer = null;
+let _frontProblem = null;
+
+function _listenOn(srv, ...args) {
+    return new Promise((resolve) => srv.listen(...args, resolve));
+}
+
+async function _serveOnPortDirectly(reason) {
+    _frontProblem = String(reason || 'unknown error');
+    // CI / tests: fail loudly instead of quietly serving PORT from Node.
+    if (process.env.TGDL_FRONT_REQUIRED === '1') {
+        console.error(`[fatal] tgdl-core front server required but not running: ${_frontProblem}`);
+        process.exit(1);
+    }
+    if (_publicServer) return;
+    const srv = createServer(app);
+    srv.keepAliveTimeout = server.keepAliveTimeout;
+    srv.headersTimeout = server.headersTimeout;
+    srv.requestTimeout = server.requestTimeout;
+    srv.on('upgrade', _onUpgrade);
+    srv.on('error', _fatalListen);
+    _publicServer = srv;
+    await _listenOn(srv, PORT);
+    console.warn(
+        `[go-front] tgdl-core is not serving port ${PORT} (${_frontProblem}); Node serves it directly. Reinstall tgdl-core or run \`npm run build:core\`, then restart.`,
+    );
+}
+
+// What tgdl-core must agree with to answer media requests itself.
+async function _frontState() {
+    const config = await readConfigSafe();
+    const web = config.web || {};
+    return {
+        authReady: web.enabled !== false && isAuthConfigured(web),
+        forceHttps: Boolean(web.forceHttps),
+        rateLimit: _rateLimitConfig.enabled === true,
+        shareSecret: getShareSecretForFront() || '',
+        helmet: _helmetHeaderList,
+    };
+}
+
+async function _startHttp() {
+    const port = /^\d+$/.test(String(PORT)) ? Number(PORT) : Number.NaN;
+    if (!(port >= 0 && port <= 65535)) {
+        // PORT names a pipe / socket path: listen on it directly, as before.
+        await _listenOn(server, PORT);
+        return;
+    }
+    // Room for the two headers tgdl-core adds to a request that was
+    // already at Node's 16 KiB limit (tgdl-core enforces that limit).
+    server.maxHeaderSize = 16 * 1024 + 1024;
+    await _listenOn(server, 0, '127.0.0.1');
+    const thumbsDir = path.join(DATA_DIR, 'thumbs');
+    const r = await startFront({
+        port,
+        upstreamPort: server.address().port,
+        trustProxy: _trustProxyRaw === undefined ? 'loopback' : _trustProxyRaw,
+        dbPath: path.join(DATA_DIR, 'db.sqlite'),
+        downloadsDir: path.resolve(DOWNLOADS_DIR),
+        photosDir: path.resolve(PHOTOS_DIR),
+        thumbsDir,
+        allowRoots: [path.resolve(DOWNLOADS_DIR), path.resolve(PHOTOS_DIR), thumbsDir],
+        getState: _frontState,
+        onGiveUp: (reason) => {
+            _serveOnPortDirectly(reason).catch(_fatalListen);
+        },
+    });
+    if (r.ok) {
+        // Config changes reach tgdl-core at once (it also re-checks every 2 s).
+        // setImmediate: writeConfigAtomic drops the config cache right after
+        // saveConfig emits.
+        watchConfig(() => setImmediate(() => pushFrontState()));
+        return;
+    }
+    if (r.code === 'EADDRINUSE' || r.code === 'EACCES' || r.code === 'EADDRNOTAVAIL') {
+        _fatalListen({ code: r.code, message: r.error });
+        return;
+    }
+    await _serveOnPortDirectly(r.error);
+}
+
+_startHttp()
+    .then(_afterListen)
+    .catch((e) => _fatalListen(e));
+
+async function _afterListen() {
     // Backfill group names for existing records
     try {
         const config = loadConfig();
@@ -14243,7 +14420,7 @@ ${tip}
             console.warn('[auto-resume] error:', e.message);
         }
     }, 5000);
-});
+}
 
 // Graceful shutdown — Docker / systemd / Ctrl-C send SIGTERM/SIGINT and
 // expect the process to exit fast. Without this we just relied on
@@ -14258,7 +14435,14 @@ async function gracefulShutdown(signal) {
     console.log(`\n[shutdown] ${signal} received — cleaning up…`);
 
     // tgdl-core first: it holds no state, and closing its stdin lets it
-    // exit on its own even if this process is killed mid-shutdown.
+    // exit on its own even if this process is killed mid-shutdown. The
+    // front server stops accepting connections and drains the ones in
+    // flight (up to 3 s) while this process keeps answering them.
+    try {
+        stopFront();
+    } catch (e) {
+        console.warn('[shutdown] go-front.stop:', e.message);
+    }
     try {
         stopGoCore();
     } catch (e) {
@@ -14307,6 +14491,7 @@ async function gracefulShutdown(signal) {
 
     // Stop accepting new HTTP connections; let the in-flight ones drain.
     try {
+        _publicServer?.close();
         server.close(() => process.exit(0));
     } catch {
         process.exit(0);

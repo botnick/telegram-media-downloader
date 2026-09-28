@@ -81,6 +81,16 @@ function getCachedSecret() {
     return _cachedSecret;
 }
 
+/**
+ * The secret verifyFileToken() uses right now, or null before the boot
+ * bootstrap ran. Only for the tgdl-core front server, which receives it
+ * over its token-gated loopback control channel (never argv / env) to
+ * check /files bearer tokens itself.
+ */
+export function getShareSecretForFront() {
+    return _cachedSecret;
+}
+
 /** Public-safe handle for log lines / metrics. Never logs the full secret. */
 export function getShareSecretFingerprint() {
     return _cachedSecretFingerprint || '(uninit)';
