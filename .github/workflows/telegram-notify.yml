@@ -14,6 +14,10 @@ on:
   release:
     types: [published]
 
+# Both jobs only call the Telegram API with repo secrets; the GITHUB_TOKEN
+# needs no scopes.
+permissions: {}
+
 jobs:
   notify-push:
     if: github.event_name == 'push'
