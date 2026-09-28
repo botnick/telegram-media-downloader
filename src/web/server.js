@@ -241,6 +241,7 @@ import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
 import { createSwrCache } from './lib/swr-cache.js';
+import { lookupEntityAcrossClients } from './lib/entity-lookup.js';
 import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
@@ -11653,7 +11654,7 @@ app.put('/api/groups/:id', async (req, res) => {
                 groupName === groupId ||
                 groupName.startsWith('Group ')
             ) {
-                const r = await resolveEntityAcrossAccounts(groupId);
+                const r = await resolveEntityAcrossAccounts(groupId, { force: true });
                 if (r?.entity) {
                     const e = r.entity;
                     groupName =
@@ -12065,7 +12066,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         let processed = 0;
         onProgress({ processed: 0, total, updated: 0, stage: 'resolving' });
         for (const id of ids) {
-            const resolved = await resolveEntityAcrossAccounts(id);
+            const resolved = await resolveEntityAcrossAccounts(id, { force: true });
             if (resolved) {
                 const { entity } = resolved;
                 const realName =
@@ -12414,16 +12415,18 @@ async function _connectLegacy() {
 // hard cap so a long-running process doesn't grow this Map without bound.
 const entityCache = new Map();
 const ENTITY_CACHE_TTL_MS = 30 * 60 * 1000;
-// Failed lookups (no account can see the id — left the chat, chat
-// deleted, never joined) are cached as `{ entity: null }` for a shorter
-// window, so every avatar render / refresh-info sweep doesn't re-ask each
-// account for the same unknown id.
+// Definite misses (every connected account answered "no such chat" —
+// left it, deleted, never joined; see lib/entity-lookup.js) are cached as
+// `{ entity: null }` for a shorter window, so avatar renders don't re-ask
+// each account for the same unknown id. Transient failures (FLOOD_WAIT,
+// timeouts, connection errors) are never cached.
 const ENTITY_MISS_TTL_MS = 10 * 60 * 1000;
 const ENTITY_CACHE_MAX = 5000;
 
 /**
  * Walk every loaded account looking for one that can resolve `idStr`.
- * `force` skips the failed-lookup cache (explicit operator refreshes).
+ * `force` skips the failed-lookup cache — refresh-info, PUT
+ * /api/groups/:id and Refresh photos always ask Telegram again.
  */
 async function resolveEntityAcrossAccounts(idStr, { force = false } = {}) {
     const cached = entityCache.get(idStr);
@@ -12457,21 +12460,12 @@ async function resolveEntityAcrossAccounts(idStr, { force = false } = {}) {
         return { entity: e, client: c };
     };
 
-    let asked = 0;
-    for (const c of candidates) {
-        if (c?.connected) asked += 1;
-        try {
-            const e = await c.getEntity(idStr);
-            if (e) return remember(e, c);
-        } catch {}
-        try {
-            const e = await c.getEntity(BigInt(idStr));
-            if (e) return remember(e, c);
-        } catch {}
-    }
-    // Remember the miss only when a connected account actually answered;
-    // while every client is still (re)connecting the next call retries.
-    if (asked > 0) remember(null, null);
+    const found = await lookupEntityAcrossClients(idStr, candidates);
+    if (found.entity) return remember(found.entity, found.client);
+    // Remember the miss only when every connected account said "no such
+    // chat". A FLOOD_WAIT / timeout / connection error, or every client
+    // still (re)connecting, stays retryable on the next call.
+    if (found.definite) remember(null, null);
     return null;
 }
 
