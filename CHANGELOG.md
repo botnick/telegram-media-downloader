@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Performance
+- **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
+- **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
+- The NSFW model is released after 5 minutes idle instead of staying loaded for the life of the process.
+
 ### Security
 - **Guest sessions could reach admin-only `/files/?peer=` fetches.** `GET /api/files/token` is on the guest allowlist, and any valid file token made `/files/` treat the request as admin, bypassing the guest block on federated peer files. File tokens now carry the minting session's role in their HMAC, and `/files/` applies that role. Tokens issued before the upgrade stop verifying; the SPA falls back to cookie auth and refreshes its token on its normal schedule.
 - **Sidecar URL probes** (`POST /api/maintenance/nsfw/sidecar-test`, `POST /api/ai/faces/health-test`) now parse the admin-supplied URL with `URL`, reject embedded credentials and inputs over 2048 chars, and trim trailing slashes without the quadratic `/\/+$/` regex.

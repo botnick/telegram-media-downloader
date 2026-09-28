@@ -7,12 +7,10 @@
  * UI then shows a review sheet listing flagged rows so the admin can
  * eye-check + delete.
  *
- * Backend: `@huggingface/transformers` running through its WASM
- * execution provider. This is intentional — the native onnxruntime
- * binary doesn't ship a musl build, so on Alpine/Docker the native
- * path 500s on load. WASM works identically across Win / macOS /
- * glibc-Linux / musl-Linux / ARM, with a ~2-3× perf hit that's fine
- * for an opt-in background batch.
+ * Backend: `@huggingface/transformers` on onnxruntime-node (CPU),
+ * running in a worker thread (nsfw-worker.js) so inference and image
+ * decoding never block the web server's event loop. An external GPU
+ * sidecar (nsfw-client.js) can replace the local model entirely.
  *
  * Every knob is config-driven — model id, threshold, concurrency,
  * cache directory, eligible file types — so operators can tune
@@ -22,6 +20,7 @@
 import path from 'path';
 import os from 'os';
 import { existsSync, promises as fs } from 'fs';
+import { Worker } from 'worker_threads';
 import sharp from 'sharp';
 import {
     getDb,
@@ -99,16 +98,91 @@ export function initNsfwSidecar(cfg) {
 
 export { getNsfwSidecarUrl };
 
-// Lazy classifier singleton. The transformers module is heavy
-// (~10 MB of JS + WASM glue) so we only require() it when the operator
-// actually triggers a scan — fresh installs that never touch the
-// feature pay nothing at boot.
-let _pipelinePromise = null;
+// Classifier worker singleton. The model, onnxruntime and sharp decodes
+// all live in a worker thread (see nsfw-worker.js for why), spawned
+// lazily when the operator actually triggers a scan — fresh installs that
+// never touch the feature pay nothing at boot — and terminated after
+// WORKER_IDLE_MS without work so the model's memory is handed back.
+let _worker = null;
+let _workerReady = null; // Promise<handle> for the current worker
 let _activeModelId = null;
+let _workerCallbacks = { onProgress: null, onLog: null };
+let _reqSeq = 0;
+const _pending = new Map(); // id -> { resolve, reject }
+let _idleTimer = null;
+const WORKER_IDLE_MS = 5 * 60 * 1000;
+const WORKER_BATCH_SIZE = 4;
+// Rows per worker round trip in a local batch scan.
+const LOCAL_CHUNK = 8;
 
 function _resolveCacheDirAbs(cacheDirCfg) {
     const raw = cacheDirCfg || NSFW_DEFAULTS.cacheDir;
     return path.isAbsolute(raw) ? raw : path.resolve(getRepoRoot(), raw);
+}
+
+// intra-op threads for inference. onnxruntime defaults to every logical
+// core, which oversubscribes the CPU (hyper-threads, the web server,
+// downloads and the faces sidecar all compete) — measured 2.4× slower per
+// image than 8 threads on a 32-thread host. Half the cores, capped at 8,
+// leaves room for everything else. TGDL_NSFW_THREADS overrides.
+function _inferenceThreads() {
+    const env = Number.parseInt(process.env.TGDL_NSFW_THREADS, 10);
+    if (Number.isFinite(env) && env > 0) return env;
+    return Math.max(1, Math.min(8, Math.floor(os.availableParallelism() / 2)));
+}
+
+async function _hfToken() {
+    // HuggingFace token (env var or `config.advanced.ai.hfToken` set via
+    // the dashboard) — same treatment as ai/models.js so the NSFW
+    // classifier also benefits from gated-repo access + rate-limit bypass.
+    const token =
+        process.env.HF_TOKEN ||
+        process.env.HUGGINGFACE_TOKEN ||
+        process.env.HUGGINGFACEHUB_API_TOKEN ||
+        null;
+    if (token) return token;
+    try {
+        const { loadConfig } = await import('../config/manager.js');
+        const cfgToken = loadConfig()?.advanced?.ai?.hfToken;
+        if (typeof cfgToken === 'string' && cfgToken.trim()) return cfgToken.trim();
+    } catch {
+        /* config not ready */
+    }
+    return null;
+}
+
+function _terminateWorker() {
+    clearTimeout(_idleTimer);
+    _idleTimer = null;
+    const w = _worker;
+    _worker = null;
+    _workerReady = null;
+    _activeModelId = null;
+    for (const { reject } of _pending.values()) reject(new Error('NSFW worker stopped'));
+    _pending.clear();
+    if (w) w.terminate().catch(() => {});
+}
+
+function _armIdleTimer() {
+    clearTimeout(_idleTimer);
+    _idleTimer = setTimeout(() => {
+        if (_pending.size === 0) _terminateWorker();
+        else _armIdleTimer();
+    }, WORKER_IDLE_MS);
+    _idleTimer.unref?.();
+}
+
+function _classifyViaWorker(items) {
+    return new Promise((resolve, reject) => {
+        if (!_worker) {
+            reject(new Error('NSFW worker not running'));
+            return;
+        }
+        const id = ++_reqSeq;
+        _pending.set(id, { resolve, reject });
+        clearTimeout(_idleTimer);
+        _worker.postMessage({ type: 'classify', id, items });
+    });
 }
 
 async function _loadClassifier(cfg, onProgress, onLog) {
@@ -122,138 +196,84 @@ async function _loadClassifier(cfg, onProgress, onLog) {
         ? String(cfg.dtype).toLowerCase()
         : NSFW_DEFAULTS.dtype;
     const cacheKey = `${modelId}::${dtypeWanted}`;
-    if (_pipelinePromise && _activeModelId === cacheKey) {
-        _log('info', `model already loaded — reusing pipeline for ${modelId} (${dtypeWanted})`);
-        return _pipelinePromise;
+    _workerCallbacks = { onProgress, onLog };
+    if (_workerReady && _activeModelId === cacheKey) {
+        _log('info', `model already loaded — reusing worker for ${modelId} (${dtypeWanted})`);
+        return _workerReady;
     }
-
+    _terminateWorker();
     _activeModelId = cacheKey;
-    _pipelinePromise = (async () => {
-        const cacheDirAbs = _resolveCacheDirAbs(cfg.cacheDir);
-        if (!existsSync(cacheDirAbs)) {
-            await fs.mkdir(cacheDirAbs, { recursive: true });
-            _log('info', `created model cache dir at ${cacheDirAbs}`);
-        }
-        _log(
-            'info',
-            `loading classifier — model=${modelId} dtype=${dtypeWanted} cacheDir=${cacheDirAbs}`,
-        );
 
-        // Dynamic import keeps a fresh install from paying the WASM-load
-        // cost on every boot. Wrapped in try/catch so a missing or
-        // platform-incompatible install fails CLEANLY at scan time
-        // instead of crashing the web process at module-load.
-        let mod;
-        try {
-            mod = await import('@huggingface/transformers');
-        } catch (e) {
-            _log('error', `@huggingface/transformers import failed: ${e?.message || e}`);
-            const err = new Error(
-                `Failed to load @huggingface/transformers: ${e.message}. ` +
-                    'Install with `npm install @huggingface/transformers`.',
-            );
-            err.code = 'NSFW_LIB_MISSING';
-            throw err;
-        }
-        const { pipeline, env } = mod;
+    const cacheDirAbs = _resolveCacheDirAbs(cfg.cacheDir);
+    if (!existsSync(cacheDirAbs)) {
+        await fs.mkdir(cacheDirAbs, { recursive: true });
+        _log('info', `created model cache dir at ${cacheDirAbs}`);
+    }
+    const threads = _inferenceThreads();
+    _log(
+        'info',
+        `loading classifier — model=${modelId} dtype=${dtypeWanted} threads=${threads} cacheDir=${cacheDirAbs}`,
+    );
+    const token = await _hfToken();
 
-        // Steer model + asset downloads into our project-local cache so
-        // they survive container recreates (data/ is bind-mounted) and
-        // operators can pre-seed by copying the directory.
-        try {
-            env.cacheDir = cacheDirAbs;
-        } catch {}
-        // Force WASM execution everywhere. Native onnxruntime-node is a
-        // glibc-only prebuilt — on Alpine it 500s at load. WASM works
-        // 1:1 across every platform with a small perf trade-off that we
-        // gladly pay for the install-anywhere story.
-        try {
-            if (env?.backends?.onnx?.wasm) {
-                // Single thread — most hosts don't have SharedArrayBuffer
-                // wired up, and multi-thread WASM only helps when they do.
-                env.backends.onnx.wasm.numThreads = 1;
-            }
-        } catch {}
-        // HuggingFace token (env var or `config.advanced.ai.hfToken` set
-        // via the dashboard) — same treatment as ai/models.js so the
-        // NSFW classifier also benefits from gated-repo access + rate-
-        // limit bypass.
-        try {
-            let token =
-                process.env.HF_TOKEN ||
-                process.env.HUGGINGFACE_TOKEN ||
-                process.env.HUGGINGFACEHUB_API_TOKEN ||
-                null;
-            if (!token) {
+    const worker = new Worker(new URL('./nsfw-worker.js', import.meta.url));
+    // Never keep the process alive just for an idle classifier.
+    worker.unref();
+    _worker = worker;
+    const ready = new Promise((resolve, reject) => {
+        worker.on('message', (msg) => {
+            if (msg.type === 'progress') {
                 try {
-                    const { loadConfig } = await import('../config/manager.js');
-                    const live = loadConfig();
-                    const cfgToken = live?.advanced?.ai?.hfToken;
-                    if (typeof cfgToken === 'string' && cfgToken.trim()) {
-                        token = cfgToken.trim();
-                    }
+                    _workerCallbacks.onProgress?.(msg.p);
                 } catch {
-                    /* config not ready */
+                    /* swallow — UI hint, not load-critical */
                 }
-            }
-            if (token) {
+            } else if (msg.type === 'log') {
                 try {
-                    env.token = token;
+                    _workerCallbacks.onLog?.({ source: 'nsfw', level: msg.level, msg: msg.msg });
                 } catch {}
-                try {
-                    if (!env.customHeaders) env.customHeaders = {};
-                    env.customHeaders.Authorization = `Bearer ${token}`;
-                } catch {}
+            } else if (msg.type === 'ready') {
+                resolve({ model: msg.model, dtype: msg.dtype, classify: _classifyViaWorker });
+                _armIdleTimer();
+            } else if (msg.type === 'init-error') {
+                const err = new Error(msg.message);
+                if (msg.code) err.code = msg.code;
+                reject(err);
+            } else if (msg.type === 'result') {
+                const p = _pending.get(msg.id);
+                if (!p) return;
+                _pending.delete(msg.id);
+                if (_pending.size === 0) _armIdleTimer();
+                p.resolve(msg.results);
             }
-        } catch {}
-
-        // Try the requested dtype first. If the model doesn't ship that
-        // variant on the HF CDN (the unquantized model.onnx is the most
-        // common offender), fall back through the chain so the operator
-        // doesn't have to know which precision a given model bundles.
-        const fallbackOrder = [
-            dtypeWanted,
-            ...['q8', 'fp16', 'fp32', 'q4'].filter((d) => d !== dtypeWanted),
-        ];
-        let lastErr = null;
-        for (const dtype of fallbackOrder) {
-            try {
-                const cls = await pipeline('image-classification', modelId, {
-                    dtype,
-                    progress_callback: (p) => {
-                        try {
-                            if (typeof onProgress === 'function') onProgress(p);
-                        } catch {
-                            /* swallow — UI hint, not load-critical */
-                        }
-                    },
-                });
-                if (dtype !== dtypeWanted) {
-                    _log(
-                        'warn',
-                        `${dtypeWanted} variant unavailable for ${modelId} — fell back to ${dtype}`,
-                    );
-                }
-                return cls;
-            } catch (e) {
-                lastErr = e;
-                const msg = String(e?.message || e);
-                // Only fall through on "file not found" style errors.
-                // Other failures (auth, permissions, OOM) shouldn't trigger
-                // a brute-force cycle through every variant.
-                if (!/locate file|ENOENT|HTTP error|404|not found/i.test(msg)) throw e;
-                _log('warn', `dtype=${dtype} unavailable: ${msg}`);
-            }
-        }
-        throw lastErr || new Error(`No usable ONNX variant found for ${modelId}`);
-    })().catch((e) => {
-        // Reset the cached promise so the next call retries instead of
-        // returning the rejected promise forever.
-        _pipelinePromise = null;
-        _activeModelId = null;
+        });
+        const onDeath = (e) => {
+            if (_worker !== worker) return;
+            _log('error', `classifier worker died: ${e?.message || e}`);
+            reject(e instanceof Error ? e : new Error(String(e)));
+            _terminateWorker();
+        };
+        worker.on('error', onDeath);
+        worker.on('exit', (code) => {
+            if (_worker === worker) onDeath(new Error(`exited with code ${code}`));
+        });
+    });
+    worker.postMessage({
+        type: 'init',
+        modelId,
+        dtype: dtypeWanted,
+        cacheDir: cacheDirAbs,
+        token,
+        threads,
+        batchSize: WORKER_BATCH_SIZE,
+    });
+    _workerReady = ready.catch((e) => {
+        // Reset so the next call retries instead of returning the
+        // rejected promise forever.
+        if (_worker === worker) _terminateWorker();
         throw e;
     });
-    return _pipelinePromise;
+    return _workerReady;
 }
 
 /**
@@ -269,44 +289,24 @@ async function _classifyFile(classifier, absPath) {
         return remoteClassifyFile(absPath);
     }
     if (!classifier || !existsSync(absPath)) return null;
-    let out;
     try {
-        out = await classifier(absPath);
+        return (await classifier.classify([{ kind: 'file', path: absPath }]))[0];
     } catch {
         return null;
     }
-    // pipeline('image-classification') returns
-    //   [{ label: 'nsfw', score: 0.94 }, { label: 'normal', score: 0.06 }]
-    // for the Falconsai model. Be tolerant of label spelling — different
-    // models use 'porn' / 'sexy' / 'hentai' / etc.
-    const arr = Array.isArray(out) ? out : [];
-    let nsfwScore = 0;
-    for (const r of arr) {
-        const lbl = String(r?.label || '').toLowerCase();
-        const s = Number(r?.score) || 0;
-        if (/(nsfw|porn|hentai|sexy|explicit|adult)/.test(lbl)) {
-            if (s > nsfwScore) nsfwScore = s;
-        }
-    }
-    return { score: nsfwScore, label: nsfwScore >= 0.5 ? 'nsfw' : 'normal' };
 }
 
 // ---- Video sprite classifier ----------------------------------------------
 
 /**
- * Classify a video by sampling tiles from its seekbar sprite sheet.
- * Returns null when no sprite exists (caller stores null score so the row
- * isn't re-fetched endlessly) or when the sprite is malformed.
+ * Sprite geometry + sampled tile indices for a video's seekbar sprite, or
+ * null when no sprite exists (caller stores a null score so the row isn't
+ * re-fetched endlessly) or the sprite metadata is malformed.
  *
- * Aggregation: top-3 average — requires consensus from multiple tiles rather
- * than flagging on any single tile, which dramatically reduces false positives
- * from brief on-screen graphics / thumbnails.
- *
- * @param {object} classifier   transformers.js pipeline instance
  * @param {number} downloadId   downloads.id
  * @param {number} [maxTiles]   sample budget; falls back to NSFW_DEFAULTS.videoMaxTiles
  */
-async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
+async function _videoTileItem(downloadId, maxTiles) {
     const limit = Math.max(1, Number(maxTiles) || NSFW_DEFAULTS.videoMaxTiles);
     const spritePath = getSpritePath(downloadId);
     const metaPath = getMetaFilePath(downloadId);
@@ -325,39 +325,64 @@ async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
     const totalFrames = Number(meta.frames) || cols * rows;
     if (tileW <= 0 || totalFrames <= 0) return null;
 
-    // tile_h may be 0 in the sidecar — derive from actual sprite dimensions.
-    let tileH = Number(meta.tile_h) || 0;
+    const sampleCount = Math.min(limit, totalFrames);
+    const step = totalFrames / sampleCount;
+    const indices = Array.from({ length: sampleCount }, (_, k) => Math.floor(k * step));
+    // tile_h may be 0 in the sidecar — the worker derives it from the
+    // decoded sprite height.
+    const tileH = Number(meta.tile_h) || 0;
+    return { kind: 'tiles', spritePath, cols, rows, tileW, tileH, indices };
+}
+
+/**
+ * Classify a video by sampling tiles from its seekbar sprite sheet.
+ *
+ * Aggregation: top-3 average — requires consensus from multiple tiles rather
+ * than flagging on any single tile, which dramatically reduces false positives
+ * from brief on-screen graphics / thumbnails.
+ *
+ * @param {object} classifier   worker handle from _loadClassifier (null in sidecar mode)
+ * @param {number} downloadId   downloads.id
+ * @param {number} [maxTiles]   sample budget; falls back to NSFW_DEFAULTS.videoMaxTiles
+ */
+async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
+    const item = await _videoTileItem(downloadId, maxTiles);
+    if (!item) return null;
+    if (!getNsfwSidecarUrl()) {
+        // Local: the worker decodes the sprite once and batches the tiles.
+        if (!classifier) return null;
+        return (await classifier.classify([item]))[0];
+    }
+
+    // The sidecar takes files — cut each tile to a temp JPEG.
+    let tileH = item.tileH;
     if (tileH <= 0) {
         try {
-            const m = await sharp(spritePath, { failOn: 'none' }).metadata();
-            if ((m.height || 0) > 0) tileH = Math.floor(m.height / rows);
+            const m = await sharp(item.spritePath, { failOn: 'none' }).metadata();
+            if ((m.height || 0) > 0) tileH = Math.floor(m.height / item.rows);
         } catch {
             return null;
         }
     }
     if (tileH <= 0) return null;
 
-    const sampleCount = Math.min(limit, totalFrames);
-    const step = totalFrames / sampleCount;
-    const indices = Array.from({ length: sampleCount }, (_, k) => Math.floor(k * step));
-
     // Single reused temp file per video — tiles classified sequentially.
     const tmpPath = path.join(os.tmpdir(), `nsfw-tile-${downloadId}-${Date.now()}.jpg`);
     const scores = [];
     try {
-        for (const i of indices) {
-            const left = (i % cols) * tileW;
-            const top = Math.floor(i / cols) * tileH;
+        for (const i of item.indices) {
+            const left = (i % item.cols) * item.tileW;
+            const top = Math.floor(i / item.cols) * tileH;
             try {
-                await sharp(spritePath, { failOn: 'none' })
-                    .extract({ left, top, width: tileW, height: tileH })
+                await sharp(item.spritePath, { failOn: 'none' })
+                    .extract({ left, top, width: item.tileW, height: tileH })
                     .jpeg({ quality: 85 })
                     .toFile(tmpPath);
             } catch {
                 continue;
             }
             try {
-                const res = await _classifyFile(classifier, tmpPath);
+                const res = await _classifyFile(null, tmpPath);
                 if (res) scores.push(res.score);
             } catch {}
         }
@@ -372,6 +397,39 @@ async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
     const topK = Math.min(3, scores.length);
     const aggregated = scores.slice(0, topK).reduce((s, v) => s + v, 0) / topK;
     return { score: aggregated, label: aggregated >= 0.5 ? 'nsfw' : 'normal' };
+}
+
+/**
+ * Local-model classification of a chunk of downloads rows in one worker
+ * round trip, so photos share a batched inference call.
+ * @returns {Promise<Array<{ score: number, label: string } | null>>} per row
+ */
+async function _classifyRowsLocal(classifier, rows, resolveAbs, videoMaxTiles) {
+    const out = new Array(rows.length).fill(null);
+    const items = [];
+    const slots = [];
+    for (let k = 0; k < rows.length; k++) {
+        const row = rows[k];
+        let item = null;
+        if (row.file_type === 'video') {
+            item = await _videoTileItem(row.id, videoMaxTiles).catch(() => null);
+        } else {
+            const abs = resolveAbs(row.file_path);
+            if (abs) item = { kind: 'file', path: abs };
+        }
+        if (item) {
+            slots.push(k);
+            items.push(item);
+        }
+    }
+    if (!items.length) return out;
+    // Throws if the worker dies — the scan stops with an error instead of
+    // marking the whole chunk as checked with no score.
+    const results = await classifier.classify(items);
+    slots.forEach((k, j) => {
+        out[k] = results[j];
+    });
+    return out;
 }
 
 // ---- Scan loop ------------------------------------------------------------
@@ -543,12 +601,38 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
             } catch {}
         };
 
+        const record = (row, res) => {
+            const score = res ? res.score : null;
+            setNsfwResult(row.id, score);
+            _scanState.scanned += 1;
+            if (score != null) {
+                if (score >= threshold) _scanState.keep += 1;
+                else _scanState.candidates += 1;
+            }
+        };
+
         try {
             while (!ctrl.signal.aborted) {
                 const batch = getUnscannedNsfwBatch(fileTypes, batchSize);
                 if (!batch.length) break;
 
-                if (concurrency <= 1) {
+                if (!useRemote) {
+                    // Local model: one worker round trip per chunk so photos
+                    // share a batched inference call. `concurrency` only
+                    // applies to the remote sidecar.
+                    for (let i = 0; i < batch.length; i += LOCAL_CHUNK) {
+                        if (ctrl.signal.aborted) break;
+                        const chunk = batch.slice(i, i + LOCAL_CHUNK);
+                        const results = await _classifyRowsLocal(
+                            classifier,
+                            chunk,
+                            resolveAbs,
+                            videoMaxTiles,
+                        );
+                        chunk.forEach((row, k) => record(row, results[k]));
+                        maybeBroadcast();
+                    }
+                } else if (concurrency <= 1) {
                     for (const row of batch) {
                         if (ctrl.signal.aborted) break;
                         const abs = resolveAbs(row.file_path);
@@ -561,20 +645,12 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                         } catch {
                             res = null;
                         }
-                        const score = res ? res.score : null;
-                        setNsfwResult(row.id, score);
-                        _scanState.scanned += 1;
-                        if (score != null) {
-                            if (score >= threshold) _scanState.keep += 1;
-                            else _scanState.candidates += 1;
-                        }
+                        record(row, res);
                         maybeBroadcast();
                     }
                 } else {
-                    // Chunked parallelism — preserves the in-process
-                    // singleton classifier (which is single-thread anyway)
-                    // by splitting on chunks of `concurrency` instead of
-                    // firing the whole batch.
+                    // Chunked parallelism against the sidecar — chunks of
+                    // `concurrency` instead of firing the whole batch.
                     for (let i = 0; i < batch.length; i += concurrency) {
                         if (ctrl.signal.aborted) break;
                         const chunk = batch.slice(i, i + concurrency);
@@ -595,13 +671,7 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                                 } catch {
                                     res = null;
                                 }
-                                const score = res ? res.score : null;
-                                setNsfwResult(row.id, score);
-                                _scanState.scanned += 1;
-                                if (score != null) {
-                                    if (score >= threshold) _scanState.keep += 1;
-                                    else _scanState.candidates += 1;
-                                }
+                                record(row, res);
                             }),
                         );
                         maybeBroadcast();
@@ -683,7 +753,7 @@ async function _drainBg() {
     try {
         const { loadConfig } = await import('../config/manager.js');
         // Re-resolve config every drain — picks up live changes without
-        // a server restart, same pattern as the WASM classifier itself.
+        // a server restart, same pattern as the batch scan.
         let cfg;
         try {
             const live = loadConfig();
@@ -835,15 +905,7 @@ async function _drainBg() {
 // Module-level cleanup on graceful shutdown — lets the host release
 // classifier memory if the process is asked to exit nicely.
 export async function disposeClassifier() {
-    if (!_pipelinePromise) return;
-    try {
-        const cls = await _pipelinePromise;
-        if (cls && typeof cls.dispose === 'function') await cls.dispose();
-    } catch {
-        /* best-effort */
-    }
-    _pipelinePromise = null;
-    _activeModelId = null;
+    _terminateWorker();
 }
 
 // Last-known load state. Updated by the progress callback inside
