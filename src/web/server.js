@@ -449,6 +449,15 @@ async function scanDirectorySize(dir) {
     }
 }
 
+/** Last disk-usage figure written by writeDiskUsageCache / the downloader. */
+function readDiskUsageCache() {
+    try {
+        return Number(kvGet('disk_usage')?.size) || 0;
+    } catch {
+        return 0;
+    }
+}
+
 function writeDiskUsageCache(size) {
     // The legacy `data/disk_usage.json` file was the cache before the
     // JSON→SQLite migration; after first boot it's renamed to
@@ -3775,6 +3784,9 @@ async function _computeStatsPayload(role) {
         if (scanned !== null) {
             diskUsage = scanned;
             writeDiskUsageCache(diskUsage);
+        } else {
+            // tgdl-core can't answer right now: keep the last figure.
+            diskUsage = readDiskUsageCache();
         }
     }
     let accountCount = 0;
@@ -3975,6 +3987,8 @@ async function _stats_legacy_block_removed(req, res) {
             if (scanned !== null) {
                 diskUsage = scanned;
                 writeDiskUsageCache(diskUsage);
+            } else {
+                diskUsage = readDiskUsageCache();
             }
         }
 
