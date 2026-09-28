@@ -68,7 +68,6 @@ export function getDb() {
                 kvSet,
                 insertSession,
                 listSessions,
-                pushQueueBacklog,
             });
         } catch (e) {
             // eslint-disable-next-line no-console
@@ -606,17 +605,20 @@ function initSchema() {
         CREATE INDEX IF NOT EXISTS idx_web_sessions_role    ON web_sessions(role);
     `);
 
-    // Spilled-queue rows. Replaces data/logs/queue_backlog.jsonl so a hard
-    // crash mid-spill can't tear a JSON line, and rehydrate is an indexed
-    // SELECT + DELETE instead of a full-file rewrite. Worker pulls FIFO via
-    // `ORDER BY id ASC LIMIT N`, deletes the popped rows in the same tx.
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS queue_backlog (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            job        TEXT    NOT NULL,
-            created_at INTEGER NOT NULL
-        );
-    `);
+    // The old download-queue spillover table. Its rows were JSON-serialised
+    // jobs that included the live gramJS client — API hash and MTProto auth
+    // key in plaintext — and could never be downloaded after a reload
+    // anyway. The spillover is gone; drop the table and zero its pages so
+    // the credentials don't linger in the file's free list.
+    if (
+        db
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'queue_backlog'")
+            .get()
+    ) {
+        db.pragma('secure_delete = ON');
+        db.exec('DROP TABLE queue_backlog');
+        db.pragma('secure_delete = OFF');
+    }
 
     // Auto-update audit log. One row per /api/update click. The row is
     // INSERTed when the route hands off to watchtower (status='triggered')
@@ -807,7 +809,6 @@ function initSchema() {
         db.prepare(
             'SELECT token, role, issued_at, expires_at, last_seen FROM web_sessions LIMIT 0',
         ).all();
-        db.prepare('SELECT id, job, created_at FROM queue_backlog LIMIT 0').all();
         db.prepare(
             'SELECT id, from_version, to_version, started_at, finished_at, status, error_code, error_msg, backup_path, backup_bytes FROM update_history LIMIT 0',
         ).all();
@@ -834,7 +835,7 @@ function initSchema() {
         db.prepare('SELECT owner_peer_id FROM downloads LIMIT 0').all();
     } catch (e) {
         throw new Error(
-            `DB schema migration incomplete — kv / web_sessions / queue_backlog / update_history / cluster tables not ready: ${e.message}`,
+            `DB schema migration incomplete — kv / web_sessions / update_history / cluster tables not ready: ${e.message}`,
         );
     }
 
@@ -2935,55 +2936,6 @@ export function kvList() {
         }
     }
     return out;
-}
-
-// ---- Spilled-queue backlog ------------------------------------------------
-//
-// Replaces data/logs/queue_backlog.jsonl. The downloader spills queued jobs
-// here when the in-memory lane size crosses `advanced.downloader.spilloverThreshold`,
-// and rehydrates from here when worker capacity frees up. SQLite gives us
-// atomic appends, indexed FIFO reads, and a clean DELETE-after-pop tx so a
-// crash mid-rehydrate can't lose or double-deliver a job.
-
-export function pushQueueBacklog(job) {
-    const stmt = _prep(`
-        INSERT INTO queue_backlog (job, created_at) VALUES (?, ?)
-    `);
-    stmt.run(JSON.stringify(job), Date.now());
-}
-
-/**
- * Pop up to `limit` jobs FIFO. Returns the parsed job objects in insertion
- * order. The SELECT + DELETE happen in one transaction so a concurrent
- * worker (rare; we only have one downloader) couldn't take the same row
- * twice.
- */
-export function popQueueBacklog(limit = 1000) {
-    const lim = Math.max(1, Math.min(10000, Number(limit) || 1000));
-    const select = _prep('SELECT id, job FROM queue_backlog ORDER BY id ASC LIMIT ?');
-    const del = _prep('DELETE FROM queue_backlog WHERE id = ?');
-    const out = [];
-    getDb().transaction(() => {
-        const rows = select.all(lim);
-        for (const r of rows) {
-            try {
-                out.push(JSON.parse(r.job));
-            } catch {
-                /* corrupt row — drop it */
-            }
-            del.run(r.id);
-        }
-    })();
-    return out;
-}
-
-export function queueBacklogSize() {
-    const r = _prep('SELECT COUNT(1) AS n FROM queue_backlog').get();
-    return Number(r?.n) || 0;
-}
-
-export function clearQueueBacklog() {
-    return _prep('DELETE FROM queue_backlog').run().changes;
 }
 
 // ---- Auto-update audit ---------------------------------------------------

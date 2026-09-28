@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'crypto';
 
 const SOURCE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-dx-src-'));
 const smallFile = path.join(SOURCE_DIR, 'small.txt');
@@ -15,8 +16,14 @@ const bigFile = path.join(SOURCE_DIR, 'big.bin');
 // so the test stays fast — we don't actually upload, the mock drains
 // the stream.
 fs.writeFileSync(bigFile, Buffer.alloc(160 * 1024 * 1024));
+// Bigger than one 8 MB chunk but far below the 150 MB single-shot API
+// limit — must still stream through the session API, not be buffered.
+const midFile = path.join(SOURCE_DIR, 'mid.bin');
+const midBytes = crypto.randomBytes(20 * 1024 * 1024 + 5);
+fs.writeFileSync(midFile, midBytes);
 
 const calls = [];
+const sessionBodies = [];
 class MockDropbox {
     constructor(opts) {
         calls.push([
@@ -58,6 +65,7 @@ class MockDropbox {
     }
     async filesUploadSessionStart(args) {
         calls.push(['filesUploadSessionStart', args.contents?.length]);
+        sessionBodies.push(Buffer.from(args.contents));
         return { result: { session_id: 'sid-1' } };
     }
     async filesUploadSessionAppendV2(args) {
@@ -65,6 +73,7 @@ class MockDropbox {
             'filesUploadSessionAppendV2',
             { offset: args.cursor.offset, len: args.contents?.length },
         ]);
+        sessionBodies.push(Buffer.from(args.contents));
         return {};
     }
     async filesUploadSessionFinish(args) {
@@ -72,6 +81,7 @@ class MockDropbox {
             'filesUploadSessionFinish',
             { offset: args.cursor.offset, len: args.contents?.length, path: args.commit.path },
         ]);
+        sessionBodies.push(Buffer.from(args.contents));
         return {
             result: {
                 id: 'id:big',
@@ -116,6 +126,7 @@ const ctx = { destinationId: 1, log: () => {}, signal: new AbortController().sig
 
 beforeEach(async () => {
     calls.length = 0;
+    sessionBodies.length = 0;
     const mod = await import('../src/core/backup/providers/dropbox.js');
     DropboxProvider = mod.DropboxProvider;
 });
@@ -177,6 +188,30 @@ describe('backup/providers/dropbox (mocked)', () => {
         expect(r.remotePath).toBe('big.bin');
         expect(calls.find((c) => c[0] === 'filesUploadSessionStart')).toBeTruthy();
         expect(calls.find((c) => c[0] === 'filesUploadSessionFinish')).toBeTruthy();
+    }, 60_000);
+
+    it('a file larger than one chunk streams through the session API byte-exact', async () => {
+        const p = new DropboxProvider();
+        await p.init(
+            {
+                appKey: 'k',
+                appSecret: 's',
+                refreshToken: 't',
+                remoteRoot: '/tgdl-backup',
+            },
+            ctx,
+        );
+        const r = await p.upload(midFile, 'mid.bin', {}, ctx);
+        expect(calls.find((c) => c[0] === 'filesUpload')).toBeFalsy();
+        const chunk = 8 * 1024 * 1024;
+        expect(calls.find((c) => c[0] === 'filesUploadSessionStart')[1]).toBe(chunk);
+        const append = calls.find((c) => c[0] === 'filesUploadSessionAppendV2');
+        expect(append[1]).toEqual({ offset: chunk, len: chunk });
+        const finish = calls.find((c) => c[0] === 'filesUploadSessionFinish');
+        expect(finish[1].offset).toBe(2 * chunk);
+        expect(finish[1].len).toBe(midBytes.length - 2 * chunk);
+        expect(Buffer.concat(sessionBodies).equals(midBytes)).toBe(true);
+        expect(r.bytes).toBe(midBytes.length);
     }, 60_000);
 
     it('delete is idempotent for a missing path', async () => {

@@ -5,7 +5,7 @@ Two top-level entry points share state through `data/`:
 1. **CLI** (`src/index.js`) — interactive menus, ad-hoc commands.
 2. **Web server** (`src/web/server.js`) — Express + WebSocket on `:3000`, serves the SPA from `src/web/public/`.
 
-Both share state through `data/db.sqlite` (WAL mode → safe shared reads, single writer). Every runtime state surface — settings, account list, group filters, session tokens, disk-usage cache, recent-backfills history, queue-history snapshots, the spillover queue, and the auto-update audit log — lives in SQLite tables. There is **no JSON state file in normal operation**. Legacy installs upgrading from pre-v2.8 carry `data/config.json` / `data/disk_usage.json` / `data/web-sessions.json` / `data/history-jobs.json` / `data/queue-history.json` / `data/logs/queue_backlog.jsonl` — all auto-imported on first boot and renamed to `*.migrated` as a reversible backup.
+Both share state through `data/db.sqlite` (WAL mode → safe shared reads, single writer). Every runtime state surface — settings, account list, group filters, session tokens, disk-usage cache, recent-backfills history, queue-history snapshots, and the auto-update audit log — lives in SQLite tables. There is **no JSON state file in normal operation**. Legacy installs upgrading from pre-v2.8 carry `data/config.json` / `data/disk_usage.json` / `data/web-sessions.json` / `data/history-jobs.json` / `data/queue-history.json` — all auto-imported on first boot and renamed to `*.migrated` as a reversible backup. A leftover `data/logs/queue_backlog.jsonl` is deleted instead (its jobs held serialised Telegram credentials).
 
 ## Request flow
 
@@ -43,7 +43,7 @@ flowchart LR
 ```
 data/
 ├── db.sqlite             # downloads, queue, share_links, kv, web_sessions,
-│                          queue_backlog, update_history, faces, people,
+│                          update_history, faces, people,
 │                          seekbar_sprites, backup_destinations / backup_jobs,
 │                          peer_*, cluster_audit — WAL mode
 │                          (kv holds config + disk_usage + history_jobs +
@@ -73,7 +73,6 @@ data/
 | `kv['history_jobs']` | `src/web/server.js` (`loadHistoryJobsFromStore` / `saveHistoryJobsToStore`) | `data/history-jobs.json` |
 | `kv['queue_history']` | `src/web/server.js` (`pushQueueHistory` / `flushQueueHistorySoon`) | `data/queue-history.json` |
 | `web_sessions` table | `src/core/web-auth.js` + `src/core/db.js` accessors | `data/web-sessions.json` |
-| `queue_backlog` table | `src/core/db.js` (`pushQueueBacklog` / `popQueueBacklog`) + `src/core/downloader.js` spillover | `data/logs/queue_backlog.jsonl` |
 | `update_history` table | `src/core/db.js` (`recordUpdateAttempt` / `recordUpdateFailure` / `finaliseSuccessfulTrigger` / `finalisePendingUpdates`) | (new in v2.8, hardened in v2.10) |
 | `peers` + `peer_*` tables | `src/core/cluster/peers.js` + `src/core/cluster/sync.js` | (new in v2.10) |
 | `cluster_audit` table | `src/core/cluster/audit.js` | (new in v2.10) |
@@ -122,7 +121,7 @@ All failure modes return 401 with a body `code` (`bad_sig` / `revoked` / `expire
 `Downloader` runs N workers (1–20, auto-scaled). The queue is split:
 
 - `_high[]` — realtime (priority 1) and TTL/self-destruct (priority 0, unshifted to the front).
-- `queue[]` — history backfill (priority 2). Spills to the `queue_backlog` SQLite table past 2000 entries (atomic appends, FIFO-by-id pops in one transaction — can't double-deliver after a crash mid-rehydrate).
+- `queue[]` — history backfill (priority 2). Kept in memory; the history walker pauses while the downloader has more than `advanced.history.backpressureCap` (default 500) jobs pending.
 
 Workers always drain `_high` first, then `queue`, then rehydrate from the backlog table. Realtime never starves behind backfill.
 

@@ -4,8 +4,10 @@
 //   #1a — disconnect-before-overwrite: a reload that re-stores the same
 //         accountId used to orphan the previously-connected client (leaked
 //         MTProto socket + gramJS timers that _keepAliveTick can never reap,
-//         since it only iterates this.clients). loadAll() must disconnect the
-//         old client before replacing it on the authorized success path.
+//         since it only iterates this.clients). loadAll() must destroy the
+//         old client before replacing it on the authorized success path —
+//         destroy(), not disconnect(): gramJS's update loop only stops once
+//         the client is destroyed.
 //   #1b — single-flight: two concurrent reloadAccounts() used to both walk the
 //         session dir and double-connect every account, orphaning the loser of
 //         the final set(). reloadAccounts() must coalesce overlapping calls onto
@@ -51,6 +53,7 @@ function fakeClient() {
         connected: true,
         connect: vi.fn().mockResolvedValue(undefined),
         disconnect: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn().mockResolvedValue(undefined),
         checkAuthorization: vi.fn().mockResolvedValue(true),
         getMe: vi.fn().mockResolvedValue({ id: 1, firstName: 'T', username: 'u' }),
         invoke: vi.fn().mockResolvedValue({}),
@@ -76,8 +79,8 @@ function stubManager(sessionFiles, clientQueue) {
     return am;
 }
 
-describe('AccountManager loadAll — disconnect-before-overwrite (#1a)', () => {
-    it('disconnects the previously-stored client before replacing it on reload', async () => {
+describe('AccountManager loadAll — destroy-before-overwrite (#1a)', () => {
+    it('destroys the previously-stored client before replacing it on reload', async () => {
         const first = fakeClient();
         const second = fakeClient();
         const am = stubManager(['acct1'], [first, second]);
@@ -85,12 +88,12 @@ describe('AccountManager loadAll — disconnect-before-overwrite (#1a)', () => {
         // First load stores `first` under acct1.
         await am.loadAll();
         expect(am.clients.get('acct1')).toBe(first);
-        expect(first.disconnect).not.toHaveBeenCalled();
+        expect(first.destroy).not.toHaveBeenCalled();
 
         // Second load builds `second` for the same id — `first` must be torn
         // down before `second` replaces it, or its socket/timers leak.
         await am.loadAll();
-        expect(first.disconnect).toHaveBeenCalledTimes(1);
+        expect(first.destroy).toHaveBeenCalledTimes(1);
         expect(am.clients.get('acct1')).toBe(second);
     });
 
@@ -104,11 +107,12 @@ describe('AccountManager loadAll — disconnect-before-overwrite (#1a)', () => {
         expect(am.clients.get('acct1')).toBe(working);
 
         // Reload: the new client comes back unauthorized. The unauthorized
-        // branch disconnects ITS OWN client and continues — the previously
-        // working client must NOT be disconnected or evicted.
+        // branch destroys ITS OWN client and continues — the previously
+        // working client must NOT be torn down or evicted.
         await am.loadAll();
+        expect(working.destroy).not.toHaveBeenCalled();
         expect(working.disconnect).not.toHaveBeenCalled();
-        expect(stale.disconnect).toHaveBeenCalledTimes(1);
+        expect(stale.destroy).toHaveBeenCalledTimes(1);
         expect(am.clients.get('acct1')).toBe(working);
     });
 });

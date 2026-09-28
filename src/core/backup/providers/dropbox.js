@@ -214,14 +214,17 @@ export class DropboxProvider extends BackupProvider {
         } catch {}
         const wireSize = opts?.encryptKey ? localSize + 33 : localSize;
 
-        if (wireSize <= SINGLE_SHOT_LIMIT) {
+        // Single-shot buffers the whole file in memory, so only use it for
+        // files that fit in one chunk — with 3 parallel uploads, buffering
+        // up to SINGLE_SHOT_LIMIT meant ~450 MB resident during a mirror.
+        if (wireSize <= Math.min(DEFAULT_CHUNK_BYTES, SINGLE_SHOT_LIMIT)) {
             return await this._uploadSmall(localPath, target, remotePath, opts, ctx);
         }
         return await this._uploadChunked(localPath, target, remotePath, opts, ctx);
     }
 
     async _uploadSmall(localPath, target, remotePath, opts, ctx) {
-        // For files <= 150 MB, buffer the (possibly transformed) stream
+        // For files that fit in one chunk, buffer the (possibly transformed) stream
         // into a Buffer and call filesUpload once. Buffering is
         // necessary because the SDK's `contents` field expects a
         // Buffer / string / Blob — it doesn't accept a stream.
@@ -274,22 +277,30 @@ export class DropboxProvider extends BackupProvider {
             }
         };
 
-        // Iterate the stream in fixed-size slices. We accumulate small
-        // chunks until we hit the chunk size, then flush.
-        let acc = Buffer.alloc(0);
+        // Iterate the stream in fixed-size slices. Collect incoming chunks
+        // and join once per slice — concatenating on every read copied the
+        // growing buffer each time (~0.5 GB of copies per 8 MB slice).
+        let pending = [];
+        let pendingLen = 0;
         for await (const chunk of stream) {
             if (ctx?.signal?.aborted) throw new Error('aborted');
-            acc = Buffer.concat([acc, chunk]);
-            while (acc.length >= DEFAULT_CHUNK_BYTES) {
-                const slice = acc.subarray(0, DEFAULT_CHUNK_BYTES);
-                acc = acc.subarray(DEFAULT_CHUNK_BYTES);
+            pending.push(chunk);
+            pendingLen += chunk.length;
+            if (pendingLen < DEFAULT_CHUNK_BYTES) continue;
+            const joined = Buffer.concat(pending, pendingLen);
+            let off = 0;
+            while (joined.length - off >= DEFAULT_CHUNK_BYTES) {
                 if (lastChunk) await flush(lastChunk, false);
-                lastChunk = Buffer.from(slice);
+                lastChunk = joined.subarray(off, off + DEFAULT_CHUNK_BYTES);
+                off += DEFAULT_CHUNK_BYTES;
             }
+            const rest = joined.subarray(off);
+            pending = rest.length ? [rest] : [];
+            pendingLen = rest.length;
         }
-        if (acc.length) {
+        if (pendingLen) {
             if (lastChunk) await flush(lastChunk, false);
-            lastChunk = Buffer.concat([Buffer.alloc(0), acc]);
+            lastChunk = Buffer.concat(pending, pendingLen);
         }
         // Final commit. If we never started a session (edge case: empty
         // stream), fall through to filesUpload with an empty buffer.

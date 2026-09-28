@@ -242,8 +242,6 @@
     "settings.advanced.scaler_sec_help": "ความถี่ในการเพิ่มหรือลด worker ตามความลึกของ queue",
     "settings.advanced.idle_sleep": "พักตอนว่าง (ms)",
     "settings.advanced.idle_sleep_help": "ระยะเวลาที่ worker หยุดรอเมื่อไม่มีงานใน queue ค่าน้อยกว่าจะตอบสนองได้เร็วกว่า",
-    "settings.advanced.spillover": "เกณฑ์ spillover ของประวัติ",
-    "settings.advanced.spillover_help": "เมื่อ queue ของประวัติเกินขนาดนี้ งานใหม่จะ spill ไปยังดิสก์เพื่อจำกัดการใช้ RAM ส่วน realtime จะไม่ spill",
     "settings.advanced.history": "Backfill ประวัติ",
     "settings.advanced.backpressure": "เพดาน backpressure",
     "settings.advanced.backpressure_help": "หยุดการวนรอบเมื่อ queue ของ downloader เกินขนาดนี้",

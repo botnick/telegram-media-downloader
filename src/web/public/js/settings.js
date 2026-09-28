@@ -834,7 +834,6 @@ const ADVANCED_DEFAULTS = {
         maxConcurrency: 20,
         scalerIntervalSec: 5,
         idleSleepMs: 200,
-        spilloverThreshold: 2000,
     },
     history: {
         backpressureCap: 500,
@@ -908,7 +907,6 @@ export function loadAdvanced(config) {
     set('setting-adv-max-concurrency', dl.maxConcurrency);
     set('setting-adv-scaler-sec', dl.scalerIntervalSec);
     set('setting-adv-idle-sleep-ms', dl.idleSleepMs);
-    set('setting-adv-spillover', dl.spilloverThreshold);
 
     const h = { ...ADVANCED_DEFAULTS.history, ...(adv.history || {}) };
     set('setting-adv-backpressure', h.backpressureCap);
@@ -1086,10 +1084,6 @@ function gatherAdvanced() {
                 ADVANCED_DEFAULTS.downloader.scalerIntervalSec,
             ),
             idleSleepMs: num('setting-adv-idle-sleep-ms', ADVANCED_DEFAULTS.downloader.idleSleepMs),
-            spilloverThreshold: num(
-                'setting-adv-spillover',
-                ADVANCED_DEFAULTS.downloader.spilloverThreshold,
-            ),
         },
         history: {
             backpressureCap: num(

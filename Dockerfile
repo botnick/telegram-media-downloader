@@ -21,8 +21,13 @@ FROM node:24.18.0-bookworm-slim AS runtime
 # status-bar chip always reflects what's actually deployed.
 ARG GIT_SHA=dev
 ARG BUILT_AT=
+# MALLOC_ARENA_MAX: glibc gives every thread that allocates its own malloc
+# arena, and freed native memory (sharp/libvips, onnxruntime, SQLite)
+# fragments across them, so RSS keeps creeping up in a long-running
+# process. Two arenas keep it compact at a negligible speed cost.
 ENV NODE_ENV=production \
     PORT=3000 \
+    MALLOC_ARENA_MAX=2 \
     GIT_SHA=${GIT_SHA} \
     BUILT_AT=${BUILT_AT}
 
