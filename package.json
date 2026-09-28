@@ -39,6 +39,7 @@
         "pre-download-models": "node scripts/pre-download-models.js",
         "build-indexes": "node scripts/build-indexes.js",
         "build:seekbar": "node scripts/build-seekbar.js",
+        "build:core": "node scripts/build-core.js",
         "build:css": "tailwindcss -c scripts/tailwind.config.cjs -i scripts/tailwind.input.css -o src/web/public/css/tailwind.css",
         "test": "vitest run",
         "test:watch": "vitest",

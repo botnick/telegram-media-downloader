@@ -24,3 +24,6 @@ eslint.config.js
 coverage
 .claude
 CLAUDE.md
+# Local Go builds; the image compiles tgdl-core itself.
+core-service/bin
+core-service/dist
