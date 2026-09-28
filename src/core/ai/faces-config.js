@@ -62,6 +62,7 @@ const STRING_KEYS = new Set([
     'backend',
     'sidecarUrl',
     'sidecarToken',
+    'pathMap',
     'detectorModel',
     'providers',
     'detector',
@@ -81,6 +82,9 @@ const ENV_MAP = Object.freeze({
     sidecarUrl: 'TGDL_FACES_SIDECAR_URL',
     // Shared secret for a network-reachable sidecar (its TGDL_FACES_API_TOKEN).
     sidecarToken: 'TGDL_FACES_SIDECAR_TOKEN',
+    // `app path=sidecar path` rules (`;`- or newline-separated) for an
+    // external sidecar that mounts the downloads at a different path.
+    pathMap: 'TGDL_FACES_PATH_MAP',
     autoDownload: 'TGDL_FACES_AUTO_DOWNLOAD',
     minDetectionScore: 'TGDL_FACES_MIN_DETECTION_SCORE',
     minFaceSizePx: 'TGDL_FACES_MIN_FACE_SIZE_PX',

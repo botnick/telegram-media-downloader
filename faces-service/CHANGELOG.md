@@ -4,6 +4,20 @@ Released as `faces-v<version>` tags (PyInstaller binaries on the GitHub
 Release, images on `ghcr.io/botnick/tgdl-faces`). The Node app pins the
 binary it downloads via `SIDECAR_VERSION` in `src/core/ai/faces-spawn.js`.
 
+## 0.5.1
+
+For sidecars on another host (GPU box, reverse proxy, Cloudflare Tunnel).
+
+### Added
+- `POST /detect/upload` takes the image as the raw request body (thresholds
+  as query parameters: `min_score`, `min_box_px`, `ar_lo` + `ar_hi`) and
+  answers like `/detect`. The app uses it instead of base64 JSON when the
+  sidecar can't read its files — a quarter less data per photo and no JSON
+  parsing of a multi-megabyte string. Capped by `TGDL_FACES_MAX_UPLOAD_MB`
+  (default 64, 413 above it); needs the token like every other route.
+- `/health` lists `features` and `max_upload_bytes`, so the app only uses
+  what the sidecar supports (0.5.0 and older keep getting base64).
+
 ## 0.5.0
 
 Faster and lighter on CPU, no change to the embedding model or its

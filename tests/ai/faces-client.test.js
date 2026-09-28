@@ -596,13 +596,14 @@ describe('external sidecar (no shared filesystem)', () => {
         client.applyFacesCfg({ sidecarToken: 's3cret' });
         const seen = [];
         vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
-            seen.push(init?.headers?.authorization);
+            seen.push(init?.headers?.['X-API-Token']);
             return { ok: false, status: 401, json: async () => ({ code: 'unauthorized' }) };
         });
         await expect(
             client.detectFacesBatch(['/a.jpg'], {}, null, null, { throwOnUnavailable: true }),
         ).rejects.toMatchObject({ code: 'SIDECAR_UNAVAILABLE', fatal: true });
-        expect(seen[0]).toBe('Bearer s3cret');
-        expect(client.sidecarAuthHeaders()).toEqual({ authorization: 'Bearer s3cret' });
+        expect(seen[0]).toBe('s3cret');
+        // X-API-Token, not Authorization — a reverse proxy may use that one.
+        expect(client.sidecarAuthHeaders()).toEqual({ 'X-API-Token': 's3cret' });
     });
 });

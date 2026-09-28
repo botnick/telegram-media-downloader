@@ -9,6 +9,8 @@ Endpoints (see ``docs/AI.md`` on the Node side for the full contract):
 * ``POST /detect``        — detect & embed faces from a path or base64 blob.
 * ``POST /detect-embed``  — alias of ``/detect``.
 * ``POST /detect/batch``  — batch variant accepting multiple file paths.
+* ``POST /detect/upload`` — raw image bytes as the body (no base64); for
+  callers on another host. Thresholds as query parameters.
 
 Error payload shape (used by every non-2xx response):
 
@@ -29,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any
 
 import numpy as np
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -67,6 +69,7 @@ from .io import (
     PathNotAllowedError,
     iter_video_frames,
     load_image_from_b64,
+    load_image_from_bytes,
     load_image_from_path,
 )
 
@@ -248,6 +251,21 @@ app = FastAPI(
         "telegram-media-downloader. Backed by insightface buffalo_l."
     ),
 )
+
+
+# What this build supports. The Node client reads it from /health and only
+# uses an endpoint that is listed, so older sidecars keep working.
+FEATURES = ["path", "b64", "batch_b64", "video", "auth", "upload"]
+
+
+def _max_upload_bytes() -> int:
+    """Cap for ``/detect/upload`` bodies (``TGDL_FACES_MAX_UPLOAD_MB``, default 64)."""
+    raw = os.environ.get("TGDL_FACES_MAX_UPLOAD_MB", "").strip()
+    try:
+        mb = int(raw) if raw else 64
+    except ValueError:
+        mb = 64
+    return max(1, mb) * 1024 * 1024
 
 
 def _allow_roots() -> list[str]:
@@ -432,6 +450,8 @@ async def health() -> JSONResponse:
                 "uptime_sec": uptime_sec(),
                 "error": f"{type(err).__name__}: {err}",
                 "stats": get_stats(),
+                "features": FEATURES,
+                "max_upload_bytes": _max_upload_bytes(),
             },
         )
     return JSONResponse(
@@ -449,6 +469,8 @@ async def health() -> JSONResponse:
             "providers": resolved_providers(),
             "uptime_sec": uptime_sec(),
             "stats": get_stats(),
+            "features": FEATURES,
+            "max_upload_bytes": _max_upload_bytes(),
         },
     )
 
@@ -703,16 +725,20 @@ def _do_detect_sync(body: DetectRequest) -> JSONResponse:
             content={"faces": [], "error": "decode_failed"},
         )
 
+    # Build the filter kwargs without overwriting defaults when the
+    # caller didn't supply them — keeps the wire format compact for the
+    # common case (Node defers everything to the sidecar defaults).
+    return _detect_loaded(img, _filter_kwargs(body))
+
+
+def _detect_loaded(img: Any, kwargs: dict[str, Any]) -> JSONResponse:
+    """Detect + embed on an already-decoded image (shared by /detect and
+    /detect/upload)."""
     # Guard: model must be loaded. Return 503 during the brief window while
     # preload_model() is still running, but only after input is validated.
     not_ready = _not_ready_response()
     if not_ready is not None:
         return not_ready
-
-    # Build the filter kwargs without overwriting defaults when the
-    # caller didn't supply them — keeps the wire format compact for the
-    # common case (Node defers everything to the sidecar defaults).
-    kwargs = _filter_kwargs(body)
 
     try:
         faces = detect_and_embed(img, **kwargs)
@@ -760,6 +786,63 @@ async def detect(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     """
     async with _admission():
         return await run_in_threadpool(_do_detect_sync, body)
+
+
+@app.post("/detect/upload")
+async def detect_upload(
+    request: Request,
+    min_score: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
+    min_box_px: Annotated[int | None, Query(ge=1)] = None,
+    ar_lo: Annotated[float | None, Query(gt=0.0)] = None,
+    ar_hi: Annotated[float | None, Query(gt=0.0)] = None,
+) -> JSONResponse:
+    """Detect & embed faces in the raw request body (image bytes).
+
+    Same response as ``/detect``. For callers that can't share their
+    files with the sidecar: no base64 inflation and no JSON parsing of a
+    multi-megabyte string. Capped by ``TGDL_FACES_MAX_UPLOAD_MB`` (413).
+    """
+    limit = _max_upload_bytes()
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return _error("image too large", code="too_large", status_code=413)
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf.extend(chunk)
+        if len(buf) > limit:
+            return _error("image too large", code="too_large", status_code=413)
+    if not buf:
+        return _error("empty body", code="bad_request", status_code=status.HTTP_400_BAD_REQUEST)
+    if (ar_lo is None) != (ar_hi is None) or (
+        ar_lo is not None and ar_hi is not None and ar_lo >= ar_hi
+    ):
+        return _error(
+            "ar_lo and ar_hi go together, with ar_lo < ar_hi",
+            code="bad_request",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    kwargs: dict[str, Any] = {}
+    if min_score is not None:
+        kwargs["min_score"] = float(min_score)
+    if min_box_px is not None:
+        kwargs["min_box_px"] = int(min_box_px)
+    if ar_lo is not None and ar_hi is not None:
+        kwargs["ar_range"] = (float(ar_lo), float(ar_hi))
+    raw = bytes(buf)
+    del buf
+
+    def _run() -> JSONResponse:
+        try:
+            img = load_image_from_bytes(raw)
+        except ImageDecodeError:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"faces": [], "error": "decode_failed"},
+            )
+        return _detect_loaded(img, kwargs)
+
+    async with _admission():
+        return await run_in_threadpool(_run)
 
 
 @app.post("/detect-embed")

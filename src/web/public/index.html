@@ -3350,6 +3350,16 @@
                                         <i class="ri-wifi-line"></i><span data-i18n="maintenance.ai.sidecar_test">Test</span>
                                     </button>
                                 </div>
+                                <p id="ai-faces-sidecar-env-note" class="hidden text-[10.5px] text-yellow-400 mt-1"></p>
+                                <!-- Token + path map are saved with the URL by Apply. -->
+                                <label for="ai-faces-sidecar-token" class="text-tg-text text-xs block mt-2 mb-1" data-i18n="maintenance.sidecar.token">API token</label>
+                                <div class="flex items-stretch gap-2">
+                                    <input id="ai-faces-sidecar-token" type="password" class="tg-input flex-1 text-sm" autocomplete="new-password" spellcheck="false" data-i18n-placeholder="maintenance.sidecar.token_placeholder" placeholder="Optional — the token set on the sidecar" oninput="window._facesSidecarUrlInput?.()">
+                                    <button id="ai-faces-sidecar-token-clear" type="button" class="hidden tg-btn-input-secondary shrink-0 text-xs" onclick="window._facesSidecarClearToken?.()" data-i18n="maintenance.sidecar.token_clear">Clear saved token</button>
+                                </div>
+                                <label for="ai-faces-sidecar-pathmap" class="text-tg-text text-xs block mt-2 mb-1" data-i18n="maintenance.sidecar.path_map">Path mapping (optional)</label>
+                                <textarea id="ai-faces-sidecar-pathmap" rows="2" class="tg-input w-full text-xs font-mono" spellcheck="false" placeholder="/app/data/downloads=/mnt/media" oninput="window._facesSidecarUrlInput?.()"></textarea>
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.sidecar.path_map_help">One rule per line: app path = the same folder as the sidecar sees it. Lets a sidecar with a shared mount read files directly; without it, files are uploaded to the sidecar.</p>
                                 <span id="ai-faces-sidecar-test-result" class="text-[11px] mt-1.5 block"></span>
                                 <button id="ai-faces-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled onclick="window._facesSidecarApply?.()">
                                     <i class="ri-check-line"></i><span data-i18n="maintenance.ai.sidecar_apply">Apply</span>
