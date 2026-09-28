@@ -250,9 +250,6 @@ never silently in the Go port.
   `/refresh-info/status` (the guest allow-list matches the `/api/groups`
   prefix).
 - `DELETE /api/purge/all` (factory reset) has no `{ confirm: true }` guard.
-- An unsatisfiable or inverted `Range` on `/files/*` and `/share/*` answers
-  500 (with the file's Content-Type) instead of 416; on `/share` it still
-  counts as an access.
 - `advanced.share.rateLimitMax` / `rateLimitWindowMs` never take effect
   (the route keeps the limiter it was registered with).
 - Body-parser errors (malformed JSON, a JSON `null` body, > 2 MB) answer 500

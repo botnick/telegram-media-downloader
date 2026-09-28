@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on 
 - **The update status routes need a session.** `GET /api/update/status`, `/api/auto-update/status` and `/api/update/history` answered anonymous callers (they sit before the dashboard's auth check, like `POST /api/update`, which was closed earlier). They now answer 401 without a session. Guests keep the capability probe the status bar's "Update available" sheet reads; the job status and the update history are admin-only (403), like the Maintenance pages that show them.
 - **The config API no longer returns the share secret, the guest password hash or the proxy password.** `GET /api/config` answers `web.shareSecretSet`, `web.guestPasswordHashSet` and `proxy.passwordSet` instead, like the sidecar tokens; a save that leaves them out keeps the saved values. `/api/maintenance/config/raw` redacts the share secret and the guest hash too.
 
+### Fixed
+- **A Range a file can't satisfy answers 416**, not 500. `/files/*`, `/share/*`, the cluster file bridge and every other file stream now answer `416 Range Not Satisfiable` with `Content-Range: bytes */<size>` (RFC 9110) and without the file's type, validators or long cache lifetime; `/share` no longer counts such a request as an access.
+
 ## [2.29.0] — 2026-09-29
 
 Chats the app can no longer read — deleted, banned, private or left, moved to a supergroup — are now paused instead of retried, so they stop using Telegram's limits. The dashboard says why and what to do (Check again, switch account, follow the new group, stop monitoring), with a Needs attention list and automatic re-checks.

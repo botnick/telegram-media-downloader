@@ -142,22 +142,17 @@ describe('/files downloads', () => {
                 headers: { range, ...extra },
                 ...o,
             });
-        // Today an unsatisfiable range is NOT a 416: send()'s RangeNotSatisfiable
-        // error falls through to the global error handler → 500 JSON body
-        // under the file's Content-Type (bodyMode 'text' to keep it readable).
-        const bug416 = {
-            bodyMode: 'text',
-            note: 'today: 500 from the global error handler, not 416',
-        };
+        // An unsatisfiable or inverted range: 416 with Content-Range: bytes */<size>
+        // (RFC 9110), a text body and none of the file's own headers.
         await r('range first 100 bytes', 'bytes=0-99');
         await r('range open-ended', 'bytes=2000-');
         await r('range suffix', 'bytes=-50');
         await r('range last byte', 'bytes=2413-2413');
         await r('range end past EOF is clamped', 'bytes=2400-9999');
-        await r('range unsatisfiable', 'bytes=5000-6000', {}, bug416);
+        await r('range unsatisfiable → 416', 'bytes=5000-6000');
         await r('range multiple ranges', 'bytes=0-9,20-29');
         await r('range malformed unit', 'items=0-5');
-        await r('range inverted', 'bytes=50-10', {}, bug416);
+        await r('range inverted → 416', 'bytes=50-10');
         const whole = await t.request('GET', fileUrl(ALPHA_VID, '?inline=1'));
         await r('If-Range matching etag honours range', 'bytes=0-9', {
             'if-range': whole.headers.etag,

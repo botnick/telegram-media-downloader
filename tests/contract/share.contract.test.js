@@ -129,10 +129,10 @@ describe('public /share route', () => {
             as: 'anon',
             headers: { range: 'bytes=0-9' },
         });
-        await t.exchange('share unsatisfiable range', 'GET', `/share/1?s=${s1}`, {
+        // 416, and not counted as an access (see the list after serving).
+        await t.exchange('share unsatisfiable range → 416', 'GET', `/share/1?s=${s1}`, {
             as: 'anon',
             headers: { range: 'bytes=9000-9999' },
-            bodyMode: 'text',
         });
         await t.exchange('share HEAD', 'HEAD', `/share/1?s=${s1}`, { as: 'anon' });
         await t.exchange('share legacy v1 exp+sig', 'GET', `/share/1?exp=${FAR_S}&sig=${s1}`, {

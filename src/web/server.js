@@ -267,6 +267,11 @@ import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
+    isUnsatisfiableRange,
+    rangeNotSatisfiableOf,
+    sendRangeNotSatisfiable,
+} from './lib/http-errors.js';
+import {
     recordClusterAudit,
     listClusterAudit,
     listOwnDownloadsSince,
@@ -2067,9 +2072,6 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
             return res.status(404).type('text/plain').send('File not found');
         }
 
-        // Bump access counter — cheap, non-blocking on errors.
-        bumpShareLinkAccess(linkId);
-
         // Anti-CDN cache + don't allow shared caches to cache. Bytes are
         // gated per-token; if the token is later revoked, no cache layer
         // should keep handing the file out.
@@ -2080,6 +2082,18 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
         // here, but a video tag in an iframe could fingerprint the user).
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('Referrer-Policy', 'no-referrer');
+
+        // A Range the file can't satisfy is refused before the access is
+        // counted (sendFile would answer the same 416 below, but after the
+        // bump).
+        const size = (await fs.stat(r.real).catch(() => null))?.size;
+        if (Number.isFinite(size) && isUnsatisfiableRange(req, size)) {
+            res.setHeader('Accept-Ranges', 'bytes');
+            return sendRangeNotSatisfiable(res, `bytes */${size}`);
+        }
+
+        // Bump access counter — cheap, non-blocking on errors.
+        bumpShareLinkAccess(linkId);
 
         // Force download when ?download=1, otherwise let the browser pick
         // (mirrors /files/* semantics so an image/video plays inline by
@@ -13781,6 +13795,11 @@ wss.on('connection', (ws) => {
 // Must be registered after all routes/middleware and before listen().
 app.use((err, req, res, _next) => {
     if (res.headersSent) return;
+    // send() (behind res.sendFile: /files, /share, the cluster file bridge,
+    // thumbnails) reports a Range the file can't satisfy as a 416 error —
+    // a client error, answered as RFC 9110 asks, not a 500.
+    const unsatisfiable = rangeNotSatisfiableOf(err);
+    if (unsatisfiable) return sendRangeNotSatisfiable(res, unsatisfiable);
     log({
         source: 'http',
         level: 'error',

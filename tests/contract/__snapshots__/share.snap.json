@@ -1440,7 +1440,7 @@
         "bytes": 10
       }
     },
-    "share unsatisfiable range": {
+    "share unsatisfiable range → 416": {
       "route": "GET /share/:linkId",
       "request": {
         "method": "GET",
@@ -1450,22 +1450,19 @@
           "range": "bytes=9000-9999"
         }
       },
-      "status": 500,
+      "status": 416,
       "headers": {
         "accept-ranges": "bytes",
-        "cache-control": "private, no-store, no-cache, must-revalidate",
-        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "cache-control": "no-store",
         "content-range": "bytes */3365",
-        "content-type": "image/jpeg; charset=utf-8",
-        "etag": "W/\"d25-18cc820d888\"",
-        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "content-type": "text/plain; charset=utf-8",
         "pragma": "no-cache",
         "ratelimit": "limit=60, remaining=54, reset=<s>",
         "ratelimit-policy": "60;w=60"
       },
       "security": "122656cc3b",
       "body": {
-        "text": "{\"error\":\"Range Not Satisfiable\"}"
+        "text": "Range Not Satisfiable"
       }
     },
     "share HEAD": {
@@ -1869,7 +1866,7 @@
           "limit": 500,
           "links": [
             {
-              "accessCount": 9,
+              "accessCount": 8,
               "createdAt": 1717200000000,
               "downloadId": 1,
               "expiresAt": 4102444800,
@@ -2071,7 +2068,7 @@
           "limit": 500,
           "links": [
             {
-              "accessCount": 9,
+              "accessCount": 8,
               "createdAt": 1717200000000,
               "downloadId": 1,
               "expiresAt": 4102444800,
