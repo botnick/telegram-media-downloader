@@ -425,6 +425,9 @@
                 if (extra.accountId) {
                     document.getElementById('done-id').textContent = `Saved as "${extra.accountId}"`;
                 }
+                // The first status read after `done` loads the new account
+                // into the running engine (GET /api/accounts/auth/:id).
+                if (sessionId) fetch(`/api/accounts/auth/${encodeURIComponent(sessionId)}`).catch(() => {});
             } else if (state === 'error') {
                 showError(extra.error || 'Something went wrong');
             }
