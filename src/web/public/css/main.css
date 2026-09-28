@@ -2151,6 +2151,77 @@ html.theme-light .ai-mode-btn.active {
     padding: 8px 10px;
     line-height: 1.5;
 }
+/* Light theme: the card was drawn with dark-theme literals (white title
+   and numbers on a white panel, near-invisible tiles and state pill). */
+html.theme-light .engine-title,
+html.theme-light .engine-stat-value {
+    color: var(--tg-text);
+}
+html.theme-light .engine-stat-label {
+    color: var(--tg-textSecondary);
+}
+html.theme-light .engine-stat-tile {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.1);
+}
+html.theme-light .engine-stat-tile:hover {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.2);
+}
+html.theme-light .engine-stat-icon {
+    color: #0e78c2;
+}
+html.theme-light .engine-stat-tile[data-stat="active"] .engine-stat-icon {
+    color: #15803d;
+}
+html.theme-light .engine-stat-tile[data-stat="downloaded"] .engine-stat-icon {
+    color: #0369a1;
+}
+html.theme-light .engine-stat-tile[data-stat="uptime"] .engine-stat-icon {
+    color: #4b5563;
+}
+html.theme-light .engine-state-running {
+    background: rgba(21, 128, 61, 0.1);
+    color: #15803d;
+    border-color: rgba(21, 128, 61, 0.35);
+}
+html.theme-light .engine-state-starting {
+    background: rgba(14, 120, 194, 0.1);
+    color: #0e5a86;
+    border-color: rgba(14, 120, 194, 0.35);
+}
+html.theme-light .engine-state-stopping {
+    background: rgba(180, 120, 0, 0.1);
+    color: #8a5a00;
+    border-color: rgba(180, 120, 0, 0.35);
+}
+html.theme-light .engine-state-stopped {
+    background: rgba(15, 23, 42, 0.05);
+    color: #4b5563;
+    border-color: rgba(15, 23, 42, 0.15);
+}
+html.theme-light .engine-state-error {
+    background: rgba(185, 28, 28, 0.08);
+    color: #b91c1c;
+    border-color: rgba(185, 28, 28, 0.35);
+}
+html.theme-light .engine-link {
+    color: #0e78c2;
+}
+html.theme-light .engine-link:hover {
+    color: #0e5a86;
+}
+html.theme-light .engine-error {
+    color: #b91c1c;
+}
+html.theme-light .engine-card .tg-btn-input-secondary {
+    background: #ffffff;
+    color: var(--tg-text);
+    border-color: rgba(15, 23, 42, 0.2);
+}
+html.theme-light .engine-card .tg-btn-input-secondary:hover {
+    background: #e8eef4;
+}
 
 /* Doctor summary chip — visible status pill in the card header.
    Colour reflects the worst-state check: green = all OK, yellow =
