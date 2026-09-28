@@ -47,6 +47,35 @@ describe('downloads schema', () => {
             ]),
         );
     });
+
+    it('carries the aggregate + pinned-first gallery indexes, not the redundant group ones', () => {
+        const names = db
+            .prepare(
+                `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'downloads'`,
+            )
+            .all()
+            .map((r) => r.name);
+        expect(names).toEqual(
+            expect.arrayContaining([
+                'idx_group_name_size',
+                'idx_gallery_type_pinned_date',
+                'idx_gallery_group_pinned_date',
+            ]),
+        );
+        expect(names).not.toContain('idx_group_id');
+        expect(names).not.toContain('idx_group_message');
+    });
+
+    it('serves the sidebar aggregate from the covering index', () => {
+        const plan = db
+            .prepare(
+                `EXPLAIN QUERY PLAN SELECT group_id, MAX(group_name), COUNT(*), SUM(file_size) FROM downloads GROUP BY group_id`,
+            )
+            .all()
+            .map((r) => r.detail)
+            .join(' | ');
+        expect(plan).toContain('COVERING INDEX idx_group_name_size');
+    });
 });
 
 describe('insertDownload + isDownloaded', () => {

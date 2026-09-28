@@ -141,7 +141,6 @@ function initSchema() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(group_id, message_id)
         );
-        CREATE INDEX IF NOT EXISTS idx_group_id ON downloads(group_id);
         CREATE INDEX IF NOT EXISTS idx_created_at ON downloads(created_at);
     `);
 
@@ -191,8 +190,22 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_pending_until ON downloads(pending_until) WHERE pending_until IS NOT NULL',
         );
     } catch {}
+    // idx_group_id / idx_group_message were exact prefixes of the
+    // UNIQUE(group_id, message_id) autoindex — pure write amplification on
+    // every insert. Every group_id lookup they served (COUNT, MIN/MAX
+    // message_id, DISTINCT group_id) runs covered by the autoindex instead.
     try {
-        db.exec('CREATE INDEX IF NOT EXISTS idx_group_message ON downloads(group_id, message_id)');
+        db.exec('DROP INDEX IF EXISTS idx_group_id');
+        db.exec('DROP INDEX IF EXISTS idx_group_message');
+    } catch {}
+    // Covering index for the per-group aggregates behind the sidebar
+    // (/api/groups, /api/downloads) and the group-name refresh passes:
+    // GROUP BY group_id reading only group_name + file_size never touches
+    // the table b-tree.
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_group_name_size ON downloads(group_id, group_name, file_size)',
+        );
     } catch {}
     // Indexes that drive the NSFW review sheet's hot queries:
     //   - "what's left to scan" (file_type='photo' AND nsfw_checked_at IS NULL)
@@ -256,6 +269,18 @@ function initSchema() {
     try {
         db.exec(
             'CREATE INDEX IF NOT EXISTS idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, id DESC)',
+        );
+    } catch {}
+    // Pinned-first with a type tab: WHERE file_type = ? ORDER BY pinned DESC, created_at DESC, id DESC
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_gallery_type_pinned_date ON downloads(file_type, pinned DESC, created_at DESC, id DESC)',
+        );
+    } catch {}
+    // Per-group pinned-first: WHERE group_id = ? ORDER BY pinned DESC, created_at DESC
+    try {
+        db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_gallery_group_pinned_date ON downloads(group_id, pinned DESC, created_at DESC, id DESC)',
         );
     } catch {}
     // Seekbar scan: WHERE file_type = 'video' AND file_path IS NOT NULL (LEFT JOIN seekbar_sprites)
@@ -1666,8 +1691,8 @@ export function getOldestDownloads(count = 50) {
 }
 
 /**
- * Per-group stats card backing query — single index-only scan over
- * `idx_group_message`. Returns the totals the Group → Data tab renders
+ * Per-group stats card backing query — a group_id index range scan, never
+ * a full-table pass. Returns the totals the Group → Data tab renders
  * above its file strip. Cheap enough to call on every modal open.
  *
  * Shape:
@@ -1709,7 +1734,7 @@ export function getGroupStats(groupId) {
 }
 
 /**
- * Paginated file list for the Group → Data tab. Uses `idx_group_message`
+ * Paginated file list for the Group → Data tab. Uses `idx_gallery_group_date`
  * for the WHERE filter + the index's natural ordering for the LIMIT/OFFSET
  * scan, so a 100k-row group still opens the modal in <500 ms.
  */

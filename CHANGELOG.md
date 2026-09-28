@@ -41,6 +41,9 @@ All notable changes to this project are documented here. The format is based on 
 - **`npm run pre-download-models` failed with `Cannot find module`** ([#64](https://github.com/botnick/telegram-media-downloader/issues/64)). `scripts/pre-download-models.js` was referenced since v2.15 but never committed. It now exists and seeds the NSFW model cache with the configured model + precision (no-op when an NSFW sidecar is configured). The Docker build no longer runs it: `/app/data` is hidden by the `./data` bind-mount at runtime, so a build-time download never reached the running container. See [DEPLOY.md](docs/DEPLOY.md#split-disk-setup) for offline seeding.
 - **NSFW "Precision" setting was ignored.** Scans and preloads always loaded the `q8` variant because the server dropped `advanced.nsfw.dtype` when building the scan config.
 
+### Performance
+- **New `downloads` indexes.** `idx_group_name_size` covers the sidebar's per-group count/size/name aggregate (about 2× faster at 150k rows, index-only). `idx_gallery_type_pinned_date` and `idx_gallery_group_pinned_date` serve "pinned first" gallery pages straight from the index; a type tab with pinned-first dropped from 25 ms to 0.1 ms per page at 150k rows. The redundant `idx_group_id` / `idx_group_message` are dropped because the `UNIQUE(group_id, message_id)` index already covers them. The first boot after upgrading builds the new indexes once (about 0.4 s per 150k rows).
+
 ## [2.24.5] — 2026-05-31
 
 Hardening follow-up to v2.24.4 — connection-leak + revoked-session fixes from an adversarial audit of the reconnect/self-heal code.
