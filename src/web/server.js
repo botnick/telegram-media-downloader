@@ -4237,9 +4237,9 @@ function dialogsTypeFor(id) {
 // size — shared by /api/groups and /api/downloads. Even index-only
 // (idx_group_name_size) it's a pass over every row, and one sidebar paint
 // hits both routes, so the rows are cached briefly. Invalidated by the
-// same broadcasts that refresh the footer stats (see _STATS_TRIGGER_TYPES
-// in broadcast()) plus `groups_refreshed`; the TTL bounds staleness from
-// any writer that doesn't broadcast.
+// same broadcasts that refresh the footer stats (_STATS_TRIGGER_TYPES in
+// broadcast()) plus _GROUP_AGG_INVALIDATE_TYPES; the TTL bounds staleness
+// from any writer that doesn't broadcast.
 //
 // Plain MAX(group_name) misbehaves on this schema because "Unknown"
 // sorts above most ASCII titles — a group with rows ["Unknown", "Cool
@@ -12547,8 +12547,9 @@ const _GROUP_AGG_INVALIDATE_TYPES = new Set([
 ]);
 
 function broadcast(data) {
-    // Per-chunk progress / per-row deletes are coalesced (≤ 2/s per key,
-    // same message shapes); everything else is sent right away.
+    // Per-chunk download progress, per-message scan progress and
+    // per-enqueue queue events are coalesced (≤ 2/s per key, same message
+    // shapes); everything else is sent right away.
     _wsBroadcaster.broadcast(data);
     // Side-channel: if the event meaningfully changed stats, schedule a
     // single recompute + push. Debounce inside broadcastStatsSoon() makes
