@@ -26,6 +26,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import net from 'net';
+import os from 'os';
 import { spawn, spawnSync } from 'child_process';
 
 import { setSidecarUrl, getSidecarUrl, applyFacesCfg } from './faces-client.js';
@@ -784,6 +785,7 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
         // Disable Python's stdout buffering so log lines surface in the
         // dashboard's log feed in real time rather than batched at exit.
         PYTHONUNBUFFERED: '1',
+        ..._colocatedCpuEnv(),
     };
 
     let child;
@@ -800,6 +802,7 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
     if (!child || !child.pid) {
         return { ok: false, reason: 'python spawn returned no pid' };
     }
+    _deprioritise(child);
     return { ok: true, child, mode: 'python', pyBin };
 }
 
@@ -1486,6 +1489,7 @@ async function _spawnAndProbe(binPath) {
             _resolvedCfg.providers || (process.platform === 'win32' ? 'cpu' : 'auto'),
         ),
         TGDL_FACES_DET_SIZE: String(_resolvedCfg.detSize || 640),
+        ..._colocatedCpuEnv(),
     };
 
     _log('info', `spawning ${binPath} on 127.0.0.1:${port}`);
@@ -1495,6 +1499,7 @@ async function _spawnAndProbe(binPath) {
         windowsHide: true,
     });
     _child = child;
+    _deprioritise(child);
 
     _wirePipeLogging(child.stdout, 'info');
     // Match the python-fallback rationale above: Python+uvicorn write
@@ -1503,10 +1508,20 @@ async function _spawnAndProbe(binPath) {
 
     let exited = false;
     let exitInfo = null;
+    let healthy = false;
     child.on('exit', (code, signal) => {
         exited = true;
         exitInfo = { code, signal };
-        _log('warn', `child exited early code=${code} signal=${signal}`);
+        // _killChild() clears _child before signalling, so a child that is
+        // still current died on its own (crash, OOM kill). Previously only
+        // the 60 s × 3 health monitor noticed — ~3 min in which every scan
+        // request failed. Relaunch right away, like the Python fallback.
+        const unexpected = healthy && _child === child;
+        _log(
+            unexpected || !healthy ? 'warn' : 'info',
+            `child exited${healthy ? '' : ' early'} code=${code} signal=${signal}`,
+        );
+        if (unexpected) _relaunchBinary(binPath, 'child exited');
     });
     child.on('error', (e) => {
         exited = true;
@@ -1524,10 +1539,65 @@ async function _spawnAndProbe(binPath) {
             );
         }
         const ok = await _probeHealth(url);
-        if (ok) return url;
+        if (ok) {
+            healthy = true;
+            return url;
+        }
         await _sleep(HEALTH_POLL_INTERVAL_MS);
     }
     throw new Error(`health probe timed out after ${timeoutMs} ms`);
+}
+
+// Env for a sidecar that shares the host (and, in Docker, the container)
+// with this Node process: keep one core out of its inference budget so
+// the event loop — which the container healthcheck watches — always gets
+// CPU. Older sidecar builds ignore the variable. An operator-set value
+// wins (process.env is spread first and this only fills the gap).
+function _colocatedCpuEnv() {
+    if (process.env.TGDL_FACES_RESERVE_CPUS || process.env.TGDL_FACES_CPU_THREADS) return {};
+    return { TGDL_FACES_RESERVE_CPUS: '1' };
+}
+
+// Run the auto-spawned sidecar below normal priority (nice 10 / Windows
+// BELOW_NORMAL) so that under contention the dashboard, downloads and the
+// healthcheck win and face inference takes the leftovers. Costs nothing
+// when the box is otherwise idle. `sidecarNice: 0` opts out. Set right
+// after spawn, before the interpreter creates its inference threads,
+// which inherit it on Linux.
+function _deprioritise(child) {
+    const nice = Number.isFinite(_resolvedCfg?.sidecarNice) ? _resolvedCfg.sidecarNice : 10;
+    if (!child?.pid || nice <= 0) return;
+    try {
+        os.setPriority(child.pid, Math.min(19, nice | 0));
+    } catch (e) {
+        _log('info', `could not lower sidecar priority: ${e?.message || e}`);
+    }
+}
+
+let _relaunching = false;
+async function _relaunchBinary(binPath, why) {
+    if (_relaunching) return;
+    _relaunching = true;
+    try {
+        if (_healthMonitorTimer) {
+            clearInterval(_healthMonitorTimer);
+            _healthMonitorTimer = null;
+        }
+        _killChild();
+        _state = 'spawning';
+        _broadcast({ type: 'ai_faces_status', ok: false, state: 'relaunching' });
+        _log('warn', `relaunching sidecar (${why})`);
+        // Brief pause so a crash-on-start loop can't spin the CPU.
+        await _sleep(SPAWN_RETRY_BACKOFF_MS);
+        const ok = await _spawnWithRetry(() => _spawnAndProbe(binPath), binPath);
+        if (!ok) {
+            _state = 'failed';
+            _error = `relaunch failed (${why})`;
+            _broadcast({ type: 'ai_faces_status', ok: false, error: _error });
+        }
+    } finally {
+        _relaunching = false;
+    }
 }
 
 // Python's `logging` + uvicorn write EVERYTHING to stderr (INFO included),
