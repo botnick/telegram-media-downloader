@@ -32,11 +32,13 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 |---|---|---|
 | `GET`    | `/api/accounts`                          | Saved sessions. |
 | `POST`   | `/api/accounts/auth/begin`               | `{label?}` → `{sessionId, state:'phone'}`. |
-| `POST`   | `/api/accounts/auth/phone`               | `{sessionId, phone}` → `{state:'code'\|'error'}`. |
-| `POST`   | `/api/accounts/auth/code`                | `{sessionId, code}` → `{state:'password'\|'done'\|'error', accountId?}`. |
-| `POST`   | `/api/accounts/auth/2fa`                 | `{sessionId, password}` → `{state:'done'\|'error', accountId?}`. |
+| `POST`   | `/api/accounts/auth/phone`               | `{sessionId, phone}` → `{state:'code'\|'phone'\|'error', error?, code?, seconds?}`. |
+| `POST`   | `/api/accounts/auth/code`                | `{sessionId, code}` → `{state:'password'\|'done'\|'code'\|'error', accountId?, hint?}`. |
+| `POST`   | `/api/accounts/auth/2fa`                 | `{sessionId, password}` → `{state:'done'\|'password'\|'error', accountId?}`. |
 | `POST`   | `/api/accounts/auth/cancel`              | `{sessionId}`. |
-| `GET`    | `/api/accounts/auth/:sessionId`          | Status polling. |
+| `GET`    | `/api/accounts/auth/:sessionId`          | Status polling. The first poll that sees `done` loads the new account into the running engine. |
+
+A wrong phone number / code / password keeps the step's state and sets `error` plus `code` — the Telegram error name (`PHONE_NUMBER_INVALID`, `PHONE_CODE_INVALID`, `PHONE_CODE_EXPIRED`, `PASSWORD_HASH_INVALID`, …) or `FLOOD_WAIT` with `seconds`; submitting that step again retries. `hint` is the 2FA password hint. `begin` answers `503 {code:'NO_API_CREDS'}` until `telegram.apiId` / `apiHash` are set.
 | `DELETE` | `/api/accounts/:id`                      | Removes the saved session. |
 
 ## Monitor / engine
@@ -69,6 +71,8 @@ A few `/api/auth/*` routes are explicitly registered before the global auth midd
 | `GET`    | `/api/downloads/:groupId`           | Paginated rows for one group. `?type=images\|videos\|documents\|audio`. Same `?include=` / `?peerId=` federation params as `/all`. |
 | `GET`    | `/api/downloads/search`             | `?q=…&page=&limit=&groupId=`. Optional `type=` (`images` / `videos` / `documents` / `audio`), `pinned=1`, `pinnedFirst=1` (same as the gallery feeds) and `order=newest` (default: FTS relevance). File name / chat name prefix match, falling back to a substring match when that finds nothing. Same `?include=` federation param. |
 | `POST`   | `/api/downloads/bulk-delete`        | `{ids?, paths?}`. Also purges thumbnail cache for every removed id. |
+| `POST`   | `/api/downloads/pin`                | `{ids:[…], pinned}` — pin / unpin many rows in one request (max 5000 ids, else 413). Returns the ids that exist. |
+| `POST`   | `/api/downloads/:id/pin`            | `{pinned}` — one row. |
 | `DELETE` | `/api/file?path=…`                  | Single file. |
 | `DELETE` | `/api/purge/all`                    | Factory reset. |
 
