@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Performance
+- **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
+- **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
+- The NSFW model is released after 5 minutes idle instead of staying loaded for the life of the process.
+
 ### Security
 - **NSFW sidecar path mode is now default-deny.** With `TGDL_NSFW_ALLOW_ROOTS` unset, `nsfw-service` used to read any path it was sent — and it listens on `0.0.0.0` without auth. It now matches the faces sidecar: path mode only for files under `TGDL_NSFW_ALLOW_ROOTS`, otherwise 403 and the app falls back to `image_b64` automatically. **Action:** if the sidecar shares the downloads directory with the app, set `TGDL_NSFW_ALLOW_ROOTS` to keep the faster path mode. Decoder / internal error messages are logged instead of returned.
 - `telegram-notify.yml` runs with an empty `GITHUB_TOKEN` permission set.

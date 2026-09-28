@@ -677,9 +677,19 @@ File a bug with the stack trace.
 
 ---
 
+## NSFW Built-in Classifier
+
+When no sidecar URL is set, the classifier runs on the app's CPU through onnxruntime-node, inside a worker thread so scans never block the web server. Images are decoded and resized to the model's input size by sharp before inference, and photos are classified in batches.
+
+| Env var | Default | Description |
+|---|---|---|
+| `TGDL_NSFW_THREADS` | half the CPU threads, max 8 | Inference threads. Lower it to leave more CPU for downloads on small boxes |
+
+The worker (and the model's memory) is released after 5 minutes without NSFW work and reloads from the on-disk cache on the next scan.
+
 ## NSFW External Sidecar (v2.20.0+)
 
-The NSFW classifier can be offloaded to a remote GPU server, mirroring the faces sidecar pattern. When no URL is set, the built-in WASM classifier runs in-process (CPU).
+The NSFW classifier can be offloaded to a remote GPU server, mirroring the faces sidecar pattern. When no URL is set, the built-in classifier above runs in-process (CPU).
 
 ### Setup
 
