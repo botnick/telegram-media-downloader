@@ -177,6 +177,14 @@ export function listMissingDeferredIndexes() {
     return DEFERRED_INDEXES.filter((idx) => !have.has(idx.name));
 }
 
+// kv marker written (and committed) before each background CREATE INDEX
+// and removed afterwards. CREATE INDEX is one transaction, so a process
+// killed mid-build (e.g. autoheal restarting a container whose healthcheck
+// the build starved, on a huge library on a slow disk) leaves no index but
+// does leave the marker — the next start then skips that build instead of
+// walking into the same kill again and again.
+const INDEX_ATTEMPT_KV_PREFIX = 'index_build_attempt:';
+
 /**
  * Build one deferred index (no-op if it already exists).
  * @returns {number} elapsed ms
@@ -184,9 +192,42 @@ export function listMissingDeferredIndexes() {
 export function buildDeferredIndex(name) {
     const idx = DEFERRED_INDEXES.find((i) => i.name === name);
     if (!idx) throw new Error(`unknown deferred index ${name}`);
+    const marker = INDEX_ATTEMPT_KV_PREFIX + idx.name;
+    kvSet(marker, { startedAt: Date.now() });
     const t0 = Date.now();
-    getDb().exec(idx.sql);
+    try {
+        getDb().exec(idx.sql);
+    } finally {
+        // Also on a thrown error: this process survived, so the attempt
+        // wasn't the kind that kills it — retrying later is safe.
+        kvDelete(marker);
+    }
     return Date.now() - t0;
+}
+
+/**
+ * What the background builder should do at startup:
+ *   build        — missing indexes to build now
+ *   interrupted  — missing indexes whose previous attempt never finished
+ *                  (process killed mid-build); not retried automatically
+ * Stale markers of indexes that did get built are cleared.
+ * @returns {{ build: object[], interrupted: Array<object & { attemptedAt: number|null }> }}
+ */
+export function planDeferredIndexBuilds() {
+    const missing = new Set(listMissingDeferredIndexes().map((i) => i.name));
+    const build = [];
+    const interrupted = [];
+    for (const idx of DEFERRED_INDEXES) {
+        const key = INDEX_ATTEMPT_KV_PREFIX + idx.name;
+        const marker = kvGet(key);
+        if (!missing.has(idx.name)) {
+            if (marker != null) kvDelete(key);
+            continue;
+        }
+        if (marker != null) interrupted.push({ ...idx, attemptedAt: marker.startedAt ?? null });
+        else build.push(idx);
+    }
+    return { build, interrupted };
 }
 
 function initSchema() {

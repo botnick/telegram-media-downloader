@@ -82,6 +82,57 @@ describe('downloads schema', () => {
         // Idempotent.
         downloadsApi.buildDeferredIndex('idx_gallery_type_pinned_date');
         expect(() => downloadsApi.buildDeferredIndex('nope')).toThrow();
+        // A finished build leaves no "attempting" marker behind.
+        expect(downloadsApi.kvGet('index_build_attempt:idx_gallery_type_pinned_date')).toBeNull();
+    });
+
+    it('does not retry a build that was interrupted by a killed process', () => {
+        // Simulate: marker written, process killed mid-CREATE INDEX (rolled
+        // back → index missing, marker still there).
+        db.exec('DROP INDEX idx_gallery_group_pinned_date');
+        downloadsApi.kvSet('index_build_attempt:idx_gallery_group_pinned_date', {
+            startedAt: 123,
+        });
+        let plan = downloadsApi.planDeferredIndexBuilds();
+        expect(plan.build.map((i) => i.name)).toEqual([]);
+        expect(plan.interrupted.map((i) => [i.name, i.attemptedAt])).toEqual([
+            ['idx_gallery_group_pinned_date', 123],
+        ]);
+        // The manual path (scripts/build-indexes.js) builds it and clears the marker.
+        downloadsApi.buildDeferredIndex('idx_gallery_group_pinned_date');
+        plan = downloadsApi.planDeferredIndexBuilds();
+        expect(plan).toEqual({ build: [], interrupted: [] });
+        expect(downloadsApi.kvGet('index_build_attempt:idx_gallery_group_pinned_date')).toBeNull();
+    });
+
+    it('plans missing indexes without a marker and drops stale markers', () => {
+        db.exec('DROP INDEX idx_file_path');
+        // Killed after CREATE INDEX committed but before the marker was cleared.
+        downloadsApi.kvSet('index_build_attempt:idx_group_name_size', { startedAt: 1 });
+        const plan = downloadsApi.planDeferredIndexBuilds();
+        expect(plan.build.map((i) => i.name)).toEqual(['idx_file_path']);
+        expect(plan.interrupted).toEqual([]);
+        expect(downloadsApi.kvGet('index_build_attempt:idx_group_name_size')).toBeNull();
+        downloadsApi.buildDeferredIndex('idx_file_path');
+    });
+
+    it('clears the marker when a build throws (process survived)', () => {
+        db.exec('DROP INDEX idx_file_path');
+        const realExec = db.exec.bind(db);
+        db.exec = (sql) => {
+            if (/idx_file_path/.test(sql)) throw new Error('database is locked');
+            return realExec(sql);
+        };
+        try {
+            expect(() => downloadsApi.buildDeferredIndex('idx_file_path')).toThrow(/locked/);
+        } finally {
+            db.exec = realExec;
+        }
+        expect(downloadsApi.kvGet('index_build_attempt:idx_file_path')).toBeNull();
+        expect(downloadsApi.planDeferredIndexBuilds().build.map((i) => i.name)).toEqual([
+            'idx_file_path',
+        ]);
+        downloadsApi.buildDeferredIndex('idx_file_path');
     });
 
     it('serves the sidebar aggregate from the covering index', () => {

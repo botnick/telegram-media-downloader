@@ -69,7 +69,7 @@ import {
     recordUpdateFailure,
     listUpdateHistory,
     getUnindexedAiBatch,
-    listMissingDeferredIndexes,
+    planDeferredIndexBuilds,
     buildDeferredIndex,
 } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
@@ -12793,7 +12793,21 @@ const DEFERRED_INDEX_GAP_MS = 45_000;
 function scheduleDeferredIndexBuilds() {
     let pending;
     try {
-        pending = listMissingDeferredIndexes();
+        const plan = planDeferredIndexBuilds();
+        pending = plan.build;
+        for (const idx of plan.interrupted) {
+            // A previous start was killed while building this index — most
+            // likely a restart loop on a very large library / slow disk.
+            // Don't walk into it again; everything works without it.
+            log({
+                source: 'db',
+                level: 'warn',
+                msg:
+                    `index ${idx.name}: the previous build attempt never finished (the process was stopped mid-build), so it is not retried automatically. ` +
+                    'The dashboard works without it (bulk deletes / sidebar are just slower). To build it, stop the dashboard and run ' +
+                    '`npm run build-indexes` (Docker: `docker compose stop telegram-downloader && docker compose run --rm telegram-downloader node scripts/build-indexes.js && docker compose start telegram-downloader`).',
+            });
+        }
     } catch {
         return;
     }
