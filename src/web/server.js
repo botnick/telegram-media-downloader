@@ -238,6 +238,7 @@ import { publishConfigChange } from '../core/cluster/config-sync.js';
 import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
+import { createSwrCache } from './lib/swr-cache.js';
 import {
     recordClusterAudit,
     listClusterAudit,
@@ -3996,7 +3997,7 @@ app.get('/api/dialogs', async (req, res) => {
         //   accountIds[id]  -> Set of every accountId that sees this chat
         const firstDialog = new Map();
         const accountIds = new Map();
-        const nameById = new Map(_dialogsNameCache.byId);
+        const nameById = new Map(_dialogsNames.current() || []);
 
         for (const p of perClient) {
             for (const isArchived of [false, true]) {
@@ -4025,7 +4026,7 @@ app.get('/api/dialogs', async (req, res) => {
                 }
             }
         }
-        _dialogsNameCache = { at: now, byId: nameById };
+        if (nameById.size > 0) _dialogsNames.set(nameById);
 
         // Account directory for the response — lets the SPA render account
         // chips by id without a second round-trip to /api/accounts.
@@ -4129,75 +4130,94 @@ function bestGroupName(id, configName, dbName, dialogsName) {
 }
 
 // Server-side cache of `id -> name` from every connected account's
-// dialog list. Refreshed on demand with a 5-minute TTL — Telegram
-// rate-limits getDialogs heavily, so we don't want to call it on
-// every /api/groups request.
-let _dialogsNameCache = { at: 0, byId: new Map() };
+// dialog list, 5-minute TTL — Telegram rate-limits getDialogs heavily.
+// Stale-while-revalidate: /api/groups + /api/downloads (the dashboard's
+// first paint) never wait on Telegram once any names are cached; an
+// expired map is served as-is while ONE shared background refresh runs.
+// Before, every request after expiry re-ran getDialogs for each account
+// serially, and gramJS' 60 s flood-sleep could park the request for a
+// minute. A failed / empty refresh keeps the previous names and is
+// retried at most every 30 s instead of on every request. With nothing
+// cached yet (first boot) a request waits at most this long, then renders
+// with config / DB names and picks the live ones up on the next load.
+const DIALOGS_COLD_WAIT_MS = 2000;
 // Parallel type cache so the sidebar's Downloaded Groups list can
 // distinguish channel / group / user / bot icons (matches what Manage
 // Groups already shows). Keyed by the same string id; values are one
 // of 'channel' | 'group' | 'user' | 'bot'.
 let _dialogsTypeCache = new Map();
-async function getDialogsNameCache() {
-    const now = Date.now();
-    if (
-        Math.max(0, now - _dialogsNameCache.at) < DIALOG_CACHE_TTL_MS &&
-        _dialogsNameCache.byId.size > 0
-    ) {
-        return _dialogsNameCache.byId;
-    }
-    const byId = new Map();
-    const typeById = new Map();
+const _dialogsNames = createSwrCache({
+    ttlMs: DIALOG_CACHE_TTL_MS,
+    retryAfterFailureMs: 30_000,
+    // Above gramJS' default floodSleepThreshold (60 s) so a flood-sleep
+    // finishes instead of being cut off mid-way.
+    loadTimeoutMs: 90_000,
+    isUsable: (byId) => byId instanceof Map && byId.size > 0,
+    load: loadDialogsNames,
+});
+async function loadDialogsNames() {
+    const clients = [];
     try {
         const am = await getAccountManager();
-        const clients = [];
         for (const [, c] of am.clients) clients.push(c);
-        if (telegramClient?.connected && !clients.includes(telegramClient))
-            clients.push(telegramClient);
-
-        for (const client of clients) {
-            if (!client?.connected) continue;
-            try {
-                const [active, archived] = await Promise.all([
-                    client.getDialogs({ limit: 500 }).catch(() => []),
-                    client.getDialogs({ limit: 200, archived: true }).catch(() => []),
-                ]);
-                for (const d of [...active, ...archived]) {
-                    const id = String(d.id);
-                    const name =
-                        d.title ||
-                        d.name ||
-                        (
-                            (d.entity?.firstName || '') +
-                            (d.entity?.lastName ? ' ' + d.entity.lastName : '')
-                        ).trim() ||
-                        d.entity?.username ||
-                        null;
-                    if (name && !nameLooksUnresolved(name, id) && !byId.has(id)) {
-                        byId.set(id, name);
-                    }
-                    if (!typeById.has(id)) {
-                        let t = 'group';
-                        if (d.isChannel) t = 'channel';
-                        else if (d.isUser && d.entity?.bot) t = 'bot';
-                        else if (d.isUser) t = 'user';
-                        typeById.set(id, t);
-                    }
-                    // Hard cap so a runaway upstream (multi-account user
-                    // with 50 k+ joined dialogs) can't blow the heap. See
-                    // CLAUDE.md → Big-data patterns rule 3.
-                    if (byId.size > 50000) break;
-                }
-            } catch {
-                /* one bad client doesn't kill the whole sweep */
-            }
-        }
     } catch {
         /* no AM — fresh install */
     }
-    _dialogsNameCache = { at: now, byId };
-    _dialogsTypeCache = typeById;
+    if (telegramClient?.connected && !clients.includes(telegramClient))
+        clients.push(telegramClient);
+
+    // Accounts in parallel; results keep account order so first-wins
+    // naming stays deterministic.
+    const perClient = await Promise.all(
+        clients
+            .filter((c) => c?.connected)
+            .map(async (client) => {
+                try {
+                    const [active, archived] = await Promise.all([
+                        client.getDialogs({ limit: 500 }).catch(() => []),
+                        client.getDialogs({ limit: 200, archived: true }).catch(() => []),
+                    ]);
+                    return [...active, ...archived];
+                } catch {
+                    return []; /* one bad client doesn't kill the whole sweep */
+                }
+            }),
+    );
+    const byId = new Map();
+    const typeById = new Map();
+    for (const dialogs of perClient) {
+        for (const d of dialogs) {
+            const id = String(d.id);
+            const name =
+                d.title ||
+                d.name ||
+                (
+                    (d.entity?.firstName || '') +
+                    (d.entity?.lastName ? ' ' + d.entity.lastName : '')
+                ).trim() ||
+                d.entity?.username ||
+                null;
+            if (name && !nameLooksUnresolved(name, id) && !byId.has(id)) {
+                byId.set(id, name);
+            }
+            if (!typeById.has(id)) {
+                let t = 'group';
+                if (d.isChannel) t = 'channel';
+                else if (d.isUser && d.entity?.bot) t = 'bot';
+                else if (d.isUser) t = 'user';
+                typeById.set(id, t);
+            }
+            // Hard cap so a runaway upstream (multi-account user
+            // with 50 k+ joined dialogs) can't blow the heap. See
+            // CLAUDE.md → Big-data patterns rule 3.
+            if (byId.size > 50000) break;
+        }
+    }
+    if (typeById.size > 0) _dialogsTypeCache = typeById;
     return byId;
+}
+async function getDialogsNameCache() {
+    return (await _dialogsNames.get({ waitMs: DIALOGS_COLD_WAIT_MS })) || new Map();
 }
 
 // Lookup helper used by /api/groups and /api/downloads to enrich each
@@ -5870,7 +5890,7 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         }
         if (mutated) await writeConfigAtomic(config);
         _dialogsResponseCache = { at: 0, body: null };
-        _dialogsNameCache = { at: 0, byId: new Map() };
+        _dialogsNames.invalidate();
         broadcast({ type: 'config_updated' });
         return { scanned: total, updated };
     });
