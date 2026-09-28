@@ -1,0 +1,163 @@
+{
+  "entries": {
+    "monitor_status_push (admin socket)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "payload": {
+            "accounts": 0,
+            "active": 0,
+            "error": null,
+            "hint": "configure-api",
+            "queue": 0,
+            "startedAt": null,
+            "state": "stopped",
+            "stats": null,
+            "uptimeMs": "<uptimeMs:number>",
+            "workers": 0
+          },
+          "type": "monitor_status_push"
+        }
+      ]
+    },
+    "monitor_status_push (guest socket)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "payload": {
+            "accounts": 0,
+            "active": 0,
+            "error": null,
+            "hint": "configure-api",
+            "queue": 0,
+            "startedAt": null,
+            "state": "stopped",
+            "stats": null,
+            "uptimeMs": "<uptimeMs:number>",
+            "workers": 0
+          },
+          "type": "monitor_status_push"
+        }
+      ]
+    },
+    "GET /api/monitor/status for comparison": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 0,
+          "active": 0,
+          "error": null,
+          "hint": "configure-api",
+          "queue": 0,
+          "startedAt": null,
+          "state": "stopped",
+          "stats": null,
+          "uptimeMs": "<uptimeMs:number>",
+          "workers": 0
+        }
+      }
+    },
+    "stats_push after the 30 s tick": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "payload": {
+            "diskUsage": 47942,
+            "diskUsageFormatted": "46.82 KB",
+            "totalFiles": 20,
+            "totalSize": 47942
+          },
+          "type": "stats_push"
+        }
+      ]
+    },
+    "first rescue pass": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "groupId": "-1001000000004",
+          "id": 17,
+          "path": "Delta Mixed/images/IMG_0017.jpg",
+          "source": "rescue",
+          "type": "file_deleted"
+        },
+        {
+          "count": 1,
+          "type": "rescue_sweep_done"
+        }
+      ]
+    },
+    "rescue stats after the pass": {
+      "route": "GET /api/rescue/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/rescue/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastSweepCleared": 1,
+          "pending": 0,
+          "rescued": 1
+        }
+      }
+    },
+    "the pruned file is gone": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Delta%20Mixed/images/IMG_0017.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
