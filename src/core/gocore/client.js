@@ -143,7 +143,7 @@ export function isAvailable(feature) {
  * One JSON request. Resolves { status, body } for any HTTP answer;
  * rejects with GoCoreError('timeout' | 'transport' | 'protocol').
  */
-function _request(method, pathname, payload, timeoutMs) {
+function _requestOnce(method, pathname, payload, timeoutMs) {
     return new Promise((resolve, reject) => {
         const data = payload === undefined ? null : Buffer.from(JSON.stringify(payload));
         const headers = { accept: 'application/json', ...authHeaders(_token) };
@@ -202,17 +202,32 @@ function _request(method, pathname, payload, timeoutMs) {
         timer.unref?.();
         req.on('error', (e) => {
             if (e instanceof GoCoreError) return finish(reject, e);
-            finish(
-                reject,
-                new GoCoreError('transport', e?.message || String(e), {
-                    code: e?.code || null,
-                    cause: e,
-                }),
-            );
+            const err = new GoCoreError('transport', e?.message || String(e), {
+                code: e?.code || null,
+                cause: e,
+            });
+            // A kept-alive socket the server closed as idle just as we
+            // reused it — safe to retry (see _request).
+            err.staleSocket = req.reusedSocket && (e?.code === 'ECONNRESET' || e?.code === 'EPIPE');
+            finish(reject, err);
         });
         if (data) req.end(data);
         else req.end();
     });
+}
+
+/**
+ * `_requestOnce`, retried once when it failed on a reused keep-alive
+ * socket that tgdl-core had just closed as idle (Node's documented
+ * pattern for idempotent requests). A dead process fails the retry too.
+ */
+async function _request(method, pathname, payload, timeoutMs) {
+    try {
+        return await _requestOnce(method, pathname, payload, timeoutMs);
+    } catch (e) {
+        if (!e?.staleSocket || !_base) throw e;
+        return _requestOnce(method, pathname, payload, timeoutMs);
+    }
 }
 
 function _count(feature, result) {
