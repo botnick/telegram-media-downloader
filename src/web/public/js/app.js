@@ -690,6 +690,16 @@ function renderPage(page, params = {}) {
     if (state.currentPage === 'maintenance-cluster' && page !== 'maintenance-cluster') {
         import('./maintenance-cluster.js').then((m) => m.destroy?.()).catch(() => {});
     }
+    const prevPage = state.currentPage;
+    const contentArea = document.getElementById('content-area');
+    // #content-area is shared by every page. Remember where the gallery
+    // was so coming back to the Library lands on the same tile, and
+    // start every other page at the top instead of at whatever offset
+    // the previous page was scrolled to.
+    if (contentArea && prevPage !== page) {
+        if (prevPage === 'viewer') _viewerScrollTop = contentArea.scrollTop;
+        contentArea.scrollTop = 0;
+    }
     state.currentPage = page;
     document.body.dataset.page = page;
     state.currentRouteParams = params;
@@ -774,6 +784,11 @@ function renderPage(page, params = {}) {
     } else if (page === 'viewer') {
         if (state.currentGroup) {
             document.getElementById('page-title').textContent = state.currentGroup;
+            // Returning to an already-loaded group gallery: keep the grid
+            // and put the scroll + file count back.
+            if (prevPage !== 'viewer' && _galleryLoadedFor(_galleryViewKey())) {
+                _restoreGalleryChrome();
+            }
         } else {
             showAllMedia();
         }
@@ -1551,17 +1566,74 @@ function updateHeaderAvatar(groupId, displayName) {
     el.innerHTML = `<span>${initial}</span><img src="${photo}" alt="" class="absolute inset-0 w-full h-full object-cover" onerror="this.remove()">`;
 }
 
-function showAllMedia() {
+// What the gallery grid currently shows. Set when page 1 of a view lands;
+// any change to group / type filter / pinned / scope produces a different
+// key, and AI-search results (which replace the list) clear it.
+let _loadedViewKey = null;
+let _galleryTotal = null;
+let _viewerScrollTop = 0;
+
+function _galleryViewKey() {
+    const pinnedFirst = localStorage.getItem('tgdl-pinned-first') === '1' ? 1 : 0;
+    return [
+        state.currentGroupId || '',
+        state.currentFilter || 'all',
+        state.pinnedFilter ? 1 : 0,
+        pinnedFirst,
+        _galleryScopeQs(),
+    ].join('|');
+}
+
+// True when the grid already holds `key`'s files — and `state.files` is
+// still the gallery's list (the Queue page / review mode / search swap it
+// for their own).
+function _galleryLoadedFor(key) {
+    return (
+        _loadedViewKey === key &&
+        Array.isArray(state.files) &&
+        state.files.length > 0 &&
+        state.files === _galleryFilesRef
+    );
+}
+
+// Put back the bits of gallery chrome other pages overwrite (the subtitle
+// file count) and the scroll position the user left at.
+function _restoreGalleryChrome() {
+    const sub = document.getElementById('page-subtitle');
+    if (sub && _galleryTotal != null) {
+        sub.textContent = i18nTf(
+            'viewer.subtitle.files',
+            { count: _galleryTotal },
+            `${_galleryTotal} files`,
+        );
+    }
+    const contentArea = document.getElementById('content-area');
+    if (contentArea) contentArea.scrollTop = _viewerScrollTop;
+    _recheckLoadMore();
+}
+
+// `opts.force` re-fetches even when the All Media grid is already loaded
+// (pull-to-refresh, purge). Plain calls — the Library tab, the sidebar
+// "All Media" row, the #/viewer route — keep the loaded grid, its type
+// filter and the scroll position when nothing that shapes the list
+// (group, filter, pinned, scope) changed; they used to throw 10k+ tiles
+// away and refetch from page 1 on every return.
+function showAllMedia(opts) {
+    const force = opts?.force === true;
+    const wasAllMedia = state.currentGroupId == null && !state.viewerPeerScope;
     state.currentGroup = null;
     state.currentGroupId = null;
-    state.page = 1;
-    state.hasMore = true;
-    state.files = [];
     // Clear any per-view peer narrowing left over from a sidebar
     // foreign-group click. Without this, "All Media" after viewing a
     // peer-owned group would still be filtered to that peer.
     state.viewerPeerScope = null;
-    resetGalleryFilter();
+    const reuse = !force && wasAllMedia && _galleryLoadedFor(_galleryViewKey());
+    if (!reuse) {
+        state.page = 1;
+        state.hasMore = true;
+        state.files = [];
+        resetGalleryFilter();
+    }
 
     document.getElementById('page-title').textContent = i18nT(
         'viewer.all_media.title',
@@ -1574,6 +1646,15 @@ function showAllMedia() {
     // Header avatar back to the generic gallery glyph — switching from
     // a per-group view used to leave that chat's avatar in the header.
     updateHeaderAvatar(null, null);
+
+    if (reuse) {
+        if (state.currentPage !== 'viewer') {
+            navigateTo('viewer');
+            return; // renderPage re-enters us with the page visible
+        }
+        _restoreGalleryChrome();
+        return;
+    }
 
     const grid = document.getElementById('media-grid');
     if (grid) _clearGalleryGrid(grid);
@@ -1786,7 +1867,11 @@ function _renderGalleryScopeMenu() {
 async function loadAllFiles() {
     state.loading = true;
     const grid = document.getElementById('media-grid');
-    if (state.page === 1 && grid) _clearGalleryGrid(grid, renderGallerySkeletons(12));
+    if (state.page === 1 && grid) {
+        _clearGalleryGrid(grid, renderGallerySkeletons(12));
+        const contentArea = document.getElementById('content-area');
+        if (contentArea) contentArea.scrollTop = 0;
+    }
 
     try {
         const type =
@@ -1795,6 +1880,7 @@ async function loadAllFiles() {
         const pinFirstQs =
             localStorage.getItem('tgdl-pinned-first') === '1' ? '&pinnedFirst=1' : '';
         const scopeQs = _galleryScopeQs();
+        const viewKey = _galleryViewKey();
         const res = await api.get(
             `/api/downloads/all?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}${scopeQs}`,
         );
@@ -1802,6 +1888,7 @@ async function loadAllFiles() {
 
         let appendFromIndex = 0;
         if (state.page === 1) {
+            _loadedViewKey = viewKey;
             state.files = newFiles;
         } else {
             appendFromIndex = state.files.length;
@@ -1819,6 +1906,7 @@ async function loadAllFiles() {
         // stays smooth right to the end of the list.
         if (state.page > 1) renderMediaGrid({ append: true, fromIndex: appendFromIndex });
         else renderMediaGrid();
+        _galleryTotal = total;
         document.getElementById('page-subtitle').textContent = i18nTf(
             'viewer.subtitle.files',
             { count: total },
@@ -1841,6 +1929,8 @@ async function loadGroupFiles(groupId) {
     if (state.page === 1) {
         const grid = document.getElementById('media-grid');
         if (grid) _clearGalleryGrid(grid, renderGallerySkeletons(12));
+        const contentArea = document.getElementById('content-area');
+        if (contentArea) contentArea.scrollTop = 0;
         document.getElementById('empty-state')?.classList.add('hidden');
     }
 
@@ -1851,6 +1941,7 @@ async function loadGroupFiles(groupId) {
         const pinFirstQs =
             localStorage.getItem('tgdl-pinned-first') === '1' ? '&pinnedFirst=1' : '';
         const scopeQs = _galleryScopeQs();
+        const viewKey = _galleryViewKey();
         const res = await api.get(
             `/api/downloads/${encodeURIComponent(groupId)}?page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinQs}${pinFirstQs}${scopeQs}`,
         );
@@ -1858,6 +1949,7 @@ async function loadGroupFiles(groupId) {
 
         let appendFromIndex = 0;
         if (state.page === 1) {
+            _loadedViewKey = viewKey;
             state.files = newFiles;
         } else {
             appendFromIndex = state.files.length;
@@ -1870,6 +1962,7 @@ async function loadGroupFiles(groupId) {
         state.hasMore = newFiles.length === FILES_PER_PAGE && state.files.length < total;
         if (state.page > 1) renderMediaGrid({ append: true, fromIndex: appendFromIndex });
         else renderMediaGrid();
+        _galleryTotal = total;
         document.getElementById('page-subtitle').textContent = i18nTf(
             'viewer.subtitle.files',
             { count: total },
@@ -4011,6 +4104,7 @@ async function _runSimilarSearch(downloadId) {
             fullPath: row.file_path,
         }));
         state.files = mapped;
+        _loadedViewKey = null;
         // Result set is complete — don't let infinite scroll append the
         // next page of the previous view underneath it.
         state.hasMore = false;
@@ -4084,6 +4178,7 @@ async function _runSemanticSearch(q) {
             fullPath: row.file_path,
         }));
         state.files = mapped;
+        _loadedViewKey = null;
         // Result set is complete — don't let infinite scroll append the
         // next page of the previous view underneath it.
         state.hasMore = false;
@@ -4385,7 +4480,7 @@ function refreshCurrentPage() {
         state.page = 1;
         loadGroupFiles(state.currentGroupId);
     } else if (state.currentPage === 'viewer') {
-        showAllMedia();
+        showAllMedia({ force: true });
     } else if (state.currentPage === 'groups') {
         renderGroupsConfig();
     } else {
@@ -4549,7 +4644,7 @@ function _wirePurgeWs() {
         );
         const purgedId = m?.groupId;
         if (purgedId && String(state.currentGroupId) === String(purgedId)) {
-            showAllMedia();
+            showAllMedia({ force: true });
         }
         loadStats();
     });
@@ -4577,7 +4672,7 @@ function _wirePurgeWs() {
         state.allFiles = [];
         renderGroupsList();
         if (state.currentPage === 'groups') renderGroupsConfig();
-        if (state.currentPage === 'viewer') showAllMedia();
+        if (state.currentPage === 'viewer') showAllMedia({ force: true });
         loadStats();
     });
 }
