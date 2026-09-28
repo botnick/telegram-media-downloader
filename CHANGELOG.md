@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format is based on 
 - **Refreshing All Media reset the type tab.** Pull-to-refresh (or a purge) on All Media switched Photos / Videos / … back to All while reloading; it now keeps the tab (and the search query). Opening All Media from a chat still starts unfiltered. A slow gallery response can no longer paint over a newer tab / chat / search you switched to meanwhile.
 - **Adding an account from the dashboard could loop on a wrong code or freeze the server.** A wrong code (or phone number / 2FA password) was retried over and over with the same value until Telegram answered FLOOD_WAIT, and the page waited 30 s for an answer; cancelling on the code step made the server spin until it ran out of memory. A wrong value now comes straight back as an error and the next try works; cancelling stops the sign-in.
 - **Bulk Pin in the gallery sent one request per file** — it's one request per 1000 files now.
+- **An account added on the old `add-account.html` page wasn't watched until the next restart** — the page never told the running engine about it. It does now (the new wizard too).
 - **Coming back to a chat's gallery from another page showed the generic gallery icon** in the header instead of the chat's avatar.
 
 ## [2.26.0] — 2026-09-29
