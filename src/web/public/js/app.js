@@ -1655,6 +1655,12 @@ async function initGalleryScope() {
             document.addEventListener('click', onDocClick);
         }, 0);
     });
+    chip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            chip.click();
+        }
+    });
 }
 
 function _renderGalleryScopeLabel() {
@@ -3853,6 +3859,16 @@ function setupMediaTabs() {
                 renderMediaGrid();
             }
         });
+        // Keyboard activation for the pinned chip (role="button" on a div).
+        // The gallery-scope chip wires its own in initGalleryScope().
+        if (tab.dataset.pinnedToggle !== undefined) {
+            tab.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    tab.click();
+                }
+            });
+        }
     });
 }
 
@@ -4165,7 +4181,6 @@ function setupFab() {
     };
     applyVisibility(getMonitorStatusLatest());
     subscribeMonitorStatus(applyVisibility);
-
 
     // Action catalogue keyed by id so the per-hint policy below can pick
     // and order without duplicating definitions.
