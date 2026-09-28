@@ -54,14 +54,42 @@ A wrong phone number / code / password keeps the step's state and sets `error` p
 | Method | Path | Notes |
 |---|---|---|
 | `GET`  | `/api/stats`                  | `{totalFiles, totalSize, diskUsage, telegramConnected, peerStats:[{peerId, peerName, online, totalFiles, totalSize, totalSizeFormatted}], …}`. Also broadcast over WS as `stats_push` every 30 s. `peerStats` is `[]` for non-cluster installs and for guest sessions. |
-| `GET`  | `/api/dialogs`                | Active + archived chats; DMs gated by `config.allowDmDownloads`. |
-| `GET`  | `/api/chats/lookup?q=`        | Resolve what the dashboard's Add box can't find by name: `@username`, `t.me/<name>`, `t.me/c/<id>`, invite links (`t.me/+…`, `joinchat/…`) and message links. → `{kind, chat?, invite?, message?}`; `chat` has `id, name, type, username, members, joined, inConfig, enabled, suspended, dmDisabled`. An invite this account isn't in returns an `invite` preview (`title, members, url`). 404 `not_found` / `invite_invalid`, 422 for t.me links that aren't chats, 503 `no_account`. |
-| `GET`  | `/api/groups`                 | Configured groups with photo URLs. |
+| `GET`  | `/api/dialogs`                | Active + archived chats; DMs gated by `config.allowDmDownloads`. Each row has `access` (see *Chat access* below). Fetching the lists also syncs access for free: a chat back in an account's list flips to `ok`; a configured chat listed as forbidden / migrated is recorded. |
+| `GET`  | `/api/chats/lookup?q=`        | Resolve what the dashboard's Add box can't find by name: `@username`, `t.me/<name>`, `t.me/c/<id>`, invite links (`t.me/+…`, `joinchat/…`) and message links. → `{kind, chat?, invite?, message?}`; `chat` has `id, name, type, username, members, joined, inConfig, enabled, suspended, dmDisabled, access`. An invite this account isn't in returns an `invite` preview (`title, members, url`). 404 `not_found` / `invite_invalid`, 422 for t.me links that aren't chats, 503 `no_account`. |
+| `GET`  | `/api/groups`                 | Configured groups with photo URLs. Each own row has `access` (see *Chat access* below) and, when its auto-forward destination refused our posts, `forwardAccess: {state, code, nextCheckAt}`. |
 | `PUT`  | `/api/groups/:id`             | Update group config (filters, autoForward, topics, accounts, **cluster routing** — `ownerPeerId` / `backupPeerId`). Auto-spawns a first-add backfill when the group is newly enabled and has no rows yet. |
 | `DELETE` | `/api/groups/:id/purge`     | Drop files + DB rows + config + photo. |
 | `GET`  | `/api/groups/:id/photo`       | Cached profile photo. |
 | `POST` | `/api/groups/refresh-photos`  | Re-fetch profile photos for every configured group. |
-| `POST` | `/api/groups/refresh-info`    | Re-resolve every monitored chat name from Telegram. |
+| `POST` | `/api/groups/refresh-info`    | Re-resolve every monitored chat name from Telegram. Chats that can't be reached are skipped (same for `refresh-photos`, `resync-dialogs` and `/api/groups/:id/photo`). |
+
+### Chat access
+
+Whether a chat can still be used, one standard answer everywhere. A chat that no loaded account can read is **paused** — polling, the update handler, the downloader (queued files are dropped, no retries), backfill, avatar / name lookups, Stories and auto-forwarding skip it with a local check, no Telegram call — until a re-check or a dialogs sync sees it readable again. Its config entry is left as it is (`enabled` stays the operator's choice); downloaded files are never touched and nothing is left or unsubscribed in Telegram.
+
+`access` object (on `/api/groups`, `/api/dialogs` and `/api/chats/lookup` rows):
+
+```json
+{ "state": "private", "code": "CHANNEL_PRIVATE", "detail": null, "migratedTo": null,
+  "firstSeenAt": 1790535647415, "checkedAt": 1790622047415, "nextCheckAt": 1790644432703,
+  "checks": 1, "accounts": [{ "id": "123", "state": "private", "code": "CHANNEL_PRIVATE", "at": 1790622047415 }] }
+```
+
+- `state`: `ok` · `left` (no account is a member) · `banned` (kicked / banned) · `private` (private channel, access lost) · `deleted` (deactivated / doesn't exist) · `restricted` (restricted by Telegram — `detail` has Telegram's text) · `migrated` (a basic group upgraded to a supergroup — `migratedTo` is the new id) · `unknown` (couldn't tell: flood wait, timeout, no account connected — never pauses anything). A chat with nothing against it is just `{ "state": "ok" }`.
+- `code` is Telegram's error (`CHANNEL_PRIVATE`, `CHANNEL_INVALID`, `USER_BANNED_IN_CHANNEL`, `CHANNEL_PUBLIC_GROUP_NA`, …) or the entity shape (`CHANNEL_FORBIDDEN`, `CHAT_MIGRATED`, …).
+- `accounts`: each account's own answer. The chat is only paused when **no** account can read it; if one still can, it takes over (and is pinned) and the chat stays `ok` with the other account's failure listed. Empty for guest sessions.
+- Re-checks: one chat per minute at most, after 1 h, 6 h, then daily (`nextCheckAt`), for monitored chats only; `migrated` is permanent and isn't re-checked. Adding an account makes every paused chat due.
+- `legacy: true` marks an entry an older version switched off (`suspended` / `_resolveFailedAt` in the config); those flags are cleared once the chat is reachable again.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET`  | `/api/chats/access`                  | Configured chats that can't be reached → `{total, byState, items:[{id, name, type, enabled, access}]}`. `?countOnly=1` → `{total, byState}`. |
+| `POST` | `/api/chats/access/recheck`          | "Check again". `{id}` → checked now (each account once, pinned first, stopping at the first that can read) → `{id, state, access, accountId, inconclusive, results}`; `inconclusive: true` means no account gave a definite answer (flood wait, timeout, none connected) and nothing changed. `{ids:[…]}` or `{all:true}` (every configured chat that can't be reached) → `{started, total}`, run in the background one chat every 2 s; progress on WS `chat_access_recheck_progress` / `chat_access_recheck_done`, status at `GET /api/chats/access/recheck/status`. 409 `ALREADY_RUNNING`. |
+| `POST` | `/api/chats/access/stop`             | `{ids}` → `enabled:false` for each → `{stopped}`. |
+| `POST` | `/api/chats/access/remove`           | `{ids}` → removes the config entries only → `{removed}`. Downloaded files and their gallery rows stay. |
+| `POST` | `/api/chats/:id/follow-migration`    | A `migrated` chat: adds the new supergroup with the old entry's settings (media types, forwarding, topics, accounts, rescue, cluster routing) and switches the old one off → `{added, group, previous}`. 409 `NOT_MIGRATED` otherwise. |
+
+All five are admin-only. `POST /api/history` for a chat that can't be reached answers `409 {code:'CHAT_UNREACHABLE', access}` before any Telegram call (auto-first and catch-up backfills are skipped); `POST /api/stories/*` does the same for a known chat, and `POST /api/download/url` reports `code: 'CHAT_UNREACHABLE'` per link. `GET /api/maintenance/recovery/list` includes paused chats with `resolveFailedReason: "access:<state>:<code>"` and `access`.
 
 ## Downloads
 
@@ -249,6 +277,8 @@ The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidec
 | `group_purged`         | `{groupId}` |
 | `purge_all`            | `{}` |
 | `groups_refreshed`     | `{updates}` |
+| `chat_access_changed`  | `{ids}` — chats whose access state changed (coalesced over 0.5 s); reload `/api/groups`. Forward-destination entries carry a `dest:` prefix. |
+| `chat_access_recheck_progress` / `chat_access_recheck_done` | Job-tracker snapshots of a bulk "Check again" (`progress: {processed, total, reachable}`, `result: {total, reachable, results}`). |
 | `history_progress`     | `{jobId, processed, downloaded, group, mode}` |
 | `history_done` / `history_cancelled` / `history_error` | as above |
 | `history_deleted` / `history_cleared`   | Cross-tab Recent-backfills sync. |
