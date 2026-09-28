@@ -60,12 +60,27 @@ export function sha256OfFile(absPath) {
  * Lazy import keeps this module's dep graph free of `worker_threads`
  * for tests / contexts that never opt into the pool.
  *
+ * When the Go companion (tgdl-core) is running, `gocore/hash.js` decides
+ * per call whether Go takes part (TGDL_GO_CORE / TGDL_GO_FEATURES, default
+ * `shadow`: Node's digest is used, Go re-checks a sample). Any Go failure
+ * falls back to the pool, so the result and the errors are the same as
+ * without Go.
+ *
  * @param {string} absPath
  * @returns {Promise<string>}
  */
 export async function sha256OfFileViaPool(absPath) {
-    const mod = await import('./hash-worker.js');
-    return mod.hashFile(absPath, CHECKSUM_ALGO);
+    const nodeHash = async () => {
+        const mod = await import('./hash-worker.js');
+        return mod.hashFile(absPath, CHECKSUM_ALGO);
+    };
+    let router = null;
+    try {
+        router = await import('./gocore/hash.js');
+    } catch {
+        router = null;
+    }
+    return router ? router.routeHash(absPath, nodeHash) : nodeHash();
 }
 
 /** True when `s` looks like a value produced by sha256OfFile. */

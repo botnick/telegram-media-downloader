@@ -23,6 +23,8 @@ services:
       - FFMPEG_HWACCEL=${FFMPEG_HWACCEL:-vaapi}
       - FACES_SERVICE_URL=http://tgdl-faces:8011
       - TGDL_FACES_SIDECAR_TOKEN=${TGDL_FACES_API_TOKEN:-}
+      - TGDL_GO_CORE=${TGDL_GO_CORE:-}
+      - TGDL_GO_FEATURES=${TGDL_GO_FEATURES:-}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "autoheal=true"

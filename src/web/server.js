@@ -140,6 +140,8 @@ import {
     health as seekbarClientHealth,
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
+import { getGoCoreStatus, startGoCore, stopGoCore } from '../core/gocore/spawn.js';
+import { sanitizeConfigBlock as sanitizeGoCoreConfig } from '../core/gocore/flags.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
 import { normalizeSidecarUrl, probeSidecar } from '../core/sidecar-remote.js';
 import {
@@ -3847,6 +3849,13 @@ app.get('/api/system/health', async (req, res) => {
             connections: {
                 wsClients: clients.size,
             },
+            goCore: (() => {
+                try {
+                    return getGoCoreStatus();
+                } catch {
+                    return null;
+                }
+            })(),
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -11839,6 +11848,24 @@ app.post('/api/config', async (req, res) => {
             sk.pathMap = typeof sk.pathMap === 'string' ? sk.pathMap.slice(0, 4096) : '';
             delete sk.apiTokenSet;
 
+            // Go companion flags (`advanced.goCore`: { mode, features }).
+            // Only stored once somebody sets them, so existing configs
+            // stay as they are; `null` clears the block. TGDL_GO_CORE /
+            // TGDL_GO_FEATURES still win over whatever is saved here.
+            if (inc.goCore !== undefined || cur.goCore !== undefined) {
+                const base = cur.goCore && typeof cur.goCore === 'object' ? cur.goCore : {};
+                const patch = inc.goCore && typeof inc.goCore === 'object' ? inc.goCore : {};
+                const gc =
+                    inc.goCore === null
+                        ? null
+                        : sanitizeGoCoreConfig({
+                              ...base,
+                              ...patch,
+                              features: { ...(base.features || {}), ...(patch.features || {}) },
+                          });
+                if (gc) merged.goCore = gc;
+            }
+
             newConfig.advanced = merged;
         }
 
@@ -13335,6 +13362,20 @@ ${tip}
         console.warn('[seekbar-sidecar] wiring failed:', e?.message || e);
     }
 
+    // Go companion (tgdl-core) — find / download / spawn in the
+    // background. Never awaited: until it is healthy (or when it never
+    // is) every feature runs on its Node implementation.
+    import('../config/manager.js')
+        .then(({ watchConfig }) =>
+            startGoCore({
+                readConfig: () => loadConfig(),
+                watchConfig,
+            }),
+        )
+        .catch((e) => {
+            console.warn('[go-core] start failed:', e?.message || e);
+        });
+
     // One-shot v2.x cache migration — collapse the thumb cache from five
     // widths (120 / 200 / 240 / 320 / 480 px) down to a single canonical
     // 320-px width. Pre-upgrade caches still hold the legacy WebPs as
@@ -13708,6 +13749,14 @@ async function gracefulShutdown(signal) {
     if (_shuttingDown) return;
     _shuttingDown = true;
     console.log(`\n[shutdown] ${signal} received — cleaning up…`);
+
+    // tgdl-core first: it holds no state, and closing its stdin lets it
+    // exit on its own even if this process is killed mid-shutdown.
+    try {
+        stopGoCore();
+    } catch (e) {
+        console.warn('[shutdown] go-core.stop:', e.message);
+    }
 
     // Stop background sweepers first so their setInterval callbacks
     // don't try to write to a closing DB / broadcast to dead clients.
