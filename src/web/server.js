@@ -75,7 +75,7 @@ import {
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager } from '../core/accounts.js';
-import { loadConfig, saveConfig, watchConfig } from '../config/manager.js';
+import { loadConfig, saveConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
@@ -13181,16 +13181,16 @@ ${tip}
     // Go companion (tgdl-core) — find / download / spawn in the
     // background. Never awaited: until it is healthy (or when it never
     // is) every feature runs on its Node implementation.
-    try {
-        startGoCore({
-            readConfig: () => loadConfig()?.advanced?.goCore,
-            watchConfig,
-        }).catch((e) => {
+    import('../config/manager.js')
+        .then(({ watchConfig }) =>
+            startGoCore({
+                readConfig: () => loadConfig()?.advanced?.goCore,
+                watchConfig,
+            }),
+        )
+        .catch((e) => {
             console.warn('[go-core] start failed:', e?.message || e);
         });
-    } catch (e) {
-        console.warn('[go-core] wiring failed:', e?.message || e);
-    }
 
     // One-shot v2.x cache migration — collapse the thumb cache from five
     // widths (120 / 200 / 240 / 320 / 480 px) down to a single canonical
