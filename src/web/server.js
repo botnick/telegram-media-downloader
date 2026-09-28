@@ -9704,6 +9704,18 @@ app.get('/api/backup/destinations/:id/status', async (req, res) => {
     }
 });
 
+// Non-secret provider fields for the Edit form. Secrets never leave the
+// server — the form leaves them blank and PUT keeps the stored values.
+app.get('/api/backup/destinations/:id/config', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
+    try {
+        res.json({ success: true, config: backup.getDestinationConfig(id) });
+    } catch (e) {
+        res.status(404).json({ error: e.message });
+    }
+});
+
 app.get('/api/backup/destinations/:id/jobs', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });

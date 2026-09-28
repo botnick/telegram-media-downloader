@@ -307,3 +307,58 @@ describe('snapshot schedule', () => {
         }
     });
 });
+
+describe('editing a destination', () => {
+    it('keeps stored secrets when the form leaves them blank', async () => {
+        const { decryptConfig } = await import('../src/core/backup/credentials.js');
+        const destId = manager.addDestination({
+            name: 's3',
+            provider: 's3',
+            enabled: false,
+            config: {
+                endpoint: 'https://s3.example.com',
+                region: 'auto',
+                bucket: 'old-bucket',
+                accessKeyId: 'AKID',
+                secretAccessKey: 'SECRET',
+                prefix: 'tgdl',
+            },
+        });
+
+        // What the edit form sends: blank secrets stripped / empty,
+        // non-secret fields as edited.
+        manager.updateDestination(destId, {
+            config: {
+                endpoint: 'https://s3.example.com',
+                region: 'auto',
+                bucket: 'new-bucket',
+                prefix: '',
+                accessKeyId: '',
+            },
+        });
+        expect(decryptConfig(destRow(destId).config_blob, SECRET)).toEqual({
+            endpoint: 'https://s3.example.com',
+            region: 'auto',
+            bucket: 'new-bucket',
+            accessKeyId: 'AKID',
+            secretAccessKey: 'SECRET',
+            prefix: '',
+        });
+
+        // A filled-in secret replaces the stored one.
+        manager.updateDestination(destId, { config: { secretAccessKey: 'ROTATED' } });
+        const cfg = decryptConfig(destRow(destId).config_blob, SECRET);
+        expect(cfg.secretAccessKey).toBe('ROTATED');
+        expect(cfg.accessKeyId).toBe('AKID');
+        expect(cfg.bucket).toBe('new-bucket');
+
+        // Only non-secret fields come back for the edit form.
+        expect(manager.getDestinationConfig(destId)).toEqual({
+            endpoint: 'https://s3.example.com',
+            region: 'auto',
+            bucket: 'new-bucket',
+            prefix: '',
+        });
+        manager.removeDestination(destId);
+    });
+});

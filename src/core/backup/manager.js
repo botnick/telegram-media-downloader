@@ -178,9 +178,11 @@ export function addDestination(input) {
 }
 
 /**
- * Partial update of a destination. The `config` field, if present,
- * is fully replaced (not merged) and re-encrypted. Boots / kills the
- * worker as the `enabled` flag flips.
+ * Partial update of a destination. The `config` field, if present, is
+ * merged over the stored config and re-encrypted — the edit form leaves
+ * secret fields blank ("leave blank to keep"), so a blank or absent
+ * secret keeps its stored value. Boots / kills the worker as the
+ * `enabled` flag flips.
  */
 export function updateDestination(id, patch = {}) {
     const dest = _loadDestRowOrThrow(id);
@@ -203,7 +205,18 @@ export function updateDestination(id, patch = {}) {
     if (patch.config) {
         const shareSecret = _getShareSecret();
         if (!shareSecret) throw new Error('share secret not initialised');
-        const blob = encryptConfig(patch.config, shareSecret);
+        let merged = {};
+        try {
+            merged = _decryptCfgOrThrow(dest);
+        } catch {
+            /* undecryptable (shareSecret rotated) — the operator re-enters everything */
+        }
+        const secrets = _secretFields(dest.provider);
+        for (const [key, value] of Object.entries(patch.config)) {
+            if (secrets.has(key) && (value == null || value === '')) continue;
+            merged[key] = value;
+        }
+        const blob = encryptConfig(merged, shareSecret);
         updates.push('config_blob = ?');
         params.push(blob);
     }
@@ -276,6 +289,26 @@ export function getDestinationStatus(id, now = Date.now()) {
         encryptionUnlocked: dest.encryption ? _passphraseCache.has(Number(id)) : true,
         ...counts,
     };
+}
+
+/**
+ * Non-secret config fields of a destination, for pre-filling the edit
+ * form. Secret fields (per the provider's configSchema) are never
+ * returned. Empty when the stored blob can't be decrypted.
+ */
+export function getDestinationConfig(id) {
+    const dest = _loadDestRowOrThrow(id);
+    let cfg;
+    try {
+        cfg = _decryptCfgOrThrow(dest);
+    } catch {
+        return {};
+    }
+    const out = {};
+    for (const field of PROVIDER_CLASSES[dest.provider]?.configSchema || []) {
+        if (!field.secret && cfg[field.name] != null) out[field.name] = cfg[field.name];
+    }
+    return out;
 }
 
 /**
@@ -1132,6 +1165,11 @@ function _decryptCfgOrThrow(dest) {
     const shareSecret = _getShareSecret();
     if (!shareSecret) throw new Error('share secret not initialised');
     return decryptConfig(dest.config_blob, shareSecret);
+}
+
+function _secretFields(provider) {
+    const schema = PROVIDER_CLASSES[provider]?.configSchema || [];
+    return new Set(schema.filter((f) => f.secret).map((f) => f.name));
 }
 
 function _scrubDest(row) {
