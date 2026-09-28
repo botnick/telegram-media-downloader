@@ -629,7 +629,6 @@ app.use(
                 'script-src': [
                     "'self'",
                     "'unsafe-inline'",
-                    'https://cdn.tailwindcss.com',
                     'https://cdn.jsdelivr.net',
                     'https://cdnjs.cloudflare.com',
                 ],
