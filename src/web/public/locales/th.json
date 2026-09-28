@@ -437,7 +437,7 @@
     "viewer.selection.clear": "ล้าง",
     "viewer.selection.delete": "ลบ",
     "viewer.selection.select_all": "เลือกทั้งหมด",
-    "viewer.selection.select_all_title": "เลือกทุกไฟล์ที่แสดง (Ctrl/Cmd+A)",
+    "viewer.selection.select_all_title": "เลือกทุกไฟล์ที่โหลดแล้ว (Ctrl/⌘+A)",
     "viewer.bulk.title": "ลบไฟล์ที่เลือกใช่หรือไม่",
     "viewer.bulk.confirm": "ยืนยันการลบ {count} ไฟล์ใช่หรือไม่ — ไม่สามารถกู้คืนได้",
     "viewer.bulk.deleted": "ลบไฟล์แล้ว {count} รายการ",
@@ -1964,5 +1964,16 @@
     "settings.search.none_here": "ไม่มีการตั้งค่าที่ตรงกับ “{q}” แต่ดูด้านล่างได้",
     "settings.search.none": "ไม่มีการตั้งค่าที่ตรงกับ “{q}” ลองคำอื่น เป็นภาษาไทยหรืออังกฤษก็ได้",
     "settings.search.count_one": "ตรงกัน 1 ส่วน",
-    "settings.search.count": "ตรงกัน {count} ส่วน"
+    "settings.search.count": "ตรงกัน {count} ส่วน",
+    "viewer.selection.prompt": "แตะรายการเพื่อเลือก",
+    "viewer.selection.count_of": "เลือก {count} จาก {total}",
+    "viewer.selection.select_all_n": "เลือกทั้งหมด {count}",
+    "viewer.selection.loading_all": "กำลังโหลด {n} / {total}…",
+    "viewer.selection.done": "เลือกเสร็จแล้ว",
+    "viewer.selection.toolbar": "ไฟล์ที่เลือก",
+    "viewer.select_hint.title": "เลือกหลายรายการพร้อมกัน",
+    "viewer.select_hint.body": "กดค้างที่รูปหนึ่ง แล้วแตะรายการอื่นเพิ่ม เพื่อดาวน์โหลด ปักหมุด หรือลบพร้อมกัน",
+    "viewer.select_hint.try": "ลองเลย",
+    "viewer.select_hint.dismiss": "เข้าใจแล้ว",
+    "viewer.selection.prompt_click": "คลิกเพื่อเลือก"
 }

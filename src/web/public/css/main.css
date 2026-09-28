@@ -6286,3 +6286,148 @@ html.theme-light .settings-search-hit {
     line-height: 1;
     color: var(--tg-textSecondary);
 }
+
+/* ── Gallery selection bar + first-visit tip ─────────────────────── */
+.selection-icon-btn {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 20px;
+    color: var(--tg-textSecondary);
+}
+.selection-icon-btn:hover {
+    background: var(--tg-hover);
+    color: var(--tg-text);
+}
+.selection-text-btn {
+    min-height: 40px;
+    padding: 0 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.selection-text-btn:disabled,
+.selection-action:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.selection-action {
+    min-height: 36px;
+    white-space: nowrap;
+}
+.selection-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: var(--tg-border);
+}
+#selection-bar button:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+@media (max-width: 767.98px) {
+    #selection-bar .selection-sep {
+        display: none;
+    }
+    #selection-count {
+        flex: 1 1 auto;
+    }
+}
+.select-hint {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    margin: 0 0 12px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(42, 171, 238, 0.1);
+    border: 1px solid rgba(42, 171, 238, 0.25);
+}
+.select-hint.hidden {
+    display: none;
+}
+.select-hint-icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(42, 171, 238, 0.18);
+    color: var(--tg-blue);
+    font-size: 20px;
+}
+.select-hint-text {
+    flex: 1 1 200px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--tg-textSecondary);
+}
+.select-hint-text strong {
+    font-size: 14px;
+    color: var(--tg-text);
+    font-weight: 600;
+}
+.select-hint-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+.select-hint-btn {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--tg-text);
+    background: var(--tg-panel);
+}
+.select-hint-btn.is-primary {
+    background: var(--tg-blue);
+    color: #fff;
+}
+.select-hint-btn:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+/* Select mode: the select badge owns the top-left corner — the pin chip
+   (same spot, higher z-index) hid the ✓ of pinned tiles. Move it to the
+   top-right as a read-only marker while selecting. */
+.media-grid.in-select-mode .media-item .pin-chip {
+    left: auto;
+    right: 6px;
+    pointer-events: none;
+}
+#selection-count {
+    white-space: nowrap;
+}
+.selection-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+/* Phones: count + Select all / Clear on the first row, the actions on
+   their own row underneath. */
+@media (max-width: 767.98px) {
+    #selection-bar .selection-actions {
+        flex: 1 0 100%;
+        justify-content: center;
+        gap: 12px;
+    }
+}
+/* Phones: ✕ already clears + leaves select mode; drop "Clear" to keep
+   the bar at two rows. */
+@media (max-width: 767.98px) {
+    #selection-bar #selection-clear {
+        display: none;
+    }
+}

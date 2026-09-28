@@ -437,7 +437,7 @@
     "viewer.selection.clear": "Clear",
     "viewer.selection.delete": "Delete",
     "viewer.selection.select_all": "Select all",
-    "viewer.selection.select_all_title": "Select every visible tile (Ctrl/Cmd+A)",
+    "viewer.selection.select_all_title": "Select every loaded file (Ctrl/⌘+A)",
     "viewer.bulk.title": "Delete selected files?",
     "viewer.bulk.confirm": "Delete {count} file(s)? This cannot be undone.",
     "viewer.bulk.deleted": "Deleted {count} files.",
@@ -1964,5 +1964,16 @@
     "settings.search.none_here": "No settings match “{q}” — but see below.",
     "settings.search.none": "No settings match “{q}”. Try another word, in English or your language.",
     "settings.search.count_one": "1 section matches",
-    "settings.search.count": "{count} sections match"
+    "settings.search.count": "{count} sections match",
+    "viewer.selection.prompt": "Tap items to select",
+    "viewer.selection.count_of": "{count} of {total} selected",
+    "viewer.selection.select_all_n": "Select all {count}",
+    "viewer.selection.loading_all": "Loading {n} / {total}…",
+    "viewer.selection.done": "Done selecting",
+    "viewer.selection.toolbar": "Selected files",
+    "viewer.select_hint.title": "Select several at once",
+    "viewer.select_hint.body": "Press and hold a photo, then tap more to download, pin or delete them together.",
+    "viewer.select_hint.try": "Try it",
+    "viewer.select_hint.dismiss": "Got it",
+    "viewer.selection.prompt_click": "Click to select"
 }

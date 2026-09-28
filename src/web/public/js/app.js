@@ -709,11 +709,16 @@ async function init() {
     // phase so they take precedence over app.js's per-tile delegation.
     setupGallerySelect({
         onChange: () => updateSelectionBar(),
+        onSelectMode: () => updateSelectionBar(),
+        // Every loaded file of the view, not only the tiles the DOM window
+        // holds right now.
+        allPaths: () => _selectableFiles().map((f) => f.fullPath),
         deleteSelected: () => {
             const btn = document.getElementById('selection-delete');
             if (btn) btn.click();
         },
     });
+    _setupSelectHint();
     setupToggleA11y();
 
     // Initialise i18n + the language picker. The fall-through is English so
@@ -795,6 +800,7 @@ function renderPage(page, params = {}) {
     state.currentPage = page;
     document.body.dataset.page = page;
     _syncChatHeaderActions();
+    updateSelectionBar();
     state.currentRouteParams = params;
 
     // Allow callers to override the highlighted nav slot independent of the
@@ -1684,9 +1690,9 @@ function _setGallerySubtitle(total) {
 // URL for one page of the current gallery view: the chat / All Media feed,
 // or the search endpoint while the toolbar holds a query. Both honour the
 // type tab, the pinned mode and the federation scope.
-function _galleryPageUrl(groupId) {
+function _galleryPageUrl(groupId, opts = {}) {
     const type = state.currentFilter && state.currentFilter !== 'all' ? state.currentFilter : 'all';
-    const common = `page=${state.page}&limit=${FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinnedQs()}${_galleryScopeQs()}`;
+    const common = `page=${opts.page ?? state.page}&limit=${opts.limit ?? FILES_PER_PAGE}&type=${encodeURIComponent(type)}${pinnedQs()}${_galleryScopeQs()}`;
     if (state.searchQuery) {
         const g = groupId ? `&groupId=${encodeURIComponent(groupId)}` : '';
         return `/api/downloads/search?q=${encodeURIComponent(state.searchQuery)}&order=newest&${common}${g}`;
@@ -2414,6 +2420,9 @@ function renderMediaGrid(opts = {}) {
     // A short page may leave the load-more sentinel inside the prefetch
     // margin, where the IntersectionObserver never fires again.
     _recheckLoadMore();
+    _maybeShowSelectHint();
+    // The "N of M selected" wording depends on how much is loaded.
+    if (state.selected?.size || state.selectMode) updateSelectionBar();
 }
 
 let _gridDelegated = false;
@@ -2721,15 +2730,155 @@ function toggleSelection(path) {
     updateSelectionBar();
 }
 
+// Files of the current gallery view that can be selected (type tab applied).
+function _selectableFiles() {
+    const files = Array.isArray(state.files) ? state.files : [];
+    const f = state.currentFilter || 'all';
+    return f === 'all' ? files : files.filter((x) => x.type === f);
+}
+
+// "Select all N" beyond the loaded pages is offered up to this many files;
+// past it the list is too big to hold and act on in one go.
+const SELECT_ALL_MAX = 5000;
+
+// One bar for everything selection: shown while select mode is on (so
+// "0 selected" still explains itself and offers Done) and whenever files
+// are selected. Buttons that need a selection are disabled at 0.
 function updateSelectionBar() {
     const bar = document.getElementById('selection-bar');
     const count = state.selected ? state.selected.size : 0;
-    document.getElementById('selection-count').textContent = i18nTf(
-        'viewer.selection.count',
-        { count },
-        `${count} selected`,
-    );
-    if (bar) bar.classList.toggle('hidden', count === 0);
+    const onGallery = state.currentPage === 'viewer';
+    const show = onGallery && (count > 0 || !!state.selectMode);
+    const countEl = document.getElementById('selection-count');
+    const loaded = _selectableFiles().length;
+    const total = Number(_galleryTotal) || loaded;
+    if (countEl) {
+        if (count === 0) {
+            countEl.textContent = window.matchMedia?.('(pointer: coarse)').matches
+                ? i18nT('viewer.selection.prompt', 'Tap items to select')
+                : i18nT('viewer.selection.prompt_click', 'Click to select');
+        } else if (count >= loaded && total > count) {
+            countEl.textContent = i18nTf(
+                'viewer.selection.count_of',
+                { count: count.toLocaleString(), total: total.toLocaleString() },
+                `${count.toLocaleString()} of ${total.toLocaleString()} selected`,
+            );
+        } else {
+            countEl.textContent = i18nTf(
+                'viewer.selection.count',
+                { count: count.toLocaleString() },
+                `${count.toLocaleString()} selected`,
+            );
+        }
+    }
+    // "Select all 1,234" — every loaded file is selected but the view has
+    // more on the server.
+    const allMatching = document.getElementById('selection-all-matching');
+    if (allMatching) {
+        const offer = count > 0 && count >= loaded && total > loaded && total <= SELECT_ALL_MAX;
+        allMatching.classList.toggle('hidden', !offer);
+        if (offer && !allMatching.disabled) {
+            allMatching.textContent = i18nTf(
+                'viewer.selection.select_all_n',
+                { count: total.toLocaleString() },
+                `Select all ${total.toLocaleString()}`,
+            );
+        }
+    }
+    document
+        .getElementById('selection-all')
+        ?.classList.toggle('hidden', count > 0 && count >= loaded);
+    for (const id of ['selection-clear', 'selection-zip', 'selection-pin', 'selection-delete']) {
+        const b = document.getElementById(id);
+        if (b) b.disabled = count === 0;
+    }
+    if (bar) bar.classList.toggle('hidden', !show);
+    document.body.classList.toggle('gallery-selecting', show);
+    if (state.selectMode) _dismissSelectHint();
+}
+
+// Load every file of the current view (up to SELECT_ALL_MAX) so "Select
+// all N" really selects all of them, not just the pages scrolled so far.
+async function _selectEveryMatchingFile() {
+    const btn = document.getElementById('selection-all-matching');
+    const total = Number(_galleryTotal) || 0;
+    if (!total || total > SELECT_ALL_MAX) return;
+    const viewKey = _galleryViewKey();
+    const groupId = state.currentGroupId;
+    const LIMIT = 200;
+    const out = [];
+    const seen = new Set();
+    if (btn) btn.disabled = true;
+    try {
+        for (let p = 1; p <= Math.ceil(total / LIMIT); p++) {
+            if (btn) {
+                btn.textContent = i18nTf(
+                    'viewer.selection.loading_all',
+                    { n: out.length.toLocaleString(), total: total.toLocaleString() },
+                    `Loading ${out.length.toLocaleString()} / ${total.toLocaleString()}…`,
+                );
+            }
+            const res = await api.get(_galleryPageUrl(groupId, { page: p, limit: LIMIT }));
+            // The user switched view meanwhile — drop it.
+            if (_galleryViewKey() !== viewKey || state.currentPage !== 'viewer') return;
+            const rows = res?.files || [];
+            for (const f of rows) {
+                const k = `${f.peer_id || 'self'}|${f.id}|${f.fullPath}`;
+                if (seen.has(k)) continue;
+                seen.add(k);
+                out.push(f);
+            }
+            if (rows.length < LIMIT) break;
+        }
+        state.files = out;
+        state.hasMore = false;
+        _galleryTotal = Math.max(total, out.length);
+        renderMediaGrid({ keepScroll: true });
+        selectAllVisible();
+    } catch (e) {
+        showToast(e?.message || i18nT('viewer.error.load', 'Error loading files'), 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+        updateSelectionBar();
+    }
+}
+
+// First-visit tip on touch screens: selecting several files is behind a
+// long-press, which nobody finds by accident. Dismissed with "Got it" or
+// automatically once select mode has been used; remembered per browser.
+const SELECT_HINT_KEY = 'tgdl-hint-select-seen';
+function _selectHintSeen() {
+    try {
+        return localStorage.getItem(SELECT_HINT_KEY) === '1';
+    } catch {
+        return true;
+    }
+}
+function _dismissSelectHint() {
+    const el = document.getElementById('select-hint');
+    if (el && !el.classList.contains('hidden')) el.classList.add('hidden');
+    try {
+        if (localStorage.getItem(SELECT_HINT_KEY) !== '1')
+            localStorage.setItem(SELECT_HINT_KEY, '1');
+    } catch {}
+}
+function _maybeShowSelectHint() {
+    const el = document.getElementById('select-hint');
+    if (!el || _selectHintSeen()) return;
+    const touch = window.matchMedia?.('(pointer: coarse)').matches;
+    const show =
+        touch &&
+        state.currentPage === 'viewer' &&
+        !state.selectMode &&
+        _selectableFiles().length > 1;
+    el.classList.toggle('hidden', !show);
+}
+function _setupSelectHint() {
+    document.getElementById('select-hint-dismiss')?.addEventListener('click', _dismissSelectHint);
+    document.getElementById('select-hint-try')?.addEventListener('click', () => {
+        _dismissSelectHint();
+        document.getElementById('select-mode-btn')?.click();
+    });
 }
 
 // Group files into Telegram-style time sections. Accepts an array of
@@ -2851,6 +3000,14 @@ async function setupMediaSearch() {
         }
         updateSelectionBar();
     });
+
+    document.getElementById('selection-exit')?.addEventListener('click', () => {
+        exitSelectMode();
+        updateSelectionBar();
+    });
+    document
+        .getElementById('selection-all-matching')
+        ?.addEventListener('click', () => _selectEveryMatchingFile());
 
     selClear?.addEventListener('click', () => {
         if (state.selected) state.selected.clear();

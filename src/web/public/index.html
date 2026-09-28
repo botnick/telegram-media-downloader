@@ -859,6 +859,21 @@
                      hidden class, so the browser painted it before the
                      router could swap. -->
                 <div id="page-viewer" class="hidden">
+                    <!-- First-visit tip on touch screens (app.js
+                         _maybeShowSelectHint): long-press is how you select
+                         several files. Remembered in localStorage once
+                         dismissed or once select mode has been used. -->
+                    <div id="select-hint" class="select-hint hidden" role="note">
+                        <span class="select-hint-icon" aria-hidden="true"><i class="ri-checkbox-multiple-line"></i></span>
+                        <div class="select-hint-text">
+                            <strong data-i18n="viewer.select_hint.title">Select several at once</strong>
+                            <span data-i18n="viewer.select_hint.body">Press and hold a photo, then tap more to download, pin or delete them together.</span>
+                        </div>
+                        <div class="select-hint-actions">
+                            <button id="select-hint-try" type="button" class="select-hint-btn is-primary" data-i18n="viewer.select_hint.try">Try it</button>
+                            <button id="select-hint-dismiss" type="button" class="select-hint-btn" data-i18n="viewer.select_hint.dismiss">Got it</button>
+                        </div>
+                    </div>
                     <div id="media-grid" class="media-grid"></div>
                     <!-- Drag-to-select rubber-band rectangle. Single shared
                          element managed by gallery-select.js — kept outside
@@ -4274,20 +4289,36 @@
         </div>
     </div>
 
-    <!-- Selection footer (shown when items are selected) -->
-    <div id="selection-bar" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 bg-tg-panel border border-tg-border rounded-full px-4 py-2 shadow-xl z-40 flex items-center gap-3 text-sm">
-        <span id="selection-count" class="text-tg-text">0 selected</span>
-        <button id="selection-all" class="text-tg-blue hover:text-tg-text" data-i18n-title="viewer.selection.select_all_title" title="Select every visible tile (Ctrl/⌘+A)" data-i18n="viewer.selection.select_all">Select all</button>
-        <button id="selection-clear" class="text-tg-textSecondary hover:text-tg-text" data-i18n="viewer.selection.clear">Clear</button>
-        <button id="selection-zip" class="px-3 py-1 rounded bg-tg-blue/20 text-tg-blue hover:bg-tg-blue/30">
-            <i class="ri-archive-line"></i> <span data-i18n="viewer.selection.zip">Download ZIP</span>
+    <!-- Selection bar — every bulk action in one place. Shown while select
+         mode is on (long-press a tile, the ☑ header button, Ctrl/Shift-click,
+         drag-select) and whenever something is selected. ✕ leaves select
+         mode; "Select all N" loads the rest of the view first. -->
+    <div id="selection-bar" class="hidden fixed bottom-8 left-1/2 -translate-x-1/2 bg-tg-panel border border-tg-border rounded-full px-2 py-1.5 shadow-xl z-40 flex items-center gap-1 text-sm"
+         role="toolbar" data-i18n-aria-label="viewer.selection.toolbar" aria-label="Selected files">
+        <button id="selection-exit" type="button" class="selection-icon-btn"
+            data-i18n-aria-label="viewer.selection.done" aria-label="Done selecting"
+            data-i18n-title="viewer.selection.done" title="Done selecting">
+            <i class="ri-close-line" aria-hidden="true"></i>
         </button>
-        <button id="selection-pin" class="px-3 py-1 rounded bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30" data-admin-only>
-            <i class="ri-pushpin-2-line"></i> <span data-i18n="favorites.pin">Pin</span>
+        <span id="selection-count" class="text-tg-text font-medium px-1 tabular-nums" aria-live="polite">0 selected</span>
+        <button id="selection-all" type="button" class="selection-text-btn text-tg-blue hover:text-tg-text" data-i18n-title="viewer.selection.select_all_title" title="Select every loaded file (Ctrl/⌘+A)" data-i18n="viewer.selection.select_all">Select all</button>
+        <button id="selection-all-matching" type="button" class="selection-text-btn hidden text-tg-blue hover:text-tg-text">Select all</button>
+        <button id="selection-clear" type="button" class="selection-text-btn text-tg-textSecondary hover:text-tg-text" data-i18n="viewer.selection.clear">Clear</button>
+        <span class="selection-sep" aria-hidden="true"></span>
+        <div class="selection-actions">
+        <button id="selection-zip" type="button" class="selection-action px-3 py-1 rounded-full bg-tg-blue/20 text-tg-blue hover:bg-tg-blue/30"
+            data-i18n-title="viewer.selection.zip" title="Download ZIP">
+            <i class="ri-archive-line" aria-hidden="true"></i> <span data-i18n="viewer.selection.zip">Download ZIP</span>
         </button>
-        <button id="selection-delete" class="px-3 py-1 rounded bg-red-500/20 text-red-400 hover:bg-red-500/30" data-admin-only>
-            <i class="ri-delete-bin-line"></i> <span data-i18n="viewer.selection.delete">Delete</span>
+        <button id="selection-pin" type="button" class="selection-action px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30" data-admin-only
+            data-i18n-title="favorites.pin" title="Pin">
+            <i class="ri-pushpin-2-line" aria-hidden="true"></i> <span data-i18n="favorites.pin">Pin</span>
         </button>
+        <button id="selection-delete" type="button" class="selection-action px-3 py-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30" data-admin-only
+            data-i18n-title="viewer.selection.delete" title="Delete">
+            <i class="ri-delete-bin-line" aria-hidden="true"></i> <span data-i18n="viewer.selection.delete">Delete</span>
+        </button>
+        </div>
     </div>
 
     <!-- Drag-drop overlay for t.me URLs. Hidden by default; the SPA toggles

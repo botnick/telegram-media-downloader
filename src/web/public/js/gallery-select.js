@@ -27,7 +27,11 @@ function _autoEnableSelectMode() {
     const grid = document.getElementById('media-grid');
     if (grid) grid.classList.add('in-select-mode');
     const btn = document.getElementById('select-mode-btn');
-    if (btn) btn.classList.add('bg-tg-blue', 'text-white');
+    if (btn) {
+        btn.classList.add('bg-tg-blue', 'text-white');
+        btn.setAttribute('aria-pressed', 'true');
+    }
+    _hooks.onSelectMode?.(true);
 }
 
 /**
@@ -38,6 +42,9 @@ function _autoEnableSelectMode() {
  * @param {() => void} hooks.onChange         called after any selection mutation
  * @param {(path:string) => void} hooks.openViewer  called for a plain click outside select-mode
  * @param {() => void} hooks.deleteSelected   called for the Delete key on a non-empty selection
+ * @param {() => string[]} [hooks.allPaths]  every selectable path of the current view — the
+ *        grid only keeps a window of tiles in the DOM, so "select all" asks the caller
+ * @param {(on: boolean) => void} [hooks.onSelectMode]  select mode switched on / off
  */
 export function setupGallerySelect(hooks = {}) {
     if (_wired) return;
@@ -184,10 +191,13 @@ export function setupGallerySelect(hooks = {}) {
                 // by pointermove (above DRAG_THRESHOLD) or pointerup.
                 const tile = ev.target.closest('.media-item[data-path]');
                 if (tile) {
+                    // Clear any previous timer FIRST — _cancelLongPress()
+                    // also nulls _longPressTile, so calling it after the
+                    // assignment below made every long-press a no-op.
+                    _cancelLongPress();
                     _longPressTile = tile;
                     _longPressStartX = ev.clientX;
                     _longPressStartY = ev.clientY;
-                    _cancelLongPress();
                     _longPressTimer = setTimeout(() => {
                         _longPressTimer = 0;
                         if (!_longPressTile) return;
@@ -491,13 +501,17 @@ export function exitSelectMode() {
         grid.querySelectorAll('.is-marquee').forEach((el) => el.classList.remove('is-marquee'));
     }
     const btn = document.getElementById('select-mode-btn');
-    if (btn) btn.classList.remove('bg-tg-blue', 'text-white');
+    if (btn) {
+        btn.classList.remove('bg-tg-blue', 'text-white');
+        btn.setAttribute('aria-pressed', 'false');
+    }
+    _hooks.onSelectMode?.(false);
 }
 
 /**
- * Select every currently-rendered tile in the gallery grid. Auto-enables
- * select-mode if it isn't on. Idempotent: calling twice with no changes
- * to the rendered set leaves the selection identical.
+ * Select every loaded file of the current view (the `allPaths` hook) —
+ * not just the tiles the DOM window happens to hold — falling back to the
+ * rendered tiles. Auto-enables select-mode if it isn't on. Idempotent.
  *
  * Exposed so the selection-bar "Select all" button + the Ctrl/Cmd+A
  * shortcut share one implementation.
@@ -507,7 +521,8 @@ export function selectAllVisible() {
     if (!grid) return;
     _autoEnableSelectMode();
     const tiles = grid.querySelectorAll('.media-item[data-path]');
-    state.selected = new Set();
+    const paths = _hooks.allPaths?.();
+    state.selected = new Set(Array.isArray(paths) ? paths : []);
     for (const t of tiles) {
         state.selected.add(t.dataset.path);
         t.classList.add('is-selected');
