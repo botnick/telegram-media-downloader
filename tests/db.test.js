@@ -47,6 +47,104 @@ describe('downloads schema', () => {
             ]),
         );
     });
+
+    const indexNames = () =>
+        db
+            .prepare(
+                `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'downloads'`,
+            )
+            .all()
+            .map((r) => r.name);
+
+    it('builds the deferred indexes inline on a small library and keeps the old ones', () => {
+        const names = indexNames();
+        expect(names).toEqual(
+            expect.arrayContaining([
+                ...downloadsApi.DEFERRED_INDEXES.map((i) => i.name),
+                // Still created by older releases — never dropped, so a
+                // rollback doesn't have to rebuild them at boot.
+                'idx_group_id',
+                'idx_group_message',
+            ]),
+        );
+        expect(downloadsApi.listMissingDeferredIndexes()).toEqual([]);
+    });
+
+    it('reports and builds a missing deferred index (big-library path)', () => {
+        db.exec('DROP INDEX idx_gallery_type_pinned_date');
+        expect(downloadsApi.listMissingDeferredIndexes().map((i) => i.name)).toEqual([
+            'idx_gallery_type_pinned_date',
+        ]);
+        expect(typeof downloadsApi.buildDeferredIndex('idx_gallery_type_pinned_date')).toBe(
+            'number',
+        );
+        expect(indexNames()).toContain('idx_gallery_type_pinned_date');
+        // Idempotent.
+        downloadsApi.buildDeferredIndex('idx_gallery_type_pinned_date');
+        expect(() => downloadsApi.buildDeferredIndex('nope')).toThrow();
+        // A finished build leaves no "attempting" marker behind.
+        expect(downloadsApi.kvGet('index_build_attempt:idx_gallery_type_pinned_date')).toBeNull();
+    });
+
+    it('does not retry a build that was interrupted by a killed process', () => {
+        // Simulate: marker written, process killed mid-CREATE INDEX (rolled
+        // back → index missing, marker still there).
+        db.exec('DROP INDEX idx_gallery_group_pinned_date');
+        downloadsApi.kvSet('index_build_attempt:idx_gallery_group_pinned_date', {
+            startedAt: 123,
+        });
+        let plan = downloadsApi.planDeferredIndexBuilds();
+        expect(plan.build.map((i) => i.name)).toEqual([]);
+        expect(plan.interrupted.map((i) => [i.name, i.attemptedAt])).toEqual([
+            ['idx_gallery_group_pinned_date', 123],
+        ]);
+        // The manual path (scripts/build-indexes.js) builds it and clears the marker.
+        downloadsApi.buildDeferredIndex('idx_gallery_group_pinned_date');
+        plan = downloadsApi.planDeferredIndexBuilds();
+        expect(plan).toEqual({ build: [], interrupted: [] });
+        expect(downloadsApi.kvGet('index_build_attempt:idx_gallery_group_pinned_date')).toBeNull();
+    });
+
+    it('plans missing indexes without a marker and drops stale markers', () => {
+        db.exec('DROP INDEX idx_file_path');
+        // Killed after CREATE INDEX committed but before the marker was cleared.
+        downloadsApi.kvSet('index_build_attempt:idx_group_name_size', { startedAt: 1 });
+        const plan = downloadsApi.planDeferredIndexBuilds();
+        expect(plan.build.map((i) => i.name)).toEqual(['idx_file_path']);
+        expect(plan.interrupted).toEqual([]);
+        expect(downloadsApi.kvGet('index_build_attempt:idx_group_name_size')).toBeNull();
+        downloadsApi.buildDeferredIndex('idx_file_path');
+    });
+
+    it('clears the marker when a build throws (process survived)', () => {
+        db.exec('DROP INDEX idx_file_path');
+        const realExec = db.exec.bind(db);
+        db.exec = (sql) => {
+            if (/idx_file_path/.test(sql)) throw new Error('database is locked');
+            return realExec(sql);
+        };
+        try {
+            expect(() => downloadsApi.buildDeferredIndex('idx_file_path')).toThrow(/locked/);
+        } finally {
+            db.exec = realExec;
+        }
+        expect(downloadsApi.kvGet('index_build_attempt:idx_file_path')).toBeNull();
+        expect(downloadsApi.planDeferredIndexBuilds().build.map((i) => i.name)).toEqual([
+            'idx_file_path',
+        ]);
+        downloadsApi.buildDeferredIndex('idx_file_path');
+    });
+
+    it('serves the sidebar aggregate from the covering index', () => {
+        const plan = db
+            .prepare(
+                `EXPLAIN QUERY PLAN SELECT group_id, MAX(group_name), COUNT(*), SUM(file_size) FROM downloads GROUP BY group_id`,
+            )
+            .all()
+            .map((r) => r.detail)
+            .join(' | ');
+        expect(plan).toContain('COVERING INDEX idx_group_name_size');
+    });
 });
 
 describe('insertDownload + isDownloaded', () => {
@@ -168,5 +266,76 @@ describe('pinned queries', () => {
     it('getOldestDownloads excludes pinned rows', () => {
         const oldest = downloadsApi.getOldestDownloads(100);
         expect(oldest.every((f) => f.pinned === 0)).toBe(true);
+    });
+});
+
+describe('findDownloadsByPaths', () => {
+    it('matches both separator forms through idx_file_path', () => {
+        downloadsApi.insertDownload({
+            groupId: '-100777',
+            groupName: 'Paths',
+            messageId: 1,
+            fileName: 'win.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: String.raw`Paths\images\win.jpg`,
+        });
+        downloadsApi.insertDownload({
+            groupId: '-100777',
+            groupName: 'Paths',
+            messageId: 2,
+            fileName: 'posix.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: 'Paths/images/posix.jpg',
+        });
+        // Same basename in another folder must never be picked up.
+        downloadsApi.insertDownload({
+            groupId: '-100778',
+            groupName: 'Other',
+            messageId: 1,
+            fileName: 'win.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: 'Other/images/win.jpg',
+        });
+        const rows = downloadsApi.findDownloadsByPaths([
+            'Paths/images/win.jpg',
+            String.raw`Paths\images\posix.jpg`,
+            'missing/x.jpg',
+            '',
+            null,
+        ]);
+        expect(rows.map((r) => r.file_path).sort()).toEqual([
+            'Paths/images/posix.jpg',
+            String.raw`Paths\images\win.jpg`,
+        ]);
+        const plan = db
+            .prepare('EXPLAIN QUERY PLAN SELECT id FROM downloads WHERE file_path IN (?, ?)')
+            .all('a', 'b')
+            .map((r) => r.detail)
+            .join(' | ');
+        expect(plan).toContain('idx_file_path');
+    });
+
+    it('chunks large inputs under the bound-parameter cap', () => {
+        const paths = Array.from({ length: 1500 }, (_, i) => `bulk/images/f${i}.jpg`);
+        paths.push('Paths/images/posix.jpg');
+        const rows = downloadsApi.findDownloadsByPaths(paths);
+        expect(rows.map((r) => r.file_path)).toEqual(['Paths/images/posix.jpg']);
+    });
+
+    it('still finds rows stored with mixed separators (old REPLACE semantics)', () => {
+        downloadsApi.insertDownload({
+            groupId: '-100779',
+            groupName: 'Mixed',
+            messageId: 1,
+            fileName: 'm.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: String.raw`Mixed/images\m.jpg`,
+        });
+        const rows = downloadsApi.findDownloadsByPaths(['Mixed/images/m.jpg']);
+        expect(rows.map((r) => r.file_path)).toEqual([String.raw`Mixed/images\m.jpg`]);
     });
 });
