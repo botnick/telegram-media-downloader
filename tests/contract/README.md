@@ -246,9 +246,6 @@ Rules that keep runs deterministic:
 Recorded as today's behaviour. Fix them in Node first (then re-record),
 never silently in the Go port.
 
-- `GET /api/update/status`, `/api/auto-update/status` and
-  `/api/update/history` are registered before the auth middleware and answer
-  anonymous callers (only `POST /api/update` was closed on this branch).
 - `GET /api/config` returns `web.shareSecret`, `web.guestPasswordHash` and
   `proxy.password` to admin sessions; `/api/maintenance/config/raw` doesn't
   redact `shareSecret` or `guestPasswordHash`.

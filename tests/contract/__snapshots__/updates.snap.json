@@ -26,7 +26,7 @@
         }
       }
     },
-    "GET update/status guest (no auth gate)": {
+    "GET update/status guest (update chooser)": {
       "route": "GET /api/update/status",
       "request": {
         "method": "GET",
@@ -52,14 +52,14 @@
         }
       }
     },
-    "GET update/status anon (no auth gate)": {
+    "GET update/status anon → 401": {
       "route": "GET /api/update/status",
       "request": {
         "method": "GET",
         "path": "/api/update/status",
         "as": "anon"
       },
-      "status": 200,
+      "status": 401,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -70,11 +70,7 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "available": false,
-          "inDocker": false,
-          "overlayStallMs": 120000,
-          "watchtowerConfigured": false,
-          "watchtowerUrl": null
+          "error": "Unauthorized"
         }
       }
     },
@@ -111,14 +107,14 @@
         }
       }
     },
-    "GET auto-update/status guest (no auth gate)": {
+    "GET auto-update/status guest → 403": {
       "route": "GET /api/auto-update/status",
       "request": {
         "method": "GET",
         "path": "/api/auto-update/status",
         "as": "guest"
       },
-      "status": 200,
+      "status": 403,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -129,18 +125,30 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "attempts": 0,
-          "durationMs": "<durationMs:number>",
-          "error": null,
-          "failures": 0,
-          "finishedAt": 0,
-          "kind": "autoUpdate",
-          "progress": {},
-          "result": null,
-          "running": false,
-          "stage": "idle",
-          "startedAt": 0,
-          "successes": 0
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "GET auto-update/status anon → 401": {
+      "route": "GET /api/auto-update/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/auto-update/status",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
         }
       }
     },
@@ -363,14 +371,14 @@
         }
       }
     },
-    "GET update/history guest (no auth gate)": {
+    "GET update/history guest → 403": {
       "route": "GET /api/update/history",
       "request": {
         "method": "GET",
         "path": "/api/update/history",
         "as": "guest"
       },
-      "status": 200,
+      "status": 403,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -381,38 +389,34 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "history": [
-            {
-              "backup_bytes": null,
-              "backup_path": null,
-              "error_code": "WATCHTOWER_UNREACHABLE",
-              "error_msg": "watchtower did not answer",
-              "finished_at": 1717977601000,
-              "from_instance_id": null,
-              "from_version": "2.27.1",
-              "id": 2,
-              "started_at": 1717977600000,
-              "status": "failed",
-              "to_version": null
-            },
-            {
-              "backup_bytes": 1024,
-              "backup_path": "data/backups/db-2024-06-09.sqlite",
-              "error_code": null,
-              "error_msg": null,
-              "finished_at": 1717891320000,
-              "from_instance_id": "00000000-0000-4000-8000-00000000000e",
-              "from_version": "2.27.0",
-              "id": 1,
-              "started_at": 1717891200000,
-              "status": "success",
-              "to_version": "2.27.1"
-            }
-          ]
+          "adminRequired": true,
+          "error": "Admin only"
         }
       }
     },
-    "POST update guest (no auth gate) → started": {
+    "GET update/history anon → 401": {
+      "route": "GET /api/update/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/update/history",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "POST update guest → 403": {
       "route": "POST /api/update",
       "request": {
         "method": "POST",
@@ -436,7 +440,7 @@
         }
       }
     },
-    "POST update anon (no auth gate) → started": {
+    "POST update anon → 401": {
       "route": "POST /api/update",
       "request": {
         "method": "POST",

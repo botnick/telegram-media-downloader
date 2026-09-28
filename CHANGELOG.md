@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Security
+- **The update status routes need a session.** `GET /api/update/status`, `/api/auto-update/status` and `/api/update/history` answered anonymous callers (they sit before the dashboard's auth check, like `POST /api/update`, which was closed earlier). They now answer 401 without a session. Guests keep the capability probe the status bar's "Update available" sheet reads; the job status and the update history are admin-only (403), like the Maintenance pages that show them.
+
 ## [2.29.0] — 2026-09-29
 
 Chats the app can no longer read — deleted, banned, private or left, moved to a supergroup — are now paused instead of retried, so they stop using Telegram's limits. The dashboard says why and what to do (Check again, switch account, follow the new group, stop monitoring), with a Needs attention list and automatic re-checks.

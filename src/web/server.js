@@ -1763,19 +1763,35 @@ app.get('/api/version/check', async (req, res) => {
 // `data/backups/`, then signals the watchtower sidecar to pull + recreate
 // this container. Returns 200 immediately; the actual swap happens out of
 // band moments later (the SPA's WS reconnect logic detects the cycle).
+//
+// Every route here is registered before the global checkAuth / guestGate, so
+// each one gates itself through `_updateRouteSession()`: no session → 401.
+// The capability probe stays readable by guests — the "Update available"
+// chooser in the status bar is shown to every session and reads it. The
+// job status, the audit log and the kickoff are admin-only (the SPA only
+// uses them on the admin-only Maintenance pages).
+function _updateRouteSession(req, res, { adminOnly = false } = {}) {
+    const session = validateSession(req.cookies?.tg_dl_session);
+    if (!session) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return null;
+    }
+    if (adminOnly && session.role !== 'admin') {
+        res.status(403).json({ error: 'Admin only', adminRequired: true });
+        return null;
+    }
+    return session;
+}
+
 app.get('/api/update/status', async (req, res) => {
+    if (!_updateRouteSession(req, res)) return;
     res.json(autoUpdateStatus());
 });
 
 app.post('/api/update', async (req, res) => {
-    // Registered before the global checkAuth / guestGate (like the rest of
-    // the update routes), so it gates itself: an update snapshots the DB and
-    // asks watchtower to recreate the container — admin sessions only.
-    const session = validateSession(req.cookies?.tg_dl_session);
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    if (session.role !== 'admin') {
-        return res.status(403).json({ error: 'Admin only', adminRequired: true });
-    }
+    // An update snapshots the DB and asks watchtower to recreate the
+    // container — admin sessions only.
+    if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     const tracker = _jobTrackers.autoUpdate;
     const fromVersion = _readCurrentVersion();
     const r = tracker.tryStart(async () => {
@@ -1822,6 +1838,7 @@ app.post('/api/update', async (req, res) => {
 });
 
 app.get('/api/auto-update/status', async (req, res) => {
+    if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     res.json(_jobTrackers.autoUpdate.getStatus());
 });
 
@@ -1829,6 +1846,7 @@ app.get('/api/auto-update/status', async (req, res) => {
 // "Recent updates" panel in the maintenance UI + lets operators spot
 // repeat failures (e.g. watchtower mis-token on every retry).
 app.get('/api/update/history', async (req, res) => {
+    if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     try {
         const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 25));
         res.json({ history: listUpdateHistory({ limit }) });

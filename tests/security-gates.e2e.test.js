@@ -1,4 +1,4 @@
-// End-to-end regression tests for three auth gaps found while recording
+// End-to-end regression tests for auth gaps found while recording
 // the API contract suite:
 //   1. POST /api/update (DB snapshot + watchtower container recreate) sits
 //      before the global auth middleware and answered anyone.
@@ -6,6 +6,9 @@
 //      password hashes, the share secret — to every socket, guests too.
 //   3. The re-auth guard of session export / sign-out-everywhere accepted
 //      the guest password.
+//   4. GET /api/update/status, /api/auto-update/status and
+//      /api/update/history (same registration spot as 1.) answered
+//      anonymous callers.
 
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -115,6 +118,30 @@ describe.skipIf(SKIP)('auth gates (e2e)', () => {
         const g = await api('POST', '/api/update', { cookie: guest });
         expect(g.status).toBe(403);
         expect(g.json).toMatchObject({ adminRequired: true });
+    });
+
+    it('the update probe, job status and history need a session', async () => {
+        // Anonymous callers used to get all three (registered before checkAuth).
+        for (const url of [
+            '/api/update/status',
+            '/api/auto-update/status',
+            '/api/update/history',
+        ]) {
+            const anon = await api('GET', url);
+            expect(anon.status, url).toBe(401);
+            expect(anon.json).toEqual({ error: 'Unauthorized' });
+            expect((await api('GET', url, { cookie: admin })).status, url).toBe(200);
+        }
+        // Guests keep the capability probe the status-bar update chooser
+        // reads; the Maintenance-only job status and audit log are admin's.
+        const probe = await api('GET', '/api/update/status', { cookie: guest });
+        expect(probe.status).toBe(200);
+        expect(probe.json).toMatchObject({ available: false });
+        for (const url of ['/api/auto-update/status', '/api/update/history']) {
+            const g = await api('GET', url, { cookie: guest });
+            expect(g.status, url).toBe(403);
+            expect(g.json).toMatchObject({ adminRequired: true });
+        }
     });
 
     it('group saves reach guest sockets without the config', async () => {
