@@ -34,3 +34,62 @@ jobs:
           # better-sqlite3 sometimes spews a single noise line on Windows;
           # treat the run as failed only on real errors.
           FORCE_COLOR: '1'
+
+  # tgdl-core (core-service/, Go): format, vet, tests, and a build for
+  # every release target (CGO off, so cross-builds need no toolchain).
+  go:
+    name: go (core-service)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: core-service
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache: false
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+      - run: go vet ./...
+      - run: go test -race ./...
+      - name: Cross-build every release target
+        run: |
+          set -e
+          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 linux/386 darwin/arm64; do
+            GOOS=${t%/*} GOARCH=${t#*/} go vet ./...
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -trimpath -o /dev/null ./cmd/tgdl-core
+            echo "ok $t"
+          done
+
+  # The Node suites that touch hashing, with a freshly built tgdl-core in
+  # `on` mode, so Go really answers. TGDL_GO_CORE_TEST=1 enables the
+  # suites that run the real binary (they skip in the plain lint + test
+  # job) and turns "no binary" into a failure.
+  gocore-node:
+    name: node + tgdl-core on ${{ matrix.os }}
+    needs: go
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build:core
+      - run: npx vitest run gocore hash-worker dedup-delete maintenance.dedup-jobtracker
+        env:
+          TGDL_GO_CORE: 'on'
+          TGDL_GO_CORE_TEST: '1'
+          FORCE_COLOR: '1'

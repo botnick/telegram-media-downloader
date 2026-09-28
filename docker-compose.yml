@@ -85,6 +85,11 @@ services:
       # service. See seekbar-service/README.md for the standalone setup.
       - SEEKBAR_SIDECAR_URL=${SEEKBAR_SIDECAR_URL:-}
       - SEEKBAR_API_TOKEN=${SEEKBAR_API_TOKEN:-}
+      # Go companion (tgdl-core, bundled in the image). Empty = default
+      # (shadow: Node does the work, Go double-checks a sample). See
+      # docs/GO-CORE.md; `off` turns it off completely.
+      - TGDL_GO_CORE=${TGDL_GO_CORE:-}
+      - TGDL_GO_FEATURES=${TGDL_GO_FEATURES:-}
       # Split-disk setup: store downloads on a separate volume (e.g. HDD)
       # while keeping db.sqlite, sessions, and backups on a faster disk (SSD).
       # Set TGDL_DATA_DIR to the SSD path and TGDL_DOWNLOADS_DIR to the HDD

@@ -9,6 +9,7 @@
 | [CLUSTER.md](CLUSTER.md) | Pairing several instances into a federated library |
 | [API.md](API.md) | HTTP + WebSocket API reference |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit together — for contributors |
+| [GO-CORE.md](GO-CORE.md) | The Go companion process (`tgdl-core`): modes, fallbacks, parity checks, roadmap |
 | [AUDIT.md](AUDIT.md) | Security / reliability audit notes |
 | [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) | Upgrade notes for that release |
 
@@ -22,5 +23,6 @@ Release notes: [CHANGELOG.md](../CHANGELOG.md) (also shown in the dashboard — 
 | faces-service | `faces-vX.Y.Z` | binaries for Windows / Linux / macOS, `ghcr.io/botnick/tgdl-faces` |
 | nsfw-service | `nsfw-vX.Y.Z` | `ghcr.io/botnick/tgdl-nsfw` (CPU and `gpu-` tags) |
 | seekbar-service | `seekbar-vX.Y.Z` | binaries for Windows / Linux / macOS (downloaded by the app on first use) |
+| core-service (`tgdl-core`) | `core-vX.Y.Z` | `tgdl-core-<slug>.tar.gz` for Windows / Linux / macOS + `SHA256SUMS` (downloaded and verified by bare-metal installs; built into the Docker image) |
 
 A sidecar release always ships before an app release that depends on it, so updating the app never points at a sidecar version that doesn't exist yet.

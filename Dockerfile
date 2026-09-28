@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 #
 # Multi-stage build:
+#   - "gocore" compiles tgdl-core (core-service/, the Go companion process)
+#     on the build host for the target platform — CGO off, so no QEMU and
+#     no C toolchain; works the same for linux/amd64 and linux/arm64.
 #   - "deps" installs prod dependencies only (npm ci --omit=dev) so the runtime
 #     image stays small.
 #   - "runtime" copies node_modules from "deps" + the source, runs as the
@@ -8,6 +11,20 @@
 #     the dashboard's /api/auth_check endpoint.
 #
 # Pin a specific patch version. Floating tags drift; this image is reproducible.
+
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS gocore
+ARG TARGETOS=linux
+ARG TARGETARCH
+WORKDIR /src
+COPY core-service/ ./
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w" -o /out/tgdl-core ./cmd/tgdl-core
+
+# Just the binary, for `docker buildx build --target gocore-bin -o …` (CI
+# checks the arm64 build this way). Not part of the default build.
+FROM scratch AS gocore-bin
+COPY --from=gocore /out/tgdl-core /tgdl-core
 
 FROM node:24.18.0-bookworm-slim AS deps
 WORKDIR /app
@@ -69,6 +86,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY src ./src
 COPY scripts ./scripts
 COPY runner.js config.example.json package.json LICENSE README.md SECURITY.md CHANGELOG.md ./
+# tgdl-core — found at this path by src/core/gocore/spawn.js, so Docker
+# installs never download it. The app runs fine without it (Node fallback).
+COPY --from=gocore --chmod=0755 /out/tgdl-core /app/bin/tgdl-core
 
 # Persistent state (sessions, config, downloads) — mount this as a volume.
 # `chmod a+rX` guarantees files end up readable + dirs traversable even when

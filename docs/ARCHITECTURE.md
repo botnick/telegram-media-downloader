@@ -199,6 +199,11 @@ src/core/
 │   ├── faces-config.js  # kv-config + TGDL_FACES_* env-var precedence
 │   ├── faces-spawn.js   # Binary auto-download / Python fallback / Docker passthrough
 │   └── scan-runner.js   # Phase A (detect + embed) over downloads.iterate
+├── gocore/           # tgdl-core, the Go companion process (see docs/GO-CORE.md)
+│   ├── spawn.js      # Binary lookup / verified download / spawn / health / restart / stop
+│   ├── client.js     # HTTP client: per-call deadline + per-feature circuit breaker
+│   ├── flags.js      # TGDL_GO_CORE / TGDL_GO_FEATURES / advanced.goCore → off|shadow|on|auto
+│   └── hash.js       # Routes checksum.sha256OfFileViaPool between Node and Go (shadow parity)
 ├── seekbar/          # Video timeline preview subsystem (v2.17+, opt-in)
 │   ├── index.js      # pregenerateSeekbar() hook, build/purge, cache stats
 │   ├── generator.js  # Per-row sprite + sidecar generator (Go sidecar client)
@@ -241,6 +246,43 @@ Spawn order on each:
 4. For faces only: fall back to `python -m tgdl_faces` when the host has Python ≥3.10 and the package is `pip install`ed.
 
 The dashboard polls each sidecar's `/health` every 60 s; three consecutive failures triggers a respawn. Status transitions broadcast as `ai_faces_status` / `seekbar_sidecar_status` so the Maintenance pages can paint live pills without polling.
+
+## Go core (`tgdl-core`)
+
+Unlike the sidecars above, `tgdl-core` (Go, `core-service/`) is not a
+feature of its own: it is where Node moves heavy work, one feature at a
+time, behind a flag with a Node fallback. Phase 1 moves SHA-256 file
+hashing. Plan, modes and measurements: [GO-CORE.md](GO-CORE.md).
+
+```
+checksum.sha256OfFileViaPool(path)            dedup.js, downloader.registerDownload, nsfw.js blocklist
+  └─ gocore/hash.js routeHash(path, nodeHash)
+       off / not running / breaker open ─→ hash-worker pool (as before)
+       shadow (default) ─→ hash-worker pool; ~1/20 files ≤256 MB re-hashed by Go afterwards, compared
+       on / auto        ─→ POST /v1/hash on tgdl-core; any failure ─→ hash-worker pool
+```
+
+- **Lifecycle** (`gocore/spawn.js`): started from the `server.listen`
+  callback without being awaited, so boot and `/api/auth_check` never wait
+  on it. Binary lookup: `TGDL_CORE_BIN` → `/app/bin/tgdl-core` (Docker) →
+  `core-service/bin/tgdl-core-<slug>` (`npm run build:core`) →
+  `data/core-service/bin/` (download of the `core-v<CORE_VERSION>` release,
+  checked against `SHA256SUMS`). The child gets a minimal env (token, port
+  `0`, pool size), prints its address as one JSON line on stdout, and exits
+  when its stdin pipe closes, so it can't be orphaned (Windows). Health
+  probe every 30 s; three failures or an exit restart it with backoff.
+  `gracefulShutdown` stops it first.
+- **Contract**: `127.0.0.1` only, `X-API-Token` on everything but
+  `/health`; `/health` advertises `features`, and a feature is only routed
+  to Go when it is listed there.
+- **Data**: tgdl-core never opens `db.sqlite`; Node stays the only
+  writer. It reads only files inside `TGDL_CORE_ALLOW_ROOTS` (the app's
+  download folders, checked before and after resolving symlinks); for
+  anything else it answers `EOUTSIDE` and Node hashes the file.
+- **Observability**: `goCore` in `GET /api/system/health`;
+  `tgdl_gocore_calls_total{feature,result}`,
+  `tgdl_gocore_parity_checks_total{feature}` and
+  `tgdl_gocore_parity_mismatch_total{feature}` on `/metrics`.
 
 ## Fire-and-forget admin jobs (`JobTracker`)
 
