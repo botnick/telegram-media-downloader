@@ -3151,17 +3151,30 @@ async function setupMediaSearch() {
         const next = !allPinned;
         let ok = 0,
             failed = 0;
-        for (const f of items) {
+        // One request per batch (POST /api/downloads/pin) instead of one
+        // per file — a 500-file selection used to fire 500 requests.
+        const BATCH = 1000;
+        for (let i = 0; i < items.length; i += BATCH) {
+            const part = items.slice(i, i + BATCH);
             try {
-                await api.post(`/api/downloads/${encodeURIComponent(f.id)}/pin`, { pinned: next });
-                f.pinned = next;
-                const tile = document.querySelector(
-                    `.media-item[data-id="${CSS.escape(String(f.id))}"]`,
-                );
-                tile?.classList.toggle('is-pinned', next);
-                ok++;
+                const r = await api.post('/api/downloads/pin', {
+                    ids: part.map((f) => f.id),
+                    pinned: next,
+                });
+                const done = new Set((r?.ids || []).map(String));
+                for (const f of part) {
+                    if (!done.has(String(f.id))) {
+                        failed++;
+                        continue;
+                    }
+                    f.pinned = next;
+                    document
+                        .querySelector(`.media-item[data-id="${CSS.escape(String(f.id))}"]`)
+                        ?.classList.toggle('is-pinned', next);
+                    ok++;
+                }
             } catch {
-                failed++;
+                failed += part.length;
             }
         }
         showToast(

@@ -62,6 +62,7 @@ import {
     clearNsfwBlocklist,
     getDownloadHashesForIds,
     setDownloadPinned,
+    setDownloadsPinned,
     getDownloadById,
     kvGet,
     kvSet,
@@ -5044,6 +5045,35 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             .json({ error: 'A bulk delete is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true, queued: idList.length + pathList.length });
+});
+
+// Pin / unpin many rows at once (gallery bulk Pin). Body:
+// `{ ids: [1,2,3], pinned: true | false }`. The gallery used to send one
+// request per selected file. Registered before `/:id/pin`; admin-only via
+// the guest gate like every other mutation.
+const PIN_BATCH_MAX = 5000;
+app.post('/api/downloads/pin', async (req, res) => {
+    const { ids, pinned } = req.body || {};
+    if (typeof pinned !== 'boolean') {
+        return res.status(400).json({ error: 'Body must include `pinned` (boolean)' });
+    }
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: '`ids` must be a non-empty array' });
+    }
+    if (ids.length > PIN_BATCH_MAX) {
+        return res.status(413).json({
+            error: `Too many ids in one request (max ${PIN_BATCH_MAX})`,
+            max: PIN_BATCH_MAX,
+        });
+    }
+    try {
+        const updated = setDownloadsPinned(ids, pinned);
+        if (updated.length) broadcast({ type: 'downloads_pinned', ids: updated, pinned });
+        res.json({ success: true, pinned, ids: updated, updated: updated.length });
+    } catch (e) {
+        console.error('POST /api/downloads/pin:', e);
+        res.status(500).json({ error: 'Update failed' });
+    }
 });
 
 // Toggle the `pinned` flag on a single download row. Pinned rows survive
