@@ -6076,8 +6076,8 @@ body:not(.in-chat) [data-chat-only] {
     background: rgba(229, 57, 53, 0.1);
 }
 .cd-save-retry {
-    min-height: 32px;
-    padding: 0 6px;
+    min-height: 44px;
+    padding: 0 8px;
     font-weight: 600;
     text-decoration: underline;
     color: inherit;
@@ -6712,8 +6712,8 @@ html.theme-light .cr-chips .account-chip {
     display: none;
 }
 .cr-link {
-    min-height: 32px;
-    padding: 0 4px;
+    min-height: 44px;
+    padding: 0 6px;
     border-radius: 6px;
     color: var(--tg-blue);
     font-weight: 500;
@@ -7054,9 +7054,6 @@ html.theme-light .cr-chips .account-chip {
     align-items: center;
     cursor: pointer;
     color: var(--tg-blue);
-}
-.aw-optional[open] summary {
-    min-height: 36px;
 }
 .aw-error {
     padding: 10px 12px;
