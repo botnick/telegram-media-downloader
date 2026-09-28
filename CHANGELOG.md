@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Go companion process `tgdl-core` (phase 1 of moving heavy work from Node to Go).** A small Go binary (`core-service/`) that the app starts next to itself on `127.0.0.1` with a per-start token. Its first job is SHA-256 file hashing (download-time dedup, the duplicate scan, the NSFW hash blocklist). This release runs it in **shadow** mode: Node's hash is always the one used, and about 1 in 20 files (up to 256 MB) is hashed again by Go in the background and compared. Nothing changes for you — same data folder, database, config, API, Docker entrypoint, ports and healthcheck — and if the binary is missing, can't be downloaded, isn't built for your platform, crashes or times out, hashing runs on the Node worker pool exactly as before. The Docker image builds it in (`/app/bin/tgdl-core`); bare-metal installs download it from the `core-v0.1.0` release and check it against the release's `SHA256SUMS` (unsupported hosts, e.g. macOS on Intel, simply keep Node). See [docs/GO-CORE.md](docs/GO-CORE.md).
+- `TGDL_GO_CORE=off|shadow|on|auto` and `TGDL_GO_FEATURES="hash=on"` (or `advanced.goCore` in the config; env wins). `on` / `auto` hash with Go and fall back to Node on any error; in the benchmark (`scripts/bench-gocore-hash.js`) Go hashed a single stream about 2.9× faster (1.8 vs 0.63 GB/s, warm cache) with the same event-loop delay as the worker pool. `off` doesn't start it at all. `HASH_WORKER_DISABLE` and `HASH_WORKER_POOL_SIZE` keep their meaning (the pool size also sets Go's concurrency).
+- `GET /api/system/health` has a new `goCore` block (mode, process state, version, per-feature route, breaker, counters); `/metrics` has `tgdl_gocore_calls_total{feature,result}`, `tgdl_gocore_parity_checks_total{feature}` and `tgdl_gocore_parity_mismatch_total{feature}`.
+- `npm run build:core` builds `tgdl-core` for the current machine (`--release` builds all six release targets plus `SHA256SUMS`). Releases are tagged `core-vX.Y.Z` and are never marked Latest.
+
+### Changed
+- The NSFW hash-blocklist check hashes through the worker pool (and `tgdl-core` when enabled) like the downloader and the duplicate scan, instead of on the main thread; the result is the same.
+
 ## [2.27.0] — 2026-09-29
 
 A simpler dashboard: one search box for the gallery (Thai and mid-word too), one-step backfill from any chat, one Sort & filter control, search in Settings, clearer multi-select with a single bulk-action bar, and a Queue that opens on what's downloading. Long-press to select now works on phones.
