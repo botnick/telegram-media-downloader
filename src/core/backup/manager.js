@@ -46,6 +46,9 @@ const DEFAULT_WORKERS_PER_DEST =
         ? Math.min(20, Math.floor(Number(process.env.BACKUP_WORKERS_PER_DEST)))
         : 3;
 
+// Rows per keyset page in the mirror catch-up walk.
+const MIRROR_BATCH = 500;
+
 // ---- Public API surface ----------------------------------------------------
 
 const events = new EventEmitter();
@@ -289,25 +292,41 @@ export async function runBackup(id) {
         return { started: true, mode: dest.mode };
     }
     // Mirror catch-up: enqueue every DB download whose backup hasn't
-    // been done yet. Stream the rows — `.all()` over a million-row library
-    // would push the in-process JS heap past the V8 limit on small VMs
-    // (Synology, single-vCPU droplets) and crash inside `Statement::JS_all`.
-    let enqueued = 0;
-    const iter = getDb()
-        .prepare(`
-        SELECT id, file_name, file_path, file_size FROM downloads
-         WHERE file_path IS NOT NULL
+    // been done yet. Keyset-paginated `.all()` batches — one unbounded
+    // `.all()` would blow the heap on a million-row library, and an open
+    // `.iterate()` cursor keeps the connection busy so the enqueue INSERTs
+    // threw "This database connection is busy executing a query". One
+    // transaction per batch + a yield between batches keeps the walk from
+    // stalling the event loop.
+    const db = getDb();
+    const pageStmt = db.prepare(`
+        SELECT id, file_path FROM downloads
+         WHERE file_path IS NOT NULL AND id > ?
          ORDER BY id ASC
-    `)
-        .iterate();
-    for (const row of iter) {
-        if (queue.hasJobForDownload(id, row.id)) continue;
-        queue.enqueue({
-            destinationId: id,
-            downloadId: row.id,
-            remotePath: _mirrorRemotePath(row),
-        });
-        enqueued += 1;
+         LIMIT ?
+    `);
+    const enqueueBatch = db.transaction((rows) => {
+        let n = 0;
+        for (const row of rows) {
+            if (queue.hasJobForDownload(id, row.id)) continue;
+            queue.enqueue({
+                destinationId: id,
+                downloadId: row.id,
+                remotePath: _mirrorRemotePath(row),
+            });
+            n += 1;
+        }
+        return n;
+    });
+    let enqueued = 0;
+    let afterId = 0;
+    while (true) {
+        const rows = pageStmt.all(afterId, MIRROR_BATCH);
+        if (!rows.length) break;
+        enqueued += enqueueBatch(rows);
+        afterId = rows[rows.length - 1].id;
+        if (rows.length < MIRROR_BATCH) break;
+        await new Promise((r) => setImmediate(r));
     }
     _wakeWorker(id);
     _log({

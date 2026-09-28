@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Backup mirror "Run now" failed with "This database connection is busy".** The catch-up walk held a SQLite cursor open while queueing upload jobs on the same connection. It now walks the library in batches of 500 and yields between them, so a large library no longer stalls the dashboard either.
+
 ## [2.25.0] — 2026-09-29
 
 Data-safety, security and performance release — nothing can wipe or orphan your library any more (unmounted disks, shared files, duplicates), NSFW scans no longer freeze the dashboard or restart Docker containers, memory leaks fixed, and a redesigned release-notes viewer. No action needed when updating.
