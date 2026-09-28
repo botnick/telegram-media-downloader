@@ -1,0 +1,917 @@
+{
+  "entries": {
+    "GET / (admin)": {
+      "route": "GET /",
+      "request": {
+        "method": "GET",
+        "path": "/",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/index.html",
+        "rewrite": "html",
+        "identical": true
+      }
+    },
+    "GET /index.html (admin)": {
+      "route": "GET /index.html",
+      "request": {
+        "method": "GET",
+        "path": "/index.html",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/index.html",
+        "rewrite": "html",
+        "identical": true
+      }
+    },
+    "HEAD / (admin)": {
+      "route": "GET /",
+      "request": {
+        "method": "HEAD",
+        "path": "/",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "GET /login.html (anon)": {
+      "route": "GET /login.html",
+      "request": {
+        "method": "GET",
+        "path": "/login.html",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/login.html",
+        "rewrite": "html",
+        "identical": true
+      }
+    },
+    "GET /setup-needed.html (anon)": {
+      "route": "GET /setup-needed.html",
+      "request": {
+        "method": "GET",
+        "path": "/setup-needed.html",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/setup-needed.html",
+        "rewrite": "html",
+        "identical": true
+      }
+    },
+    "GET /add-account.html (admin)": {
+      "route": "GET /add-account.html",
+      "request": {
+        "method": "GET",
+        "path": "/add-account.html",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/add-account.html",
+        "rewrite": "html",
+        "identical": true
+      }
+    },
+    "GET /add-account.html (anon) → login": {
+      "route": "GET /add-account.html",
+      "request": {
+        "method": "GET",
+        "path": "/add-account.html",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "GET /share-error.html (admin)": {
+      "route": "GET /share-error.html",
+      "request": {
+        "method": "GET",
+        "path": "/share-error.html",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=0",
+        "content-type": "text/html; charset=UTF-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/share-error.html",
+        "identical": true
+      }
+    },
+    "GET / (guest)": {
+      "route": "GET /",
+      "request": {
+        "method": "GET",
+        "path": "/",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/index.html",
+        "rewrite": "html",
+        "identical": true
+      }
+    },
+    "GET /js/app.js (anon, bare)": {
+      "route": "GET /js/*",
+      "request": {
+        "method": "GET",
+        "path": "/js/app.js",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=3600",
+        "content-type": "application/javascript; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/js/app.js",
+        "rewrite": "js",
+        "identical": true
+      }
+    },
+    "GET /js/app.js?v=<version> (immutable)": {
+      "route": "GET /js/*",
+      "request": {
+        "method": "GET",
+        "path": "/js/app.js?v=<version>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-type": "application/javascript; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/js/app.js",
+        "rewrite": "js",
+        "identical": true
+      }
+    },
+    "GET /js/ws.js": {
+      "route": "GET /js/*",
+      "request": {
+        "method": "GET",
+        "path": "/js/ws.js",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=3600",
+        "content-type": "application/javascript; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/js/ws.js",
+        "rewrite": "js",
+        "identical": true
+      }
+    },
+    "GET /js/missing.js → 404": {
+      "route": "GET /js/*",
+      "request": {
+        "method": "GET",
+        "path": "/js/does-not-exist.js",
+        "as": "anon"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "public, max-age=3600",
+        "content-type": "text/html; charset=utf-8",
+        "vary": "Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /js/does-not-exist.js</pre>\n</body>\n</html>\n"
+      }
+    },
+    "GET /js/../server.js traversal": {
+      "route": "GET /js/*",
+      "request": {
+        "method": "GET",
+        "path": "/js/..%2f..%2fserver.js",
+        "as": "anon"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "public, max-age=3600",
+        "content-type": "text/html; charset=utf-8",
+        "vary": "Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /js/..%2f..%2fserver.js</pre>\n</body>\n</html>\n"
+      }
+    },
+    "GET /css/main.css": {
+      "route": "GET /css/*",
+      "request": {
+        "method": "GET",
+        "path": "/css/main.css",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600",
+        "content-type": "text/css; charset=UTF-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/css/main.css",
+        "identical": true
+      }
+    },
+    "GET /css/main.css If-None-Match → 304": {
+      "route": "GET /css/*",
+      "request": {
+        "method": "GET",
+        "path": "/css/main.css",
+        "as": "anon",
+        "headers": {
+          "if-none-match": "W/\"36106-1a0e9d4546e\""
+        }
+      },
+      "status": 304,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "GET /css/tailwind.css?v=<version>": {
+      "route": "GET /css/*",
+      "request": {
+        "method": "GET",
+        "path": "/css/tailwind.css?v=<version>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-type": "text/css; charset=UTF-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/css/tailwind.css",
+        "identical": true
+      }
+    },
+    "GET /locales/en.json": {
+      "route": "GET /locales/*",
+      "request": {
+        "method": "GET",
+        "path": "/locales/en.json",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600, must-revalidate",
+        "content-type": "application/json; charset=UTF-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/locales/en.json",
+        "identical": true
+      }
+    },
+    "GET /locales/th.json": {
+      "route": "GET /locales/*",
+      "request": {
+        "method": "GET",
+        "path": "/locales/th.json",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600, must-revalidate",
+        "content-type": "application/json; charset=UTF-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/locales/th.json",
+        "identical": true
+      }
+    },
+    "GET /icons/icon-192.png": {
+      "route": "GET /icons/*",
+      "request": {
+        "method": "GET",
+        "path": "/icons/icon-192.png",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600",
+        "content-length": "1180",
+        "content-type": "image/png",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/icons/icon-192.png",
+        "identical": true
+      }
+    },
+    "GET /icons/icon-512-maskable.png range 0-15": {
+      "route": "GET /icons/*",
+      "request": {
+        "method": "GET",
+        "path": "/icons/icon-512-maskable.png",
+        "as": "anon",
+        "headers": {
+          "range": "bytes=0-15"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600",
+        "content-length": "16",
+        "content-range": "bytes 0-15/3683",
+        "content-type": "image/png",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/icons/icon-512-maskable.png",
+        "range": [
+          0,
+          15
+        ],
+        "identical": true
+      }
+    },
+    "GET /favicon.ico (public prefix, no file) → 404": {
+      "route": null,
+      "request": {
+        "method": "GET",
+        "path": "/favicon.ico",
+        "as": "anon"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "vary": "Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /favicon.ico</pre>\n</body>\n</html>\n"
+      }
+    },
+    "GET /icons/nope.png → 404": {
+      "route": "GET /icons/*",
+      "request": {
+        "method": "GET",
+        "path": "/icons/nope.png",
+        "as": "anon"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "public, max-age=3600",
+        "content-type": "text/html; charset=utf-8",
+        "vary": "Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /icons/nope.png</pre>\n</body>\n</html>\n"
+      }
+    },
+    "GET /sw.js (anon)": {
+      "route": "GET /sw.js",
+      "request": {
+        "method": "GET",
+        "path": "/sw.js",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "content-type": "application/javascript; charset=utf-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "service-worker-allowed": "/",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/sw.js",
+        "identical": true
+      }
+    },
+    "GET /manifest.webmanifest (anon)": {
+      "route": "GET /manifest.webmanifest",
+      "request": {
+        "method": "GET",
+        "path": "/manifest.webmanifest",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=3600",
+        "content-type": "application/manifest+json; charset=utf-8",
+        "etag": "W/\"<size-hex>-<mtime-hex>\"",
+        "last-modified": "<http-date>",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "src/web/public/manifest.webmanifest",
+        "identical": true
+      }
+    },
+    "GET /CHANGELOG.md (admin)": {
+      "route": "GET /CHANGELOG.md",
+      "request": {
+        "method": "GET",
+        "path": "/CHANGELOG.md",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=3600, must-revalidate",
+        "content-type": "text/markdown; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "CHANGELOG.md",
+        "identical": true
+      }
+    },
+    "GET /CHANGELOG.md (guest)": {
+      "route": "GET /CHANGELOG.md",
+      "request": {
+        "method": "GET",
+        "path": "/CHANGELOG.md",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=3600, must-revalidate",
+        "content-type": "text/markdown; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sameAsFile": "CHANGELOG.md",
+        "identical": true
+      }
+    },
+    "GET /CHANGELOG.md (anon) → login": {
+      "route": "GET /CHANGELOG.md",
+      "request": {
+        "method": "GET",
+        "path": "/CHANGELOG.md",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "GET /photos/<alpha>.jpg (admin)": {
+      "route": "GET /photos/*",
+      "request": {
+        "method": "GET",
+        "path": "/photos/-1001000000001.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "content-length": "2679",
+        "content-type": "image/jpeg",
+        "etag": "W/\"a77-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+        "bytes": 2679
+      }
+    },
+    "GET /photos/<alpha>.jpg If-None-Match → 304": {
+      "route": "GET /photos/*",
+      "request": {
+        "method": "GET",
+        "path": "/photos/-1001000000001.jpg",
+        "as": "admin",
+        "headers": {
+          "if-none-match": "W/\"a77-18cc820d888\""
+        }
+      },
+      "status": 304,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "etag": "W/\"a77-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "GET /photos/<alpha>.jpg (guest)": {
+      "route": "GET /photos/*",
+      "request": {
+        "method": "GET",
+        "path": "/photos/-1001000000001.jpg",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "content-length": "2679",
+        "content-type": "image/jpeg",
+        "etag": "W/\"a77-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+        "bytes": 2679
+      }
+    },
+    "GET /photos/<alpha>.jpg (anon) → login": {
+      "route": "GET /photos/*",
+      "request": {
+        "method": "GET",
+        "path": "/photos/-1001000000001.jpg",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "GET /photos/unknown.jpg → 404": {
+      "route": "GET /photos/*",
+      "request": {
+        "method": "GET",
+        "path": "/photos/-1009999999999.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "content-type": "text/html; charset=utf-8"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /photos/-1009999999999.jpg</pre>\n</body>\n</html>\n"
+      }
+    },
+    "GET /api/version (admin)": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "GET /api/version reports the package.json version": {
+      "route": "GET /api/version",
+      "versionEqualsPackageJson": true
+    },
+    "GET /api/version/check (anon, no network)": {
+      "route": "GET /api/version/check",
+      "request": {
+        "method": "GET",
+        "path": "/api/version/check",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "current": "<version>",
+          "error": "unreachable",
+          "latest": null,
+          "updateAvailable": false
+        }
+      }
+    },
+    "GET /api/version/check?force=1 (guest)": {
+      "route": "GET /api/version/check",
+      "request": {
+        "method": "GET",
+        "path": "/api/version/check?force=1",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "current": "<version>",
+          "error": "unreachable",
+          "latest": null,
+          "updateAvailable": false
+        }
+      }
+    },
+    "GET /api/version If-None-Match → 304": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "if-none-match": "W/\"32-fAyh/tblsUOXqcDk0AR6/ktHqUI\""
+        }
+      },
+      "status": 304,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "etag": "W/\"<express-etag>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "GET /metrics (anon)": {
+      "route": "GET /metrics",
+      "request": {
+        "method": "GET",
+        "path": "/metrics",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8; version=0.0.4",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "metrics": [
+          "# HELP tgdl_accounts_loaded Telegram accounts currently loaded.",
+          "# TYPE tgdl_accounts_loaded gauge",
+          "tgdl_accounts_loaded <int>",
+          "# HELP tgdl_active_downloads Downloads currently in flight.",
+          "# TYPE tgdl_active_downloads gauge",
+          "tgdl_active_downloads <int>",
+          "# HELP tgdl_queue_size Current downloader queue depth (high + normal lanes).",
+          "# TYPE tgdl_queue_size gauge",
+          "tgdl_queue_size <int>",
+          "# HELP tgdl_workers Active downloader worker count.",
+          "# TYPE tgdl_workers gauge",
+          "tgdl_workers <int>",
+          "# TYPE process_resident_memory_bytes gauge",
+          "process_resident_memory_bytes <int>",
+          "# TYPE process_heap_bytes gauge",
+          "process_heap_bytes <int>",
+          "# TYPE process_uptime_seconds counter",
+          "process_uptime_seconds <int>"
+        ]
+      },
+      "note": "sample values replaced by <int>/<float>"
+    },
+    "GET /metrics without token → 401": {
+      "route": "GET /metrics",
+      "request": {
+        "method": "GET",
+        "path": "/metrics",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "# unauthorized\n"
+      }
+    },
+    "GET /metrics wrong token → 401": {
+      "route": "GET /metrics",
+      "request": {
+        "method": "GET",
+        "path": "/metrics?token=nope",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "# unauthorized\n"
+      }
+    },
+    "GET /metrics with token": {
+      "route": "GET /metrics",
+      "request": {
+        "method": "GET",
+        "path": "/metrics?token=scrape-secret",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8; version=0.0.4",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "metrics": [
+          "# HELP tgdl_accounts_loaded Telegram accounts currently loaded.",
+          "# TYPE tgdl_accounts_loaded gauge",
+          "tgdl_accounts_loaded <int>",
+          "# HELP tgdl_active_downloads Downloads currently in flight.",
+          "# TYPE tgdl_active_downloads gauge",
+          "tgdl_active_downloads <int>",
+          "# HELP tgdl_queue_size Current downloader queue depth (high + normal lanes).",
+          "# TYPE tgdl_queue_size gauge",
+          "tgdl_queue_size <int>",
+          "# HELP tgdl_workers Active downloader worker count.",
+          "# TYPE tgdl_workers gauge",
+          "tgdl_workers <int>",
+          "# TYPE process_resident_memory_bytes gauge",
+          "process_resident_memory_bytes <int>",
+          "# TYPE process_heap_bytes gauge",
+          "process_heap_bytes <int>",
+          "# TYPE process_uptime_seconds counter",
+          "process_uptime_seconds <int>"
+        ]
+      },
+      "note": "sample values replaced"
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "29db244183": {
+      "content-security-policy": "default-src 'none'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
