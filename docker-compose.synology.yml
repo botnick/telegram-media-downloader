@@ -22,6 +22,7 @@ services:
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
       - FFMPEG_HWACCEL=${FFMPEG_HWACCEL:-vaapi}
       - FACES_SERVICE_URL=http://tgdl-faces:8011
+      - TGDL_FACES_SIDECAR_TOKEN=${TGDL_FACES_API_TOKEN:-}
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
       - "autoheal=true"
@@ -58,6 +59,7 @@ services:
       - TGDL_FACES_ALLOW_ROOTS=/app/data/downloads
       - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
       - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
+      - TGDL_FACES_API_TOKEN=${TGDL_FACES_API_TOKEN:-}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]

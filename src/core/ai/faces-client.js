@@ -74,7 +74,26 @@ const _sidecarAgent = new Agent({
     connect: { timeout: 10_000 },
 });
 let _fetchImpl = (url, init) => undiciFetch(url, { ...init, dispatcher: _sidecarAgent });
-const _fetch = (url, init) => _fetchImpl(url, init);
+// Optional shared secret for a sidecar reachable over the network
+// (`faces.sidecarToken` / TGDL_FACES_SIDECAR_TOKEN <-> the sidecar's
+// TGDL_FACES_API_TOKEN). Sent on every call; sidecars without a token
+// configured — including every release before 0.5.0 — ignore it.
+let _sidecarToken = '';
+const _fetch = (url, init = {}) => {
+    if (!_sidecarToken) return _fetchImpl(url, init);
+    return _fetchImpl(url, {
+        ...init,
+        headers: { ...(init.headers || {}), ...sidecarAuthHeaders() },
+    });
+};
+
+const _UNAUTHORIZED =
+    'sidecar rejected the API token (401) — set faces.sidecarToken / TGDL_FACES_SIDECAR_TOKEN to the sidecar TGDL_FACES_API_TOKEN';
+
+/** Auth headers for callers outside this module that talk to the sidecar. */
+export function sidecarAuthHeaders() {
+    return _sidecarToken ? { authorization: `Bearer ${_sidecarToken}` } : {};
+}
 
 /**
  * The sidecar could not produce an answer for reasons unrelated to the
@@ -84,13 +103,16 @@ const _fetch = (url, init) => _fetchImpl(url, init);
  * modules in tests can throw a plain object-compatible error.
  */
 export class SidecarUnavailableError extends Error {
-    constructor(message, cause, { timedOut = false } = {}) {
+    constructor(message, cause, { timedOut = false, fatal = false } = {}) {
         super(message);
         this.name = 'SidecarUnavailableError';
         this.code = 'SIDECAR_UNAVAILABLE';
         // The sidecar was reachable but our own deadline expired — retrying
         // the same request with the same deadline won't go differently.
         this.timedOut = timedOut;
+        // Retrying can't help (e.g. the sidecar rejects our API token):
+        // the scan should stop and say so.
+        this.fatal = fatal;
         if (cause) this.cause = cause;
     }
 }
@@ -128,6 +150,7 @@ export function applyFacesCfg(cfg = {}) {
     if (Number.isFinite(cfg.sidecarMaxConcurrency) && cfg.sidecarMaxConcurrency >= 0) {
         _maxConcurrency = cfg.sidecarMaxConcurrency | 0;
     }
+    if (typeof cfg.sidecarToken === 'string') _sidecarToken = cfg.sidecarToken.trim();
     _envBootstrapped = true;
 }
 
@@ -148,6 +171,8 @@ function _bootstrapFromEnv() {
     if (Array.isArray(bo) && bo.length) _retryBackoffMs = bo;
     const mc = probe('sidecarMaxConcurrency');
     if (Number.isFinite(mc) && mc >= 0) _maxConcurrency = mc | 0;
+    const tok = probe('sidecarToken');
+    if (typeof tok === 'string') _sidecarToken = tok.trim();
 }
 
 /**
@@ -501,6 +526,9 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
     }
 
     if (!batchRes.ok) {
+        if (batchRes.status === 401) {
+            return unavailable(_UNAUTHORIZED, null, { fatal: true });
+        }
         // 5xx (incl. 503 model_loading), 408 and 429 are the sidecar's
         // state, not the files'. Other 4xx is a request bug: keep the old
         // "all null" answer.
@@ -518,12 +546,22 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
 
     const output = new Array(absPaths.length).fill(null);
     const pathFallbacks = [];
+    // The caller resolved every path on this machine, so "file_not_found"
+    // means the sidecar can't see our filesystem — an external sidecar
+    // (another host, or a container without the downloads mount) whose
+    // allow-list happens to accept the path. It used to be stored as
+    // "no faces"; send those files as bytes instead.
+    const unseen = [];
 
     for (let i = 0; i < absPaths.length; i++) {
         const item = resultMap.get(absPaths[i]);
         if (!item) continue; // path missing from response → null
         if (item.error === 'path_not_allowed') {
             pathFallbacks.push(i);
+            continue;
+        }
+        if (item.error === 'file_not_found') {
+            unseen.push(i);
             continue;
         }
         if (item.error) {
@@ -545,8 +583,39 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
     for (const idx of pathFallbacks) {
         output[idx] = await detectFaces(absPaths[idx], cfg, onLog, { throwOnUnavailable: strict });
     }
+    for (const idx of unseen) {
+        output[idx] = await _detectB64(absPaths[idx], cfg, onLog, strict);
+        if (output[idx] !== null && !_pathRejectedLogged) {
+            // Bytes worked where the path didn't: stop sending paths.
+            _log(
+                onLog,
+                'info',
+                'sidecar cannot see files at their local paths (external sidecar?); switching to b64 for all files',
+            );
+            _pathRejectedLogged = true;
+        }
+    }
 
     return output;
+}
+
+// Detect one local file by POSTing its bytes (skips path mode).
+function _detectB64(absPath, cfg, onLog, strict) {
+    const facesCfg = cfg?.faces || cfg || {};
+    const baseBody = {
+        min_score: _pickNumber([cfg?.minDetectionScore, facesCfg.minDetectionScore], 0.5),
+        min_box_px: _pickNumber([cfg?.minFaceSizePx, facesCfg.minFaceSizePx], 60),
+        ar_range:
+            Array.isArray(facesCfg.arRange) && facesCfg.arRange.length === 2
+                ? facesCfg.arRange
+                : [0.5, 2.0],
+    };
+    const url = getSidecarUrl();
+    if (!url) {
+        if (strict) throw new SidecarUnavailableError('sidecar URL unset');
+        return null;
+    }
+    return _detectInner(absPath, null, baseBody, url, onLog, strict, true);
 }
 
 /**
@@ -660,11 +729,24 @@ export async function detectFacesInVideo(
     }
 
     if (!res.ok) {
+        if (res.status === 401) return unavailable(_UNAUTHORIZED, null, { fatal: true });
         if (res.status >= 500 || res.status === 408 || res.status === 429) {
             return unavailable(`sidecar returned ${res.status}`);
         }
         _log(onLog, 'warn', `detectFacesInVideo: sidecar returned ${res.status} for ${absPath}`);
         return null;
+    }
+
+    // The sidecar can't open the file at this path: a remote sidecar
+    // without our filesystem, or a container OpenCV can't decode. The
+    // caller verified the file exists here, so extract frames locally.
+    if (resBody?.error === 'file_not_found') {
+        _log(
+            onLog,
+            'info',
+            `detectFacesInVideo: sidecar could not open ${absPath}; sending frames instead`,
+        );
+        return _detectVideoB64Fallback(absPath, cfg, url, onLog, signal, strict);
     }
 
     if (resBody?.error) {
@@ -695,10 +777,19 @@ async function _sendB64(absPath, baseBody, url, onLog, strict = false) {
     }
 }
 
-async function _detectInner(absPath, pathBody, baseBody, url, onLog, strict = false) {
+async function _detectInner(
+    absPath,
+    pathBody,
+    baseBody,
+    url,
+    onLog,
+    strict = false,
+    forceB64 = false,
+) {
     let res;
+    let sentBytes = forceB64 || _pathRejectedLogged;
 
-    if (_pathRejectedLogged) {
+    if (sentBytes) {
         res = await _sendB64(absPath, baseBody, url, onLog, strict);
         if (res === null) return null;
     } else {
@@ -725,6 +816,7 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog, strict = fa
                     'path mode rejected by sidecar; switching to b64 for all files',
                 );
                 _pathRejectedLogged = true;
+                sentBytes = true;
                 res = await _sendB64(absPath, baseBody, url, onLog, strict);
                 if (res === null) return null;
             }
@@ -733,6 +825,9 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog, strict = fa
 
     if (!res || !res.ok) {
         const status = res?.status ?? 'no_response';
+        if (status === 401 && strict) {
+            throw new SidecarUnavailableError(_UNAUTHORIZED, null, { fatal: true });
+        }
         _log(onLog, 'warn', `detect ${absPath}: sidecar returned ${status}`);
         return null;
     }
@@ -745,6 +840,12 @@ async function _detectInner(absPath, pathBody, baseBody, url, onLog, strict = fa
             throw new SidecarUnavailableError(`invalid JSON from sidecar: ${e?.message || e}`, e);
         _log(onLog, 'warn', `detect ${absPath}: invalid JSON from sidecar: ${e?.message || e}`);
         return null;
+    }
+
+    // Path mode against a sidecar that can't see our filesystem (see the
+    // batch path): retry this file as bytes.
+    if (body?.error === 'file_not_found' && !sentBytes) {
+        return _detectInner(absPath, pathBody, baseBody, url, onLog, strict, true);
     }
 
     // The sidecar returns 200 + an `error` field for soft failures
@@ -801,7 +902,9 @@ function _parseFacesList(faces, exifOriented = false) {
  */
 async function _postWithRetry(url, body, onLog) {
     const maxRetries = Math.max(1, _maxRetries);
-    const base = _baseUrl(url);
+    // The configured sidecar URL, not the endpoint's origin: an external
+    // sidecar behind a reverse proxy can live under a path prefix.
+    const base = getSidecarUrl() || _baseUrl(url);
     let lastErr = null;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         let bail = false;
@@ -1290,6 +1393,7 @@ export function _resetForTests() {
     _envBootstrapped = false;
     _pathRejectedLogged = false;
     _ffmpegBin = null;
+    _sidecarToken = '';
 }
 
 /** Test-only: snapshot the resolved runtime knobs. */

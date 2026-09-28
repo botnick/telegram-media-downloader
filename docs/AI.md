@@ -209,7 +209,8 @@ should read the nested path.
 | Config key | Env var | Default | Description |
 |---|---|---|---|
 | `backend` | `TGDL_FACES_BACKEND` | `sidecar` | `sidecar` or `disabled` — kill switch for the spawn path |
-| `sidecarUrl` | `TGDL_FACES_SIDECAR_URL` | `''` | Operator override URL; empty = compose env or local auto-spawn |
+| `sidecarUrl` | `TGDL_FACES_SIDECAR_URL` | `''` | Operator override URL; empty = compose env or local auto-spawn (see [External sidecar](#external-sidecar)) |
+| `sidecarToken` | `TGDL_FACES_SIDECAR_TOKEN` | `''` | Sent as `Authorization: Bearer …` to a sidecar started with `TGDL_FACES_API_TOKEN` |
 | `autoDownload` | `TGDL_FACES_AUTO_DOWNLOAD` | `true` | `false` refuses to fetch the binary (offline mode) |
 | `minDetectionScore` | `TGDL_FACES_MIN_DETECTION_SCORE` | `0.5` | Detector score floor (0–1) |
 | `minFaceSizePx` | `TGDL_FACES_MIN_FACE_SIZE_PX` | `80` | Reject boxes smaller than this on the shorter edge |
@@ -305,6 +306,38 @@ clustering pass is a batch operation — kick it off explicitly from the
 maintenance page when you want it. While the sidecar is unreachable (or
 face clustering is off) new downloads are left unstamped, so the next
 scan covers them.
+
+### External sidecar
+
+Point `sidecarUrl` (Maintenance → AI → External sidecar URL, or
+`TGDL_FACES_SIDECAR_URL`) at a sidecar on another machine — typically a
+GPU box running `ghcr.io/botnick/tgdl-faces:cuda-latest`. It does not need
+access to your downloads:
+
+- Photos are sent by path first. If the sidecar answers
+  `path_not_allowed` (403) **or** `file_not_found` for a file that exists
+  here, the file is re-sent as bytes and the client switches to bytes for
+  the rest of the run. (Earlier releases stored `file_not_found` as "no
+  faces" — with a remote sidecar whose allow-list matched the path, a whole
+  scan finished with zero faces.)
+- Videos the sidecar can't open by path are decoded here with ffmpeg and
+  sent as frames (`/detect/batch-b64`).
+- `https://` URLs and URLs with a path prefix (reverse proxy / tunnel)
+  work for every call, including the health and `/info` probes.
+- Reachability is probed at start and every `healthMonitorIntervalMs`; an
+  unreachable URL shows as failed in the AI doctor instead of "running".
+  Scans wait for it (`sidecarWaitMs`) rather than recording outages.
+- Exposed beyond localhost, start the sidecar with
+  `TGDL_FACES_API_TOKEN=<secret>` and set the same value in
+  `sidecarToken` / `TGDL_FACES_SIDECAR_TOKEN` (compose: put
+  `TGDL_FACES_API_TOKEN` in `.env` and both services pick it up). Every
+  endpoint but `/health` then requires it; a mismatch stops the scan with a
+  401 error instead of marking anything scanned. Sidecars before 0.5.0
+  ignore the header.
+- Reverse proxies have their own limits — Cloudflare, for example, ends
+  proxied requests after 100 s and caps bodies at 100 MB. Keep
+  `batchSize` modest for CPU-only remotes; a GPU sidecar is well inside
+  both.
 
 ### Sidecar CPU budget
 

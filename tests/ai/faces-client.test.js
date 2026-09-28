@@ -535,3 +535,74 @@ describe('real HTTP through the undici client', () => {
         }
     });
 });
+
+describe('external sidecar (no shared filesystem)', () => {
+    it('file_not_found from the sidecar → resend as bytes, then stay in b64 mode', async () => {
+        const fsMod = await import('node:fs');
+        const osMod = await import('node:os');
+        const pathMod = await import('node:path');
+        const file = pathMod.join(osMod.tmpdir(), `tgdl-ext-${process.pid}.jpg`);
+        fsMod.writeFileSync(file, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+        client.setSidecarUrl('http://remote:8011');
+        const bodies = [];
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+            const body = JSON.parse(init.body);
+            bodies.push({ url: String(url), body });
+            if (String(url).endsWith('/detect/batch')) {
+                // Allow-list accepts the path, but the file isn't on this host.
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        results: body.files.map((f) => ({
+                            file: f,
+                            faces: [],
+                            error: 'file_not_found',
+                        })),
+                    }),
+                };
+            }
+            // /detect with image_b64
+            return {
+                ok: true,
+                status: 200,
+                clone() {
+                    return this;
+                },
+                json: async () => ({
+                    faces: [{ x: 1, y: 1, w: 90, h: 90, score: 0.9, embedding: [1, 0] }],
+                    exif_oriented: true,
+                }),
+            };
+        });
+        try {
+            const out = await client.detectFacesBatch([file], {}, null, null, {
+                throwOnUnavailable: true,
+            });
+            expect(out[0]).toHaveLength(1); // not stored as "no faces"
+            expect(bodies[1].body.image_b64).toBeTruthy();
+            expect(bodies[1].body.path).toBeUndefined();
+            // Next batch goes straight to bytes — no more path attempts.
+            bodies.length = 0;
+            await client.detectFacesBatch([file], {}, null, null, { throwOnUnavailable: true });
+            expect(bodies.map((b) => b.url.replace('http://remote:8011', ''))).toEqual(['/detect']);
+        } finally {
+            fsMod.rmSync(file, { force: true });
+        }
+    });
+
+    it('sends the configured API token and treats 401 as fatal', async () => {
+        client.setSidecarUrl('http://remote:8011');
+        client.applyFacesCfg({ sidecarToken: 's3cret' });
+        const seen = [];
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+            seen.push(init?.headers?.authorization);
+            return { ok: false, status: 401, json: async () => ({ code: 'unauthorized' }) };
+        });
+        await expect(
+            client.detectFacesBatch(['/a.jpg'], {}, null, null, { throwOnUnavailable: true }),
+        ).rejects.toMatchObject({ code: 'SIDECAR_UNAVAILABLE', fatal: true });
+        expect(seen[0]).toBe('Bearer s3cret');
+        expect(client.sidecarAuthHeaders()).toEqual({ authorization: 'Bearer s3cret' });
+    });
+});

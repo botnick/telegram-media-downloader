@@ -391,6 +391,9 @@ export function startFacesScan(cfg, onProgress, onDone, onLog) {
             // that expired on a single file / video won't pass on a retry
             // with the same deadline, so it is skipped straight away.
             const noteFailure = (row, abs, err, alone = false) => {
+                // Misconfiguration (e.g. rejected API token): every file would
+                // fail the same way — stop now, nothing stamped.
+                if (err?.fatal) throw err;
                 const n =
                     alone && err?.timedOut ? MAX_ITEM_ATTEMPTS : (attempts.get(row.id) || 0) + 1;
                 attempts.set(row.id, n);

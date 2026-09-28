@@ -177,6 +177,19 @@ describe('sidecar outage handling', () => {
         ]);
     });
 
+    it('a rejected API token stops the scan at once, nothing stamped', async () => {
+        const ids = ['r1', 'r2', 'r3'].map((n) => addPhoto(`${n}.jpg`));
+        client.detectFacesBatch.mockRejectedValue(
+            new client.SidecarUnavailableError('sidecar rejected the API token (401)', null, {
+                fatal: true,
+            }),
+        );
+        const final = await runScan();
+        expect(final.error).toMatch(/401/);
+        for (const id of ids) expect(stamped(id)).toBe(false);
+        expect(client.waitForSidecarReady).toHaveBeenCalledTimes(1); // no outage wait loop
+    });
+
     it('per-file answers (no faces / decode_failed → []) are stamped as before', async () => {
         const id = addPhoto('k.jpg');
         client.detectFacesBatch.mockImplementation(async (paths) => paths.map(() => []));

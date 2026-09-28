@@ -58,7 +58,14 @@ const NUMBER_KEYS = new Set([
 
 const BOOL_KEYS = new Set(['autoDownload', 'federate', 'qualityWeightedCentroid']);
 
-const STRING_KEYS = new Set(['backend', 'sidecarUrl', 'detectorModel', 'providers', 'detector']);
+const STRING_KEYS = new Set([
+    'backend',
+    'sidecarUrl',
+    'sidecarToken',
+    'detectorModel',
+    'providers',
+    'detector',
+]);
 
 // Keys whose value is an array of numbers parsed from comma- or
 // colon-separated env strings.
@@ -72,6 +79,8 @@ const STRING_ARRAY_KEYS = new Set(['fileTypes', 'downloadMirrors', 'excludeExten
 const ENV_MAP = Object.freeze({
     backend: 'TGDL_FACES_BACKEND',
     sidecarUrl: 'TGDL_FACES_SIDECAR_URL',
+    // Shared secret for a network-reachable sidecar (its TGDL_FACES_API_TOKEN).
+    sidecarToken: 'TGDL_FACES_SIDECAR_TOKEN',
     autoDownload: 'TGDL_FACES_AUTO_DOWNLOAD',
     minDetectionScore: 'TGDL_FACES_MIN_DETECTION_SCORE',
     minFaceSizePx: 'TGDL_FACES_MIN_FACE_SIZE_PX',

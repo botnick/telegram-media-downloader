@@ -105,7 +105,10 @@ import {
     resolveFfmpegBin,
 } from '../core/thumbs.js';
 import { createFaceCropper } from '../core/ai/face-crops.js';
-import { detectFacesInImage as aiDetectFacesInImage } from '../core/ai/faces-client.js';
+import {
+    detectFacesInImage as aiDetectFacesInImage,
+    sidecarAuthHeaders as aiSidecarAuthHeaders,
+} from '../core/ai/faces-client.js';
 import {
     buildAllSeekbar,
     getMetaForDownload as getSeekbarMetaForDownload,
@@ -7682,6 +7685,7 @@ async function _fetchSidecarInfo(url) {
     try {
         const res = await fetch(`${url.replace(/\/+$/, '')}/info`, {
             signal: controller.signal,
+            headers: aiSidecarAuthHeaders(),
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -7995,7 +7999,10 @@ app.get('/api/ai/faces/provider-probe', async (_req, res) => {
         const t = setTimeout(() => ctrl.abort(), 10_000);
         let r;
         try {
-            r = await globalThis.fetch(`${url}/providers`, { signal: ctrl.signal });
+            r = await globalThis.fetch(`${url}/providers`, {
+                signal: ctrl.signal,
+                headers: aiSidecarAuthHeaders(),
+            });
         } finally {
             clearTimeout(t);
         }
@@ -8251,6 +8258,7 @@ app.post('/api/ai/preload-model/:name', async (_req, res) => {
         const r = await fetch(`${url}/preload/${encodeURIComponent(name)}`, {
             method: 'POST',
             signal: AbortSignal.timeout(5000),
+            headers: aiSidecarAuthHeaders(),
         });
         res.json(await r.json());
     } catch (e) {
@@ -8266,6 +8274,7 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
         if (!url) return res.status(503).json({ error: 'sidecar not running' });
         const r = await fetch(`${url}/preload/${encodeURIComponent(name)}/status`, {
             signal: AbortSignal.timeout(3000),
+            headers: aiSidecarAuthHeaders(),
         });
         res.json(await r.json());
     } catch (e) {

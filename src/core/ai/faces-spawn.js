@@ -29,7 +29,7 @@ import net from 'net';
 import os from 'os';
 import { spawn, spawnSync } from 'child_process';
 
-import { setSidecarUrl, getSidecarUrl, applyFacesCfg } from './faces-client.js';
+import { setSidecarUrl, getSidecarUrl, applyFacesCfg, sidecarAuthHeaders } from './faces-client.js';
 import { resolveAllFaces } from './faces-config.js';
 import { getDataDir, getDownloadsDir, getRepoRoot } from '../paths.js';
 
@@ -241,6 +241,10 @@ export function stopSidecar() {
         clearInterval(_healthMonitorTimer);
         _healthMonitorTimer = null;
     }
+    if (_remoteWatchTimer) {
+        clearInterval(_remoteWatchTimer);
+        _remoteWatchTimer = null;
+    }
     _killChild();
     _starting = null;
     _state = 'idle';
@@ -312,6 +316,7 @@ async function _doStart() {
         _log('info', `using external sidecar at ${webUrl}`);
         await _maybeMigrateDim(webUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: webUrl, mode: 'external' });
+        _watchRemote(webUrl, 'external');
         return getSidecarStatus();
     }
 
@@ -327,6 +332,7 @@ async function _doStart() {
         _log('info', `using docker sidecar at ${envUrl}`);
         await _maybeMigrateDim(envUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: envUrl, mode: 'docker' });
+        _watchRemote(envUrl, 'docker');
         return getSidecarStatus();
     }
 
@@ -341,6 +347,7 @@ async function _doStart() {
         _log('info', `using legacy override sidecar at ${legacyUrl}`);
         await _maybeMigrateDim(legacyUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: legacyUrl, mode: 'override' });
+        _watchRemote(legacyUrl, 'override');
         return getSidecarStatus();
     }
 
@@ -628,6 +635,43 @@ async function _doStart() {
     _log('error', _error);
     _broadcast({ type: 'ai_faces_status', ok: false, error: _error });
     return getSidecarStatus();
+}
+
+// A sidecar we only have a URL for (external / docker / override) used
+// to be reported "healthy" the moment the URL was set, reachable or not —
+// the doctor showed a green row for a compose sidecar whose profile isn't
+// even running. Probe it now and every monitor interval and reflect the
+// answer in the status. The URL stays set either way: scans wait for it
+// (faces-client waitForSidecarReady) and it may come up later.
+let _remoteWatchTimer = null;
+function _watchRemote(url, mode) {
+    if (_remoteWatchTimer) clearInterval(_remoteWatchTimer);
+    let lastOk = null;
+    const check = async () => {
+        if (getSidecarUrl() !== url) return;
+        const ok = await _probeHealth(url, 5000);
+        if (ok === lastOk) return;
+        lastOk = ok;
+        if (ok) {
+            _state = 'healthy';
+            _error = null;
+            _log('info', `${mode} sidecar at ${url} is reachable`);
+            await _maybeMigrateDim(url);
+        } else {
+            _state = 'failed';
+            _error =
+                mode === 'docker'
+                    ? `sidecar at ${url} is not reachable — is the compose \`faces\` profile up? (docker compose --profile faces up -d)`
+                    : `sidecar at ${url} is not reachable`;
+            _log('warn', _error);
+        }
+        _broadcast({ type: 'ai_faces_status', ok, url, mode, error: ok ? null : _error });
+    };
+    check().catch(() => {});
+    _remoteWatchTimer = setInterval(() => {
+        check().catch(() => {});
+    }, _healthMonitorIntervalMs());
+    if (_remoteWatchTimer.unref) _remoteWatchTimer.unref();
 }
 
 // Helper used by `_doStart` to wrap the prebuilt-binary spawn with the
@@ -1656,32 +1700,43 @@ function _wirePipeLogging(stream, level) {
     });
 }
 
-function _probeHealth(url) {
+// External / Docker sidecars may sit behind an https reverse proxy or
+// tunnel; the probes used http.get unconditionally, which throws on an
+// https URL (so /info — and the dim migration — never ran for them).
+function _getter(url) {
+    return String(url).startsWith('https:') ? https : http;
+}
+
+function _probeHealth(url, timeoutMs = 2000) {
     return new Promise((resolve) => {
-        const req = http.get(`${url}/health`, { timeout: 2000 }, (res) => {
-            if (res.statusCode !== 200) {
-                res.resume();
-                return resolve(false);
-            }
-            let buf = '';
-            res.setEncoding('utf8');
-            res.on('data', (c) => {
-                buf += c;
-                if (buf.length > 4096) {
-                    req.destroy();
-                    resolve(false);
+        const req = _getter(url).get(
+            `${url}/health`,
+            { timeout: timeoutMs, headers: sidecarAuthHeaders() },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return resolve(false);
                 }
-            });
-            res.on('end', () => {
-                try {
-                    const body = JSON.parse(buf);
-                    resolve(body?.ok === true);
-                } catch {
-                    resolve(false);
-                }
-            });
-            res.on('error', () => resolve(false));
-        });
+                let buf = '';
+                res.setEncoding('utf8');
+                res.on('data', (c) => {
+                    buf += c;
+                    if (buf.length > 4096) {
+                        req.destroy();
+                        resolve(false);
+                    }
+                });
+                res.on('end', () => {
+                    try {
+                        const body = JSON.parse(buf);
+                        resolve(body?.ok === true);
+                    } catch {
+                        resolve(false);
+                    }
+                });
+                res.on('error', () => resolve(false));
+            },
+        );
         req.on('timeout', () => {
             req.destroy();
             resolve(false);
@@ -1847,29 +1902,33 @@ async function _maybeMigrateDim(url) {
 
 function _fetchInfo(url) {
     return new Promise((resolve, reject) => {
-        const req = http.get(`${url}/info`, { timeout: 5000 }, (res) => {
-            if (res.statusCode !== 200) {
-                res.resume();
-                return reject(new Error(`http ${res.statusCode}`));
-            }
-            let buf = '';
-            res.setEncoding('utf8');
-            res.on('data', (c) => {
-                buf += c;
-                if (buf.length > 16_384) {
-                    req.destroy();
-                    reject(new Error('info body too large'));
+        const req = _getter(url).get(
+            `${url}/info`,
+            { timeout: 5000, headers: sidecarAuthHeaders() },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`http ${res.statusCode}`));
                 }
-            });
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(buf));
-                } catch (e) {
-                    reject(e);
-                }
-            });
-            res.on('error', reject);
-        });
+                let buf = '';
+                res.setEncoding('utf8');
+                res.on('data', (c) => {
+                    buf += c;
+                    if (buf.length > 16_384) {
+                        req.destroy();
+                        reject(new Error('info body too large'));
+                    }
+                });
+                res.on('end', () => {
+                    try {
+                        resolve(JSON.parse(buf));
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+                res.on('error', reject);
+            },
+        );
         req.on('timeout', () => {
             req.destroy();
             reject(new Error('info timeout'));
@@ -1947,6 +2006,10 @@ export function _resetForTests() {
     if (_healthMonitorTimer) {
         clearInterval(_healthMonitorTimer);
         _healthMonitorTimer = null;
+    }
+    if (_remoteWatchTimer) {
+        clearInterval(_remoteWatchTimer);
+        _remoteWatchTimer = null;
     }
     _starting = null;
     _child = null;
