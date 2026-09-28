@@ -876,15 +876,18 @@ function renderPage(page, params = {}) {
         _setPageText('title', 'groups.page.title', 'Manage Groups');
         _setPageText('subtitle', 'groups.page.subtitle', 'Configure monitoring and filters');
     } else if (page === 'viewer') {
-        if (state.currentGroup) {
+        if (state.currentGroup && !params.allMedia) {
             _setPageRaw('title', state.currentGroup);
+            updateHeaderAvatar(state.currentGroupId, state.currentGroup);
             // Returning to an already-loaded group gallery: keep the grid
             // and put the scroll + file count back.
             if (prevPage !== 'viewer' && _galleryLoadedFor(_galleryViewKey())) {
                 _restoreGalleryChrome();
             }
         } else {
-            showAllMedia();
+            const opts = _allMediaOpts;
+            _allMediaOpts = null;
+            showAllMedia(opts || undefined);
         }
     } else if (page === 'backfill') {
         _setPageText('title', 'backfill.page.title', 'Backfill');
@@ -1031,14 +1034,24 @@ function renderPage(page, params = {}) {
 
 // Register hash routes. Patterns documented in router.js.
 function registerRoutes() {
-    router.route('/viewer', () => renderPage('viewer'));
-    router.route('/viewer/:groupId', ({ params }) => {
-        // Open a specific group's gallery — match the existing openGroup()
-        // behaviour so the sidebar selection stays consistent.
-        renderPage('viewer');
-        // Always resolve through the canonical lookup so deep-linking to a
-        // group whose name was only just refreshed still picks it up.
-        openGroup(params.groupId, getGroupName(params.groupId));
+    // #/viewer is All Media; a chat's gallery is #/viewer/<id>.
+    router.route('/viewer', () => renderPage('viewer', { allMedia: true }));
+    router.route('/viewer/:groupId', ({ params, query }) => {
+        const id = params.groupId;
+        // Back / forward to the chat that's already loaded: keep its grid,
+        // filters and scroll position.
+        if (
+            String(state.currentGroupId) === String(id) &&
+            (state.viewerPeerScope || null) === (query.peer || null) &&
+            _galleryLoadedFor(_galleryViewKey())
+        ) {
+            renderPage('viewer');
+            return;
+        }
+        state.viewerPeerScope = query.peer || null;
+        // Resolve through the canonical lookup so deep-linking to a group
+        // whose name was only just refreshed still picks it up.
+        _showGroup(id, getGroupName(id));
     });
     router.route('/groups', () => renderPage('groups'));
     router.route('/groups/:groupId', ({ params }) => {
@@ -1095,7 +1108,13 @@ function registerRoutes() {
         // BEFORE opening the sheet: the sheet pushes its own (Back-to-
         // close) history entry, which this replace must not clobber.
         try {
-            history.replaceState(null, '', '#/viewer');
+            history.replaceState(
+                null,
+                '',
+                state.currentGroupId != null
+                    ? `#/viewer/${encodeURIComponent(String(state.currentGroupId))}`
+                    : '#/viewer',
+            );
         } catch {
             /* ignore */
         }
@@ -1487,7 +1506,18 @@ function normalize(str) {
 }
 
 // ============ Open Group / Show All ============
+// Open a chat's gallery. Goes through the hash (#/viewer/<id>, plus
+// ?peer= for a peer's chat) so the chat has its own URL: reload, Back
+// and shared links land on it. The route runs _showGroup().
 function openGroup(groupId, groupName) {
+    const peer = state.viewerPeerScope ? `?peer=${encodeURIComponent(state.viewerPeerScope)}` : '';
+    const target = `viewer/${encodeURIComponent(String(groupId))}${peer}`;
+    // Clicking the chat that's already open reloads it.
+    if (location.hash === `#/${target}`) _showGroup(groupId, groupName);
+    else navigateTo(target);
+}
+
+function _showGroup(groupId, groupName) {
     state.currentGroupId = groupId;
     // Always reconcile with the canonical store so the modal/header never
     // show a stale "Unknown" or numeric id when /api/groups/refresh-info
@@ -1503,14 +1533,13 @@ function openGroup(groupId, groupName) {
     // out everything else for the new group.
     resetGalleryFilter();
 
+    renderPage('viewer');
     _setPageRaw('title', state.currentGroup);
     _setPageText('subtitle', 'viewer.subtitle.loading', 'Loading...');
     // Mirror the sidebar avatar into the header so the user sees which
-    // chat they're inside. Falls back to a coloured initial when there's
-    // no profile photo cached yet.
+    // chat they're inside (after renderPage, which sets the page glyph).
+    // Falls back to a coloured initial when there's no profile photo yet.
     updateHeaderAvatar(groupId, state.currentGroup);
-    _syncChatHeaderActions();
-    navigateTo('viewer');
     loadGroupFiles(groupId);
 }
 
@@ -1744,7 +1773,15 @@ function _restoreGalleryChrome() {
 // filter and the scroll position when nothing that shapes the list
 // (group, filter, pinned, scope) changed; they used to throw 10k+ tiles
 // away and refetch from page 1 on every return.
+let _allMediaOpts = null; // showAllMedia() options carried across the hash change
 function showAllMedia(opts) {
+    // In a chat (#/viewer/<id>): switch the URL to #/viewer first; its
+    // route comes back here with the same options.
+    if (state.currentPage === 'viewer' && /^#\/viewer\/./.test(location.hash)) {
+        _allMediaOpts = opts || null;
+        navigateTo('viewer');
+        return;
+    }
     const force = opts?.force === true;
     const wasAllMedia = state.currentGroupId == null && !state.viewerPeerScope;
     state.currentGroup = null;
