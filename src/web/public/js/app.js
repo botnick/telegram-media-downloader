@@ -968,8 +968,8 @@ function renderPage(page, params = {}) {
         }
     } else if (page === 'groups') {
         renderGroupsConfig({ restoreScroll: prevPage === 'chat' });
-        _setPageText('title', 'groups.page.title', 'Manage Groups');
-        _setPageText('subtitle', 'groups.page.subtitle', 'Configure monitoring and filters');
+        _setPageText('title', 'groups.page.title', 'Chats');
+        _setPageText('subtitle', 'groups.page.subtitle', 'Pick what to monitor and backfill');
     } else if (page === 'chat') {
         const name = getGroupName(params.groupId);
         _setPageRaw('title', name);
@@ -1653,7 +1653,7 @@ function _showGroup(groupId, groupName) {
 // instead of all sharing the gallery glyph from the viewer page.
 const PAGE_HEADER_ICON = {
     viewer: 'ri-gallery-line',
-    groups: 'ri-group-line',
+    groups: 'ri-chat-3-line',
     backfill: 'ri-history-line',
     queue: 'ri-list-check-2',
     settings: 'ri-settings-3-line',
@@ -2785,8 +2785,8 @@ function renderGalleryEmptyState() {
                     onClick: () => openAccountWizard(),
                 },
                 {
-                    label: i18nT('viewer.empty.action.groups', 'Manage groups'),
-                    icon: 'ri-group-line',
+                    label: i18nT('viewer.empty.action.groups', 'Go to Chats'),
+                    icon: 'ri-chat-3-line',
                     onClick: () => window.navigateTo?.('groups'),
                 },
             ];

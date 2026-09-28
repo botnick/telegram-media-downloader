@@ -5,6 +5,7 @@
 // when we change the look.
 
 import { createAvatar, escapeHtml, formatRelativeTime } from './utils.js';
+import { t as i18nT } from './i18n.js';
 
 /**
  * Telegram-style chat row.
@@ -109,7 +110,7 @@ export function renderChatRow(opts) {
 
     const cogBtn = cog
         ? `<button class="chat-row-cog ml-2 w-8 h-8 inline-flex items-center justify-center rounded-full text-tg-textSecondary hover:bg-tg-hover hover:text-tg-text transition shrink-0"
-                  data-action="settings" aria-label="Group settings" title="Group settings"
+                  data-action="settings" aria-label="${escapeHtml(i18nT('chat.details.open', 'Chat settings'))}" title="${escapeHtml(i18nT('chat.details.open', 'Chat settings'))}"
                   type="button">
               <i class="ri-settings-3-line text-base" aria-hidden="true"></i>
           </button>`

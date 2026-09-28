@@ -231,9 +231,9 @@
                     <button id="downloaded-groups-toggle" type="button"
                         class="w-full px-3 pt-3 pb-1.5 text-xs text-tg-textSecondary uppercase tracking-wide flex items-center justify-between hover:bg-tg-hover transition-colors"
                         aria-expanded="true" aria-controls="downloaded-groups-body"
-                        data-i18n-aria-label="sidebar.downloaded_groups_collapse" aria-label="Collapse downloaded groups"
-                        data-i18n-title="sidebar.downloaded_groups_collapse" title="Collapse downloaded groups">
-                        <span data-i18n="sidebar.downloaded_groups">Downloaded Groups</span>
+                        data-i18n-aria-label="sidebar.downloaded_groups_collapse" aria-label="Collapse downloaded chats"
+                        data-i18n-title="sidebar.downloaded_groups_collapse" title="Collapse downloaded chats">
+                        <span data-i18n="sidebar.downloaded_groups">Downloaded chats</span>
                         <i id="downloaded-groups-chevron" class="ri-arrow-up-s-line text-base normal-case transition-transform" aria-hidden="true"></i>
                     </button>
                     <div class="px-3 pt-1 pb-3">
@@ -264,8 +264,8 @@
                                 data-lpignore="true"
                                 data-1p-ignore="true"
                                 data-bwignore="true"
-                                data-i18n-placeholder="sidebar.groups_search" placeholder="Filter groups…"
-                                aria-label="Filter downloaded groups"
+                                data-i18n-placeholder="sidebar.groups_search" placeholder="Filter chats…"
+                                data-i18n-aria-label="sidebar.groups_search" aria-label="Filter chats…"
                                 class="tg-input pl-9 py-2 text-sm w-full"
                                 oninput="filterSidebarGroups(this.value)">
                         </div>
@@ -687,7 +687,7 @@
                                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
                                 class="w-full bg-tg-panel border border-tg-border rounded-lg pl-10 pr-4 py-2 text-tg-text focus:ring-1 focus:ring-tg-blue focus:border-tg-blue outline-none"
                                 data-i18n-placeholder="groups.search_placeholder"
-                                placeholder="Search groups/channels..." oninput="filterDialogs(this.value)">
+                                placeholder="Search chats and channels…" oninput="filterDialogs(this.value)">
                         </div>
                         <!-- Add sheet (js/add-sheet.js); phones use the + button. -->
                         <button type="button" id="groups-add-btn" class="tg-btn groups-add-btn" data-admin-only>
@@ -1461,7 +1461,7 @@
                         <label class="flex items-start justify-between gap-4 p-3 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
                             <div class="min-w-0 flex-1">
                                 <div class="text-tg-text text-sm font-medium" data-i18n="settings.privacy.allow_dm">Allow DM downloads</div>
-                                <p class="text-xs text-tg-textSecondary mt-1 leading-snug" data-i18n="settings.privacy.allow_dm_help">Lets the Groups picker show 1-on-1 chats. Off by default — once enabled you'll see DMs in the dialog list and can opt them in individually.</p>
+                                <p class="text-xs text-tg-textSecondary mt-1 leading-snug" data-i18n="settings.privacy.allow_dm_help">Lets the Chats page show 1-on-1 chats. Off by default — once enabled you'll see DMs in the dialog list and can opt them in individually.</p>
                             </div>
                             <div id="setting-allow-dm" class="tg-toggle shrink-0 mt-0.5"></div>
                         </label>
