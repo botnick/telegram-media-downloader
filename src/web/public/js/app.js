@@ -1148,6 +1148,117 @@ function _renderSectionHeader(sec, monitored, total, collapsed) {
     </button>`;
 }
 
+const _sidebarSectionKey = (k) => `tgdl.sidebar.section.${k}`;
+function _isSidebarSectionCollapsed(k) {
+    return localStorage.getItem(_sidebarSectionKey(k)) === '1';
+}
+
+// One delegated listener pair on #groups-list, wired once. The rows keep
+// their DOM whenever the rendered HTML is unchanged, so attaching
+// per-row handlers on every render stacked them: after N config_updated
+// events one tap ran openGroup N times and the monitor toggle sent N PUTs.
+//
+// Click opens the group viewer; the cog opens Group Settings; the ▶/⏸
+// button toggles monitoring. Names are re-resolved at click time via
+// getGroupName() so a refreshed name wins over whatever the row was
+// rendered with. Federated foreign rows carry data-peer-id; clicking one
+// opens the per-group view filtered to that peer via the one-shot
+// `state.viewerPeerScope` field. We DO NOT overwrite the chip's scope
+// (state.galleryScope) — otherwise, navigating back to All Media after
+// viewing a peer-owned group would persist the per-peer narrowing.
+let _groupsListWired = false;
+function _wireGroupsListDelegation(list) {
+    if (_groupsListWired) return;
+    _groupsListWired = true;
+    const openRow = (row) => {
+        const id = row.dataset.id;
+        // Foreign-group click → narrow the per-group view to this peer
+        // for the duration of the view (read by _galleryScopeQs on every
+        // page fetch so pagination keeps the filter). Own group → null,
+        // so the per-group view honours the chip's scope.
+        state.viewerPeerScope = row.dataset.peerId || null;
+        openGroup(id, getGroupName(id));
+    };
+    list.addEventListener('click', async (ev) => {
+        const header = ev.target.closest?.('.sidebar-section-header');
+        if (header && list.contains(header)) {
+            ev.stopPropagation();
+            const key = header.dataset.section;
+            localStorage.setItem(
+                _sidebarSectionKey(key),
+                _isSidebarSectionCollapsed(key) ? '' : '1',
+            );
+            renderGroupsList();
+            return;
+        }
+        const row = ev.target.closest?.('.chat-row[data-id]');
+        if (!row || !list.contains(row)) return;
+        const id = row.dataset.id;
+        // Monitor toggle (▶/⏸) — short-circuit before the row navigates.
+        // PUTs `{enabled: !current}` to the existing /api/groups/:id
+        // endpoint; the WS `config_updated` broadcast triggers
+        // renderGroupsList() so the icon swaps live.
+        const monTarget = ev.target.closest?.('[data-action="monitor-toggle"]');
+        if (monTarget) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            // A PUT for this button is already in flight — ignore the
+            // repeat tap instead of racing a second toggle.
+            if (monTarget.dataset.busy === '1') return;
+            monTarget.dataset.busy = '1';
+            const current = monTarget.dataset.current === '1';
+            const next = !current;
+            // Optimistic UI — flip the icon + dataset before the PUT
+            // returns so the click feels instant.
+            monTarget.dataset.current = next ? '1' : '0';
+            const ic = monTarget.querySelector('i');
+            if (ic) {
+                ic.className = `${next ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base`;
+            }
+            monTarget.classList.toggle('text-tg-green', next);
+            monTarget.classList.toggle('text-tg-textSecondary', !next);
+            try {
+                await api.put(`/api/groups/${encodeURIComponent(id)}`, { enabled: next });
+                // Update the in-memory `state.groups` so the next
+                // renderGroupsList() pass paints the right state even
+                // before the WS reply lands.
+                const cfg = (state.groups || []).find((g) => String(g.id) === id);
+                if (cfg) cfg.enabled = next;
+            } catch (err) {
+                // Roll back the optimistic flip on failure.
+                monTarget.dataset.current = current ? '1' : '0';
+                if (ic) {
+                    ic.className = `${current ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base`;
+                }
+                monTarget.classList.toggle('text-tg-green', current);
+                monTarget.classList.toggle('text-tg-textSecondary', !current);
+                showToast(err?.data?.error || err?.message || 'Failed', 'error');
+            } finally {
+                delete monTarget.dataset.busy;
+            }
+            return;
+        }
+        // Cog button takes precedence — short-circuit before the row
+        // navigates to the gallery.
+        if (ev.target.closest?.('[data-action="settings"]')) {
+            ev.stopPropagation();
+            ev.preventDefault();
+            openGroupSettings(id, getGroupName(id));
+            return;
+        }
+        openRow(row);
+    });
+    list.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        // Only when the row itself has focus — Enter/Space on the inner
+        // cog / monitor buttons keeps its native button behaviour.
+        const row = e.target.closest?.('.chat-row[data-id]');
+        if (!row || e.target !== row || !list.contains(row)) return;
+        e.preventDefault();
+        openRow(row);
+    });
+}
+
 function renderGroupsList() {
     const list = document.getElementById('groups-list');
     if (!list) return;
@@ -1182,7 +1293,9 @@ function renderGroupsList() {
     });
 
     const allGroups = Array.from(map.values());
+    _wireGroupsListDelegation(list);
     if (allGroups.length === 0) {
+        renderGroupsList._lastHtml = null;
         list.innerHTML = renderEmptyState({
             icon: 'ri-chat-3-line',
             title: i18nT('groups.empty.title', 'No groups yet'),
@@ -1223,9 +1336,7 @@ function renderGroupsList() {
         );
     }
 
-    // Read collapse state from localStorage
-    const _collapseKey = (k) => `tgdl.sidebar.section.${k}`;
-    const _isCollapsed = (k) => localStorage.getItem(_collapseKey(k)) === '1';
+    const _isCollapsed = _isSidebarSectionCollapsed;
 
     // Build HTML section by section
     const parts = [];
@@ -1264,16 +1375,6 @@ function renderGroupsList() {
         renderGroupsList._lastHtml = html;
         list.innerHTML = html;
         _reapplySidebarFilter();
-        // Wire section collapse toggles
-        list.querySelectorAll('.sidebar-section-header').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const key = btn.dataset.section;
-                const nowCollapsed = _isCollapsed(key);
-                localStorage.setItem(_collapseKey(key), nowCollapsed ? '' : '1');
-                renderGroupsList();
-            });
-        });
     }
 
     const needsResolve = renderGroupsList._needsResolve;
@@ -1285,89 +1386,6 @@ function renderGroupsList() {
                 state._resolvingGroups = false;
             });
     }
-
-    // Event delegation — click opens the group viewer; click on the
-    // cog button opens Group Settings instead. Names are re-resolved
-    // at click time via getGroupName() so a refreshed name wins over
-    // whatever the row was rendered with.
-    // Federated foreign rows carry data-peer-id; clicking one opens the
-    // per-group view filtered to that peer's files via the one-shot
-    // `state.transientPeerScope` field. We DO NOT overwrite the chip's
-    // scope (state.galleryScope) — otherwise, navigating back to All
-    // Media after viewing a peer-owned group would persist the per-peer
-    // narrowing and the merged view would be silently broken.
-    list.querySelectorAll('.chat-row[data-id]').forEach((el) => {
-        const id = el.dataset.id;
-        const peerId = el.dataset.peerId || null;
-        const fire = () => {
-            // Foreign-group click → narrow the per-group view to this
-            // peer for the duration of the view. `state.viewerPeerScope`
-            // is read by _galleryScopeQs on every page fetch (page 1, 2,
-            // 3 …) so pagination doesn't drop the filter mid-scroll.
-            // Own group click → null, so the per-group view honours
-            // the chip's scope (e.g., scope=all loads merged content).
-            state.viewerPeerScope = peerId || null;
-            openGroup(id, getGroupName(id));
-        };
-        el.addEventListener('click', async (ev) => {
-            // Monitor toggle (▶/⏸) — short-circuit before the row navigates.
-            // PUTs `{enabled: !current}` to the existing /api/groups/:id
-            // endpoint; the WS `config_updated` broadcast triggers
-            // renderGroupsList() so the icon swaps live.
-            const monTarget = ev.target.closest?.('[data-action="monitor-toggle"]');
-            if (monTarget) {
-                ev.stopPropagation();
-                ev.preventDefault();
-                const current = monTarget.dataset.current === '1';
-                const next = !current;
-                // Optimistic UI — flip the icon + dataset before the PUT
-                // returns so the click feels instant.
-                monTarget.dataset.current = next ? '1' : '0';
-                const ic = monTarget.querySelector('i');
-                if (ic) {
-                    ic.className = `${next ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base`;
-                }
-                monTarget.classList.toggle('text-tg-green', next);
-                monTarget.classList.toggle('text-tg-textSecondary', !next);
-                try {
-                    const { api } = await import('./api.js');
-                    await api.put(`/api/groups/${encodeURIComponent(id)}`, { enabled: next });
-                    // Update the in-memory `state.groups` so the next
-                    // renderGroupsList() pass paints the right state
-                    // even before the WS reply lands.
-                    const cfg = (state.groups || []).find((g) => String(g.id) === id);
-                    if (cfg) cfg.enabled = next;
-                } catch (err) {
-                    // Roll back the optimistic flip on failure.
-                    monTarget.dataset.current = current ? '1' : '0';
-                    if (ic) {
-                        ic.className = `${current ? 'ri-pause-circle-line' : 'ri-play-circle-line'} text-base`;
-                    }
-                    monTarget.classList.toggle('text-tg-green', current);
-                    monTarget.classList.toggle('text-tg-textSecondary', !current);
-                    const { showToast } = await import('./utils.js');
-                    showToast(err?.data?.error || err?.message || 'Failed', 'error');
-                }
-                return;
-            }
-            // Cog button takes precedence — short-circuit before the
-            // row navigates to the gallery.
-            const cogTarget = ev.target.closest?.('[data-action="settings"]');
-            if (cogTarget) {
-                ev.stopPropagation();
-                ev.preventDefault();
-                openGroupSettings(id, getGroupName(id));
-                return;
-            }
-            fire();
-        });
-        el.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fire();
-            }
-        });
-    });
 }
 
 function normalize(str) {
