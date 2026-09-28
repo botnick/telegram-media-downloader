@@ -724,8 +724,9 @@ html.theme-light .unread-pill.muted {
 /* Engine pill pulse halo — alpha 0.20 was invisible on a near-white
    header. Bump alpha + recolour for the light surface. */
 html.theme-light .engine-status-pill[data-state="running"] .engine-status-dot {
-    box-shadow: 0 0 0 2px rgba(0, 138, 110, 0.45);
-    animation-name: engine-pulse-light;
+    box-shadow: none;
+    --engine-pulse-color: rgba(0, 138, 110, 0.45);
+    --engine-pulse-min-opacity: 0.4444;
 }
 html.theme-light .engine-status-pill[data-state="error"] .engine-status-dot {
     box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.4);
@@ -737,15 +738,6 @@ html.theme-light .engine-status-pill[data-state="stopping"] .engine-status-dot {
 }
 html.theme-light .engine-status-pill .engine-status-dot {
     box-shadow: 0 0 0 2px rgba(75, 85, 99, 0.3);
-}
-@keyframes engine-pulse-light {
-    0%,
-    100% {
-        box-shadow: 0 0 0 2px rgba(0, 138, 110, 0.45);
-    }
-    50% {
-        box-shadow: 0 0 0 4px rgba(0, 138, 110, 0.2);
-    }
 }
 
 /* Brand utilities used as solid backgrounds (primary CTA, FAB,
@@ -1959,44 +1951,56 @@ html.theme-light .ai-mode-btn.active {
 }
 .engine-state-dot[data-state="running"] {
     background: #4caf50;
-    animation: engine-pulse-green 2s ease-in-out infinite;
+    --engine-ping-color: rgba(76, 175, 80, 0.55);
+    --engine-ping-duration: 2s;
 }
 .engine-state-dot[data-state="starting"] {
     background: #2aabee;
-    animation: engine-pulse-blue 1.2s ease-in-out infinite;
+    --engine-ping-color: rgba(42, 171, 238, 0.55);
+    --engine-ping-duration: 1.2s;
 }
 .engine-state-dot[data-state="stopping"] {
     background: #f4c430;
 }
 .engine-state-dot[data-state="error"] {
     background: #ef5350;
-    animation: engine-pulse-red 1.6s ease-in-out infinite;
+    --engine-ping-color: rgba(239, 83, 80, 0.55);
+    --engine-ping-duration: 1.6s;
 }
-@keyframes engine-pulse-green {
+/* Ping ring as a pseudo-element animating transform + opacity (compositor
+   only) instead of box-shadow (a repaint every frame). The 8px ring grows
+   to 20px — the old 0 → 6px spread — while fading out. */
+.engine-state-dot[data-state="running"],
+.engine-state-dot[data-state="starting"],
+.engine-state-dot[data-state="error"] {
+    position: relative;
+}
+.engine-state-dot[data-state="running"]::after,
+.engine-state-dot[data-state="starting"]::after,
+.engine-state-dot[data-state="error"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--engine-ping-color);
+    pointer-events: none;
+    animation: engine-ping var(--engine-ping-duration, 2s) ease-in-out infinite;
+}
+@keyframes engine-ping {
     0%,
     100% {
-        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.55);
+        transform: scale(1);
+        opacity: 1;
     }
     50% {
-        box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
+        transform: scale(2.5);
+        opacity: 0;
     }
 }
-@keyframes engine-pulse-blue {
-    0%,
-    100% {
-        box-shadow: 0 0 0 0 rgba(42, 171, 238, 0.55);
-    }
-    50% {
-        box-shadow: 0 0 0 6px rgba(42, 171, 238, 0);
-    }
-}
-@keyframes engine-pulse-red {
-    0%,
-    100% {
-        box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.55);
-    }
-    50% {
-        box-shadow: 0 0 0 6px rgba(239, 83, 80, 0);
+@media (prefers-reduced-motion: reduce) {
+    .engine-state-dot::after {
+        animation: none;
+        display: none;
     }
 }
 
@@ -2678,7 +2682,21 @@ input[type="range"].tg-range::-moz-range-track,
 }
 .engine-status-pill[data-state="running"] .engine-status-dot {
     background: var(--tg-green, #4fae4e);
-    box-shadow: 0 0 0 2px rgba(79, 174, 78, 0.2);
+    /* The pulsing ring is the ::after below. Animating box-shadow here
+       repainted the header on every frame for as long as the monitor
+       ran; transform + opacity on a pseudo-element stay on the
+       compositor. Same look: a 2px ring at 20% that breathes out to
+       4px at 10%. */
+    box-shadow: none;
+    position: relative;
+}
+.engine-status-pill[data-state="running"] .engine-status-dot::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: var(--engine-pulse-color, rgba(79, 174, 78, 0.2));
+    pointer-events: none;
     animation: engine-pulse 2.4s ease-in-out infinite;
 }
 .engine-status-pill[data-state="error"] {
@@ -2702,10 +2720,13 @@ input[type="range"].tg-range::-moz-range-track,
 @keyframes engine-pulse {
     0%,
     100% {
-        box-shadow: 0 0 0 2px rgba(79, 174, 78, 0.2);
+        transform: scale(1);
+        opacity: 1;
     }
     50% {
-        box-shadow: 0 0 0 4px rgba(79, 174, 78, 0.1);
+        /* 12px ring → 16px, 20% → 10% alpha (light theme: 45% → 20%) */
+        transform: scale(1.3333);
+        opacity: var(--engine-pulse-min-opacity, 0.5);
     }
 }
 @media (max-width: 420px) {
@@ -2721,7 +2742,7 @@ input[type="range"].tg-range::-moz-range-track,
     .engine-status-pill .engine-status-dot {
         transition: none;
     }
-    .engine-status-pill[data-state="running"] .engine-status-dot {
+    .engine-status-pill[data-state="running"] .engine-status-dot::after {
         animation: none;
     }
 }
