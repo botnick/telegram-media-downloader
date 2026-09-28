@@ -2122,7 +2122,14 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Nothing under public/ lives at /api/* or /files/*, but express.static
+// would still stat() a candidate file for every such request — every API
+// call and every 64 KB video range request — on the shared libuv pool.
+const _publicStatic = express.static(path.join(__dirname, 'public'));
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/files/')) return next();
+    return _publicStatic(req, res, next);
+});
 app.use('/photos', express.static(PHOTOS_DIR));
 
 // Serve CHANGELOG.md from the project root for the in-app changelog

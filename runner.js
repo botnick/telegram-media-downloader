@@ -49,6 +49,9 @@ function startApp() {
     const child = spawn('node', [APP_SCRIPT, ...APP_ARGS], {
         stdio: 'inherit', // Preserve colors and dashboard
         cwd: __dirname,
+        // libuv sizes its worker pool (fs, crypto, dns, sharp thumbnails)
+        // once at process start; the default of 4 is easily saturated.
+        env: { ...process.env, UV_THREADPOOL_SIZE: process.env.UV_THREADPOOL_SIZE || '16' },
     });
 
     child.on('close', (code) => {
