@@ -1,7 +1,8 @@
 // End to end with the real server and the real tgdl-core in `on` mode:
 // the duplicate scan hashes rows that have no file_hash yet; every
 // digest it stores must equal Node's, and /metrics must show that Go
-// did the work. Skips without a binary / Go (TGDL_GOCORE_REQUIRE=1 in CI).
+// did the work. Runs with TGDL_GO_CORE_TEST=1 (CI's "node + tgdl-core"
+// jobs); skipped otherwise.
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { spawn } from 'child_process';
@@ -11,7 +12,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 
-import { findOrBuildGoCore, REQUIRE_GOCORE } from './helpers/gocore-bin.js';
+import { findOrBuildGoCore } from './helpers/gocore-bin.js';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const SERVER_PATH = path.join(REPO_ROOT, 'src', 'web', 'server.js');
@@ -83,10 +84,7 @@ async function seed() {
 beforeAll(async () => {
     if (SKIP) return;
     bin = await findOrBuildGoCore();
-    if (!bin) {
-        if (REQUIRE_GOCORE) throw new Error('TGDL_GOCORE_REQUIRE=1 but no tgdl-core');
-        return;
-    }
+    if (!bin) return;
     await seed();
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;

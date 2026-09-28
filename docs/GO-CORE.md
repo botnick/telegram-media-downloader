@@ -24,6 +24,10 @@ first, and can be switched off without changing anything else.
 5. **tgdl-core can't outlive the app.** It exits when its stdin pipe
    closes, is bound to `127.0.0.1`, and needs a per-spawn token for
    everything but `/health`.
+6. **tgdl-core only reads where the app keeps media.** The app passes its
+   download folders as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as
+   written or after resolving symlinks) is refused with `EOUTSIDE`, and
+   Node handles that file as it always did. No roots = nothing is read.
 
 ## Modes
 
@@ -54,14 +58,14 @@ at once (tgdl-core stops or starts); `null` removes the block.
   counters (Go answers, Node answers, fallbacks, parity checks,
   mismatches, skipped comparisons).
 - `/metrics`: `tgdl_gocore_calls_total{feature,result}` (`ok`,
-  `file_error`, `timeout`, `error`), `tgdl_gocore_parity_checks_total{feature}`,
+  `file_error`, `outside`, `timeout`, `error`), `tgdl_gocore_parity_checks_total{feature}`,
   `tgdl_gocore_parity_mismatch_total{feature}`.
 - Logs: `[go-core] …` lines (start, restarts, breaker trips, mismatches).
 
 Circuit breaker: 5 service failures (timeouts, dropped connections, 5xx,
 401, malformed answers) within 60 s turn the feature off until the next
-successful health probe (every 30 s). "This file can't be read" answers
-don't count. Three failed health probes in a row restart the process,
+successful health probe (every 30 s). "This file can't be read" and
+"outside the allowed roots" answers don't count. Three failed health probes in a row restart the process,
 with exponential backoff (2 s … 5 min).
 
 ## Roadmap

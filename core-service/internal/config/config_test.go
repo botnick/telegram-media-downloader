@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -48,6 +49,7 @@ func TestPoolSizeMatchesNodeSemantics(t *testing.T) {
 
 func TestFromEnv(t *testing.T) {
 	env := map[string]string{
+		"TGDL_CORE_ALLOW_ROOTS": string(filepath.ListSeparator) + "/a" + string(filepath.ListSeparator) + " " + string(filepath.ListSeparator) + "/b c",
 		"TGDL_CORE_TOKEN":       " secret ",
 		"TGDL_CORE_PORT":        "4567",
 		"TGDL_CORE_WATCH_STDIN": "1",
@@ -59,6 +61,9 @@ func TestFromEnv(t *testing.T) {
 	}
 	if cfg.Token != "secret" || cfg.Port != 4567 || !cfg.WatchStdin || cfg.HashConcurrency != 3 || cfg.LogLevel != "info" {
 		t.Fatalf("unexpected config: %+v", cfg)
+	}
+	if len(cfg.AllowRoots) != 2 || cfg.AllowRoots[0] != "/a" || cfg.AllowRoots[1] != "/b c" {
+		t.Fatalf("allow roots = %q", cfg.AllowRoots)
 	}
 }
 

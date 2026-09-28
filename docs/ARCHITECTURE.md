@@ -271,8 +271,10 @@ checksum.sha256OfFileViaPool(path)            dedup.js, downloader.registerDownl
 - **Contract**: `127.0.0.1` only, `X-API-Token` on everything but
   `/health`; `/health` advertises `features`, and a feature is only routed
   to Go when it is listed there.
-- **Data**: tgdl-core reads the files it is asked about and never opens
-  `db.sqlite`; Node stays the only writer.
+- **Data**: tgdl-core never opens `db.sqlite`; Node stays the only
+  writer. It reads only files inside `TGDL_CORE_ALLOW_ROOTS` (the app's
+  download folders, checked before and after resolving symlinks); for
+  anything else it answers `EOUTSIDE` and Node hashes the file.
 - **Observability**: `goCore` in `GET /api/system/health`;
   `tgdl_gocore_calls_total{feature,result}`,
   `tgdl_gocore_parity_checks_total{feature}` and

@@ -2,8 +2,9 @@
 // thrown that the Node path wouldn't throw itself.
 //
 // Most cases use a fake tgdl-core (a local HTTP server) so they run
-// everywhere; the "killed mid-request", "wrong token" and "parent died"
-// cases also run against the real binary when one is available.
+// everywhere; the "killed mid-request", "wrong token", "outside the
+// allowed roots" and "parent died" cases also run against the real
+// binary with TGDL_GO_CORE_TEST=1 (CI's "node + tgdl-core" jobs).
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'child_process';
@@ -14,13 +15,23 @@ import os from 'os';
 import path from 'path';
 import readline from 'readline';
 
-import { findOrBuildGoCore, REQUIRE_GOCORE } from './helpers/gocore-bin.js';
+import { findOrBuildGoCore } from './helpers/gocore-bin.js';
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-gocore-fallback-'));
-const ENV_KEYS = ['TGDL_CORE_BIN', 'TGDL_GO_CORE', 'TGDL_GO_FEATURES', 'TGDL_DATA_DIR'];
+const ENV_KEYS = [
+    'TGDL_CORE_BIN',
+    'TGDL_GO_CORE',
+    'TGDL_GO_FEATURES',
+    'TGDL_DATA_DIR',
+    'TGDL_DOWNLOADS_DIR',
+    'TGDL_CORE_ALLOW_ROOTS',
+];
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const FILE = path.join(TMP, 'sample ไทย 🎬.bin');
+// TGDL_DATA_DIR/downloads is one of the roots the app lets tgdl-core read.
+const DOWNLOADS = path.join(TMP, 'data', 'downloads');
+const FILE = path.join(DOWNLOADS, 'sample ไทย 🎬.bin');
 const PAYLOAD = crypto.randomBytes(3 * 1024 * 1024 + 11);
 const EXPECTED = crypto.createHash('sha256').update(PAYLOAD).digest('hex');
 const WRONG = 'f'.repeat(64);
@@ -82,8 +93,11 @@ function statBody(p) {
 }
 
 beforeAll(async () => {
+    fs.mkdirSync(DOWNLOADS, { recursive: true });
     fs.writeFileSync(FILE, PAYLOAD);
     process.env.TGDL_DATA_DIR = path.join(TMP, 'data');
+    delete process.env.TGDL_DOWNLOADS_DIR;
+    delete process.env.TGDL_CORE_ALLOW_ROOTS;
     client = await import('../src/core/gocore/client.js');
     router = await import('../src/core/gocore/hash.js');
     checksum = await import('../src/core/checksum.js');
@@ -195,6 +209,38 @@ describe('Node fallback (fake tgdl-core)', () => {
         expect(client.breakerState('hash').state).toBe('closed');
     });
 
+    it('EOUTSIDE (403): Node result, not an error, breaker untouched', async () => {
+        const fake = await fakeCore((req, body, res) =>
+            json(res, 403, { error: { code: 'EOUTSIDE', message: 'outside the roots' } }),
+        );
+        const errors = counter('tgdl_gocore_calls_total', { feature: 'hash', result: 'error' });
+        const outside = counter('tgdl_gocore_calls_total', { feature: 'hash', result: 'outside' });
+        for (let i = 0; i < 7; i++) expect(await checksum.sha256OfFileViaPool(FILE)).toBe(EXPECTED);
+        expect(fake.hashCalls).toBe(7);
+        expect(counter('tgdl_gocore_calls_total', { feature: 'hash', result: 'error' })).toBe(
+            errors,
+        );
+        expect(counter('tgdl_gocore_calls_total', { feature: 'hash', result: 'outside' })).toBe(
+            outside + 7,
+        );
+        const s = router.getHashStats();
+        expect(s.outside).toBe(7);
+        expect(s.fallbacks).toBe(7);
+        expect(client.breakerState('hash')).toMatchObject({ state: 'closed', recentFailures: 0 });
+    });
+
+    it('shadow: EOUTSIDE is a skipped comparison, not a mismatch', async () => {
+        process.env.TGDL_GO_CORE = 'shadow';
+        router._setTuningForTests({ sampleEvery: 1 });
+        await fakeCore((req, body, res) =>
+            json(res, 403, { error: { code: 'EOUTSIDE', message: 'outside the roots' } }),
+        );
+        expect(await checksum.sha256OfFileViaPool(FILE)).toBe(EXPECTED);
+        await router._drainForTests();
+        const s = router.getHashStats();
+        expect(s).toMatchObject({ parityMismatches: 0, paritySkipped: 1, outside: 1 });
+    });
+
     it('breaker: 5 failures in 60 s stop calls until a healthy probe', async () => {
         const fake = await fakeCore((req, body, res) =>
             json(res, 500, { error: { code: 'EINTERNAL', message: 'boom' } }),
@@ -294,36 +340,41 @@ describe('Node fallback (real tgdl-core)', () => {
     let bin = null;
     beforeAll(async () => {
         bin = await findOrBuildGoCore();
-        if (!bin && REQUIRE_GOCORE) throw new Error('TGDL_GOCORE_REQUIRE=1 but no tgdl-core');
     }, 300_000);
 
     it('killed mid-request: every caller still gets the Node digest, then it restarts', {
         timeout: 60_000,
     }, async ({ skip }) => {
         if (!bin) skip();
-        const big = path.join(TMP, 'big.bin');
+        const big = path.join(DOWNLOADS, 'big.bin');
         const buf = crypto.randomBytes(64 * 1024 * 1024);
         fs.writeFileSync(big, buf);
         const bigHex = crypto.createHash('sha256').update(buf).digest('hex');
         process.env.TGDL_CORE_BIN = bin;
         expect(await spawnMod.startGoCore()).toBe(true);
-        const pid = spawnMod.getGoCoreStatus().pid;
+        const { pid, restarts } = spawnMod.getGoCoreStatus();
 
         const jobs = [];
         for (let i = 0; i < 8; i++) jobs.push(checksum.sha256OfFileViaPool(i % 2 ? big : FILE));
-        await new Promise((r) => setTimeout(r, 5));
-        process.kill(pid);
+        await sleep(5);
+        // SIGKILL = a crash on every OS. (On Linux a plain kill is SIGTERM,
+        // which tgdl-core answers with a graceful drain: the in-flight
+        // hashes finish and the process is still up for a moment.)
+        process.kill(pid, 'SIGKILL');
         const out = await Promise.all(jobs);
         out.forEach((hex, i) => {
             expect(hex).toBe(i % 2 ? bigHex : EXPECTED);
         });
 
-        // Restarted with backoff; Go answers again.
-        const t0 = Date.now();
-        while (spawnMod.getGoCoreStatus().state !== 'running' && Date.now() - t0 < 20_000) {
-            await new Promise((r) => setTimeout(r, 100));
+        // The exit is observed (restart counter) and a new process comes
+        // up after the backoff (2 s for the first restart).
+        const deadline = Date.now() + 30_000;
+        let st = spawnMod.getGoCoreStatus();
+        while (!(st.state === 'running' && st.pid && st.pid !== pid) && Date.now() < deadline) {
+            await sleep(25);
+            st = spawnMod.getGoCoreStatus();
         }
-        const st = spawnMod.getGoCoreStatus();
+        expect(st.restarts).toBe(restarts + 1);
         expect(st.state).toBe('running');
         expect(st.pid).not.toBe(pid);
         const goBefore = router.getHashStats().go;
@@ -341,6 +392,26 @@ describe('Node fallback (real tgdl-core)', () => {
         client.setEndpoint(ep.url, 'definitely-not-the-token', ['hash']);
         await expect(client.hashFile(FILE)).rejects.toMatchObject({ kind: 'auth', status: 401 });
         expect(await checksum.sha256OfFileViaPool(FILE)).toBe(EXPECTED);
+    });
+
+    it('a file outside the allowed roots is hashed by Node', { timeout: 30_000 }, async ({
+        skip,
+    }) => {
+        if (!bin) skip();
+        process.env.TGDL_CORE_BIN = bin;
+        expect(await spawnMod.startGoCore()).toBe(true);
+        const outsideFile = path.join(TMP, 'not-under-downloads.bin');
+        fs.writeFileSync(outsideFile, PAYLOAD);
+        await expect(client.hashFile(outsideFile)).rejects.toMatchObject({
+            kind: 'outside',
+            code: 'EOUTSIDE',
+        });
+        expect(await checksum.sha256OfFileViaPool(outsideFile)).toBe(EXPECTED);
+        expect(router.getHashStats()).toMatchObject({ outside: 1, go: 0 });
+        expect(client.breakerState('hash').recentFailures).toBe(0);
+        // Inside still goes to Go.
+        expect(await checksum.sha256OfFileViaPool(FILE)).toBe(EXPECTED);
+        expect(router.getHashStats().go).toBe(1);
     });
 
     it('exits when its parent dies (no orphan)', { timeout: 30_000 }, async ({ skip }) => {
@@ -369,16 +440,20 @@ describe('Node fallback (real tgdl-core)', () => {
         const alive = (pid) => {
             try {
                 process.kill(pid, 0);
-                return true;
             } catch {
                 return false;
+            }
+            // An exited orphan can linger as a zombie until init reaps it.
+            try {
+                return !/^\d+ \(.*\) Z/.test(fs.readFileSync(`/proc/${pid}/stat`, 'utf8'));
+            } catch {
+                return true;
             }
         };
         expect(alive(goPid)).toBe(true);
         parent.kill('SIGKILL');
         const t0 = Date.now();
-        while (alive(goPid) && Date.now() - t0 < 10_000)
-            await new Promise((r) => setTimeout(r, 50));
+        while (alive(goPid) && Date.now() - t0 < 10_000) await sleep(50);
         expect(alive(goPid)).toBe(false);
     });
 });

@@ -8,6 +8,7 @@ import path from 'path';
 
 import * as flags from '../src/core/gocore/flags.js';
 import {
+    allowRoots,
     CORE_VERSION,
     SUPPORTED_SLUGS,
     binaryFileName,
@@ -17,7 +18,15 @@ import {
     resolveBinary,
 } from '../src/core/gocore/spawn.js';
 
-const KEYS = ['TGDL_GO_CORE', 'TGDL_GO_FEATURES', 'TGDL_CORE_BIN', 'HASH_WORKER_POOL_SIZE'];
+const KEYS = [
+    'TGDL_GO_CORE',
+    'TGDL_GO_FEATURES',
+    'TGDL_CORE_BIN',
+    'HASH_WORKER_POOL_SIZE',
+    'TGDL_CORE_ALLOW_ROOTS',
+    'TGDL_DATA_DIR',
+    'TGDL_DOWNLOADS_DIR',
+];
 const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 
 beforeEach(() => {
@@ -131,6 +140,37 @@ describe('go-core spawn helpers', () => {
         } finally {
             delete process.env.TGDL_TEST_SECRET;
         }
+    });
+
+    it('allow-roots: every place the app hashes from, and nothing else', () => {
+        const data = path.resolve('some-data-dir');
+        process.env.TGDL_DATA_DIR = data;
+        const dataDownloads = path.join(data, 'downloads');
+        // Default: the downloads dir only (data/downloads twice, de-duplicated).
+        expect(allowRoots(null)).toEqual([dataDownloads]);
+        // TGDL_DOWNLOADS_DIR moves the downloader's target; nsfw.js still
+        // resolves relative rows under data/downloads, so both stay.
+        process.env.TGDL_DOWNLOADS_DIR = path.resolve('hdd-downloads');
+        expect(allowRoots(null)).toEqual([path.resolve('hdd-downloads'), dataDownloads]);
+        // A custom config.download.path (relative = against the cwd, like
+        // the downloader); the factory default adds nothing new.
+        expect(allowRoots({ download: { path: './data/downloads' } })).toHaveLength(2);
+        expect(allowRoots({ download: { path: 'media/tg' } })).toContain(path.resolve('media/tg'));
+        // Extra roots from the app's own env, PATH-style.
+        process.env.TGDL_CORE_ALLOW_ROOTS = [path.resolve('x1'), '', path.resolve('x2')].join(
+            path.delimiter,
+        );
+        const roots = allowRoots(null);
+        expect(roots).toContain(path.resolve('x1'));
+        expect(roots).toContain(path.resolve('x2'));
+        expect(roots.every((r) => path.isAbsolute(r))).toBe(true);
+    });
+
+    it('passes the roots to the child as TGDL_CORE_ALLOW_ROOTS', () => {
+        const roots = [path.resolve('a'), path.resolve('b')];
+        expect(childEnv('tok', roots).TGDL_CORE_ALLOW_ROOTS).toBe(roots.join(path.delimiter));
+        // Never empty: the downloads dir is always there.
+        expect(childEnv('tok').TGDL_CORE_ALLOW_ROOTS.length).toBeGreaterThan(0);
     });
 
     it('an explicit TGDL_CORE_BIN that does not exist is reported, not searched past', () => {

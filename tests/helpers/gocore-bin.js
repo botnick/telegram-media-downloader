@@ -1,10 +1,12 @@
-// Locate a tgdl-core binary for tests: TGDL_CORE_BIN, then the regular
-// lookup (Docker / core-service/bin / data download), then — when a Go
-// toolchain is on PATH — a build into the OS temp dir, cached by a hash
-// of the Go sources so repeated runs reuse it.
+// tgdl-core binary for the suites that run the real thing.
 //
-// Returns null when there is no binary and no Go; suites then skip,
-// unless TGDL_GOCORE_REQUIRE=1 (CI) turns that into a failure.
+// Opt-in: those suites run only with TGDL_GO_CORE_TEST=1 (CI's
+// "node + tgdl-core" jobs set it). Then the binary is TGDL_CORE_BIN, the
+// dev build (core-service/bin, `npm run build:core`), or — with Go on
+// PATH — a build into the OS temp dir, cached by a hash of the Go
+// sources. Opted in but none of those works → the suite fails instead
+// of skipping. Without the flag `findOrBuildGoCore()` returns null and
+// the suites skip, so a plain `npm test` never builds or spawns it.
 
 import { spawnSync } from 'child_process';
 import crypto from 'crypto';
@@ -15,7 +17,7 @@ import path from 'path';
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SVC_DIR = path.join(REPO_ROOT, 'core-service');
 
-export const REQUIRE_GOCORE = process.env.TGDL_GOCORE_REQUIRE === '1';
+export const GOCORE_TEST = process.env.TGDL_GO_CORE_TEST === '1';
 
 function usable(p) {
     try {
@@ -45,32 +47,24 @@ function sourceHash() {
     return h.digest('hex').slice(0, 16);
 }
 
-let _cached;
-
-export async function findOrBuildGoCore() {
-    if (_cached !== undefined) return _cached;
+async function locate() {
     const explicit = process.env.TGDL_CORE_BIN;
-    if (explicit && usable(explicit)) return (_cached = path.resolve(explicit));
+    if (explicit && usable(explicit)) return path.resolve(explicit);
 
     const prev = process.env.TGDL_CORE_BIN;
     delete process.env.TGDL_CORE_BIN;
     try {
         const { resolveBinary } = await import('../../src/core/gocore/spawn.js');
         const found = resolveBinary();
-        if (found && !found.missing && found.source !== 'download') return (_cached = found.path);
+        if (found && !found.missing && found.source !== 'download') return found.path;
     } finally {
         if (prev !== undefined) process.env.TGDL_CORE_BIN = prev;
     }
 
     const exe = process.platform === 'win32' ? 'tgdl-core.exe' : 'tgdl-core';
-    let dir;
-    try {
-        dir = path.join(os.tmpdir(), 'tgdl-core-test', sourceHash());
-    } catch {
-        return (_cached = null);
-    }
+    const dir = path.join(os.tmpdir(), 'tgdl-core-test', sourceHash());
     const out = path.join(dir, exe);
-    if (usable(out)) return (_cached = out);
+    if (usable(out)) return out;
     fs.mkdirSync(dir, { recursive: true });
     const tmp = path.join(dir, `${exe}.${process.pid}.${Date.now()}.tmp`);
     const res = spawnSync('go', ['build', '-o', tmp, './cmd/tgdl-core'], {
@@ -80,10 +74,8 @@ export async function findOrBuildGoCore() {
         timeout: 300_000,
     });
     if (res.error || res.status !== 0) {
-        try {
-            fs.rmSync(tmp, { force: true });
-        } catch {}
-        return (_cached = null);
+        fs.rmSync(tmp, { force: true });
+        return null;
     }
     try {
         fs.renameSync(tmp, out);
@@ -91,5 +83,19 @@ export async function findOrBuildGoCore() {
         // A parallel suite won the race; its binary is identical.
         fs.rmSync(tmp, { force: true });
     }
-    return (_cached = usable(out) ? out : null);
+    return usable(out) ? out : null;
+}
+
+let _cached;
+
+/** Path to a tgdl-core binary, or null when TGDL_GO_CORE_TEST isn't set. */
+export async function findOrBuildGoCore() {
+    if (!GOCORE_TEST) return null;
+    if (_cached === undefined) _cached = await locate();
+    if (!_cached) {
+        throw new Error(
+            'TGDL_GO_CORE_TEST=1 but no tgdl-core: set TGDL_CORE_BIN, run `npm run build:core`, or put Go on PATH',
+        );
+    }
+    return _cached;
 }

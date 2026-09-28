@@ -4,6 +4,9 @@
 // does not show up in `ps`):
 //
 //	TGDL_CORE_TOKEN         shared secret for every route except /health (required)
+//	TGDL_CORE_ALLOW_ROOTS   directories files may be read from, separated like
+//	                        PATH (":" on Linux / macOS, ";" on Windows); empty =
+//	                        every hash request is refused (EOUTSIDE)
 //	TGDL_CORE_PORT          listen port on 127.0.0.1; 0 or unset = pick a free one
 //	TGDL_CORE_WATCH_STDIN   "1" = exit when stdin reaches EOF (parent died)
 //	TGDL_CORE_LOG_LEVEL     debug | info (default) | warn | error
@@ -13,6 +16,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -22,6 +26,7 @@ import (
 type Config struct {
 	Port            int
 	Token           string
+	AllowRoots      []string
 	HashConcurrency int
 	WatchStdin      bool
 	LogLevel        string
@@ -35,6 +40,7 @@ var ErrNoToken = errors.New("TGDL_CORE_TOKEN is required")
 func FromEnv(getenv func(string) string, numCPU int) (Config, error) {
 	cfg := Config{
 		Token:           strings.TrimSpace(getenv("TGDL_CORE_TOKEN")),
+		AllowRoots:      splitRoots(getenv("TGDL_CORE_ALLOW_ROOTS")),
 		HashConcurrency: PoolSize(getenv("HASH_WORKER_POOL_SIZE"), numCPU),
 		WatchStdin:      isTrue(getenv("TGDL_CORE_WATCH_STDIN")),
 		LogLevel:        strings.ToLower(strings.TrimSpace(getenv("TGDL_CORE_LOG_LEVEL"))),
@@ -53,6 +59,17 @@ func FromEnv(getenv func(string) string, numCPU int) (Config, error) {
 		return cfg, ErrNoToken
 	}
 	return cfg, nil
+}
+
+// splitRoots splits a PATH-style list and drops empty entries.
+func splitRoots(v string) []string {
+	var out []string
+	for _, d := range filepath.SplitList(v) {
+		if d = strings.TrimSpace(d); d != "" {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func isTrue(s string) bool {

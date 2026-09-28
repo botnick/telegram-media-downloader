@@ -11,14 +11,16 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/botnick/telegram-media-downloader/core-service/internal/hash"
 	"github.com/botnick/telegram-media-downloader/core-service/internal/version"
 )
 
 const token = "test-token"
 
-func newTestServer(t *testing.T) *httptest.Server {
+func newTestServer(t *testing.T, roots ...string) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(New(token, 2, nil).Handler())
+	r, _ := hash.NewRoots(roots)
+	ts := httptest.NewServer(New(token, 2, r, nil).Handler())
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -81,8 +83,8 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 }
 
 func TestHashRoute(t *testing.T) {
-	ts := newTestServer(t)
 	dir := t.TempDir()
+	ts := newTestServer(t, dir)
 	data := []byte("hello tgdl-core")
 	p := filepath.Join(dir, "ไฟล์ 🎬.bin")
 	if err := os.WriteFile(p, data, 0o644); err != nil {
@@ -106,11 +108,43 @@ func TestHashRoute(t *testing.T) {
 	if resp.StatusCode != 200 || h["completed"] != float64(1) || h["concurrency"] != float64(2) {
 		t.Fatalf("stats: %d %v", resp.StatusCode, body)
 	}
+	if roots, _ := h["roots"].([]any); len(roots) != 1 {
+		t.Fatalf("stats roots = %v", h["roots"])
+	}
+}
+
+func TestHashRouteRefusesPathsOutsideRoots(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	p := filepath.Join(other, "secret.bin")
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		ts   *httptest.Server
+		path string
+	}{
+		{"outside the root", newTestServer(t, root), p},
+		{"dot-dot out of the root", newTestServer(t, root), root + string(filepath.Separator) + ".." + string(filepath.Separator) + filepath.Base(other) + string(filepath.Separator) + "secret.bin"},
+		{"no roots configured", newTestServer(t), p},
+	} {
+		resp, body := do(t, "POST", c.ts.URL+"/v1/hash", token, map[string]string{"path": c.path})
+		e, _ := body["error"].(map[string]any)
+		if resp.StatusCode != http.StatusForbidden || e["code"] != "EOUTSIDE" {
+			t.Errorf("%s: got %d %v, want 403 EOUTSIDE", c.name, resp.StatusCode, body)
+		}
+	}
+	// /health reports how many roots there are, not which.
+	_, body := do(t, "GET", newTestServer(t, root).URL+"/health", "", nil)
+	if h, _ := body["hash"].(map[string]any); h["roots"] != float64(1) {
+		t.Fatalf("health hash = %v", body["hash"])
+	}
 }
 
 func TestHashErrors(t *testing.T) {
-	ts := newTestServer(t)
 	dir := t.TempDir()
+	ts := newTestServer(t, dir)
 	cases := []struct {
 		body   any
 		status int

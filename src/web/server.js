@@ -13211,7 +13211,7 @@ ${tip}
     import('../config/manager.js')
         .then(({ watchConfig }) =>
             startGoCore({
-                readConfig: () => loadConfig()?.advanced?.goCore,
+                readConfig: () => loadConfig(),
                 watchConfig,
             }),
         )

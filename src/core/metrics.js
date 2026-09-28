@@ -160,8 +160,9 @@ metrics.declare('tgdl_workers', 'gauge', 'Active downloader worker count.');
 metrics.declare('tgdl_accounts_loaded', 'gauge', 'Telegram accounts currently loaded.');
 metrics.declare('tgdl_monitor_state', 'gauge', '1 if the realtime monitor is running, else 0.');
 metrics.declare('tgdl_download_duration_seconds', 'histogram', 'Per-file download duration.');
-// Go companion process (tgdl-core). `result` is ok | file_error | timeout |
-// error; shadow-mode comparisons count as calls too.
+// Go companion process (tgdl-core). `result` is ok | file_error | outside
+// (path not under TGDL_CORE_ALLOW_ROOTS, hashed by Node) | timeout | error;
+// shadow-mode comparisons count as calls too.
 metrics.declare(
     'tgdl_gocore_calls_total',
     'counter',

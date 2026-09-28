@@ -1,7 +1,8 @@
 // Package api is tgdl-core's HTTP surface on 127.0.0.1.
 //
 //	GET  /health    liveness + version + features (no token)
-//	POST /v1/hash   {"path": "/abs/file"} -> {"sha256","size","mtimeMs"}
+//	POST /v1/hash   {"path": "/abs/file"} -> {"sha256","size","mtimeMs"};
+//	                only files inside the allowed roots (403 EOUTSIDE otherwise)
 //	GET  /v1/stats  counters (cheap token check for the parent)
 //
 // Every route except /health requires the X-API-Token header, unknown
@@ -31,16 +32,19 @@ const maxQueuedHashes = 1024
 type Server struct {
 	token     []byte
 	log       *slog.Logger
+	roots     *hash.Roots
 	limiter   *hash.Limiter
 	stats     *hash.Stats
 	startedAt time.Time
 }
 
-// New builds a Server. hashConcurrency follows HASH_WORKER_POOL_SIZE.
-func New(token string, hashConcurrency int, log *slog.Logger) *Server {
+// New builds a Server. hashConcurrency follows HASH_WORKER_POOL_SIZE;
+// roots limits which files may be read (nil or empty refuses all).
+func New(token string, hashConcurrency int, roots *hash.Roots, log *slog.Logger) *Server {
 	return &Server{
 		token:     []byte(token),
 		log:       log,
+		roots:     roots,
 		limiter:   hash.NewLimiter(hashConcurrency, maxQueuedHashes),
 		stats:     &hash.Stats{},
 		startedAt: time.Now(),
@@ -50,7 +54,7 @@ func New(token string, hashConcurrency int, log *slog.Logger) *Server {
 // Handler returns the root handler.
 func (s *Server) Handler() http.Handler {
 	private := http.NewServeMux()
-	private.Handle("POST /v1/hash", &hash.Handler{Limiter: s.limiter, Stats: s.stats, Log: s.log})
+	private.Handle("POST /v1/hash", &hash.Handler{Limiter: s.limiter, Stats: s.stats, Roots: s.roots, Log: s.log})
 	private.HandleFunc("GET /v1/stats", s.handleStats)
 	private.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		hash.WriteError(w, http.StatusNotFound, "ENOTFOUND", "no such route")
@@ -73,6 +77,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"platform": runtime.GOOS + "/" + runtime.GOARCH,
 		"hash": map[string]any{
 			"concurrency": s.limiter.Capacity(),
+			"roots":       s.roots.Len(),
 		},
 	})
 }
@@ -87,6 +92,7 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 			"completed":   s.stats.Completed.Load(),
 			"failed":      s.stats.Failed.Load(),
 			"bytes":       s.stats.Bytes.Load(),
+			"roots":       s.roots.List(),
 		},
 	})
 }

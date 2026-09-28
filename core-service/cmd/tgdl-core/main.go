@@ -41,6 +41,8 @@ const usage = `usage:
 
 serve reads its settings from the environment:
   TGDL_CORE_TOKEN        shared secret for X-API-Token (required)
+  TGDL_CORE_ALLOW_ROOTS  directories files may be read from, separated like PATH
+                         (":" on Linux/macOS, ";" on Windows); empty = refuse all
   TGDL_CORE_PORT         port on 127.0.0.1 (default 0 = any free port)
   TGDL_CORE_WATCH_STDIN  1 = exit when stdin closes (set by the Node app)
   TGDL_CORE_LOG_LEVEL    debug | info | warn | error
@@ -127,8 +129,16 @@ func serve(ctx context.Context, cfg config.Config, stdin io.Reader, stdout io.Wr
 	}
 	addr := ln.Addr().String()
 
+	roots, warnings := hash.NewRoots(cfg.AllowRoots)
+	for _, w := range warnings {
+		log.Warn(w)
+	}
+	if roots.Len() == 0 {
+		log.Warn("TGDL_CORE_ALLOW_ROOTS is empty: every hash request will be refused (EOUTSIDE)")
+	}
+
 	srv := &http.Server{
-		Handler:           api.New(cfg.Token, cfg.HashConcurrency, log).Handler(),
+		Handler:           api.New(cfg.Token, cfg.HashConcurrency, roots, log).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		// No WriteTimeout: a multi-GB hash legitimately takes minutes.
@@ -147,7 +157,7 @@ func serve(ctx context.Context, cfg config.Config, stdin io.Reader, stdout io.Wr
 
 	line, _ := json.Marshal(listening{Event: "listening", Addr: addr, Version: version.Version, PID: os.Getpid()})
 	fmt.Fprintf(stdout, "%s\n", line)
-	log.Info("tgdl-core listening", "addr", addr, "version", version.Version, "hash_concurrency", cfg.HashConcurrency)
+	log.Info("tgdl-core listening", "addr", addr, "version", version.Version, "hash_concurrency", cfg.HashConcurrency, "allow_roots", roots.Len())
 
 	var serveErr error
 	select {

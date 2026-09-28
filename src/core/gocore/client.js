@@ -7,7 +7,9 @@
  * - Per-feature circuit breaker: BREAKER_THRESHOLD service failures inside
  *   BREAKER_WINDOW_MS switch the feature off until the next healthy
  *   /health probe (`markHealthy`). File-level errors (ENOENT, EACCES, …)
- *   are the file's fault, not the service's, and don't count.
+ *   are the file's fault, not the service's, and don't count; neither
+ *   does EOUTSIDE (a path outside TGDL_CORE_ALLOW_ROOTS), which just
+ *   means "hash this one in Node".
  * - Uses node:http rather than fetch: undici's default 300 s headers
  *   timeout would cut off a legitimate multi-GB hash.
  *
@@ -27,7 +29,7 @@ const HEX64 = /^[0-9a-f]{64}$/;
 
 export class GoCoreError extends Error {
     /**
-     * @param {'unavailable'|'timeout'|'transport'|'auth'|'file'|'busy'|'server'|'protocol'} kind
+     * @param {'unavailable'|'timeout'|'transport'|'auth'|'file'|'outside'|'busy'|'server'|'protocol'} kind
      * @param {string} [code]   Node-style code from tgdl-core (ENOENT, …)
      */
     constructor(kind, message, { code = null, status = null, cause } = {}) {
@@ -264,6 +266,12 @@ export async function hashFile(absPath, { timeoutMs = 30_000 } = {}) {
     }
     const code = body?.error?.code || null;
     const message = body?.error?.message || `tgdl-core answered ${status}`;
+    if (status === 403 && code === 'EOUTSIDE') {
+        // Outside the directories tgdl-core may read: not an error, the
+        // caller hashes the file with the Node pool as it always did.
+        _count(feature, 'outside');
+        throw new GoCoreError('outside', message, { code, status });
+    }
     if (status === 422) {
         // The file can't be read — Node will report the same thing.
         _count(feature, 'file_error');

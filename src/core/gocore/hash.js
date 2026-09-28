@@ -50,6 +50,7 @@ const _stats = {
     go: 0, // digests returned from Go
     node: 0, // digests returned from Node
     fallbacks: 0, // Go tried, Node answered
+    outside: 0, // of those: path outside TGDL_CORE_ALLOW_ROOTS (EOUTSIDE)
     parityChecks: 0,
     parityMismatches: 0,
     paritySkipped: 0, // file changed / vanished between the two hashes
@@ -130,9 +131,11 @@ async function _goCheck(absPath, nodeHex, before) {
             return;
         }
         _recordParity(g.sha256 === nodeHex, absPath, g.sha256, nodeHex);
-    } catch {
+    } catch (e) {
         // Counted by the client (calls_total / breaker). A vanished file
-        // (dedup unlinks duplicates right after hashing) lands here too.
+        // (dedup unlinks duplicates right after hashing) and a path
+        // outside the allowed roots land here too.
+        if (e?.kind === 'outside') _stats.outside++;
         _stats.paritySkipped++;
     }
 }
@@ -163,8 +166,10 @@ async function _goFirst(absPath, nodeHash, mode) {
     let g;
     try {
         g = await client.hashFile(absPath, { timeoutMs: hashTimeoutMs(st.size) });
-    } catch {
+    } catch (e) {
+        // Any failure, EOUTSIDE included: the Node pool hashes it.
         _stats.fallbacks++;
+        if (e?.kind === 'outside') _stats.outside++;
         return _node(nodeHash);
     }
     _stats.go++;

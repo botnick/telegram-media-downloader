@@ -9,7 +9,8 @@ for the plan and the rules every feature follows.
 
 Nothing here is required. If the binary is missing, can't be downloaded,
 crashes or answers wrong, the app does exactly what it did before (the
-Node worker pool). tgdl-core never opens `db.sqlite`.
+Node worker pool). tgdl-core never opens `db.sqlite`, and it only reads
+files inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`).
 
 ## Commands
 
@@ -29,6 +30,7 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 | Variable | Default | Meaning |
 |---|---|---|
 | `TGDL_CORE_TOKEN` | — (required) | Shared secret; every route except `/health` needs it as `X-API-Token`. The app mints a new one per spawn. |
+| `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes the downloads dir, `<data dir>/downloads` and a custom `download.path`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app hashes it itself. |
 | `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.1.0","pid":123}`. |
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once. Same parsing as the Node worker pool (`parseInt`, values ≥ 1 capped at 32). |
@@ -40,9 +42,9 @@ All responses are JSON. Errors are `{"error":{"code":"ENOENT","message":"…"}}`
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash"], pid, go, platform, hash:{concurrency}}` |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash"], pid, go, platform, hash:{concurrency, roots}}` (`roots` is a count) |
 | `POST /v1/hash` | token | Body `{"path":"/absolute/file"}` → `{"sha256":"<64 lowercase hex>","size":<bytes hashed>,"mtimeMs":<float>}` |
-| `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{concurrency, inFlight, waiting, completed, failed, bytes}}` |
+| `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{concurrency, inFlight, waiting, completed, failed, bytes, roots:[…]}}` |
 
 `/v1/hash` status codes:
 
@@ -51,11 +53,24 @@ All responses are JSON. Errors are `{"error":{"code":"ENOENT","message":"…"}}`
 | 200 | — | Digest of the whole file, read until EOF (identical to Node's `crypto.createHash('sha256')` over `fs.createReadStream`). |
 | 400 | `EINVAL` | Bad body, empty or relative path, NUL byte. |
 | 401 | `EAUTH` | Missing / wrong token (also for unknown routes). |
+| 403 | `EOUTSIDE` | The path isn't inside an allowed root, as written or after resolving symlinks / junctions. Not an error for the app: it hashes the file with its Node pool. |
 | 422 | `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`, `ELOOP`, `ENAMETOOLONG`, `EMFILE`, `EBUSY`, `EIO` | The file can't be read — the codes Node reports for the same failure on the same OS. |
 | 503 | `EQUEUEFULL` | More than 1024 requests waiting for a hash slot. |
 
 Implementation notes:
 
+- Containment (`internal/hash/roots.go`): the path must be absolute; it is
+  checked against each root as written (so a path outside every root is
+  refused without touching the file system), then resolved with
+  `filepath.EvalSymlinks` and checked again against each root's resolved
+  form — a link inside a root that points elsewhere is refused, a
+  downloads dir that is itself a link works. Each check is
+  `filepath.Rel(root, p)` + `filepath.IsLocal(rel)` (no `..`, no other
+  volume), and the file opened is `filepath.Join(resolvedRoot, rel)`.
+  Roots that don't exist yet are resolved again on later requests.
+  Residual race: someone who can write inside a root could swap a
+  directory for a link between the check and the open; that needs write
+  access to the downloads folder, which is already the app's own data.
 - Streams with a 1 MiB buffer; the request context is checked between
   reads, so a caller that times out or disconnects stops the read and
   frees its slot.
@@ -72,7 +87,13 @@ Implementation notes:
 npm run build:core                  # host binary → core-service/bin/tgdl-core-<slug>(.exe)
 npm run build:core -- --release     # all targets → core-service/dist/*.tar.gz + SHA256SUMS
 cd core-service && go vet ./... && go test ./...
+TGDL_GO_CORE_TEST=1 npx vitest run gocore   # Node suites against the real binary
 ```
+
+The Node suites that spawn the real binary only run with
+`TGDL_GO_CORE_TEST=1` (they use `TGDL_CORE_BIN`, the dev build, or build
+one with Go; with the flag set and none of those, they fail). A plain
+`npm test` skips them.
 
 Go 1.22+ (CI and releases use 1.25). CGO is off, so every target
 cross-compiles from any host:

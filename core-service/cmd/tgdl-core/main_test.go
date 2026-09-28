@@ -77,7 +77,7 @@ func TestServeRequiresToken(t *testing.T) {
 func TestServeExitsWhenStdinCloses(t *testing.T) {
 	stdinR, stdinW := io.Pipe()
 	stdoutR, stdoutW := io.Pipe()
-	cfg := config.Config{Token: "t", HashConcurrency: 2, WatchStdin: true}
+	cfg := config.Config{Token: "t", HashConcurrency: 2, WatchStdin: true, AllowRoots: []string{t.TempDir()}}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	done := make(chan error, 1)

@@ -76,7 +76,9 @@ type Stats struct {
 type Handler struct {
 	Limiter *Limiter
 	Stats   *Stats
-	Log     *slog.Logger
+	// Roots limits which files may be read; nil or empty refuses all.
+	Roots *Roots
+	Log   *slog.Logger
 }
 
 type request struct {
@@ -109,11 +111,14 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 
 // StatusFor maps an error code to the HTTP status of the response:
 // 422 for anything about the file itself, so callers can tell "this file
-// can't be hashed" apart from "the service is broken".
+// can't be hashed" apart from "the service is broken", and 403 for a
+// path outside the allowed roots.
 func StatusFor(code string) int {
 	switch code {
 	case "EINVAL":
 		return http.StatusBadRequest
+	case "EOUTSIDE":
+		return http.StatusForbidden
 	case "ECANCELED":
 		return 499 // client closed request; nobody reads it
 	case "EQUEUEFULL":
@@ -134,6 +139,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Containment first: only paths inside TGDL_CORE_ALLOW_ROOTS (after
+	// resolving symlinks) are read. EOUTSIDE tells the app to hash the
+	// file itself.
+	path, err := h.Roots.Resolve(req.Path)
+	if err != nil {
+		code := "EIO"
+		var he *Error
+		if errors.As(err, &he) {
+			code = he.Code
+		}
+		WriteError(w, StatusFor(code), code, err.Error())
+		return
+	}
+
 	ctx := r.Context()
 	if err := h.Limiter.Acquire(ctx); err != nil {
 		if errors.Is(err, ErrQueueFull) {
@@ -143,7 +162,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, StatusFor("ECANCELED"), "ECANCELED", err.Error())
 		return
 	}
-	res, err := File(ctx, req.Path)
+	res, err := File(ctx, path)
 	h.Limiter.Release()
 
 	if err != nil {

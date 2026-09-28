@@ -18,11 +18,11 @@
  *                                         `core-v${CORE_VERSION}`, checked
  *                                         against its SHA256SUMS asset
  *
- * The child gets a minimal environment (token, port 0, pool size, the few
- * OS variables a Go binary needs) — never the app's own secrets — and a
- * stdin pipe that stays open: when this process dies, tgdl-core reads EOF
- * and exits, so it can't linger as an orphan (Windows doesn't reap
- * children with their parent).
+ * The child gets a minimal environment (token, port 0, pool size, the
+ * directories it may read, the few OS variables a Go binary needs) —
+ * never the app's own secrets — and a stdin pipe that stays open: when
+ * this process dies, tgdl-core reads EOF and exits, so it can't linger as
+ * an orphan (Windows doesn't reap children with their parent).
  */
 
 import { execFile, spawn } from 'child_process';
@@ -33,7 +33,7 @@ import https from 'https';
 import path from 'path';
 import readline from 'readline';
 
-import { getDataDir, getRepoRoot } from '../paths.js';
+import { getDataDir, getDownloadsDir, getRepoRoot, resolveConfigDownloadPath } from '../paths.js';
 import * as client from './client.js';
 import {
     anyFeatureEnabled,
@@ -76,6 +76,7 @@ let _state = {
     pid: null,
     version: null,
     binary: null,
+    allowRoots: null,
     since: Date.now(),
 };
 let _child = null;
@@ -87,7 +88,8 @@ let _restartTimer = null;
 let _healthTimer = null;
 let _healthFailures = 0;
 let _unwatchConfig = null;
-let _lastConfigKey = null;
+let _readConfig = null;
+let _lastConfigKeys = null;
 let _exitHookInstalled = false;
 
 function _log(level, msg) {
@@ -372,11 +374,59 @@ const PASSTHROUGH_ENV = [
     'TGDL_CORE_LOG_LEVEL',
 ];
 
-export function childEnv(token) {
+function _safeConfig() {
+    try {
+        return _readConfig?.() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Directories tgdl-core may read files from (TGDL_CORE_ALLOW_ROOTS) —
+ * everywhere the app hashes from:
+ *   - getDownloadsDir(): the downloader's default target, dedup's base;
+ *   - <data dir>/downloads: nsfw.js resolves relative rows there, even
+ *     when TGDL_DOWNLOADS_DIR points elsewhere;
+ *   - config.download.path when it is custom (resolved like the
+ *     downloader does, relative to the working directory);
+ *   - extra roots from this process's own TGDL_CORE_ALLOW_ROOTS.
+ * Hashing happens on final paths only (after the .part rename), so no
+ * temp directory is needed. A file anywhere else gets EOUTSIDE from
+ * tgdl-core and is hashed by Node, exactly as before.
+ */
+export function allowRoots(config = _safeConfig()) {
+    const out = [];
+    const seen = new Set();
+    const add = (p) => {
+        if (typeof p !== 'string' || !p.trim()) return;
+        const abs = path.resolve(p.trim());
+        const key = process.platform === 'win32' ? abs.toLowerCase() : abs;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(abs);
+    };
+    add(getDownloadsDir());
+    add(path.join(getDataDir(), 'downloads'));
+    const custom = config?.download?.path;
+    if (typeof custom === 'string' && custom.trim()) add(resolveConfigDownloadPath(custom));
+    for (const p of String(process.env.TGDL_CORE_ALLOW_ROOTS || '').split(path.delimiter)) add(p);
+    return out;
+}
+
+/** PATH-style list; Go's filepath.SplitList honours quotes on Windows. */
+function _joinRoots(roots) {
+    return roots
+        .map((r) => (process.platform === 'win32' && r.includes(';') ? `"${r}"` : r))
+        .join(path.delimiter);
+}
+
+export function childEnv(token, roots = allowRoots()) {
     const env = {
         TGDL_CORE_TOKEN: token,
         TGDL_CORE_PORT: '0',
         TGDL_CORE_WATCH_STDIN: '1',
+        TGDL_CORE_ALLOW_ROOTS: _joinRoots(roots),
     };
     for (const k of PASSTHROUGH_ENV) {
         const v = process.env[k];
@@ -452,9 +502,15 @@ function _installExitHook() {
 
 async function _spawn(bin) {
     const token = crypto.randomBytes(24).toString('hex');
-    _setState({ state: 'starting', error: null, binary: { path: bin.path, source: bin.source } });
+    const roots = allowRoots();
+    _setState({
+        state: 'starting',
+        error: null,
+        binary: { path: bin.path, source: bin.source },
+        allowRoots: roots,
+    });
     const child = spawn(bin.path, ['serve'], {
-        env: childEnv(token),
+        env: childEnv(token, roots),
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: path.dirname(bin.path),
         windowsHide: true,
@@ -563,12 +619,12 @@ function _killChild() {
 
 // ---- Public API ------------------------------------------------------------
 
-function _configKey(readConfig) {
-    try {
-        return JSON.stringify(readConfig?.() ?? null);
-    } catch {
-        return null;
-    }
+function _configKeys() {
+    const cfg = _safeConfig();
+    return {
+        flags: JSON.stringify(cfg?.advanced?.goCore ?? null),
+        roots: JSON.stringify(allowRoots(cfg)),
+    };
 }
 
 async function _start() {
@@ -639,21 +695,27 @@ async function _start() {
  * when the process is up and healthy. Safe to call repeatedly.
  *
  * @param {object} [opts]
- * @param {() => object} [opts.readConfig]   returns config.advanced.goCore
+ * @param {() => object} [opts.readConfig]   returns the app config
+ *        (advanced.goCore for the flags, download.path for the roots)
  * @param {(cb: Function) => Function} [opts.watchConfig]  config.watchConfig
  */
 export async function startGoCore(opts = {}) {
     if (opts.readConfig) {
-        setConfigReader(opts.readConfig);
-        _lastConfigKey = _configKey(opts.readConfig);
+        _readConfig = opts.readConfig;
+        setConfigReader(() => _readConfig?.()?.advanced?.goCore);
+        _lastConfigKeys = _configKeys();
         if (opts.watchConfig && !_unwatchConfig) {
             try {
                 _unwatchConfig = opts.watchConfig(() => {
-                    const key = _configKey(opts.readConfig);
-                    if (key === _lastConfigKey) return;
-                    _lastConfigKey = key;
+                    const keys = _configKeys();
+                    const prev = _lastConfigKeys;
+                    _lastConfigKeys = keys;
+                    const rootsChanged = keys.roots !== prev?.roots;
+                    if (keys.flags === prev?.flags && !rootsChanged) return;
                     invalidateConfig();
-                    refreshGoCore().catch(() => {});
+                    // New download folder: restart so tgdl-core gets the
+                    // new allow-list (until then Node hashes those files).
+                    refreshGoCore({ restart: rootsChanged }).catch(() => {});
                 });
             } catch {
                 _unwatchConfig = null;
@@ -678,9 +740,9 @@ export async function startGoCore(opts = {}) {
 
 /**
  * Re-evaluate after a config change: start when a feature was switched
- * on, stop when all are off.
+ * on, stop when all are off, restart when `restart` (new allow-roots).
  */
-export async function refreshGoCore() {
+export async function refreshGoCore({ restart = false } = {}) {
     invalidateConfig();
     if (!anyFeatureEnabled()) {
         clearTimeout(_restartTimer);
@@ -688,6 +750,10 @@ export async function refreshGoCore() {
         _killChild();
         _setState({ state: 'disabled', error: null, pid: null });
         return false;
+    }
+    if (restart && _child) {
+        _killChild();
+        _setState({ state: 'exited', error: 'restarting for new allow-roots', pid: null });
     }
     return startGoCore();
 }
@@ -716,6 +782,7 @@ export function getGoCoreStatus() {
         version: _state.version,
         expectedVersion: CORE_VERSION,
         binary: _state.binary,
+        allowRoots: _state.allowRoots ?? null,
         restarts: _restarts,
         features: { hash: getHashStats() },
     };

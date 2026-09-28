@@ -5,8 +5,9 @@
 // and tgdl-core (POST /v1/hash); all four must agree exactly. Then the
 // routed path (sha256OfFileViaPool) is checked in `on` and `shadow` modes.
 //
-// Skips when there is no tgdl-core binary and no Go toolchain to build
-// one (TGDL_GOCORE_REQUIRE=1 makes that a failure, as in CI).
+// Runs with TGDL_GO_CORE_TEST=1 (CI's "node + tgdl-core" jobs); skipped
+// otherwise. The files live under the data dir's downloads folder, which
+// the app passes to tgdl-core as an allowed root.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import crypto from 'crypto';
@@ -14,11 +15,21 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { findOrBuildGoCore, REQUIRE_GOCORE } from './helpers/gocore-bin.js';
+import { findOrBuildGoCore } from './helpers/gocore-bin.js';
 
 const MiB = 1024 * 1024;
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-gocore-parity-'));
-const ENV_KEYS = ['TGDL_CORE_BIN', 'TGDL_GO_CORE', 'TGDL_GO_FEATURES', 'TGDL_DATA_DIR'];
+// TGDL_DATA_DIR/downloads is an allowed root; OUTSIDE is not.
+const DOWNLOADS = path.join(TMP, 'data', 'downloads');
+const OUTSIDE = path.join(TMP, 'elsewhere');
+const ENV_KEYS = [
+    'TGDL_CORE_BIN',
+    'TGDL_GO_CORE',
+    'TGDL_GO_FEATURES',
+    'TGDL_DATA_DIR',
+    'TGDL_DOWNLOADS_DIR',
+    'TGDL_CORE_ALLOW_ROOTS',
+];
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 
 let bin = null;
@@ -26,7 +37,7 @@ let spawnMod, client, router, checksum, hashWorker;
 const files = []; // { name, abs, size, expected }
 
 function addFile(rel, buf) {
-    const abs = path.join(TMP, rel);
+    const abs = path.join(DOWNLOADS, rel);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, buf);
     const expected = crypto.createHash('sha256').update(buf).digest('hex');
@@ -47,10 +58,7 @@ function patterned(n, seed) {
 
 beforeAll(async () => {
     bin = await findOrBuildGoCore();
-    if (!bin) {
-        if (REQUIRE_GOCORE) throw new Error('TGDL_GOCORE_REQUIRE=1 but no tgdl-core binary / Go');
-        return;
-    }
+    if (!bin) return;
     addFile('empty.bin', Buffer.alloc(0));
     addFile('one.bin', Buffer.from([0x42]));
     addFile('exact-1MiB.bin', patterned(MiB, 1));
@@ -62,12 +70,16 @@ beforeAll(async () => {
     addFile(path.join('โฟลเดอร์ 📁', 'ซ้อน 🎉.png'), patterned(12_345, 6));
     // Past Windows' MAX_PATH (260).
     let deep = '';
-    while (path.join(TMP, deep).length < 300) deep = path.join(deep, `segment-${'x'.repeat(30)}`);
+    while (path.join(DOWNLOADS, deep).length < 300) {
+        deep = path.join(deep, `segment-${'x'.repeat(30)}`);
+    }
     addFile(path.join(deep, 'long-path-ยาว.bin'), patterned(3 * MiB + 17, 7));
 
     process.env.TGDL_CORE_BIN = bin;
     process.env.TGDL_GO_CORE = 'on';
     delete process.env.TGDL_GO_FEATURES;
+    delete process.env.TGDL_DOWNLOADS_DIR;
+    delete process.env.TGDL_CORE_ALLOW_ROOTS;
     process.env.TGDL_DATA_DIR = path.join(TMP, 'data');
 
     spawnMod = await import('../src/core/gocore/spawn.js');
@@ -166,9 +178,34 @@ describe('tgdl-core hash parity with Node', () => {
         }
     });
 
+    it('only reads inside its allowed roots; Node hashes the rest', async ({ skip }) => {
+        if (!bin) skip();
+        expect(spawnMod.getGoCoreStatus().allowRoots).toContain(path.resolve(DOWNLOADS));
+        fs.mkdirSync(OUTSIDE, { recursive: true });
+        const outsideFile = path.join(OUTSIDE, 'not-a-download.bin');
+        const buf = patterned(10_000, 9);
+        fs.writeFileSync(outsideFile, buf);
+        const want = crypto.createHash('sha256').update(buf).digest('hex');
+        await expect(client.hashFile(outsideFile)).rejects.toMatchObject({
+            kind: 'outside',
+            code: 'EOUTSIDE',
+            status: 403,
+        });
+        // `..` out of the root is refused the same way.
+        await expect(
+            client.hashFile(path.join(DOWNLOADS, '..', '..', 'elsewhere', 'not-a-download.bin')),
+        ).rejects.toMatchObject({ code: 'EOUTSIDE' });
+        const before = router.getHashStats();
+        expect(await checksum.sha256OfFileViaPool(outsideFile)).toBe(want);
+        const after = router.getHashStats();
+        expect(after.outside - before.outside).toBe(1);
+        expect(after.fallbacks - before.fallbacks).toBe(1);
+        expect(client.breakerState('hash').recentFailures).toBe(0);
+    });
+
     it('reports the same failure as Node for a missing file', async ({ skip }) => {
         if (!bin) skip();
-        const missing = path.join(TMP, 'does-not-exist.bin');
+        const missing = path.join(DOWNLOADS, 'does-not-exist.bin');
         const nodeErr = await checksum.sha256OfFile(missing).catch((e) => e);
         const routedErr = await checksum.sha256OfFileViaPool(missing).catch((e) => e);
         expect(nodeErr.code).toBe('ENOENT');
@@ -178,6 +215,9 @@ describe('tgdl-core hash parity with Node', () => {
             kind: 'file',
             code: 'ENOENT',
         });
-        await expect(client.hashFile(TMP)).rejects.toMatchObject({ kind: 'file', code: 'EISDIR' });
+        await expect(client.hashFile(DOWNLOADS)).rejects.toMatchObject({
+            kind: 'file',
+            code: 'EISDIR',
+        });
     });
 });

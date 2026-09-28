@@ -155,6 +155,10 @@ async function main() {
     const client = await import('../src/core/gocore/client.js');
     process.env.TGDL_GO_CORE = 'on';
     process.env.TGDL_DATA_DIR ||= path.join(DIR, '.data');
+    // The bench set isn't under the downloads dir: allow it explicitly.
+    process.env.TGDL_CORE_ALLOW_ROOTS = [DIR, process.env.TGDL_CORE_ALLOW_ROOTS]
+        .filter(Boolean)
+        .join(path.delimiter);
     if (!(await spawnMod.startGoCore())) {
         console.error('tgdl-core did not start:', spawnMod.getGoCoreStatus());
         process.exit(1);
