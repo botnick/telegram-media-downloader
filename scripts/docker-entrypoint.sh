@@ -11,7 +11,9 @@
 #      by distro AND Synology DSM version (DSM 6 ≈ 937, DSM 7 ≈ 100, RHEL
 #      uses 39, plain Debian uses 104), so a hard-coded `group_add` in
 #      compose isn't portable. Detect at boot instead.
-#   3. Drop privileges to `node` via gosu and exec the CMD.
+#   3. Make /etc/hosts, /etc/resolv.conf and /etc/hostname world-readable
+#      so DNS works after dropping to `node`.
+#   4. Drop privileges to `node` via gosu and exec the CMD.
 #
 # Idempotent: safe to run on every container start. The chown/chmod walk
 # is a no-op once perms are already correct (millisecond-cost on most
@@ -96,6 +98,12 @@ if [ "$(id -u)" = "0" ]; then
     # NVIDIA / non-DRI accelerators (cuda) — `nvidia-container-runtime`
     # injects /dev/nvidia* with mode 0666, so no group fix is needed; the
     # device works for any UID. Skip the loop.
+
+    # Some hosts bind-mount /etc/hosts, /etc/resolv.conf and /etc/hostname
+    # as 0640 root. Once we drop to `node` the resolver can't read them and
+    # every lookup fails with EAI_AGAIN (Telegram, update checks). They hold
+    # no secrets — make them readable.
+    chmod a+r /etc/hosts /etc/resolv.conf /etc/hostname 2>/dev/null || true
 
     # gosu accepts either `<user>` or `<user>:<group>`. The latter
     # requires both a user AND a group named `node` to exist — true on

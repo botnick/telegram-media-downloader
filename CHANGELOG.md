@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format is based on 
 - **Editing a backup destination wiped its saved credentials.** The Edit form says "leave blank to keep" but the server replaced the whole provider config, so saving any change (or clicking Test connection in the form) dropped every secret you didn't retype. Blank secrets now keep their stored values, and the form pre-fills the non-secret fields (host, bucket, paths, …) instead of showing them empty. If an earlier edit already wiped a destination's secrets, re-enter them once.
 - **Wrong page count with "Pinned" on in a group's gallery.** The per-group total ignored the pinned filter, so pagination kept offering pages of nothing.
 - **Finished maintenance jobs could still look "running".** Status endpoints for re-index, thumbnail build and video optimise laid the last progress tick over the job's own state, so a stale `stage` / `running` from progress could win. The job's own `running` / `stage` / `error` now always take precedence, and a finished job's saved progress no longer carries `running: true`.
+- **Docker: DNS failures (`EAI_AGAIN`) on hosts that mount `/etc/hosts` / `/etc/resolv.conf` as `0640`.** The app runs as `node` and couldn't read them, so every lookup failed. The entrypoint now makes `/etc/hosts`, `/etc/resolv.conf` and `/etc/hostname` world-readable (they hold no secrets) before dropping privileges.
 
 ## [2.25.0] — 2026-09-29
 
