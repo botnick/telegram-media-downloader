@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Installs upgraded from the single-account era could get their Telegram session revoked.** The dashboard still connected the old `data/session.enc` next to the migrated copy in `data/sessions/`, putting one auth key on two connections, which Telegram may answer with `AUTH_KEY_DUPLICATED` (forced re-login). The old file is now only used when no account exists in `data/sessions/`, and a legacy connection is closed as soon as the accounts are loaded.
+- The update check reads up to 100 recent releases, so frequent sidecar releases can't push the latest app release out of view.
+
 ## [2.27.0] — 2026-09-29
 
 A simpler dashboard: one search box for the gallery (Thai and mid-word too), one-step backfill from any chat, one Sort & filter control, search in Settings, clearer multi-select with a single bulk-action bar, and a Queue that opens on what's downloading. Long-press to select now works on phones.
