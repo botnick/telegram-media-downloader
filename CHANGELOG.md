@@ -9,35 +9,19 @@ All notable changes to this project are documented here. The format is based on 
 - **`npm install` installs tgdl-core**: it downloads the pinned `core-v0.2.0` build for your platform and checks it against the release's `SHA256SUMS`, or builds it when Go is installed. `npm run install:core` runs the same step by hand; `TGDL_CORE_SKIP_INSTALL=1` skips it.
 - **A banner when tgdl-core can't run** (missing binary, failed download, unsupported platform, or it keeps crashing) with the exact fix. The same text is in `GET /api/system/health` → `goCore.problem` and in the log.
 - `scripts/bench-gocore.js` compares the old Node code with tgdl-core for hashing, the integrity sweep, folder walks and face clustering. It reports wall time and event-loop delay. See [docs/GO-CORE.md](docs/GO-CORE.md#measured).
-- **One standard for chats that can't be reached.** Every configured chat now has an access state: *Not a member*, *Banned*, *Private*, *Deleted*, *Restricted* (by Telegram, with its reason) or *Moved* (a group upgraded to a supergroup, with the new id). It's worked out from Telegram's own answers (`CHANNEL_PRIVATE`, `CHANNEL_INVALID`, `USER_BANNED_IN_CHANNEL`, a forbidden or migrated chat in the dialogs list, the "moved to" service message, …) per account, and kept with the error code, when it was first seen, last checked and which accounts were asked. A chat is only paused when **no** account can read it — if another account still can, that one takes over and the chat keeps downloading.
-- **Paused chats cost nothing.** Polling, live updates, the download queue (no more five retries per file), backfill (including the automatic first and catch-up backfills), avatar and name lookups, Stories and auto-forwarding skip them with a local check — no Telegram call. Each one is checked again on its own, one chat a minute at most: after 1 hour, 6 hours, then daily. A dialogs refresh that shows the chat again, or a live message from it, flips it back to normal right away, and adding an account re-checks them all (one a minute).
-- **The same badge everywhere** — the Chats list, the sidebar, the Add sheet, the chat page and Recovery cleanup.
-- **Chat page banner** saying what happened and what to do, what Telegram said, since when, when it's checked next and which accounts were asked, with **Check again**, **Follow the new group** (moved groups: adds the new group with the same settings and turns the old one off), **Switch account** (with 2+ accounts), **Stop monitoring** and **Remove from list** (the list entry only — downloaded files stay, nothing changes in Telegram). The Monitoring switch reads "Paused — this chat can't be reached" and Backfill is off. A forward destination that refuses our posts gets a note, and forwarding to it pauses instead of uploading every file to be refused.
-- **Chats → Needs attention** (with a count; `#/groups?tab=attention`) lists every configured chat that can't be reached — also the ones that dropped out of your dialogs list — with Check all again, Stop monitoring all and Remove all from list. The other tabs show a one-line pointer to it, and Settings → Tools lists "N chats can't be reached".
-- The backfill sheet refuses such a chat with the reason and a Check again button instead of failing after the fact.
-- API: `access` on `/api/groups`, `/api/dialogs` and `/api/chats/lookup` rows; `GET /api/chats/access`, `POST /api/chats/access/recheck` (one chat now, or all in the background), `POST /api/chats/access/stop`, `POST /api/chats/access/remove`, `POST /api/chats/:id/follow-migration` (admin only); `POST /api/history` answers `409 CHAT_UNREACHABLE`; WS `chat_access_changed`. See [docs/API.md](docs/API.md#chat-access).
 
 ### Changed
 - **tgdl-core, the app's Go engine, now does the heavy file work, and it is required.** It handles:
-  - file hashing (download-time duplicate check, Find duplicates, the NSFW hash blocklist);
-  - Verify files and the boot and hourly integrity sweep;
-  - Re-index from disk;
-  - the disk-usage figure shown while the library is empty;
-  - face clustering.
-
-  The Node code it replaced is removed: the hash worker pool, the `fs.stat` sweep, the folder walks and the DBSCAN worker. Results don't change. Tests prove it against the removed Node code, against Node's own `fs.stat` / `fs.readdir` on the machine they run on, and against frozen fixtures. That covers the exact error codes Verify files relies on before it removes a library entry.
-
-  The dashboard stays responsive while these jobs run. Face clustering uses every core: 5,000 faces take ~0.3 s instead of ~7 s, and 20,000 take ~4 s instead of ~2 min. Folder walks are 6–7× faster. See [docs/GO-CORE.md](docs/GO-CORE.md).
 - **If tgdl-core can't run, the app still starts and everything else works** (dashboard, `/api/auth_check`, downloads).
-  - Verify files, Re-index from disk, Find duplicates and Re-cluster answer `503 TGDL_CORE_UNAVAILABLE` with the fix instead of starting.
-  - A finished download is stored without a hash, as after a read error before.
-  - The integrity sweep removes nothing.
-  - Nothing crash-loops.
 - `TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `config.advanced.goCore` and `HASH_WORKER_DISABLE` no longer do anything. They are harmless if set, and a saved `advanced.goCore` block is dropped the next time settings are saved.
 - **`GET /api/system/health` → `goCore`:**
-  - loses `mode` and `modeSource`, and the per-feature shadow and breaker counters;
-  - gains `problem`, `platform` and `features.<hash|stat|walk|dbscan>.available`.
 - **`/metrics`:** `tgdl_gocore_parity_*` is gone, and `tgdl_gocore_calls_total` now also counts `feature="stat"`, `"walk"` and `"dbscan"`.
+
+## [2.29.0] — 2026-09-29
+
+Chats the app can no longer read — deleted, banned, private or left, moved to a supergroup — are now paused instead of retried, so they stop using Telegram's limits. The dashboard says why and what to do (Check again, switch account, follow the new group, stop monitoring), with a Needs attention list and automatic re-checks.
+
+### Changed
 - **A chat no account can open is paused, not switched off.** Older versions set `enabled:false` (and `suspended` for banned chats) at startup and never looked again; now the monitoring setting stays yours and the chat resumes by itself when it's reachable. Entries older versions switched off keep their setting, show the same badge, and lose the old flags once they're reachable again (so they can be switched back on). Unresolved `unknown:` recovery entries are auto-disabled as before.
 
 ### Fixed
@@ -46,6 +30,17 @@ All notable changes to this project are documented here. The format is based on 
 - The sidebar no longer makes the server re-resolve every chat on each list refresh because of a name that can't resolve (typically a dead chat).
 - The status bar's chat count dropped to 0 after the periodic stats update, which only carries file and disk totals. Missing fields now keep their last value.
 
+### Added
+- **One standard for chats that can't be reached.** Every configured chat now has an access state: *Not a member*, *Banned*, *Private*, *Deleted*, *Restricted* (by Telegram, with its reason) or *Moved* (a group upgraded to a supergroup, with the new id). It's worked out from Telegram's own answers (`CHANNEL_PRIVATE`, `CHANNEL_INVALID`, `USER_BANNED_IN_CHANNEL`, a forbidden or migrated chat in the dialogs list, the "moved to" service message, …) per account, and kept with the error code, when it was first seen, last checked and which accounts were asked. A chat is only paused when **no** account can read it — if another account still can, that one takes over and the chat keeps downloading.
+- **Paused chats cost nothing.** Polling, live updates, the download queue (no more five retries per file), backfill (including the automatic first and catch-up backfills), avatar and name lookups, Stories and auto-forwarding skip them with a local check — no Telegram call. Each one is checked again on its own, one chat a minute at most: after 1 hour, 6 hours, then daily. A dialogs refresh that shows the chat again, or a live message from it, flips it back to normal right away, and adding an account re-checks them all (one a minute).
+- **The same badge everywhere** — the Chats list, the sidebar, the Add sheet, the chat page and Recovery cleanup.
+- **Chat page banner** saying what happened and what to do, what Telegram said, since when, when it's checked next and which accounts were asked, with **Check again**, **Follow the new group** (moved groups: adds the new group with the same settings and turns the old one off), **Switch account** (with 2+ accounts), **Stop monitoring** and **Remove from list** (the list entry only — downloaded files stay, nothing changes in Telegram). The Monitoring switch reads "Paused — this chat can't be reached" and Backfill is off. A forward destination that refuses our posts gets a note, and forwarding to it pauses instead of uploading every file to be refused.
+- **Chats → Needs attention** (with a count; `#/groups?tab=attention`) lists every configured chat that can't be reached — also the ones that dropped out of your dialogs list — with Check all again, Stop monitoring all and Remove all from list. The other tabs show a one-line pointer to it, and Settings → Tools lists "N chats can't be reached".
+- The backfill sheet refuses such a chat with the reason and a Check again button instead of failing after the fact.
+- API: `access` on `/api/groups`, `/api/dialogs` and `/api/chats/lookup` rows; `GET /api/chats/access`, `POST /api/chats/access/recheck` (one chat now, or all in the background), `POST /api/chats/access/stop`, `POST /api/chats/access/remove`, `POST /api/chats/:id/follow-migration` (admin only); `POST /api/history` answers `409 CHAT_UNREACHABLE`; WS `chat_access_changed`. See [docs/API.md](docs/API.md#chat-access).
+
+### Service worker
+- `VERSION = 'v2290'`
 ## [2.28.0] — 2026-09-29
 
 A new layout with four places — Library, Chats, Queue, Settings — plus a chat details page instead of the settings dialog, one Add box for chats, @usernames and t.me links, an in-app account sign-in, Tools under Settings, and a go-anywhere palette (Ctrl+K). Also the first Go component, tgdl-core, which checks file hashes alongside Node in shadow mode.
