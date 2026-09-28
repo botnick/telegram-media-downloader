@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/botnick/telegram-media-downloader?label=Version&color=blue&style=for-the-badge" alt="Version">
+  <a href="https://github.com/botnick/telegram-media-downloader/releases/latest"><img src="https://img.shields.io/github/v/release/botnick/telegram-media-downloader?label=Version&color=blue&style=for-the-badge" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
   <img src="https://img.shields.io/badge/Node.js-22+-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 22+">
-  <img src="https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/Tests-5700+-brightgreen?style=for-the-badge" alt="Tests">
+  <a href="https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader"><img src="https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker image on ghcr.io"></a>
+  <a href="https://github.com/botnick/telegram-media-downloader/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/botnick/telegram-media-downloader/ci.yml?branch=main&label=CI&style=for-the-badge" alt="CI status"></a>
 </p>
 
 <h1 align="center">Telegram Media Downloader</h1>
@@ -20,7 +20,8 @@
   <a href="docs/CLUSTER.md">Cluster</a> &bull;
   <a href="docs/AI.md">AI Faces</a> &bull;
   <a href="docs/API.md">API</a> &bull;
-  <a href="docs/DEPLOY.md">Deploy</a>
+  <a href="docs/DEPLOY.md">Deploy</a> &bull;
+  <a href="docs/README.md">All docs</a>
 </p>
 
 ---

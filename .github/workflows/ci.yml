@@ -26,6 +26,9 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint
+      # Big-data regression guard (unbounded .all() / Math.max(...spread)).
+      - run: npm run check:oom
+        if: runner.os == 'Linux'
       - run: npm test
         env:
           # better-sqlite3 sometimes spews a single noise line on Windows;

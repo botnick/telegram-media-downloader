@@ -21,5 +21,6 @@ Out of scope: anything that requires a compromised Telegram account, self-XSS, o
 - **Back up `data/secret.key`** — losing it makes every saved session unrecoverable.
 - **Run only one writer to `data/db.sqlite`** at a time (CLI monitor or web server, not both).
 - **Pin the Docker image by digest**, not the floating tag.
+- **Don't expose sidecars without a token.** When a faces / NSFW / seekbar sidecar runs on another host, set its API token and keep its port off the public internet; restrict path mode with `TGDL_*_ALLOW_ROOTS` (see [`docs/AI.md`](docs/AI.md)).
 
 See [`docs/AUDIT.md`](docs/AUDIT.md) for the full audit history.
