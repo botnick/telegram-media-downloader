@@ -247,9 +247,11 @@ docker run -d --name tgdl-seekbar --restart unless-stopped \
   -v tgdl-seekbar:/data \
   ghcr.io/botnick/tgdl-seekbar:latest
 # Intel / AMD hardware decode: add  --device /dev/dri
-# Optional shared storage: add  -v /mnt/media:/media:ro  and map
-#   /app/data/downloads=/media  in the app
+# Optional shared storage: add  -v /mnt/media:/media:ro
+#   -e SEEKBAR_ALLOW_ROOTS=/media   and map  /app/data/downloads=/media  in the app
 ```
+
+`SEEKBAR_ALLOW_ROOTS` (comma-separated) limits which directories the sidecar reads in path mode. Anything outside is answered as "source not found", and the app uploads the file instead. Leave it unset only when the sidecar runs next to the app.
 
 Without Docker, download `tgdl-seekbar-<os>-<arch>.tar.gz` from the `seekbar-v0.4.0` release, make sure `ffmpeg`/`ffprobe` are on `PATH`, and run `SEEKBAR_API_TOKEN=… SEEKBAR_HTTP_LISTEN=:8089 ./seekbar-server`.
 

@@ -66,6 +66,12 @@ type StorageConfig struct {
 	// abandoned partial upload is kept before it's swept.
 	MaxUploadMB  int `yaml:"max_upload_mb"`
 	UploadTTLMin int `yaml:"upload_ttl_min"`
+	// AllowRoots limits path-mode submissions to files under these
+	// directories (symlinks resolved). Empty = any path the process can
+	// read, as before; set it when the sidecar is reachable from other
+	// machines. Paths outside get "source not found", so the app falls
+	// back to upload mode.
+	AllowRoots []string `yaml:"allow_roots"`
 }
 
 type FFmpegConfig struct {
@@ -244,6 +250,7 @@ func applyEnv(c *Config) {
 	setStr(&c.Storage.Overwrite, "VTS_STORAGE__OVERWRITE", "SEEKBAR_OVERWRITE")
 	setInt(&c.Storage.MaxUploadMB, "VTS_STORAGE__MAX_UPLOAD_MB", "SEEKBAR_MAX_UPLOAD_MB")
 	setInt(&c.Storage.UploadTTLMin, "VTS_STORAGE__UPLOAD_TTL_MIN", "SEEKBAR_UPLOAD_TTL_MIN")
+	setStrSlice(&c.Storage.AllowRoots, "VTS_STORAGE__ALLOW_ROOTS", "SEEKBAR_ALLOW_ROOTS")
 
 	setStr(&c.FFmpeg.Path, "VTS_FFMPEG__PATH", "SEEKBAR_FFMPEG", "FFMPEG_PATH")
 	setStr(&c.FFmpeg.ProbePath, "VTS_FFMPEG__PROBE_PATH", "SEEKBAR_FFPROBE", "FFPROBE_PATH")

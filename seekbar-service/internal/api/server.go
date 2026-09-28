@@ -390,12 +390,53 @@ func (s *Server) buildJob(req submitOneReq) (*worker.Job, error) {
 		j.Source = "upload"
 		return j, nil
 	}
-	if _, err := os.Stat(req.Path); err != nil {
+	src, ok := s.resolveSource(req.Path)
+	if !ok {
 		return nil, &errSource{map[string]any{"error": "source not found", "path": req.Path}}
 	}
-	j.SrcPath = req.Path
+	j.SrcPath = src
 	j.Source = "path"
 	return j, nil
+}
+
+// resolveSource checks a path-mode source: it must exist and, when
+// storage.allow_roots is set, resolve (symlinks included) to a file under
+// one of those roots. Returns the path to read.
+func (s *Server) resolveSource(p string) (string, bool) {
+	roots := s.cfg.Storage.AllowRoots
+	if len(roots) == 0 {
+		if _, err := os.Stat(p); err != nil {
+			return "", false
+		}
+		return p, true
+	}
+	abs, err := filepath.Abs(filepath.Clean(p))
+	if err != nil {
+		return "", false
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", false
+	}
+	for _, r := range roots {
+		root, err := filepath.Abs(filepath.Clean(r))
+		if err != nil {
+			continue
+		}
+		if rr, err := filepath.EvalSymlinks(root); err == nil {
+			root = rr
+		}
+		rel, err := filepath.Rel(root, real)
+		if err != nil || rel == ".." || filepath.IsAbs(rel) ||
+			strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if st, err := os.Stat(real); err == nil && st.Mode().IsRegular() {
+			return real, true
+		}
+		return "", false
+	}
+	return "", false
 }
 
 func (s *Server) handleSubmitOne(w http.ResponseWriter, r *http.Request) {

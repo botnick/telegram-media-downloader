@@ -6974,7 +6974,7 @@ app.post('/api/maintenance/seekbar/sidecar-test', async (req, res) => {
         const saved = resolveSeekbarRemote();
         const token = _sidecarTestToken(req.body, saved.url, saved.token);
         const r = await probeSidecar({
-            url: req.body.url,
+            url: probe.base,
             token,
             authCheck: { method: 'GET', path: '/v1/stats' },
         });
@@ -7341,10 +7341,12 @@ function _sidecarHealthUrl(raw) {
     if (u.username || u.password) return { error: 'invalid_url' };
     let end = u.pathname.length;
     while (end > 0 && u.pathname[end - 1] === '/') end--;
-    u.pathname = `${u.pathname.slice(0, end)}/health`;
+    u.pathname = u.pathname.slice(0, end);
     u.search = '';
     u.hash = '';
-    return { url: u.href };
+    // `base` is the validated URL the probe talks to — never the raw input.
+    const base = u.href.endsWith('/') ? u.href.slice(0, -1) : u.href;
+    return { url: `${base}/health`, base };
 }
 
 // Token for a sidecar Test button: the one typed in the form, else the saved
@@ -7373,7 +7375,7 @@ app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
         // An empty /classify is a cheap token check: 401 = rejected,
         // 400 missing_input = accepted (or no token required).
         const r = await probeSidecar({
-            url: req.body.url,
+            url: probe.base,
             token,
             authCheck: { method: 'POST', path: '/classify', body: {} },
         });

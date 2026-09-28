@@ -103,6 +103,12 @@ sidecar exposed through a tunnel doesn't hand out thumbnails; set
 `SEEKBAR_PUBLIC_MEDIA=true` to keep them open for a frontend that loads
 sprites straight from the service.
 
+Path mode reads whatever `path` a caller submits. On a sidecar other
+machines can reach, set `SEEKBAR_ALLOW_ROOTS=/media,/other` (or
+`storage.allow_roots`). Paths that resolve outside those directories,
+symlinks included, get `400 source not found`. Unset means no restriction,
+the behaviour before 0.4.0.
+
 Per-job settings (0.4.0+): `interval_sec`, `tile_w`, `cols`, `max_tiles`,
 `format` and `quality` in a submit body override the service defaults for
 that job (out-of-range values are ignored), so a remote caller's settings

@@ -207,3 +207,44 @@ func TestPathSubmitStillChecksTheSource(t *testing.T) {
 		t.Fatalf("missing path: %d %v", rec.Code, body)
 	}
 }
+
+func TestAllowRootsLimitsPathMode(t *testing.T) {
+	base := t.TempDir()
+	inside := filepath.Join(base, "media")
+	outside := filepath.Join(base, "private")
+	for _, d := range []string{inside, outside} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	okFile := filepath.Join(inside, "a.mp4")
+	badFile := filepath.Join(outside, "b.mp4")
+	for _, f := range []string{okFile, badFile} {
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv, _ := newTestServer(t, func(c *config.Config) { c.Storage.AllowRoots = []string{inside} })
+
+	if _, ok := srv.resolveSource(okFile); !ok {
+		t.Fatalf("file under the root was rejected")
+	}
+	for _, p := range []string{badFile, filepath.Join(inside, "..", "private", "b.mp4"), inside} {
+		if _, ok := srv.resolveSource(p); ok {
+			t.Fatalf("%s should be rejected", p)
+		}
+	}
+	// A symlink inside the root that points outside it is rejected too.
+	link := filepath.Join(inside, "link.mp4")
+	if err := os.Symlink(badFile, link); err == nil {
+		if _, ok := srv.resolveSource(link); ok {
+			t.Fatalf("symlink escaping the root was accepted")
+		}
+	}
+
+	// Without allow_roots any existing file is accepted, as before.
+	open, _ := newTestServer(t, nil)
+	if _, ok := open.resolveSource(badFile); !ok {
+		t.Fatalf("no allow_roots should keep the old behaviour")
+	}
+}
