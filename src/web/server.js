@@ -13,7 +13,6 @@ import fs from 'fs/promises';
 import fsSync, { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
 import { TelegramClient } from 'telegram';
 import { DedupStringSession } from '../core/telegram-session.js';
 import crypto from 'crypto';
@@ -239,6 +238,7 @@ import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
 import { createSwrCache } from './lib/swr-cache.js';
+import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
     recordClusterAudit,
     listClusterAudit,
@@ -572,38 +572,19 @@ app.use(async (req, res, next) => {
     return res.redirect(308, `https://${host}${req.originalUrl}`);
 });
 
-// Optional gzip/deflate/br compression for text responses (HTML / JS / CSS /
-// JSON / SVG). The middleware ships as a separate npm package so we
-// `createRequire` it here and silently skip when the host hasn't installed
-// it (e.g. an old `node_modules/`). When present, configure to skip
-// already-compressed media (image/* / video/* / audio/*) and tunable level
-// via `COMPRESSION_LEVEL` (1-9, default 6 — the same default the package
-// uses, exposed for operators on slow CPUs who want a lower setting).
-try {
-    const _localRequire = createRequire(import.meta.url);
-    const compression = _localRequire('compression');
-    const lvlEnv = parseInt(process.env.COMPRESSION_LEVEL, 10);
-    const level = Number.isFinite(lvlEnv) && lvlEnv >= 0 && lvlEnv <= 9 ? lvlEnv : 6;
-    app.use(
-        compression({
-            level,
-            // Skip already-compressed payloads — gzipping a JPEG or MP4 burns
-            // CPU for a fraction of a percent of size win and breaks
-            // range-request semantics that the video player depends on.
-            filter: (req, res) => {
-                if (req.headers['x-no-compression']) return false;
-                const ct = String(res.getHeader('Content-Type') || '');
-                if (/^(image|video|audio)\//i.test(ct)) return false;
-                return compression.filter(req, res);
-            },
-        }),
-    );
-    if (process.env.TGDL_DEBUG === '1') {
-        console.log(`[startup] compression middleware enabled (level=${level})`);
+// gzip/deflate/br for text responses (see lib/http-compression.js for what
+// is skipped: raw file routes, Range requests, media types). Level via
+// `COMPRESSION_LEVEL` (1-9, default 6 — the package default, exposed for
+// operators on slow CPUs); `0` turns the middleware off entirely.
+{
+    const level = compressionLevelFromEnv(process.env.COMPRESSION_LEVEL);
+    const mw = createCompression(level);
+    if (mw) {
+        app.use(mw);
+        if (process.env.TGDL_DEBUG === '1') {
+            console.log(`[startup] compression middleware enabled (level=${level})`);
+        }
     }
-} catch {
-    // Module not installed — fine, dashboard runs uncompressed (Cloudflare /
-    // a reverse proxy in front will usually handle it instead).
 }
 
 // Security headers. CSP is on but allows the SPA's two CDN dependencies
