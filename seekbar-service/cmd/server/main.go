@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +56,11 @@ func main() {
 	// Kick off background ffmpeg-version probe; pass the resolved hwaccel
 	// string so the server doesn't probe a second time.
 	srv.Init(string(resolvedHWA))
+	// Sweep uploads left behind by a previous run / abandoned by callers.
+	srv.StartUploadGC(ctx)
+	if cfg.HTTP.APIToken == "" && !strings.HasPrefix(cfg.HTTP.Listen, "127.0.0.1:") && !strings.HasPrefix(cfg.HTTP.Listen, "localhost:") {
+		log.Warn("SEEKBAR_API_TOKEN is empty and the service listens beyond localhost — anyone who can reach it can submit jobs and read sprites; set a token when the port is exposed")
+	}
 
 	server := &http.Server{
 		Addr:         cfg.HTTP.Listen,

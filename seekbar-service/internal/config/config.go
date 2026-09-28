@@ -44,6 +44,10 @@ type HTTPConfig struct {
 	// CORSOrigins is a list of allowed CORS origins. Stored for future
 	// use; not yet enforced by the server middleware.
 	CORSOrigins []string `yaml:"cors_origins"`
+	// PublicMedia keeps GET /sprite/{id} and /meta/{id} open even when
+	// APIToken is set. Off by default: a sidecar exposed through a tunnel
+	// would otherwise hand out every video's thumbnails to anyone.
+	PublicMedia bool `yaml:"public_media"`
 }
 
 type StorageConfig struct {
@@ -57,6 +61,11 @@ type StorageConfig struct {
 	// 'if-changed' compares source size + mtime against the stored
 	// metadata and only regenerates when they differ.
 	Overwrite string `yaml:"overwrite"`
+	// Upload mode (a parent app that can't share its files sends the
+	// video in chunks): total size cap per upload, and how long an
+	// abandoned partial upload is kept before it's swept.
+	MaxUploadMB  int `yaml:"max_upload_mb"`
+	UploadTTLMin int `yaml:"upload_ttl_min"`
 }
 
 type FFmpegConfig struct {
@@ -103,9 +112,11 @@ func Defaults() *Config {
 			BasePath: "",
 		},
 		Storage: StorageConfig{
-			OutputDir: "./data/output",
-			TempDir:   "./data/tmp",
-			Overwrite: "if-changed",
+			OutputDir:    "./data/output",
+			TempDir:      "./data/tmp",
+			Overwrite:    "if-changed",
+			MaxUploadMB:  8192,
+			UploadTTLMin: 120,
 		},
 		FFmpeg: FFmpegConfig{
 			Path:        "ffmpeg",
@@ -196,6 +207,12 @@ func (c *Config) Validate() error {
 	if c.Storage.TempDir == "" {
 		c.Storage.TempDir = c.Storage.OutputDir
 	}
+	if c.Storage.MaxUploadMB <= 0 {
+		c.Storage.MaxUploadMB = 8192
+	}
+	if c.Storage.UploadTTLMin <= 0 {
+		c.Storage.UploadTTLMin = 120
+	}
 	if c.FFmpeg.ProbePath == "" {
 		c.FFmpeg.ProbePath = deriveProbe(c.FFmpeg.Path)
 	}
@@ -220,10 +237,13 @@ func applyEnv(c *Config) {
 	setStr(&c.HTTP.APIToken, "VTS_HTTP__API_TOKEN", "SEEKBAR_API_TOKEN")
 	setStr(&c.HTTP.BasePath, "VTS_HTTP__BASE_PATH", "SEEKBAR_BASE_PATH")
 	setStrSlice(&c.HTTP.CORSOrigins, "VTS_HTTP__CORS_ORIGINS", "SEEKBAR_CORS_ORIGINS")
+	setBool(&c.HTTP.PublicMedia, "VTS_HTTP__PUBLIC_MEDIA", "SEEKBAR_PUBLIC_MEDIA")
 
 	setStr(&c.Storage.OutputDir, "VTS_STORAGE__OUTPUT_DIR", "SEEKBAR_OUTPUT_DIR")
 	setStr(&c.Storage.TempDir, "VTS_STORAGE__TEMP_DIR", "SEEKBAR_TEMP_DIR")
 	setStr(&c.Storage.Overwrite, "VTS_STORAGE__OVERWRITE", "SEEKBAR_OVERWRITE")
+	setInt(&c.Storage.MaxUploadMB, "VTS_STORAGE__MAX_UPLOAD_MB", "SEEKBAR_MAX_UPLOAD_MB")
+	setInt(&c.Storage.UploadTTLMin, "VTS_STORAGE__UPLOAD_TTL_MIN", "SEEKBAR_UPLOAD_TTL_MIN")
 
 	setStr(&c.FFmpeg.Path, "VTS_FFMPEG__PATH", "SEEKBAR_FFMPEG", "FFMPEG_PATH")
 	setStr(&c.FFmpeg.ProbePath, "VTS_FFMPEG__PROBE_PATH", "SEEKBAR_FFPROBE", "FFPROBE_PATH")
@@ -262,6 +282,16 @@ func setInt(dst *int, keys ...string) {
 		if v := os.Getenv(k); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
 				*dst = n
+				return
+			}
+		}
+	}
+}
+func setBool(dst *bool, keys ...string) {
+	for _, k := range keys {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			if b, err := strconv.ParseBool(v); err == nil {
+				*dst = b
 				return
 			}
 		}

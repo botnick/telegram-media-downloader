@@ -1,33 +1,46 @@
 // Package api exposes the seekbar service over HTTP.
 //
 // Endpoints (admin / authenticated callers):
-//   POST   /v1/sprite            — submit a single video (sync or async)
-//   POST   /v1/batch             — submit many at once
-//   GET    /v1/jobs/:id          — job status
-//   GET    /v1/jobs              — list recent jobs
-//   POST   /v1/jobs/:id/cancel   — request cancel (best-effort)
-//   GET    /v1/config            — current effective config (for parent health checks)
-//   GET    /sprite/:video_id     — serve the WebP/JPEG sprite bytes
-//   GET    /meta/:video_id       — serve the JSON sidecar
-//   DELETE /v1/sprite/:video_id  — remove sprite + meta from disk
-//   GET    /health               — liveness probe (always open)
-//   GET    /v1/hwaccel           — probe what backends work on this host
-//   GET    /v1/stats             — pool counters
+//
+//	POST   /v1/sprite            — submit a single video (sync or async)
+//	POST   /v1/batch             — submit many at once
+//	GET    /v1/jobs/:id          — job status
+//	GET    /v1/jobs              — list recent jobs
+//	POST   /v1/jobs/:id/cancel   — request cancel (best-effort)
+//	GET    /v1/config            — current effective config (for parent health checks)
+//	GET    /sprite/:video_id     — serve the WebP/JPEG sprite bytes
+//	GET    /meta/:video_id       — serve the JSON sidecar
+//	DELETE /v1/sprite/:video_id  — remove sprite + meta from disk
+//	PUT    /v1/uploads/:id       — append a chunk of a video (upload mode)
+//	DELETE /v1/uploads/:id       — drop a partial upload
+//	GET    /health               — liveness probe (always open)
+//	GET    /v1/hwaccel           — probe what backends work on this host
+//	GET    /v1/stats             — pool counters
 //
 // The token (if HTTP.APIToken is set) is checked once via middleware so
-// every mutating route is gated. /health is always open so a Docker
+// every /v1 route is gated; /sprite and /meta too unless
+// HTTP.PublicMedia is set. /health is always open so a Docker
 // healthcheck never needs credentials.
+//
+// Upload mode is for a caller on another host that can't share its
+// files: it PUTs the video in chunks (each below proxy body limits such
+// as Cloudflare's 100 MB), submits the job with `upload_id`, polls it,
+// then downloads the sprite from /sprite/:video_id. The uploaded file is
+// deleted as soon as the job settles.
 package api
 
 import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +55,18 @@ import (
 	"github.com/botnick/telegram-media-downloader/seekbar-service/internal/worker"
 )
 
-const ServiceVersion = "0.3.3"
+const ServiceVersion = "0.4.0"
+
+// Features advertised on /health so callers can pick what this build
+// supports (older builds report none and are used in path mode only).
+var Features = []string{"path", "upload", "job_params", "sprite_download"}
+
+// UploadChunkBytes is the chunk size callers should use — well below the
+// 100 MB request cap of Cloudflare Tunnel and common reverse proxies.
+const UploadChunkBytes = 32 << 20
+
+// uploadIODeadline bounds one chunk's transfer on a slow link.
+const uploadIODeadline = 15 * time.Minute
 
 type Server struct {
 	cfg  *config.Config
@@ -52,6 +76,9 @@ type Server struct {
 	mu      sync.RWMutex
 	jobs    map[string]*worker.Job
 	jobList []string
+
+	uploadMu  sync.Mutex
+	uploading map[string]bool // upload ids with a chunk in flight
 
 	// resolved at Start() — cached so /health is instant
 	hwaccelResolved string
@@ -65,6 +92,7 @@ func New(cfg *config.Config, log *logx.Logger, pool *worker.Pool) *Server {
 		log:       log,
 		pool:      pool,
 		jobs:      make(map[string]*worker.Job),
+		uploading: make(map[string]bool),
 		startedAt: time.Now(),
 	}
 }
@@ -128,10 +156,18 @@ func (s *Server) Routes() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(s.logRequests)
 
-	// Always-open endpoints — no token required.
+	// Always-open endpoint — no token required.
 	r.Get("/health", s.handleHealth)
-	r.Get("/sprite/{videoID}", s.handleSprite)
-	r.Get("/meta/{videoID}", s.handleMeta)
+	// Sprite + meta: open unless a token is set (then gated, so a tunnel-
+	// exposed sidecar doesn't serve thumbnails to anyone), or explicitly
+	// public via SEEKBAR_PUBLIC_MEDIA.
+	r.Group(func(r chi.Router) {
+		if !s.cfg.HTTP.PublicMedia {
+			r.Use(s.requireToken)
+		}
+		r.Get("/sprite/{videoID}", s.handleSprite)
+		r.Get("/meta/{videoID}", s.handleMeta)
+	})
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Use(s.requireToken)
@@ -141,6 +177,8 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/jobs/{id}", s.handleGetJob)
 		r.Post("/jobs/{id}/cancel", s.handleCancelJob)
 		r.Delete("/sprite/{videoID}", s.handleDeleteSprite)
+		r.Put("/uploads/{uploadID}", s.handleUploadChunk)
+		r.Delete("/uploads/{uploadID}", s.handleDeleteUpload)
 		r.Get("/hwaccel", s.handleHWAccel)
 		r.Get("/stats", s.handleStats)
 		r.Get("/config", s.handleConfig)
@@ -194,18 +232,23 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 	queued, processing, completed, failed := s.pool.Stats()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":               true,
-		"service":          "seekbar-service",
-		"version":          ServiceVersion,
-		"platform":         runtime.GOOS,
-		"arch":             runtime.GOARCH,
-		"ready":            true,
-		"ffmpeg_version":   ffv,
-		"hwaccel_config":   s.cfg.FFmpeg.HWAccel,
-		"hwaccel_resolved": hwa,
-		"format":           s.cfg.Thumb.Format,
-		"concurrency":      s.cfg.Jobs.Concurrency,
-		"uptime_sec":       time.Since(s.startedAt).Seconds(),
+		"ok":                 true,
+		"service":            "seekbar-service",
+		"version":            ServiceVersion,
+		"platform":           runtime.GOOS,
+		"arch":               runtime.GOARCH,
+		"ready":              true,
+		"ffmpeg_version":     ffv,
+		"hwaccel_config":     s.cfg.FFmpeg.HWAccel,
+		"hwaccel_resolved":   hwa,
+		"format":             s.cfg.Thumb.Format,
+		"concurrency":        s.cfg.Jobs.Concurrency,
+		"uptime_sec":         time.Since(s.startedAt).Seconds(),
+		"features":           Features,
+		"auth_required":      strings.TrimSpace(s.cfg.HTTP.APIToken) != "",
+		"public_media":       s.cfg.HTTP.PublicMedia,
+		"max_upload_bytes":   s.maxUploadBytes(),
+		"upload_chunk_bytes": UploadChunkBytes,
 		"stats": map[string]any{
 			"queued":     queued,
 			"processing": processing,
@@ -269,9 +312,81 @@ func (s *Server) findSprite(id string) (string, bool) {
 type submitOneReq struct {
 	VideoID   string `json:"video_id"`
 	Path      string `json:"path"`
+	UploadID  string `json:"upload_id,omitempty"`
 	Priority  int    `json:"priority"`
 	Overwrite string `json:"overwrite,omitempty"`
 	Async     bool   `json:"async"`
+	// Optional per-job thumb settings (0 / "" = sidecar defaults).
+	IntervalSec float64 `json:"interval_sec,omitempty"`
+	TileW       int     `json:"tile_w,omitempty"`
+	Cols        int     `json:"cols,omitempty"`
+	MaxTiles    int     `json:"max_tiles,omitempty"`
+	Format      string  `json:"format,omitempty"`
+	Quality     int     `json:"quality,omitempty"`
+}
+
+func (req submitOneReq) params() *worker.JobParams {
+	jp := &worker.JobParams{
+		IntervalSec: req.IntervalSec,
+		TileW:       req.TileW,
+		Cols:        req.Cols,
+		MaxTiles:    req.MaxTiles,
+		Format:      strings.ToLower(strings.TrimSpace(req.Format)),
+		Quality:     req.Quality,
+	}
+	return jp.Clamp()
+}
+
+// errSource is a client error that maps to a 400 with a JSON body.
+type errSource struct{ body map[string]any }
+
+func (e *errSource) Error() string { return "bad source" }
+
+// buildJob validates one submission and resolves its source file. An
+// upload is claimed (renamed out of the writable .part name) so no
+// further chunk can change it under ffmpeg.
+func (s *Server) buildJob(req submitOneReq) (*worker.Job, error) {
+	if req.VideoID == "" || (req.Path == "" && req.UploadID == "") {
+		return nil, &errSource{map[string]any{"error": "video_id and path (or upload_id) required"}}
+	}
+	if !validID(req.VideoID) {
+		return nil, &errSource{map[string]any{"error": "bad video_id"}}
+	}
+	j := &worker.Job{
+		ID:       uuid.NewString(),
+		VideoID:  req.VideoID,
+		Priority: req.Priority,
+		Params:   req.params(),
+	}
+	if req.UploadID != "" {
+		if !validID(req.UploadID) {
+			return nil, &errSource{map[string]any{"error": "bad upload_id"}}
+		}
+		part := s.uploadPath(req.UploadID, ".part")
+		claimed := s.uploadPath(req.UploadID, ".job")
+		s.uploadMu.Lock()
+		busy := s.uploading[req.UploadID]
+		var err error
+		if !busy {
+			err = os.Rename(part, claimed)
+		}
+		s.uploadMu.Unlock()
+		if busy {
+			return nil, &errSource{map[string]any{"error": "upload still in progress", "upload_id": req.UploadID}}
+		}
+		if err != nil {
+			return nil, &errSource{map[string]any{"error": "upload not found", "upload_id": req.UploadID}}
+		}
+		j.SrcPath = claimed
+		j.Source = "upload"
+		return j, nil
+	}
+	if _, err := os.Stat(req.Path); err != nil {
+		return nil, &errSource{map[string]any{"error": "source not found", "path": req.Path}}
+	}
+	j.SrcPath = req.Path
+	j.Source = "path"
+	return j, nil
 }
 
 func (s *Server) handleSubmitOne(w http.ResponseWriter, r *http.Request) {
@@ -280,23 +395,15 @@ func (s *Server) handleSubmitOne(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"bad json"}`, http.StatusBadRequest)
 		return
 	}
-	if req.VideoID == "" || req.Path == "" {
-		http.Error(w, `{"error":"video_id and path required"}`, http.StatusBadRequest)
+	j, err := s.buildJob(req)
+	if err != nil {
+		var es *errSource
+		if errors.As(err, &es) {
+			writeJSON(w, http.StatusBadRequest, es.body)
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
-	}
-	if !validID(req.VideoID) {
-		http.Error(w, `{"error":"bad video_id"}`, http.StatusBadRequest)
-		return
-	}
-	if _, err := os.Stat(req.Path); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "source not found", "path": req.Path})
-		return
-	}
-	j := &worker.Job{
-		ID:       uuid.NewString(),
-		VideoID:  req.VideoID,
-		SrcPath:  req.Path,
-		Priority: req.Priority,
 	}
 	s.trackJob(j)
 	s.pool.Submit(j)
@@ -347,14 +454,26 @@ func (s *Server) handleSubmitBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := make([]string, 0, len(req.Items))
 	for _, item := range req.Items {
-		if item.VideoID == "" || item.Path == "" || !validID(item.VideoID) {
+		// Batch keeps its lenient contract: bad items are skipped, but
+		// unlike single submits a missing path isn't checked up front.
+		if item.VideoID == "" || !validID(item.VideoID) || (item.Path == "" && item.UploadID == "") {
 			continue
 		}
-		j := &worker.Job{
-			ID:       uuid.NewString(),
-			VideoID:  item.VideoID,
-			SrcPath:  item.Path,
-			Priority: item.Priority,
+		var j *worker.Job
+		if item.UploadID != "" {
+			var err error
+			if j, err = s.buildJob(item); err != nil {
+				continue
+			}
+		} else {
+			j = &worker.Job{
+				ID:       uuid.NewString(),
+				VideoID:  item.VideoID,
+				SrcPath:  item.Path,
+				Source:   "path",
+				Priority: item.Priority,
+				Params:   item.params(),
+			}
 		}
 		s.trackJob(j)
 		s.pool.Submit(j)
@@ -364,6 +483,167 @@ func (s *Server) handleSubmitBatch(w http.ResponseWriter, r *http.Request) {
 		"submitted": len(ids),
 		"job_ids":   ids,
 	})
+}
+
+// ---- Upload mode ----
+
+func (s *Server) uploadDir() string {
+	return filepath.Join(s.cfg.Storage.TempDir, "uploads")
+}
+
+func (s *Server) uploadPath(id, ext string) string {
+	return filepath.Join(s.uploadDir(), id+ext)
+}
+
+func (s *Server) maxUploadBytes() int64 {
+	return int64(s.cfg.Storage.MaxUploadMB) << 20
+}
+
+// handleUploadChunk appends one chunk to an upload. The client sends the
+// byte offset it believes the upload is at (`X-Upload-Offset` header or
+// `?offset=`); a mismatch answers 409 with the real size so the client
+// can resume, and a chunk that fails mid-transfer is rolled back so the
+// same chunk can simply be retried.
+func (s *Server) handleUploadChunk(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "uploadID")
+	if !validID(id) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad upload id"})
+		return
+	}
+	offStr := r.Header.Get("X-Upload-Offset")
+	if offStr == "" {
+		offStr = r.URL.Query().Get("offset")
+	}
+	offset := int64(0)
+	if offStr != "" {
+		n, err := strconv.ParseInt(offStr, 10, 64)
+		if err != nil || n < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad offset"})
+			return
+		}
+		offset = n
+	}
+	// The server-wide ReadTimeout (30 s) is too short for a big chunk on a
+	// slow uplink; give this request its own deadline.
+	rc := http.NewResponseController(w)
+	_ = rc.SetReadDeadline(time.Now().Add(uploadIODeadline))
+	_ = rc.SetWriteDeadline(time.Now().Add(uploadIODeadline + time.Minute))
+
+	s.uploadMu.Lock()
+	if s.uploading[id] {
+		s.uploadMu.Unlock()
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "chunk already in flight"})
+		return
+	}
+	s.uploading[id] = true
+	s.uploadMu.Unlock()
+	defer func() {
+		s.uploadMu.Lock()
+		delete(s.uploading, id)
+		s.uploadMu.Unlock()
+	}()
+
+	if err := os.MkdirAll(s.uploadDir(), 0o755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "upload dir: " + err.Error()})
+		return
+	}
+	path := s.uploadPath(id, ".part")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "open: " + err.Error()})
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "stat: " + err.Error()})
+		return
+	}
+	size := st.Size()
+	if offset != size {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "offset mismatch", "size": size})
+		return
+	}
+	if _, err := f.Seek(size, io.SeekStart); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "seek: " + err.Error()})
+		return
+	}
+	limit := s.maxUploadBytes() - size
+	n, err := io.Copy(f, io.LimitReader(r.Body, limit+1))
+	if n > limit {
+		_ = f.Truncate(size)
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{
+			"error":     "upload too large",
+			"max_bytes": s.maxUploadBytes(),
+		})
+		return
+	}
+	if err != nil {
+		_ = f.Truncate(size)
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "chunk interrupted", "size": size})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"upload_id": id, "size": size + n})
+}
+
+func (s *Server) handleDeleteUpload(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "uploadID")
+	if !validID(id) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad upload id"})
+		return
+	}
+	s.uploadMu.Lock()
+	busy := s.uploading[id]
+	s.uploadMu.Unlock()
+	if busy {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "chunk in flight"})
+		return
+	}
+	err := os.Remove(s.uploadPath(id, ".part"))
+	writeJSON(w, http.StatusOK, map[string]any{"upload_id": id, "removed": err == nil})
+}
+
+// StartUploadGC removes claimed uploads a previous run left behind (jobs
+// don't survive a restart) and, every few minutes, partial uploads
+// nobody has touched within UploadTTLMin.
+func (s *Server) StartUploadGC(ctx context.Context) {
+	if matches, _ := filepath.Glob(filepath.Join(s.uploadDir(), "*.job")); len(matches) > 0 {
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	}
+	go func() {
+		t := time.NewTicker(5 * time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				s.sweepUploads(time.Now().Add(-time.Duration(s.cfg.Storage.UploadTTLMin) * time.Minute))
+			}
+		}
+	}()
+}
+
+func (s *Server) sweepUploads(olderThan time.Time) int {
+	matches, _ := filepath.Glob(filepath.Join(s.uploadDir(), "*.part"))
+	removed := 0
+	for _, m := range matches {
+		id := strings.TrimSuffix(filepath.Base(m), ".part")
+		s.uploadMu.Lock()
+		busy := s.uploading[id]
+		s.uploadMu.Unlock()
+		if busy {
+			continue
+		}
+		if st, err := os.Stat(m); err == nil && st.ModTime().Before(olderThan) {
+			if os.Remove(m) == nil {
+				removed++
+			}
+		}
+	}
+	return removed
 }
 
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,12 @@
 #       -v /path/to/sprites:/out \
 #       -e SEEKBAR_OUTPUT_DIR=/out \
 #       tgdl-seekbar:latest
+#
+# On another machine with no shared storage (the app uploads each video
+# and downloads the sprite back) only a token and a scratch volume are
+# needed:
+#   docker run -d -p 8089:8089 -e SEEKBAR_API_TOKEN=<long-random> \
+#       -v tgdl-seekbar:/data ghcr.io/botnick/tgdl-seekbar:latest
 
 # ---- Stage 1: build the binaries -----------------------------------------
 FROM --platform=$BUILDPLATFORM golang:1.22-bookworm AS build
@@ -53,7 +59,7 @@ RUN useradd --system --create-home --uid 1000 --user-group seekbar
 COPY --from=build /out/seekbar-server /usr/local/bin/seekbar-server
 COPY --from=build /out/seekbar-cli    /usr/local/bin/seekbar-cli
 
-ENV SEEKBAR_VERSION=0.2.0 \
+ENV SEEKBAR_VERSION=0.4.0 \
     SEEKBAR_OUTPUT_DIR=/data/output \
     SEEKBAR_TEMP_DIR=/data/tmp \
     SEEKBAR_HTTP_LISTEN=:8089 \

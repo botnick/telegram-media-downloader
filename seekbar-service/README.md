@@ -82,10 +82,12 @@ go build -trimpath -ldflags '-s -w' -o seekbar-cli    ./cmd/cli
 
 | Method + Path                    | Purpose                                  |
 |----------------------------------|------------------------------------------|
-| `GET  /health`                   | Liveness probe — always public           |
-| `GET  /sprite/{id}`              | Serves the WebP/JPEG sprite             |
-| `GET  /meta/{id}`                | Serves the JSON sidecar                  |
-| `POST /v1/sprite`                | Submit one video (sync via `async:false` or async) |
+| `GET  /health`                   | Liveness probe — always public; lists `features`, `auth_required`, upload limits |
+| `GET  /sprite/{id}`              | Serves the WebP/JPEG sprite (token-gated when a token is set) |
+| `GET  /meta/{id}`                | Serves the JSON sidecar (token-gated when a token is set) |
+| `POST /v1/sprite`                | Submit one video by `path` or `upload_id` (sync via `async:false` or async) |
+| `PUT  /v1/uploads/{upload_id}`   | Append a chunk of a video (upload mode, 0.4.0+) |
+| `DELETE /v1/uploads/{upload_id}` | Drop a partial upload                    |
 | `POST /v1/batch`                 | Submit many at once                      |
 | `GET  /v1/jobs`                  | Recent job list (newest first, cap 200)  |
 | `GET  /v1/jobs/{id}`             | One job's status                         |
@@ -96,6 +98,43 @@ go build -trimpath -ldflags '-s -w' -o seekbar-cli    ./cmd/cli
 
 Authentication: leave `http.api_token` empty for open access, or set
 `SEEKBAR_API_TOKEN=<long-random>` and have callers send `X-API-Token:`.
+With a token set, `/sprite/{id}` and `/meta/{id}` need it too (0.4.0+), so a
+sidecar exposed through a tunnel doesn't hand out thumbnails; set
+`SEEKBAR_PUBLIC_MEDIA=true` to keep them open for a frontend that loads
+sprites straight from the service.
+
+Per-job settings (0.4.0+): `interval_sec`, `tile_w`, `cols`, `max_tiles`,
+`format` and `quality` in a submit body override the service defaults for
+that job (out-of-range values are ignored), so a remote caller's settings
+apply without restarting the service.
+
+### Upload mode (caller on another host, no shared storage)
+
+When the service can't read the caller's files, the caller sends the video
+in chunks, then submits the upload instead of a path. Chunks stay far
+below reverse-proxy body limits (Cloudflare Tunnel: 100 MB); `/health`
+suggests `upload_chunk_bytes` (32 MiB).
+
+```bash
+ID=u-$(openssl rand -hex 8)
+split -b 32m clip.mp4 part.
+OFF=0
+for f in part.*; do
+  curl -sS -X PUT "http://host:8089/v1/uploads/$ID" -H "X-API-Token: $T" \
+       -H "X-Upload-Offset: $OFF" --data-binary @"$f"
+  OFF=$((OFF + $(stat -c %s "$f")))
+done
+curl -sS -X POST http://host:8089/v1/sprite -H "X-API-Token: $T" \
+     -d "{\"video_id\":\"clip-001\",\"upload_id\":\"$ID\",\"async\":true}"
+# poll GET /v1/jobs/<id> until done, then:
+curl -sS http://host:8089/sprite/clip-001 -H "X-API-Token: $T" -o sprite.webp
+```
+
+A chunk sent at the wrong offset gets `409 {"size": N}` (resume from `N`);
+a chunk interrupted mid-transfer is rolled back, so it can simply be
+re-sent. The uploaded file is deleted as soon as its job finishes; partial
+uploads nobody touches for `SEEKBAR_UPLOAD_TTL_MIN` (default 120) are
+swept. `SEEKBAR_MAX_UPLOAD_MB` (default 8192) caps one upload.
 
 ### Submit one (synchronous)
 
