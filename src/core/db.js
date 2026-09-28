@@ -839,6 +839,19 @@ function initSchema() {
         );
     }
 
+    // One-off: long videos used to be marked seekbar-"failed" when the
+    // sprite encode timed out (the timeout read as a broken file). Drop the
+    // failed markers once so the next seekbar scan retries them; files that
+    // really are broken get marked again.
+    try {
+        if (!db.prepare("SELECT 1 FROM kv WHERE key = 'seekbar_failed_reset'").get()) {
+            db.prepare("DELETE FROM seekbar_sprites WHERE format = 'failed'").run();
+            db.prepare(
+                "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES ('seekbar_failed_reset', 'true', ?)",
+            ).run(Date.now());
+        }
+    } catch {}
+
     // FK enforcement is per-connection in SQLite — flip it on once we know
     // the table exists. Without this, ON DELETE CASCADE silently no-ops.
     try {
