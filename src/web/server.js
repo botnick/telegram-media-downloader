@@ -5199,13 +5199,20 @@ app.delete('/api/file', async (req, res) => {
                 .map((row) => row.id);
         }
 
-        try {
-            const { deferDelete } = await import('../core/deferred-delete.js');
-            deferDelete(r.real);
-        } catch {
-            await fs.unlink(r.real);
+        // Download-time dedup points several rows (often in other groups)
+        // at one file. With `?id=` only that row goes, so the file stays
+        // while any other row still uses it. Without an id every row for
+        // the path is in `matchingIds`, so the file is free to go.
+        const fileStillUsed = idsWithFileInUse(matchingIds).size > 0;
+        if (!fileStillUsed) {
+            try {
+                const { deferDelete } = await import('../core/deferred-delete.js');
+                deferDelete(r.real);
+            } catch {
+                await fs.unlink(r.real);
+            }
+            console.log(`🗑️ Deleted: ${filePath}`);
         }
-        console.log(`🗑️ Deleted: ${filePath}`);
 
         const seekbarMap = collectSeekbarPaths(matchingIds);
         const delStmt = db.prepare('DELETE FROM downloads WHERE id = ?');
@@ -5225,7 +5232,13 @@ app.delete('/api/file', async (req, res) => {
         } catch {}
         import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
 
-        broadcast({ type: 'file_deleted', path: filePath });
+        if (fileStillUsed) {
+            // Name the removed row(s) by id: other tiles showing the same
+            // path are still valid and must not be dropped from open views.
+            for (const id of matchingIds) broadcast({ type: 'file_deleted', id });
+        } else {
+            broadcast({ type: 'file_deleted', path: filePath });
+        }
         res.json({ success: true });
     } catch (error) {
         if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
