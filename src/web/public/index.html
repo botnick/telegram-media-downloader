@@ -2579,8 +2579,50 @@
                                 <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.version">Version</dt>
                                 <dd id="seekbar-health-version" class="text-tg-text font-mono">—</dd>
                             </div>
+                            <div class="flex items-center justify-between gap-2 py-1 border-b border-tg-bg/30">
+                                <dt class="text-tg-textSecondary" data-i18n="maintenance.seekbar.health.transfer">Video transfer</dt>
+                                <dd id="seekbar-health-transfer" class="text-tg-text font-mono truncate">—</dd>
+                            </div>
                         </dl>
                         <p id="seekbar-health-error" class="hidden mt-2 text-[11px] text-red-400 font-mono break-all"></p>
+
+                        <!-- External sidecar (another host / container /
+                             tunnel). URL, token and path map are saved
+                             together by Apply — ids stay outside the
+                             `setting-*` autosave net because saving
+                             reconnects the sidecar. -->
+                        <div class="mt-3 pt-3 border-t border-tg-border/30">
+                            <p class="text-tg-text text-xs mb-2" data-i18n="maintenance.ai.sidecar_mode">Sidecar mode</p>
+                            <div class="inline-flex rounded-lg overflow-hidden border border-tg-border/50" id="seekbar-mode-toggle">
+                                <button type="button" data-mode="local" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors" onclick="window._seekbarModeToggle?.('local')">
+                                    <i class="ri-computer-line"></i> Local
+                                </button>
+                                <button type="button" data-mode="external" class="ai-mode-btn px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5 transition-colors" onclick="window._seekbarModeToggle?.('external')">
+                                    <i class="ri-global-line"></i> External
+                                </button>
+                            </div>
+                            <div id="seekbar-external-panel" class="hidden mt-3">
+                                <div class="flex items-stretch gap-2">
+                                    <input id="seekbar-sidecar-url" type="url" class="tg-input flex-1 text-sm" placeholder="https://gpu.example.com/seekbar" autocomplete="off" spellcheck="false" oninput="window._seekbarSidecarInput?.()">
+                                    <button id="seekbar-sidecar-test-btn" type="button" class="tg-btn-input-secondary shrink-0 inline-flex items-center gap-1.5" onclick="window._seekbarSidecarTest?.()">
+                                        <i class="ri-wifi-line"></i><span data-i18n="maintenance.ai.sidecar_test">Test</span>
+                                    </button>
+                                </div>
+                                <p id="seekbar-sidecar-env-note" class="hidden text-[10.5px] text-yellow-400 mt-1"></p>
+                                <label for="seekbar-sidecar-token" class="text-tg-text text-xs block mt-2 mb-1" data-i18n="maintenance.sidecar.token">API token</label>
+                                <div class="flex items-stretch gap-2">
+                                    <input id="seekbar-sidecar-token" type="password" class="tg-input flex-1 text-sm" autocomplete="new-password" spellcheck="false" data-i18n-placeholder="maintenance.sidecar.token_placeholder" placeholder="Optional — the token set on the sidecar" oninput="window._seekbarSidecarInput?.()">
+                                    <button id="seekbar-sidecar-token-clear" type="button" class="hidden tg-btn-input-secondary shrink-0 text-xs" onclick="window._seekbarSidecarClearToken?.()" data-i18n="maintenance.sidecar.token_clear">Clear saved token</button>
+                                </div>
+                                <label for="seekbar-sidecar-pathmap" class="text-tg-text text-xs block mt-2 mb-1" data-i18n="maintenance.sidecar.path_map">Path mapping (optional)</label>
+                                <textarea id="seekbar-sidecar-pathmap" rows="2" class="tg-input w-full text-xs font-mono" spellcheck="false" placeholder="/app/data/downloads=/mnt/media" oninput="window._seekbarSidecarInput?.()"></textarea>
+                                <p class="text-[10px] text-tg-textSecondary mt-1" data-i18n="maintenance.seekbar.external.help">One rule per line: app path = the same folder as the sidecar sees it. Only needed when the sidecar mounts the downloads at a different path. Without shared storage, seekbar-service 0.4.0+ receives each video as an upload and the sprite is downloaded back.</p>
+                                <span id="seekbar-sidecar-test-result" class="text-[11px] mt-1.5 block"></span>
+                                <button id="seekbar-sidecar-apply-btn" type="button" class="tg-btn-input shrink-0 inline-flex items-center gap-1.5 mt-2" disabled onclick="window._seekbarSidecarApply?.()">
+                                    <i class="ri-check-line"></i><span data-i18n="maintenance.ai.sidecar_apply">Use External</span>
+                                </button>
+                            </div>
+                        </div>
                     </details>
 
                     <!-- Sprite settings — flat layout, all controls at

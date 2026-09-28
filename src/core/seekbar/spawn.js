@@ -5,8 +5,12 @@
  * three install modes (in priority order):
  *
  *   1. **Operator / compose override** — `SEEKBAR_SIDECAR_URL` env or
- *      `config.advanced.seekbar.sidecarUrl`. We record the URL and
- *      probe `/health`; if green, callers can immediately submit jobs.
+ *      `config.advanced.seekbar.sidecarUrl` (env wins), with the token
+ *      from `SEEKBAR_API_TOKEN` / `advanced.seekbar.apiToken` and an
+ *      optional path map (`SEEKBAR_PATH_MAP` / `advanced.seekbar.pathMap`).
+ *      We probe `/health` + an authenticated no-op, record what the
+ *      sidecar supports (upload mode is 0.4.0+), and keep re-probing
+ *      every 30 s while it's unreachable.
  *   2. **Auto-spawn local binary** — when no URL is set, we look for
  *      `seekbar-service/bin/seekbar-server(.exe)` relative to the
  *      project root. If found, we spawn it on a free localhost port
@@ -33,7 +37,7 @@ import { fileURLToPath } from 'url';
 
 import { loadConfig } from '../../config/manager.js';
 import { resolveFfmpegBin, resolveFfprobeBin } from '../thumbs.js';
-import { health, setSidecarUrl } from './client.js';
+import { health, setCapabilities, setPathMap, setSidecarUrl, stats } from './client.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -46,12 +50,14 @@ const DATA_DIR = process.env.TGDL_DATA_DIR
  * on next boot — the matching GitHub Release `seekbar-v<VER>` must exist
  * with `tgdl-seekbar-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.3.3';
+export const SIDECAR_VERSION = '0.4.0';
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/seekbar-v${SIDECAR_VERSION}`;
 const DOWNLOAD_CONNECT_TIMEOUT_MS = 30_000;
 const DOWNLOAD_REDIRECT_LIMIT = 5;
 
 let _state = { ok: false, url: '', mode: 'idle', error: null, pid: null, checkedAt: 0 };
+let _reconnectTimer = null;
+const RECONNECT_MS = 30_000;
 let _child = null;
 let _broadcast = null;
 let _startingPromise = null;
@@ -435,23 +441,85 @@ async function _spawnLocal(cfg) {
     return true;
 }
 
-async function _connectRemote(url, token) {
+/**
+ * Where the remote sidecar settings come from. Each value: env first
+ * (compose files stay the source of truth), then the dashboard config.
+ */
+export function resolveRemoteSettings(cfg = _cfg()) {
+    const pick = (envName, cfgVal) => {
+        const e = (process.env[envName] || '').trim();
+        if (e) return { value: e, source: 'env' };
+        const c = typeof cfgVal === 'string' ? cfgVal.trim() : '';
+        return { value: c, source: c ? 'config' : null };
+    };
+    const url = pick('SEEKBAR_SIDECAR_URL', cfg.sidecarUrl);
+    const token = pick('SEEKBAR_API_TOKEN', cfg.apiToken);
+    const pathMap = pick('SEEKBAR_PATH_MAP', cfg.pathMap);
+    return {
+        url: url.value,
+        token: token.value,
+        pathMap: pathMap.value,
+        sources: { url: url.source, token: token.source, pathMap: pathMap.source },
+    };
+}
+
+function _clearReconnect() {
+    if (_reconnectTimer) clearTimeout(_reconnectTimer);
+    _reconnectTimer = null;
+}
+
+// A remote sidecar that's down at boot (or restarts later) comes back on
+// its own — no config save or app restart needed.
+function _scheduleReconnect(url, token) {
+    _clearReconnect();
+    if (_stopped) return;
+    _reconnectTimer = setTimeout(() => {
+        _reconnectTimer = null;
+        if (_stopped || _state.mode !== 'remote' || _state.ok || _state.url !== url) return;
+        _connectRemote(url, token).catch(() => {});
+    }, RECONNECT_MS);
+    _reconnectTimer.unref?.();
+}
+
+async function _connectRemote(url, token, sources = null) {
     setSidecarUrl(url, token);
+    const base = { url, mode: 'remote', pid: null, ...(sources ? { sources } : {}) };
     try {
         const h = await health();
-        if (h?.ok) {
-            _setState({ ok: true, url, mode: 'remote', error: null, pid: null });
-            return true;
+        if (!h?.ok) {
+            _setState({ ...base, ok: false, error: h?.error || 'unhealthy' });
+            _scheduleReconnect(url, token);
+            return false;
         }
-        _setState({ ok: false, url, mode: 'remote', error: 'unhealthy' });
-        return false;
+        setCapabilities(h);
+        const info = {
+            version: h.version ?? null,
+            features: Array.isArray(h.features) ? h.features : [],
+        };
+        // /health is open; a cheap token-gated call tells a wrong token
+        // apart from a working sidecar.
+        try {
+            await stats();
+        } catch (e) {
+            if (e?.status === 401) {
+                _setState({
+                    ...base,
+                    ...info,
+                    ok: false,
+                    error: token
+                        ? 'the sidecar rejected the API token (401)'
+                        : 'the sidecar requires an API token (401)',
+                });
+                _scheduleReconnect(url, token);
+                return false;
+            }
+        }
+        _clearReconnect();
+        _setState({ ...base, ...info, ok: true, error: null });
+        return true;
     } catch (e) {
-        _setState({
-            ok: false,
-            url,
-            mode: 'remote',
-            error: String(e?.message || e).slice(0, 200),
-        });
+        _setState({ ...base, ok: false, error: String(e?.message || e).slice(0, 200) });
+        _scheduleReconnect(url, token);
         return false;
     }
 }
@@ -466,14 +534,21 @@ export async function startSidecar() {
     if (_startingPromise) return _startingPromise;
     _startingPromise = (async () => {
         try {
-            // Mode 1: operator-provided URL (Docker compose with shared volume).
-            const envUrl = (process.env.SEEKBAR_SIDECAR_URL || '').trim();
-            const envToken = (process.env.SEEKBAR_API_TOKEN || '').trim();
-            if (envUrl) {
-                return await _connectRemote(envUrl, envToken);
+            _clearReconnect();
+            // Mode 1: operator-provided URL — env or the dashboard's
+            // Maintenance → Seekbar → External sidecar.
+            const cfg = _cfg();
+            const remote = resolveRemoteSettings(cfg);
+            if (remote.url) {
+                setPathMap(remote.pathMap);
+                return await _connectRemote(remote.url, remote.token, remote.sources);
             }
-            // Mode 2: auto-spawn the local Go binary.
-            return await _spawnLocal(_cfg());
+            // Mode 2: auto-spawn the local Go binary (it shares our paths
+            // and writes straight into data/seekbar — no mapping).
+            setPathMap('');
+            setCapabilities(null);
+            _setState({ version: null, features: [], sources: null });
+            return await _spawnLocal(cfg);
         } finally {
             _startingPromise = null;
         }
@@ -484,6 +559,7 @@ export async function startSidecar() {
 /** Re-probe the sidecar. Called by the config-change handler. */
 export async function refreshSidecar() {
     _stopped = false; // We want the sidecar running after refresh.
+    _clearReconnect();
     _startingPromise = null; // Cancel any in-flight start so startSidecar() below runs fresh.
     if (_child) {
         try {
@@ -496,6 +572,7 @@ export async function refreshSidecar() {
 
 export function stopSidecar() {
     _stopped = true; // Tell the exit handler not to auto-restart.
+    _clearReconnect();
     if (_child) {
         try {
             _child.kill('SIGTERM');

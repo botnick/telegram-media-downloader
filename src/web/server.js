@@ -130,6 +130,7 @@ import {
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
     refreshSidecar as refreshSeekbarSidecar,
+    resolveRemoteSettings as resolveSeekbarRemote,
     setBroadcast as setSeekbarBroadcast,
     SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
     startSidecar as startSeekbarSidecar,
@@ -6961,6 +6962,38 @@ app.get('/api/maintenance/seekbar/hwaccel-probe', async (req, res) => {
         res.json(r);
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
+    }
+});
+
+// Probe an external seekbar sidecar before saving it: reachable? version?
+// token accepted (via the token-gated /v1/stats)? upload mode available?
+app.post('/api/maintenance/seekbar/sidecar-test', async (req, res) => {
+    const probe = _sidecarHealthUrl(req.body?.url);
+    if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
+    try {
+        const saved = resolveSeekbarRemote();
+        const token = _sidecarTestToken(req.body, saved.url, saved.token);
+        const r = await probeSidecar({
+            url: req.body.url,
+            token,
+            authCheck: { method: 'GET', path: '/v1/stats' },
+        });
+        const h = r.health || {};
+        res.json({
+            ok: r.ok,
+            reachable: r.reachable,
+            error: r.error,
+            version: r.version,
+            features: r.features,
+            auth: r.auth,
+            authRequired: r.authRequired,
+            platform: h.platform ? `${h.platform}/${h.arch || ''}` : null,
+            hwaccel: h.hwaccel_resolved || null,
+            ffmpeg: h.ffmpeg_version || null,
+            tokenSent: !!token,
+        });
+    } catch (e) {
+        res.json({ ok: false, error: e?.message || String(e) });
     }
 });
 
