@@ -600,8 +600,10 @@ async function flush() {
     }
     setSaveStatus('saving');
     inflight = saveChatConfig(target.id, body);
+    let ok = false;
     try {
         const group = await inflight;
+        ok = true;
         if (cur === target) {
             target.group = group || target.group;
             setSaveStatus('saved');
@@ -625,8 +627,9 @@ async function flush() {
         }
     } finally {
         inflight = null;
-        if (pending && cur === target && !saveTimer) {
-            // Edits made while the request was out.
+        // Edits made while the request was out go next. After a failure
+        // they wait for Retry or the next edit — no retry loop.
+        if (ok && pending && cur === target && !saveTimer) {
             saveTimer = setTimeout(() => {
                 saveTimer = null;
                 flush();
