@@ -1081,22 +1081,22 @@ async function _applySnapshotRetention(dest, job, remotePath, bytes, provider, c
     const warn = (msg) => _log({ source: 'backup', level: 'warn', msg });
 
     const local = job.snapshot_path;
-    if (
-        path.dirname(path.resolve(local)) === path.resolve(SNAPSHOTS_DIR) &&
-        SNAPSHOT_NAME_RE.test(path.basename(local))
-    ) {
-        const stillQueued = getDb()
-            .prepare(`
-            SELECT 1 FROM backup_jobs
-             WHERE snapshot_path = ? AND id != ? AND status IN ('pending', 'uploading')
-             LIMIT 1
-        `)
-            .get(local, job.id);
-        if (!stillQueued) {
-            await fsp.unlink(local).catch((e) => {
-                if (e.code !== 'ENOENT') warn(`could not delete ${local}: ${e.message}`);
-            });
+    try {
+        if (
+            path.dirname(path.resolve(local)) === path.resolve(SNAPSHOTS_DIR) &&
+            SNAPSHOT_NAME_RE.test(path.basename(local))
+        ) {
+            const stillQueued = getDb()
+                .prepare(`
+                SELECT 1 FROM backup_jobs
+                 WHERE snapshot_path = ? AND id != ? AND status IN ('pending', 'uploading')
+                 LIMIT 1
+            `)
+                .get(local, job.id);
+            if (!stillQueued) await fsp.unlink(local);
         }
+    } catch (e) {
+        if (e.code !== 'ENOENT') warn(`could not delete ${local}: ${e.message}`);
     }
 
     try {
