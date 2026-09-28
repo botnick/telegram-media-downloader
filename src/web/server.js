@@ -358,6 +358,11 @@ const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const SESSION_PATH = path.join(DATA_DIR, 'session.enc');
 const SESSION_PASSWORD = getOrGenerateSecret();
 
+// libvips' operation cache (default 50 MB) only pays off when the same
+// image is processed repeatedly; thumbnails are generated once and cached
+// on disk, so it would just hold decoded pixels.
+sharp.cache(false);
+
 const app = express();
 const server = createServer(app);
 // Cloudflare's idle/origin window is ~100 s; nginx default proxy_read_timeout

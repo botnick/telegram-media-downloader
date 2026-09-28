@@ -87,6 +87,21 @@ function resolvePoolSize() {
 
 const DISABLED = process.env.HASH_WORKER_DISABLE === '1';
 
+// Workers (~11.5 MB RSS each) are only needed while downloads or sweeps
+// are hashing — tear the pool down once it has been idle this long; the
+// next hashFile() rebuilds it.
+const IDLE_SHUTDOWN_MS = Number(process.env.HASH_WORKER_IDLE_MS) || 60_000;
+let _idleTimer = null;
+
+function _armIdleShutdown() {
+    if (!_pool || _inFlight.size || _waiters.length) return;
+    clearTimeout(_idleTimer);
+    _idleTimer = setTimeout(() => {
+        if (!_inFlight.size && !_waiters.length) shutdownHashPool();
+    }, IDLE_SHUTDOWN_MS);
+    _idleTimer.unref?.();
+}
+
 /** @type {{worker: Worker, busy: boolean}[] | null} */
 let _pool = null;
 let _nextJobId = 1;
@@ -120,6 +135,7 @@ function _makeSlot() {
         if (ok) pending.resolve(hex);
         else pending.reject(new Error(error || 'hash worker error'));
         _drainWaiters();
+        _armIdleShutdown();
     });
     worker.on('error', (err) => {
         // Reject any in-flight job assigned to this slot.
@@ -187,6 +203,7 @@ export function hashFile(absPath, algo = CHECKSUM_ALGO) {
     if (DISABLED || !isMainThread) {
         return _hashOnMainThread(absPath, algo);
     }
+    clearTimeout(_idleTimer);
     _ensurePool();
     if (!_pool) return _hashOnMainThread(absPath, algo);
     return new Promise((resolve, reject) => {
@@ -210,6 +227,7 @@ function _hashOnMainThread(absPath, algo) {
  * Idempotent. Workers are terminated; pending waiters are rejected.
  */
 export async function shutdownHashPool() {
+    clearTimeout(_idleTimer);
     if (!_pool) return;
     const pool = _pool;
     _pool = null;
