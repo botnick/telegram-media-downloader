@@ -108,6 +108,7 @@ import {
     DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
     thumbKindTypes,
     hasCachedThumb,
+    THUMB_CACHE_CONTROL,
 } from '../core/thumbs.js';
 import {
     buildAllSeekbar,
@@ -6465,16 +6466,9 @@ app.get('/api/thumbs/:id', async (req, res) => {
         }
 
         res.setHeader('Content-Type', 'image/webp');
-        // Fresh for a day, then served stale while the browser revalidates
-        // in the background for up to 30 days. The 1 h must-revalidate
-        // policy made every gallery scroll after an hour a round of
-        // blocking 304 checks per tile. `immutable` stays wrong for this
-        // URL: the same id+width can legitimately serve different bytes
-        // after a source replacement or a manual purge — the mtime-based
-        // ETag / Last-Modified below catch that on revalidation. A 404 is
-        // sent with no-store (above), so a missing thumb is never cached.
-        // `private`: thumbnails sit behind the dashboard login.
-        res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=2592000');
+        // See THUMB_CACHE_CONTROL in core/thumbs.js. A 404 is sent with
+        // no-store (above), so a missing thumb is never cached.
+        res.setHeader('Cache-Control', THUMB_CACHE_CONTROL);
         // ETag derived from mtime + size so a regenerated thumb produces
         // a different validator and the browser can't reuse the old
         // body byte-for-byte under a 304.

@@ -346,6 +346,16 @@ const _inflight = new Map(); // cacheKey → Promise
 // resolve to the same on-disk file the gallery already cached.
 // Net effect on the operator's disk: ~80% smaller thumbs/ directory
 // at parity coverage (5 widths → 1, plus the -30% quality/effort win).
+// Browser cache policy for GET /api/thumbs/:id. Fresh for an hour (as
+// before), so a regenerated thumbnail — source replaced, cache purged and
+// rebuilt — still shows up within the hour; after that the tile renders
+// from cache at once while the browser revalidates in the background
+// (the mtime-based ETag / Last-Modified turn that into a 304), instead
+// of every tile blocking on a 304 round-trip (the old must-revalidate).
+// `private`: thumbnails sit behind the dashboard login, so shared caches
+// must not keep them.
+export const THUMB_CACHE_CONTROL = 'private, max-age=3600, stale-while-revalidate=2592000';
+
 export const ALLOWED_WIDTHS = [320];
 export const DEFAULT_WIDTH = 320;
 
