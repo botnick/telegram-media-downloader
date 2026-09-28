@@ -5238,6 +5238,11 @@ body {
 #modal-image.is-zoomed {
     cursor: grab;
 }
+/* Face boxes are laid out for the unzoomed image — hide them while
+   zoomed instead of drawing them in the wrong place. */
+#image-container.is-zoomed #face-overlay-layer {
+    visibility: hidden;
+}
 
 /* Bottom sheets: a finger-sized grab area around the 36×4 handle, and a
    44 px close button. */
