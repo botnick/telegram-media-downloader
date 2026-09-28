@@ -525,3 +525,32 @@ export function repaintSelection() {
     });
     grid.classList.toggle('in-select-mode', !!state.selectMode);
 }
+
+/**
+ * Turn a selection (keyed by tile path) into the bulk-delete request
+ * body. Several tiles can show one file (download-time dedup), so every
+ * own tile under a selected path contributes its id — mapping path → one
+ * tile would silently leave the others behind. Paths with no own tile
+ * (peer tiles, rows without an id) are sent as paths.
+ *
+ * @param {Iterable<string>} selectedPaths
+ * @param {Array<{ id?: number, fullPath?: string, peer_id?: string }>} files
+ * @returns {{ ids: number[], paths: string[] }}
+ */
+export function bulkDeleteTargets(selectedPaths, files) {
+    const idsByPath = new Map();
+    for (const f of files || []) {
+        if (!f || f.id == null || (f.peer_id || 'self') !== 'self') continue;
+        const list = idsByPath.get(f.fullPath);
+        if (list) list.push(f.id);
+        else idsByPath.set(f.fullPath, [f.id]);
+    }
+    const ids = new Set();
+    const paths = [];
+    for (const p of selectedPaths) {
+        const own = idsByPath.get(p);
+        if (own) for (const id of own) ids.add(id);
+        else paths.push(p);
+    }
+    return { ids: [...ids], paths };
+}
