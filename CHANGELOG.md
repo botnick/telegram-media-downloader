@@ -71,6 +71,9 @@ All notable changes to this project are documented here. The format is based on 
 - **`npm run pre-download-models` failed with `Cannot find module`** ([#64](https://github.com/botnick/telegram-media-downloader/issues/64)). `scripts/pre-download-models.js` was referenced since v2.15 but never committed. It now exists and seeds the NSFW model cache with the configured model + precision (no-op when an NSFW sidecar is configured). The Docker build no longer runs it: `/app/data` is hidden by the `./data` bind-mount at runtime, so a build-time download never reached the running container. See [DEPLOY.md](docs/DEPLOY.md#split-disk-setup) for offline seeding.
 - **NSFW "Precision" setting was ignored.** Scans and preloads always loaded the `q8` variant because the server dropped `advanced.nsfw.dtype` when building the scan config.
 
+### Service worker
+- `VERSION = 'v2246'` — evicts the old shell/asset caches so upgraded clients drop the Play-CDN-era `main.css` / JS and precache the new `/css/tailwind.css`. Asset URLs are still cache-busted by `?v=<package version>`, so the release must bump `package.json` as usual.
+
 ## [2.24.5] — 2026-05-31
 
 Hardening follow-up to v2.24.4 — connection-leak + revoked-session fixes from an adversarial audit of the reconnect/self-heal code.
