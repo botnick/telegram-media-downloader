@@ -24,7 +24,9 @@ import base64
 import binascii
 import logging
 import os
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -86,24 +88,17 @@ def _is_under(path: str, root: str) -> bool:
     return common == root
 
 
-def _apply_exif_orientation(bgr: np.ndarray, raw_bytes: bytes) -> np.ndarray:
-    """Rotate/flip ``bgr`` to match the EXIF orientation tag in ``raw_bytes``.
+# Decode flags for every cv2 path. ``cv2.imdecode`` has applied the EXIF
+# Orientation tag itself since OpenCV 4.x (verified on 4.10 and 4.13, the
+# range pinned in pyproject.toml); the sidecar used to rotate the result a
+# second time, so a phone portrait (orientation 6/8) reached the detector
+# sideways and an orientation-3 shot upside down. Decode the raw pixels
+# and apply the tag exactly once, below.
+_IMREAD_FLAGS = cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
 
-    ``cv2.imdecode`` ignores EXIF rotation tags (orientations 3, 6, 8),
-    which causes portrait photos taken on phones to appear sideways or
-    upside-down when fed directly to the face detector.  Pillow reads EXIF
-    reliably on all platforms (including Windows where libjpeg-turbo can
-    behave differently), so we use it as the authority for the rotation.
 
-    Orientations:
-      1 — normal (no-op)
-      3 — 180° rotation
-      6 — 90° clockwise (270° counter-clockwise)
-      8 — 90° counter-clockwise (270° clockwise)
-
-    All other values are treated as no-op to avoid breaking unusual EXIF
-    data.
-    """
+def _exif_orientation(raw_bytes: bytes) -> int:
+    """EXIF Orientation tag (1-8) of an encoded image; 1 when absent."""
     try:
         from PIL import Image  # noqa: PLC0415
         import io as _io  # noqa: PLC0415
@@ -112,19 +107,36 @@ def _apply_exif_orientation(bgr: np.ndarray, raw_bytes: bytes) -> np.ndarray:
             exif = pil_img.getexif() if hasattr(pil_img, "getexif") else {}
             # Tag 0x0112 is Orientation
             orientation = exif.get(0x0112, 1) if exif else 1
+        return int(orientation) if orientation in range(1, 9) else 1
     except Exception:
-        # Pillow not importable, image has no EXIF, or EXIF is unreadable —
-        # return the image as-is so we don't silently break non-JPEG inputs.
-        return bgr
+        # Pillow not importable, image has no EXIF, or EXIF is unreadable.
+        return 1
 
+
+def _apply_exif_orientation(bgr: np.ndarray, raw_bytes: bytes) -> np.ndarray:
+    """Rotate/flip raw decoded pixels to match the EXIF orientation tag.
+
+    ``bgr`` must be the *un-oriented* decode (``_IMREAD_FLAGS`` or
+    Pillow). Pillow reads EXIF reliably on every platform, so it is the
+    authority for the tag. Same transforms as OpenCV / browsers:
+
+      2 mirror · 3 rotate 180° · 4 flip vertical · 5 transpose
+      6 rotate 90° CW · 7 transverse · 8 rotate 90° CCW
+    """
+    orientation = _exif_orientation(raw_bytes)
+    if orientation == 2:
+        return cv2.flip(bgr, 1)
     if orientation == 3:
-        # 180° rotation
         return cv2.rotate(bgr, cv2.ROTATE_180)
+    if orientation == 4:
+        return cv2.flip(bgr, 0)
+    if orientation == 5:
+        return cv2.transpose(bgr)
     if orientation == 6:
-        # 90° clockwise
         return cv2.rotate(bgr, cv2.ROTATE_90_CLOCKWISE)
+    if orientation == 7:
+        return cv2.rotate(cv2.transpose(bgr), cv2.ROTATE_180)
     if orientation == 8:
-        # 90° counter-clockwise
         return cv2.rotate(bgr, cv2.ROTATE_90_COUNTERCLOCKWISE)
     return bgr
 
@@ -179,7 +191,7 @@ def load_image_from_path(path: str, allow_roots: list[str]) -> np.ndarray:
         raise FileNotFoundError(f"file {path!r} is empty")
 
     buf = np.frombuffer(raw, dtype=np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(buf, _IMREAD_FLAGS)
     if img is None:
         # cv2 fails on animated WebP and some uncommon encodings — try Pillow.
         # For animated images (animated WebP, APNG, GIF) the image object
@@ -220,6 +232,26 @@ def extract_video_frames(
     FileNotFoundError
         ``path`` is missing or cv2 cannot open it as a video.
     """
+    return list(iter_video_frames(path, allow_roots, max_frames=max_frames))
+
+
+def iter_video_frames(
+    path: str,
+    allow_roots: list[str],
+    max_frames: int = 120,
+    with_time: bool = False,
+) -> Iterator[Any]:
+    """Streaming form of :func:`extract_video_frames`.
+
+    Validation and ``VideoCapture`` open happen eagerly (same exceptions),
+    but frames are decoded one at a time as the caller iterates, so a
+    120-frame 4K sample never sits in memory at once (~3 GB as a list).
+    The capture is released when the iterator is exhausted or closed.
+
+    ``with_time=True`` yields ``(seconds, frame)`` pairs — the position of
+    each sampled frame, which the Node side stores so a face crop can seek
+    straight back to it.
+    """
     if not allow_roots:
         raise PathNotAllowedError(
             "path mode is disabled (TGDL_FACES_ALLOW_ROOTS is empty)"
@@ -232,7 +264,10 @@ def extract_video_frames(
     cap = cv2.VideoCapture(target)
     if not cap.isOpened():
         raise FileNotFoundError(f"cv2 cannot open video {path!r}")
+    return _frames_from_capture(cap, max_frames, with_time)
 
+
+def _frames_from_capture(cap: Any, max_frames: int, with_time: bool = False) -> Iterator[Any]:
     try:
         raw_fps = cap.get(cv2.CAP_PROP_FPS)
         fps = raw_fps if raw_fps and raw_fps > 0 else 25.0
@@ -241,7 +276,9 @@ def extract_video_frames(
         if total_frames <= 0:
             # Some containers don't report frame count — grab one frame.
             ret, frame = cap.read()
-            return [frame] if (ret and frame is not None) else []
+            if ret and frame is not None:
+                yield (0.0, frame) if with_time else frame
+            return
 
         duration = total_frames / fps
 
@@ -266,13 +303,11 @@ def extract_video_frames(
                 for i in range(n_samples)
             ]
 
-        frames: list[np.ndarray] = []
         for idx in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, float(idx))
             ret, frame = cap.read()
             if ret and frame is not None:
-                frames.append(frame)
-        return frames
+                yield (idx / fps, frame) if with_time else frame
     finally:
         cap.release()
 
@@ -305,7 +340,7 @@ def load_image_from_b64(data: str) -> np.ndarray:
         raise Base64DecodeError("image_b64 decoded to zero bytes")
 
     buf = np.frombuffer(raw, dtype=np.uint8)
-    img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(buf, _IMREAD_FLAGS)
     if img is None:
         raise ImageDecodeError("image_b64 bytes could not be decoded as an image")
     return _apply_exif_orientation(img, raw)

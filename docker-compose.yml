@@ -77,6 +77,8 @@ services:
       # stays empty and Node falls back to the bundled PyInstaller
       # binary downloaded on first use.
       - FACES_SERVICE_URL=${FACES_SERVICE_URL:-http://tgdl-faces:8011}
+      # Sent to the faces sidecar when it requires a token (TGDL_FACES_API_TOKEN).
+      - TGDL_FACES_SIDECAR_TOKEN=${TGDL_FACES_API_TOKEN:-}
       # Seekbar preview sidecar URL. Leave unset to let the dashboard
       # auto-spawn the bundled Go binary on a random localhost port;
       # set when running `seekbar-service/` as a separate compose
@@ -210,6 +212,9 @@ services:
       # (downloader, OS) get breathing room. Leave at 0 (default) when a
       # GPU provider is active — GPU inference already leaves the CPU idle.
       - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
+      # Optional shared secret: set TGDL_FACES_API_TOKEN in .env to require it
+      # on every call except /health (the main app sends the same value).
+      - TGDL_FACES_API_TOKEN=${TGDL_FACES_API_TOKEN:-}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
@@ -281,6 +286,9 @@ services:
       # Throttle: 0 (default) is correct for GPU — CPU is idle between
       # kernel dispatches. Only raise this if falling back to CPU.
       - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
+      # Optional shared secret: set TGDL_FACES_API_TOKEN in .env to require it
+      # on every call except /health (the main app sends the same value).
+      - TGDL_FACES_API_TOKEN=${TGDL_FACES_API_TOKEN:-}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
@@ -343,6 +351,9 @@ services:
       - TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
       - TGDL_FACES_PROVIDERS=${TGDL_FACES_PROVIDERS:-auto}
       - TGDL_FACES_THROTTLE_MS=${TGDL_FACES_THROTTLE_MS:-0}
+      # Optional shared secret: set TGDL_FACES_API_TOKEN in .env to require it
+      # on every call except /health (the main app sends the same value).
+      - TGDL_FACES_API_TOKEN=${TGDL_FACES_API_TOKEN:-}
       - TZ=${TZ:-UTC}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]

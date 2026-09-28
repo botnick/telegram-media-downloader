@@ -53,7 +53,11 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `HASH_WORKER_POOL_SIZE`         | `min(8, ⌊cpus/2⌋)`  | Worker-thread pool used for SHA-256 streaming over multi-GB files (post-write hash + dedup catch-up). Keeps the main event loop free for HTTP / WebSocket traffic. Set higher on a beefy host with many parallel downloads, lower on a Pi 4 / NAS. |
 | `HASH_WORKER_DISABLE`           | unset               | Set to `1` to skip the worker pool entirely and hash on the main thread — useful for sandboxed runtimes that block `worker_threads`. |
 | `COMPRESSION_LEVEL`             | `6`                 | gzip / brotli compression level (1-9) for text payloads (HTML / JS / CSS / JSON). Raw file routes (`/files/`, `/share/`, `/photos/`), Range requests and media types are never compressed. Lower the level on slow CPUs (Pi Zero, embedded NAS) so requests don't queue up behind compression; raise it on hosts with spare CPU + slow uplink. Set to `0` to turn compression off (e.g. when a reverse proxy already compresses). |
-| `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. When the `faces` compose profile is up this is set to `http://tgdl-faces:8011` automatically. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
+| `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. The bundled `docker-compose.yml` sets it to `http://tgdl-faces:8011` whether or not the `faces` profile is up. With the profile up, that sidecar is used; without it (`tgdl-faces` doesn't resolve) the app auto-spawns the sidecar binary inside its own container once AI + face clustering are enabled, and re-checks when a scan starts. Any other value is used as-is. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
+| `TGDL_FACES_API_TOKEN`          | unset               | Shared secret for the faces sidecar. Set in `.env`: the compose `tgdl-faces*` services require it on every call except `/health`, and the main service sends it (as `TGDL_FACES_SIDECAR_TOKEN`). For an external sidecar on another host, start it with this env and set `TGDL_FACES_SIDECAR_TOKEN` (or `advanced.ai.faces.sidecarToken`) on the app. |
+| `TGDL_FACES_SIDECAR_WAIT_MS`    | `300000`            | How long a face scan waits for an unreachable / still-loading sidecar before stopping. Nothing is marked scanned while it waits. |
+| `TGDL_FACE_CROP_CONCURRENCY`    | `4`                 | Max face crops (People-grid avatars) rendered at once. Each first-time crop decodes the full-resolution source or grabs a video frame; finished crops are cached under `data/thumbs/face-crops/`. |
+| `TGDL_FACES_SIDECAR_NICE`       | `10`                | Priority of the **auto-spawned** faces sidecar (nice / Windows below-normal) so the dashboard and healthcheck win CPU contention. `0` disables. |
 | `TGDL_FACES_AUTO_DOWNLOAD`      | `true`              | `false` refuses to download the prebuilt PyInstaller binary on first use — pair with a pre-staged binary under `data/faces-service/bin/` for air-gapped deploys. Full env-var reference in [docs/AI.md](AI.md). |
 | `SEEKBAR_SIDECAR_URL`           | unset               | Override URL for the Go seekbar sidecar. Set when running `seekbar-service/` as its own compose service; leave unset for the bundled auto-spawn path. |
 | `SEEKBAR_API_TOKEN`             | auto-generated      | Bearer token the dashboard sends as `X-API-Token` to the seekbar sidecar. Auto-generated per process; set explicitly only when running the sidecar standalone. |
@@ -310,6 +314,16 @@ environment:
 ```
 
 The container entrypoint creates and permissions `TGDL_DOWNLOADS_DIR` automatically on boot.
+
+With the `faces` profile, mount the HDD into the `tgdl-faces` service at the **same path** and allow it, so the sidecar reads files directly instead of receiving every image as base64 over HTTP:
+
+```yaml
+# tgdl-faces service
+volumes:
+  - /mnt/hdd/tgdl/downloads:/mnt/hdd/downloads:ro
+environment:
+  - TGDL_FACES_ALLOW_ROOTS=/mnt/hdd/downloads
+```
 
 **Bare metal / Synology native:**
 

@@ -108,8 +108,14 @@ import {
     DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
     thumbKindTypes,
     hasCachedThumb,
+    resolveFfmpegBin,
     THUMB_CACHE_CONTROL,
 } from '../core/thumbs.js';
+import { createFaceCropper } from '../core/ai/face-crops.js';
+import {
+    detectFacesInImage as aiDetectFacesInImage,
+    sidecarAuthHeaders as aiSidecarAuthHeaders,
+} from '../core/ai/faces-client.js';
 import {
     buildAllSeekbar,
     getMetaForDownload as getSeekbarMetaForDownload,
@@ -170,6 +176,7 @@ import { getRescueStats } from '../core/db.js';
 import {
     getAiCounts,
     listPeople,
+    resolvePeopleSort,
     listPhotosForPerson,
     renamePerson,
     deletePerson,
@@ -7822,6 +7829,7 @@ async function _fetchSidecarInfo(url) {
     try {
         const res = await fetch(`${url.replace(/\/+$/, '')}/info`, {
             signal: controller.signal,
+            headers: aiSidecarAuthHeaders(),
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -7834,6 +7842,27 @@ async function _fetchSidecarInfo(url) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+// `faces.quality_score IS NULL` has no index, so the count reads every
+// face row including its 2 KB embedding (~0.2 s at 50 k faces, all on the
+// event loop) — and the AI page refetches status on every WS nudge. The
+// number only moves during a quality backfill, so cache it: 30 s normally,
+// 5 s while the backfill runs so its progress still shows.
+const _QUALITY_PENDING_CACHE = { ts: 0, value: 0 };
+function _qualityBackfillPending() {
+    const ttl = _jobTrackers.qualityBackfill.isRunning() ? 5000 : 30_000;
+    const now = Date.now();
+    if (now - _QUALITY_PENDING_CACHE.ts < ttl) return _QUALITY_PENDING_CACHE.value;
+    try {
+        _QUALITY_PENDING_CACHE.value = aiGetDb()
+            .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
+            .get().n;
+    } catch {
+        _QUALITY_PENDING_CACHE.value = 0;
+    }
+    _QUALITY_PENDING_CACHE.ts = now;
+    return _QUALITY_PENDING_CACHE.value;
 }
 
 app.get('/api/ai/status', async (_req, res) => {
@@ -7913,11 +7942,13 @@ app.get('/api/ai/status', async (_req, res) => {
                         /* sidecar offline / fetch failed — fall through */
                     }
                     let sidecarMode = null;
+                    let sidecarModeLabel = null;
                     try {
                         const facesSpawnStatus = (
                             await import('../core/ai/faces-spawn.js')
                         ).getSidecarStatus();
                         sidecarMode = facesSpawnStatus?.mode || null;
+                        sidecarModeLabel = facesSpawnStatus?.modeLabel || null;
                     } catch {}
                     return {
                         id,
@@ -7932,6 +7963,7 @@ app.get('/api/ai/status', async (_req, res) => {
                         providersRequested: String(facesBlock.providers || 'auto'),
                         version: sidecarVersion,
                         mode: sidecarMode,
+                        modeLabel: sidecarModeLabel,
                     };
                 })(),
             },
@@ -7942,15 +7974,7 @@ app.get('/api/ai/status', async (_req, res) => {
                     return { realtime: 0, backfill: 0 };
                 }
             })(),
-            qualityBackfillPending: (() => {
-                try {
-                    return aiGetDb()
-                        .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
-                        .get().n;
-                } catch {
-                    return 0;
-                }
-            })(),
+            qualityBackfillPending: _qualityBackfillPending(),
             trackers: {
                 aiPeople: _jobTrackers.aiPeople.getStatus(),
                 qualityBackfill: _jobTrackers.qualityBackfill.getStatus(),
@@ -7968,6 +7992,20 @@ app.get('/api/ai/status', async (_req, res) => {
 // field so older clients fail with a clear `unknown feature` error
 // rather than a silent no-op.
 const AI_SCAN_FEATURES = new Set(['faces']);
+
+// A scan needs a sidecar. If none was started (AI was off at boot) or the
+// last spawn attempt failed, try again with the current config; the scan
+// itself waits for it to become ready. Also re-checks the stock compose
+// URL: the `faces` profile may have been started or stopped since boot.
+// A custom URL that is merely unreachable is left alone.
+async function _ensureFacesSidecar() {
+    try {
+        const spawnMod = await import('../core/ai/faces-spawn.js');
+        await spawnMod.ensureSidecarForScan();
+    } catch {
+        /* the scan reports the missing sidecar itself */
+    }
+}
 
 function _aiTrackerFor(feature) {
     if (feature === 'faces') return _jobTrackers.aiPeople;
@@ -8011,6 +8049,7 @@ app.post('/api/ai/scan/start', async (req, res) => {
         if (aiIsScanRunning(feature)) {
             return res.status(409).json({ error: 'Scan already running', code: 'ALREADY_RUNNING' });
         }
+        await _ensureFacesSidecar();
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
@@ -8122,7 +8161,10 @@ app.get('/api/ai/faces/provider-probe', async (_req, res) => {
         const t = setTimeout(() => ctrl.abort(), 10_000);
         let r;
         try {
-            r = await globalThis.fetch(`${url}/providers`, { signal: ctrl.signal });
+            r = await globalThis.fetch(`${url}/providers`, {
+                signal: ctrl.signal,
+                headers: aiSidecarAuthHeaders(),
+            });
         } finally {
             clearTimeout(t);
         }
@@ -8216,6 +8258,7 @@ app.post('/api/ai/faces/recluster', async (_req, res) => {
                 message: 'A face scan is already in progress.',
             });
         }
+        await _ensureFacesSidecar();
         const tracker = _aiTrackerFor('faces');
         const claim = tracker.tryStart(({ onProgress, signal }) => {
             return new Promise((resolve, reject) => {
@@ -8275,6 +8318,7 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
             ).run(...types);
         });
         tx();
+        _purgeFaceCropCache();
         broadcast({ type: 'ai_faces_reindexed', ts: Date.now() });
         res.json({ success: true });
     } catch (e) {
@@ -8377,6 +8421,7 @@ app.post('/api/ai/preload-model/:name', async (_req, res) => {
         const r = await fetch(`${url}/preload/${encodeURIComponent(name)}`, {
             method: 'POST',
             signal: AbortSignal.timeout(5000),
+            headers: aiSidecarAuthHeaders(),
         });
         res.json(await r.json());
     } catch (e) {
@@ -8392,6 +8437,7 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
         if (!url) return res.status(503).json({ error: 'sidecar not running' });
         const r = await fetch(`${url}/preload/${encodeURIComponent(name)}/status`, {
             signal: AbortSignal.timeout(3000),
+            headers: aiSidecarAuthHeaders(),
         });
         res.json(await r.json());
     } catch (e) {
@@ -8401,14 +8447,42 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
 
 // ---- People (face clusters) ---------------------------------------------
 
+// Same order as db.js listPeople() for rows merged from several peers.
+function _peopleComparator(sort, dir) {
+    const sign = dir === 'asc' ? 1 : -1;
+    const tie = (a, b) =>
+        (Number(b.face_count) || 0) - (Number(a.face_count) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0);
+    if (sort === 'name') {
+        return (a, b) => {
+            const an = a.label ? 0 : 1;
+            const bn = b.label ? 0 : 1;
+            // Unlabelled first ascending, last descending.
+            if (an !== bn) return (bn - an) * sign;
+            const c = String(a.label || '').localeCompare(String(b.label || ''), undefined, {
+                sensitivity: 'base',
+            });
+            return c * sign || tie(a, b);
+        };
+    }
+    const key = sort === 'avg_quality' ? 'avg_quality' : 'face_count';
+    return (a, b) => ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * sign || tie(a, b);
+}
+
 app.get('/api/ai/people', async (req, res) => {
     try {
         const limit = Math.max(1, Math.min(2000, Number(req.query?.limit) || 100));
         const offset = Math.max(0, Number(req.query?.offset) || 0);
         const scope = String(req.query?.scope || 'local').toLowerCase();
-        const local = listPeople({ limit, offset });
+        // Sorted server-side so "top N by quality / name" really is the top N
+        // of the whole library, not of the first N by face count.
+        const { sort, dir } = resolvePeopleSort(
+            String(req.query?.sort || ''),
+            String(req.query?.dir || '').toLowerCase(),
+        );
+        const local = listPeople({ limit, offset, sort, dir });
         if (scope !== 'federated') {
-            return res.json({ success: true, scope: 'local', ...local });
+            return res.json({ success: true, scope: 'local', sort, dir, ...local });
         }
         // Federated — list local clusters first, then peer summaries
         // tagged with the owning peer id. The UI's cover thumbnail is
@@ -8424,7 +8498,7 @@ app.get('/api/ai/people', async (req, res) => {
                         const r = await relayTo({
                             targetPeerId: p.peerId,
                             method: 'GET',
-                            path: `/api/ai/people?limit=${limit}`,
+                            path: `/api/ai/people?limit=${limit}&sort=${sort}&dir=${dir}`,
                         });
                         if (!r.ok) return [];
                         const json = await r.json();
@@ -8443,10 +8517,12 @@ app.get('/api/ai/people', async (req, res) => {
             const merged = [
                 ...(local.people || []).map((row) => ({ ...row, _peerId: 'local' })),
                 ...peerLists.flat(),
-            ];
+            ].sort(_peopleComparator(sort, dir));
             return res.json({
                 success: true,
                 scope: 'federated',
+                sort,
+                dir,
                 people: merged,
                 total: merged.length,
                 peerErrors,
@@ -8502,42 +8578,23 @@ app.get('/api/ai/group-by-person', async (req, res) => {
     }
 });
 
-// Extract a single frame from a video file as a raw image buffer using ffmpeg.
-// Used by the face crop endpoints when the source is a video file.
-async function _extractVideoFrame(videoPath) {
-    const { execFile } = await import('child_process');
-    const { resolveFfmpegBin } = await import('../core/thumbs.js');
-    const ffmpeg = resolveFfmpegBin();
-    return new Promise((resolve, reject) => {
-        execFile(
-            ffmpeg,
-            ['-i', videoPath, '-vframes', '1', '-f', 'image2', '-vcodec', 'png', 'pipe:1'],
-            { encoding: 'buffer', maxBuffer: 20 * 1024 * 1024, timeout: 10000 },
-            (err, stdout) => {
-                if (err) return reject(err);
-                resolve(stdout);
-            },
-        );
-    });
-}
+// ---- Face crops ------------------------------------------------------------
+//
+// Cached on disk, concurrency-capped, video-frame-aware — see
+// src/core/ai/face-crops.js for the why. `TGDL_FACE_CROP_CONCURRENCY`
+// (default 4) bounds how many crops render at once.
+const _faceCropper = createFaceCropper({
+    cacheDir: path.join(DATA_DIR, 'thumbs', 'face-crops'),
+    concurrency: Number(process.env.TGDL_FACE_CROP_CONCURRENCY) || 4,
+    resolveFfmpeg: resolveFfmpegBin,
+    // Legacy video rows: find the frame whose face matches the stored
+    // embedding. Null (sidecar away) makes the cropper fall back uncached.
+    detectInImage: (jpeg) => aiDetectFacesInImage(jpeg, _aiCfg()),
+});
 
-// Crop a face from an image buffer (or file path) with padding.
-async function _cropFace(source, row, size) {
-    const pad = 0.4;
-    const meta = await sharp(source, { failOn: 'none' }).metadata();
-    const imgW = meta.width || 9999;
-    const imgH = meta.height || 9999;
-    const left = Math.max(0, Math.round(row.x - row.w * pad));
-    const top = Math.max(0, Math.round(row.y - row.h * pad));
-    const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-    const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-    const width = Math.max(1, right - left);
-    const height = Math.max(1, bottom - top);
-    return sharp(source, { failOn: 'none' })
-        .extract({ left, top, width, height })
-        .resize(size, size, { fit: 'cover', position: 'centre' })
-        .jpeg({ quality: 82, progressive: true })
-        .toBuffer();
+/** Drop every cached crop (after a reindex the boxes are all new anyway). */
+function _purgeFaceCropCache() {
+    _faceCropper.purge();
 }
 
 // Face crop for person avatar — best (highest-quality/largest) face for this person.
@@ -8552,7 +8609,8 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path, d.file_type
+                `SELECT f.x, f.y, f.w, f.h, f.exif_oriented, f.frame_time_sec, f.embedding,
+                        d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.person_id = ?
@@ -8569,21 +8627,7 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        let buf;
-        if (row.file_type === 'video') {
-            const frameBuf = await _extractVideoFrame(resolved.real);
-            try {
-                buf = await _cropFace(frameBuf, row, size);
-            } catch {
-                buf = await sharp(frameBuf, { failOn: 'none' })
-                    .resize(size, size, { fit: 'cover', position: 'attention' })
-                    .jpeg({ quality: 82, progressive: true })
-                    .toBuffer();
-            }
-        } else {
-            buf = await _cropFace(resolved.real, row, size);
-        }
-
+        const buf = await _faceCropper.crop(row, resolved.real, size);
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
@@ -8598,7 +8642,8 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 });
 
 // Face crop for an individual face (used in the per-person photo gallery).
-// Crops the face bbox from the source image with the same 40% padding.
+// Crops the face bbox from the source image with the same 40% padding;
+// video faces go through the same frame-aware path as the avatar.
 app.get('/api/ai/faces/:id/crop', async (req, res) => {
     try {
         const faceId = Number(req.params.id);
@@ -8608,7 +8653,8 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path
+                `SELECT f.x, f.y, f.w, f.h, f.exif_oriented, f.frame_time_sec, f.embedding,
+                        d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.id = ?`,
@@ -8622,24 +8668,7 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        const pad = 0.4;
-        const meta = await sharp(resolved.real, { failOn: 'none' }).metadata();
-        const imgW = meta.width || 9999;
-        const imgH = meta.height || 9999;
-
-        const left = Math.max(0, Math.round(row.x - row.w * pad));
-        const top = Math.max(0, Math.round(row.y - row.h * pad));
-        const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-        const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-        const width = Math.max(1, right - left);
-        const height = Math.max(1, bottom - top);
-
-        const buf = await sharp(resolved.real, { failOn: 'none' })
-            .extract({ left, top, width, height })
-            .resize(size, size, { fit: 'cover', position: 'centre' })
-            .jpeg({ quality: 82, progressive: true })
-            .toBuffer();
-
+        const buf = await _faceCropper.crop(row, resolved.real, size);
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
@@ -8716,8 +8745,9 @@ app.post('/api/ai/people/:id/merge', async (req, res) => {
 app.post('/api/ai/people/:id/split', async (req, res) => {
     try {
         const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds : [];
+        // The AI page sends `newLabel`; older clients / scripts send `label`.
         const label =
-            String(req.body?.label || '')
+            String(req.body?.newLabel ?? req.body?.label ?? '')
                 .trim()
                 .slice(0, 100) || null;
         if (!faceIds.length) {
@@ -8897,6 +8927,7 @@ app.post('/api/ai/reindex', async (req, res) => {
         // Settle one tick so the scan loops see the abort signal.
         if (cancelled) await new Promise((r) => setTimeout(r, 100));
         const r = resetAllAiData();
+        _purgeFaceCropCache();
         log({
             source: 'ai',
             level: 'info',
@@ -9116,7 +9147,7 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'ok',
-                detail: `v${facesVer} · running at ${st.url}`,
+                detail: `v${facesVer} · ${st.modeLabel || 'running'} at ${st.url}`,
             });
         } else if (st.state === 'downloading') {
             checks.push({
@@ -9144,7 +9175,9 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'info',
-                detail: 'disabled',
+                detail: st.composeFallback
+                    ? 'compose `faces` profile not running — one is auto-spawned in this container once AI + face clustering are on'
+                    : 'disabled',
             });
         }
     } catch (e) {
@@ -11619,10 +11652,15 @@ app.post('/api/config', async (req, res) => {
                 // rather than the merged config so a no-op save doesn't restart.
                 const bodyAi = req.body.advanced.ai || {};
                 const bodyFaces = bodyAi.faces || {};
+                // `enabled` too: the auto-spawned sidecar only starts once AI
+                // is switched on, so flipping it has to (re)run the spawn path.
                 const needsRestart =
                     bodyFaces.detectorModel !== undefined ||
                     bodyFaces.providers !== undefined ||
                     bodyFaces.backend !== undefined ||
+                    bodyFaces.sidecarUrl !== undefined ||
+                    bodyFaces.sidecarToken !== undefined ||
+                    bodyAi.enabled !== undefined ||
                     bodyAi.faceClustering !== undefined;
                 if (needsRestart && facesSpawnMod) {
                     facesSpawnMod.stopSidecar();
@@ -13267,6 +13305,7 @@ ${tip}
                 const aiCfg = _aiCfg();
                 if (aiCfg.enabled) {
                     console.log('[auto-resume] resuming AI faces scan');
+                    await _ensureFacesSidecar();
                     const tracker = _aiTrackerFor('faces');
                     tracker.tryStart(({ onProgress, signal }) => {
                         try {

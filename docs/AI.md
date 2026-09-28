@@ -158,6 +158,18 @@ the compose network so the main app's `FACES_SERVICE_URL=http://
 tgdl-faces:8011` resolves to whichever variant you bring up. Compose
 refuses to start more than one at a time.
 
+**No profile at all** — the stock compose file sets
+`FACES_SERVICE_URL=http://tgdl-faces:8011` either way. When that host
+doesn't resolve (no `faces*` profile running), the app ignores the URL and
+auto-spawns the sidecar binary inside its own container instead — the
+same path bare-metal installs use (downloaded to
+`data/faces-service/bin/` once AI + face clustering are on). The check is
+repeated when a scan starts, so bringing a profile up later switches to it
+(and stopping it falls back again). A custom `FACES_SERVICE_URL` or an
+**External sidecar URL** is always used as-is. The AI doctor shows which
+mode is active: *compose sidecar*, *auto-spawned in this container*, or
+*external URL*.
+
 **CUDA path** — requires the host to have:
 1. NVIDIA driver matching the CUDA runtime baked into the image (the
    sidecar uses CUDA 12.x; driver 525+ on Linux, 530+ on Windows WSL2).
@@ -209,7 +221,8 @@ should read the nested path.
 | Config key | Env var | Default | Description |
 |---|---|---|---|
 | `backend` | `TGDL_FACES_BACKEND` | `sidecar` | `sidecar` or `disabled` — kill switch for the spawn path |
-| `sidecarUrl` | `TGDL_FACES_SIDECAR_URL` | `''` | Operator override URL; empty = compose env or local auto-spawn |
+| `sidecarUrl` | `TGDL_FACES_SIDECAR_URL` | `''` | Operator override URL; empty = compose env or local auto-spawn (see [External sidecar](#external-sidecar)) |
+| `sidecarToken` | `TGDL_FACES_SIDECAR_TOKEN` | `''` | Sent as `Authorization: Bearer …` to a sidecar started with `TGDL_FACES_API_TOKEN` |
 | `autoDownload` | `TGDL_FACES_AUTO_DOWNLOAD` | `true` | `false` refuses to fetch the binary (offline mode) |
 | `minDetectionScore` | `TGDL_FACES_MIN_DETECTION_SCORE` | `0.5` | Detector score floor (0–1) |
 | `minFaceSizePx` | `TGDL_FACES_MIN_FACE_SIZE_PX` | `80` | Reject boxes smaller than this on the shorter edge |
@@ -219,6 +232,8 @@ should read the nested path.
 | `detectorModel` | `TGDL_FACES_DETECTOR_MODEL` | `buffalo_l` | Detector model preset (see [Detector model options](#detector-model-options) below) |
 | `scanVideos` | — | `false` | Include videos in face scan (see [Video face scanning](#video-face-scanning)) |
 | `cpuThrottleRatio` | `TGDL_FACES_CPU_THROTTLE_RATIO` | `0.5` | Duty-cycle rest ratio after each detection call (0 = off, see [CPU throttle](#cpu-throttle)) |
+| `sidecarWaitMs` | `TGDL_FACES_SIDECAR_WAIT_MS` | `300000` | How long a scan waits for the sidecar to come (back) up — at scan start and after an outage — before stopping with an error. Unscanned files stay queued. |
+| `sidecarNice` | `TGDL_FACES_SIDECAR_NICE` | `10` | Priority of an **auto-spawned** sidecar (nice 10 / Windows below-normal) so the dashboard wins CPU contention. `0` = same priority as Node. |
 | `providers` | `TGDL_FACES_PROVIDERS` | `auto` | `auto` / `cpu` / `cuda` / `coreml` / `directml` |
 | `epsilon` | `TGDL_FACES_EPSILON` | `0.5` | DBSCAN radius |
 | `minPoints` | `TGDL_FACES_MIN_POINTS` | `3` | Smallest cluster surfaced as a person |
@@ -250,24 +265,37 @@ separators (`5000,5999` or `5000:5999` both work).
 
 ### Face pass
 
-1. **Phase A** — for every photo whose `downloads.ai_indexed_at IS NULL`,
-   POST to the sidecar's `/detect`. Persist bounding box + 512-dim
-   embedding + landmarks to the `faces` table. Stamp `ai_indexed_at`
-   regardless of detected face count, so a re-scan doesn't re-decode
-   photos that yielded zero faces.
+1. **Phase A** — for every photo whose `downloads.ai_indexed_at IS NULL`
+   (oldest first), POST to the sidecar's `/detect/batch`. Persist bounding
+   box + 512-dim embedding + quality score to the `faces` table. Stamp
+   `ai_indexed_at` once the sidecar has answered for the file — faces,
+   no faces, or a per-file error such as `decode_failed` — so a re-scan
+   doesn't re-decode photos that yielded zero faces.
 
-2. **Phase B** — DBSCAN over every face embedding. Cluster ids are
-   rebuilt from scratch on each run; `eps` defaults to 0.5 (matches
-   buffalo_l's "definitely the same person" guidance for L2-normalised
-   embeddings); `minPts` defaults to 3 so a one-shot stranger stays
-   unassigned instead of getting forced into a cluster.
+   A sidecar that is down, restarting, still loading its model, or timing
+   out is **not** an answer: those rows stay queued, the scan pauses
+   (`waitingForSidecar` in the scan state) until `/health` reports the
+   model ready, then carries on. The same wait runs before the first
+   batch, so an auto-resumed scan after a container restart no longer
+   races the sidecar's boot. If the sidecar stays away longer than
+   `sidecarWaitMs` the scan stops with an error and the next scan picks
+   up exactly where it left off. A file whose request keeps failing is
+   retried on its own (so it can't take neighbours down with it) and
+   skipped after 3 attempts.
 
-3. **Label preservation across re-cluster** — before wiping the `people`
-   table, every labelled centroid is snapshotted in memory. After the
-   new DBSCAN finishes, each cluster's centroid is matched against the
+2. **Phase B** — DBSCAN over every face embedding, on a worker thread so a
+   long pass never blocks the dashboard (or the container healthcheck).
+   Cluster ids are rebuilt on each run; see `epsilon` / `minPoints` in
+   the table above. Cancelling during Phase B leaves the previous People
+   grid untouched.
+
+3. **Label preservation across re-cluster** — before replacing the
+   `people` rows, every labelled centroid is snapshotted in memory. After
+   the new DBSCAN finishes, each cluster's centroid is matched against the
    snapshot within `labelMatchEps` (default: `epsilon * 0.9` clamped to
    `[0.2, 0.6]`) and the label carries over. Renames survive re-runs
-   even though cluster ids reset.
+   even though cluster ids reset. The new generation is written first and
+   the old one dropped afterwards, so the grid is never empty mid-swap.
 
 ### Cluster operations
 
@@ -287,7 +315,85 @@ The downloader's `pregenerateAi(downloadId)` hook fires after each
 successful download. When `cfg.faceClustering === true` it runs face
 detection on the new row and writes the embeddings into `faces`. The
 clustering pass is a batch operation — kick it off explicitly from the
-maintenance page when you want it.
+maintenance page when you want it. While the sidecar is unreachable (or
+face clustering is off) new downloads are left unstamped, so the next
+scan covers them.
+
+### When the local sidecar starts
+
+The auto-spawned sidecar (binary download + process) starts only when both
+`advanced.ai.enabled` and `advanced.ai.faceClustering` are on. Fresh
+installs therefore download nothing until AI is switched on in
+**Maintenance → AI**; saving that setting, or starting a scan, starts it.
+URL-based sidecars (external URL, a custom or reachable Docker
+`FACES_SERVICE_URL`) don't depend on this. The stock compose URL with no
+`faces` profile running counts as "no sidecar" and takes this path.
+
+### External sidecar
+
+Point `sidecarUrl` (Maintenance → AI → External sidecar URL, or
+`TGDL_FACES_SIDECAR_URL`) at a sidecar on another machine — typically a
+GPU box running `ghcr.io/botnick/tgdl-faces:cuda-latest`. It does not need
+access to your downloads:
+
+- Photos are sent by path first. If the sidecar answers
+  `path_not_allowed` (403) **or** `file_not_found` for a file that exists
+  here, the file is re-sent as bytes and the client switches to bytes for
+  the rest of the run. (Earlier releases stored `file_not_found` as "no
+  faces" — with a remote sidecar whose allow-list matched the path, a whole
+  scan finished with zero faces.)
+- Videos the sidecar can't open by path are decoded here with ffmpeg and
+  sent as frames (`/detect/batch-b64`).
+- `https://` URLs and URLs with a path prefix (reverse proxy / tunnel)
+  work for every call, including the health and `/info` probes.
+- Reachability is probed at start and every `healthMonitorIntervalMs`; an
+  unreachable URL shows as failed in the AI doctor instead of "running".
+  Scans wait for it (`sidecarWaitMs`) rather than recording outages.
+- Exposed beyond localhost, start the sidecar with
+  `TGDL_FACES_API_TOKEN=<secret>` and set the same value in
+  `sidecarToken` / `TGDL_FACES_SIDECAR_TOKEN` (compose: put
+  `TGDL_FACES_API_TOKEN` in `.env` and both services pick it up). Every
+  endpoint but `/health` then requires it; a mismatch stops the scan with a
+  401 error instead of marking anything scanned. Sidecars before 0.5.0
+  ignore the header.
+- Reverse proxies have their own limits — Cloudflare, for example, ends
+  proxied requests after 100 s and caps bodies at 100 MB. Keep
+  `batchSize` modest for CPU-only remotes; a GPU sidecar is well inside
+  both.
+
+### Sidecar CPU budget
+
+On the CPU provider the sidecar sizes onnxruntime from the CPU it may
+actually use, not from `os.cpu_count()` (which inside a container reports
+every host core):
+
+- **effective CPUs** = affinity mask ∩ cgroup quota (`docker --cpus` /
+  compose `cpus:`), minus `TGDL_FACES_RESERVE_CPUS`;
+- `TGDL_FACES_MAX_CONCURRENCY` requests (default 2, never more than the
+  budget) share that budget — each onnxruntime session gets
+  `budget / concurrency` intra-op threads;
+- idle spinning is off, OpenCV runs single-threaded, and only the three
+  models the pipeline uses are loaded (detection, recognition, 3-D
+  landmarks for the pose term of the quality score);
+- small / low-score / odd-aspect detections are dropped **before** the
+  recognition + landmark models run on them — same results, far less work
+  on group shots.
+
+When Node auto-spawns the sidecar (same host / container as the
+dashboard) it also sets `TGDL_FACES_RESERVE_CPUS=1` and lowers the
+child's priority (`sidecarNice`), so the event loop always gets CPU.
+
+| Sidecar env var | Default | Meaning |
+|---|---|---|
+| `TGDL_FACES_CPU_THREADS` | effective CPUs − reserve | Total inference threads (overrides the detection) |
+| `TGDL_FACES_RESERVE_CPUS` | `0` (`1` when auto-spawned) | Cores kept free for co-located processes |
+| `TGDL_FACES_INTRA_OP_THREADS` | budget ÷ concurrency | Explicit per-session onnxruntime intra-op threads |
+| `TGDL_FACES_ORT_SPIN` | `0` | `1` re-enables onnxruntime busy-wait spinning |
+
+`GET /config` on the sidecar reports `effective_cpus`, `cpu_budget`,
+`intra_op_threads` and `max_concurrency`. GPU providers keep
+onnxruntime's defaults. These knobs ship with the next sidecar release;
+older sidecars ignore them.
 
 ### Video face scanning
 
@@ -559,12 +665,14 @@ All endpoints are admin-only.
 | POST   | `/api/ai/scan/start`                | `{ feature: 'faces' }`                                 |
 | POST   | `/api/ai/scan/cancel`               | same body shape                                        |
 | GET    | `/api/ai/scan/status?feature=faces` | live state for re-mounted page                         |
-| GET    | `/api/ai/people`                    | clusters with cover face + count                       |
+| GET    | `/api/ai/people`                    | clusters with cover face + count; `?sort=face_count|avg_quality|name&dir=asc|desc` (server-side, whole library; unnamed first asc / last desc) |
+| GET    | `/api/ai/person/:id/face?w=`        | avatar crop (cached on disk under `thumbs/face-crops/`; ≤ `TGDL_FACE_CROP_CONCURRENCY` renders at once, default 4) |
+| GET    | `/api/ai/faces/:id/crop?w=`         | crop of one face (photos and video faces)              |
 | GET    | `/api/ai/people/:id/photos`         | paginated photos in this cluster                       |
 | PATCH  | `/api/ai/people/:id`                | `{ label }` — rename                                   |
 | DELETE | `/api/ai/people/:id`                | drop cluster (faces become unassigned)                 |
 | POST   | `/api/ai/people/:id/merge`          | `{ otherId }` — fold one cluster into another          |
-| POST   | `/api/ai/people/:id/split`          | `{ faceIds, newLabel? }` — create a new cluster        |
+| POST   | `/api/ai/people/:id/split`          | `{ faceIds, newLabel? }` — create a new cluster (`label` also accepted) |
 | POST   | `/api/ai/faces/:id/reassign`        | `{ personId }` — move a single face to another cluster |
 | GET    | `/api/ai/faces/by-download/:id`     | face boxes for the gallery viewer overlay              |
 | POST   | `/api/ai/preload-model/:name`       | trigger background model download (proxy to sidecar)   |
@@ -643,8 +751,19 @@ the error code. Common causes:
   Persistent failures surface as `binary verification failed`. Add the
   binary path to your AV exclusion list.
 
+**Face scan stops with "face sidecar unavailable"** — the scan waited
+`sidecarWaitMs` (default 5 min) for the sidecar and gave up. Nothing was
+lost: files it hadn't scanned stay queued. Check the sidecar row of the
+AI doctor: an unreachable external / custom URL, or a local sidecar that
+couldn't be downloaded or started, shows its error there. Older releases
+marked every photo "no faces" in this situation — including every stock
+Docker install without the `faces` profile — so if an earlier scan
+finished suspiciously fast with zero faces, run **Reindex** once the
+sidecar is reachable.
+
 **Sidecar health probe failing** — the spawn module relaunches after
-3 consecutive failed probes. If the relaunch loop persists, the
+3 consecutive failed probes (and immediately if the auto-spawned process
+exits on its own). If the relaunch loop persists, the
 sidecar's own logs (visible via the dashboard's maintenance logs panel,
 source `ai-faces-spawn`) usually pinpoint the cause. Common ones:
 
