@@ -12013,16 +12013,10 @@ app.get('/api/groups/:id/photo', async (req, res) => {
     const url = await downloadProfilePhoto(id);
     if (url && existsSync(photoPath)) return send();
 
-    // Let the browser remember a definite miss too (the SPA falls back to
-    // the initials avatar) — "no photo set" for up to an hour, "no account
-    // can see this chat" for the failed-lookup window. A transient failure
-    // (accounts still connecting, download error) stays uncached.
-    const missMs = photoMissRemainingMs(String(id));
-    if (missMs > 0) {
-        res.setHeader('Cache-Control', `private, max-age=${Math.ceil(missMs / 1000)}`);
-    } else if (entityLookupRecentlyFailed(String(id))) {
-        res.setHeader('Cache-Control', `private, max-age=${ENTITY_MISS_TTL_MS / 1000}`);
-    }
+    // The 404 itself stays uncached (the /api/* no-store default): a
+    // browser-cached miss would keep hiding a photo that "Refresh photos"
+    // fetched a minute later. Repeat misses are cheap anyway — answered
+    // from the server-side miss caches above without touching Telegram.
     res.status(404).send('Not found');
 });
 
@@ -12419,12 +12413,6 @@ const ENTITY_CACHE_TTL_MS = 30 * 60 * 1000;
 // account for the same unknown id.
 const ENTITY_MISS_TTL_MS = 10 * 60 * 1000;
 const ENTITY_CACHE_MAX = 5000;
-
-/** True when `idStr` recently failed to resolve on every connected account. */
-function entityLookupRecentlyFailed(idStr) {
-    const cached = entityCache.get(idStr);
-    return !!cached && !cached.entity && Math.max(0, Date.now() - cached.at) < ENTITY_MISS_TTL_MS;
-}
 
 /**
  * Walk every loaded account looking for one that can resolve `idStr`.
