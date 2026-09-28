@@ -13,7 +13,6 @@
 import fs from 'fs';
 import path from 'path';
 import { Transform } from 'stream';
-import SftpClient from 'ssh2-sftp-client';
 import { BackupProvider } from './base.js';
 import { encryptStream } from '../encryption.js';
 
@@ -94,6 +93,9 @@ export class SftpProvider extends BackupProvider {
             throw new Error('password or privateKey required');
         }
         this.root = remoteRoot.replace(/\/+$/, '') || '/';
+        // Loaded here, not at module top: the manager imports every provider
+        // at boot, and ssh2 isn't needed until an SFTP destination is used.
+        const { default: SftpClient } = await import('ssh2-sftp-client');
         this.client = new SftpClient(`tgdl-backup-${Date.now()}`);
         await this.client.connect(this.cfg);
         // Ensure the root exists. mkdir -p semantics.
