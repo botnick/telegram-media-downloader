@@ -10,6 +10,7 @@ Two ingress paths:
   injected via ``TGDL_FACES_ALLOW_ROOTS``.
 
 * :func:`load_image_from_b64` — Node ships the bytes as base64.
+* :func:`load_image_from_bytes` — Node ships the raw bytes (``/detect/upload``).
   Used in the Docker compose deployment where the sidecar container
   doesn't share a volume with the Node container, and as a fallback
   whenever path mode trips the allow-list.
@@ -339,8 +340,23 @@ def load_image_from_b64(data: str) -> np.ndarray:
     if not raw:
         raise Base64DecodeError("image_b64 decoded to zero bytes")
 
+    return load_image_from_bytes(raw, what="image_b64 bytes")
+
+
+def load_image_from_bytes(raw: bytes, what: str = "uploaded bytes") -> np.ndarray:
+    """Decode encoded image bytes (JPEG, PNG, WebP, …) into a BGR ndarray.
+
+    Applies the EXIF Orientation tag once, like every other load path.
+
+    Raises
+    ------
+    ImageDecodeError
+        The bytes aren't a recognised image format.
+    """
+    if not raw:
+        raise ImageDecodeError(f"{what}: empty")
     buf = np.frombuffer(raw, dtype=np.uint8)
     img = cv2.imdecode(buf, _IMREAD_FLAGS)
     if img is None:
-        raise ImageDecodeError("image_b64 bytes could not be decoded as an image")
+        raise ImageDecodeError(f"{what} could not be decoded as an image")
     return _apply_exif_orientation(img, raw)
