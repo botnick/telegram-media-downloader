@@ -5,15 +5,8 @@
 
 import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './store.js';
 import { api } from './api.js';
-import { createAvatar, escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
-import {
-    getThumbUrl,
-    getMediaUrl,
-    getDownloadUrl,
-    isPeerRow,
-    initFileToken,
-    fileTokenQuery,
-} from './media-url.js';
+import { escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
+import { getThumbUrl, isPeerRow, initFileToken, fileTokenQuery } from './media-url.js';
 import * as Settings from './settings.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
