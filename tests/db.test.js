@@ -263,6 +263,27 @@ describe('pinned queries', () => {
         }
     });
 
+    it('getDownloads pinnedOnly total counts only pinned rows of the group', () => {
+        for (let i = 0; i < 3; i++) {
+            downloadsApi.insertDownload({
+                groupId: '-100555',
+                groupName: 'Pinned Group',
+                messageId: 901 + i,
+                fileName: `unpinned-${i}.jpg`,
+                fileSize: 10,
+                fileType: 'photo',
+                filePath: `pg/images/unpinned-${i}.jpg`,
+            });
+        }
+        const pinned = downloadsApi.getDownloads('-100555', 50, 0, 'all', { pinnedOnly: true });
+        expect(pinned.files.map((f) => f.id)).toEqual([pinnedId]);
+        expect(pinned.total).toBe(1);
+        const photos = downloadsApi.getDownloads('-100555', 50, 0, 'images', { pinnedOnly: true });
+        expect(photos.total).toBe(1);
+        expect(downloadsApi.getDownloads('-100555', 50, 0, 'all').total).toBe(4);
+        expect(downloadsApi.getDownloads('-100555', 50, 0, 'videos').total).toBe(0);
+    });
+
     it('getOldestDownloads excludes pinned rows', () => {
         const oldest = downloadsApi.getOldestDownloads(100);
         expect(oldest.every((f) => f.pinned === 0)).toBe(true);

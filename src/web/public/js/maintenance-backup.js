@@ -495,11 +495,22 @@ async function _openWizard(existing) {
     const providers = await _loadProviders();
     const isEdit = !!existing;
     let chosenProvider = isEdit ? existing.provider : providers[0]?.name;
+    // Edit pre-fills the non-secret fields. Secrets never reach the
+    // browser — they stay blank and the server keeps the stored values.
+    let existingConfig = {};
+    if (isEdit) {
+        try {
+            const r = await api.get(`/api/backup/destinations/${existing.id}/config`);
+            existingConfig = r.config || {};
+        } catch {
+            /* start blank */
+        }
+    }
 
     const renderBody = () => {
         const provider = providers.find((p) => p.name === chosenProvider) || providers[0];
         const schema = provider?.configSchema || [];
-        const config = {}; // edit mode never echoes secrets back — operator re-enters
+        const config = isEdit && provider?.name === existing.provider ? existingConfig : {};
         const fieldsHtml = schema.map((f) => _renderField(f, config[f.name])).join('');
         const helpHtml = _renderProviderHelp(provider?.name);
         return `

@@ -111,6 +111,57 @@ function _bumpAutoStats(result, errorMsg = null) {
     }
 }
 
+// Files whose rewrite keeps failing (corrupt, unsupported container) are
+// given up on after MAX_FAILURES attempts, until the file changes on disk —
+// otherwise every sweep re-reads them in full just to fail again.
+// kv shape: { [downloadId]: { sig: 'size:mtimeMs', n: failures } }.
+const FAILED_KV = 'faststart_failed';
+const MAX_FAILURES = 3;
+const MAX_FAILED_ENTRIES = 5000;
+let _failed = null;
+
+function _failures() {
+    if (!_failed) {
+        try {
+            _failed = kvGet(FAILED_KV) || {};
+        } catch {
+            _failed = {};
+        }
+    }
+    return _failed;
+}
+
+function _saveFailures() {
+    try {
+        kvSet(FAILED_KV, _failed);
+    } catch {
+        /* best-effort — worst case the file is tried again */
+    }
+}
+
+async function _fileSig(absPath) {
+    try {
+        const st = await fs.stat(absPath);
+        return `${st.size}:${Math.floor(st.mtimeMs)}`;
+    } catch {
+        return null;
+    }
+}
+
+function _gaveUp(id, sig) {
+    const prior = _failures()[id];
+    return !!prior && prior.n >= MAX_FAILURES && prior.sig === sig;
+}
+
+function _recordFailure(id, sig) {
+    const failures = _failures();
+    const prior = failures[id];
+    failures[id] = { sig, n: prior?.sig === sig ? prior.n + 1 : 1 };
+    const keys = Object.keys(failures);
+    if (keys.length > MAX_FAILED_ENTRIES) delete failures[keys[0]];
+    _saveFailures();
+}
+
 const CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.FASTSTART_CONCURRENCY) || 2));
 
 function makeSemaphore(max) {
@@ -262,11 +313,15 @@ async function _renameWithRetry(from, to, { retries = 6 } = {}) {
     }
 }
 
+// iPhone recordings can carry timed-metadata / data tracks (`mebx`) that
+// the mp4 muxer has no tag for, so a plain `-map 0` copy fails with this.
+const DATA_TRACK_ERROR = /Could not find tag for codec/i;
+
 async function _remuxInPlace(absPath) {
     const tmp = absPath + '.faststart.tmp';
     // Stream-copy both A and V, only rewrite container metadata. `-y`
     // overwrites any stale .tmp left over from a prior crash.
-    await _runFfmpeg([
+    const args = (dropData) => [
         '-hide_banner',
         '-loglevel',
         'error',
@@ -276,13 +331,27 @@ async function _remuxInPlace(absPath) {
         'copy',
         '-map',
         '0', // copy every stream (video + audio + subs + …)
+        ...(dropData ? ['-map', '-0:d'] : []), // … minus data tracks
         '-movflags',
         '+faststart',
         '-f',
         'mp4', // explicit muxer — `.tmp` defeats inference (same lesson as thumbs.js)
         '-y',
         tmp,
-    ]);
+    ];
+    try {
+        try {
+            await _runFfmpeg(args(false));
+        } catch (e) {
+            if (!DATA_TRACK_ERROR.test(e?.message || '')) throw e;
+            // Retry once without data streams; audio / video / subtitles
+            // are kept. A second failure is final.
+            await _runFfmpeg(args(true));
+        }
+    } catch (e) {
+        await fs.unlink(tmp).catch(() => {});
+        throw e;
+    }
     if (!existsSync(tmp)) throw new Error('ffmpeg produced no output');
     // Sanity check: tmp must be within a reasonable range of the source.
     // Faststart is a lossless remux — the output can be slightly smaller
@@ -306,7 +375,8 @@ async function _remuxInPlace(absPath) {
  * row. Returns one of:
  *   { status:'optimized', newSize }   — rewrote moov to head
  *   { status:'already' }              — file was already optimised
- *   { status:'skipped',  reason }     — not a video / not on disk / ffmpeg missing
+ *   { status:'skipped',  reason }     — not a video / not on disk / ffmpeg missing /
+ *                                       failed MAX_FAILURES times on this exact file
  *   { status:'errored',  error }      — remux threw
  *
  * Updates `downloads.file_size` after a successful rewrite (the file
@@ -333,10 +403,16 @@ export async function optimizeDownload(id) {
     const ext = path.extname(abs).toLowerCase();
     if (!FASTSTART_EXTS.has(ext)) return { status: 'skipped', reason: 'container not mp4' };
     if (await _isOptimized(abs)) return { status: 'already' };
+    const sig = await _fileSig(abs);
+    if (_gaveUp(dlId, sig)) return { status: 'skipped', reason: 'failed before' };
 
     await _sem.acquire();
     try {
         const newSize = await _remuxInPlace(abs);
+        if (_failures()[dlId]) {
+            delete _failures()[dlId];
+            _saveFailures();
+        }
         // file_size in the DB needs to follow the on-disk reality. The
         // moov rewrite typically adds a few KB; gallery code displays
         // this number on the row. Keep it honest.
@@ -356,6 +432,7 @@ export async function optimizeDownload(id) {
         } catch {}
         return { status: 'optimized', newSize };
     } catch (e) {
+        _recordFailure(dlId, sig);
         return { status: 'errored', error: e?.message || String(e) };
     } finally {
         _sem.release();
@@ -550,8 +627,11 @@ export async function getStats() {
             }
             const which = await _peekSecondAtom(abs);
             if (which === 'moov') optimized++;
-            else if (which === 'mdat' || which === 'other') pending++;
-            else unknown++;
+            else if (which === 'mdat' || which === 'other') {
+                // Given up on (see _recordFailure) — not pending any more.
+                if (_failures()[r.id] && _gaveUp(r.id, await _fileSig(abs))) unknown++;
+                else pending++;
+            } else unknown++;
         }
         beforeId = Number(page[page.length - 1].id);
         await new Promise((r) => setImmediate(r));

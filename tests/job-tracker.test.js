@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createJobTracker } from '../src/core/job-tracker.js';
+import { createJobTracker, flattenStatus } from '../src/core/job-tracker.js';
 
 function flushAsync(times = 4) {
     let p = Promise.resolve();
@@ -100,6 +100,40 @@ describe('createJobTracker', () => {
         expect(done).toBeTruthy();
         expect(done.rows).toBe(42);
         expect(done.freedBytes).toBe(1024);
+    });
+
+    it('a finished run does not report running through its last progress tick', async () => {
+        const t = createJobTracker({ kind: 'scan', broadcast: () => {} });
+        t.tryStart(async ({ onProgress }) => {
+            onProgress({ running: true, stage: 'hashing', processed: 3, total: 3 });
+            return { ok: true };
+        });
+        await flushAsync(10);
+        const snap = t.getStatus();
+        expect(snap.running).toBe(false);
+        expect(snap.progress).toEqual({ stage: 'hashing', processed: 3, total: 3 });
+        // The legacy flat shape some status endpoints still build.
+        expect({ ...snap, ...snap.progress }.running).toBe(false);
+
+        const flat = flattenStatus(snap);
+        expect(flat.running).toBe(false);
+        expect(flat.stage).toBe('done');
+        expect(flat.processed).toBe(3);
+        expect(flat.total).toBe(3);
+    });
+
+    it('flattenStatus keeps the snapshot stage + error after a failed run', async () => {
+        const t = createJobTracker({ kind: 'fail', broadcast: () => {} });
+        t.tryStart(async ({ onProgress }) => {
+            onProgress({ stage: 'building', processed: 1, total: 9 });
+            throw new Error('disk full');
+        });
+        await flushAsync(10);
+        const flat = flattenStatus(t.getStatus());
+        expect(flat.running).toBe(false);
+        expect(flat.stage).toBe('error');
+        expect(flat.error).toBe('disk full');
+        expect(flat.processed).toBe(1);
     });
 
     it('progress events broadcast to every subscriber via the supplied broadcast fn', async () => {
