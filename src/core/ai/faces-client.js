@@ -24,14 +24,27 @@
  * down, restarting, still loading its model or timing out then throws a
  * `SidecarUnavailableError` instead of returning `null`, so a transient
  * outage can't be recorded as "no faces in this photo".
+ *
+ * External sidecars (another host / container / reverse proxy):
+ *   - Paths go through the configured path map (`faces.pathMap` /
+ *     TGDL_FACES_PATH_MAP), so a shared mount at a different path keeps
+ *     path mode. Batch results are keyed back to the caller's paths.
+ *   - Files the sidecar can't read are sent as bytes: raw to
+ *     `/detect/upload` when `/health` lists the `upload` feature (0.5.1+),
+ *     base64 JSON otherwise. Requests stay inside a ~40 MB body budget
+ *     (proxies such as Cloudflare cap bodies at 100 MB): larger photos are
+ *     downscaled first and their boxes / landmarks scaled back, video
+ *     frames are grouped by size.
  */
 
 import { promises as fs } from 'fs';
 import { Buffer } from 'buffer';
 import { spawn } from 'child_process';
 
+import sharp from 'sharp';
 import { Agent, fetch as undiciFetch } from 'undici';
 
+import { authHeaders, parsePathMap, toSidecarPath } from '../sidecar-remote.js';
 import { resolveFacesValue } from './faces-config.js';
 
 // Defaults used when the operator hasn't tuned `advanced.ai.faces.*` and
@@ -59,6 +72,24 @@ let _pathRejectedLogged = false;
 
 let _sidecarUrl = '';
 let _healthCache = null; // { value, expiresAt }
+
+// App-path -> sidecar-path rules for an external sidecar with a shared
+// mount at a different path (see sidecar-remote.js parsePathMap).
+let _pathMap = [];
+let _pathMapRaw = '';
+// What the sidecar supports, from its /health `features` (0.5.1+). null =
+// not probed yet — only base64 is used until it is known.
+let _features = null;
+let _maxUploadBytes = 0;
+
+// One request body stays under this (Cloudflare caps bodies at 100 MB,
+// many reverse proxies lower). A photo whose encoded form would exceed it
+// is downscaled first; video frames are grouped to fit it.
+const REQUEST_BODY_BUDGET_DEFAULT = 40 * 1024 * 1024;
+let REQUEST_BODY_BUDGET = REQUEST_BODY_BUDGET_DEFAULT;
+// Downscaled photos: long edge at most this (the detector works at
+// det_size 640; recognition crops stay far above its 112 px input).
+const DOWNSCALE_MAX_EDGE = 4096;
 
 // Every sidecar request carries its own AbortController deadline (up to
 // ~2 h for a long video on a slow CPU). The built-in fetch additionally
@@ -90,9 +121,34 @@ const _fetch = (url, init = {}) => {
 const _UNAUTHORIZED =
     'sidecar rejected the API token (401) — set faces.sidecarToken / TGDL_FACES_SIDECAR_TOKEN to the sidecar TGDL_FACES_API_TOKEN';
 
-/** Auth headers for callers outside this module that talk to the sidecar. */
+/**
+ * Auth headers for callers outside this module that talk to the sidecar.
+ * `X-API-Token` (accepted by every sidecar with token support) rather than
+ * `Authorization`, which a reverse proxy may use for its own auth.
+ */
 export function sidecarAuthHeaders() {
-    return _sidecarToken ? { authorization: `Bearer ${_sidecarToken}` } : {};
+    return authHeaders(_sidecarToken);
+}
+
+function _setPathMap(raw) {
+    const next = typeof raw === 'string' ? raw : '';
+    if (next === _pathMapRaw) return;
+    _pathMapRaw = next;
+    _pathMap = parsePathMap(next);
+    // A new mapping may make path mode work again.
+    _pathRejectedLogged = false;
+}
+
+/** The path the sidecar should open for a local file. */
+export function sidecarPathFor(absPath) {
+    return toSidecarPath(absPath, _pathMap);
+}
+
+// Remember what the sidecar supports from a /health body.
+function _noteHealth(body) {
+    _features = Array.isArray(body?.features) ? body.features.map(String) : [];
+    const cap = Number(body?.max_upload_bytes);
+    _maxUploadBytes = Number.isFinite(cap) && cap > 0 ? cap : 0;
 }
 
 /**
@@ -151,6 +207,7 @@ export function applyFacesCfg(cfg = {}) {
         _maxConcurrency = cfg.sidecarMaxConcurrency | 0;
     }
     if (typeof cfg.sidecarToken === 'string') _sidecarToken = cfg.sidecarToken.trim();
+    if (typeof cfg.pathMap === 'string') _setPathMap(cfg.pathMap);
     _envBootstrapped = true;
 }
 
@@ -173,6 +230,8 @@ function _bootstrapFromEnv() {
     if (Number.isFinite(mc) && mc >= 0) _maxConcurrency = mc | 0;
     const tok = probe('sidecarToken');
     if (typeof tok === 'string') _sidecarToken = tok.trim();
+    const pm = probe('pathMap');
+    if (typeof pm === 'string') _setPathMap(pm);
 }
 
 /**
@@ -189,6 +248,8 @@ export function setSidecarUrl(url) {
     if (next === _sidecarUrl) return;
     _sidecarUrl = next;
     _healthCache = null;
+    _features = null;
+    _maxUploadBytes = 0;
     // A different sidecar may well have the downloads tree mounted — give
     // path mode another chance instead of staying on base64 for good.
     _pathRejectedLogged = false;
@@ -249,6 +310,7 @@ export async function health() {
                 continue;
             }
             const body = await res.json();
+            _noteHealth(body);
             value = {
                 ok: body?.ok === true,
                 version: body?.version ?? null,
@@ -266,6 +328,7 @@ export async function health() {
                 detSize: Number.isFinite(body?.det_size) ? body.det_size : null,
                 platform: typeof body?.platform === 'string' ? body.platform : null,
                 python: typeof body?.python === 'string' ? body.python : null,
+                features: _features.slice(),
             };
             lastErr = null;
             break;
@@ -344,6 +407,7 @@ async function _probeReady(url) {
         }
         if (!res.ok) return { ok: false, reason: `http_${res.status}` };
         const body = await res.json();
+        _noteHealth(body);
         if (body?.ok !== true) return { ok: false, reason: body?.error || 'sidecar_not_ok' };
         if (body?.ready === false) return { ok: false, reason: 'model_loading' };
         return { ok: true };
@@ -385,7 +449,7 @@ export async function detectFaces(absPath, cfg = {}, onLog = null, opts = {}) {
             : [0.5, 2.0];
 
     const baseBody = { min_score: minScore, min_box_px: minBoxPx, ar_range: arRange };
-    const pathBody = { ...baseBody, path: absPath };
+    const pathBody = { ...baseBody, path: sidecarPathFor(absPath) };
 
     // Concurrency gate — operator can cap inflight detects on shared NAS
     // hardware where running 16 simultaneous detections OOMs the box.
@@ -490,7 +554,9 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
         Number.isFinite(opts?.timeoutMs) && opts.timeoutMs > 0
             ? opts.timeoutMs
             : Math.max(absPaths.length * _requestTimeoutMs, 120_000);
-    const body = { files: absPaths, min_score: minScore, min_box_px: minBoxPx, ar_range: arRange };
+    // Paths as the sidecar sees them; results come back keyed by these.
+    const sentPaths = absPaths.map(sidecarPathFor);
+    const body = { files: sentPaths, min_score: minScore, min_box_px: minBoxPx, ar_range: arRange };
 
     let batchRes;
     let batchBody;
@@ -554,7 +620,7 @@ export async function detectFacesBatch(absPaths, cfg = {}, onLog = null, signal 
     const unseen = [];
 
     for (let i = 0; i < absPaths.length; i++) {
-        const item = resultMap.get(absPaths[i]);
+        const item = resultMap.get(sentPaths[i]);
         if (!item) continue; // path missing from response → null
         if (item.error === 'path_not_allowed') {
             pathFallbacks.push(i);
@@ -664,7 +730,7 @@ export async function detectFacesInVideo(
     const maxFrames = _pickNumber([facesCfg.videoMaxFrames, cfg?.videoMaxFrames], 120);
 
     const body = {
-        path: absPath,
+        path: sidecarPathFor(absPath),
         min_score: minScore,
         min_box_px: minBoxPx,
         ar_range: arRange,
@@ -758,6 +824,46 @@ export async function detectFacesInVideo(
     return _parseFacesList(Array.isArray(resBody?.faces) ? resBody.faces : []);
 }
 
+/**
+ * Shrink a photo whose encoded size would exceed the request budget: auto-
+ * orient (so the sidecar sees the displayed frame), fit the long edge to
+ * DOWNSCALE_MAX_EDGE, re-encode as JPEG. Returns `{ bytes, scale, oriented }`
+ * — `scale` maps sidecar coordinates back (divide by it). Anything sharp
+ * can't handle is sent unchanged and left to the sidecar.
+ */
+async function _fitForUpload(bytes, limit, onLog, what) {
+    if (bytes.length <= limit) return { bytes, scale: 1, oriented: false };
+    try {
+        const meta = await sharp(bytes, { failOn: 'none' }).metadata();
+        const swap = (meta.orientation || 1) >= 5;
+        const ow = swap ? meta.height : meta.width;
+        if (!ow) return { bytes, scale: 1, oriented: false };
+        for (const edge of [DOWNSCALE_MAX_EDGE, 2048]) {
+            const { data, info } = await sharp(bytes, { failOn: 'none' })
+                .rotate()
+                .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 90 })
+                .toBuffer({ resolveWithObject: true });
+            if (data.length <= limit || edge === 2048) {
+                _log(
+                    onLog,
+                    'info',
+                    `${what}: ${Math.round(bytes.length / 1e6)} MB is over the ${Math.round(limit / 1e6)} MB request budget — sending a ${info.width}x${info.height} copy`,
+                );
+                return { bytes: data, scale: info.width / ow, oriented: true };
+            }
+        }
+    } catch (e) {
+        _log(onLog, 'warn', `${what}: could not downscale (${e?.message || e}); sending as is`);
+    }
+    return { bytes, scale: 1, oriented: false };
+}
+
+function _useRawUpload() {
+    return Array.isArray(_features) && _features.includes('upload');
+}
+
+// Send one photo's bytes. Returns `{ res, scale, oriented }` or null.
 async function _sendB64(absPath, baseBody, url, onLog, strict = false) {
     let bytes;
     try {
@@ -766,15 +872,67 @@ async function _sendB64(absPath, baseBody, url, onLog, strict = false) {
         _log(onLog, 'warn', `b64 read failed for ${absPath}: ${e?.message || e}`);
         return null;
     }
-    const b64Body = { ...baseBody, image_b64: Buffer.from(bytes).toString('base64') };
+    const raw = _useRawUpload();
+    // Raw body vs base64 (4/3 of the bytes) inside JSON.
+    const limit = raw
+        ? Math.min(REQUEST_BODY_BUDGET, _maxUploadBytes || REQUEST_BODY_BUDGET)
+        : Math.floor((REQUEST_BODY_BUDGET * 3) / 4);
+    const fit = await _fitForUpload(bytes, limit, onLog, absPath);
+    // Faces are smaller in a downscaled copy — keep the size gate equivalent.
+    const body =
+        fit.scale < 1 && Number.isFinite(baseBody.min_box_px)
+            ? { ...baseBody, min_box_px: Math.max(1, Math.round(baseBody.min_box_px * fit.scale)) }
+            : baseBody;
     try {
-        return await _postWithRetry(`${url}/detect`, b64Body, onLog);
+        let res = raw ? await _postUpload(url, fit.bytes, body, onLog) : null;
+        if (res && (res.status === 404 || res.status === 405)) {
+            // Sidecar replaced by an older one since /health was read.
+            _features = (_features || []).filter((f) => f !== 'upload');
+            res = null;
+        }
+        if (!res) {
+            const b64Body = { ...body, image_b64: Buffer.from(fit.bytes).toString('base64') };
+            res = await _postWithRetry(`${url}/detect`, b64Body, onLog);
+        }
+        return { res, scale: fit.scale, oriented: fit.oriented };
     } catch (e) {
         if (strict)
             throw new SidecarUnavailableError(`detect b64-mode failed: ${e?.message || e}`, e);
         _log(onLog, 'warn', `detect b64-mode failed for ${absPath}: ${e?.message || e}`);
         return null;
     }
+}
+
+// POST raw image bytes to /detect/upload (0.5.1+), thresholds in the query.
+function _postUpload(url, bytes, baseBody, onLog) {
+    const q = new URLSearchParams();
+    if (Number.isFinite(baseBody.min_score)) q.set('min_score', String(baseBody.min_score));
+    if (Number.isFinite(baseBody.min_box_px)) q.set('min_box_px', String(baseBody.min_box_px));
+    if (Array.isArray(baseBody.ar_range) && baseBody.ar_range.length === 2) {
+        q.set('ar_lo', String(baseBody.ar_range[0]));
+        q.set('ar_hi', String(baseBody.ar_range[1]));
+    }
+    return _postWithRetry(`${url}/detect/upload?${q}`, bytes, onLog, {
+        'content-type': 'application/octet-stream',
+    });
+}
+
+// Map faces found on a downscaled copy back to the original frame.
+function _rescaleFaces(faces, scale) {
+    if (!(scale > 0) || scale === 1) return faces;
+    const inv = 1 / scale;
+    for (const f of faces) {
+        f.x = Math.round(f.x * inv);
+        f.y = Math.round(f.y * inv);
+        f.w = Math.round(f.w * inv);
+        f.h = Math.round(f.h * inv);
+        if (Array.isArray(f.landmarks)) {
+            f.landmarks = f.landmarks.map((pt) =>
+                Array.isArray(pt) ? pt.map((v) => Number(v) * inv) : pt,
+            );
+        }
+    }
+    return faces;
 }
 
 async function _detectInner(
@@ -788,10 +946,14 @@ async function _detectInner(
 ) {
     let res;
     let sentBytes = forceB64 || _pathRejectedLogged;
+    // Downscaled upload: coordinates come back in the smaller frame.
+    let xform = { scale: 1, oriented: false };
 
     if (sentBytes) {
-        res = await _sendB64(absPath, baseBody, url, onLog, strict);
-        if (res === null) return null;
+        const sent = await _sendB64(absPath, baseBody, url, onLog, strict);
+        if (sent === null) return null;
+        res = sent.res;
+        xform = sent;
     } else {
         try {
             res = await _postWithRetry(`${url}/detect`, pathBody, onLog);
@@ -817,8 +979,10 @@ async function _detectInner(
                 );
                 _pathRejectedLogged = true;
                 sentBytes = true;
-                res = await _sendB64(absPath, baseBody, url, onLog, strict);
-                if (res === null) return null;
+                const sent = await _sendB64(absPath, baseBody, url, onLog, strict);
+                if (sent === null) return null;
+                res = sent.res;
+                xform = sent;
             }
         }
     }
@@ -858,9 +1022,12 @@ async function _detectInner(
             `detect ${absPath}: sidecar soft-error="${body.error}" — 0 faces stored`,
         );
     }
-    return _parseFacesList(
-        Array.isArray(body?.faces) ? body.faces : [],
-        body?.exif_oriented === true,
+    return _rescaleFaces(
+        _parseFacesList(
+            Array.isArray(body?.faces) ? body.faces : [],
+            body?.exif_oriented === true || xform.oriented,
+        ),
+        xform.scale,
     );
 }
 
@@ -900,7 +1067,7 @@ function _parseFacesList(faces, exifOriented = false) {
  * (except 408 / 429) return the response immediately so the caller can
  * inspect the body — those are not retryable.
  */
-async function _postWithRetry(url, body, onLog) {
+async function _postWithRetry(url, body, onLog, headers = null) {
     const maxRetries = Math.max(1, _maxRetries);
     // The configured sidecar URL, not the endpoint's origin: an external
     // sidecar behind a reverse proxy can live under a path prefix.
@@ -912,8 +1079,8 @@ async function _postWithRetry(url, body, onLog) {
         try {
             const res = await _fetchWithTimeout(url, {
                 method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify(body),
+                headers: headers || { 'content-type': 'application/json' },
+                body: Buffer.isBuffer(body) ? body : JSON.stringify(body),
             });
             // Retry only on 5xx, 408, 429 — everything else (200/4xx) is
             // a final answer the caller needs to see.
@@ -1235,6 +1402,27 @@ async function _detectVideoB64Fallback(absPath, cfg, url, onLog, signal, strict 
 const BATCH_B64_CHUNK = 30;
 const BATCH_B64_PARALLEL = 3;
 
+// Group frames into requests of at most BATCH_B64_CHUNK frames and
+// REQUEST_BODY_BUDGET bytes of base64. A single frame over the budget
+// still goes on its own.
+export function _chunkFramesByBudget(frames, budget = REQUEST_BODY_BUDGET) {
+    const chunks = [];
+    let cur = [];
+    let size = 0;
+    for (const f of frames) {
+        const b64 = Math.ceil((f.buf?.length || 0) / 3) * 4 + 4;
+        if (cur.length && (cur.length >= BATCH_B64_CHUNK || size + b64 > budget)) {
+            chunks.push(cur);
+            cur = [];
+            size = 0;
+        }
+        cur.push(f);
+        size += b64;
+    }
+    if (cur.length) chunks.push(cur);
+    return chunks;
+}
+
 async function _sendBatchB64(
     frames,
     { minScore, minBoxPx, arRange },
@@ -1243,11 +1431,9 @@ async function _sendBatchB64(
     signal,
     strict = false,
 ) {
-    // Split into chunks and send multiple chunks in parallel to keep GPU saturated
-    const chunks = [];
-    for (let start = 0; start < frames.length; start += BATCH_B64_CHUNK) {
-        chunks.push(frames.slice(start, start + BATCH_B64_CHUNK));
-    }
+    // Split into size-bounded chunks and send several in parallel to keep
+    // the GPU saturated.
+    const chunks = _chunkFramesByBudget(frames);
 
     const allFaces = [];
 
@@ -1380,6 +1566,11 @@ export function _setFetchForTests(fn) {
             : (url, init) => undiciFetch(url, { ...init, dispatcher: _sidecarAgent });
 }
 
+/** Test-only: shrink the per-request body budget. */
+export function _setRequestBudgetForTests(bytes) {
+    REQUEST_BODY_BUDGET = Number(bytes) > 0 ? Number(bytes) : REQUEST_BODY_BUDGET_DEFAULT;
+}
+
 /** Test-only: clear cached URL + health probe so each spec starts fresh. */
 export function _resetForTests() {
     _sidecarUrl = '';
@@ -1394,6 +1585,11 @@ export function _resetForTests() {
     _pathRejectedLogged = false;
     _ffmpegBin = null;
     _sidecarToken = '';
+    _pathMap = [];
+    _pathMapRaw = '';
+    _features = null;
+    _maxUploadBytes = 0;
+    REQUEST_BODY_BUDGET = REQUEST_BODY_BUDGET_DEFAULT;
 }
 
 /** Test-only: snapshot the resolved runtime knobs. */
