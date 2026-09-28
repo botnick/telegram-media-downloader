@@ -15,7 +15,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js';
+import { DedupStringSession } from '../core/telegram-session.js';
 import crypto from 'crypto';
 import sharp from 'sharp';
 
@@ -12195,8 +12195,25 @@ async function loadSession() {
     return '';
 }
 
-async function connectTelegram() {
-    if (telegramClient && isConnected) return telegramClient;
+// A failed attempt (e.g. a revoked legacy session) is retried at most
+// every 5 min — this runs on every entity-cache miss, and each attempt
+// opens a new MTProto connection.
+const LEGACY_RETRY_MS = 5 * 60 * 1000;
+let _legacyRetryAt = 0;
+let _legacyConnecting = null;
+
+function connectTelegram() {
+    if (telegramClient && isConnected) return Promise.resolve(telegramClient);
+    if (Date.now() < _legacyRetryAt) return Promise.resolve(null);
+    if (!_legacyConnecting) {
+        _legacyConnecting = _connectLegacy().finally(() => {
+            _legacyConnecting = null;
+        });
+    }
+    return _legacyConnecting;
+}
+
+async function _connectLegacy() {
     // Quiet, configuration-aware: no creds → no work, no scary warning.
     let config;
     try {
@@ -12207,28 +12224,33 @@ async function connectTelegram() {
     }
     if (!config.telegram?.apiId || !config.telegram?.apiHash) return null;
 
+    let client = null;
     try {
         const sessionString = await loadSession();
         if (!sessionString) return null;
-        const stringSession = new StringSession(sessionString);
-        telegramClient = new TelegramClient(
-            stringSession,
+        client = new TelegramClient(
+            new DedupStringSession(sessionString),
             parseInt(config.telegram.apiId),
             config.telegram.apiHash,
             { connectionRetries: 3, useWSS: false },
         );
-        telegramClient.setLogLevel('none');
-        await telegramClient.connect();
-        if (await telegramClient.isUserAuthorized()) {
+        client.setLogLevel('none');
+        await client.connect();
+        if (await client.isUserAuthorized()) {
+            telegramClient = client;
             isConnected = true;
             console.log(
                 '✅ Telegram connected (legacy single-session client; AccountManager is the canonical source)',
             );
-            return telegramClient;
+            return client;
         }
     } catch (error) {
         console.log('⚠️ Telegram connect attempt failed:', error.message);
     }
+    // destroy(), not disconnect(): only destroy() stops gramJS's update
+    // loop, which otherwise keeps the client (and its socket) alive forever.
+    if (client) await client.destroy().catch(() => {});
+    _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
     return null;
 }
 
