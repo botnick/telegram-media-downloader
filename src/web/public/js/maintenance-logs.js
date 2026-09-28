@@ -171,6 +171,14 @@ function _scheduleCountsUpdate() {
     });
 }
 
+// The WS log channel stays subscribed for the whole session, but the log
+// view only needs DOM work while it is on screen. init() re-renders the
+// chips + stream from `_lines` (and a fresh backfill) on every visit.
+function _logsPageVisible() {
+    const page = $('page-maintenance-logs');
+    return !!page && !page.classList.contains('hidden');
+}
+
 function _appendOne(entry) {
     _lines.push(entry);
     if (_lines.length > MAX_LINES) _lines.shift();
@@ -179,6 +187,7 @@ function _appendOne(entry) {
     // can filter on it. Subsequent lines from the same source just
     // bump the count badge.
     const newSrc = _recordSource(entry.source);
+    if (!_logsPageVisible()) return;
     if (newSrc) _renderSourceChips();
     _scheduleCountsUpdate();
     if (_paused) return;
@@ -419,6 +428,10 @@ export function init() {
         _pageWired = true;
         _wireFilters();
     }
+    // Lines that arrived while the page was hidden were only buffered —
+    // paint them now, before the backfill round-trip.
+    _renderSourceChips();
+    _renderAll();
     // Refresh backfill every time the user opens the page so they're not
     // staring at a stale tail from a previous visit.
     _loadBackfill();

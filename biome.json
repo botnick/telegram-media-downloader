@@ -13,6 +13,7 @@
             "!data/**",
             "!docs/**",
             "!**/*.min.js",
+            "!src/web/public/css/tailwind.css",
             "!package-lock.json"
         ]
     },

@@ -13,6 +13,7 @@ import {
     insertDownload,
     isDownloaded as dbIsDownloaded,
     fileAlreadyStored,
+    getTotalSizeBytes,
     kvGet,
     kvSet,
 } from './db.js';
@@ -27,6 +28,8 @@ import { getDataDir, getDownloadsDir, resolveConfigDownloadPath } from './paths.
 const DATA_DIR = getDataDir();
 const DOWNLOADS_DIR = getDownloadsDir();
 const LOGS_DIR = path.join(DATA_DIR, 'logs');
+// How long the quota check reuses SUM(file_size) — see getDiskUsage().
+const CATALOGUE_SIZE_TTL_MS = 60_000;
 
 // Windows reserved device names — both bare and with any extension are
 // rejected by the OS (`CON.jpg` is just as bad as `CON`). Match
@@ -1148,7 +1151,42 @@ export class DownloadManager extends EventEmitter {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
     }
 
+    /**
+     * Bytes counted against `diskManagement.maxTotalSize`.
+     *
+     * Two measures, each too high in a different way:
+     *   - the persisted counter (seeded by a disk walk, bumped only by new
+     *     bytes, so a dedup-shared file counts once) never went down when
+     *     files were deleted or rotated away;
+     *   - SUM(file_size) over the catalogue drops with every delete, but
+     *     counts a file shared by several rows (download-time dedup) once
+     *     per row.
+     * Whenever the SUM is the smaller one, the counter is pulled down to it
+     * and keeps counting new bytes from there. So usage is never above the
+     * old counter (no new "quota exceeded"), never above what the disk
+     * rotator measures (rotating / deleting always lets downloads resume),
+     * and shared files added after that point still count once. The SUM is
+     * a covering-index scan (~40 ms per million rows), re-read at most once
+     * a minute.
+     */
     async getDiskUsage() {
+        const counter = await this._getDiskUsageCounter();
+        const now = Date.now();
+        if (!this._catalogueSize || now - this._catalogueSize.at > CATALOGUE_SIZE_TTL_MS) {
+            try {
+                this._catalogueSize = { size: getTotalSizeBytes(), at: now };
+            } catch {
+                return counter;
+            }
+        }
+        if (this._catalogueSize.size < counter) {
+            this._diskUsageCache.size = this._catalogueSize.size;
+            this.saveDiskUsageCache();
+        }
+        return this._diskUsageCache.size;
+    }
+
+    async _getDiskUsageCounter() {
         if (this._diskUsageCache) return this._diskUsageCache.size;
 
         try {
@@ -1209,6 +1247,8 @@ export class DownloadManager extends EventEmitter {
     incrementDiskUsage(bytes) {
         if (!this._diskUsageCache) this._diskUsageCache = { size: 0, timestamp: Date.now() };
         this._diskUsageCache.size += bytes;
+        // Keep the cached catalogue total current between re-reads.
+        if (this._catalogueSize) this._catalogueSize.size += bytes;
         if (this._saveTimeout) clearTimeout(this._saveTimeout);
         this._saveTimeout = setTimeout(() => this.saveDiskUsageCache(), 10000);
     }

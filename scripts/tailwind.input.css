@@ -1,0 +1,9 @@
+/* biome-ignore-all lint/suspicious/noUnknownAtRules: Tailwind v3 build directives */
+/* scripts/tailwind.input.css + scripts/tailwind.config.cjs
+   → src/web/public/css/tailwind.css via `npm run build:css`.
+   The output is GENERATED and committed — never edit it by hand. It is
+   deliberately not minified: cssnano's colour minifier rounds rgb → hsla
+   and would drift from the old Play CDN colours by a unit. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
