@@ -7,7 +7,6 @@ import { state, getGroupName, updateGroupNameCache, isUnresolvedName } from './s
 import { api } from './api.js';
 import { escapeHtml, getFileIcon, showToast, formatBytes } from './utils.js';
 import { getThumbUrl, isPeerRow, initFileToken, fileTokenQuery } from './media-url.js';
-import * as Settings from './settings.js';
 import * as Viewer from './viewer.js';
 import { initEngine, handleEngineWsMessage } from './engine.js';
 import { ws } from './ws.js';
@@ -55,11 +54,6 @@ import {
     t as i18nT,
     tf as i18nTf,
 } from './i18n.js';
-import {
-    showBackfillPage,
-    deepLinkFromModal as backfillDeepLink,
-    stopBackfillPage,
-} from './backfill.js';
 import * as Fonts from './fonts.js';
 import { showQueuePage, initQueue } from './queue.js';
 import { initHeaderMobile, pushLogToNotify } from './header-mobile.js';
@@ -67,6 +61,49 @@ import { setupDragDropLink } from './dragdrop-link.js';
 import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './mini-player.js';
 import { wireChangelogTrigger } from './changelog-viewer.js';
 import * as WakeLock from './wake-lock.js';
+
+// ============ Lazy page modules ============
+//
+// settings.js (~3.3k lines + its own imports) and backfill.js only matter
+// once their page opens, so they're no longer part of the boot import
+// graph. The first navigation (or a click on one of the few always-present
+// controls that need them, e.g. sidebar Sign out) imports them; after boot
+// they're also warmed up in idle time so that first use is instant.
+// Relative dynamic imports get the server's `?v=` stamp like static ones.
+let _settingsModule = null;
+function loadSettingsModule() {
+    if (!_settingsModule) {
+        _settingsModule = import('./settings.js').catch((e) => {
+            _settingsModule = null;
+            throw e;
+        });
+    }
+    return _settingsModule;
+}
+// Wrap a settings.js export as an event handler / global that loads the
+// module on first call. Keeps `this` + arguments intact.
+function settingsCall(name) {
+    return function (...args) {
+        return loadSettingsModule().then((m) => m[name].apply(this, args));
+    };
+}
+
+let _backfillModule = null;
+let _backfillLoaded = null; // resolved module, for synchronous teardown
+function loadBackfillModule() {
+    if (!_backfillModule) {
+        _backfillModule = import('./backfill.js')
+            .then((m) => {
+                _backfillLoaded = m;
+                return m;
+            })
+            .catch((e) => {
+                _backfillModule = null;
+                throw e;
+            });
+    }
+    return _backfillModule;
+}
 
 // ============ Render coalescing ============
 //
@@ -280,7 +317,7 @@ async function init() {
         );
     });
     ws.on('config_updated', () => {
-        if (state.currentPage === 'settings') Settings.loadSettings();
+        if (state.currentPage === 'settings') settingsCall('loadSettings')();
         // Refresh the in-memory group cache so other pages (Backfill,
         // Sidebar, Manage Groups) see new/removed entries without a hard
         // reload. Stale `state.groups` was causing "History failed: Group
@@ -444,20 +481,28 @@ async function init() {
     // re-acquire when the tab comes back if jobs are still in flight.
     WakeLock.attachVisibilityRefresh(() => state.activeJobsCount || 0);
 
+    // Groups feed the sidebar and the per-group route titles, so the first
+    // route waits for them. Stats (footer counters; may scan the disk on a
+    // cold cache) don't shape the first page and no longer delay it.
     await loadGroups();
-    await loadStats();
+    loadStats();
 
     // Federated gallery scope (Layer 1, v2.12+) — boot one-shot. Reads
     // /api/cluster/peers, hides the chip if no peers paired, otherwise
     // restores the operator's last-saved scope from localStorage and
     // wires the chip click handler. Admin-only: the endpoint 401s for
-    // guests, the chip itself is `data-admin-only`.
+    // guests, the chip itself is `data-admin-only`. Only a saved non-local
+    // scope changes the first gallery query, so only then does the first
+    // route wait for the peer lookup.
     if (isAdmin) {
-        try {
-            await initGalleryScope();
-        } catch (e) {
+        const scopeReady = initGalleryScope().catch((e) => {
             console.warn('gallery scope init failed', e);
-        }
+        });
+        let savedScope = null;
+        try {
+            savedScope = localStorage.getItem('tgdl-gallery-scope');
+        } catch {}
+        if (savedScope && savedScope !== 'local') await scopeReady;
     }
 
     // First-load name resolve — admin-only because it POSTs and forces a
@@ -486,6 +531,17 @@ async function init() {
     if (isAdmin) initQueue();
     router.start();
     initMaintenanceTabs();
+    // Warm the lazily-loaded page modules once the first route is up, so
+    // the first Settings / Backfill visit doesn't wait on a fetch + parse.
+    const warmPageModules = () => {
+        loadSettingsModule().catch(() => {});
+        if (isAdmin) loadBackfillModule().catch(() => {});
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(warmPageModules, { timeout: 5000 });
+    } else {
+        setTimeout(warmPageModules, 2000);
+    }
 
     // Window bindings that depend on functions defined LATER in the
     // module. Pulled out from the main `window.*` block above (which
@@ -571,7 +627,7 @@ async function init() {
     }
 
     // Settings globals
-    window.applyPreset = Settings.applyPreset;
+    window.applyPreset = settingsCall('applyPreset');
     // Manual Save button removed in v2.6 — auto-save handles every edit
     // 800 ms after the last change, with the inline pill + notification
     // bell entry for confirmation. The legacy `Settings.saveSettings`
@@ -579,11 +635,11 @@ async function init() {
     // console, just no longer wired to a button.
     document
         .getElementById('save-api-credentials')
-        ?.addEventListener('click', Settings.saveApiCredentials);
+        ?.addEventListener('click', settingsCall('saveApiCredentials'));
     document
         .getElementById('change-password-btn')
-        ?.addEventListener('click', Settings.changePassword);
-    document.getElementById('logout-btn')?.addEventListener('click', Settings.signOut);
+        ?.addEventListener('click', settingsCall('changePassword'));
+    document.getElementById('logout-btn')?.addEventListener('click', settingsCall('signOut'));
     // Sidebar footer sign-out — gated behind confirmSheet because the
     // button sits in always-visible chrome and is one accidental tap away
     // from booting the operator. The deeper Settings button stays no-confirm
@@ -598,10 +654,10 @@ async function init() {
             confirmLabel: i18nT('sidebar.signout', 'Sign out'),
             danger: true,
         });
-        if (ok) Settings.signOut();
+        if (ok) settingsCall('signOut')();
     });
-    document.getElementById('proxy-save')?.addEventListener('click', Settings.saveProxy);
-    document.getElementById('proxy-test')?.addEventListener('click', Settings.testProxy);
+    document.getElementById('proxy-save')?.addEventListener('click', settingsCall('saveProxy'));
+    document.getElementById('proxy-test')?.addEventListener('click', settingsCall('testProxy'));
     document.getElementById('setting-path-btn')?.addEventListener('click', () => {
         showToast(i18nT('settings.download.cli_only_toast', 'Use CLI to change path'));
     });
@@ -681,7 +737,7 @@ function renderPage(page, params = {}) {
     // page we're leaving so they don't keep running invisible.
     if (state.currentPage === 'backfill' && page !== 'backfill') {
         try {
-            stopBackfillPage();
+            _backfillLoaded?.stopBackfillPage();
         } catch {}
     }
     // Cluster page polls /api/cluster/peers every 30 s — stop it when the
@@ -736,12 +792,16 @@ function renderPage(page, params = {}) {
     setActiveMaintenanceTab(page);
 
     if (page === 'settings') {
-        Settings.loadSettings();
         // Auto-save: every Setting input is watched and a debounced
         // POST /api/config flushes 800 ms after the last edit. Manual
         // Save button still works as an early-flush escape hatch. Guests
         // can't write config so we skip the binding for them entirely.
-        if (state.role === 'admin') Settings.setupAutoSave();
+        loadSettingsModule()
+            .then((Settings) => {
+                Settings.loadSettings();
+                if (state.role === 'admin') Settings.setupAutoSave();
+            })
+            .catch((e) => console.error('settings page', e));
         // Engine controls live in the admin-only System section; guests
         // never see the card, and `initEngine` polls /api/monitor/status
         // (admin-gated) so skip it for them.
@@ -802,7 +862,9 @@ function renderPage(page, params = {}) {
             'Pull older messages into the queue',
         );
         // Show the page first; backfill module loads server state then renders.
-        showBackfillPage(params).catch((e) => console.error('backfill page', e));
+        loadBackfillModule()
+            .then((m) => m.showBackfillPage(params))
+            .catch((e) => console.error('backfill page', e));
     } else if (page === 'queue') {
         document.getElementById('page-title').textContent = i18nT('queue.page.title', 'Queue');
         document.getElementById('page-subtitle').textContent = i18nT(
@@ -3385,7 +3447,9 @@ async function openGroupSettings(groupId, groupName) {
             const parsed = parseInt(raw, 10);
             const limit = Number.isFinite(parsed) ? parsed : 100;
             closeGroupSettings();
-            backfillDeepLink(groupId, limit);
+            loadBackfillModule()
+                .then((m) => m.deepLinkFromModal(groupId, limit))
+                .catch((e) => console.error('backfill deep link', e));
         };
     });
 
