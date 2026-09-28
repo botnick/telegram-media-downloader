@@ -6138,11 +6138,14 @@ app.post('/api/maintenance/dedup/scan/stop', (req, res) => {
 
 app.get('/api/maintenance/dedup/status', async (req, res) => {
     const snap = _jobTrackers.dedupScan.getStatus();
-    // Re-attach the non-enumerable duplicateSets so the frontend can
-    // pull the full result via this endpoint (the WS done event strips
-    // it to avoid multi-MB frames).
-    const out = { ...snap, ...(snap.progress || {}) };
-    if (snap.result && !out.result?.duplicateSets && snap.result.duplicateSets) {
+    // Flat progress fields for older clients, but `running` must come from
+    // the tracker — the last progress event still says running:true after
+    // the scan has finished.
+    const out = { ...snap, ...(snap.progress || {}), running: snap.running };
+    // duplicateSets is non-enumerable on the stored result (so the WS done
+    // event doesn't carry multi-MB frames); copy it onto an enumerable
+    // result here or JSON serialisation drops it and the page shows nothing.
+    if (snap.result?.duplicateSets) {
         out.result = { ...snap.result, duplicateSets: snap.result.duplicateSets };
     }
     res.json(out);
