@@ -1552,7 +1552,7 @@
         }
       }
     },
-    "POST malformed JSON": {
+    "POST malformed JSON → 400": {
       "route": "POST /api/config",
       "request": {
         "method": "POST",
@@ -1563,7 +1563,7 @@
         },
         "body": "{\"pollingInterval\": 5,"
       },
-      "status": 500,
+      "status": 400,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -1574,14 +1574,11 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "error": "<masked:string>"
+          "error": "Malformed JSON body"
         }
-      },
-      "masked": {
-        "error": "JSON.parse error text is engine-specific (V8 wording); status + shape are the contract"
       }
     },
-    "POST JSON null (strict body parser)": {
+    "POST JSON null (strict body parser) → 400": {
       "route": "POST /api/config",
       "request": {
         "method": "POST",
@@ -1592,7 +1589,7 @@
         },
         "body": "null"
       },
-      "status": 500,
+      "status": 400,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -1603,14 +1600,11 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "error": "<masked:string>"
+          "error": "Malformed JSON body"
         }
-      },
-      "masked": {
-        "error": "body-parser strict-mode text mimics the V8 JSON.parse wording; status + shape are the contract"
       }
     },
-    "POST oversized body (>2 MB)": {
+    "POST oversized body (>2 MB) → 413": {
       "route": "POST /api/config",
       "request": {
         "method": "POST",
@@ -1618,7 +1612,7 @@
         "as": "admin",
         "body": "<2097172 bytes of JSON>"
       },
-      "status": 500,
+      "status": 413,
       "headers": {
         "cache-control": "no-store, max-age=0",
         "content-type": "application/json; charset=utf-8",
@@ -1629,7 +1623,7 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "error": "request entity too large"
+          "error": "Request body too large"
         }
       }
     },

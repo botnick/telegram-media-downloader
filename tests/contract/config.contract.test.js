@@ -94,23 +94,17 @@ describe('POST /api/config validation', () => {
         });
     });
 
-    // Body-parser failures (400 / 413 inside body-parser) reach the global
-    // error handler, which answers 500 with err.message.
+    // Body-parser failures reach the global error handler, which answers
+    // their own status (400 / 413) with a fixed message.
     it('body-parser edge cases', async () => {
         const t = h.t;
-        await t.exchange('POST malformed JSON', 'POST', '/api/config', {
+        await t.exchange('POST malformed JSON → 400', 'POST', '/api/config', {
             headers: { 'content-type': 'application/json' },
             body: '{"pollingInterval": 5,',
-            mask: {
-                error: 'JSON.parse error text is engine-specific (V8 wording); status + shape are the contract',
-            },
         });
-        await t.exchange('POST JSON null (strict body parser)', 'POST', '/api/config', {
+        await t.exchange('POST JSON null (strict body parser) → 400', 'POST', '/api/config', {
             headers: { 'content-type': 'application/json' },
             body: 'null',
-            mask: {
-                error: 'body-parser strict-mode text mimics the V8 JSON.parse wording; status + shape are the contract',
-            },
         });
         const big = JSON.stringify({ pad: 'x'.repeat(2 * 1024 * 1024 + 10) });
         const res = await t.request('POST', '/api/config', {
@@ -118,7 +112,7 @@ describe('POST /api/config validation', () => {
             body: big,
         });
         await t.record(
-            'POST oversized body (>2 MB)',
+            'POST oversized body (>2 MB) → 413',
             {
                 method: 'POST',
                 path: '/api/config',

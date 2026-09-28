@@ -267,6 +267,7 @@ import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
+    bodyParserErrorResponse,
     isUnsatisfiableRange,
     rangeNotSatisfiableOf,
     sendRangeNotSatisfiable,
@@ -13800,6 +13801,11 @@ app.use((err, req, res, _next) => {
     // a client error, answered as RFC 9110 asks, not a 500.
     const unsatisfiable = rangeNotSatisfiableOf(err);
     if (unsatisfiable) return sendRangeNotSatisfiable(res, unsatisfiable);
+    // express.json() (mounted for every route) fails a malformed JSON body,
+    // a JSON `null` (strict mode) or one over the 2 MB limit before any
+    // route runs: 400 / 413, not a server error.
+    const bodyError = bodyParserErrorResponse(err);
+    if (bodyError) return res.status(bodyError.status).json(bodyError.body);
     log({
         source: 'http',
         level: 'error',

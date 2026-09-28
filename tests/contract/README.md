@@ -165,9 +165,8 @@ They cover host details (Node/platform/CPU/memory in system health, ffmpeg
 and hardware-acceleration probes, Python in the AI doctor), encoder-dependent
 byte sizes of generated thumbnails and sprites, directory-walk order that
 differs between NTFS and ext4, SQLite page accounting after VACUUM (the
-relations are recorded instead), V8 / body-parser error wording, network
-stack error texts, random auth-flow ids, and the current UTC minute in
-bulk-ZIP file names.
+relations are recorded instead), network stack error texts, random
+auth-flow ids, and the current UTC minute in bulk-ZIP file names.
 
 Where a mask would lose a relation, the scenario records a **derived fact**
 instead (`t.store.record(label, {...})`): share-link signatures are
@@ -252,9 +251,8 @@ never silently in the Go port.
 - `DELETE /api/purge/all` (factory reset) has no `{ confirm: true }` guard.
 - `advanced.share.rateLimitMax` / `rateLimitWindowMs` never take effect
   (the route keeps the limiter it was registered with).
-- Body-parser errors (malformed JSON, a JSON `null` body, > 2 MB) answer 500
-  instead of 400 / 413; a JSON array body to `POST /api/config` is spread
-  into the config as index keys.
+- A JSON array body to `POST /api/config` is spread into the config as index
+  keys.
 - `POST /api/downloads/bulk-delete {ids:[null]}` starts a job (`Number(null)`
   is 0).
 - `GET /api/system/health` always reports `disk: null` (`JSON.parse` on an

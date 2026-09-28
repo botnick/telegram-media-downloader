@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Fixed
 - **A Range a file can't satisfy answers 416**, not 500. `/files/*`, `/share/*`, the cluster file bridge and every other file stream now answer `416 Range Not Satisfiable` with `Content-Range: bytes */<size>` (RFC 9110) and without the file's type, validators or long cache lifetime; `/share` no longer counts such a request as an access.
+- **A malformed JSON body answers 400, an oversized one 413**, not 500. Every API route: a body that isn't valid JSON (or is a bare `null` / string) gets `400 {"error":"Malformed JSON body"}`, one over the 2 MB limit `413 {"error":"Request body too large"}`, an unsupported charset or encoding 415.
 
 ## [2.29.0] — 2026-09-29
 

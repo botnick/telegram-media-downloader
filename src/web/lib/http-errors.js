@@ -1,12 +1,37 @@
 // Client-error answers the last-resort Express error handler gives instead
 // of its generic 500:
 //
+//   - body-parser failures (malformed JSON, a body over the limit, an
+//     unsupported charset / encoding) → their 4xx status with a stable
+//     message (the parser's own text for malformed JSON is the V8
+//     JSON.parse wording, which differs between engines and versions);
 //   - a Range no part of the file can satisfy (send()'s 416) → a proper
 //     416 with `Content-Range: bytes */<size>` (RFC 9110 §15.5.17).
 //
 // Anything else stays a 500 (see the handler in server.js).
 //
 // (Line comments on purpose: `bytes */<size>` would end a block comment.)
+
+// body-parser (1.x) tags every error it raises with a `type` and its own
+// 4xx `status`. Only the ones express.json() can raise are listed.
+const BODY_PARSER_MESSAGES = {
+    'entity.parse.failed': 'Malformed JSON body',
+    'entity.too.large': 'Request body too large',
+    'entity.verify.failed': 'Request body rejected',
+    'request.aborted': 'Request aborted',
+    'request.size.invalid': 'Request size did not match Content-Length',
+    'encoding.unsupported': 'Unsupported content encoding',
+    'charset.unsupported': 'Unsupported charset',
+};
+
+// `{status, body}` for a body-parser error, or null for anything else.
+export function bodyParserErrorResponse(err) {
+    if (!err || typeof err !== 'object') return null;
+    const message = BODY_PARSER_MESSAGES[err.type];
+    const status = Number(err.status || err.statusCode);
+    if (!message || !(status >= 400 && status < 500)) return null;
+    return { status, body: { error: message } };
+}
 
 // Answer 416 Range Not Satisfiable. `contentRange` is the
 // `bytes */<size>` value (send() hands it over on its error). The headers

@@ -1,6 +1,7 @@
-// src/web/lib/http-errors.js against the real express / send stack: the
-// 416 answer for a Range a file can't satisfy, and the pre-check the
-// /share route uses so a refused request isn't counted.
+// src/web/lib/http-errors.js against the real express / send /
+// body-parser stack: the 416 answer for a Range a file can't satisfy, the
+// pre-check the /share route uses so a refused request isn't counted, and
+// the 400 / 413 answers for bodies express.json() refuses.
 
 import express from 'express';
 import fs from 'fs';
@@ -8,6 +9,7 @@ import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+    bodyParserErrorResponse,
     isUnsatisfiableRange,
     rangeNotSatisfiableOf,
     sendRangeNotSatisfiable,
@@ -21,6 +23,8 @@ let base = '';
 beforeAll(async () => {
     fs.writeFileSync(FILE, Buffer.alloc(100, 1));
     const app = express();
+    app.use(express.json({ limit: '1kb' }));
+    app.post('/json', (req, res) => res.json({ got: req.body }));
     app.get('/check', (req, res) => res.json({ unsat: isUnsatisfiableRange(req, 100) }));
     app.all('/file', (req, res, next) => {
         res.setHeader('Content-Disposition', 'attachment; filename="f.bin"');
@@ -30,6 +34,8 @@ beforeAll(async () => {
     app.use((err, _req, res, _next) => {
         const cr = rangeNotSatisfiableOf(err);
         if (cr) return sendRangeNotSatisfiable(res, cr);
+        const bodyError = bodyParserErrorResponse(err);
+        if (bodyError) return res.status(bodyError.status).json(bodyError.body);
         res.status(500).json({ error: err.message });
     });
     await new Promise((r) => {
@@ -94,5 +100,45 @@ describe('send() 416 through the error handler', () => {
         expect(
             rangeNotSatisfiableOf({ status: 416, headers: { 'Content-Range': 'bytes */7' } }),
         ).toBe('bytes */7');
+    });
+});
+
+describe('bodies express.json() refuses', () => {
+    const post = (body, type = 'application/json') =>
+        fetch(`${base}/json`, { method: 'POST', headers: { 'content-type': type }, body });
+
+    it.each([
+        ['malformed JSON', '{"a": 1,', 400, 'Malformed JSON body'],
+        ['a JSON null (strict)', 'null', 400, 'Malformed JSON body'],
+        ['a JSON string (strict)', '"x"', 400, 'Malformed JSON body'],
+        [
+            'a body over the limit',
+            JSON.stringify({ pad: 'x'.repeat(2048) }),
+            413,
+            'Request body too large',
+        ],
+    ])('%s → %i', async (_label, body, status, error) => {
+        const r = await post(body);
+        expect(r.status).toBe(status);
+        expect(await r.json()).toEqual({ error });
+    });
+
+    it('an unsupported charset → 415', async () => {
+        const r = await post('{}', 'application/json; charset=klingon');
+        expect(r.status).toBe(415);
+        expect(await r.json()).toEqual({ error: 'Unsupported charset' });
+    });
+
+    it('valid JSON still reaches the route', async () => {
+        const r = await post('{"a":1}');
+        expect(r.status).toBe(200);
+        expect(await r.json()).toEqual({ got: { a: 1 } });
+    });
+
+    it('bodyParserErrorResponse ignores other errors', () => {
+        expect(bodyParserErrorResponse(null)).toBeNull();
+        expect(bodyParserErrorResponse(new Error('boom'))).toBeNull();
+        expect(bodyParserErrorResponse({ type: 'entity.parse.failed', status: 500 })).toBeNull();
+        expect(bodyParserErrorResponse({ type: 'other', status: 400 })).toBeNull();
     });
 });

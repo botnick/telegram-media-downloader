@@ -3,7 +3,9 @@
 // goldens"), against a spawned server:
 //   - an unsatisfiable or inverted Range on /files and /share answered 500
 //     (under the file's Content-Type) instead of 416, and /share counted it
-//     as an access.
+//     as an access;
+//   - a malformed JSON body, a JSON null or a body over 2 MB answered 500
+//     instead of 400 / 413.
 
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -156,5 +158,27 @@ describe.skipIf(SKIP)('contract findings (e2e)', () => {
         expect(ok.status).toBe(200);
         expect(ok.buf.equals(FILE_BYTES)).toBe(true);
         expect(await count()).toBe(1);
+    });
+
+    it('a body express.json() refuses is a 400 / 413, and nothing is saved', async () => {
+        const before = (await req('GET', '/api/config')).json.pollingInterval;
+        const cases = [
+            ['{"pollingInterval": 99,', 400, 'Malformed JSON body'],
+            ['null', 400, 'Malformed JSON body'],
+            [
+                JSON.stringify({ pollingInterval: 99, pad: 'x'.repeat(2 * 1024 * 1024) }),
+                413,
+                'Request body too large',
+            ],
+        ];
+        for (const [raw, status, error] of cases) {
+            const r = await req('POST', '/api/config', { raw });
+            expect(r.status).toBe(status);
+            expect(r.json).toEqual({ error });
+        }
+        // Parsing runs before the auth check: a bad body is a 400 for anyone.
+        const anon = await req('POST', '/api/config', { raw: '{', cookie: '' });
+        expect(anon.status).toBe(400);
+        expect((await req('GET', '/api/config')).json.pollingInterval).toBe(before);
     });
 });
