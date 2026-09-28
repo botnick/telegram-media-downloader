@@ -43,10 +43,14 @@ describe('auto-spawn gate', () => {
 
 // ---- tar fixtures -------------------------------------------------------------
 
-function tarHeader(name, size, type = '0', prefix = '') {
+// Modes matter off Windows: tar applies them (minus umask). A directory
+// entry without the search bit (the 0644 this fixture used to give every
+// entry) leaves its files unreadable and undeletable for the test user —
+// EACCES on Linux CI. Directories get 0755, files 0644 unless given.
+function tarHeader(name, size, type = '0', prefix = '', mode = type === '5' ? 0o755 : 0o644) {
     const h = Buffer.alloc(512, 0);
     h.write(name, 0, 100, 'utf8');
-    h.write('0000644\0', 100, 'ascii');
+    h.write(`${mode.toString(8).padStart(7, '0')}\0`, 100, 'ascii');
     h.write('0000000\0', 108, 'ascii');
     h.write('0000000\0', 116, 'ascii');
     h.write(`${size.toString(8).padStart(11, '0')}\0`, 124, 'ascii');
@@ -62,10 +66,10 @@ function tarHeader(name, size, type = '0', prefix = '') {
     return h;
 }
 
-function entry(name, data, type = '0', prefix = '') {
+function entry(name, data, type = '0', prefix = '', mode = undefined) {
     const body = Buffer.from(data);
     const pad = (512 - (body.length % 512)) % 512;
-    return [tarHeader(name, body.length, type, prefix), body, Buffer.alloc(pad)];
+    return [tarHeader(name, body.length, type, prefix, mode), body, Buffer.alloc(pad)];
 }
 
 // A directory, a PAX header entry to skip, a ~300 KB file (many gunzip
@@ -77,7 +81,7 @@ function makeTarGz(file) {
     const parts = [
         ...entry('bin/', '', '5'),
         ...entry('PaxHeaders/tgdl-faces', '30 mtime=1700000000.000000000\n', 'x'),
-        ...entry('bin/tgdl-faces', big),
+        ...entry('bin/tgdl-faces', big, '0', '', 0o755), // executable, like the release binary
         ...entry('bin/empty.txt', ''),
         ...entry('deep.txt', 'deep', '0', 'a/very/long/prefix/dir'),
         Buffer.alloc(1024),
