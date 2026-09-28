@@ -3721,10 +3721,27 @@ function broadcastStatsSoon() {
     _statsBroadcastTimer = setTimeout(async () => {
         _statsBroadcastTimer = null;
         try {
-            // Admin payload — guests just refetch via HTTP on reconnect.
             const body = await _computeStatsPayload('admin');
             _statsCache = { role: 'admin', at: Date.now(), body };
-            broadcast({ type: 'stats_update', stats: body });
+            // Per role: guest sessions get the guest payload (no cluster
+            // peer stats), not the admin one everyone used to receive.
+            // Sent directly rather than through broadcast(): a stats push
+            // is superseded by the next one, so a backed-up client just
+            // skips it.
+            const adminText = JSON.stringify({ type: 'stats_update', stats: body });
+            let guestText = null;
+            for (const ws of Array.from(clients)) {
+                if (ws.readyState !== 1 || ws.bufferedAmount > 1 << 20) continue;
+                if (ws.role === 'guest') {
+                    guestText ??= JSON.stringify({
+                        type: 'stats_update',
+                        stats: await _computeStatsPayload('guest'),
+                    });
+                    ws.send(guestText);
+                } else {
+                    ws.send(adminText);
+                }
+            }
         } catch (e) {
             console.warn('[stats] broadcast failed:', e.message);
         }
