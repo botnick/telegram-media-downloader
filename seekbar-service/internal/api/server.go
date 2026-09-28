@@ -162,7 +162,7 @@ func (s *Server) Routes() http.Handler {
 	// exposed sidecar doesn't serve thumbnails to anyone), or explicitly
 	// public via SEEKBAR_PUBLIC_MEDIA.
 	r.Group(func(r chi.Router) {
-		if !s.cfg.HTTP.PublicMedia {
+		if !s.cfg.HTTP.PublicMedia && strings.TrimSpace(s.cfg.HTTP.APIToken) != "" {
 			r.Use(s.requireToken)
 		}
 		r.Get("/sprite/{videoID}", s.handleSprite)
