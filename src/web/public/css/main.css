@@ -3569,6 +3569,524 @@ body[data-page="maintenance-logs"] #maintenance-tabs {
 body[data-page="maintenance"] {
     --page-accent: var(--tg-blue, #2aabee);
 }
+
+/* ============================================================
+   Navigation shell (js/nav.js) — Chats | Backfill tabs, the
+   per-group tool strip.
+   ============================================================ */
+.sidebar-nav .nav-item {
+    min-height: 44px;
+}
+
+.chats-tabs {
+    display: none;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+body[data-page="groups"] #chats-tabs,
+body[data-page="backfill"] #chats-tabs {
+    display: flex;
+}
+.chats-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(139, 155, 170, 0.3);
+    color: var(--tg-textSecondary, #8b9baa);
+    font-size: 14px;
+    font-weight: 500;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease,
+        border-color 0.15s ease;
+}
+.chats-tab:hover {
+    color: var(--tg-text, #f5f5f5);
+    border-color: var(--tg-blue, #2aabee);
+}
+.chats-tab[aria-current="page"] {
+    background: var(--tg-blue, #2aabee);
+    border-color: transparent;
+    color: #ffffff;
+}
+.chats-tab i {
+    font-size: 16px;
+}
+
+/* Tool strip on a tool page: the back link names the group, every tab
+   shows its label, and only the current group's tools are listed. */
+.maintenance-tab-back {
+    width: auto;
+    min-width: 36px;
+    gap: 2px;
+    padding: 0 10px 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tg-text, #f5f5f5);
+    white-space: nowrap;
+}
+.maintenance-tab-back-label {
+    max-width: 30vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.maintenance-tab-back-label:empty {
+    display: none;
+}
+#maintenance-tabs .maintenance-tab span {
+    max-width: 180px;
+    opacity: 1;
+    margin-left: 6px;
+}
+.maintenance-tab,
+.maintenance-tab-back {
+    min-height: 40px;
+}
+@media (max-width: 767.98px) {
+    .maintenance-tab,
+    .maintenance-tab-back {
+        min-height: 44px;
+    }
+}
+#maintenance-tabs[data-group="library"] .maintenance-tab:not([data-tool-group="library"]),
+#maintenance-tabs[data-group="safety"] .maintenance-tab:not([data-tool-group="safety"]),
+#maintenance-tabs[data-group="sync"] .maintenance-tab:not([data-tool-group="sync"]),
+#maintenance-tabs[data-group="system"] .maintenance-tab:not([data-tool-group="system"]) {
+    display: none;
+}
+
+/* ============================================================
+   Tools (js/tools-hub.js) — Settings → Tools card and the group
+   pages. Colours come from the theme tokens; tinted fills are
+   translucent so they sit on both the dark and the light panel.
+   ============================================================ */
+.tools-attention {
+    margin-bottom: 12px;
+}
+.tools-attn-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(139, 155, 170, 0.1);
+    color: var(--tg-textSecondary, #8b9baa);
+    font-size: 13.5px;
+}
+.tools-attn-note i {
+    font-size: 18px;
+}
+.tools-attn-note.is-ok i {
+    color: var(--tg-green, #4fae4e);
+}
+.tools-attn-title {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tools-attn-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.tools-attn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 6px 6px 12px;
+    border-radius: 10px;
+    border-left: 3px solid var(--attn, #ff9800);
+    background: var(--attn-bg, rgba(255, 152, 0, 0.1));
+}
+.tools-attn[data-tone="bad"] {
+    --attn: #ef5350;
+    --attn-bg: rgba(239, 83, 80, 0.11);
+}
+.tools-attn[data-tone="info"] {
+    --attn: #2aabee;
+    --attn-bg: rgba(42, 171, 238, 0.11);
+}
+html.theme-light .tools-attn {
+    --attn: #b45309;
+}
+html.theme-light .tools-attn[data-tone="bad"] {
+    --attn: #b91c1c;
+}
+html.theme-light .tools-attn[data-tone="info"] {
+    --attn: #0e78c2;
+}
+.tools-attn-icon {
+    font-size: 18px;
+    color: var(--attn);
+    flex-shrink: 0;
+}
+.tools-attn-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.35;
+    color: var(--tg-text, #f5f5f5);
+}
+.tools-attn-tool {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tools-groups {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+}
+@media (min-width: 640px) {
+    .tools-groups {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+.tools-group-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 64px;
+    padding: 10px 10px 10px 12px;
+    border-radius: 12px;
+    background: var(--tg-bg, #17212b);
+    border: 1px solid rgba(139, 155, 170, 0.14);
+    color: var(--tg-text, #f5f5f5);
+    transition: border-color 0.15s ease;
+}
+.tools-group-row:hover {
+    border-color: var(--tg-blue, #2aabee);
+}
+.tools-group-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 19px;
+    background: rgba(42, 171, 238, 0.14);
+    color: var(--tg-blue, #2aabee);
+}
+.tools-group-name {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 600;
+}
+.tools-group-tools {
+    display: block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    line-height: 1.4;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tools-group-state:empty {
+    display: none;
+}
+.tools-group-badge {
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ff9800;
+    color: #1f1300;
+    font-size: 12px;
+    font-weight: 700;
+}
+html.theme-light .tools-group-badge {
+    background: #b45309;
+    color: #ffffff;
+}
+.tools-group-chevron {
+    font-size: 20px;
+    color: var(--tg-textSecondary, #8b9baa);
+    flex-shrink: 0;
+}
+
+.tools-crumbs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: -6px 0 4px;
+    font-size: 13px;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tools-crumbs a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 4px;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tools-crumbs a:hover {
+    color: var(--tg-blue, #2aabee);
+    text-decoration: underline;
+}
+.tools-group-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.tools-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+}
+@media (min-width: 900px) {
+    .tools-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+.tool-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--tg-panel, #242f3d);
+    border: 1px solid transparent;
+    scroll-margin: 24px;
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+.tool-card:focus {
+    outline: none;
+}
+.tool-card.is-focus {
+    border-color: var(--tg-blue, #2aabee);
+    box-shadow: 0 0 0 3px rgba(42, 171, 238, 0.28);
+}
+.tool-card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+.tool-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 20px;
+    background: rgba(42, 171, 238, 0.14);
+    color: var(--tg-blue, #2aabee);
+}
+.tool-card-icon[data-accent="orange"] {
+    background: rgba(255, 152, 0, 0.14);
+    color: var(--tg-orange, #ff9800);
+}
+.tool-card-icon[data-accent="red"] {
+    background: rgba(239, 83, 80, 0.14);
+    color: #ef5350;
+}
+.tool-card-icon[data-accent="green"] {
+    background: rgba(79, 174, 78, 0.14);
+    color: var(--tg-green, #4fae4e);
+}
+.tool-card-icon[data-accent="purple"],
+.tool-card-icon[data-accent="violet"] {
+    background: rgba(167, 139, 250, 0.16);
+    color: #a78bfa;
+}
+.tool-card-icon[data-accent="pink"] {
+    background: rgba(244, 114, 182, 0.15);
+    color: #f472b6;
+}
+html.theme-light .tool-card-icon[data-accent="red"] {
+    color: #b91c1c;
+}
+html.theme-light .tool-card-icon[data-accent="purple"],
+html.theme-light .tool-card-icon[data-accent="violet"] {
+    color: #6d28d9;
+}
+html.theme-light .tool-card-icon[data-accent="pink"] {
+    color: #be185d;
+}
+.tool-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--tg-text, #f5f5f5);
+}
+.tool-card-desc {
+    margin-top: 2px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--tg-textSecondary, #8b9baa);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.tool-card-status {
+    min-height: 20px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--tg-text, #f5f5f5);
+}
+.tool-card-status[data-tone="muted"] {
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tool-card-status[data-tone="warn"] {
+    color: #ffb74d;
+}
+.tool-card-status[data-tone="bad"] {
+    color: #ef9a9a;
+}
+html.theme-light .tool-card-status[data-tone="warn"] {
+    color: #92400e;
+}
+html.theme-light .tool-card-status[data-tone="bad"] {
+    color: #b91c1c;
+}
+.tool-skel {
+    display: inline-block;
+    width: 55%;
+    height: 12px;
+    border-radius: 6px;
+    background: rgba(139, 155, 170, 0.22);
+    animation: tools-skel 1.2s ease-in-out infinite;
+}
+@keyframes tools-skel {
+    50% {
+        opacity: 0.45;
+    }
+}
+.tool-progress {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(139, 155, 170, 0.22);
+    overflow: hidden;
+}
+.tool-progress > div {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--tg-blue, #2aabee);
+    transition: width 0.3s ease;
+}
+.tool-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: auto;
+}
+.tool-card-actions:empty {
+    display: none;
+}
+.tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(139, 155, 170, 0.28);
+    background: transparent;
+    color: var(--tg-text, #f5f5f5);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease;
+}
+.tool-btn:hover {
+    border-color: var(--tg-blue, #2aabee);
+}
+.tool-btn.is-primary {
+    background: var(--tg-blue, #2aabee);
+    border-color: transparent;
+    color: #ffffff;
+}
+.tool-btn.is-primary:hover {
+    background: var(--tg-darkBlue, #229ed9);
+}
+.tool-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.tool-btn i {
+    font-size: 17px;
+}
+.tools-attn .tool-btn {
+    min-height: 40px;
+    padding: 0 12px;
+    flex-shrink: 0;
+}
+@media (max-width: 767.98px) {
+    .tools-attn .tool-btn {
+        min-height: 44px;
+    }
+}
+.tool-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    background: rgba(139, 155, 170, 0.15);
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.tool-pill[data-tone="running"] {
+    background: rgba(42, 171, 238, 0.16);
+    color: #5fbef2;
+}
+.tool-pill[data-tone="warn"] {
+    background: rgba(255, 152, 0, 0.16);
+    color: #ffb74d;
+}
+.tool-pill[data-tone="bad"] {
+    background: rgba(239, 83, 80, 0.16);
+    color: #ef9a9a;
+}
+html.theme-light .tool-pill[data-tone="running"] {
+    color: #0e5a86;
+}
+html.theme-light .tool-pill[data-tone="warn"] {
+    color: #92400e;
+}
+html.theme-light .tool-pill[data-tone="bad"] {
+    color: #b91c1c;
+}
+.tool-pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: tools-skel 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .tool-skel,
+    .tool-pill-dot {
+        animation: none;
+    }
+}
+
 body[data-page="maintenance-duplicates"] {
     --page-accent: var(--tg-orange, #ff9800);
 }
@@ -3766,10 +4284,6 @@ body[data-page="maintenance-recovery"] {
 .settings-chip:hover i,
 .settings-chip[aria-selected="true"] i {
     opacity: 1;
-}
-/* Compensate scroll-target landing for the sticky bar's height. */
-.settings-section {
-    scroll-margin-top: 60px;
 }
 
 /* Federation — replication-policy segmented control. Each row is one config
@@ -6215,6 +6729,7 @@ html.theme-light #queue-actions-menu-slot .queue-global-actions button:hover {
 .settings-top-bar .settings-chip-nav {
     position: static;
     margin: 0;
+    background: transparent;
 }
 .settings-search {
     position: relative;
@@ -6335,10 +6850,87 @@ html.theme-light .settings-search-hit {
     outline: 2px solid var(--tg-blue);
     outline-offset: 2px;
 }
-/* The sticky bar is taller now (search + chips): land section jumps
-   below it. */
-.settings-section {
-    scroll-margin-top: 112px;
+/* Section jumps land just below the sticky bar. js/nav.js measures the
+   bar into --settings-sticky-h (0 when it's the desktop side rail); the
+   id selector beats the cards' Tailwind scroll-mt-24. */
+#page-settings .settings-section,
+#page-settings [id^="settings-card-"],
+#page-settings #settings-tools {
+    scroll-margin-top: calc(var(--settings-sticky-h, 96px) + 12px);
+}
+/* #content-area pads its scrollport (p-2 / sm:p-4) and sticky sits inside
+   that padding: without this the cards showed through an 8–16 px gap
+   above the bar while scrolling. */
+.settings-top-bar {
+    top: -8px;
+    padding-top: 12px;
+    background: var(--tg-lightBg, #182533);
+}
+@media (min-width: 640px) {
+    .settings-top-bar {
+        top: -16px;
+        padding-top: 20px;
+    }
+}
+/* Desktop: search + sections become a side table of contents. 1200 px
+   so the content column keeps ~620 px next to the 320 px sidebar.
+   :not(.hidden) — an id rule would otherwise beat Tailwind's .hidden. */
+@media (min-width: 1200px) {
+    #page-settings:not(.hidden) {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        column-gap: 28px;
+        align-items: start;
+        max-width: 76rem;
+    }
+    #page-settings > * {
+        grid-column: 2;
+        min-width: 0;
+    }
+    #page-settings > .settings-top-bar {
+        grid-column: 1;
+        /* Span every row so the rail stays sticky for the whole page. */
+        grid-row: 1 / span 60;
+        align-self: start;
+        top: 0;
+        margin: 0;
+        padding-top: 0;
+        background: transparent;
+        max-height: calc(100dvh - 7rem);
+        overflow-y: auto;
+        scrollbar-width: thin;
+    }
+    .settings-top-bar .settings-chip-nav {
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 10px;
+        border-bottom: 0;
+        background: transparent;
+        overflow: visible;
+    }
+    .settings-top-bar .settings-chip {
+        width: 100%;
+        min-height: 40px;
+        padding: 8px 12px;
+        margin: 0;
+        gap: 10px;
+        border-bottom: 0;
+        border-radius: 10px;
+        text-align: left;
+        white-space: normal;
+    }
+    .settings-top-bar .settings-chip:hover {
+        background: rgba(139, 155, 170, 0.12);
+    }
+    .settings-top-bar .settings-chip[aria-selected="true"] {
+        background: rgba(42, 171, 238, 0.14);
+    }
+    html.theme-light .settings-top-bar .settings-chip[aria-selected="true"] {
+        background: rgba(14, 120, 194, 0.1);
+    }
+    .settings-top-bar .settings-chip i {
+        font-size: 17px;
+    }
 }
 .settings-search-status.is-empty {
     margin: 8px 0 24px;

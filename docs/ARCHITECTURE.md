@@ -140,12 +140,15 @@ src/web/public/js/
 ├── ws.js             # WebSocket client with auto-reconnect
 ├── store.js          # state container (carries `role` + `selected`)
 ├── router.js         # hash router with admin-route redirect for guest sessions
+├── nav.js            # the four places (Library / Chats / Queue / Settings), Tools routes
+├── tools-catalog.js  # the 11 tools in 4 groups (Library health, Safety & AI, Backup & sync, System)
+├── tools-hub.js      # Settings → Tools card (needs attention) + the Tools group pages
 ├── settings.js       # Settings page + accounts + proxy + security + maintenance
 ├── nsfw-ui.js        # NSFW review sheet (lazy-loaded from settings.js)
 ├── share.js          # Share-link sheet (lazy-loaded from viewer + settings)
 ├── gallery-select.js # Drag-to-select lasso + ctrl/shift gestures + keyboard
 ├── viewer.js         # full-screen media viewer (seekbar sprite hover preview)
-├── maintenance-thumbs.js / maintenance-seekbar.js / maintenance-ai.js / maintenance-nsfw.js / maintenance-video.js / maintenance-duplicates.js / maintenance-logs.js / maintenance-hub.js
+├── maintenance-thumbs.js / maintenance-seekbar.js / maintenance-ai.js / maintenance-nsfw.js / maintenance-video.js / maintenance-duplicates.js / maintenance-logs.js … (full tool pages, opened from a Tools group)
 ├── queue.js          # IDM-style queue page (append-on-scroll, in-place patch)
 ├── backfill.js       # Backfill page (active jobs + recent + start)
 ├── engine.js         # Engine card (start/stop/status)

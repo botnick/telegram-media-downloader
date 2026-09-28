@@ -1,7 +1,7 @@
 // Settings search — the box above the section chips. Typing hides the
 // cards that don't match, highlights the matching labels, opens the
 // Advanced panel when a hit is inside it, and lists matching tools that
-// live elsewhere (Maintenance, Backfill, Queue, …) as shortcuts. Enter
+// live elsewhere (Tools, Backfill, Queue, …) as shortcuts. Enter
 // jumps to the first hit. Matches both the current language and English,
 // so "proxy" finds พร็อกซี on a Thai dashboard and vice versa.
 
@@ -16,77 +16,77 @@ const DEBOUNCE_MS = 120;
 // "duplicates" still leads somewhere. [route, name key, name, keywords key, keywords]
 const ELSEWHERE = [
     [
-        '#/maintenance/duplicates',
+        '#/settings/tools/library/duplicates',
         'nav.maintenance.duplicates',
         'Duplicates',
         'maintenance.duplicates.subtitle',
         'Hash every file and reclaim space from byte-identical copies',
     ],
     [
-        '#/maintenance/thumbs',
+        '#/settings/tools/library/thumbs',
         'nav.maintenance.thumbs',
         'Thumbnails',
         'maintenance.thumbs.subtitle',
         'Generate WebP previews for older files',
     ],
     [
-        '#/maintenance/seekbar',
+        '#/settings/tools/library/seekbar',
         'nav.maintenance.seekbar',
         'Seekbar previews',
         'maintenance.seekbar.subtitle',
         'Generate WebP sprite sheets for video hover-preview thumbnails.',
     ],
     [
-        '#/maintenance/video',
-        'nav.maintenance.video',
-        'Videos',
+        '#/settings/tools/library/video',
+        'tools.video',
+        'Video faststart',
         'maintenance.video.subtitle',
         'faststart streaming optimise',
     ],
     [
-        '#/maintenance/nsfw',
+        '#/settings/tools/safety/nsfw',
         'nav.maintenance.nsfw',
         'NSFW',
         'maintenance.nsfw.subtitle',
         'classifier review 18+',
     ],
     [
-        '#/maintenance/ai',
-        'nav.maintenance.ai',
-        'AI',
+        '#/settings/tools/safety/ai',
+        'tools.faces',
+        'Faces',
         'maintenance.ai.subtitle',
-        'Face clustering people search',
+        'AI face clustering people search',
     ],
     [
-        '#/maintenance/backup',
+        '#/settings/tools/sync/backup',
         'nav.maintenance.backup',
         'Backup',
         'maintenance.backup.subtitle',
         'Mirror new downloads to S3 / SFTP / local NAS storage',
     ],
     [
-        '#/maintenance/cluster',
+        '#/settings/tools/sync/cluster',
         'nav.maintenance.cluster',
         'Cluster',
         'maintenance.cluster.subtitle',
         'Federate multiple instances peers pair',
     ],
     [
-        '#/maintenance/recovery',
+        '#/settings/tools/system/recovery',
         'nav.maintenance.recovery',
         'Recovery',
         'maintenance.recovery.subtitle',
         'groups no account can access',
     ],
     [
-        '#/maintenance/logs',
+        '#/settings/tools/system/logs',
         'nav.maintenance.logs',
         'Logs',
         'maintenance.logs.subtitle',
         'Realtime tail of every backend log source',
     ],
     [
-        '#/maintenance/updates',
+        '#/settings/tools/system/updates',
         'nav.maintenance.updates',
         'Updates',
         'update.history.help',
@@ -305,16 +305,21 @@ function apply(raw) {
     return firstHit;
 }
 
+// The control a label / heading belongs to, when it's obvious which one.
+function _controlFor(el) {
+    return (
+        (el.matches('select, input') && el) ||
+        (el.htmlFor && document.getElementById(el.htmlFor)) ||
+        el.closest('label')?.querySelector('input, select, textarea, .tg-toggle') ||
+        null
+    );
+}
+
 function jumpToFirst() {
     const first = $('page-settings')?.querySelector(`.${HIT}`);
     if (!first) return;
     first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Focus the matching control when it's obvious which one it is.
-    const control =
-        (first.matches('select, input') && first) ||
-        (first.htmlFor && document.getElementById(first.htmlFor)) ||
-        first.closest('label')?.querySelector('input, select, textarea, .tg-toggle') ||
-        null;
+    const control = _controlFor(first);
     if (control && typeof control.focus === 'function') {
         setTimeout(() => control.focus({ preventScroll: true }), 300);
     }

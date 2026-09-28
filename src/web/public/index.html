@@ -163,72 +163,43 @@
         <aside id="sidebar"
             class="fixed md:relative w-[min(85vw,18rem)] sm:w-80 bg-tg-sidebar border-r border-tg-border flex flex-col h-full z-50 sidebar-mobile md:transform-none">
 
-            <!-- Header -->
-            <div class="p-3 flex items-center gap-3 border-b border-tg-border/40">
-                <button id="sidebar-close"
-                    class="md:hidden w-10 h-10 flex items-center justify-center rounded-full hover:bg-tg-hover">
-                    <i class="ri-arrow-left-line text-xl text-tg-textSecondary"></i>
+            <!-- Header: on phones, the drawer's close button. -->
+            <div class="p-2 flex items-center gap-2 border-b border-tg-border/40">
+                <button id="sidebar-close" type="button"
+                    class="md:hidden w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-tg-hover"
+                    data-i18n-aria-label="common.close" aria-label="Close">
+                    <i class="ri-arrow-left-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
                 </button>
             </div>
 
-            <!-- Navigation -->
-            <!-- Sidebar "Viewer" entry removed in v2.3.12 — was a third
-                 redundant entry-point to the same #/viewer page (the
-                 "All Media" card below + the bottom-nav "Library" item
-                 already cover it). -->
-            <nav class="border-b border-tg-border/40 px-2 py-2 flex flex-col gap-0.5">
-                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="groups" data-admin-only
-                    onclick="navigateTo('groups')">
-                    <div class="w-7 h-7 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                        <i class="ri-group-line text-sm text-blue-400"></i>
-                    </div>
-                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.groups">Groups</span>
-                </div>
-                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="backfill" data-admin-only
-                    onclick="navigateTo('backfill')">
-                    <div class="w-7 h-7 rounded-md bg-purple-500/10 flex items-center justify-center flex-shrink-0">
-                        <i class="ri-history-line text-sm text-purple-400"></i>
-                    </div>
-                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.backfill">Backfill</span>
-                </div>
-                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="queue" data-admin-only
-                    onclick="navigateTo('queue')">
-                    <div class="w-7 h-7 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0">
+            <!-- Navigation — the four places, same as the phone bottom nav
+                 (js/nav.js). Backfill lives under Chats, Maintenance is the
+                 Tools section of Settings. -->
+            <nav class="sidebar-nav border-b border-tg-border/40 px-2 py-2 flex flex-col gap-0.5" data-i18n-aria-label="nav.primary" aria-label="Primary">
+                <a href="#/viewer" data-library-link class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-tg-hover transition-colors" data-page="viewer">
+                    <span class="w-7 h-7 rounded-md bg-purple-500/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                        <i class="ri-gallery-line text-sm text-purple-400"></i>
+                    </span>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.library">Library</span>
+                </a>
+                <a href="#/groups" class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-tg-hover transition-colors" data-page="groups" data-admin-only>
+                    <span class="w-7 h-7 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
+                        <i class="ri-chat-3-line text-sm text-blue-400"></i>
+                    </span>
+                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.chats">Chats</span>
+                </a>
+                <a href="#/queue" class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-tg-hover transition-colors" data-page="queue" data-admin-only>
+                    <span class="w-7 h-7 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
                         <i class="ri-download-cloud-2-line text-sm text-green-400"></i>
-                    </div>
+                    </span>
                     <span class="text-tg-text text-sm font-medium" data-i18n="nav.queue">Queue</span>
-                </div>
-                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="settings"
-                    onclick="navigateTo('settings')">
-                    <div class="w-7 h-7 rounded-md bg-gray-500/10 flex items-center justify-center flex-shrink-0">
+                </a>
+                <a href="#/settings" class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-tg-hover transition-colors" data-page="settings">
+                    <span class="w-7 h-7 rounded-md bg-gray-500/10 flex items-center justify-center flex-shrink-0" aria-hidden="true">
                         <i class="ri-settings-3-line text-sm text-gray-400"></i>
-                    </div>
+                    </span>
                     <span class="text-tg-text text-sm font-medium" data-i18n="nav.settings">Settings</span>
-                </div>
-                <div class="nav-item flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-tg-hover transition-colors" data-page="maintenance" data-admin-only
-                    onclick="navigateTo('maintenance')">
-                    <div class="w-7 h-7 rounded-md bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                        <i class="ri-tools-line text-sm text-amber-400"></i>
-                    </div>
-                    <span class="text-tg-text text-sm font-medium" data-i18n="nav.maintenance.section">Maintenance</span>
-                </div>
-                <!-- Hidden anchors so existing inline-onclick deep-links
-                     (settings.js maint cards) keep working without code
-                     changes — they call navigateTo('maintenance/<slug>')
-                     and the router still resolves to the per-feature
-                     page. No nav row rendered. -->
-                <div class="hidden">
-                    <div data-page="maintenance-duplicates"></div>
-                    <div data-page="maintenance-thumbs"></div>
-                    <div data-page="maintenance-video"></div>
-                    <div data-page="maintenance-nsfw"></div>
-                    <div data-page="maintenance-ai"></div>
-                    <div data-page="maintenance-logs"></div>
-                    <div data-page="maintenance-backup"></div>
-                    <div data-page="maintenance-cluster"></div>
-                    <div data-page="maintenance-recovery"></div>
-                    <div data-page="maintenance-updates"></div>
-                </div>
+                </a>
             </nav>
 
             <!-- All Media Button -->
@@ -804,49 +775,59 @@
             <!-- Content Area -->
             <div id="content-area" class="flex-1 overflow-y-auto overscroll-contain p-2 sm:p-4 bg-tg-lightBg">
 
-                <!-- Maintenance tab strip — admin-only, only rendered when
-                     the user is on a per-feature maintenance page (NOT on
-                     the hub itself). Lets the operator hop between tools
-                     without a sidebar trip. Active tab highlighted by
-                     app.js's renderPage(); a back arrow on the left
-                     returns to the hub. Mobile: horizontal scroll. -->
-                <nav id="maintenance-tabs" class="maintenance-tabs hidden mb-3 max-w-5xl mx-auto" data-admin-only role="tablist" aria-label="Maintenance tools">
-                    <a class="maintenance-tab-back" href="#/maintenance" data-i18n-aria-label="maintenance.tabs.back" aria-label="Back to hub">
-                        <i class="ri-arrow-left-s-line"></i>
+                <!-- Chats | Backfill — Backfill is a tab of the Chats place
+                     (js/nav.js). Shown on #/groups and #/backfill only. -->
+                <nav id="chats-tabs" class="chats-tabs hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
+                    data-i18n-aria-label="chats.tabs.label" aria-label="Chats views">
+                    <a class="chats-tab" data-chats-tab="groups" href="#/groups">
+                        <i class="ri-chat-3-line" aria-hidden="true"></i><span data-i18n="nav.chats">Chats</span>
+                    </a>
+                    <a class="chats-tab" data-chats-tab="backfill" href="#/backfill">
+                        <i class="ri-history-line" aria-hidden="true"></i><span data-i18n="nav.backfill">Backfill</span>
+                    </a>
+                </nav>
+
+                <!-- Tool tab strip — shown on a tool's page (#/settings/tools/
+                     <group>/<tool>): a back link to the group page, then the
+                     group's other tools. js/nav.js sets data-group, which
+                     hides the other groups' tabs. Mobile: horizontal scroll. -->
+                <nav id="maintenance-tabs" class="maintenance-tabs hidden mb-3 max-w-5xl mx-auto" data-admin-only role="tablist" aria-label="Tools">
+                    <a class="maintenance-tab-back" href="#/settings/tools" data-i18n-aria-label="maintenance.tabs.back" aria-label="Back to hub">
+                        <i class="ri-arrow-left-s-line" aria-hidden="true"></i><span class="maintenance-tab-back-label"></span>
                     </a>
                     <div class="maintenance-tabs-scroll">
-                        <a class="maintenance-tab" data-mt-page="maintenance-duplicates" href="#/maintenance/duplicates" role="tab" data-i18n-title="nav.maintenance.duplicates" title="Duplicates">
-                            <i class="ri-file-copy-2-line"></i><span data-i18n="nav.maintenance.duplicates">Duplicates</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-duplicates" data-tool-group="library" href="#/settings/tools/library/duplicates" role="tab" data-i18n-title="nav.maintenance.duplicates" title="Duplicates">
+                            <i class="ri-file-copy-2-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.duplicates">Duplicates</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-thumbs" href="#/maintenance/thumbs" role="tab" data-i18n-title="nav.maintenance.thumbs" title="Thumbnails">
-                            <i class="ri-image-2-line"></i><span data-i18n="nav.maintenance.thumbs">Thumbnails</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-thumbs" data-tool-group="library" href="#/settings/tools/library/thumbs" role="tab" data-i18n-title="nav.maintenance.thumbs" title="Thumbnails">
+                            <i class="ri-image-2-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.thumbs">Thumbnails</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-seekbar" href="#/maintenance/seekbar" role="tab" data-i18n-title="nav.maintenance.seekbar" title="Seekbar previews">
-                            <i class="ri-movie-line"></i><span data-i18n="nav.maintenance.seekbar">Seekbar previews</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-seekbar" data-tool-group="library" href="#/settings/tools/library/seekbar" role="tab" data-i18n-title="nav.maintenance.seekbar" title="Seekbar previews">
+                            <i class="ri-movie-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.seekbar">Seekbar previews</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-video" href="#/maintenance/video" role="tab" data-i18n-title="nav.maintenance.video" title="Videos">
-                            <i class="ri-film-line"></i><span data-i18n="nav.maintenance.video">Videos</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-video" data-tool-group="library" href="#/settings/tools/library/video" role="tab" data-i18n-title="tools.video" title="Video faststart">
+                            <i class="ri-film-line" aria-hidden="true"></i><span data-i18n="tools.video">Video faststart</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-nsfw" href="#/maintenance/nsfw" role="tab" data-i18n-title="nav.maintenance.nsfw" title="NSFW">
-                            <i class="ri-alarm-warning-line"></i><span data-i18n="nav.maintenance.nsfw">NSFW</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-nsfw" data-tool-group="safety" href="#/settings/tools/safety/nsfw" role="tab" data-i18n-title="nav.maintenance.nsfw" title="NSFW">
+                            <i class="ri-alarm-warning-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.nsfw">NSFW</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-ai" href="#/maintenance/ai" role="tab" data-i18n-title="nav.maintenance.ai" title="AI">
-                            <i class="ri-sparkling-2-line"></i><span data-i18n="nav.maintenance.ai">AI</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-ai" data-tool-group="safety" href="#/settings/tools/safety/ai" role="tab" data-i18n-title="tools.faces" title="Faces">
+                            <i class="ri-user-smile-line" aria-hidden="true"></i><span data-i18n="tools.faces">Faces</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-backup" href="#/maintenance/backup" role="tab" data-i18n-title="nav.maintenance.backup" title="Backup">
-                            <i class="ri-cloud-line"></i><span data-i18n="nav.maintenance.backup">Backup</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-backup" data-tool-group="sync" href="#/settings/tools/sync/backup" role="tab" data-i18n-title="nav.maintenance.backup" title="Backup">
+                            <i class="ri-cloud-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.backup">Backup</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-cluster" href="#/maintenance/cluster" role="tab" data-i18n-title="nav.maintenance.cluster" title="Cluster">
-                            <i class="ri-broadcast-line"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-cluster" data-tool-group="sync" href="#/settings/tools/sync/cluster" role="tab" data-i18n-title="nav.maintenance.cluster" title="Cluster">
+                            <i class="ri-broadcast-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.cluster">Cluster</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-recovery" href="#/maintenance/recovery" role="tab" data-i18n-title="nav.maintenance.recovery" title="Recovery">
-                            <i class="ri-first-aid-kit-line"></i><span data-i18n="nav.maintenance.recovery">Recovery</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-logs" data-tool-group="system" href="#/settings/tools/system/logs" role="tab" data-i18n-title="nav.maintenance.logs" title="Logs">
+                            <i class="ri-terminal-box-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.logs">Logs</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-logs" href="#/maintenance/logs" role="tab" data-i18n-title="nav.maintenance.logs" title="Logs">
-                            <i class="ri-terminal-box-line"></i><span data-i18n="nav.maintenance.logs">Logs</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-updates" data-tool-group="system" href="#/settings/tools/system/updates" role="tab" data-i18n-title="nav.maintenance.updates" title="Updates">
+                            <i class="ri-download-cloud-2-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.updates">Updates</span>
                         </a>
-                        <a class="maintenance-tab" data-mt-page="maintenance-updates" href="#/maintenance/updates" role="tab" data-i18n-title="nav.maintenance.updates" title="Updates">
-                            <i class="ri-download-cloud-2-line"></i><span data-i18n="nav.maintenance.updates">Updates</span>
+                        <a class="maintenance-tab" data-mt-page="maintenance-recovery" data-tool-group="system" href="#/settings/tools/system/recovery" role="tab" data-i18n-title="nav.maintenance.recovery" title="Recovery">
+                            <i class="ri-first-aid-kit-line" aria-hidden="true"></i><span data-i18n="nav.maintenance.recovery">Recovery</span>
                         </a>
                     </div>
                 </nav>
@@ -943,16 +924,13 @@
                 <!-- Settings Page -->
                 <div id="page-settings" class="hidden max-w-5xl mx-auto px-3 sm:px-4">
 
-                    <!-- Sticky chip-nav. Drives smooth-scroll to the five
-                         anchored sections below (System / Accounts /
-                         Downloads / Look & Feel / Privacy & Net). Click
-                         updates the hash; an IntersectionObserver at the
-                         bottom of the page mirrors active section back
-                         to the chip via [aria-selected]. -->
                     <!-- Sticky top bar: settings search (js/settings-search.js) +
-                         the section chips. While a query is typed the chips
-                         hide, non-matching cards hide, matching labels are
-                         highlighted and tools on other pages are listed. -->
+                         the section chips — a side table of contents on wide
+                         screens. A chip click goes to #/settings/<section>; the
+                         chip of the section on screen lights up (js/nav.js).
+                         While a query is typed the chips hide, non-matching
+                         cards hide, matching labels are highlighted and tools
+                         on other pages are listed. -->
                     <div class="settings-top-bar">
                     <div class="settings-search" role="search">
                         <i class="ri-search-line settings-search-icon" aria-hidden="true"></i>
@@ -969,20 +947,24 @@
                             <i class="ri-close-circle-fill" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <nav class="settings-chip-nav" role="tablist" aria-label="Settings sections">
-                        <!-- Trimmed in v2.9: 10 chips → 5. Engine card +
-                             Maintenance card moved to a header Session menu /
-                             the /maintenance hub respectively; Quick Presets
-                             retired; Advanced collapsed behind a footer
-                             <details>. The chip-nav now mirrors only the
-                             top-level configuration sections. -->
-                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-tg-api" aria-selected="true">
-                            <i class="ri-key-2-line" aria-hidden="true"></i>
-                            <span data-i18n="settings.tg_api">Telegram API</span>
+                    <!-- Section chips (phones) / side table of contents (desktop,
+                         ≥1024 px — css .settings-top-bar). Order follows the page. -->
+                    <nav class="settings-chip-nav" role="tablist" aria-label="Settings sections" data-i18n-aria-label="settings.sections">
+                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-engine" aria-selected="true">
+                            <i class="ri-pulse-line" aria-hidden="true"></i>
+                            <span data-i18n="settings.chip.monitor">Monitor</span>
+                        </button>
+                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="tools" aria-selected="false">
+                            <i class="ri-tools-line" aria-hidden="true"></i>
+                            <span data-i18n="tools.title">Tools</span>
                         </button>
                         <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-accounts" aria-selected="false">
                             <i class="ri-user-line" aria-hidden="true"></i>
                             <span data-i18n="settings.accounts">Accounts</span>
+                        </button>
+                        <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-tg-api" aria-selected="false">
+                            <i class="ri-key-2-line" aria-hidden="true"></i>
+                            <span data-i18n="settings.tg_api">Telegram API</span>
                         </button>
                         <button type="button" role="tab" data-admin-only class="settings-chip" data-chip="card-federation" aria-selected="false">
                             <i class="ri-broadcast-line" aria-hidden="true"></i>
@@ -1027,7 +1009,7 @@
                          The animated dot + state pill mirror the topbar
                          indicator so at-a-glance status is consistent
                          everywhere. -->
-                    <section id="settings-card-engine" class="engine-card bg-tg-panel rounded-xl p-4 mb-6">
+                    <section id="settings-card-engine" data-settings-section="card-engine" class="engine-card bg-tg-panel rounded-xl p-4 mb-6">
                         <header class="engine-header">
                             <div class="engine-title-group">
                                 <span id="engine-state-dot" class="engine-state-dot" data-state="stopped" aria-hidden="true"></span>
@@ -1087,20 +1069,23 @@
                         <p id="engine-error" class="engine-error hidden"></p>
                     </section>
 
-                    <!-- Discovery pointer to the Maintenance hub. Replaces
-                         the 14-button card retired in v2.9 — keeps the
-                         affordance discoverable from Settings without
-                         duplicating every action button across two pages. -->
-                    <a href="#/maintenance" class="block bg-tg-panel hover:bg-tg-hover transition-colors rounded-xl p-4 mb-6 flex items-start gap-3 group" data-admin-only>
-                        <div class="w-10 h-10 rounded-xl bg-tg-blue/15 text-tg-blue flex items-center justify-center text-xl shrink-0">
-                            <i class="ri-tools-line"></i>
+                    <!-- Tools — what used to be the Maintenance hub. What needs
+                         attention first, then the four groups; each group page
+                         has a card per tool (js/tools-hub.js). #/settings/tools
+                         and the old #/maintenance land here. -->
+                    <div id="settings-tools" data-settings-section="tools" class="settings-tools-card bg-tg-panel rounded-xl p-4 mb-6" data-admin-only>
+                        <div class="flex items-start gap-3 mb-3">
+                            <div class="w-10 h-10 rounded-xl bg-tg-blue/15 text-tg-blue flex items-center justify-center text-xl shrink-0" aria-hidden="true">
+                                <i class="ri-tools-line"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-tg-text text-base font-semibold" data-i18n="tools.title">Tools</h3>
+                                <p class="text-xs text-tg-textSecondary leading-relaxed" data-i18n="tools.subtitle">Maintenance jobs, backups and diagnostics.</p>
+                            </div>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="text-tg-text text-sm font-semibold mb-1" data-i18n="settings.maintenance_link.title">Maintenance &amp; admin tools</h3>
-                            <p class="text-xs text-tg-textSecondary leading-relaxed" data-i18n="settings.maintenance_link.body">Dedup, thumbnails, NSFW review, logs, updates, DB integrity, share links — every operational tool moved to the Maintenance hub.</p>
-                        </div>
-                        <i class="ri-arrow-right-s-line text-tg-textSecondary self-center group-hover:translate-x-0.5 transition-transform" aria-hidden="true"></i>
-                    </a>
+                        <div id="tools-attention" class="tools-attention" aria-live="polite"></div>
+                        <div id="tools-groups" class="tools-groups"></div>
+                    </div>
 
                     <!-- Advanced (runtime tunables) — collapsed by default in v2.9.
                          Power-user settings — every value here was a hardcoded
@@ -1848,49 +1833,6 @@
                         </button>
                     </div>
 
-                    <script type="module">
-                        // Settings chip-nav: smooth-scroll on click, IntersectionObserver-driven
-                        // active state on scroll. Self-contained; no external dependency. Runs
-                        // once because #page-settings is mounted statically in index.html.
-                        (function () {
-                            const nav = document.querySelector('.settings-chip-nav');
-                            if (!nav) return;
-                            const chips = Array.from(nav.querySelectorAll('.settings-chip'));
-                            const sections = chips.map(c => document.getElementById('settings-' + c.dataset.chip)).filter(Boolean);
-                            if (!sections.length) return;
-
-                            // Click → update hash; router.js + app.js handle the smooth scroll.
-                            chips.forEach(c => c.addEventListener('click', (e) => {
-                                e.preventDefault();
-                                window.location.hash = '#/settings/' + c.dataset.chip;
-                            }));
-
-                            // Scroll → mark the chip whose section is most visible.
-                            const setActive = (anchor) => {
-                                chips.forEach(c => c.setAttribute('aria-selected', c.dataset.chip === anchor ? 'true' : 'false'));
-                                // Keep the active chip in view inside the horizontally-scrolling nav.
-                                const active = chips.find(c => c.dataset.chip === anchor);
-                                if (active && nav.scrollWidth > nav.clientWidth) {
-                                    const navRect = nav.getBoundingClientRect();
-                                    const chipRect = active.getBoundingClientRect();
-                                    if (chipRect.left < navRect.left + 16) nav.scrollBy({ left: chipRect.left - navRect.left - 16, behavior: 'smooth' });
-                                    else if (chipRect.right > navRect.right - 16) nav.scrollBy({ left: chipRect.right - navRect.right + 16, behavior: 'smooth' });
-                                }
-                            };
-
-                            const io = new IntersectionObserver((entries) => {
-                                // Pick the entry with the largest intersection ratio that's
-                                // currently intersecting. Ignores leave events.
-                                let best = null;
-                                for (const e of entries) {
-                                    if (!e.isIntersecting) continue;
-                                    if (!best || e.intersectionRatio > best.intersectionRatio) best = e;
-                                }
-                                if (best) setActive(best.target.getAttribute('data-settings-section'));
-                            }, { rootMargin: '-80px 0px -55% 0px', threshold: [0, 0.1, 0.5, 1] });
-                            sections.forEach(s => io.observe(s));
-                        })();
-                    </script>
                 </div>
 
                 <!-- Backfill Page (top-level surface for the History
@@ -2156,26 +2098,25 @@
                     </section>
                 </div>
 
-                <!-- Maintenance hub page (admin-only) — single landing
-                     surface that lists every tool as a card. Lives at
-                     `/maintenance`. Replaces the previous "5 sidebar
-                     entries" approach so the sidebar stays clean on
-                     both mobile + desktop. -->
-                <div id="page-maintenance" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only
-                     data-page-title-key="maintenance.hub.title"
-                     data-page-subtitle-key="maintenance.hub.subtitle">
-                    <section class="bg-tg-panel rounded-xl p-4 mb-4">
-                        <div class="flex items-start justify-between gap-3 flex-wrap">
-                            <div class="min-w-0">
-                                <h2 class="text-tg-text text-base font-semibold flex items-center gap-2">
-                                    <i class="ri-tools-line text-tg-blue"></i>
-                                    <span data-i18n="maintenance.hub.title">Maintenance</span>
-                                </h2>
-                                <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.hub.subtitle">Catalogue, thumbnails, NSFW review, logs, backup destinations — and AI search when enabled.</p>
-                            </div>
+                <!-- Tools group page (admin-only) — #/settings/tools/<group>.
+                     One card per tool with its status, a run / stop button and
+                     Open (js/tools-hub.js). Keeps the old Maintenance hub ids. -->
+                <div id="page-maintenance" class="hidden max-w-5xl mx-auto px-3 sm:px-4" data-admin-only>
+                    <nav class="tools-crumbs" data-i18n-aria-label="tools.breadcrumb" aria-label="Breadcrumb">
+                        <a href="#/settings" data-i18n="nav.settings">Settings</a>
+                        <i class="ri-arrow-right-s-line" aria-hidden="true"></i>
+                        <a href="#/settings/tools" data-i18n="tools.title">Tools</a>
+                    </nav>
+                    <section class="tools-group-head">
+                        <div class="w-11 h-11 rounded-xl bg-tg-blue/15 text-tg-blue flex items-center justify-center text-2xl shrink-0" aria-hidden="true">
+                            <i id="tools-group-icon" class="ri-tools-line"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h2 id="tools-group-title" class="text-tg-text text-lg font-semibold" data-i18n="tools.title">Tools</h2>
+                            <p id="tools-group-desc" class="text-xs text-tg-textSecondary mt-0.5"></p>
                         </div>
                     </section>
-                    <div id="hub-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+                    <div id="hub-grid" class="tools-grid" role="region" aria-label="Tools"></div>
                 </div>
 
                 <!-- Maintenance / Duplicates page (admin-only) -->
@@ -4925,19 +4866,16 @@
         <i class="ri-add-line" aria-hidden="true"></i>
     </button>
 
-    <!-- Bottom navigation (mobile only) — replaces the drawer-only
-         navigation pattern. Five tabs: Library / Chats / Backfill / Queue /
-         Settings. Engine is surfaced as a tappable status pill in the top
-         header; tapping it deep-links to #/settings/engine. -->
-    <nav class="bottom-nav" aria-label="Primary">
-        <a class="bottom-nav-item" href="#/viewer" data-nav="viewer" data-i18n-aria-label="nav.library" aria-label="Library">
+    <!-- Bottom navigation (mobile only) — the same four places as the
+         desktop sidebar (js/nav.js): Library / Chats / Queue / Settings.
+         Backfill is a tab of Chats; Tools a section of Settings. Engine is
+         a tappable status pill in the top header (#/settings/engine). -->
+    <nav class="bottom-nav" data-i18n-aria-label="nav.primary" aria-label="Primary">
+        <a class="bottom-nav-item" href="#/viewer" data-nav="viewer" data-library-link data-i18n-aria-label="nav.library" aria-label="Library">
             <i class="ri-gallery-line" aria-hidden="true"></i><span data-i18n="nav.library">Library</span>
         </a>
         <a class="bottom-nav-item" href="#/groups" data-nav="groups" data-admin-only data-i18n-aria-label="nav.chats" aria-label="Chats">
             <i class="ri-chat-3-line" aria-hidden="true"></i><span data-i18n="nav.chats">Chats</span>
-        </a>
-        <a class="bottom-nav-item" href="#/backfill" data-nav="backfill" data-admin-only data-i18n-aria-label="nav.backfill" aria-label="Backfill">
-            <i class="ri-history-line" aria-hidden="true"></i><span data-i18n="nav.backfill">Backfill</span>
         </a>
         <a class="bottom-nav-item" href="#/queue" data-nav="queue" data-admin-only data-i18n-aria-label="nav.queue" aria-label="Queue">
             <i class="ri-download-cloud-2-line" aria-hidden="true"></i><span data-i18n="nav.queue">Queue</span>
@@ -4960,7 +4898,13 @@
         (() => {
             try {
                 const raw = (location.hash || '').replace(/^#\/?/, '').split('?')[0].replace(/\/+$/, '');
-                const parts = raw ? raw.split('/').filter(Boolean) : [];
+                let parts = raw ? raw.split('/').filter(Boolean) : [];
+                // Tools moved under Settings (js/nav.js): #/settings/tools/<group>
+                // is #page-maintenance, …/<group>/<tool> the tool's page;
+                // old #/maintenance → Settings, #/maintenance/<tool> → its group.
+                if (parts[0] === 'maintenance') parts = parts[1] ? ['maintenance'] : ['settings'];
+                else if (parts[0] === 'settings' && parts[1] === 'tools' && parts[2])
+                    parts = parts[3] ? ['maintenance', parts[3]] : ['maintenance'];
                 let target = null;
                 for (let i = parts.length; i > 0 && !target; i--) {
                     const id = 'page-' + parts.slice(0, i).join('-');

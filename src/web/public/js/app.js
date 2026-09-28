@@ -22,6 +22,8 @@ import {
 import { initReauthModal } from './reauth-modal.js';
 import { initShortcuts } from './shortcuts.js';
 import * as router from './router.js';
+import * as Nav from './nav.js';
+import { getGroup as getToolGroup } from './tools-catalog.js';
 import { openSheet, confirmSheet } from './sheet.js';
 import {
     renderChatRow,
@@ -499,6 +501,7 @@ async function init() {
 
     // Global keyboard shortcuts (press ? for the cheatsheet).
     initShortcuts();
+    Nav.initNav();
 
     // Mobile-friendly header chrome: overflow ⋮ menu (collapses paste-link /
     // stories / view-mode / refresh on <640 px viewports) + notification
@@ -803,11 +806,9 @@ function renderPage(page, params = {}) {
     updateSelectionBar();
     state.currentRouteParams = params;
 
-    // Allow callers to override the highlighted nav slot independent of the
-    // page section (e.g. `#/engine` is a sub-route of the Settings page but
-    // the bottom-nav Engine tab should still light up). Falls back to the
-    // page name itself when no override is supplied.
-    const navKey = params.navKey || page;
+    // The nav place (Library / Chats / Queue / Settings) the page belongs
+    // to — js/nav.js. Callers may override it (e.g. `#/engine`).
+    const navKey = Nav.navPlace(params.navKey || page);
 
     document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
     document.querySelector(`.nav-item[data-page="${navKey}"]`)?.classList.add('active');
@@ -833,6 +834,7 @@ function renderPage(page, params = {}) {
     if (page !== 'viewer') updateHeaderAvatar(null, null);
     setHeaderPageIcon(page);
     setActiveMaintenanceTab(page);
+    Nav.syncShell(page);
 
     if (page === 'settings') {
         // Auto-save: every Setting input is watched and a debounced
@@ -848,28 +850,21 @@ function renderPage(page, params = {}) {
         import('./settings-search.js')
             .then((m) => m.initSettingsSearch())
             .catch((e) => console.error('settings search', e));
+        if (state.role === 'admin') {
+            import('./tools-hub.js')
+                .then((m) => m.initToolsCard())
+                .catch((e) => console.error('tools card', e));
+        }
         // Engine controls live in the admin-only System section; guests
         // never see the card, and `initEngine` polls /api/monitor/status
         // (admin-gated) so skip it for them.
         if (state.role === 'admin') initEngine();
         _setPageText('title', 'settings.page.title', 'Settings');
         _setPageText('subtitle', 'settings.page.subtitle', 'System Configuration');
-        // Optional deep-link: #/settings/<section> scrolls to that section.
-        // Prefer #settings-<anchor> (unique by construction on the chip-nav
-        // wrappers) over a [data-settings-section] match — the latter can
-        // also live on inner cards (legacy attrs like rescue, video-player)
-        // and querySelector returns the first match, which may not be the
-        // section heading we want to scroll to.
+        // Optional deep-link: #/settings/<section> scrolls to that section
+        // (#settings-<anchor> first — see Nav.scrollToSettingsSection).
         if (params.section) {
-            setTimeout(() => {
-                const el =
-                    document.getElementById(`settings-${params.section}`) ||
-                    document.querySelector(`[data-settings-section="${params.section}"]`) ||
-                    document.querySelector(
-                        `#setting-${params.section}, .${params.section}-section`,
-                    );
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 80);
+            setTimeout(() => Nav.scrollToSettingsSection(params.section, { smooth: false }), 80);
         }
     } else if (page === 'groups') {
         renderGroupsConfig();
@@ -905,20 +900,13 @@ function renderPage(page, params = {}) {
         );
         showQueuePage(params).catch((e) => console.error('queue page', e));
     } else if (page === 'maintenance') {
-        // Hub page — single sidebar entry that lists every maintenance
-        // tool as a card. Cleans up the sidebar (used to be 5+ rows of
-        // sub-pages, now one). Power users keep the per-feature deep
-        // links: /maintenance/duplicates etc. still resolve to their
-        // dedicated pages directly.
-        _setPageText('title', 'maintenance.hub.title', 'Maintenance');
-        _setPageText(
-            'subtitle',
-            'maintenance.hub.subtitle',
-            'Catalogue, thumbnails, NSFW review, logs, backup destinations',
-        );
-        import('./maintenance-hub.js')
-            .then((m) => m.init())
-            .catch((e) => console.error('maintenance-hub', e));
+        // A Tools group page (#/settings/tools/<group>) — js/tools-hub.js.
+        const group = getToolGroup(params.group);
+        if (group) _setPageText('title', group.title[0], group.title[1]);
+        _setPageText('subtitle', 'tools.title', 'Tools');
+        import('./tools-hub.js')
+            .then((m) => m.showGroupPage(params))
+            .catch((e) => console.error('tools group', e));
     } else if (page === 'maintenance-duplicates') {
         _setPageText('title', 'maintenance.duplicates.title', 'Find duplicate files');
         _setPageText(
@@ -1034,6 +1022,9 @@ function renderPage(page, params = {}) {
 
 // Register hash routes. Patterns documented in router.js.
 function registerRoutes() {
+    // Tools pages + the old #/maintenance hashes (js/nav.js). First, so
+    // `/settings/tools/...` wins over `/settings/:section` below.
+    Nav.registerNavRoutes(router, renderPage);
     // #/viewer is All Media; a chat's gallery is #/viewer/<id>.
     router.route('/viewer', () => renderPage('viewer', { allMedia: true }));
     router.route('/viewer/:groupId', ({ params, query }) => {
@@ -1072,20 +1063,8 @@ function registerRoutes() {
                 ...(state.currentRouteParams || {}),
                 section: params.section,
             };
-            const el =
-                document.getElementById(`settings-${params.section}`) ||
-                document.querySelector(`[data-settings-section="${params.section}"]`) ||
-                document.querySelector(`#setting-${params.section}, .${params.section}-section`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            // Light up the matching chip immediately rather than waiting for
-            // the IntersectionObserver to catch up after the smooth-scroll —
-            // gives instant visual feedback even on slow scrolls.
-            document.querySelectorAll('.settings-chip').forEach((c) => {
-                c.setAttribute(
-                    'aria-selected',
-                    c.dataset.chip === params.section ? 'true' : 'false',
-                );
-            });
+            // Also lights up the matching chip straight away.
+            Nav.scrollToSettingsSection(params.section);
             return;
         }
         renderPage('settings', { section: params.section });
@@ -1126,18 +1105,6 @@ function registerRoutes() {
     router.route('/account/add', () => {
         window.location.href = '/add-account.html';
     });
-    router.route('/maintenance', () => renderPage('maintenance'));
-    router.route('/maintenance/duplicates', () => renderPage('maintenance-duplicates'));
-    router.route('/maintenance/thumbs', () => renderPage('maintenance-thumbs'));
-    router.route('/maintenance/seekbar', () => renderPage('maintenance-seekbar'));
-    router.route('/maintenance/video', () => renderPage('maintenance-video'));
-    router.route('/maintenance/nsfw', () => renderPage('maintenance-nsfw'));
-    router.route('/maintenance/ai', () => renderPage('maintenance-ai'));
-    router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
-    router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
-    router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
-    router.route('/maintenance/recovery', () => renderPage('maintenance-recovery'));
-    router.route('/maintenance/updates', () => renderPage('maintenance-updates'));
 }
 
 function closeSidebar() {
@@ -2656,7 +2623,7 @@ function renderGalleryEmptyState() {
                 {
                     label: i18nT('viewer.empty.action.reindex', 'Re-index from disk'),
                     icon: 'ri-refresh-line',
-                    onClick: () => window.navigateTo?.('maintenance/duplicates'),
+                    onClick: () => window.navigateTo?.('settings/tools/library/duplicates'),
                 },
             ];
         }
