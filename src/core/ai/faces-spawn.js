@@ -386,10 +386,17 @@ async function _doStart() {
         }
     }
 
-    // Mode 3 — local auto-spawn (only when face clustering is enabled).
-    if (aiCfg.faceClustering !== true) {
+    // Mode 3 — local auto-spawn, only once the operator has switched the
+    // AI subsystem on. `faceClustering` defaults to true, so gating on it
+    // alone downloaded the ~100 MB binary and started a ~1 GB process on
+    // every fresh install at boot. Enabling AI later restarts this path
+    // (config save, or the scan start endpoint).
+    if (aiCfg.enabled !== true || aiCfg.faceClustering !== true) {
         _state = 'idle';
-        _log('info', 'face clustering disabled; not spawning sidecar');
+        _log(
+            'info',
+            `${aiCfg.enabled !== true ? 'AI' : 'face clustering'} disabled; not spawning sidecar`,
+        );
         return getSidecarStatus();
     }
 
@@ -1317,13 +1324,21 @@ function _streamDownload(url, destPath, redirectsLeft = _downloadRedirectLimit()
  * Windows 10+ ships it, every supported Linux/macOS has it. Fall back
  * to a Node-level decode using zlib + a minimal tar parser when `tar`
  * isn't on PATH (rare, but possible on stripped-down container images).
+ *
+ * tar runs inside `destDir` with a relative archive path. With absolute
+ * Windows paths, GNU tar (the one Git for Windows puts first on PATH)
+ * reads `C:\…` as `host:path` and fails with "Cannot connect to C:
+ * resolve failed"; relative paths work with GNU tar and bsdtar alike.
  */
-async function _extractTarball(tarballPath, destDir) {
-    // Try system tar first.
+export async function _extractTarball(tarballPath, destDir) {
+    const rel = path.relative(destDir, tarballPath);
+    const archiveArg = path.isAbsolute(rel) ? tarballPath : rel;
     try {
-        const res = spawnSync('tar', ['-xzf', tarballPath, '-C', destDir], {
+        const res = spawnSync('tar', ['-xzf', archiveArg], {
+            cwd: destDir,
             stdio: ['ignore', 'pipe', 'pipe'],
             timeout: 120_000,
+            windowsHide: true,
         });
         if (!res.error && res.status === 0) return;
         if (res.error) {
@@ -1346,158 +1361,103 @@ async function _extractTarball(tarballPath, destDir) {
 /**
  * Streaming tar.gz extractor — gunzip the tarball, then walk 512-byte
  * tar blocks. Supports REGULAR files and DIRECTORIES (which is all the
- * sidecar release ships). Symlinks, long-name extensions, and PAX
- * headers are intentionally rejected — if a future sidecar release
- * needs them, the GitHub Actions build can re-pack without them.
+ * sidecar release ships); other entry types (symlinks, PAX / GNU long-name
+ * headers) have their payload skipped.
+ *
+ * Chunks are consumed strictly one after another (`for await`). The
+ * previous version used an `async` 'data' handler, so a second chunk was
+ * parsed while the first was still awaiting a mkdir — the shared cursor
+ * got corrupted and a random payload slice was read as a file name
+ * (ENOENT on a garbage path, surfacing as an unhandled rejection).
  */
-async function _extractTarballNodeFallback(tarballPath, destDir) {
+export async function _extractTarballNodeFallback(tarballPath, destDir) {
     const { createGunzip } = await import('zlib');
     const { createReadStream } = await import('fs');
-    const rs = createReadStream(tarballPath);
-    const gz = createGunzip();
+    const { once } = await import('events');
+    const root = path.resolve(destDir);
+    const gz = createReadStream(tarballPath).pipe(createGunzip());
 
     let buf = Buffer.alloc(0);
-    let pendingHeader = null;
-    let pendingBytesRemaining = 0;
-    let pendingPaddingBytes = 0;
-    let pendingWriteStream = null;
-    let pendingWritePromise = null;
+    let remaining = 0; // payload bytes of the current entry still to read
+    let padding = 0; // zero padding after the payload
+    let ws = null; // write stream of the current regular file, if any
 
-    const ensureDir = async (p) => {
-        await fs.mkdir(p, { recursive: true });
+    const closeFile = async () => {
+        const w = ws;
+        ws = null;
+        await new Promise((resolve, reject) => {
+            w.once('error', reject);
+            w.end(resolve);
+        });
     };
 
-    const finishPendingWrite = async () => {
-        if (pendingWriteStream) {
-            const ws = pendingWriteStream;
-            const wp = pendingWritePromise;
-            pendingWriteStream = null;
-            pendingWritePromise = null;
-            ws.end();
-            await wp;
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        gz.on('error', reject);
-        rs.on('error', reject);
-
-        gz.on('data', async (chunk) => {
-            try {
-                buf = Buffer.concat([buf, chunk]);
-                // Loop until we run out of complete records (headers /
-                // file payloads) in the buffered slice.
-                while (true) {
-                    if (pendingHeader) {
-                        // Consuming file payload.
-                        if (pendingBytesRemaining > 0) {
-                            const slice = buf.subarray(
-                                0,
-                                Math.min(pendingBytesRemaining, buf.length),
-                            );
-                            if (slice.length === 0) return;
-                            if (pendingWriteStream) {
-                                if (!pendingWriteStream.write(slice)) {
-                                    gz.pause();
-                                    pendingWriteStream.once('drain', () => gz.resume());
-                                }
-                            }
-                            pendingBytesRemaining -= slice.length;
-                            buf = buf.subarray(slice.length);
-                            if (pendingBytesRemaining > 0) return;
-                        }
-                        if (pendingPaddingBytes > 0) {
-                            if (buf.length < pendingPaddingBytes) return;
-                            buf = buf.subarray(pendingPaddingBytes);
-                            pendingPaddingBytes = 0;
-                        }
-                        await finishPendingWrite();
-                        pendingHeader = null;
-                        continue;
-                    }
-                    if (buf.length < 512) return;
-                    const header = buf.subarray(0, 512);
-                    buf = buf.subarray(512);
-                    // All-zero block = end of archive.
-                    if (header.every((b) => b === 0)) {
-                        // Two zero blocks mark EOF; we treat the first one
-                        // as terminator too — extra padding is harmless.
-                        continue;
-                    }
-                    const name = _readNulTerminated(header, 0, 100);
-                    const sizeOctal = _readNulTerminated(header, 124, 12).trim();
-                    // Tar typeflag byte (numeric — avoids embedding a NUL
-                    // literal in source).
-                    const typeByte = header[156] || 0;
-                    const size = sizeOctal ? parseInt(sizeOctal, 8) : 0;
-                    const padding = size % 512 === 0 ? 0 : 512 - (size % 512);
-
-                    const target = path.join(destDir, name);
-                    if (!target.startsWith(path.resolve(destDir))) {
-                        throw new Error(`tar entry escapes destDir: ${name}`);
-                    }
-
-                    const isDir = typeByte === TAR_TYPE_DIRECTORY || name.endsWith('/');
-                    const isRegular =
-                        typeByte === TAR_TYPE_REGULAR_MODERN ||
-                        typeByte === TAR_TYPE_REGULAR_LEGACY ||
-                        typeByte === TAR_TYPE_REGULAR_SPACE;
-
-                    if (isDir) {
-                        await ensureDir(target);
-                        pendingHeader = header;
-                        pendingBytesRemaining = 0;
-                        pendingPaddingBytes = padding;
-                    } else if (isRegular) {
-                        await ensureDir(path.dirname(target));
-                        pendingHeader = header;
-                        pendingBytesRemaining = size;
-                        pendingPaddingBytes = padding;
-                        try {
-                            pendingWriteStream = createWriteStream(target);
-                        } catch (wsErr) {
-                            throw new Error(`cannot write ${name}: ${wsErr.message}`);
-                        }
-                        pendingWritePromise = new Promise((res, rej) => {
-                            pendingWriteStream.on('finish', () => res());
-                            pendingWriteStream.on('error', rej);
-                        });
-                        if (size === 0) {
-                            // Empty file — flush immediately so the loop
-                            // moves on.
-                            await finishPendingWrite();
-                            if (padding > 0) {
-                                if (buf.length < padding) return;
-                                buf = buf.subarray(padding);
-                                pendingPaddingBytes = 0;
-                            }
-                            pendingHeader = null;
-                        }
-                    } else {
-                        // Unsupported entry type — skip its payload + padding.
-                        pendingHeader = header;
-                        pendingBytesRemaining = size;
-                        pendingPaddingBytes = padding;
-                        pendingWriteStream = null;
-                        pendingWritePromise = Promise.resolve();
-                    }
+    try {
+        for await (const chunk of gz) {
+            buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+            while (true) {
+                if (remaining > 0) {
+                    if (!buf.length) break;
+                    const n = Math.min(remaining, buf.length);
+                    if (ws && !ws.write(buf.subarray(0, n))) await once(ws, 'drain');
+                    remaining -= n;
+                    buf = buf.subarray(n);
+                    if (remaining > 0) break;
                 }
-            } catch (e) {
-                reject(e);
-            }
-        });
+                if (padding > 0) {
+                    if (buf.length < padding) break;
+                    buf = buf.subarray(padding);
+                    padding = 0;
+                }
+                if (ws) await closeFile();
+                if (buf.length < 512) break;
 
-        gz.on('end', async () => {
-            try {
-                await finishPendingWrite();
-                resolve();
-            } catch (e) {
-                reject(e);
-            }
-        });
+                const header = buf.subarray(0, 512);
+                buf = buf.subarray(512);
+                // All-zero block = end of archive (the second one, and any
+                // trailing padding, are skipped the same way).
+                if (header.every((b) => b === 0)) continue;
 
-        rs.pipe(gz);
-    });
+                let name = _readNulTerminated(header, 0, 100);
+                // ustar: long paths are split into prefix (345..500) + name.
+                if (_readNulTerminated(header, 257, 6).startsWith('ustar')) {
+                    const prefix = _readNulTerminated(header, 345, 155);
+                    if (prefix) name = `${prefix}/${name}`;
+                }
+                const sizeOctal = _readNulTerminated(header, 124, 12).trim();
+                // Tar typeflag byte (numeric — avoids embedding a NUL
+                // literal in source).
+                const typeByte = header[156] || 0;
+                const size = sizeOctal ? parseInt(sizeOctal, 8) : 0;
+                if (!Number.isFinite(size) || size < 0) {
+                    throw new Error(`corrupt tar header for entry ${JSON.stringify(name)}`);
+                }
+                remaining = size;
+                padding = size % 512 === 0 ? 0 : 512 - (size % 512);
+
+                const target = path.resolve(root, name);
+                if (target !== root && !target.startsWith(root + path.sep)) {
+                    throw new Error(`tar entry escapes destDir: ${name}`);
+                }
+                const isDir = typeByte === TAR_TYPE_DIRECTORY || name.endsWith('/');
+                const isRegular =
+                    typeByte === TAR_TYPE_REGULAR_MODERN ||
+                    typeByte === TAR_TYPE_REGULAR_LEGACY ||
+                    typeByte === TAR_TYPE_REGULAR_SPACE;
+                if (isDir) {
+                    await fs.mkdir(target, { recursive: true });
+                } else if (isRegular) {
+                    await fs.mkdir(path.dirname(target), { recursive: true });
+                    ws = createWriteStream(target);
+                }
+                // Anything else: payload is read and dropped (ws stays null).
+            }
+        }
+        if (remaining > 0) throw new Error('tar archive ended in the middle of an entry');
+        if (ws) await closeFile();
+    } catch (e) {
+        if (ws) ws.destroy();
+        throw e;
+    }
 }
 
 function _readNulTerminated(buf, offset, length) {

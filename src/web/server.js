@@ -7846,6 +7846,23 @@ app.get('/api/ai/status', async (_req, res) => {
 // rather than a silent no-op.
 const AI_SCAN_FEATURES = new Set(['faces']);
 
+// A scan needs a sidecar. If none was started (AI was off at boot) or the
+// last spawn attempt failed, try again with the current config; the scan
+// itself waits for it to become ready. A URL-based sidecar that is merely
+// unreachable keeps its URL and is left alone.
+async function _ensureFacesSidecar() {
+    try {
+        const spawnMod = await import('../core/ai/faces-spawn.js');
+        const st = spawnMod.getSidecarStatus();
+        if (st.state === 'idle' || (st.state === 'failed' && !st.url)) {
+            spawnMod.stopSidecar();
+            spawnMod.startSidecar().catch(() => {});
+        }
+    } catch {
+        /* the scan reports the missing sidecar itself */
+    }
+}
+
 function _aiTrackerFor(feature) {
     if (feature === 'faces') return _jobTrackers.aiPeople;
     return null;
@@ -7888,6 +7905,7 @@ app.post('/api/ai/scan/start', async (req, res) => {
         if (aiIsScanRunning(feature)) {
             return res.status(409).json({ error: 'Scan already running', code: 'ALREADY_RUNNING' });
         }
+        await _ensureFacesSidecar();
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
@@ -8096,6 +8114,7 @@ app.post('/api/ai/faces/recluster', async (_req, res) => {
                 message: 'A face scan is already in progress.',
             });
         }
+        await _ensureFacesSidecar();
         const tracker = _aiTrackerFor('faces');
         const claim = tracker.tryStart(({ onProgress, signal }) => {
             return new Promise((resolve, reject) => {
@@ -11475,10 +11494,15 @@ app.post('/api/config', async (req, res) => {
                 // rather than the merged config so a no-op save doesn't restart.
                 const bodyAi = req.body.advanced.ai || {};
                 const bodyFaces = bodyAi.faces || {};
+                // `enabled` too: the auto-spawned sidecar only starts once AI
+                // is switched on, so flipping it has to (re)run the spawn path.
                 const needsRestart =
                     bodyFaces.detectorModel !== undefined ||
                     bodyFaces.providers !== undefined ||
                     bodyFaces.backend !== undefined ||
+                    bodyFaces.sidecarUrl !== undefined ||
+                    bodyFaces.sidecarToken !== undefined ||
+                    bodyAi.enabled !== undefined ||
                     bodyAi.faceClustering !== undefined;
                 if (needsRestart && facesSpawnMod) {
                     facesSpawnMod.stopSidecar();
@@ -12956,6 +12980,7 @@ ${tip}
                 const aiCfg = _aiCfg();
                 if (aiCfg.enabled) {
                     console.log('[auto-resume] resuming AI faces scan');
+                    await _ensureFacesSidecar();
                     const tracker = _aiTrackerFor('faces');
                     tracker.tryStart(({ onProgress, signal }) => {
                         try {

@@ -307,6 +307,14 @@ maintenance page when you want it. While the sidecar is unreachable (or
 face clustering is off) new downloads are left unstamped, so the next
 scan covers them.
 
+### When the local sidecar starts
+
+The auto-spawned sidecar (binary download + process) starts only when both
+`advanced.ai.enabled` and `advanced.ai.faceClustering` are on. Fresh
+installs therefore download nothing until AI is switched on in
+**Maintenance → AI**; saving that setting, or starting a scan, starts it.
+URL-based sidecars (external, Docker `FACES_SERVICE_URL`) are unaffected.
+
 ### External sidecar
 
 Point `sidecarUrl` (Maintenance → AI → External sidecar URL, or
