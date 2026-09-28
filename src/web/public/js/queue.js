@@ -1277,7 +1277,7 @@ function renderRow(j) {
                     <span class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(sizeStr)}</span>
                     <span data-row-meta class="text-[10px] text-tg-textSecondary tabular-nums">${escapeHtml(speedStr !== '—' ? speedStr : '')}</span>
                     <span data-row-status data-status="${escapeHtml(j.status)}" class="text-[10px] px-1.5 py-0.5 rounded-full ${pillCls} ml-auto">${escapeHtml(pillLabel)}</span>
-                    ${actions.length ? `<span class="flex items-center gap-0.5">${actions.join('')}</span>` : ''}
+                    ${actions.length ? `<span class="flex items-center gap-1.5">${actions.join('')}</span>` : ''}
                 </div>
                 <div data-row-pct class="hidden md:block text-[10px] text-tg-textSecondary tabular-nums mt-0.5">${escapeHtml(pctLabel)}</div>
             </div>
@@ -1289,9 +1289,11 @@ function renderRow(j) {
         </div>`;
 }
 
+// 36 px on touch layouts (was 28 px — too small / too close together to
+// hit reliably next to each other), the compact 28 px on the md+ table.
 function actionBtn(action, icon, label, extraCls = '') {
     return `<button type="button" data-row-action="${action}"
-        class="w-7 h-7 rounded flex items-center justify-center text-tg-textSecondary hover:text-tg-text hover:bg-tg-bg/60 ${extraCls}"
+        class="w-9 h-9 md:w-7 md:h-7 rounded flex items-center justify-center text-tg-textSecondary hover:text-tg-text hover:bg-tg-bg/60 ${extraCls}"
         title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"><i class="${icon}"></i></button>`;
 }
 

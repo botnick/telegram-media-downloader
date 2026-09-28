@@ -5096,3 +5096,185 @@ html[data-contrast="more"] .media-item {
     width: 44px;
     height: 44px;
 }
+
+/* ============================================================
+   Mobile viewport + safe areas (phones, installed PWA)
+   ============================================================ */
+
+/* 100vh on iOS/Android is the LARGEST viewport (toolbars hidden), so
+   bottom-anchored UI slid under the browser toolbar. Prefer the dynamic
+   viewport; browsers without dvh keep the Tailwind h-screen (100vh). */
+@supports (height: 100dvh) {
+    body.h-screen {
+        height: 100dvh;
+    }
+    #gallery-scope-menu {
+        max-height: calc(100dvh - 8rem);
+    }
+    .sheet-card {
+        max-height: 85dvh;
+    }
+}
+
+/* viewport-fit=cover (index.html) lets the page draw under notches and
+   the home indicator; these keep content inside the safe area. In
+   portrait the left/right insets are 0, in landscape they clear the
+   notch. */
+body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+.bottom-nav {
+    /* border-box: grow by the inset instead of squeezing the icons */
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+/* id selector: the element also carries Tailwind px-3, which loads later */
+#status-bar {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+#media-modal {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+#modal-top-bar {
+    padding-top: max(1rem, env(safe-area-inset-top));
+}
+#modal-bottom-controls {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.sheet-card {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+@media (max-width: 767.98px) {
+    #sidebar {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+    }
+}
+/* iOS draws white status-bar text (black-translucent) over the page.
+   Over the light theme's white header that text was invisible, so give
+   the inset strip a dark band. Zero-height outside notched standalone. */
+@media (display-mode: standalone) {
+    html.theme-light #content-header,
+    html.theme-light #sidebar {
+        box-shadow: inset 0 env(safe-area-inset-top) 0 0 #17212b;
+    }
+}
+
+/* Group Settings modal: never taller than the visible screen — header,
+   tabs and footer stay put, only the body scrolls. */
+.group-modal-card {
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+}
+
+/* Floating bars above the bottom nav + status bar on phones. The gallery
+   selection bar used to sit at bottom:32px — under the bottom nav — and
+   ran off-screen at 360 px; the Queue batch bar and the FAB overlapped
+   the status bar. */
+@media (max-width: 767.98px) {
+    #selection-bar,
+    #queue-selection-bar {
+        bottom: calc(56px + 28px + 8px + env(safe-area-inset-bottom));
+        left: calc(8px + env(safe-area-inset-left));
+        right: calc(8px + env(safe-area-inset-right));
+        transform: none;
+        max-width: none;
+        flex-wrap: wrap;
+        justify-content: center;
+        row-gap: 6px;
+    }
+    #selection-bar {
+        border-radius: 16px;
+        padding: 8px 10px;
+        column-gap: 10px;
+    }
+    /* Icon-only action buttons; the label stays for screen readers. */
+    #selection-zip > span,
+    #selection-pin > span,
+    #selection-delete > span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+    #selection-zip,
+    #selection-pin,
+    #selection-delete {
+        min-width: 44px;
+        min-height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .fab {
+        bottom: calc(56px + 28px + 12px + env(safe-area-inset-bottom));
+        right: calc(16px + env(safe-area-inset-right));
+    }
+    /* The FAB would sit on top of a floating selection bar. */
+    body:has(#selection-bar:not(.hidden)) .fab,
+    body:has(#queue-selection-bar:not(.hidden)) .fab {
+        display: none;
+    }
+}
+
+/* Viewer media panes own their gestures (swipe prev/next, drag-down to
+   close, pinch / double-tap zoom). `touch-action: manipulation` on
+   <body> let the browser claim the pan first and cancel the pointer
+   stream. Text / code / PDF / markdown panes keep native scrolling. */
+#image-container,
+#video-tap-layer,
+#audio-container,
+#fallback-container,
+#office-container {
+    touch-action: none;
+}
+#modal-image.is-zoomed {
+    cursor: grab;
+}
+
+/* Bottom sheets: a finger-sized grab area around the 36×4 handle, and a
+   44 px close button. */
+.sheet-handle {
+    position: relative;
+}
+.sheet-header .sheet-handle {
+    position: absolute;
+}
+.sheet-handle::before {
+    content: "";
+    position: absolute;
+    left: -60px;
+    right: -60px;
+    top: -10px;
+    bottom: -16px;
+    touch-action: none;
+}
+.sheet-close {
+    min-width: 44px;
+    min-height: 44px;
+    margin-right: -10px;
+}
+
+/* Touch screens have no hover: keep the mini-player controls visible, and
+   don't leave an invisible (but tappable) pin target on unpinned tiles. */
+@media (hover: none) {
+    .mini-player-bar {
+        opacity: 1;
+    }
+    .media-item:not(.is-pinned) .pin-chip {
+        display: none;
+    }
+}
+
+/* Nothing fills the viewer's preview strip yet — don't reserve a 72 px
+   empty band between the media and the info bar. */
+#preview-strip-container:not(:has(#preview-strip > *)) {
+    display: none;
+}

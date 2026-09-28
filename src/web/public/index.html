@@ -3,14 +3,18 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
     <title>Telegram Downloader</title>
 
     <!-- PWA: web-app manifest, theme colour for the address bar / status bar,
          and an apple-touch-icon so iOS picks up a proper home-screen tile. -->
     <link rel="manifest" href="/manifest.webmanifest">
-    <meta name="theme-color" content="#3390EC">
+    <!-- Browser / status-bar colour follows the app chrome (#content-header
+         background) instead of a fixed brand blue. theme.js rewrites both
+         when the user forces light or dark regardless of the OS setting. -->
+    <meta name="theme-color" content="#17212B" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TG Downloader">
@@ -313,13 +317,14 @@
         <!-- Group Settings Modal -->
         <div id="group-modal" class="fixed inset-0 z-50 flex items-center justify-center p-3 modal-backdrop hidden">
             <div
-                class="bg-tg-sidebar w-full max-w-lg rounded-xl overflow-hidden shadow-2xl transform scale-100 transition-all">
+                class="group-modal-card bg-tg-sidebar w-full max-w-lg rounded-xl overflow-hidden shadow-2xl transform scale-100 transition-all flex flex-col">
                 <!-- Header — slimmer than before so the modal fits more
                      content on short viewports. -->
-                <div class="bg-tg-panel px-4 py-3 flex items-center justify-between border-b border-tg-border">
+                <div class="bg-tg-panel px-4 py-3 flex items-center justify-between border-b border-tg-border shrink-0">
                     <h3 class="text-white font-medium text-base" data-i18n="group.modal.title">Group Settings</h3>
                     <button onclick="closeGroupSettings()"
-                        class="w-7 h-7 rounded-full hover:bg-tg-hover flex items-center justify-center transition-colors">
+                        class="w-10 h-10 -mr-2 rounded-full hover:bg-tg-hover flex items-center justify-center transition-colors"
+                        data-i18n-aria-label="common.close" aria-label="Close">
                         <i class="ri-close-line text-tg-textSecondary text-lg"></i>
                     </button>
                 </div>
@@ -331,7 +336,7 @@
                        Data     = Stats + Recent + Backfill + Rescue + Danger
                      Icons keep the labels short enough for narrow viewports;
                      `flex-1` makes each tap target evenly sized. -->
-                <div class="flex border-b border-tg-border">
+                <div class="flex border-b border-tg-border shrink-0">
                     <div class="tab-item active flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('media')" id="tab-media">
                         <i class="ri-filter-line"></i><span data-i18n="group.modal.tab.media">Filters</span>
                     </div>
@@ -344,14 +349,14 @@
                 </div>
 
                 <!-- Suspended group warning banner — shown when group.suspended === true -->
-                <div id="group-suspended-banner" class="hidden px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2">
+                <div id="group-suspended-banner" class="hidden px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2 shrink-0">
                     <i class="ri-forbid-line text-red-400 text-sm flex-shrink-0"></i>
                     <span class="text-red-400 text-xs leading-snug" data-i18n="group.suspended.banner">This group was deleted or suspended on Telegram. Monitoring is permanently disabled.</span>
                 </div>
 
                 <!-- Content — compact density + tall scroll area so most
                      of the modal real estate goes to actual content. -->
-                <div class="p-3 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                <div class="p-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
 
                     <!-- Filters tab — master enable + allowed media types
                          + forum-topic filter (was its own tab). -->
@@ -548,7 +553,7 @@
 
                 <!-- Footer — slimmer; the modal already eats more vertical
                      space than most other surfaces, so trim where we can. -->
-                <div class="px-3 py-2.5 border-t border-tg-border flex justify-end gap-2 bg-tg-sidebar">
+                <div class="px-3 py-2.5 border-t border-tg-border flex justify-end gap-2 bg-tg-sidebar shrink-0">
                     <button onclick="closeGroupSettings()"
                         class="px-3 py-1.5 text-sm rounded-lg text-tg-textButton hover:bg-tg-hover transition-colors" data-i18n="common.cancel">Cancel</button>
                     <button onclick="saveGroupSettings()"
@@ -2022,7 +2027,7 @@
                              patch the matching DOM row in place (no
                              re-render) so a 1000-job queue stays smooth
                              even with dozens of concurrent downloads. -->
-                        <div id="queue-viewport" class="overflow-y-auto" style="height: calc(100vh - 280px); min-height: 320px;">
+                        <div id="queue-viewport" class="overflow-y-auto" style="height: calc(100vh - 280px); height: calc(100dvh - 280px); min-height: 320px;">
                             <div id="queue-rows" class="divide-y divide-tg-border/30"></div>
                             <div id="queue-load-more" class="flex items-center justify-center py-3 text-xs text-tg-textSecondary hidden">
                                 <i class="ri-loader-4-line animate-spin mr-2"></i>
@@ -2079,7 +2084,7 @@
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.duplicates.title">Find duplicate files</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.duplicates.subtitle">Hash every file and reclaim space from byte-identical copies. The first run is slow on large libraries; subsequent runs only hash newly-downloaded files.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="dup-verify-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
                                         data-i18n-title="maintenance.duplicates.verify.tooltip"
                                         title="Walk every catalogue row and drop entries whose file is missing on disk.">
@@ -2221,7 +2226,7 @@
                                     <span data-i18n="maintenance.thumbs.no_ffmpeg_chip">Video / audio thumbs disabled — ffmpeg missing on PATH</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="thumbs-wipe-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
                                         data-i18n-title="maintenance.thumbs.wipe_tooltip"
                                         title="Wipes every cached thumbnail; the next gallery scroll regenerates them on demand.">
@@ -2439,7 +2444,7 @@
                                 </div>
                                 <p id="seekbar-sidecar-detail" class="text-[10.5px] text-tg-textSecondary/80 mt-1 font-mono break-all"></p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="seekbar-cancel-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled
                                         data-i18n-title="maintenance.seekbar.cancel"
                                         title="Cancel the running scan">
@@ -2816,7 +2821,7 @@
                                     <span data-i18n="maintenance.video.no_ffmpeg_chip">Faststart unavailable — ffmpeg missing on PATH</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="video-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5"
                                         data-i18n-title="maintenance.video.scan_tooltip"
                                         title="Backfill the moov rewrite across every MP4 / MOV / M4V already in the library. New downloads are handled automatically by the hook above.">
@@ -2890,7 +2895,7 @@
                                     <span><span data-i18n="maintenance.nsfw.concurrency_label">Concurrency:</span> <span id="nsfw-concurrency-value" class="text-tg-text tabular-nums">—</span></span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="nsfw-scan-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5" data-mode="scan"
                                         data-i18n-title="maintenance.nsfw.scan_tooltip"
                                         title="Run the NSFW classifier across every photo in the library. Local-only, no upload.">
@@ -3168,7 +3173,7 @@
                                  GPU support) tuck behind an overflow
                                  details menu so the header reads at a
                                  glance instead of overwhelming. -->
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="ai-cancel-btn" type="button" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5" disabled
                                         title="Cancel the running scan">
                                     <i class="ri-stop-circle-line"></i><span data-i18n="maintenance.ai.cancel">Cancel</span>
@@ -3317,7 +3322,7 @@
                                 </h3>
                                 <p class="text-[11px] text-tg-textSecondary mt-1 max-w-xl" data-i18n="maintenance.ai.install.desc">One click installs the matching onnxruntime backend for this host (DirectML on Windows, CUDA on Linux + NVIDIA, OpenVINO on Linux + Intel, CoreML on macOS, CPU elsewhere) and starts the sidecar. Takes 1–5 minutes the first time while wheels download.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <select id="ai-install-force" class="tg-input text-xs py-1 px-2" title="Override platform detection">
                                     <option value=""         data-i18n="maintenance.ai.install.auto">Auto-detect</option>
                                     <option value="directml" data-i18n="maintenance.ai.install.force_directml">Force DirectML (Windows)</option>
@@ -3699,7 +3704,7 @@
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.logs.page_title">Server logs</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.logs.subtitle">Realtime stream of every event the engine emits — filter by source, level, or text. Useful when something feels off and you want to see what the server is actually doing.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <label class="inline-flex items-center gap-1 text-xs text-tg-textSecondary cursor-pointer select-none">
                                     <input id="logs-autoscroll" type="checkbox" checked class="accent-tg-blue">
                                     <span data-i18n="maintenance.logs.autoscroll">Auto-scroll</span>
@@ -3747,7 +3752,7 @@
                              viewport on landscape mobile (a 360 px-tall
                              screen made the previous calc()+min-height
                              pair drop the bottom rows below the nav bar). -->
-                        <pre id="logs-stream" class="bg-tg-bg/60 p-3 text-[11px] font-mono whitespace-pre overflow-auto leading-snug" style="height: clamp(240px, calc(100vh - 320px), 70vh);" role="log" aria-live="polite" aria-atomic="false" aria-label="Realtime server log"></pre>
+                        <pre id="logs-stream" class="bg-tg-bg/60 p-3 text-[11px] font-mono whitespace-pre overflow-auto leading-snug" style="height: clamp(240px, calc(100vh - 320px), 70vh); height: clamp(240px, calc(100dvh - 320px), 70dvh);" role="log" aria-live="polite" aria-atomic="false" aria-label="Realtime server log"></pre>
                     </section>
                 </div>
 
@@ -3766,7 +3771,7 @@
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="maintenance.backup.page_title">Backup destinations</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="maintenance.backup.subtitle">Mirror new downloads to S3-compatible storage, an SFTP NAS, or a local mount. Optional client-side encryption + scheduled snapshots.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="backup-add-btn" class="tg-btn text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
                                     <i class="ri-add-line"></i><span data-i18n="maintenance.backup.add">Add destination</span>
                                 </button>
@@ -4138,7 +4143,7 @@
                                 <h2 class="text-tg-text text-base font-semibold" data-i18n="update.history.title">Update history</h2>
                                 <p class="text-xs text-tg-textSecondary mt-0.5" data-i18n="update.history.help">Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.</p>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            <div class="flex items-center gap-2 min-w-0 flex-wrap justify-end">
                                 <button id="updates-refresh-btn" class="tg-btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1.5">
                                     <i class="ri-refresh-line"></i><span data-i18n="update.history.refresh">Refresh</span>
                                 </button>
@@ -4492,25 +4497,27 @@
                          always-visible at 80 px wide (no hover-expand
                          which used to shove time text to the right and
                          was unusable on touch). -->
-                    <div class="flex items-center px-3 py-2 gap-2">
-                        <!-- Left cluster: play + volume -->
+                    <div class="flex items-center px-2 sm:px-3 py-2 gap-1 sm:gap-2">
+                        <!-- Left cluster: play + volume. Skip ± and mute hide below
+                             sm — double-tap seeks and phones have volume keys — so the
+                             row fits a 360 px screen. -->
                         <button id="video-play-btn"
                             class="w-10 h-10 rounded-full hover:bg-white/10 flex items-center justify-center text-white transition shrink-0"
                             data-i18n-aria-label="viewer.video.play" aria-label="Play">
                             <i class="ri-play-fill text-2xl"></i>
                         </button>
                         <button id="video-skip-back"
-                            class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center text-white/85 hover:text-white transition shrink-0"
+                            class="w-9 h-9 rounded-full hover:bg-white/10 hidden sm:flex items-center justify-center text-white/85 hover:text-white transition shrink-0"
                             data-i18n-title="viewer.video.skip_back" title="Skip back">
                             <i class="ri-rewind-mini-line text-lg"></i>
                         </button>
                         <button id="video-skip-fwd"
-                            class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center text-white/85 hover:text-white transition shrink-0"
+                            class="w-9 h-9 rounded-full hover:bg-white/10 hidden sm:flex items-center justify-center text-white/85 hover:text-white transition shrink-0"
                             data-i18n-title="viewer.video.skip_fwd" title="Skip forward">
                             <i class="ri-speed-mini-line text-lg"></i>
                         </button>
                         <button id="video-mute-btn"
-                            class="text-white/90 hover:text-white w-9 h-9 flex items-center justify-center rounded hover:bg-white/10 shrink-0"
+                            class="text-white/90 hover:text-white w-9 h-9 hidden sm:flex items-center justify-center rounded hover:bg-white/10 shrink-0"
                             data-i18n-aria-label="viewer.video.mute" aria-label="Mute">
                             <i class="ri-volume-up-line text-lg"></i>
                         </button>
@@ -4691,18 +4698,23 @@
                             <span id="modal-group-name" class="truncate"></span>
                         </span>
                         <span class="flex-1"></span>
+                        <button id="modal-pin" data-admin-only type="button"
+                            class="hidden min-w-[44px] min-h-[40px] justify-center px-2.5 sm:px-4 py-1.5 sm:py-2 bg-tg-panel hover:bg-tg-hover rounded-lg text-xs sm:text-sm text-tg-text items-center font-medium transition"
+                            data-i18n-title="favorites.pin" title="Pin" aria-pressed="false">
+                            <i class="ri-pushpin-2-line sm:mr-1.5"></i><span class="hidden sm:inline" data-i18n="favorites.pin">Pin</span>
+                        </button>
                         <button id="modal-share" data-admin-only
-                            class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-tg-panel hover:bg-tg-hover rounded-lg text-xs sm:text-sm text-tg-text flex items-center font-medium transition"
+                            class="min-w-[44px] min-h-[40px] justify-center px-2.5 sm:px-4 py-1.5 sm:py-2 bg-tg-panel hover:bg-tg-hover rounded-lg text-xs sm:text-sm text-tg-text flex items-center font-medium transition"
                             data-i18n-title="viewer.video.share_title" title="Share with friends — link works without login">
                             <i class="ri-share-line sm:mr-1.5"></i><span class="hidden sm:inline" data-i18n="viewer.video.share">Share</span>
                         </button>
                         <button id="modal-delete" onclick="confirmDeleteFile()" data-admin-only
-                            class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 rounded-lg text-xs sm:text-sm text-white flex items-center font-medium transition"
+                            class="min-w-[44px] min-h-[40px] justify-center px-2.5 sm:px-4 py-1.5 sm:py-2 bg-red-600 hover:bg-red-700 rounded-lg text-xs sm:text-sm text-white flex items-center font-medium transition"
                             data-i18n-title="viewer.video.delete_title" title="Delete File">
                             <i class="ri-delete-bin-line sm:mr-1.5"></i><span class="hidden sm:inline" data-i18n="viewer.video.delete">Delete</span>
                         </button>
                         <a id="modal-download" href="#" download
-                            class="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-tg-blue hover:bg-tg-darkBlue rounded-lg text-xs sm:text-sm text-white flex items-center font-medium transition">
+                            class="min-w-[44px] min-h-[40px] justify-center px-2.5 sm:px-4 py-1.5 sm:py-2 bg-tg-blue hover:bg-tg-darkBlue rounded-lg text-xs sm:text-sm text-white flex items-center font-medium transition">
                             <i class="ri-download-line sm:mr-1.5"></i><span class="hidden sm:inline" data-i18n="viewer.video.download">Download</span>
                         </a>
                     </div>

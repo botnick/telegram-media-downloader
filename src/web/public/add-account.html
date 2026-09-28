@@ -56,8 +56,8 @@
         body {
             background: var(--tg-bg);
             color: var(--tg-text);
-            min-height: 100dvh;
             min-height: 100vh;
+            min-height: 100dvh;
             padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         code { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -114,7 +114,8 @@
             border: 1px solid var(--tg-border);
             border-radius: 10px;
             color: var(--tg-text);
-            font-size: 15px;
+            /* 16 px: anything smaller makes iOS Safari zoom the page on focus */
+            font-size: 16px;
             outline: none;
             transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
