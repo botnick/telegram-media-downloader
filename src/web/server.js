@@ -239,6 +239,7 @@ import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
 import { createSwrCache } from './lib/swr-cache.js';
 import { createWsBroadcaster } from './lib/ws-broadcaster.js';
+import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
     recordClusterAudit,
@@ -11999,6 +12000,16 @@ app.get('/api/groups/:id/photo', async (req, res) => {
     const url = await downloadProfilePhoto(id);
     if (url && existsSync(photoPath)) return send();
 
+    // Let the browser remember a definite miss too (the SPA falls back to
+    // the initials avatar) — "no photo set" for up to an hour, "no account
+    // can see this chat" for the failed-lookup window. A transient failure
+    // (accounts still connecting, download error) stays uncached.
+    const missMs = photoMissRemainingMs(String(id));
+    if (missMs > 0) {
+        res.setHeader('Cache-Control', `private, max-age=${Math.ceil(missMs / 1000)}`);
+    } else if (entityLookupRecentlyFailed(String(id))) {
+        res.setHeader('Cache-Control', `private, max-age=${ENTITY_MISS_TTL_MS / 1000}`);
+    }
     res.status(404).send('Not found');
 });
 
@@ -12106,7 +12117,7 @@ app.post('/api/groups/refresh-photos', async (req, res) => {
         const results = [];
         onProgress({ processed: 0, total, stage: 'downloading' });
         for (const group of groups) {
-            const url = await downloadProfilePhoto(group.id).catch(() => null);
+            const url = await downloadProfilePhoto(group.id, { force: true }).catch(() => null);
             results.push({ id: group.id, url });
             processed += 1;
             onProgress({ processed, total, stage: 'downloading' });
@@ -12389,13 +12400,31 @@ async function _connectLegacy() {
 // hard cap so a long-running process doesn't grow this Map without bound.
 const entityCache = new Map();
 const ENTITY_CACHE_TTL_MS = 30 * 60 * 1000;
+// Failed lookups (no account can see the id — left the chat, chat
+// deleted, never joined) are cached as `{ entity: null }` for a shorter
+// window, so every avatar render / refresh-info sweep doesn't re-ask each
+// account for the same unknown id.
+const ENTITY_MISS_TTL_MS = 10 * 60 * 1000;
 const ENTITY_CACHE_MAX = 5000;
 
-/** Walk every loaded account looking for one that can resolve `idStr`. */
-async function resolveEntityAcrossAccounts(idStr) {
+/** True when `idStr` recently failed to resolve on every connected account. */
+function entityLookupRecentlyFailed(idStr) {
     const cached = entityCache.get(idStr);
-    if (cached && Date.now() - cached.at < ENTITY_CACHE_TTL_MS) {
-        return { entity: cached.entity, client: cached.client };
+    return !!cached && !cached.entity && Math.max(0, Date.now() - cached.at) < ENTITY_MISS_TTL_MS;
+}
+
+/**
+ * Walk every loaded account looking for one that can resolve `idStr`.
+ * `force` skips the failed-lookup cache (explicit operator refreshes).
+ */
+async function resolveEntityAcrossAccounts(idStr, { force = false } = {}) {
+    const cached = entityCache.get(idStr);
+    if (cached) {
+        const age = Math.max(0, Date.now() - cached.at);
+        if (cached.entity && age < ENTITY_CACHE_TTL_MS) {
+            return { entity: cached.entity, client: cached.client };
+        }
+        if (!cached.entity && !force && age < ENTITY_MISS_TTL_MS) return null;
     }
 
     let am;
@@ -12410,7 +12439,7 @@ async function resolveEntityAcrossAccounts(idStr) {
     const legacy = await connectTelegram();
     if (legacy && !candidates.includes(legacy)) candidates.push(legacy);
 
-    const cacheHit = (e, c) => {
+    const remember = (e, c) => {
         // Hard-cap the cache by evicting the oldest entry on overflow.
         if (entityCache.size >= ENTITY_CACHE_MAX) {
             const firstKey = entityCache.keys().next().value;
@@ -12420,25 +12449,51 @@ async function resolveEntityAcrossAccounts(idStr) {
         return { entity: e, client: c };
     };
 
+    let asked = 0;
     for (const c of candidates) {
+        if (c?.connected) asked += 1;
         try {
             const e = await c.getEntity(idStr);
-            if (e) return cacheHit(e, c);
+            if (e) return remember(e, c);
         } catch {}
         try {
             const e = await c.getEntity(BigInt(idStr));
-            if (e) return cacheHit(e, c);
+            if (e) return remember(e, c);
         } catch {}
     }
+    // Remember the miss only when a connected account actually answered;
+    // while every client is still (re)connecting the next call retries.
+    if (asked > 0) remember(null, null);
     return null;
 }
 
-async function downloadProfilePhoto(groupId) {
+// Chats known to have no profile photo → expiry (ms). The sidebar
+// re-renders every avatar on each list refresh, and each miss used to
+// resolve the entity across all accounts again. Bounded + TTL'd.
+const _photoMissUntil = new Map();
+const PHOTO_MISS_TTL_MS = 60 * 60 * 1000;
+const PHOTO_MISS_MAX = 5000;
+
+/** Remaining ms of a cached "no photo" answer for `idStr` (0 = none). */
+function photoMissRemainingMs(idStr) {
+    const until = _photoMissUntil.get(idStr);
+    if (!until) return 0;
+    const left = until - Date.now();
+    if (left <= 0) _photoMissUntil.delete(idStr);
+    return Math.max(0, left);
+}
+
+/**
+ * Fetch + cache a chat's small profile photo. `force` (explicit operator
+ * refresh) ignores the cached "no photo" / failed-lookup answers.
+ */
+async function downloadProfilePhoto(groupId, { force = false } = {}) {
     const idStr = String(groupId);
     const photoPath = path.join(PHOTOS_DIR, `${idStr}.jpg`);
     if (existsSync(photoPath)) return `/photos/${idStr}.jpg`;
+    if (!force && photoMissRemainingMs(idStr) > 0) return null;
 
-    const resolved = await resolveEntityAcrossAccounts(idStr);
+    const resolved = await resolveEntityAcrossAccounts(idStr, { force });
     if (!resolved) return null;
     const { entity, client } = resolved;
     try {
@@ -12446,9 +12501,13 @@ async function downloadProfilePhoto(groupId) {
             const buffer = await client.downloadProfilePhoto(entity, { isBig: false });
             if (buffer) {
                 await fs.writeFile(photoPath, buffer);
+                _photoMissUntil.delete(idStr);
                 return `/photos/${idStr}.jpg`;
             }
         }
+        // Resolved, but the chat has no photo set.
+        _photoMissUntil.set(idStr, Date.now() + PHOTO_MISS_TTL_MS);
+        lruCap(_photoMissUntil, PHOTO_MISS_MAX);
     } catch (e) {
         console.log(`Error processing ${idStr}:`, e.message);
     }
