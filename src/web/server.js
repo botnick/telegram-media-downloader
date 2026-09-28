@@ -4755,17 +4755,28 @@ app.get('/api/downloads/search', async (req, res) => {
                 : 'local';
         // Guest sessions stay local-only — federation is admin-gated.
         const include = req.role === 'guest' ? 'local' : reqInclude;
+        // Same optional narrowing as the gallery feeds (type tab, pinned
+        // chip / pinned-first) so the gallery search box keeps the active
+        // filter. `order=newest` sorts like the gallery; the default stays
+        // FTS relevance for existing callers.
         const r = searchDownloadsFederated(q, {
             limit,
             offset: (page - 1) * limit,
             groupId,
             include,
+            type: typeof req.query.type === 'string' ? req.query.type : 'all',
+            pinnedOnly: req.query.pinned === '1' || req.query.pinned === 'true',
+            pinnedFirst: req.query.pinnedFirst === '1' || req.query.pinnedFirst === 'true',
+            order: req.query.order === 'newest' ? 'newest' : 'relevance',
         });
 
         const config = loadConfig();
         const groupFolderById = new Map();
-        for (const g of config.groups || [])
+        const groupNameById = new Map();
+        for (const g of config.groups || []) {
             groupFolderById.set(String(g.id), sanitizeName(g.name));
+            if (g.name) groupNameById.set(String(g.id), g.name);
+        }
 
         // Peer name lookup for federated rows.
         const peerNameMap = new Map();
@@ -4802,15 +4813,18 @@ app.get('/api/downloads/search', async (req, res) => {
             return {
                 id: row.id,
                 groupId: row.group_id,
-                groupName: row.group_name,
+                groupName: groupNameById.get(String(row.group_id)) || row.group_name,
                 name: row.file_name,
+                path: row.file_path,
                 fullPath,
                 size: row.file_size,
                 sizeFormatted: formatBytes(row.file_size),
                 type: typeFolder,
+                extension: path.extname(row.file_name || ''),
                 modified: row.created_at,
                 pendingUntil: row.pending_until || null,
                 rescuedAt: row.rescued_at || null,
+                pinned: !!row.pinned,
                 peer_id: row.peer_id || 'self',
                 peer_name: isPeerRow ? peerNameMap.get(String(row.peer_id)) || null : null,
                 duration: row.duration_sec ?? null,

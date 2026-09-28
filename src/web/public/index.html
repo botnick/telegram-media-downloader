@@ -739,21 +739,19 @@
                 </div>
             </header>
 
-            <!-- Media Tabs -->
-            <div id="media-tabs" class="flex border-b border-tg-border bg-tg-bg px-1">
+            <!-- Gallery toolbar: search box + Sort & filter button, then the
+                 type tabs. Phones: search on its own row above the tabs;
+                 md+: one row, tabs left and search right. The search box
+                 (js/gallery-toolbar.js) searches file + chat names of the
+                 open chat or All Media and keeps the type tab / pinned
+                 filter. The old Pinned chip lives in Sort & filter now,
+                 together with the type and the layout. -->
+            <div id="media-tabs" class="gallery-toolbar relative flex flex-wrap items-center border-b border-tg-border bg-tg-bg px-1">
                 <div class="tab-item active" data-type="all" data-i18n="viewer.tab.all">All</div>
                 <div class="tab-item" data-type="images" data-i18n="viewer.tab.images">Photos</div>
                 <div class="tab-item" data-type="videos" data-i18n="viewer.tab.videos">Videos</div>
                 <div class="tab-item" data-type="documents" data-i18n="viewer.tab.documents">Files</div>
                 <div class="tab-item" data-type="audio" data-i18n="viewer.tab.audio">Audio</div>
-                <!-- Pinned: independent toggle (sits next to the type tabs but
-                     reads as a chip, since it stacks with the type filter
-                     instead of replacing it). -->
-                <div class="tab-item tab-item--toggle" data-pinned-toggle
-                     data-i18n-title="favorites.filter_title" title="Show only pinned"
-                     role="button" tabindex="0" aria-pressed="false">
-                    <i class="ri-pushpin-2-line mr-1" aria-hidden="true"></i><span data-i18n="favorites.filter">Pinned</span>
-                </div>
                 <!-- Gallery scope chip — federated gallery toggle (Layer 1).
                      Hidden by default; app.js reveals it once it knows the
                      cluster has at least one paired peer. The popover menu
@@ -768,6 +766,29 @@
                 <!-- Popover menu, positioned absolutely under the chip. -->
                 <div id="gallery-scope-menu" class="hidden absolute right-2 mt-9 z-30 bg-tg-panel border border-tg-border/40 rounded-lg shadow-lg min-w-[12rem] py-1"
                      role="menu" aria-labelledby="gallery-scope-chip"></div>
+                <div id="gallery-search-row" class="gallery-search-row">
+                    <div class="gallery-search" role="search">
+                        <i class="ri-search-line gallery-search-icon" aria-hidden="true"></i>
+                        <!-- biome-ignore lint/a11y/useValidAutocomplete: deliberate autofill defence, see #sidebar-groups-search -->
+                        <input type="search" id="gallery-search-input" name="gallery-q" autocomplete="nope"
+                            autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                            data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+                            data-i18n-placeholder="gallery.search.placeholder" placeholder="Search files and chats"
+                            data-i18n-aria-label="gallery.search.label" aria-label="Search the library by file name or chat name">
+                        <span id="gallery-search-count" class="gallery-search-count hidden" aria-live="polite"></span>
+                        <button type="button" id="gallery-search-clear" class="gallery-search-clear hidden"
+                            data-i18n-aria-label="gallery.search.clear" aria-label="Clear search"
+                            data-i18n-title="gallery.search.clear" title="Clear search">
+                            <i class="ri-close-circle-fill" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <button type="button" id="gallery-filter-btn" class="gallery-filter-btn" aria-haspopup="dialog"
+                        data-i18n-title="gallery.filter.title" title="Sort &amp; filter" aria-label="Sort &amp; filter">
+                        <i class="ri-equalizer-line" aria-hidden="true"></i>
+                        <span id="gallery-filter-label" class="gallery-filter-label">Filter</span>
+                        <span id="gallery-filter-dot" class="gallery-filter-dot hidden" aria-hidden="true"></span>
+                    </button>
+                </div>
             </div>
 
             <!-- Content Area -->

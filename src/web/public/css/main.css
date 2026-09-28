@@ -5512,3 +5512,297 @@ body {
 #preview-strip-container:not(:has(#preview-strip > *)) {
     display: none;
 }
+
+/* ── Gallery toolbar: search + Sort & filter (js/gallery-toolbar.js) ──
+   Phones: the search row sits above the type tabs (order -1, full
+   width). md+: one row — tabs left, search + filter button right. */
+.gallery-search-row {
+    order: -1;
+    flex: 1 0 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 6px 4px;
+    min-width: 0;
+}
+@media (min-width: 768px) {
+    .gallery-search-row {
+        order: 0;
+        flex: 0 1 380px;
+        margin-left: auto;
+        padding: 6px 8px 6px 12px;
+    }
+    #gallery-scope-chip:not(.hidden) ~ .gallery-search-row {
+        margin-left: 4px;
+    }
+}
+.gallery-search {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--tg-panel);
+    border: 1px solid transparent;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+.gallery-search:focus-within {
+    border-color: var(--tg-blue);
+    box-shadow: 0 0 0 3px rgba(42, 171, 238, 0.18);
+}
+.gallery-search-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 17px;
+    color: var(--tg-textSecondary);
+    pointer-events: none;
+}
+#gallery-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 8px 0 38px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--tg-text);
+    /* 16 px on phones so iOS doesn't zoom into the field on focus. */
+    font-size: 16px;
+}
+@media (min-width: 640px) {
+    #gallery-search-input {
+        font-size: 14px;
+    }
+}
+#gallery-search-input::-webkit-search-cancel-button,
+#gallery-search-input::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+.gallery-search-count {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    font-size: 12px;
+    color: var(--tg-textSecondary);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.gallery-search-clear {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tg-textSecondary);
+    font-size: 18px;
+    border-radius: 10px;
+}
+.gallery-search-clear:hover {
+    color: var(--tg-text);
+}
+.gallery-filter-btn {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 44px;
+    height: 40px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 10px;
+    background: var(--tg-panel);
+    color: var(--tg-text);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+.gallery-filter-btn i {
+    font-size: 18px;
+    color: var(--tg-textSecondary);
+}
+.gallery-filter-btn:hover {
+    background: var(--tg-hover);
+}
+.gallery-filter-btn.is-active {
+    background: rgba(42, 171, 238, 0.16);
+    color: var(--tg-blue);
+}
+.gallery-filter-btn.is-active i {
+    color: var(--tg-blue);
+}
+.gallery-filter-dot {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--tg-blue);
+    box-shadow: 0 0 0 2px var(--tg-bg);
+}
+/* Phones: icon-only button (the dot shows a non-default order/filter);
+   the label is still announced through aria-label. */
+@media (max-width: 639.98px) {
+    .gallery-filter-btn {
+        padding: 0;
+        width: 44px;
+    }
+    .gallery-filter-label {
+        display: none;
+    }
+}
+@media (min-width: 640px) {
+    .gallery-filter-dot {
+        display: none;
+    }
+}
+#media-tabs .tab-item:focus-visible,
+.gallery-filter-btn:focus-visible,
+.gallery-search-clear:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: -2px;
+}
+
+/* Sort & filter sheet */
+.gf-sheet {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.gf-heading {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary);
+}
+.gf-seg {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    border-radius: 12px;
+    background: var(--tg-bg);
+    border: 1px solid var(--tg-border);
+}
+.gf-seg-btn {
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
+    border-radius: 9px;
+    color: var(--tg-textSecondary);
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: center;
+    min-width: 0;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+}
+.gf-seg-btn span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.gf-seg-btn i {
+    font-size: 18px;
+}
+.gf-seg-btn:hover {
+    color: var(--tg-text);
+}
+.gf-seg-btn[aria-checked="true"] {
+    background: var(--tg-blue);
+    color: #fff;
+}
+.gf-list {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    border: 1px solid var(--tg-border);
+    overflow: hidden;
+}
+.gf-option {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+    text-align: left;
+    color: var(--tg-text);
+    font-size: 14px;
+    background: transparent;
+    transition: background 0.15s ease;
+}
+.gf-option + .gf-option {
+    border-top: 1px solid var(--tg-border);
+}
+.gf-option:hover {
+    background: var(--tg-hover);
+}
+.gf-option-icon {
+    font-size: 18px;
+    color: var(--tg-textSecondary);
+}
+.gf-option-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.gf-option-check {
+    font-size: 18px;
+    color: var(--tg-blue);
+    opacity: 0;
+}
+.gf-option[aria-checked="true"] .gf-option-check,
+.gf-option[aria-checked="true"] .gf-option-icon {
+    opacity: 1;
+    color: var(--tg-blue);
+}
+.gf-seg-btn:focus-visible,
+.gf-option:focus-visible,
+.gf-reset:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: -2px;
+}
+.gf-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.gf-reset {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    margin-left: -12px;
+    border-radius: 10px;
+    color: var(--tg-blue);
+    font-size: 14px;
+    font-weight: 500;
+}
+.gf-reset:disabled {
+    color: var(--tg-textSecondary);
+    opacity: 0.5;
+    cursor: default;
+}
+.gf-done {
+    min-height: 44px;
+    min-width: 96px;
+}
