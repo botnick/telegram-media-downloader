@@ -52,14 +52,7 @@ function archive(filePath) {
  * doesn't introduce a circular import with db.js (db.js imports this at the
  * tail of getDb()).
  */
-export function runStateMigration({
-    db,
-    kvGet,
-    kvSet,
-    insertSession,
-    listSessions,
-    pushQueueBacklog,
-}) {
+export function runStateMigration({ db, kvGet, kvSet, insertSession, listSessions }) {
     const log = (msg) => {
         // Plain console.log — we're inside getDb() before logger.js may have
         // wired its sinks. The migration is short and one-shot, so terse is
@@ -158,33 +151,18 @@ export function runStateMigration({
     }
 
     // --- queue_backlog.jsonl ---
-    // Pre-v2.7 the spillover queue was a JSONL append log. Replay any
-    // pending lines into the queue_backlog table so jobs that were
-    // mid-spill at upgrade time aren't silently lost. `pushQueueBacklog`
-    // is optional so older test fixtures without the table don't crash
-    // the loader.
-    if (typeof pushQueueBacklog === 'function' && fs.existsSync(QUEUE_BACKLOG_JSONL)) {
-        let imported = 0;
+    // Pre-v2.7 spillover log. Its lines are serialised jobs that include the
+    // gramJS client (API hash + auth key) and can't be replayed, so delete
+    // it — and any copy an earlier migration archived — instead of importing.
+    for (const f of [QUEUE_BACKLOG_JSONL, `${QUEUE_BACKLOG_JSONL}.migrated`]) {
         try {
-            const raw = fs.readFileSync(QUEUE_BACKLOG_JSONL, 'utf8');
-            for (const line of raw.split(/\r?\n/)) {
-                if (!line.trim()) continue;
-                try {
-                    pushQueueBacklog(JSON.parse(line));
-                    imported++;
-                } catch {
-                    /* malformed line — skip */
-                }
+            if (fs.existsSync(f)) {
+                fs.rmSync(f, { force: true });
+                log(`${path.basename(f)} removed (stale spillover jobs held Telegram credentials)`);
+                touched++;
             }
         } catch {
-            /* unreadable — leave it alone */
-        }
-        archive(QUEUE_BACKLOG_JSONL);
-        if (imported > 0) {
-            log(`queue_backlog.jsonl → queue_backlog table (${imported} jobs, archived)`);
-            touched++;
-        } else {
-            log(`queue_backlog.jsonl archived (no replayable jobs)`);
+            /* best-effort */
         }
     }
 

@@ -11097,7 +11097,6 @@ app.post('/api/config', async (req, res) => {
             if (d.maxConcurrency < d.minConcurrency) d.maxConcurrency = d.minConcurrency;
             d.scalerIntervalSec = clampInt(d.scalerIntervalSec, 1, 600, 5);
             d.idleSleepMs = clampInt(d.idleSleepMs, 50, 10000, 200);
-            d.spilloverThreshold = clampInt(d.spilloverThreshold, 100, 100000, 2000);
 
             const h = merged.history;
             h.backpressureCap = clampInt(h.backpressureCap, 10, 100000, BACKPRESSURE_CAP_DEFAULT);

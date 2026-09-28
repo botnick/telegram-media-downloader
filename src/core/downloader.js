@@ -15,9 +15,6 @@ import {
     fileAlreadyStored,
     kvGet,
     kvSet,
-    pushQueueBacklog,
-    popQueueBacklog,
-    queueBacklogSize,
 } from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
 import { pregenerateThumb } from './thumbs.js';
@@ -192,7 +189,6 @@ const MIN_CONCURRENCY = 3;
 const MAX_CONCURRENCY = 20;
 const DEFAULT_SCALER_INTERVAL_MS = 5000;
 const DEFAULT_IDLE_SLEEP_MS = 200;
-const DEFAULT_SPILLOVER_THRESHOLD = 2000;
 
 export class DownloadManager extends EventEmitter {
     constructor(client, config, rateLimiter) {
@@ -202,9 +198,9 @@ export class DownloadManager extends EventEmitter {
         this.rateLimiter = rateLimiter;
         // Two-lane queue. Realtime (priority 1) jobs land in `_high` and
         // are drained first by every worker; history backfill (priority 2)
-        // lands in `queue`. Disk spillover only ever displaces history —
-        // realtime always stays in RAM. External code reads `pendingCount`
-        // (the sum) rather than `queue.length` directly.
+        // lands in `queue` (bounded by the history walker's backpressure).
+        // External code reads `pendingCount` (the sum) rather than
+        // `queue.length` directly.
         this._high = [];
         this.queue = [];
         this.active = new Map(); // Key -> Promise/Status
@@ -391,17 +387,6 @@ export class DownloadManager extends EventEmitter {
         // Check DB
         if (this.isDownloaded(job.groupId, job.message.id)) return false;
 
-        // --- DYNAMIC DEFENSE: DISK SPILLOVER ---
-        // Only history (priority 2) ever spills; realtime stays in RAM so
-        // a long backfill can't push live messages off the front of the queue.
-        const spillover =
-            Number(this.config?.advanced?.downloader?.spilloverThreshold) ||
-            DEFAULT_SPILLOVER_THRESHOLD;
-        if (priority === 2 && this.queue.length > spillover) {
-            await this.spillToDisk(job);
-            return true;
-        }
-
         if (priority === 2)
             this.queue.push(job); // history: FIFO normal lane
         else if (priority === 0)
@@ -584,35 +569,6 @@ export class DownloadManager extends EventEmitter {
         };
     }
 
-    // --- SPILLOVER LOGIC ---
-    // Backed by the queue_backlog SQLite table (was data/logs/queue_backlog.jsonl
-    // pre-v2.7). The kv-backed store gives us atomic appends, FIFO-by-id
-    // pops, and a transactional rehydrate that can't double-deliver a job
-    // if the process is killed mid-batch — none of which the JSONL file
-    // could guarantee. Methods stay async for caller compatibility.
-    async spillToDisk(job) {
-        try {
-            pushQueueBacklog(job);
-        } catch (e) {
-            // SQLite write failed — fall back to keeping the job in memory
-            // so it isn't silently lost. This is the same posture the file
-            // path took for an EIO from the disk.
-            this.queue.push(job);
-        }
-    }
-
-    async rehydrateFromDisk() {
-        try {
-            if (queueBacklogSize() === 0) return false;
-            const popped = popQueueBacklog(1000);
-            if (!popped.length) return false;
-            for (const job of popped) this.queue.push(job);
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
     async runWorker(id) {
         while (this.running) {
             // 0. Globally paused? Spin without touching the lanes so resume
@@ -623,17 +579,9 @@ export class DownloadManager extends EventEmitter {
             }
 
             // 1. Drain high-priority (realtime) lane first, then history.
-            let job = this._high.shift() || this.queue.shift();
+            const job = this._high.shift() || this.queue.shift();
 
-            // 2. If RAM empty, check Disk Backlog
-            if (!job) {
-                const hasMore = await this.rehydrateFromDisk();
-                if (hasMore) {
-                    job = this._high.shift() || this.queue.shift();
-                }
-            }
-
-            // 3. Still empty? Sleep.
+            // 2. Empty? Sleep.
             if (!job) {
                 const idle =
                     Number(this.config?.advanced?.downloader?.idleSleepMs) || DEFAULT_IDLE_SLEEP_MS;
@@ -641,7 +589,7 @@ export class DownloadManager extends EventEmitter {
                 continue;
             }
 
-            // 4. Per-job pause: shove it to the back of the matching lane
+            // 3. Per-job pause: shove it to the back of the matching lane
             //    so other queued work keeps draining. Snapshot still shows
             //    it as 'paused' (see snapshot()).
             if (this._paused.has(job.key)) {
