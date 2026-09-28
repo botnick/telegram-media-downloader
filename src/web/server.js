@@ -12537,6 +12537,15 @@ const _STATS_TRIGGER_TYPES = new Set([
     'download_complete',
 ]);
 
+// Other events that change group names / row counts without being stats
+// triggers — drop the cached sidebar aggregate for them too.
+const _GROUP_AGG_INVALIDATE_TYPES = new Set([
+    'groups_refreshed',
+    'integrity_swept',
+    'reindex_done',
+    'dedup_delete_done',
+]);
+
 function broadcast(data) {
     // Per-chunk progress / per-row deletes are coalesced (≤ 2/s per key,
     // same message shapes); everything else is sent right away.
@@ -12550,7 +12559,7 @@ function broadcast(data) {
                 // Same events move the sidebar's per-group counts / names.
                 invalidateGroupAggregates();
                 if (typeof broadcastStatsSoon === 'function') broadcastStatsSoon();
-            } else if (data.type === 'groups_refreshed') {
+            } else if (_GROUP_AGG_INVALIDATE_TYPES.has(data.type)) {
                 invalidateGroupAggregates();
             }
         }
