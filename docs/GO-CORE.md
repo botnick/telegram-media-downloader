@@ -82,6 +82,10 @@ with exponential backoff (2 s … 5 min).
 Each phase starts in `shadow` with parity checks and keeps its Node path
 until the Go path has run clean in the field.
 
+The end state — the whole backend in Go, no Node at runtime, gated by the
+black-box API contract suite in `tests/contract/` — is planned in
+[GO-MIGRATION.md](GO-MIGRATION.md).
+
 ## Measured (phase 1)
 
 `scripts/bench-gocore-hash.js`, warm page cache, i9-13900K / Windows 11 /

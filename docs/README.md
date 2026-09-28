@@ -10,6 +10,7 @@
 | [API.md](API.md) | HTTP + WebSocket API reference |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit together — for contributors |
 | [GO-CORE.md](GO-CORE.md) | The Go companion process (`tgdl-core`): modes, fallbacks, parity checks, roadmap |
+| [GO-MIGRATION.md](GO-MIGRATION.md) | The plan for a pure-Go backend: waves, the API contract gate, data-compatibility rules |
 | [AUDIT.md](AUDIT.md) | Security / reliability audit notes |
 | [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) | Upgrade notes for that release |
 
