@@ -34,10 +34,14 @@ import { getSpritePath, getMetaFilePath } from './seekbar/generator.js';
 import { getDataDir, getRepoRoot } from './paths.js';
 import {
     setSidecarUrl as _setNsfwSidecarUrl,
+    setSidecarAuth as _setNsfwSidecarAuth,
+    setPathMap as _setNsfwPathMap,
     getSidecarUrl as getNsfwSidecarUrl,
+    getSidecarInfo as getNsfwSidecarInfo,
     applyNsfwSidecarCfg,
     health as nsfwSidecarHealth,
     classifyFile as remoteClassifyFile,
+    classifyBuffer as remoteClassifyBuffer,
 } from './nsfw-client.js';
 
 const DATA_DIR = getDataDir();
@@ -89,14 +93,32 @@ export const NSFW_MODEL_SUGGESTIONS = Object.freeze([
 
 const VALID_DTYPES = new Set(['q8', 'fp16', 'fp32', 'q4']);
 
+// Env wins over the dashboard config for each value, so a compose file
+// stays the source of truth when it sets one.
+function _envOr(name, fallback) {
+    const v = process.env[name];
+    return typeof v === 'string' && v.trim() ? v : fallback;
+}
+
 export function initNsfwSidecar(cfg) {
     const nsfwCfg = cfg?.advanced?.nsfw || {};
-    const url = process.env.TGDL_NSFW_SIDECAR_URL || nsfwCfg.sidecarUrl || '';
-    _setNsfwSidecarUrl(url);
+    _setNsfwSidecarUrl(_envOr('TGDL_NSFW_SIDECAR_URL', nsfwCfg.sidecarUrl || ''));
+    _setNsfwSidecarAuth(_envOr('TGDL_NSFW_API_TOKEN', nsfwCfg.apiToken || ''));
+    _setNsfwPathMap(_envOr('TGDL_NSFW_PATH_MAP', nsfwCfg.pathMap || ''));
     if (nsfwCfg) applyNsfwSidecarCfg(nsfwCfg);
 }
 
-export { getNsfwSidecarUrl };
+/** Where each sidecar setting comes from — the dashboard greys env-set fields out. */
+export function getNsfwSidecarSources() {
+    const src = (name) => (process.env[name]?.trim() ? 'env' : 'config');
+    return {
+        url: src('TGDL_NSFW_SIDECAR_URL'),
+        token: src('TGDL_NSFW_API_TOKEN'),
+        pathMap: src('TGDL_NSFW_PATH_MAP'),
+    };
+}
+
+export { getNsfwSidecarUrl, getNsfwSidecarInfo };
 
 // Classifier worker singleton. The model, onnxruntime and sharp decodes
 // all live in a worker thread (see nsfw-worker.js for why), spawned
@@ -283,10 +305,10 @@ async function _loadClassifier(cfg, onProgress, onLog) {
  *   null when the file can't be opened (caller persists `nsfw_checked_at`
  *   so the loop doesn't keep retrying).
  */
-async function _classifyFile(classifier, absPath) {
+async function _classifyFile(classifier, absPath, onLog = null) {
     if (!absPath) return null;
     if (getNsfwSidecarUrl()) {
-        return remoteClassifyFile(absPath);
+        return remoteClassifyFile(absPath, {}, onLog);
     }
     if (!classifier || !existsSync(absPath)) return null;
     try {
@@ -344,8 +366,9 @@ async function _videoTileItem(downloadId, maxTiles) {
  * @param {object} classifier   worker handle from _loadClassifier (null in sidecar mode)
  * @param {number} downloadId   downloads.id
  * @param {number} [maxTiles]   sample budget; falls back to NSFW_DEFAULTS.videoMaxTiles
+ * @param {function} [onLog]    structured log sink for sidecar errors
  */
-async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
+async function _classifyVideoSprite(classifier, downloadId, maxTiles, onLog = null) {
     const item = await _videoTileItem(downloadId, maxTiles);
     if (!item) return null;
     if (!getNsfwSidecarUrl()) {
@@ -354,7 +377,9 @@ async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
         return (await classifier.classify([item]))[0];
     }
 
-    // The sidecar takes files — cut each tile to a temp JPEG.
+    // The sidecar gets each tile as JPEG bytes. Never a temp-file path: the
+    // sidecar can't read the app's temp dir, and a rejected path would
+    // switch the whole session away from path mode.
     let tileH = item.tileH;
     if (tileH <= 0) {
         try {
@@ -366,29 +391,22 @@ async function _classifyVideoSprite(classifier, downloadId, maxTiles) {
     }
     if (tileH <= 0) return null;
 
-    // Single reused temp file per video — tiles classified sequentially.
-    const tmpPath = path.join(os.tmpdir(), `nsfw-tile-${downloadId}-${Date.now()}.jpg`);
     const scores = [];
-    try {
-        for (const i of item.indices) {
-            const left = (i % item.cols) * item.tileW;
-            const top = Math.floor(i / item.cols) * tileH;
-            try {
-                await sharp(item.spritePath, { failOn: 'none' })
-                    .extract({ left, top, width: item.tileW, height: tileH })
-                    .jpeg({ quality: 85 })
-                    .toFile(tmpPath);
-            } catch {
-                continue;
-            }
-            try {
-                const res = await _classifyFile(null, tmpPath);
-                if (res) scores.push(res.score);
-            } catch {}
-        }
-    } finally {
+    for (const i of item.indices) {
+        const left = (i % item.cols) * item.tileW;
+        const top = Math.floor(i / item.cols) * tileH;
+        let tile;
         try {
-            await fs.unlink(tmpPath);
+            tile = await sharp(item.spritePath, { failOn: 'none' })
+                .extract({ left, top, width: item.tileW, height: tileH })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+        } catch {
+            continue;
+        }
+        try {
+            const res = await remoteClassifyBuffer(tile, {}, onLog);
+            if (res) scores.push(res.score);
         } catch {}
     }
     if (scores.length === 0) return { score: 0, label: 'normal' };
@@ -640,8 +658,13 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                         try {
                             res =
                                 row.file_type === 'video'
-                                    ? await _classifyVideoSprite(classifier, row.id, videoMaxTiles)
-                                    : await _classifyFile(classifier, abs);
+                                    ? await _classifyVideoSprite(
+                                          classifier,
+                                          row.id,
+                                          videoMaxTiles,
+                                          onLog,
+                                      )
+                                    : await _classifyFile(classifier, abs, onLog);
                         } catch {
                             res = null;
                         }
@@ -666,8 +689,9 @@ export async function startScan(cfg, onProgress, onDone, onModel, onLog) {
                                                   classifier,
                                                   row.id,
                                                   videoMaxTiles,
+                                                  onLog,
                                               )
-                                            : await _classifyFile(classifier, abs);
+                                            : await _classifyFile(classifier, abs, onLog);
                                 } catch {
                                     res = null;
                                 }

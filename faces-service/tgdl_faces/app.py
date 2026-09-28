@@ -9,6 +9,8 @@ Endpoints (see ``docs/AI.md`` on the Node side for the full contract):
 * ``POST /detect``        — detect & embed faces from a path or base64 blob.
 * ``POST /detect-embed``  — alias of ``/detect``.
 * ``POST /detect/batch``  — batch variant accepting multiple file paths.
+* ``POST /detect/upload`` — raw image bytes as the body (no base64); for
+  callers on another host. Thresholds as query parameters.
 
 Error payload shape (used by every non-2xx response):
 
@@ -19,14 +21,17 @@ The Node client switches on ``code``; the human text is for logs.
 
 from __future__ import annotations
 
+import asyncio
+import hmac
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any
 
 import numpy as np
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -38,11 +43,14 @@ from .insight import (
     EMBEDDING_DIM,
     MODEL_NAME,
     arch_tag,
+    cpu_budget,
     detect_and_embed,
+    effective_cpu_count,
     get_app,  # returns the FaceAnalysis singleton — used only in /info to read live providers
     get_stats,
     gpu_available,
     gpu_provider,
+    intra_op_threads,
     is_ready,
     preload_named_model,
     preload_status,
@@ -59,8 +67,9 @@ from .io import (
     Base64DecodeError,
     ImageDecodeError,
     PathNotAllowedError,
-    extract_video_frames,
+    iter_video_frames,
     load_image_from_b64,
+    load_image_from_bytes,
     load_image_from_path,
 )
 
@@ -174,12 +183,21 @@ class Face(BaseModel):
         default_factory=list,
         description="5-point facial landmarks: [eye_l, eye_r, nose, mouth_l, mouth_r]",
     )
+    frame_time_sec: float | None = Field(
+        default=None,
+        description="Video faces only: seconds into the clip of the frame the face came from.",
+    )
 
 
 class DetectResponse(BaseModel):
     faces: list[Face]
     image_w: int
     image_h: int
+    # True when face coordinates are in the EXIF-oriented frame (what a
+    # browser displays). Sidecars before this field existed double-applied
+    # the Orientation tag, so the Node side keeps its legacy crop path for
+    # rows that don't carry the flag.
+    exif_oriented: bool = False
 
 
 class BatchDetectItem(BaseModel):
@@ -190,6 +208,7 @@ class BatchDetectItem(BaseModel):
     image_w: int = 0
     image_h: int = 0
     error: str | None = None
+    exif_oriented: bool = True
 
 
 class BatchDetectResponse(BaseModel):
@@ -234,9 +253,75 @@ app = FastAPI(
 )
 
 
+# What this build supports. The Node client reads it from /health and only
+# uses an endpoint that is listed, so older sidecars keep working.
+FEATURES = ["path", "b64", "batch_b64", "video", "auth", "upload"]
+
+
+def _max_upload_bytes() -> int:
+    """Cap for ``/detect/upload`` bodies (``TGDL_FACES_MAX_UPLOAD_MB``, default 64)."""
+    raw = os.environ.get("TGDL_FACES_MAX_UPLOAD_MB", "").strip()
+    try:
+        mb = int(raw) if raw else 64
+    except ValueError:
+        mb = 64
+    return max(1, mb) * 1024 * 1024
+
+
 def _allow_roots() -> list[str]:
     raw = os.environ.get("TGDL_FACES_ALLOW_ROOTS", "")
     return [p.strip() for p in raw.split(",") if p and p.strip()]
+
+
+# Process-wide admission gate for image work (decode + detect), shared by
+# every endpoint. The inference semaphore in insight.py only bounds
+# onnxruntime; without this, N concurrent batch requests each decoded
+# their own images up front (a 12 MP JPEG is ~36 MB as BGR) and parked
+# a thread per request. One slot above the inference limit keeps the
+# next image decoding while the current ones infer.
+_ADMISSION: tuple[Any, int, asyncio.Semaphore] | None = None
+
+
+def _admission() -> asyncio.Semaphore:
+    # asyncio primitives bind to one event loop; uvicorn runs exactly one,
+    # but test clients may spin up several — rebuild per loop. Also rebuilt
+    # when the limit changes (the GPU tier is only known after model load);
+    # holders of the old semaphore simply release into it.
+    global _ADMISSION
+    loop = asyncio.get_running_loop()
+    limit = _resolve_max_concurrency() + 1
+    if _ADMISSION is None or _ADMISSION[0] is not loop or _ADMISSION[1] != limit:
+        _ADMISSION = (loop, limit, asyncio.Semaphore(limit))
+    return _ADMISSION[2]
+
+
+def _not_ready_response() -> JSONResponse | None:
+    """503 while the model is loading / after it failed, else None."""
+    if last_error() is not None:
+        return _error(
+            f"model failed to load: {last_error()}",
+            code="model_load_failed",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    if not is_ready():
+        return _error(
+            "model is still loading, retry shortly",
+            code="model_loading",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return None
+
+
+def _filter_kwargs(body: Any) -> dict[str, Any]:
+    """detect_and_embed kwargs from a request body; defaults left to insight."""
+    kwargs: dict[str, Any] = {}
+    if body.min_score is not None:
+        kwargs["min_score"] = float(body.min_score)
+    if body.min_box_px is not None:
+        kwargs["min_box_px"] = int(body.min_box_px)
+    if body.ar_range is not None:
+        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
+    return kwargs
 
 
 def _error(message: str, code: str, status_code: int) -> JSONResponse:
@@ -273,6 +358,38 @@ async def _request_logging(
     return response
 
 
+# Liveness stays open so container healthchecks / uptime probes work
+# without the secret.
+_PUBLIC_PATHS = frozenset({"/health"})
+
+
+@app.middleware("http")
+async def _require_api_token(
+    request: Request,
+    call_next: Any,
+) -> Response:
+    """Optional shared-secret auth for a sidecar exposed beyond localhost.
+
+    ``TGDL_FACES_API_TOKEN`` unset (the default) = no auth, as before. When
+    set, every endpoint except ``/health`` needs ``Authorization: Bearer
+    <token>`` or ``X-API-Token: <token>`` — otherwise anyone who can reach
+    the port can burn its CPU/GPU or read files under the allow-list. The
+    Node side sends it from ``faces.sidecarToken`` / ``TGDL_FACES_SIDECAR_TOKEN``.
+    """
+    token = os.environ.get("TGDL_FACES_API_TOKEN", "").strip()
+    if token and request.url.path not in _PUBLIC_PATHS:
+        auth = request.headers.get("authorization", "")
+        got = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+        got = got or request.headers.get("x-api-token", "").strip()
+        if not hmac.compare_digest(got.encode("utf-8"), token.encode("utf-8")):
+            return _error(
+                "missing or invalid API token",
+                code="unauthorized",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+            )
+    return await call_next(request)
+
+
 # --- exception handlers -----------------------------------------------------
 
 
@@ -303,8 +420,13 @@ async def _base64_decode_handler(
 
 
 @app.get("/health")
-def health() -> JSONResponse:
+async def health() -> JSONResponse:
     """Liveness + readiness probe matching the seekbar health response format.
+
+    ``async`` on purpose: it only reads in-memory state, and running it on
+    the event loop keeps it answering instantly while every threadpool
+    worker is busy with inference. A slow /health used to trip the Node
+    health monitor into killing a sidecar that was merely busy.
 
     Always returns HTTP 200 — the Node-side polling loop must inspect
     the ``ok`` flag rather than the HTTP status to determine real health.
@@ -328,6 +450,8 @@ def health() -> JSONResponse:
                 "uptime_sec": uptime_sec(),
                 "error": f"{type(err).__name__}: {err}",
                 "stats": get_stats(),
+                "features": FEATURES,
+                "max_upload_bytes": _max_upload_bytes(),
             },
         )
     return JSONResponse(
@@ -345,12 +469,14 @@ def health() -> JSONResponse:
             "providers": resolved_providers(),
             "uptime_sec": uptime_sec(),
             "stats": get_stats(),
+            "features": FEATURES,
+            "max_upload_bytes": _max_upload_bytes(),
         },
     )
 
 
 @app.get("/config")
-def config() -> JSONResponse:
+async def config() -> JSONResponse:
     """Return the effective runtime configuration.
 
     Useful for operators to verify env vars are applied correctly without
@@ -367,6 +493,9 @@ def config() -> JSONResponse:
             "gpu_provider": gpu_provider(),
             "gpu_available": gpu_available(),
             "max_concurrency": _resolve_max_concurrency(),
+            "effective_cpus": effective_cpu_count(),
+            "cpu_budget": cpu_budget(),
+            "intra_op_threads": intra_op_threads(),
             "model_dir": str(_resolve_models_dir()),
             "allow_roots": _allow_roots(),
             "host": os.environ.get("TGDL_FACES_HOST", "127.0.0.1"),
@@ -381,7 +510,7 @@ def config() -> JSONResponse:
 
 
 @app.get("/info")
-def info() -> JSONResponse:
+async def info() -> JSONResponse:
     """Static model card. Cheap; used by the Node side at boot."""
     providers = resolved_providers()
     # If the model has already been loaded, prefer the live FaceAnalysis
@@ -596,31 +725,20 @@ def _do_detect_sync(body: DetectRequest) -> JSONResponse:
             content={"faces": [], "error": "decode_failed"},
         )
 
-    # Guard: model must be loaded. Return 503 during the brief window while
-    # preload_model() is still running, but only after input is validated.
-    if last_error() is not None:
-        return _error(
-            f"model failed to load: {last_error()}",
-            code="model_load_failed",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-    if not is_ready():
-        return _error(
-            "model is still loading, retry shortly",
-            code="model_loading",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
     # Build the filter kwargs without overwriting defaults when the
     # caller didn't supply them — keeps the wire format compact for the
     # common case (Node defers everything to the sidecar defaults).
-    kwargs: dict[str, Any] = {}
-    if body.min_score is not None:
-        kwargs["min_score"] = float(body.min_score)
-    if body.min_box_px is not None:
-        kwargs["min_box_px"] = int(body.min_box_px)
-    if body.ar_range is not None:
-        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
+    return _detect_loaded(img, _filter_kwargs(body))
+
+
+def _detect_loaded(img: Any, kwargs: dict[str, Any]) -> JSONResponse:
+    """Detect + embed on an already-decoded image (shared by /detect and
+    /detect/upload)."""
+    # Guard: model must be loaded. Return 503 during the brief window while
+    # preload_model() is still running, but only after input is validated.
+    not_ready = _not_ready_response()
+    if not_ready is not None:
+        return not_ready
 
     try:
         faces = detect_and_embed(img, **kwargs)
@@ -639,7 +757,8 @@ def _do_detect_sync(body: DetectRequest) -> JSONResponse:
             faces=[Face(**f) for f in faces],
             image_w=w_img,
             image_h=h_img,
-        ).model_dump(),
+            exif_oriented=True,
+        ).model_dump(exclude_none=True),
     )
 
 
@@ -665,7 +784,65 @@ async def detect(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     other requests (``/health``, concurrent ``/detect``) are served
     promptly while a detection is in flight.
     """
-    return await run_in_threadpool(_do_detect_sync, body)
+    async with _admission():
+        return await run_in_threadpool(_do_detect_sync, body)
+
+
+@app.post("/detect/upload")
+async def detect_upload(
+    request: Request,
+    min_score: Annotated[float | None, Query(ge=0.0, le=1.0)] = None,
+    min_box_px: Annotated[int | None, Query(ge=1)] = None,
+    ar_lo: Annotated[float | None, Query(gt=0.0)] = None,
+    ar_hi: Annotated[float | None, Query(gt=0.0)] = None,
+) -> JSONResponse:
+    """Detect & embed faces in the raw request body (image bytes).
+
+    Same response as ``/detect``. For callers that can't share their
+    files with the sidecar: no base64 inflation and no JSON parsing of a
+    multi-megabyte string. Capped by ``TGDL_FACES_MAX_UPLOAD_MB`` (413).
+    """
+    limit = _max_upload_bytes()
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return _error("image too large", code="too_large", status_code=413)
+    buf = bytearray()
+    async for chunk in request.stream():
+        buf.extend(chunk)
+        if len(buf) > limit:
+            return _error("image too large", code="too_large", status_code=413)
+    if not buf:
+        return _error("empty body", code="bad_request", status_code=status.HTTP_400_BAD_REQUEST)
+    if (ar_lo is None) != (ar_hi is None) or (
+        ar_lo is not None and ar_hi is not None and ar_lo >= ar_hi
+    ):
+        return _error(
+            "ar_lo and ar_hi go together, with ar_lo < ar_hi",
+            code="bad_request",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    kwargs: dict[str, Any] = {}
+    if min_score is not None:
+        kwargs["min_score"] = float(min_score)
+    if min_box_px is not None:
+        kwargs["min_box_px"] = int(min_box_px)
+    if ar_lo is not None and ar_hi is not None:
+        kwargs["ar_range"] = (float(ar_lo), float(ar_hi))
+    raw = bytes(buf)
+    del buf
+
+    def _run() -> JSONResponse:
+        try:
+            img = load_image_from_bytes(raw)
+        except ImageDecodeError:
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={"faces": [], "error": "decode_failed"},
+            )
+        return _detect_loaded(img, kwargs)
+
+    async with _admission():
+        return await run_in_threadpool(_run)
 
 
 @app.post("/detect-embed")
@@ -676,7 +853,8 @@ async def detect_embed(body: Annotated[DetectRequest, ...]) -> JSONResponse:
     combined detect + embed call" semantics; keeping both endpoints
     lets either side be refactored without breaking the other.
     """
-    return await run_in_threadpool(_do_detect_sync, body)
+    async with _admission():
+        return await run_in_threadpool(_do_detect_sync, body)
 
 
 def _resolve_throttle_ms() -> float:
@@ -698,92 +876,46 @@ def _resolve_throttle_ms() -> float:
     return max(0.0, v)
 
 
-def _do_batch_sync(body: BatchDetectRequest) -> JSONResponse:
-    """Synchronous inner implementation for batch detection."""
-    if last_error() is not None:
-        return _error(
-            f"model failed to load: {last_error()}",
-            code="model_load_failed",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-    if not is_ready():
-        return _error(
-            "model is still loading, retry shortly",
-            code="model_loading",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
-    kwargs: dict[str, Any] = {}
-    if body.min_score is not None:
-        kwargs["min_score"] = float(body.min_score)
-    if body.min_box_px is not None:
-        kwargs["min_box_px"] = int(body.min_box_px)
-    if body.ar_range is not None:
-        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
-
-    throttle_sec = _resolve_throttle_ms() / 1000.0
-    max_workers = _resolve_max_concurrency()
-
-    def _process_one(file_path: str) -> dict[str, Any]:
-        if throttle_sec > 0:
-            time.sleep(throttle_sec)
-        img, err_code = _load_image(file_path, None)
-        if img is None:
-            return {
-                "file": file_path,
-                "faces": [],
-                "image_w": 0,
-                "image_h": 0,
-                "error": err_code,
-            }
-        try:
-            faces = detect_and_embed(img, **kwargs)
-        except Exception as exc:
-            _LOG.exception("detect_and_embed failed for %s", file_path)
-            return {
-                "file": file_path,
-                "faces": [],
-                "image_w": 0,
-                "image_h": 0,
-                "error": f"detect_failed: {type(exc).__name__}",
-            }
-        h_img, w_img = int(img.shape[0]), int(img.shape[1])
-        face_objs = [Face(**f).model_dump() for f in faces]
+def _process_batch_file(
+    file_path: str, kwargs: dict[str, Any], throttle_sec: float
+) -> dict[str, Any]:
+    """Load + detect one ``/detect/batch`` entry (runs in the threadpool)."""
+    if throttle_sec > 0:
+        time.sleep(throttle_sec)
+    img, err_code = _load_image(file_path, None)
+    if img is None:
         return {
             "file": file_path,
-            "faces": face_objs,
-            "image_w": w_img,
-            "image_h": h_img,
-            "error": None,
+            "faces": [],
+            "image_w": 0,
+            "image_h": 0,
+            "error": err_code,
         }
-
-    # Process files in parallel up to the concurrency limit. The semaphore
-    # inside detect_and_embed() still governs GPU/model access, but image
-    # loading and pre/post-processing now overlap with inference.
-    indexed_results: dict[int, dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {
-            pool.submit(_process_one, fp): idx
-            for idx, fp in enumerate(body.files)
+    try:
+        faces = detect_and_embed(img, **kwargs)
+    except Exception as exc:
+        _LOG.exception("detect_and_embed failed for %s", file_path)
+        return {
+            "file": file_path,
+            "faces": [],
+            "image_w": 0,
+            "image_h": 0,
+            "error": f"detect_failed: {type(exc).__name__}",
         }
-        for fut in as_completed(futures):
-            indexed_results[futures[fut]] = fut.result()
-
-    results = [indexed_results[i] for i in range(len(body.files))]
-    total_faces = sum(len(r["faces"]) for r in results)
-
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={
-            "results": results,
-            "total_files": len(results),
-            "total_faces": total_faces,
-        },
-    )
+    h_img, w_img = int(img.shape[0]), int(img.shape[1])
+    face_objs = [Face(**f).model_dump(exclude_none=True) for f in faces]
+    return {
+        "file": file_path,
+        "faces": face_objs,
+        "image_w": w_img,
+        "image_h": h_img,
+        "error": None,
+        "exif_oriented": True,
+    }
 
 
 @app.post("/detect/batch")
-async def detect_batch(body: BatchDetectRequest) -> JSONResponse:
+async def detect_batch(body: BatchDetectRequest, request: Request) -> JSONResponse:
     """Detect faces in multiple files in a single HTTP round-trip.
 
     Accepts ``{"files": ["/abs/path/img1.jpg", ...]}`` and returns a
@@ -794,11 +926,44 @@ async def detect_batch(body: BatchDetectRequest) -> JSONResponse:
     Model-not-ready and model-load-failed conditions are still returned
     as top-level 503 errors because no results can be produced.
 
-    The entire batch runs in a single threadpool slot so the semaphore
-    in :func:`detect_and_embed` governs concurrency across simultaneous
-    batch requests — no separate locking is needed here.
+    Files go through the shared admission gate one at a time, so
+    concurrent batch requests interleave fairly instead of each spinning
+    up its own pool. Once the client has gone away (Node timed out or the
+    scan was cancelled) the remaining files are skipped instead of being
+    computed for nobody.
     """
-    return await run_in_threadpool(_do_batch_sync, body)
+    not_ready = _not_ready_response()
+    if not_ready is not None:
+        return not_ready
+
+    kwargs = _filter_kwargs(body)
+    throttle_sec = _resolve_throttle_ms() / 1000.0
+
+    async def _one(file_path: str) -> dict[str, Any]:
+        async with _admission():
+            if await request.is_disconnected():
+                return {
+                    "file": file_path,
+                    "faces": [],
+                    "image_w": 0,
+                    "image_h": 0,
+                    "error": "cancelled",
+                }
+            return await run_in_threadpool(
+                _process_batch_file, file_path, kwargs, throttle_sec
+            )
+
+    results = list(await asyncio.gather(*(_one(fp) for fp in body.files)))
+    total_faces = sum(len(r["faces"]) for r in results)
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "results": results,
+            "total_files": len(results),
+            "total_faces": total_faces,
+        },
+    )
 
 
 class BatchB64DetectRequest(BaseModel):
@@ -828,58 +993,45 @@ class BatchB64DetectRequest(BaseModel):
         return self
 
 
-def _do_batch_b64_sync(body: BatchB64DetectRequest) -> JSONResponse:
-    """Process multiple b64 images in parallel — GPU-optimised."""
-    if last_error() is not None:
-        return _error(
-            f"model failed to load: {last_error()}",
-            code="model_load_failed",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-    if not is_ready():
-        return _error(
-            "model is still loading, retry shortly",
-            code="model_loading",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+def _process_b64_frame(b64: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    try:
+        img = load_image_from_b64(b64)
+    except (Base64DecodeError, ImageDecodeError):
+        return {"faces": [], "error": "decode_failed"}
+    try:
+        faces = detect_and_embed(img, **kwargs)
+    except Exception:
+        return {"faces": [], "error": "detect_failed"}
+    return {"faces": faces, "error": None}
 
-    kwargs: dict[str, Any] = {}
-    if body.min_score is not None:
-        kwargs["min_score"] = float(body.min_score)
-    if body.min_box_px is not None:
-        kwargs["min_box_px"] = int(body.min_box_px)
-    if body.ar_range is not None:
-        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
+
+@app.post("/detect/batch-b64")
+async def detect_batch_b64(body: BatchB64DetectRequest, request: Request) -> JSONResponse:
+    """Detect faces in multiple base64 images — GPU-pipelined.
+
+    Optimised for the Node-side video b64 fallback: accepts an array of
+    frames as base64, processes them in parallel on GPU, and returns all
+    results in one response. Skips quality-score computation for throughput.
+    """
+    not_ready = _not_ready_response()
+    if not_ready is not None:
+        return not_ready
+
+    kwargs = _filter_kwargs(body)
     # Skip quality for throughput — video frames don't need per-face quality scores
     kwargs["_skip_quality_score"] = True
 
-    max_workers = _resolve_max_concurrency()
+    async def _one(b64: str) -> dict[str, Any]:
+        async with _admission():
+            if await request.is_disconnected():
+                return {"faces": [], "error": "cancelled"}
+            return await run_in_threadpool(_process_b64_frame, b64, kwargs)
 
-    def _process_one(idx: int, b64: str) -> dict[str, Any]:
-        try:
-            img = load_image_from_b64(b64)
-        except (Base64DecodeError, ImageDecodeError):
-            return {"idx": idx, "faces": [], "error": "decode_failed"}
-        try:
-            faces = detect_and_embed(img, **kwargs)
-        except Exception:
-            return {"idx": idx, "faces": [], "error": "detect_failed"}
-        return {"idx": idx, "faces": faces, "error": None}
-
-    indexed_results: dict[int, dict[str, Any]] = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {
-            pool.submit(_process_one, i, b64): i
-            for i, b64 in enumerate(body.images)
-        }
-        for fut in as_completed(futures):
-            r = fut.result()
-            indexed_results[r["idx"]] = r
+    items = await asyncio.gather(*(_one(b64) for b64 in body.images))
 
     results = []
     total_faces = 0
-    for i in range(len(body.images)):
-        item = indexed_results.get(i, {"faces": [], "error": "missing"})
+    for item in items:
         faces = item["faces"]
         total_faces += len(faces)
         results.append({
@@ -898,17 +1050,6 @@ def _do_batch_b64_sync(body: BatchB64DetectRequest) -> JSONResponse:
         status_code=status.HTTP_200_OK,
         content={"results": results, "total_images": len(results), "total_faces": total_faces},
     )
-
-
-@app.post("/detect/batch-b64")
-async def detect_batch_b64(body: BatchB64DetectRequest) -> JSONResponse:
-    """Detect faces in multiple base64 images — GPU-pipelined.
-
-    Optimised for the Node-side video b64 fallback: accepts an array of
-    frames as base64, processes them in parallel on GPU, and returns all
-    results in one response. Skips quality-score computation for throughput.
-    """
-    return await run_in_threadpool(_do_batch_b64_sync, body)
 
 
 def _dedupe_video_faces(all_faces: list[dict]) -> list[dict]:
@@ -938,23 +1079,28 @@ def _dedupe_video_faces(all_faces: list[dict]) -> list[dict]:
     return unique_faces
 
 
+def _stamp_time(face_dicts: list[dict], t: float) -> list[dict]:
+    for f in face_dicts:
+        f["frame_time_sec"] = round(float(t), 3)
+    return face_dicts
+
+
 def _do_detect_video_sync(body: VideoDetectRequest) -> JSONResponse:
-    """Synchronous inner implementation for video face detection."""
-    if last_error() is not None:
-        return _error(
-            f"model failed to load: {last_error()}",
-            code="model_load_failed",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-    if not is_ready():
-        return _error(
-            "model is still loading, retry shortly",
-            code="model_loading",
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
+    """Synchronous inner implementation for video face detection.
+
+    Frames are streamed from the decoder and dropped as soon as they have
+    been through the detector, so memory stays at a frame or two (GPU: a
+    small in-flight window) instead of the whole 120-frame sample — 4K
+    frames are ~25 MB each.
+    """
+    not_ready = _not_ready_response()
+    if not_ready is not None:
+        return not_ready
 
     try:
-        frames = extract_video_frames(body.path, _allow_roots(), max_frames=body.max_frames)
+        frames = iter_video_frames(
+            body.path, _allow_roots(), max_frames=body.max_frames, with_time=True
+        )
     except PathNotAllowedError:
         return _error(
             "path falls outside TGDL_FACES_ALLOW_ROOTS",
@@ -967,52 +1113,61 @@ def _do_detect_video_sync(body: VideoDetectRequest) -> JSONResponse:
             content={"faces": [], "error": "file_not_found", "image_w": 0, "image_h": 0},
         )
 
-    if not frames:
+    kwargs = _filter_kwargs(body)
+    # Skip quality for video frames — throughput matters more than per-face scores
+    kwargs["_skip_quality_score"] = True
+
+    image_w = image_h = 0
+    n_frames = 0
+    all_faces_raw: list[dict] = []
+    try:
+        if gpu_available():
+            # GPU mode: a bounded window of frames in flight keeps the
+            # device busy without materialising the whole sample.
+            max_workers = _resolve_max_concurrency()
+
+            def _detect_frame(t: float, frame: "np.ndarray") -> list[dict]:
+                try:
+                    return _stamp_time(detect_and_embed(frame, **kwargs), t)
+                except Exception:
+                    return []
+
+            pending: deque[Any] = deque()
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                for t, frame in frames:
+                    if n_frames == 0:
+                        image_h, image_w = int(frame.shape[0]), int(frame.shape[1])
+                    n_frames += 1
+                    pending.append(pool.submit(_detect_frame, t, frame))
+                    if len(pending) >= max_workers * 2:
+                        all_faces_raw.extend(pending.popleft().result())
+                while pending:
+                    all_faces_raw.extend(pending.popleft().result())
+        else:
+            # CPU mode: sequential with optional throttle.
+            throttle_sec = _resolve_throttle_ms() / 1000.0
+            for i, (t, frame) in enumerate(frames):
+                if n_frames == 0:
+                    image_h, image_w = int(frame.shape[0]), int(frame.shape[1])
+                n_frames += 1
+                if throttle_sec > 0 and i > 0:
+                    time.sleep(throttle_sec)
+                try:
+                    face_dicts = detect_and_embed(frame, **kwargs)
+                except Exception:
+                    _LOG.exception("detect_and_embed failed on frame %d of %s", i, body.path)
+                    continue
+                all_faces_raw.extend(_stamp_time(face_dicts, t))
+    finally:
+        close = getattr(frames, "close", None)
+        if callable(close):
+            close()
+
+    if n_frames == 0:
         return JSONResponse(
             status_code=status.HTTP_200_OK,
             content={"faces": [], "error": "no_frames", "image_w": 0, "image_h": 0},
         )
-
-    kwargs: dict[str, Any] = {}
-    if body.min_score is not None:
-        kwargs["min_score"] = float(body.min_score)
-    if body.min_box_px is not None:
-        kwargs["min_box_px"] = int(body.min_box_px)
-    if body.ar_range is not None:
-        kwargs["ar_range"] = (float(body.ar_range[0]), float(body.ar_range[1]))
-
-    first_frame = frames[0]
-    image_h, image_w = int(first_frame.shape[0]), int(first_frame.shape[1])
-
-    # Skip quality for video frames — throughput matters more than per-face scores
-    kwargs["_skip_quality_score"] = True
-
-    # GPU mode: process frames in parallel for pipeline saturation.
-    # CPU mode: sequential with optional throttle.
-    all_faces_raw: list[dict] = []
-    if gpu_available() and len(frames) > 1:
-        max_workers = _resolve_max_concurrency()
-
-        def _detect_frame(frame: "np.ndarray") -> list[dict]:
-            try:
-                return detect_and_embed(frame, **kwargs)
-            except Exception:
-                return []
-
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for faces in pool.map(_detect_frame, frames):
-                all_faces_raw.extend(faces)
-    else:
-        throttle_sec = _resolve_throttle_ms() / 1000.0
-        for i, frame in enumerate(frames):
-            if throttle_sec > 0 and i > 0:
-                time.sleep(throttle_sec)
-            try:
-                face_dicts = detect_and_embed(frame, **kwargs)
-            except Exception:
-                _LOG.exception("detect_and_embed failed on frame %d of %s", i, body.path)
-                continue
-            all_faces_raw.extend(face_dicts)
 
     unique_faces = _dedupe_video_faces(all_faces_raw)
     return JSONResponse(
@@ -1039,7 +1194,8 @@ async def detect_video(body: VideoDetectRequest) -> JSONResponse:
     the same DBSCAN pass, so the same person in a video and a photo
     lands in the same "Person" group automatically.
     """
-    return await run_in_threadpool(_do_detect_video_sync, body)
+    async with _admission():
+        return await run_in_threadpool(_do_detect_video_sync, body)
 
 
 # ---------------------------------------------------------------------------

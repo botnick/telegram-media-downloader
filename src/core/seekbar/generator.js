@@ -34,9 +34,16 @@ import {
 } from '../thumbs.js';
 import {
     cancelJob as sidecarCancelJob,
+    deleteSprite as sidecarDeleteSprite,
+    downloadSprite as sidecarDownloadSprite,
+    fromSidecarPath,
     getJob as sidecarGetJob,
     getSidecarUrl,
+    hasFeature as sidecarHasFeature,
+    isSourceNotFound,
     submitOne as sidecarSubmitOne,
+    toSidecarPath,
+    uploadSource as sidecarUploadSource,
 } from './client.js';
 import { resetNsfwVideoResult } from '../db.js';
 import { getDataDir, getDownloadsDir } from '../paths.js';
@@ -381,6 +388,62 @@ async function _waitForSidecarJob(job, budgetMs, signal) {
     return job;
 }
 
+// One hint per process: a remote sidecar that can't read our videos and
+// can't take uploads leaves the work to local ffmpeg.
+let _cantReachHintLogged = false;
+
+function _spriteFormatOf(job, fallback) {
+    const f = String(job?.format || '').toLowerCase();
+    if (f === 'jpg' || f === 'jpeg') return 'jpeg';
+    if (f === 'webp') return 'webp';
+    const ext = path.extname(String(job?.sprite_path || '')).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') return 'jpeg';
+    if (ext === '.webp') return 'webp';
+    return fallback;
+}
+
+function _samePath(a, b) {
+    const n = (p) => path.resolve(p).replace(/\\/g, '/');
+    return process.platform === 'win32' ? n(a).toLowerCase() === n(b).toLowerCase() : n(a) === n(b);
+}
+
+function _sizeOf(p) {
+    try {
+        return statSync(p).size;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Put the sidecar's finished sprite at `dstAbs`. In order:
+ *   - it already wrote there (local sidecar, or a shared output dir —
+ *     mapped, or unmapped but byte-for-byte the job's size);
+ *   - its output path is visible here through the path map → copy;
+ *   - otherwise download it (`GET /sprite/:id`, any sidecar version) and
+ *     drop the sidecar's staging copy.
+ * Throws a retryable error when none works, so the row isn't recorded
+ * with a sprite the app can't serve.
+ */
+async function _collectSidecarSprite(job, id, dstAbs, signal) {
+    const local = job.sprite_path ? fromSidecarPath(job.sprite_path) : null;
+    if (local && _samePath(local, dstAbs) && existsSync(dstAbs)) return;
+    if (local && existsSync(local)) {
+        await fs.copyFile(local, dstAbs);
+        return;
+    }
+    const size = _sizeOf(dstAbs);
+    if (size && Number(job.bytes) > 0 && size === Number(job.bytes)) return;
+    try {
+        await sidecarDownloadSprite(job.video_id ?? String(id), dstAbs, { signal });
+    } catch (e) {
+        throw new Error(
+            `seekbar sidecar: sprite not reachable from the app (${e?.message || e}) — will retry on the next scan`,
+        );
+    }
+    sidecarDeleteSprite(job.video_id ?? String(id)).catch(() => {});
+}
+
 /**
  * Generate the sprite + JSON for one downloads.id. Returns the metadata
  * row that was written to `seekbar_sprites`, or null if the source
@@ -472,19 +535,58 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
     // the same video would just double the work.
     let job = null;
     if (getSidecarUrl()) {
+        // A meta file whose sprite is gone would let the sidecar's own
+        // cache check (seekbar-service < 0.4.0 shares this file) answer
+        // "done" without writing a sprite.
+        if (!existsSync(dstAbs) && existsSync(metaAbs)) {
+            try {
+                await fs.unlink(metaAbs);
+            } catch {}
+        }
+        let submitErr = null;
         try {
             job = await sidecarSubmitOne({
                 videoId: String(id),
-                srcPath: srcAbs,
+                srcPath: toSidecarPath(srcAbs),
                 async: true,
                 cfg: conf,
+                // We already decided the sprite is stale (our own cache
+                // check above); don't let the sidecar's cache disagree.
+                overwrite: 'always',
                 signal: opts.signal || null,
             });
         } catch (e) {
+            submitErr = e;
+        }
+        // A sidecar on another host can't read the file: send it over
+        // (0.4.0+), in chunks small enough for any reverse proxy.
+        if (!job && isSourceNotFound(submitErr) && sidecarHasFeature('upload')) {
+            try {
+                const uploadId = await sidecarUploadSource(srcAbs, { signal: opts.signal || null });
+                job = await sidecarSubmitOne({
+                    videoId: String(id),
+                    uploadId,
+                    async: true,
+                    cfg: conf,
+                    overwrite: 'always',
+                    signal: opts.signal || null,
+                });
+                submitErr = null;
+            } catch (e) {
+                submitErr = e;
+            }
+        }
+        if (!job && submitErr) {
             if (opts.signal?.aborted) return null;
+            if (isSourceNotFound(submitErr) && !_cantReachHintLogged) {
+                _cantReachHintLogged = true;
+                console.warn(
+                    "[seekbar-generator] the seekbar sidecar can't read the app's videos — set a path mapping for a shared mount, or run seekbar-service 0.4.0+ so videos are uploaded to it. Using local ffmpeg meanwhile.",
+                );
+            }
             console.warn(
                 '[seekbar-generator] sidecar submit failed, falling back to local ffmpeg:',
-                String(e?.message || e).slice(0, 160),
+                String(submitErr?.message || submitErr).slice(0, 160),
             );
         }
     }
@@ -501,6 +603,17 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
         if (r.status !== 'done' || !r.sprite_path) {
             throw new Error(`seekbar sidecar job ended as '${r.status}' without a sprite`);
         }
+        // The sidecar's own settings may differ from ours (older remote
+        // sidecars ignore per-job params) — store under what it produced.
+        const outFormat = _spriteFormatOf(r, format);
+        const outAbs = _spritePath(id, outFormat);
+        await _collectSidecarSprite(r, id, outAbs, opts.signal);
+        if (outAbs !== dstAbs && existsSync(dstAbs)) {
+            try {
+                await fs.unlink(dstAbs); // stale sprite in the other format
+            } catch {}
+        }
+        const outBytes = _sizeOf(outAbs);
         const sidecarMeta = {
             version: 1,
             download_id: id,
@@ -513,26 +626,16 @@ export async function generateForDownload(row, cfg = null, opts = {}) {
             tile_w: r.tile_w ?? plan.tileW,
             tile_h: r.tile_h ?? null,
             interval_sec: r.interval_sec ?? plan.intervalSec,
-            format: r.format || format,
-            bytes: r.bytes ?? null,
+            format: outFormat,
+            bytes: outBytes ?? r.bytes ?? null,
             source_size: sourceStat.size,
             source_mtime: sourceStat.mtime,
             generated_at: Date.now(),
         };
-        // Sidecar may write straight to its own SEEKBAR_OUTPUT_DIR.
-        // If that's the same as ours (default config forwards
-        // it), the file already lives at dstAbs; otherwise copy.
-        if (r.sprite_path !== dstAbs && existsSync(r.sprite_path)) {
-            try {
-                await fs.copyFile(r.sprite_path, dstAbs);
-            } catch {
-                /* leave sprite at sidecar path; we still record it */
-            }
-        }
         await _writeAtomic(metaAbs, JSON.stringify(sidecarMeta, null, 0));
         upsertSeekbarSprite({
             downloadId: id,
-            spritePath: existsSync(dstAbs) ? dstAbs : r.sprite_path,
+            spritePath: outAbs,
             metaPath: metaAbs,
             durationSec: sidecarMeta.duration_sec,
             frames: sidecarMeta.frames,

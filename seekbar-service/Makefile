@@ -1,4 +1,4 @@
-# Makefile — cross-platform build for seekbar-service v0.2.0
+# Makefile — cross-platform build for seekbar-service
 #
 # Binary naming convention: tgdl-seekbar-{platform}-{arch}[.exe]
 #

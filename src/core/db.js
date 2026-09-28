@@ -526,6 +526,21 @@ function initSchema() {
     } catch {
         /* column already present */
     }
+    // Face coordinates in the EXIF-oriented frame (1) vs the legacy frame
+    // older sidecars produced (NULL). Only the face-crop endpoints read it.
+    // ADD COLUMN is a schema-only change in SQLite — O(1) on any table size.
+    try {
+        db.exec('ALTER TABLE faces ADD COLUMN exif_oriented INTEGER');
+    } catch {
+        /* column already present */
+    }
+    // Video faces: seconds into the clip of the frame the face came from,
+    // so its crop can seek there (NULL for photos and for older rows).
+    try {
+        db.exec('ALTER TABLE faces ADD COLUMN frame_time_sec REAL');
+    } catch {
+        /* column already present */
+    }
     // gender classification — 'male' | 'female' | null (from insightface genderage model).
     try {
         db.exec('ALTER TABLE faces ADD COLUMN gender TEXT');
@@ -2494,7 +2509,15 @@ export function unwhitelistNsfw(ids) {
  * Rows that haven't been visited yet by the AI indexer. Supports both
  * ``photo`` and ``video`` file types — scan-runner.js processes each in
  * separate loops (batch for photos, one-at-a-time for videos). Sorted
- * oldest-first so a resumed scan picks up backlog before newly-arrived rows.
+ * oldest-first (insertion order) so a resumed scan picks up backlog before
+ * newly-arrived rows.
+ *
+ * Ordered by `id`, not `created_at`: the partial index
+ * `idx_ai_unindexed` only holds rows still waiting, and walks them in
+ * rowid order, so every pick costs O(batch). Ordering by created_at went
+ * through idx_gallery_type_date and stepped over every row the scan had
+ * already stamped — ~90 ms per 16-row pick at 80 % of a 210 k-photo
+ * library, all of it on the event loop.
  */
 export function getUnindexedAiBatch({ fileTypes = ['photo'], limit = 50 } = {}) {
     const types = Array.isArray(fileTypes) && fileTypes.length ? fileTypes : ['photo'];
@@ -2506,7 +2529,7 @@ export function getUnindexedAiBatch({ fileTypes = ['photo'], limit = 50 } = {}) 
          WHERE file_type IN (${placeholders})
            AND ai_indexed_at IS NULL
            AND file_path NOT LIKE '%.part'
-         ORDER BY created_at ASC, id ASC
+         ORDER BY id ASC
          LIMIT ?
     `)
         .all(...types, Math.max(1, Math.min(500, Number(limit) || 50)));
@@ -2530,11 +2553,15 @@ export function getAiCounts({ fileTypes = ['photo'] } = {}) {
     const total = db
         .prepare(`SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders})`)
         .get(...types).n;
-    const indexed = db
+    // Count the (small, partially indexed) not-yet-scanned side and
+    // subtract: `ai_indexed_at IS NOT NULL` has no index and visited every
+    // row of the library (~0.7 s at 300 k rows) on each status poll.
+    const unindexedCount = db
         .prepare(
-            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NOT NULL`,
+            `SELECT COUNT(*) AS n FROM downloads WHERE file_type IN (${placeholders}) AND ai_indexed_at IS NULL`,
         )
         .get(...types).n;
+    const indexed = Math.max(0, total - unindexedCount);
     const withEmbedding = db.prepare(`SELECT COUNT(*) AS n FROM image_embeddings`).get().n;
     const withFaces = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM faces`).get().n;
     const withTags = db.prepare(`SELECT COUNT(DISTINCT download_id) AS n FROM image_tags`).get().n;
@@ -2671,11 +2698,14 @@ export function insertFace({
     embeddingBlob,
     personId = null,
     qualityScore = null,
+    exifOriented = false,
+    frameTimeSec = null,
 }) {
     return getDb()
         .prepare(`
-        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id, quality_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO faces (download_id, x, y, w, h, embedding, person_id, quality_score,
+                           exif_oriented, frame_time_sec)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
         .run(
             Number(downloadId),
@@ -2686,6 +2716,8 @@ export function insertFace({
             embeddingBlob,
             personId == null ? null : Number(personId),
             qualityScore == null ? null : Number(qualityScore),
+            exifOriented ? 1 : null,
+            Number.isFinite(frameTimeSec) ? Number(frameTimeSec) : null,
         );
 }
 
@@ -2705,11 +2737,12 @@ export function deleteFacesForDownload(downloadId) {
 //   2. Loading ALL rows via `.all()` is fine for a 50k-face library
 //      but blows up at million-face scale (~2 GB Node heap).
 //
-// Solution: paginate via LIMIT/OFFSET in 1 000-row chunks. Each chunk's
-// `.all()` releases the connection immediately, so any pending writer
-// (config save, faststart stamp, faces.insert from Phase A's parallel
-// detect) can run between chunks. The caller's `setImmediate` yields
-// land in those windows naturally.
+// Solution: paginate in 1 000-row chunks. Each chunk's `.all()` releases
+// the connection immediately, so any pending writer (config save,
+// faststart stamp, faces.insert from Phase A's parallel detect) can run
+// between chunks. The caller's `setImmediate` yields land in those
+// windows naturally. Keyset (`id > last`) rather than OFFSET, which
+// re-walked every earlier row on each chunk (O(N²) over a full pass).
 //
 // 1 000-row chunk × 2 KB/row = 2 MB working set per pull, well within
 // V8 heap limits at any library size. Total wall time is comparable to
@@ -2719,11 +2752,13 @@ export function* iterateAllFaces({ chunkSize = 1000 } = {}) {
     const db = getDb();
     const stmt = db.prepare(
         `SELECT id, download_id, x, y, w, h, embedding, person_id, gender, quality_score FROM faces
-         ORDER BY id LIMIT ? OFFSET ?`,
+          WHERE id > ? ORDER BY id LIMIT ?`,
     );
-    for (let offset = 0; ; offset += chunkSize) {
-        const chunk = stmt.all(chunkSize, offset);
+    let lastId = -1;
+    while (true) {
+        const chunk = stmt.all(lastId, chunkSize);
         if (!chunk.length) return;
+        lastId = chunk[chunk.length - 1].id;
         for (const row of chunk) yield row;
         if (chunk.length < chunkSize) return;
     }
@@ -2936,12 +2971,50 @@ export function insertPerson({ label = null, centroidBlob, faceCount = 0 }) {
     return r.lastInsertRowid;
 }
 
-export function listPeople({ limit = 500, offset = 0 } = {}) {
+// People list orderings. Allow-listed — the SQL is built from these
+// fragments only, never from request input. Every order ends on
+// face_count DESC, id ASC so pages are stable.
+const PEOPLE_SORTS = Object.freeze({
+    face_count: { asc: 'p.face_count ASC', desc: 'p.face_count DESC' },
+    avg_quality: { asc: 'COALESCE(aq.q, 0) ASC', desc: 'COALESCE(aq.q, 0) DESC' },
+    // Unlabelled people first when ascending, last when descending.
+    name: {
+        asc: "(COALESCE(p.label, '') = '') DESC, p.label COLLATE NOCASE ASC",
+        desc: "(COALESCE(p.label, '') = '') ASC, p.label COLLATE NOCASE DESC",
+    },
+});
+
+/** Normalise `sort` / `dir` query values to an allow-listed pair. */
+export function resolvePeopleSort(sort, dir) {
+    const key = Object.hasOwn(PEOPLE_SORTS, sort) ? sort : 'face_count';
+    const d = dir === 'asc' || dir === 'desc' ? dir : key === 'name' ? 'asc' : 'desc';
+    return { sort: key, dir: d };
+}
+
+export function listPeople({ limit = 500, offset = 0, sort = 'face_count', dir } = {}) {
     const lim = Math.max(1, Math.min(2000, Number(limit) || 500));
     const off = Math.max(0, Number(offset) || 0);
+    const order = resolvePeopleSort(sort, dir);
+    const orderSql = `${PEOPLE_SORTS[order.sort][order.dir]}, p.face_count DESC, p.id ASC`;
+    // Only the quality sort needs the per-person average up front; the
+    // page is picked from `people` alone and the heavier per-row columns
+    // (cover face, video count, average) are computed for that page only.
+    const qualityJoin =
+        order.sort === 'avg_quality'
+            ? `LEFT JOIN (SELECT person_id, AVG(quality_score) AS q FROM faces
+                          WHERE person_id IS NOT NULL AND quality_score IS NOT NULL
+                          GROUP BY person_id) aq ON aq.person_id = p.id`
+            : '';
     const db = getDb();
     const rows = db
         .prepare(`
+        WITH page AS (
+            SELECT p.id, ROW_NUMBER() OVER (ORDER BY ${orderSql}) AS ord
+              FROM people p
+              ${qualityJoin}
+             ORDER BY ord
+             LIMIT ? OFFSET ?
+        )
         SELECT p.id, p.label, p.face_count, p.created_at, p.updated_at,
                f.download_id AS cover_download_id,
                f.id          AS cover_face_id,
@@ -2958,15 +3031,15 @@ export function listPeople({ limit = 500, offset = 0 } = {}) {
                    SELECT AVG(f3.quality_score) FROM faces f3
                     WHERE f3.person_id = p.id AND f3.quality_score IS NOT NULL
                ), 0) AS avg_quality
-          FROM people p
+          FROM page
+          JOIN people p ON p.id = page.id
           LEFT JOIN faces f ON f.id = (
             SELECT ff.id FROM faces ff
              WHERE ff.person_id = p.id
              ORDER BY COALESCE(ff.quality_score, 0) DESC, ff.w * ff.h DESC
              LIMIT 1
           )
-         ORDER BY p.face_count DESC, p.id ASC
-         LIMIT ? OFFSET ?
+         ORDER BY page.ord
     `)
         .all(lim, off);
     const total = db.prepare('SELECT COUNT(*) AS n FROM people').get().n;

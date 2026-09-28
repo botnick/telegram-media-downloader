@@ -53,7 +53,11 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `HASH_WORKER_POOL_SIZE`         | `min(8, ⌊cpus/2⌋)`  | Worker-thread pool used for SHA-256 streaming over multi-GB files (post-write hash + dedup catch-up). Keeps the main event loop free for HTTP / WebSocket traffic. Set higher on a beefy host with many parallel downloads, lower on a Pi 4 / NAS. |
 | `HASH_WORKER_DISABLE`           | unset               | Set to `1` to skip the worker pool entirely and hash on the main thread — useful for sandboxed runtimes that block `worker_threads`. |
 | `COMPRESSION_LEVEL`             | `6`                 | gzip / brotli compression level (1-9) for text payloads (HTML / JS / CSS / JSON). Raw file routes (`/files/`, `/share/`, `/photos/`), Range requests and media types are never compressed. Lower the level on slow CPUs (Pi Zero, embedded NAS) so requests don't queue up behind compression; raise it on hosts with spare CPU + slow uplink. Set to `0` to turn compression off (e.g. when a reverse proxy already compresses). |
-| `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. When the `faces` compose profile is up this is set to `http://tgdl-faces:8011` automatically. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
+| `FACES_SERVICE_URL`             | unset               | Override URL for the face-clustering sidecar. The bundled `docker-compose.yml` sets it to `http://tgdl-faces:8011` whether or not the `faces` profile is up. With the profile up, that sidecar is used; without it (`tgdl-faces` doesn't resolve) the app auto-spawns the sidecar binary inside its own container once AI + face clustering are enabled, and re-checks when a scan starts. Any other value is used as-is. Leave unset on bare-metal installs to let Node auto-spawn the bundled binary. |
+| `TGDL_FACES_API_TOKEN`          | unset               | Shared secret for the faces sidecar. Set in `.env`: the compose `tgdl-faces*` services require it on every call except `/health`, and the main service sends it (as `TGDL_FACES_SIDECAR_TOKEN`). For an external sidecar on another host, start it with this env and set `TGDL_FACES_SIDECAR_TOKEN` (or `advanced.ai.faces.sidecarToken`) on the app. |
+| `TGDL_FACES_SIDECAR_WAIT_MS`    | `300000`            | How long a face scan waits for an unreachable / still-loading sidecar before stopping. Nothing is marked scanned while it waits. |
+| `TGDL_FACE_CROP_CONCURRENCY`    | `4`                 | Max face crops (People-grid avatars) rendered at once. Each first-time crop decodes the full-resolution source or grabs a video frame; finished crops are cached under `data/thumbs/face-crops/`. |
+| `TGDL_FACES_SIDECAR_NICE`       | `10`                | Priority of the **auto-spawned** faces sidecar (nice / Windows below-normal) so the dashboard and healthcheck win CPU contention. `0` disables. |
 | `TGDL_FACES_AUTO_DOWNLOAD`      | `true`              | `false` refuses to download the prebuilt PyInstaller binary on first use — pair with a pre-staged binary under `data/faces-service/bin/` for air-gapped deploys. Full env-var reference in [docs/AI.md](AI.md). |
 | `SEEKBAR_SIDECAR_URL`           | unset               | Override URL for the Go seekbar sidecar. Set when running `seekbar-service/` as its own compose service; leave unset for the bundled auto-spawn path. |
 | `SEEKBAR_API_TOKEN`             | auto-generated      | Bearer token the dashboard sends as `X-API-Token` to the seekbar sidecar. Auto-generated per process; set explicitly only when running the sidecar standalone. |
@@ -191,6 +195,124 @@ The setting persists in the `kv['config']` row of `data/db.sqlite` under `web.fo
 
 For HSTS preload (chrome global list), submit your domain at <https://hstspreload.org> after the header has been live for at least a few weeks. The dashboard does **not** add `preload` to the HSTS header automatically — preload is a one-way commitment that needs operator opt-in.
 
+## Running a sidecar on another machine
+
+The NSFW classifier, the seekbar sprite generator and the face-clustering sidecar can each run on a different host than the app — a GPU box, a separate container, a NAS — reached directly on the LAN, through a reverse proxy, or through a Cloudflare Tunnel. Local / auto-spawned sidecars need none of this.
+
+How files get to a remote sidecar:
+
+| Setup | What happens |
+|---|---|
+| Sidecar mounts the downloads **at the same path** as the app | Path mode — the sidecar reads files directly. |
+| Sidecar mounts the downloads **at a different path** | Set a **path mapping** (`app path=sidecar path`, one rule per line or `;`-separated). Path mode keeps working. |
+| **No shared storage** | NSFW: images are uploaded (anything over 1.5 MB is downscaled to 1024 px first). Seekbar: the video is uploaded in 32 MB chunks and the finished sprite is downloaded back. Faces: frames/images are sent as base64. |
+
+Chunks and requests stay under Cloudflare's 100 MB request-body limit, and seekbar jobs are polled, so nothing depends on a request outliving Cloudflare's 100 s timeout.
+
+Always set a **token** on a sidecar that is reachable from anything but the app: the same value on the sidecar (`TGDL_NSFW_API_TOKEN` / `SEEKBAR_API_TOKEN`) and in the app (the dashboard field or the env var below). The app sends it as `X-API-Token`. `/health` stays open for health checks.
+
+### NSFW classifier (`nsfw-service` 1.2.0+)
+
+```bash
+# On the remote host — NVIDIA GPU (drop --gpus and use :latest for CPU)
+docker run -d --name tgdl-nsfw --restart unless-stopped --gpus all \
+  -p 8012:8012 \
+  -e TGDL_NSFW_API_TOKEN=change-me-to-a-long-random-string \
+  -v tgdl-nsfw-hf:/root/.cache/huggingface \
+  ghcr.io/botnick/tgdl-nsfw:gpu-latest
+
+# Optional, only with shared storage: let it read files in place
+#   -v /mnt/media:/media:ro -e TGDL_NSFW_ALLOW_ROOTS=/media
+#   and in the app: path mapping  /app/data/downloads=/media
+```
+
+In the app: **Maintenance → NSFW → Classifier mode → External** — URL, API token, optional path mapping → **Test** → **Apply**. Or in the app's environment:
+
+```bash
+TGDL_NSFW_SIDECAR_URL=https://nsfw.example.com
+TGDL_NSFW_API_TOKEN=change-me-to-a-long-random-string
+TGDL_NSFW_PATH_MAP=/app/data/downloads=/media   # only with shared storage
+```
+
+nsfw-service 1.1.0 still works (no token, base64 instead of raw uploads).
+
+### Seekbar sprites (`seekbar-service` 0.4.0+)
+
+```bash
+# On the remote host
+docker run -d --name tgdl-seekbar --restart unless-stopped \
+  -p 8089:8089 \
+  -e SEEKBAR_API_TOKEN=change-me-to-a-long-random-string \
+  -e SEEKBAR_HWACCEL=auto \
+  -v tgdl-seekbar:/data \
+  ghcr.io/botnick/tgdl-seekbar:latest
+# Intel / AMD hardware decode: add  --device /dev/dri
+# Optional shared storage: add  -v /mnt/media:/media:ro
+#   -e SEEKBAR_ALLOW_ROOTS=/media   and map  /app/data/downloads=/media  in the app
+```
+
+`SEEKBAR_ALLOW_ROOTS` (comma-separated) limits which directories the sidecar reads in path mode. Anything outside is answered as "source not found", and the app uploads the file instead. Leave it unset only when the sidecar runs next to the app.
+
+Without Docker, download `tgdl-seekbar-<os>-<arch>.tar.gz` from the `seekbar-v0.4.0` release, make sure `ffmpeg`/`ffprobe` are on `PATH`, and run `SEEKBAR_API_TOKEN=… SEEKBAR_HTTP_LISTEN=:8089 ./seekbar-server`.
+
+In the app: **Maintenance → Seekbar previews → System health → Sidecar mode → External** — URL, API token, optional path mapping → **Test** → **Use External**. Or:
+
+```bash
+SEEKBAR_SIDECAR_URL=https://seekbar.example.com
+SEEKBAR_API_TOKEN=change-me-to-a-long-random-string
+SEEKBAR_PATH_MAP=/app/data/downloads=/media      # only with shared storage
+```
+
+The app's sprite settings (interval, tile width, columns, format, quality) apply to the remote sidecar per job. Uploaded videos are deleted on the sidecar as soon as their sprite is done, and the sidecar's copy of each sprite is removed once the app has it. seekbar-service 0.3.3 still works when it can read the videos (same path or a path mapping); videos it can't read are rendered by the app's own ffmpeg, as before. One sidecar per app instance — sprites are named by download id.
+
+### Face clustering (`faces-service`)
+
+```bash
+docker run -d --name tgdl-faces --restart unless-stopped --gpus all \
+  -p 8011:8011 \
+  -e TGDL_FACES_HOST=0.0.0.0 -e TGDL_FACES_PORT=8011 \
+  -e TGDL_FACES_API_TOKEN=change-me-to-a-long-random-string \
+  -e TGDL_FACES_MODELS_DIR=/models -v tgdl-faces-models:/models \
+  ghcr.io/botnick/tgdl-faces:cuda-latest     # CPU: ghcr.io/botnick/tgdl-faces:latest, no --gpus
+```
+
+In the app: **Maintenance → AI → System health → Sidecar mode → External** — URL, API token, optional path mapping → **Test** → **Apply**. Or:
+
+```bash
+TGDL_FACES_SIDECAR_URL=https://faces.example.com
+TGDL_FACES_SIDECAR_TOKEN=change-me-to-a-long-random-string
+TGDL_FACES_PATH_MAP=/app/data/downloads=/media   # only with shared storage
+```
+
+Photos the sidecar can't read are uploaded (raw with faces-service 0.5.1+, base64 before that; anything over the ~40 MB request budget is sent as a 4096 px copy and the face boxes are scaled back). Videos are decoded by the app's ffmpeg and sent as frames.
+
+### Reverse proxy / tunnel notes
+
+- **Cloudflare Tunnel** can't strip a path prefix — give each sidecar its own hostname (`nsfw.example.com` → `http://localhost:8012`, `seekbar.example.com` → `http://localhost:8089`). Don't put Cloudflare Access in front of these hostnames: the app can't sign in to Access; the sidecar token protects them.
+- **Path prefixes** (`https://gpu.example.com/nsfw`) work when the proxy strips the prefix:
+
+  ```caddyfile
+  gpu.example.com {
+      handle_path /nsfw/*    { reverse_proxy 127.0.0.1:8012 }
+      handle_path /seekbar/* { reverse_proxy 127.0.0.1:8089 }
+  }
+  ```
+
+  ```nginx
+  location /seekbar/ {
+      proxy_pass http://127.0.0.1:8089/;   # trailing slash strips /seekbar
+      client_max_body_size 64m;            # nginx defaults to 1m — uploads need more
+      proxy_request_buffering off;
+      proxy_read_timeout 300s;
+  }
+  location /nsfw/ {
+      proxy_pass http://127.0.0.1:8012/;
+      client_max_body_size 64m;
+  }
+  ```
+
+- **Test** in the dashboard tells a wrong URL / missing prefix (`HTTP 404`, "not the sidecar"), a rejected or missing token, and whether files will be read in place or uploaded. A remote seekbar sidecar that is down is re-checked every 30 s; meanwhile the app renders previews with its own ffmpeg.
+
 ## systemd unit (bare-metal Node)
 
 ```ini
@@ -310,6 +432,16 @@ environment:
 ```
 
 The container entrypoint creates and permissions `TGDL_DOWNLOADS_DIR` automatically on boot.
+
+With the `faces` profile, mount the HDD into the `tgdl-faces` service at the **same path** and allow it, so the sidecar reads files directly instead of receiving every image as base64 over HTTP:
+
+```yaml
+# tgdl-faces service
+volumes:
+  - /mnt/hdd/tgdl/downloads:/mnt/hdd/downloads:ro
+environment:
+  - TGDL_FACES_ALLOW_ROOTS=/mnt/hdd/downloads
+```
 
 **Bare metal / Synology native:**
 

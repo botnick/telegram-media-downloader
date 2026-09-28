@@ -3331,6 +3331,26 @@ function renderDialogsList(dialogs) {
     });
 }
 
+// After saving one chat's settings, update just that row. Re-running
+// renderGroupsConfig() refetched every dialog from Telegram and blanked
+// the list to "Loading dialogs…", which looked like a page reload and lost
+// the search text and scroll position.
+function refreshDialogRow(id, enabled) {
+    const d = state.allDialogs?.find((x) => String(x.id) === id);
+    if (!d) {
+        renderGroupsConfig();
+        return;
+    }
+    d.inConfig = true;
+    d.enabled = !!enabled;
+    const scroller = document.getElementById('content-area');
+    const top = scroller?.scrollTop;
+    const q = document.getElementById('groups-search')?.value || '';
+    if (q.trim()) filterDialogs(q);
+    else renderDialogsList(state.allDialogs);
+    if (scroller && top != null) scroller.scrollTop = top;
+}
+
 function filterDialogs(query) {
     if (!state.allDialogs) return;
     const q = query.toLowerCase();
@@ -3905,11 +3925,12 @@ async function saveGroupSettings() {
     }
 
     try {
+        const savedId = String(currentEditGroup.id);
         await api.put(`/api/groups/${currentEditGroup.id}`, data);
         showToast(i18nT('group.modal.saved_toast', 'Group settings saved!'), 'success');
         closeGroupSettings();
         await loadGroups();
-        if (state.currentPage === 'groups') renderGroupsConfig();
+        if (state.currentPage === 'groups') refreshDialogRow(savedId, enabled);
     } catch (e) {
         showToast(
             i18nTf('group.modal.save_failed', { msg: e.message }, 'Failed to save: ' + e.message),

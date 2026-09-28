@@ -46,12 +46,36 @@ Tunables (environment variables):
     compatibility with the Node-side env var docs).
 
 ``TGDL_FACES_MAX_CONCURRENCY``
-    Maximum number of detection requests processed in parallel (default 2).
-    Prevents OOM on burst traffic by serialising excess requests.
+    Maximum number of detection requests processed in parallel (default 2
+    on CPU, capped at the CPU budget). Prevents OOM on burst traffic by
+    serialising excess requests.
+
+``TGDL_FACES_CPU_THREADS``
+    Total CPU threads inference may use (CPU provider only). Defaults to
+    the *effective* CPU count — cgroup quota (``docker --cpus``) and
+    cpuset affinity respected, unlike ``os.cpu_count()`` which reports
+    every host core inside a container — minus ``TGDL_FACES_RESERVE_CPUS``.
+    Split evenly across ``TGDL_FACES_MAX_CONCURRENCY`` so parallel
+    requests never oversubscribe the box.
+
+``TGDL_FACES_RESERVE_CPUS``
+    Cores to leave free for co-located processes (default 0). The Node app
+    sets 1 when it auto-spawns the sidecar inside its own container so
+    the dashboard's event loop always has a core.
+
+``TGDL_FACES_INTRA_OP_THREADS``
+    Explicit onnxruntime intra-op thread count per session; overrides the
+    budget split above.
+
+``TGDL_FACES_ORT_SPIN``
+    ``1`` re-enables onnxruntime's busy-wait spinning between ops. Off by
+    default on CPU: spinning threads burn whole cores while idle and
+    starve whatever shares the host (the Node app, NSFW scan, ffmpeg).
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import os
@@ -129,6 +153,13 @@ DEFAULT_MODEL_NAME = "buffalo_l"
 EMBEDDING_DIM = 512
 DEFAULT_DET_SIZE = (640, 640)
 
+# insightface task names this service actually consumes: boxes + 5-point
+# kps (detection), the ArcFace embedding (recognition) and head pose for
+# the quality score (landmark_3d_68). buffalo_l also ships 2d106det and
+# genderage; FaceAnalysis.get() runs every loaded model on every face, so
+# loading those two cost inference time per face for outputs nobody reads.
+_ALLOWED_MODULES = ("detection", "recognition", "landmark_3d_68")
+
 # Public re-exports preserved for code that already imports `MODEL_NAME`
 # and `DET_SIZE` (the FastAPI layer pulls these into its response models).
 # `_resolve_model_name()` / `_resolve_det_size()` are the canonical
@@ -176,20 +207,181 @@ def _resolve_models_dir() -> Path:
     return (Path.home() / ".cache" / "tgdl-faces" / "models").resolve()
 
 
-def _resolve_max_concurrency() -> int:
-    raw = os.environ.get("TGDL_FACES_MAX_CONCURRENCY", "").strip()
-    if raw:
+def _env_int(name: str, lo: int = 0) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return max(lo, int(raw))
+    except ValueError:
+        _LOG.warning("%s=%r is not an integer; ignoring", name, raw)
+        return None
+
+
+def _cgroup_cpu_limit() -> float | None:
+    """CPU quota of the current cgroup in cores, or None when unlimited.
+
+    ``os.cpu_count()`` inside a container reports every host core, so a
+    container started with ``--cpus 2`` on a 16-core host would otherwise
+    size onnxruntime for 16 threads and spend its quota context-switching.
+    Handles cgroup v2 (``cpu.max``) and v1 (``cpu.cfs_quota_us``).
+    """
+    try:
+        with open("/sys/fs/cgroup/cpu.max", encoding="ascii") as fh:
+            quota, period = fh.read().split()[:2]
+        if quota != "max" and float(period) > 0:
+            return float(quota) / float(period)
+        return None
+    except (OSError, ValueError):
+        pass
+    for base in ("/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpu,cpuacct"):
         try:
-            return max(1, int(raw))
-        except ValueError:
-            pass
+            with open(f"{base}/cpu.cfs_quota_us", encoding="ascii") as fh:
+                quota_us = float(fh.read().strip())
+            with open(f"{base}/cpu.cfs_period_us", encoding="ascii") as fh:
+                period_us = float(fh.read().strip())
+            if quota_us > 0 and period_us > 0:
+                return quota_us / period_us
+            return None
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def effective_cpu_count() -> int:
+    """Cores this process may actually use: affinity mask ∩ cgroup quota."""
+    n = os.cpu_count() or 1
+    try:
+        n = len(os.sched_getaffinity(0)) or n  # type: ignore[attr-defined]
+    except (AttributeError, OSError):
+        pass
+    quota = _cgroup_cpu_limit()
+    if quota:
+        n = min(n, max(1, math.ceil(quota)))
+    return max(1, n)
+
+
+def cpu_budget() -> int:
+    """Total inference threads for the CPU provider (see module docstring)."""
+    explicit = _env_int("TGDL_FACES_CPU_THREADS", lo=1)
+    if explicit:
+        return explicit
+    reserve = _env_int("TGDL_FACES_RESERVE_CPUS") or 0
+    return max(1, effective_cpu_count() - reserve)
+
+
+def _bundled_models_root() -> Path | None:
+    """Model root baked into a PyInstaller build, if this is one.
+
+    The release workflow adds the pre-downloaded pack with
+    ``--add-data <models>:tgdl_faces_models``, i.e.
+    ``<_MEIPASS>/tgdl_faces_models/models/<name>/*.onnx``.
+    """
+    base = getattr(sys, "_MEIPASS", None)
+    if not base:
+        return None
+    root = Path(base) / "tgdl_faces_models"
+    return root if any((root / "models" / MODEL_NAME).glob("*.onnx")) else None
+
+
+def _resolve_max_concurrency() -> int:
+    explicit = _env_int("TGDL_FACES_MAX_CONCURRENCY", lo=1)
+    if explicit:
+        return explicit
     # Auto-scale based on GPU tier. onnxruntime releases the GIL during
     # CUDA inference so multiple threads genuinely run in parallel on GPU.
     # High-end GPUs (4070+/A100) can queue 20-32 concurrent kernels;
     # mid-range (3060/4060) saturates around 12-16.
     if gpu_available():
         return 24
-    return 2
+    # CPU: two requests in flight overlaps one image's decode / alignment
+    # with the other's inference; more only splits the thread budget into
+    # slivers. A 1-core budget gets 1.
+    return min(2, cpu_budget())
+
+
+def intra_op_threads() -> int:
+    """onnxruntime intra-op threads per session on the CPU provider."""
+    explicit = _env_int("TGDL_FACES_INTRA_OP_THREADS", lo=1)
+    if explicit:
+        return explicit
+    return max(1, cpu_budget() // _resolve_max_concurrency())
+
+
+def _ort_spin_enabled() -> bool:
+    return os.environ.get("TGDL_FACES_ORT_SPIN", "").strip().lower() in ("1", "true", "yes")
+
+
+def _cpu_session_options() -> Any:
+    """SessionOptions for CPU-only inference, or None if unavailable.
+
+    Without this every session sizes its pool from the host core count and
+    spins between ops, so N concurrent requests × 4 buffalo_l sessions run
+    far more busy threads than the container has cores.
+    """
+    try:
+        import onnxruntime as ort  # noqa: PLC0415
+    except Exception:  # pragma: no cover — onnxruntime is a hard dependency
+        return None
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = intra_op_threads()
+    so.inter_op_num_threads = 1
+    so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    spin = "1" if _ort_spin_enabled() else "0"
+    try:
+        so.add_session_config_entry("session.intra_op.allow_spinning", spin)
+        so.add_session_config_entry("session.inter_op.allow_spinning", spin)
+    except Exception:  # pragma: no cover — very old onnxruntime
+        pass
+    return so
+
+
+@contextlib.contextmanager
+def _insightface_session_options(factory: Any) -> Any:
+    """Build every insightface ONNX session with ``factory()`` options.
+
+    ``FaceAnalysis`` only forwards ``providers`` / ``provider_options`` to
+    ``onnxruntime.InferenceSession``, so there is no public way to pass
+    SessionOptions. Swap the session class its model router instantiates
+    for the duration of the load; later ``set_providers()`` calls reuse
+    the options the session was created with.
+    """
+    if factory is None:
+        yield False
+        return
+    try:
+        from insightface.model_zoo import model_zoo as _mz  # noqa: PLC0415
+
+        base = _mz.PickableInferenceSession
+    except Exception:
+        yield False
+        return
+
+    class _TunedSession(base):  # type: ignore[misc, valid-type]
+        def __init__(self, model_path: Any, **kwargs: Any) -> None:
+            if kwargs.get("sess_options") is None:
+                kwargs["sess_options"] = factory()
+            super().__init__(model_path, **kwargs)
+
+    _mz.PickableInferenceSession = _TunedSession
+    try:
+        yield True
+    finally:
+        _mz.PickableInferenceSession = base
+
+
+def _tune_opencv_threads() -> None:
+    """Stop OpenCV's own pool from oversubscribing the CPU budget.
+
+    cv2 parallelises resize / cvtColor / warpAffine across every host core;
+    with inference already using the budget those threads only contend.
+    """
+    try:
+        import cv2  # noqa: PLC0415
+
+        cv2.setNumThreads(1)
+    except Exception:  # pragma: no cover — cv2 is a hard dependency
+        pass
 
 
 def _resolve_max_image_dim() -> int:
@@ -528,6 +720,17 @@ def get_app() -> Any:
                 except OSError:
                     pass
 
+            # The PyInstaller binary ships buffalo_l inside the bundle, but
+            # the Node app points TGDL_FACES_MODELS_DIR at an empty
+            # data/faces-service/models — so every fresh install downloaded
+            # the ~280 MB pack again on first load. Use the bundled copy
+            # while the configured directory doesn't have the model.
+            if not any(target_dir.glob("*.onnx")):
+                bundled = _bundled_models_root()
+                if bundled is not None:
+                    _LOG.info("using the model pack bundled with the binary: %s", bundled)
+                    models_dir = bundled
+
             requested = os.environ.get("TGDL_FACES_PROVIDERS", "auto").strip() or "auto"
             det_size = _resolve_det_size()
 
@@ -582,11 +785,6 @@ def get_app() -> Any:
                     except Exception:
                         pass
 
-                app = FaceAnalysis(
-                    name=MODEL_NAME,
-                    root=str(models_dir),
-                    providers=providers,
-                )
                 gpu_providers = {
                     "CUDAExecutionProvider",
                     "DmlExecutionProvider",
@@ -594,7 +792,22 @@ def get_app() -> Any:
                     "OpenVINOExecutionProvider",
                     "TensorrtExecutionProvider",
                 }
-                ctx_id = 0 if any(p in gpu_providers for p in providers) else -1
+                cpu_only = not any(p in gpu_providers for p in providers)
+                # CPU-only: size every session's thread pool from the real
+                # (cgroup-aware) CPU budget and stop idle spinning. GPU
+                # chains keep onnxruntime's defaults.
+                if cpu_only:
+                    _tune_opencv_threads()
+                with _insightface_session_options(
+                    _cpu_session_options if cpu_only else None
+                ):
+                    app = FaceAnalysis(
+                        name=MODEL_NAME,
+                        root=str(models_dir),
+                        allowed_modules=list(_ALLOWED_MODULES),
+                        providers=providers,
+                    )
+                ctx_id = -1 if cpu_only else 0
                 app.prepare(ctx_id=ctx_id, det_size=det_size)
 
                 # Apply session options to loaded models for CUDA throughput
@@ -651,12 +864,16 @@ def get_app() -> Any:
             # Refresh concurrency semaphore now that GPU state is known.
             _refresh_concurrency_sem()
             _LOG.info(
-                "%s ready (dim=%d, providers=%s gpu_provider=%s concurrency=%d)",
+                "%s ready (dim=%d, providers=%s gpu_provider=%s concurrency=%d "
+                "cpu_budget=%d intra_op_threads=%d models=%s)",
                 MODEL_NAME,
                 EMBEDDING_DIM,
                 _RESOLVED_PROVIDERS,
                 _GPU_PROVIDER,
                 _resolve_max_concurrency(),
+                cpu_budget(),
+                intra_op_threads(),
+                sorted(getattr(app, "models", {}) or {}),
             )
             if _GPU_PROVIDER == "cpu" and any(
                 p in {"CUDAExecutionProvider", "DmlExecutionProvider",
@@ -864,6 +1081,97 @@ def _compute_quality_score(
     return round(max(0.0, min(1.0, composite)), 4)
 
 
+def _box_in_original(
+    bbox: Any, scale: float, w_img: int, h_img: int
+) -> tuple[int, int, int, int] | None:
+    """Integer ``(x, y, w, h)`` of a detector bbox in original-image pixels.
+
+    ``bbox`` is ``[x1, y1, x2, y2]`` in detect-image coords; ``scale`` is the
+    detect-image / original ratio (1.0 when no resize happened). Clamped to
+    the image so downstream crop code can't read out of bounds.
+    """
+    if bbox is None or len(bbox) < 4:
+        return None
+    x1 = float(bbox[0]) / scale
+    y1 = float(bbox[1]) / scale
+    x2 = float(bbox[2]) / scale
+    y2 = float(bbox[3]) / scale
+    x = max(0, int(round(x1)))
+    y = max(0, int(round(y1)))
+    w = max(0, int(round(x2 - x1)))
+    h = max(0, int(round(y2 - y1)))
+    if x + w > w_img:
+        w = max(0, w_img - x)
+    if y + h > h_img:
+        h = max(0, h_img - y)
+    return x, y, w, h
+
+
+def _passes_quality_gate(
+    box: tuple[int, int, int, int],
+    score: float,
+    min_score: float,
+    min_box_px: int,
+    ar_range: tuple[float, float],
+) -> bool:
+    _x, _y, w, h = box
+    if score < float(min_score):
+        return False
+    if min(w, h) < int(min_box_px):
+        return False
+    ratio = (w / h) if h > 0 else 0.0
+    return float(ar_range[0]) <= ratio <= float(ar_range[1])
+
+
+_FACE_CLS: Any = None
+
+
+def _analyse(app: Any, img: np.ndarray, keep: Any) -> list[Any]:
+    """``FaceAnalysis.get()`` with the quality gate moved before embedding.
+
+    Upstream ``get()`` runs every per-face model (recognition, landmarks)
+    on every detection, including the tiny / low-score / odd-shaped boxes
+    ``detect_and_embed`` throws away afterwards — on a crowd shot most of
+    the CPU goes to faces that are never returned. Here detection runs
+    first and only boxes ``keep`` accepts are embedded. The surviving
+    faces are computed exactly as before, so results are identical.
+
+    Falls back to ``app.get()`` when ``app`` doesn't look like an
+    insightface ``FaceAnalysis`` (test doubles, a future API change).
+    """
+    global _FACE_CLS
+    models = getattr(app, "models", None)
+    det_model = getattr(app, "det_model", None)
+    if _FACE_CLS is None:
+        try:
+            from insightface.app.common import Face  # noqa: PLC0415
+
+            _FACE_CLS = Face
+        except Exception:
+            _FACE_CLS = False
+    if not isinstance(models, dict) or det_model is None or not _FACE_CLS:
+        return app.get(img)
+
+    bboxes, kpss = det_model.detect(img, max_num=0, metric="default")
+    out: list[Any] = []
+    for i in range(bboxes.shape[0]):
+        bbox = bboxes[i, 0:4]
+        det_score = bboxes[i, 4]
+        if keep(bbox, det_score) is None:
+            continue
+        face = _FACE_CLS(
+            bbox=bbox,
+            kps=None if kpss is None else kpss[i],
+            det_score=det_score,
+        )
+        for taskname, model in models.items():
+            if taskname == "detection":
+                continue
+            model.get(img, face)
+        out.append(face)
+    return out
+
+
 def _skip_quality() -> bool:
     """Return True if quality score computation should be skipped for throughput."""
     return os.environ.get("TGDL_FACES_SKIP_QUALITY", "").strip().lower() in ("1", "true", "yes")
@@ -945,39 +1253,27 @@ def detect_and_embed(
                 w_orig, h_orig, new_w, new_h, scale,
             )
 
-        raw = app.get(detect_img)  # list[insightface.app.common.Face]
-
         h_img, w_img = h_orig, w_orig  # report original dimensions
-        ar_lo, ar_hi = float(ar_range[0]), float(ar_range[1])
+
+        def _keep(bbox: Any, det_score: Any) -> tuple[int, int, int, int, float] | None:
+            """Geometry + quality gate; the box in original-image pixels or None."""
+            box = _box_in_original(bbox, scale, w_img, h_img)
+            if box is None:
+                return None
+            score = float(det_score or 0.0)
+            if not _passes_quality_gate(box, score, min_score, min_box_px, ar_range):
+                return None
+            return (*box, score)
+
+        # list[insightface.app.common.Face] — only faces that pass the gate
+        # get the per-face models run on them (see _analyse).
+        raw = _analyse(app, detect_img, _keep)
 
         for face in raw or []:
-            # `bbox` is [x1, y1, x2, y2] in float32 (in detect_img coords).
-            bbox = getattr(face, "bbox", None)
-            if bbox is None or len(bbox) < 4:
+            kept = _keep(getattr(face, "bbox", None), getattr(face, "det_score", 0.0))
+            if kept is None:
                 continue
-            # Scale bbox back to original image coordinates when a resize occurred.
-            x1 = float(bbox[0]) / scale
-            y1 = float(bbox[1]) / scale
-            x2 = float(bbox[2]) / scale
-            y2 = float(bbox[3]) / scale
-            x = max(0, int(round(x1)))
-            y = max(0, int(round(y1)))
-            w = max(0, int(round(x2 - x1)))
-            h = max(0, int(round(y2 - y1)))
-            # Clamp to image so downstream crop code can't read out of bounds.
-            if x + w > w_img:
-                w = max(0, w_img - x)
-            if y + h > h_img:
-                h = max(0, h_img - y)
-
-            score = float(getattr(face, "det_score", 0.0) or 0.0)
-            if score < float(min_score):
-                continue
-            if min(w, h) < int(min_box_px):
-                continue
-            ratio = (w / h) if h > 0 else 0.0
-            if ratio < ar_lo or ratio > ar_hi:
-                continue
+            x, y, w, h, score = kept
 
             # Prefer the pre-normalised embedding when insightface provides
             # it; otherwise fall back to the raw `embedding` field.

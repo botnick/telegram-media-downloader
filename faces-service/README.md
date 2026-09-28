@@ -29,6 +29,11 @@ This README is for contributors who want to run the sidecar from source.
 | `POST` | `/detect` | `{ path \| image_b64, min_score?, min_box_px?, ar_range? }` | `{ faces[], image_w, image_h }` |
 | `POST` | `/detect-embed` | _alias of `/detect` — same body, same response_ | — |
 | `POST` | `/detect/batch` | `{ files: string[], min_score?, min_box_px?, ar_range? }` | `{ results[], total_files, total_faces }` |
+| `POST` | `/detect/upload` | raw image bytes; `?min_score=&min_box_px=&ar_lo=&ar_hi=` (0.5.1+) | same as `/detect` |
+
+`/health` lists `features` (0.5.1+; `upload` = `/detect/upload` exists) and
+`max_upload_bytes`. With `TGDL_FACES_API_TOKEN` set, every route but
+`/health` needs `X-API-Token: <token>` or `Authorization: Bearer <token>`.
 
 ### `/health` response format
 
@@ -138,9 +143,15 @@ curl -X POST http://127.0.0.1:8011/detect/batch-b64 \
 | `TGDL_FACES_PROVIDERS` | `auto` | onnxruntime provider hint. Shorthand aliases: `auto`, `cpu`, `cuda`, `coreml`, `directml`, `openvino`. Or a comma-separated list of full provider names: `CUDAExecutionProvider,CPUExecutionProvider`. |
 | `TGDL_FACES_DETECTOR_MODEL` | `buffalo_l` | insightface model pack name. |
 | `TGDL_FACES_DET_SIZE` | `640` | Detector input size. `480` is the Pi 4 sweet spot. |
-| `TGDL_FACES_MAX_CONCURRENCY` | `2` (CPU) / `8` (GPU) | Max parallel detection requests. Auto-scales when GPU is detected. |
+| `TGDL_FACES_MAX_CONCURRENCY` | `2` (CPU, ≤ CPU budget) / `24` (GPU) | Max parallel detection requests. Auto-scales when GPU is detected. |
+| `TGDL_FACES_CPU_THREADS` | effective CPUs − reserve | CPU provider: total inference threads, split across `TGDL_FACES_MAX_CONCURRENCY`. "Effective" honours cgroup quota and affinity, unlike `os.cpu_count()` in a container. |
+| `TGDL_FACES_RESERVE_CPUS` | `0` | Cores left for co-located processes. The Node app sets `1` when it auto-spawns the sidecar. |
+| `TGDL_FACES_INTRA_OP_THREADS` | budget ÷ concurrency | Explicit onnxruntime intra-op threads per session. |
+| `TGDL_FACES_ORT_SPIN` | `0` | `1` re-enables onnxruntime busy-wait spinning (off by default on CPU so idle threads don't burn cores). |
 | `TGDL_FACES_SKIP_QUALITY` | _empty_ | Set to `1` to skip per-face quality score computation for higher throughput. |
 | `TGDL_FACES_LOG_LEVEL` | `INFO` | Standard Python `logging` level. |
+| `TGDL_FACES_API_TOKEN` | _empty_ | Require this token on every route but `/health`. |
+| `TGDL_FACES_MAX_UPLOAD_MB` | `64` | Cap for `/detect/upload` bodies (413 above it). |
 
 ### GPU provider auto-detection (`TGDL_FACES_PROVIDERS=auto`)
 

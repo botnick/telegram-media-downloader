@@ -11,8 +11,9 @@ import { api } from './api.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { loadAdvanced, setupAutoSave } from './settings.js';
 import { confirmSheet } from './sheet.js';
-import { formatBytes, showToast } from './utils.js';
+import { escapeHtml, formatBytes, showToast } from './utils.js';
 import { ws } from './ws.js';
+import { renderEnvNote, renderSidecarTest, syncTokenField } from './sidecar-ui.js';
 
 let _wsWired = false;
 let _buttonsWired = false;
@@ -121,11 +122,161 @@ async function _syncToggleState() {
     try {
         const cfg = await api.get('/api/config');
         loadAdvanced(cfg);
+        _hydrateExternal(cfg);
     } catch {
         /* non-fatal — the toggles + numeric inputs just stay at their
            HTML-attr defaults until the operator edits something. */
     }
 }
+
+// ---- External sidecar (Maintenance → Seekbar → System health) ----------
+
+function _hydrateExternal(cfg) {
+    const sk = cfg?.advanced?.seekbar || {};
+    const urlEl = document.getElementById('seekbar-sidecar-url');
+    if (urlEl && document.activeElement !== urlEl) {
+        urlEl.value = typeof sk.sidecarUrl === 'string' ? sk.sidecarUrl : '';
+    }
+    const pm = document.getElementById('seekbar-sidecar-pathmap');
+    if (pm && document.activeElement !== pm) {
+        pm.value = typeof sk.pathMap === 'string' ? sk.pathMap : '';
+    }
+    syncTokenField(
+        document.getElementById('seekbar-sidecar-token'),
+        document.getElementById('seekbar-sidecar-token-clear'),
+        sk.apiTokenSet === true,
+    );
+    _syncModeToggle(urlEl?.value ? 'external' : 'local');
+}
+
+function _syncModeToggle(mode) {
+    for (const b of document.querySelectorAll('#seekbar-mode-toggle .ai-mode-btn')) {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    }
+    document
+        .getElementById('seekbar-external-panel')
+        ?.classList.toggle('hidden', mode !== 'external');
+}
+
+function _transferText(features, mode) {
+    if (mode && mode !== 'remote') {
+        return i18nT('maintenance.seekbar.transfer.local', 'local files (same machine)');
+    }
+    return (features || []).includes('upload')
+        ? i18nT(
+              'maintenance.seekbar.transfer.upload',
+              'reads shared files, uploads the rest and downloads sprites back',
+          )
+        : i18nT(
+              'maintenance.seekbar.transfer.path_only',
+              'shared files only — update the sidecar to seekbar-v0.4.0 for upload mode',
+          );
+}
+
+async function _onModeToggle(mode) {
+    _syncModeToggle(mode);
+    if (mode !== 'local') return;
+    try {
+        await api.post('/api/config', { advanced: { seekbar: { sidecarUrl: '' } } });
+        const urlEl = document.getElementById('seekbar-sidecar-url');
+        if (urlEl) urlEl.value = '';
+        const resultEl = document.getElementById('seekbar-sidecar-test-result');
+        if (resultEl) resultEl.textContent = '';
+        showToast(
+            i18nT('maintenance.ai.sidecar_url_cleared', 'Switched to local sidecar'),
+            'success',
+        );
+    } catch (e) {
+        showToast(`Switch failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _onSidecarTest() {
+    const url = String(document.getElementById('seekbar-sidecar-url')?.value || '').trim();
+    const resultEl = document.getElementById('seekbar-sidecar-test-result');
+    const applyBtn = document.getElementById('seekbar-sidecar-apply-btn');
+    if (applyBtn) applyBtn.disabled = true;
+    if (!url) {
+        if (resultEl) {
+            resultEl.textContent = i18nT('maintenance.ai.sidecar_test_empty', 'Enter a URL first');
+            resultEl.className = 'text-[11px] mt-1.5 block text-yellow-400';
+        }
+        return;
+    }
+    if (resultEl) {
+        resultEl.textContent = i18nT('maintenance.ai.sidecar_testing', 'Testing…');
+        resultEl.className = 'text-[11px] mt-1.5 block text-tg-textSecondary';
+    }
+    try {
+        const token = String(document.getElementById('seekbar-sidecar-token')?.value || '').trim();
+        const r = await api.post('/api/maintenance/seekbar/sidecar-test', {
+            url,
+            ...(token ? { token } : {}),
+        });
+        const ok = renderSidecarTest(resultEl, r, {
+            url,
+            parts: [r.platform, r.hwaccel ? `hwaccel ${r.hwaccel}` : null],
+            transferText: _transferText(r.features, 'remote'),
+        });
+        if (applyBtn) applyBtn.disabled = !ok;
+    } catch (e) {
+        if (resultEl) {
+            resultEl.textContent = `✗ ${e?.message || 'error'}`;
+            resultEl.className = 'text-[11px] mt-1.5 block text-red-400';
+        }
+    }
+}
+
+async function _onSidecarApply() {
+    const url = String(document.getElementById('seekbar-sidecar-url')?.value || '').trim();
+    if (!url) return;
+    const tokenEl = document.getElementById('seekbar-sidecar-token');
+    const token = String(tokenEl?.value || '').trim();
+    const pathMap = String(document.getElementById('seekbar-sidecar-pathmap')?.value || '');
+    try {
+        // Saving reconnects the sidecar server-side (refreshSidecar).
+        await api.post('/api/config', {
+            advanced: {
+                seekbar: { sidecarUrl: url, pathMap, ...(token ? { apiToken: token } : {}) },
+            },
+        });
+        if (token) {
+            syncTokenField(tokenEl, document.getElementById('seekbar-sidecar-token-clear'), true);
+        }
+        showToast(
+            i18nT('maintenance.ai.sidecar_url_saved', 'Switched to external sidecar'),
+            'success',
+        );
+        setTimeout(() => _refreshHealth().catch(() => {}), 1500);
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+async function _onSidecarClearToken() {
+    try {
+        await api.post('/api/config', { advanced: { seekbar: { apiToken: '' } } });
+        syncTokenField(
+            document.getElementById('seekbar-sidecar-token'),
+            document.getElementById('seekbar-sidecar-token-clear'),
+            false,
+        );
+        showToast(i18nT('maintenance.sidecar.token_cleared', 'Saved token removed'), 'success');
+    } catch (e) {
+        showToast(`Save failed: ${e?.data?.error || e?.message || 'unknown'}`, 'error');
+    }
+}
+
+window._seekbarModeToggle = (mode) => _onModeToggle(mode);
+window._seekbarSidecarTest = () => _onSidecarTest();
+window._seekbarSidecarApply = () => _onSidecarApply();
+window._seekbarSidecarClearToken = () => _onSidecarClearToken();
+window._seekbarSidecarInput = () => {
+    const resultEl = document.getElementById('seekbar-sidecar-test-result');
+    if (resultEl) resultEl.textContent = '';
+    const applyBtn = document.getElementById('seekbar-sidecar-apply-btn');
+    if (applyBtn) applyBtn.disabled = true;
+};
 
 function _wireButtons() {
     if (_buttonsWired) return;
@@ -396,7 +547,14 @@ function _renderSidecarStatus(s) {
     if (s.ok) {
         pill.classList.add('bg-tg-green/15', 'text-tg-green');
         icon = 'ri-circle-fill';
-        label = i18nT('maintenance.seekbar.sidecar.running', 'sidecar running');
+        label =
+            s.mode === 'remote'
+                ? `${i18nT('maintenance.seekbar.sidecar.remote', 'remote sidecar')}${s.version ? ` v${s.version}` : ''}`
+                : i18nT('maintenance.seekbar.sidecar.running', 'sidecar running');
+    } else if (s.mode === 'remote') {
+        pill.classList.add('bg-red-500/15', 'text-red-400');
+        icon = 'ri-error-warning-line';
+        label = `${i18nT('maintenance.seekbar.sidecar.remote_down', 'remote sidecar unavailable — using local ffmpeg')}`;
     } else if (s.mode === 'binary_missing') {
         pill.classList.add('bg-tg-orange/15', 'text-tg-orange');
         icon = 'ri-information-line';
@@ -415,7 +573,7 @@ function _renderSidecarStatus(s) {
     } else {
         pill.classList.add('bg-tg-bg/60', 'text-tg-textSecondary');
     }
-    pill.innerHTML = `<i class="${icon}"></i><span>${label}</span>`;
+    pill.innerHTML = `<i class="${icon}"></i><span>${escapeHtml(label)}</span>`;
     if (detail) {
         const parts = [];
         if (s.url) parts.push(s.url);
@@ -437,6 +595,14 @@ async function _refreshHealth() {
     set('seekbar-health-url', s.url || '—');
     set('seekbar-health-pid', s.pid ? String(s.pid) : '—');
     set('seekbar-health-binary', s.binPath || s.bin || (s.mode === 'remote' ? 'remote' : '—'));
+    set('seekbar-health-transfer', s.mode ? _transferText(s.features, s.mode) : '—');
+    const src = s.sources || {};
+    renderEnvNote(document.getElementById('seekbar-sidecar-env-note'), [
+        src.url === 'env' ? 'SEEKBAR_SIDECAR_URL' : null,
+        src.token === 'env' ? 'SEEKBAR_API_TOKEN' : null,
+        src.pathMap === 'env' ? 'SEEKBAR_PATH_MAP' : null,
+    ]);
+    if (src.url === 'env') _syncModeToggle('external');
     const hw = r.hwaccel;
     const hwTxt = hw?.error
         ? `error: ${hw.error}`
@@ -444,10 +610,10 @@ async function _refreshHealth() {
           ? hw.available.join(', ') || 'none'
           : '—';
     set('seekbar-health-hwaccel', hwTxt);
-    set(
-        'seekbar-health-version',
-        r.version ? `v${r.version} · ${r.platform || ''}` : r.platform || '—',
-    );
+    // Remote: the sidecar's own version; local: the pinned binary.
+    const ver = s.mode === 'remote' ? s.version || r.richHealth?.version : r.version;
+    const plat = s.mode === 'remote' ? r.richHealth?.platform || '' : r.platform || '';
+    set('seekbar-health-version', ver ? `v${ver}${plat ? ` · ${plat}` : ''}` : plat || '—');
     // Mirror the live hwaccel result into the settings sub-card chip
     // strip so operators see the probe outcome the moment they open
     // the page — no extra click required.

@@ -171,8 +171,24 @@ describe('env map completeness', () => {
             'downloadMirrors',
             'federate',
             'labelMatchEps',
+            'sidecarToken',
+            'pathMap',
         ]) {
             expect(map[k]).toBeTruthy();
         }
+    });
+});
+
+describe('pathMap', () => {
+    it('TGDL_FACES_PATH_MAP overrides the config value verbatim', () => {
+        process.env.TGDL_FACES_PATH_MAP = ' /app/data/downloads=/mnt/media;/x=/y ';
+        try {
+            expect(resolveFacesValue('pathMap', { pathMap: '/a=/b' })).toBe(
+                '/app/data/downloads=/mnt/media;/x=/y',
+            );
+        } finally {
+            delete process.env.TGDL_FACES_PATH_MAP;
+        }
+        expect(resolveFacesValue('pathMap', { pathMap: '/a=/b' })).toBe('/a=/b');
     });
 });

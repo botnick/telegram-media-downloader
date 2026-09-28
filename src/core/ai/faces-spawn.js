@@ -20,15 +20,17 @@
  * old binary stays on disk but the new one is fetched and used.
  */
 
+import dns from 'dns';
 import { existsSync, promises as fs, readdirSync, statSync } from 'fs';
 import { createWriteStream } from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
 import net from 'net';
+import os from 'os';
 import { spawn, spawnSync } from 'child_process';
 
-import { setSidecarUrl, getSidecarUrl, applyFacesCfg } from './faces-client.js';
+import { setSidecarUrl, getSidecarUrl, applyFacesCfg, sidecarAuthHeaders } from './faces-client.js';
 import { resolveAllFaces } from './faces-config.js';
 import { getDataDir, getDownloadsDir, getRepoRoot } from '../paths.js';
 
@@ -120,7 +122,7 @@ function _resolveCudaBinDirs(pyBin) {
  * on next boot — release `faces-v<X>` on the GitHub repo must exist with
  * the matching `tgdl-faces-<platform>-<arch>.tar.gz` assets attached.
  */
-export const SIDECAR_VERSION = '0.4.0';
+export const SIDECAR_VERSION = '0.5.0';
 
 const GH_RELEASE_BASE = `https://github.com/botnick/telegram-media-downloader/releases/download/faces-v${SIDECAR_VERSION}`;
 
@@ -202,7 +204,11 @@ let _starting = null;
 let _child = null;
 let _childUrl = null;
 let _state = 'idle'; // idle | downloading | spawning | healthy | failed
-let _sidecarMode = null; // external | docker | override | local | null
+let _sidecarMode = null; // external | docker | override | discovered | spawn | python | null
+// True when FACES_SERVICE_URL is the stock compose value but the `tgdl-faces`
+// service isn't running, so this process falls back to spawning its own.
+let _composeFallback = false;
+let _lookupHost = (host) => dns.promises.lookup(host);
 let _error = null;
 let _healthMonitorTimer = null;
 let _healthMonitorFailCount = 0;
@@ -225,10 +231,121 @@ export function getSidecarStatus() {
         state: _state,
         url: _childUrl || getSidecarUrl() || null,
         mode: _sidecarMode || null,
+        modeLabel: _modeLabel(),
+        composeFallback: _composeFallback,
         error: _error,
         pid: _child?.pid || null,
         version: SIDECAR_VERSION,
     };
+}
+
+/** Human-readable sidecar mode for the log feed and the AI doctor. */
+function _modeLabel() {
+    switch (_sidecarMode) {
+        case 'external':
+            return 'external URL';
+        case 'override':
+            return 'external URL (legacy facesServiceUrl)';
+        case 'docker':
+            return _isComposeDefaultUrl(_childUrl) ? 'compose sidecar' : 'FACES_SERVICE_URL';
+        case 'discovered':
+            return 'discovered on localhost';
+        case 'spawn':
+        case 'python':
+            return _composeFallback
+                ? 'auto-spawned in this container (compose `faces` profile not running)'
+                : 'auto-spawned';
+        default:
+            return _composeFallback ? 'compose `faces` profile not running' : null;
+    }
+}
+
+// docker-compose.yml sets FACES_SERVICE_URL to this whether or not the
+// `faces` profile is running.
+const COMPOSE_DEFAULT_HOST = 'tgdl-faces';
+const COMPOSE_DEFAULT_PORT = '8011';
+const COMPOSE_DNS_TIMEOUT_MS = 3000;
+
+/** True for the stock compose sidecar URL (http://tgdl-faces:8011). */
+export function _isComposeDefaultUrl(url) {
+    const u = _parseUrl(String(url || ''));
+    return (
+        !!u &&
+        u.protocol === 'http:' &&
+        u.hostname.toLowerCase() === COMPOSE_DEFAULT_HOST &&
+        u.port === COMPOSE_DEFAULT_PORT &&
+        (u.pathname === '/' || u.pathname === '')
+    );
+}
+
+/**
+ * Decide what FACES_SERVICE_URL means right now.
+ *
+ *   'docker' — use it as-is: a custom URL, or the compose default whose
+ *              `tgdl-faces` host resolves (profile up). Same as before.
+ *   'local'  — the compose default, but `tgdl-faces` doesn't resolve: the
+ *              profile isn't running, so nothing will ever answer there.
+ *              Fall back to the auto-spawned sidecar in this container.
+ *
+ * Docker's embedded DNS answers for running containers instantly, so any
+ * lookup failure (ENOTFOUND, EAI_AGAIN, …) or a slow answer means the
+ * service isn't there.
+ */
+export async function _decideEnvSidecar(
+    envUrl,
+    lookup = _lookupHost,
+    timeoutMs = COMPOSE_DNS_TIMEOUT_MS,
+) {
+    if (!envUrl) return { use: 'none' };
+    if (!_isComposeDefaultUrl(envUrl)) return { use: 'docker', reason: 'custom URL' };
+    let timer;
+    try {
+        await Promise.race([
+            lookup(COMPOSE_DEFAULT_HOST),
+            new Promise((_, reject) => {
+                timer = setTimeout(
+                    () =>
+                        reject(Object.assign(new Error('lookup timed out'), { code: 'ETIMEOUT' })),
+                    timeoutMs,
+                );
+            }),
+        ]);
+        return { use: 'docker', reason: 'resolves' };
+    } catch (e) {
+        return { use: 'local', reason: e?.code || e?.message || 'lookup failed' };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Called before a face scan starts (and on its auto-resume). Starts the
+ * sidecar if nothing is running / the last spawn failed, and re-checks the
+ * compose default: the `faces` profile may have been started (switch to
+ * it, dropping the local child) or stopped (fall back) since boot.
+ * Returns true when a (re)start was kicked off.
+ */
+export async function ensureSidecarForScan() {
+    if (_starting) await _starting;
+    let restart = _state === 'idle' || (_state === 'failed' && !getSidecarUrl());
+    const envUrl = _normaliseUrl(process.env.FACES_SERVICE_URL);
+    if (!restart && _sidecarMode !== 'external' && envUrl && _isComposeDefaultUrl(envUrl)) {
+        const d = await _decideEnvSidecar(envUrl);
+        if ((d.use === 'local') !== _composeFallback) {
+            _log(
+                'info',
+                d.use === 'docker'
+                    ? 'compose `faces` profile is up now — switching to the compose sidecar'
+                    : `compose sidecar ${envUrl} went away (${d.reason}) — falling back to the auto-spawned sidecar`,
+            );
+            restart = true;
+        }
+    }
+    if (restart) {
+        stopSidecar();
+        startSidecar().catch(() => {});
+    }
+    return restart;
 }
 
 /**
@@ -239,6 +356,10 @@ export function stopSidecar() {
     if (_healthMonitorTimer) {
         clearInterval(_healthMonitorTimer);
         _healthMonitorTimer = null;
+    }
+    if (_remoteWatchTimer) {
+        clearInterval(_remoteWatchTimer);
+        _remoteWatchTimer = null;
     }
     _killChild();
     _starting = null;
@@ -279,6 +400,8 @@ async function _doStart() {
         _log('warn', `config load failed: ${e?.message || e}`);
     }
     _resolvedCfg = resolveAllFaces(facesCfg);
+    // Set again by whichever mode below takes effect.
+    _sidecarMode = null;
     // Push the resolved knobs into the client so HTTP timeouts / retry
     // backoffs / health-cache TTL respect operator config + env.
     try {
@@ -311,13 +434,28 @@ async function _doStart() {
         _log('info', `using external sidecar at ${webUrl}`);
         await _maybeMigrateDim(webUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: webUrl, mode: 'external' });
+        _watchRemote(webUrl, 'external');
         return getSidecarStatus();
     }
 
     // Mode 2 — Docker compose sets `FACES_SERVICE_URL` to the sidecar's
     // in-network URL. No spawn needed; just hand the URL to the client.
+    // The stock compose file sets it even when the `faces` profile isn't
+    // running; then nothing answers there and — unless the operator set
+    // another URL — this falls through to the local auto-spawn below.
     const envUrl = _normaliseUrl(process.env.FACES_SERVICE_URL);
-    if (envUrl) {
+    const envDecision = envUrl ? await _decideEnvSidecar(envUrl) : { use: 'none' };
+    _composeFallback = envDecision.use === 'local';
+    if (_composeFallback) {
+        // Don't leave the client (and the scan's readiness wait) pointed at
+        // a host that doesn't exist.
+        if (getSidecarUrl() === envUrl) setSidecarUrl('');
+        _log(
+            'info',
+            `compose sidecar ${envUrl} is not running (${envDecision.reason} for "${COMPOSE_DEFAULT_HOST}" — the \`faces\` profile is not up); using a sidecar auto-spawned in this container instead`,
+        );
+    }
+    if (envUrl && envDecision.use === 'docker') {
         setSidecarUrl(envUrl);
         _childUrl = envUrl;
         _state = 'healthy';
@@ -326,6 +464,7 @@ async function _doStart() {
         _log('info', `using docker sidecar at ${envUrl}`);
         await _maybeMigrateDim(envUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: envUrl, mode: 'docker' });
+        _watchRemote(envUrl, 'docker');
         return getSidecarStatus();
     }
 
@@ -340,6 +479,7 @@ async function _doStart() {
         _log('info', `using legacy override sidecar at ${legacyUrl}`);
         await _maybeMigrateDim(legacyUrl);
         _broadcast({ type: 'ai_faces_status', ok: true, url: legacyUrl, mode: 'override' });
+        _watchRemote(legacyUrl, 'override');
         return getSidecarStatus();
     }
 
@@ -363,6 +503,7 @@ async function _doStart() {
                 _childUrl = url;
                 _state = 'healthy';
                 _error = null;
+                _sidecarMode = 'discovered';
                 _log('info', `discovered externally-running sidecar at ${url}`);
                 await _maybeMigrateDim(url);
                 _broadcast({
@@ -378,10 +519,17 @@ async function _doStart() {
         }
     }
 
-    // Mode 3 — local auto-spawn (only when face clustering is enabled).
-    if (aiCfg.faceClustering !== true) {
+    // Mode 3 — local auto-spawn, only once the operator has switched the
+    // AI subsystem on. `faceClustering` defaults to true, so gating on it
+    // alone downloaded the ~100 MB binary and started a ~1 GB process on
+    // every fresh install at boot. Enabling AI later restarts this path
+    // (config save, or the scan start endpoint).
+    if (aiCfg.enabled !== true || aiCfg.faceClustering !== true) {
         _state = 'idle';
-        _log('info', 'face clustering disabled; not spawning sidecar');
+        _log(
+            'info',
+            `${aiCfg.enabled !== true ? 'AI' : 'face clustering'} disabled; not spawning sidecar`,
+        );
         return getSidecarStatus();
     }
 
@@ -582,7 +730,11 @@ async function _doStart() {
                         _error = null;
                         _healthMonitorFailCount = 0;
                         setSidecarUrl(url);
-                        _log('info', `sidecar healthy at ${url} (pid=${_child?.pid}, mode=python)`);
+                        _sidecarMode = 'python';
+                        _log(
+                            'info',
+                            `sidecar healthy at ${url} (pid=${_child?.pid}, mode=python, ${_modeLabel()})`,
+                        );
                         _firstBoot = false;
                         pyHealthy = true; // Enable auto-restart for future unexpected exits.
                         await _maybeMigrateDim(url);
@@ -629,6 +781,43 @@ async function _doStart() {
     return getSidecarStatus();
 }
 
+// A sidecar we only have a URL for (external / docker / override) used
+// to be reported "healthy" the moment the URL was set, reachable or not —
+// the doctor showed a green row for a compose sidecar whose profile isn't
+// even running. Probe it now and every monitor interval and reflect the
+// answer in the status. The URL stays set either way: scans wait for it
+// (faces-client waitForSidecarReady) and it may come up later.
+let _remoteWatchTimer = null;
+function _watchRemote(url, mode) {
+    if (_remoteWatchTimer) clearInterval(_remoteWatchTimer);
+    let lastOk = null;
+    const check = async () => {
+        if (getSidecarUrl() !== url) return;
+        const ok = await _probeHealth(url, 5000);
+        if (ok === lastOk) return;
+        lastOk = ok;
+        if (ok) {
+            _state = 'healthy';
+            _error = null;
+            _log('info', `${mode} sidecar at ${url} is reachable`);
+            await _maybeMigrateDim(url);
+        } else {
+            _state = 'failed';
+            _error =
+                mode === 'docker'
+                    ? `sidecar at ${url} is not reachable — is the compose \`faces\` profile up? (docker compose --profile faces up -d)`
+                    : `sidecar at ${url} is not reachable`;
+            _log('warn', _error);
+        }
+        _broadcast({ type: 'ai_faces_status', ok, url, mode, error: ok ? null : _error });
+    };
+    check().catch(() => {});
+    _remoteWatchTimer = setInterval(() => {
+        check().catch(() => {});
+    }, _healthMonitorIntervalMs());
+    if (_remoteWatchTimer.unref) _remoteWatchTimer.unref();
+}
+
 // Helper used by `_doStart` to wrap the prebuilt-binary spawn with the
 // existing retry/backoff loop. Returns true on success (state already
 // flipped to 'healthy'), false if every attempt failed.
@@ -642,7 +831,8 @@ async function _spawnWithRetry(spawnFn, binPath) {
             _error = null;
             _healthMonitorFailCount = 0;
             setSidecarUrl(url);
-            _log('info', `sidecar healthy at ${url} (pid=${_child?.pid})`);
+            _sidecarMode = 'spawn';
+            _log('info', `sidecar healthy at ${url} (pid=${_child?.pid}, ${_modeLabel()})`);
             _firstBoot = false;
             _scheduleHealthMonitor(binPath);
             await _maybeMigrateDim(url);
@@ -784,6 +974,7 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
         // Disable Python's stdout buffering so log lines surface in the
         // dashboard's log feed in real time rather than batched at exit.
         PYTHONUNBUFFERED: '1',
+        ..._colocatedCpuEnv(),
     };
 
     let child;
@@ -800,6 +991,7 @@ async function _tryPythonFallback({ host, port, allowRoots, modelsDir }) {
     if (!child || !child.pid) {
         return { ok: false, reason: 'python spawn returned no pid' };
     }
+    _deprioritise(child);
     return { ok: true, child, mode: 'python', pyBin };
 }
 
@@ -1270,13 +1462,21 @@ function _streamDownload(url, destPath, redirectsLeft = _downloadRedirectLimit()
  * Windows 10+ ships it, every supported Linux/macOS has it. Fall back
  * to a Node-level decode using zlib + a minimal tar parser when `tar`
  * isn't on PATH (rare, but possible on stripped-down container images).
+ *
+ * tar runs inside `destDir` with a relative archive path. With absolute
+ * Windows paths, GNU tar (the one Git for Windows puts first on PATH)
+ * reads `C:\…` as `host:path` and fails with "Cannot connect to C:
+ * resolve failed"; relative paths work with GNU tar and bsdtar alike.
  */
-async function _extractTarball(tarballPath, destDir) {
-    // Try system tar first.
+export async function _extractTarball(tarballPath, destDir) {
+    const rel = path.relative(destDir, tarballPath);
+    const archiveArg = path.isAbsolute(rel) ? tarballPath : rel;
     try {
-        const res = spawnSync('tar', ['-xzf', tarballPath, '-C', destDir], {
+        const res = spawnSync('tar', ['-xzf', archiveArg], {
+            cwd: destDir,
             stdio: ['ignore', 'pipe', 'pipe'],
             timeout: 120_000,
+            windowsHide: true,
         });
         if (!res.error && res.status === 0) return;
         if (res.error) {
@@ -1299,158 +1499,103 @@ async function _extractTarball(tarballPath, destDir) {
 /**
  * Streaming tar.gz extractor — gunzip the tarball, then walk 512-byte
  * tar blocks. Supports REGULAR files and DIRECTORIES (which is all the
- * sidecar release ships). Symlinks, long-name extensions, and PAX
- * headers are intentionally rejected — if a future sidecar release
- * needs them, the GitHub Actions build can re-pack without them.
+ * sidecar release ships); other entry types (symlinks, PAX / GNU long-name
+ * headers) have their payload skipped.
+ *
+ * Chunks are consumed strictly one after another (`for await`). The
+ * previous version used an `async` 'data' handler, so a second chunk was
+ * parsed while the first was still awaiting a mkdir — the shared cursor
+ * got corrupted and a random payload slice was read as a file name
+ * (ENOENT on a garbage path, surfacing as an unhandled rejection).
  */
-async function _extractTarballNodeFallback(tarballPath, destDir) {
+export async function _extractTarballNodeFallback(tarballPath, destDir) {
     const { createGunzip } = await import('zlib');
     const { createReadStream } = await import('fs');
-    const rs = createReadStream(tarballPath);
-    const gz = createGunzip();
+    const { once } = await import('events');
+    const root = path.resolve(destDir);
+    const gz = createReadStream(tarballPath).pipe(createGunzip());
 
     let buf = Buffer.alloc(0);
-    let pendingHeader = null;
-    let pendingBytesRemaining = 0;
-    let pendingPaddingBytes = 0;
-    let pendingWriteStream = null;
-    let pendingWritePromise = null;
+    let remaining = 0; // payload bytes of the current entry still to read
+    let padding = 0; // zero padding after the payload
+    let ws = null; // write stream of the current regular file, if any
 
-    const ensureDir = async (p) => {
-        await fs.mkdir(p, { recursive: true });
+    const closeFile = async () => {
+        const w = ws;
+        ws = null;
+        await new Promise((resolve, reject) => {
+            w.once('error', reject);
+            w.end(resolve);
+        });
     };
 
-    const finishPendingWrite = async () => {
-        if (pendingWriteStream) {
-            const ws = pendingWriteStream;
-            const wp = pendingWritePromise;
-            pendingWriteStream = null;
-            pendingWritePromise = null;
-            ws.end();
-            await wp;
-        }
-    };
-
-    return new Promise((resolve, reject) => {
-        gz.on('error', reject);
-        rs.on('error', reject);
-
-        gz.on('data', async (chunk) => {
-            try {
-                buf = Buffer.concat([buf, chunk]);
-                // Loop until we run out of complete records (headers /
-                // file payloads) in the buffered slice.
-                while (true) {
-                    if (pendingHeader) {
-                        // Consuming file payload.
-                        if (pendingBytesRemaining > 0) {
-                            const slice = buf.subarray(
-                                0,
-                                Math.min(pendingBytesRemaining, buf.length),
-                            );
-                            if (slice.length === 0) return;
-                            if (pendingWriteStream) {
-                                if (!pendingWriteStream.write(slice)) {
-                                    gz.pause();
-                                    pendingWriteStream.once('drain', () => gz.resume());
-                                }
-                            }
-                            pendingBytesRemaining -= slice.length;
-                            buf = buf.subarray(slice.length);
-                            if (pendingBytesRemaining > 0) return;
-                        }
-                        if (pendingPaddingBytes > 0) {
-                            if (buf.length < pendingPaddingBytes) return;
-                            buf = buf.subarray(pendingPaddingBytes);
-                            pendingPaddingBytes = 0;
-                        }
-                        await finishPendingWrite();
-                        pendingHeader = null;
-                        continue;
-                    }
-                    if (buf.length < 512) return;
-                    const header = buf.subarray(0, 512);
-                    buf = buf.subarray(512);
-                    // All-zero block = end of archive.
-                    if (header.every((b) => b === 0)) {
-                        // Two zero blocks mark EOF; we treat the first one
-                        // as terminator too — extra padding is harmless.
-                        continue;
-                    }
-                    const name = _readNulTerminated(header, 0, 100);
-                    const sizeOctal = _readNulTerminated(header, 124, 12).trim();
-                    // Tar typeflag byte (numeric — avoids embedding a NUL
-                    // literal in source).
-                    const typeByte = header[156] || 0;
-                    const size = sizeOctal ? parseInt(sizeOctal, 8) : 0;
-                    const padding = size % 512 === 0 ? 0 : 512 - (size % 512);
-
-                    const target = path.join(destDir, name);
-                    if (!target.startsWith(path.resolve(destDir))) {
-                        throw new Error(`tar entry escapes destDir: ${name}`);
-                    }
-
-                    const isDir = typeByte === TAR_TYPE_DIRECTORY || name.endsWith('/');
-                    const isRegular =
-                        typeByte === TAR_TYPE_REGULAR_MODERN ||
-                        typeByte === TAR_TYPE_REGULAR_LEGACY ||
-                        typeByte === TAR_TYPE_REGULAR_SPACE;
-
-                    if (isDir) {
-                        await ensureDir(target);
-                        pendingHeader = header;
-                        pendingBytesRemaining = 0;
-                        pendingPaddingBytes = padding;
-                    } else if (isRegular) {
-                        await ensureDir(path.dirname(target));
-                        pendingHeader = header;
-                        pendingBytesRemaining = size;
-                        pendingPaddingBytes = padding;
-                        try {
-                            pendingWriteStream = createWriteStream(target);
-                        } catch (wsErr) {
-                            throw new Error(`cannot write ${name}: ${wsErr.message}`);
-                        }
-                        pendingWritePromise = new Promise((res, rej) => {
-                            pendingWriteStream.on('finish', () => res());
-                            pendingWriteStream.on('error', rej);
-                        });
-                        if (size === 0) {
-                            // Empty file — flush immediately so the loop
-                            // moves on.
-                            await finishPendingWrite();
-                            if (padding > 0) {
-                                if (buf.length < padding) return;
-                                buf = buf.subarray(padding);
-                                pendingPaddingBytes = 0;
-                            }
-                            pendingHeader = null;
-                        }
-                    } else {
-                        // Unsupported entry type — skip its payload + padding.
-                        pendingHeader = header;
-                        pendingBytesRemaining = size;
-                        pendingPaddingBytes = padding;
-                        pendingWriteStream = null;
-                        pendingWritePromise = Promise.resolve();
-                    }
+    try {
+        for await (const chunk of gz) {
+            buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
+            while (true) {
+                if (remaining > 0) {
+                    if (!buf.length) break;
+                    const n = Math.min(remaining, buf.length);
+                    if (ws && !ws.write(buf.subarray(0, n))) await once(ws, 'drain');
+                    remaining -= n;
+                    buf = buf.subarray(n);
+                    if (remaining > 0) break;
                 }
-            } catch (e) {
-                reject(e);
-            }
-        });
+                if (padding > 0) {
+                    if (buf.length < padding) break;
+                    buf = buf.subarray(padding);
+                    padding = 0;
+                }
+                if (ws) await closeFile();
+                if (buf.length < 512) break;
 
-        gz.on('end', async () => {
-            try {
-                await finishPendingWrite();
-                resolve();
-            } catch (e) {
-                reject(e);
-            }
-        });
+                const header = buf.subarray(0, 512);
+                buf = buf.subarray(512);
+                // All-zero block = end of archive (the second one, and any
+                // trailing padding, are skipped the same way).
+                if (header.every((b) => b === 0)) continue;
 
-        rs.pipe(gz);
-    });
+                let name = _readNulTerminated(header, 0, 100);
+                // ustar: long paths are split into prefix (345..500) + name.
+                if (_readNulTerminated(header, 257, 6).startsWith('ustar')) {
+                    const prefix = _readNulTerminated(header, 345, 155);
+                    if (prefix) name = `${prefix}/${name}`;
+                }
+                const sizeOctal = _readNulTerminated(header, 124, 12).trim();
+                // Tar typeflag byte (numeric — avoids embedding a NUL
+                // literal in source).
+                const typeByte = header[156] || 0;
+                const size = sizeOctal ? parseInt(sizeOctal, 8) : 0;
+                if (!Number.isFinite(size) || size < 0) {
+                    throw new Error(`corrupt tar header for entry ${JSON.stringify(name)}`);
+                }
+                remaining = size;
+                padding = size % 512 === 0 ? 0 : 512 - (size % 512);
+
+                const target = path.resolve(root, name);
+                if (target !== root && !target.startsWith(root + path.sep)) {
+                    throw new Error(`tar entry escapes destDir: ${name}`);
+                }
+                const isDir = typeByte === TAR_TYPE_DIRECTORY || name.endsWith('/');
+                const isRegular =
+                    typeByte === TAR_TYPE_REGULAR_MODERN ||
+                    typeByte === TAR_TYPE_REGULAR_LEGACY ||
+                    typeByte === TAR_TYPE_REGULAR_SPACE;
+                if (isDir) {
+                    await fs.mkdir(target, { recursive: true });
+                } else if (isRegular) {
+                    await fs.mkdir(path.dirname(target), { recursive: true });
+                    ws = createWriteStream(target);
+                }
+                // Anything else: payload is read and dropped (ws stays null).
+            }
+        }
+        if (remaining > 0) throw new Error('tar archive ended in the middle of an entry');
+        if (ws) await closeFile();
+    } catch (e) {
+        if (ws) ws.destroy();
+        throw e;
+    }
 }
 
 function _readNulTerminated(buf, offset, length) {
@@ -1486,6 +1631,7 @@ async function _spawnAndProbe(binPath) {
             _resolvedCfg.providers || (process.platform === 'win32' ? 'cpu' : 'auto'),
         ),
         TGDL_FACES_DET_SIZE: String(_resolvedCfg.detSize || 640),
+        ..._colocatedCpuEnv(),
     };
 
     _log('info', `spawning ${binPath} on 127.0.0.1:${port}`);
@@ -1495,6 +1641,7 @@ async function _spawnAndProbe(binPath) {
         windowsHide: true,
     });
     _child = child;
+    _deprioritise(child);
 
     _wirePipeLogging(child.stdout, 'info');
     // Match the python-fallback rationale above: Python+uvicorn write
@@ -1503,10 +1650,20 @@ async function _spawnAndProbe(binPath) {
 
     let exited = false;
     let exitInfo = null;
+    let healthy = false;
     child.on('exit', (code, signal) => {
         exited = true;
         exitInfo = { code, signal };
-        _log('warn', `child exited early code=${code} signal=${signal}`);
+        // _killChild() clears _child before signalling, so a child that is
+        // still current died on its own (crash, OOM kill). Previously only
+        // the 60 s × 3 health monitor noticed — ~3 min in which every scan
+        // request failed. Relaunch right away, like the Python fallback.
+        const unexpected = healthy && _child === child;
+        _log(
+            unexpected || !healthy ? 'warn' : 'info',
+            `child exited${healthy ? '' : ' early'} code=${code} signal=${signal}`,
+        );
+        if (unexpected) _relaunchBinary(binPath, 'child exited');
     });
     child.on('error', (e) => {
         exited = true;
@@ -1524,10 +1681,65 @@ async function _spawnAndProbe(binPath) {
             );
         }
         const ok = await _probeHealth(url);
-        if (ok) return url;
+        if (ok) {
+            healthy = true;
+            return url;
+        }
         await _sleep(HEALTH_POLL_INTERVAL_MS);
     }
     throw new Error(`health probe timed out after ${timeoutMs} ms`);
+}
+
+// Env for a sidecar that shares the host (and, in Docker, the container)
+// with this Node process: keep one core out of its inference budget so
+// the event loop — which the container healthcheck watches — always gets
+// CPU. Older sidecar builds ignore the variable. An operator-set value
+// wins (process.env is spread first and this only fills the gap).
+function _colocatedCpuEnv() {
+    if (process.env.TGDL_FACES_RESERVE_CPUS || process.env.TGDL_FACES_CPU_THREADS) return {};
+    return { TGDL_FACES_RESERVE_CPUS: '1' };
+}
+
+// Run the auto-spawned sidecar below normal priority (nice 10 / Windows
+// BELOW_NORMAL) so that under contention the dashboard, downloads and the
+// healthcheck win and face inference takes the leftovers. Costs nothing
+// when the box is otherwise idle. `sidecarNice: 0` opts out. Set right
+// after spawn, before the interpreter creates its inference threads,
+// which inherit it on Linux.
+function _deprioritise(child) {
+    const nice = Number.isFinite(_resolvedCfg?.sidecarNice) ? _resolvedCfg.sidecarNice : 10;
+    if (!child?.pid || nice <= 0) return;
+    try {
+        os.setPriority(child.pid, Math.min(19, nice | 0));
+    } catch (e) {
+        _log('info', `could not lower sidecar priority: ${e?.message || e}`);
+    }
+}
+
+let _relaunching = false;
+async function _relaunchBinary(binPath, why) {
+    if (_relaunching) return;
+    _relaunching = true;
+    try {
+        if (_healthMonitorTimer) {
+            clearInterval(_healthMonitorTimer);
+            _healthMonitorTimer = null;
+        }
+        _killChild();
+        _state = 'spawning';
+        _broadcast({ type: 'ai_faces_status', ok: false, state: 'relaunching' });
+        _log('warn', `relaunching sidecar (${why})`);
+        // Brief pause so a crash-on-start loop can't spin the CPU.
+        await _sleep(SPAWN_RETRY_BACKOFF_MS);
+        const ok = await _spawnWithRetry(() => _spawnAndProbe(binPath), binPath);
+        if (!ok) {
+            _state = 'failed';
+            _error = `relaunch failed (${why})`;
+            _broadcast({ type: 'ai_faces_status', ok: false, error: _error });
+        }
+    } finally {
+        _relaunching = false;
+    }
 }
 
 // Python's `logging` + uvicorn write EVERYTHING to stderr (INFO included),
@@ -1586,32 +1798,43 @@ function _wirePipeLogging(stream, level) {
     });
 }
 
-function _probeHealth(url) {
+// External / Docker sidecars may sit behind an https reverse proxy or
+// tunnel; the probes used http.get unconditionally, which throws on an
+// https URL (so /info — and the dim migration — never ran for them).
+function _getter(url) {
+    return String(url).startsWith('https:') ? https : http;
+}
+
+function _probeHealth(url, timeoutMs = 2000) {
     return new Promise((resolve) => {
-        const req = http.get(`${url}/health`, { timeout: 2000 }, (res) => {
-            if (res.statusCode !== 200) {
-                res.resume();
-                return resolve(false);
-            }
-            let buf = '';
-            res.setEncoding('utf8');
-            res.on('data', (c) => {
-                buf += c;
-                if (buf.length > 4096) {
-                    req.destroy();
-                    resolve(false);
+        const req = _getter(url).get(
+            `${url}/health`,
+            { timeout: timeoutMs, headers: sidecarAuthHeaders() },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return resolve(false);
                 }
-            });
-            res.on('end', () => {
-                try {
-                    const body = JSON.parse(buf);
-                    resolve(body?.ok === true);
-                } catch {
-                    resolve(false);
-                }
-            });
-            res.on('error', () => resolve(false));
-        });
+                let buf = '';
+                res.setEncoding('utf8');
+                res.on('data', (c) => {
+                    buf += c;
+                    if (buf.length > 4096) {
+                        req.destroy();
+                        resolve(false);
+                    }
+                });
+                res.on('end', () => {
+                    try {
+                        const body = JSON.parse(buf);
+                        resolve(body?.ok === true);
+                    } catch {
+                        resolve(false);
+                    }
+                });
+                res.on('error', () => resolve(false));
+            },
+        );
         req.on('timeout', () => {
             req.destroy();
             resolve(false);
@@ -1777,29 +2000,33 @@ async function _maybeMigrateDim(url) {
 
 function _fetchInfo(url) {
     return new Promise((resolve, reject) => {
-        const req = http.get(`${url}/info`, { timeout: 5000 }, (res) => {
-            if (res.statusCode !== 200) {
-                res.resume();
-                return reject(new Error(`http ${res.statusCode}`));
-            }
-            let buf = '';
-            res.setEncoding('utf8');
-            res.on('data', (c) => {
-                buf += c;
-                if (buf.length > 16_384) {
-                    req.destroy();
-                    reject(new Error('info body too large'));
+        const req = _getter(url).get(
+            `${url}/info`,
+            { timeout: 5000, headers: sidecarAuthHeaders() },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`http ${res.statusCode}`));
                 }
-            });
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(buf));
-                } catch (e) {
-                    reject(e);
-                }
-            });
-            res.on('error', reject);
-        });
+                let buf = '';
+                res.setEncoding('utf8');
+                res.on('data', (c) => {
+                    buf += c;
+                    if (buf.length > 16_384) {
+                        req.destroy();
+                        reject(new Error('info body too large'));
+                    }
+                });
+                res.on('end', () => {
+                    try {
+                        resolve(JSON.parse(buf));
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+                res.on('error', reject);
+            },
+        );
         req.on('timeout', () => {
             req.destroy();
             reject(new Error('info timeout'));
@@ -1878,6 +2105,10 @@ export function _resetForTests() {
         clearInterval(_healthMonitorTimer);
         _healthMonitorTimer = null;
     }
+    if (_remoteWatchTimer) {
+        clearInterval(_remoteWatchTimer);
+        _remoteWatchTimer = null;
+    }
     _starting = null;
     _child = null;
     _childUrl = null;
@@ -1887,4 +2118,12 @@ export function _resetForTests() {
     _firstBoot = true;
     _shutdownHooksWired = false;
     _resolvedCfg = null;
+    _sidecarMode = null;
+    _composeFallback = false;
+    _lookupHost = (host) => dns.promises.lookup(host);
+}
+
+/** Test-only: replace the DNS lookup used for the compose-default check. */
+export function _setLookupForTests(fn) {
+    _lookupHost = typeof fn === 'function' ? fn : (host) => dns.promises.lookup(host);
 }

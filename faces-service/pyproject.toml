@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tgdl-faces"
-version = "0.2.0"
+version = "0.5.1"
 description = "Telegram Media Downloader — face detection + embedding sidecar (insightface buffalo_l, 512-dim)"
 readme = "README.md"
 license = { text = "MIT" }

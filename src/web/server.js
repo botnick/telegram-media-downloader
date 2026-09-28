@@ -108,8 +108,14 @@ import {
     DEFAULT_WIDTH as THUMB_DEFAULT_WIDTH,
     thumbKindTypes,
     hasCachedThumb,
+    resolveFfmpegBin,
     THUMB_CACHE_CONTROL,
 } from '../core/thumbs.js';
+import { createFaceCropper } from '../core/ai/face-crops.js';
+import {
+    detectFacesInImage as aiDetectFacesInImage,
+    sidecarAuthHeaders as aiSidecarAuthHeaders,
+} from '../core/ai/faces-client.js';
 import {
     buildAllSeekbar,
     getMetaForDownload as getSeekbarMetaForDownload,
@@ -124,6 +130,7 @@ import {
 import {
     getSidecarStatus as getSeekbarSidecarStatus,
     refreshSidecar as refreshSeekbarSidecar,
+    resolveRemoteSettings as resolveSeekbarRemote,
     setBroadcast as setSeekbarBroadcast,
     SIDECAR_VERSION as SEEKBAR_SIDECAR_VERSION,
     startSidecar as startSeekbarSidecar,
@@ -133,6 +140,7 @@ import {
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
+import { normalizeSidecarUrl, probeSidecar } from '../core/sidecar-remote.js';
 import {
     startScan as nsfwStartScan,
     cancelScan as nsfwCancelScan,
@@ -143,6 +151,8 @@ import {
     classifierReady as nsfwClassifierReady,
     setBlocklistDeleteCallback as nsfwSetBlocklistDeleteCallback,
     initNsfwSidecar,
+    getNsfwSidecarInfo,
+    getNsfwSidecarSources,
     NSFW_DEFAULTS,
     getNsfwStats,
     getNsfwDeleteCandidates,
@@ -170,6 +180,7 @@ import { getRescueStats } from '../core/db.js';
 import {
     getAiCounts,
     listPeople,
+    resolvePeopleSort,
     listPhotosForPerson,
     renamePerson,
     deletePerson,
@@ -1638,17 +1649,36 @@ function _cmpSemver(a, b) {
     return 0;
 }
 
+// The repo also publishes sidecar releases (faces-v*, nsfw-v*, seekbar-v*),
+// and GitHub's "latest release" can point at one of them — so list the
+// recent releases and take the highest app tag (vX.Y.Z) instead.
+const APP_RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
+
 async function _fetchLatestRelease() {
     if (typeof fetch !== 'function') return null;
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5000);
     try {
-        const r = await fetch(`https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases/latest`, {
-            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'tgdl-update-check' },
-            signal: ctrl.signal,
-        });
+        const r = await fetch(
+            `https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases?per_page=30`,
+            {
+                headers: {
+                    Accept: 'application/vnd.github+json',
+                    'User-Agent': 'tgdl-update-check',
+                },
+                signal: ctrl.signal,
+            },
+        );
         if (!r.ok) return null;
-        const j = await r.json();
+        const list = await r.json();
+        let j = null;
+        for (const rel of Array.isArray(list) ? list : []) {
+            if (rel?.draft || rel?.prerelease || !APP_RELEASE_TAG.test(rel?.tag_name || '')) {
+                continue;
+            }
+            if (!j || _cmpSemver(rel.tag_name, j.tag_name) > 0) j = rel;
+        }
+        if (!j) return null;
         return {
             tag: j.tag_name,
             name: j.name || j.tag_name,
@@ -6968,6 +6998,38 @@ app.get('/api/maintenance/seekbar/hwaccel-probe', async (req, res) => {
     }
 });
 
+// Probe an external seekbar sidecar before saving it: reachable? version?
+// token accepted (via the token-gated /v1/stats)? upload mode available?
+app.post('/api/maintenance/seekbar/sidecar-test', async (req, res) => {
+    const probe = _sidecarHealthUrl(req.body?.url);
+    if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
+    try {
+        const saved = resolveSeekbarRemote();
+        const token = _sidecarTestToken(req.body, saved.url, saved.token);
+        const r = await probeSidecar({
+            url: probe.base,
+            token,
+            authCheck: { method: 'GET', path: '/v1/stats' },
+        });
+        const h = r.health || {};
+        res.json({
+            ok: r.ok,
+            reachable: r.reachable,
+            error: r.error,
+            version: r.version,
+            features: r.features,
+            auth: r.auth,
+            authRequired: r.authRequired,
+            platform: h.platform ? `${h.platform}/${h.arch || ''}` : null,
+            hwaccel: h.hwaccel_resolved || null,
+            ffmpeg: h.ffmpeg_version || null,
+            tokenSent: !!token,
+        });
+    } catch (e) {
+        res.json({ ok: false, error: e?.message || String(e) });
+    }
+});
+
 app.post('/api/maintenance/seekbar/sidecar/restart', async (req, res) => {
     try {
         await refreshSeekbarSidecar();
@@ -7312,36 +7374,65 @@ function _sidecarHealthUrl(raw) {
     if (u.username || u.password) return { error: 'invalid_url' };
     let end = u.pathname.length;
     while (end > 0 && u.pathname[end - 1] === '/') end--;
-    u.pathname = `${u.pathname.slice(0, end)}/health`;
+    u.pathname = u.pathname.slice(0, end);
     u.search = '';
     u.hash = '';
-    return { url: u.href };
+    // `base` is the validated URL the probe talks to — never the raw input.
+    const base = u.href.endsWith('/') ? u.href.slice(0, -1) : u.href;
+    return { url: `${base}/health`, base };
 }
 
-// Server-side health probe for an arbitrary NSFW sidecar URL (CORS proxy).
+// Token for a sidecar Test button: the one typed in the form, else the saved
+// one when the URL under test is the saved URL (so the operator doesn't
+// have to re-enter a write-only secret just to re-test).
+function _sidecarTestToken(body, savedUrl, savedToken) {
+    if (typeof body?.token === 'string' && body.token.trim()) return body.token.trim();
+    if (body?.useSavedToken === false) return '';
+    const same =
+        savedUrl && normalizeSidecarUrl(body?.url) === normalizeSidecarUrl(String(savedUrl));
+    return same ? savedToken || '' : '';
+}
+
+// Server-side probe for an NSFW sidecar URL (CORS proxy): reachable?
+// version? token accepted? path mode or upload mode?
 app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
     const probe = _sidecarHealthUrl(req.body?.url);
     if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
     try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        let r;
-        try {
-            r = await fetch(probe.url, { method: 'GET', signal: ctrl.signal });
-        } finally {
-            clearTimeout(timer);
-        }
-        if (!r.ok) return res.json({ ok: false, error: `http_${r.status}` });
-        const body = await r.json();
+        const saved = loadConfig().advanced?.nsfw || {};
+        const token = _sidecarTestToken(
+            req.body,
+            process.env.TGDL_NSFW_SIDECAR_URL || saved.sidecarUrl,
+            process.env.TGDL_NSFW_API_TOKEN || saved.apiToken,
+        );
+        // An empty /classify is a cheap token check: 401 = rejected,
+        // 400 missing_input = accepted (or no token required).
+        const r = await probeSidecar({
+            url: probe.base,
+            token,
+            authCheck: { method: 'POST', path: '/classify', body: {} },
+        });
+        const h = r.health || {};
+        const features = r.features;
         res.json({
-            ok: body?.ok === true,
-            version: body?.version ?? null,
-            model: body?.model ?? null,
-            ready: body?.ready === true,
+            ok: r.ok,
+            reachable: r.reachable,
+            error: r.error,
+            version: r.version,
+            model: h.model ?? null,
+            ready: h.ready === true,
+            device: h.device ?? null,
+            features,
+            auth: r.auth,
+            authRequired: r.authRequired,
+            // Path mode needs TGDL_NSFW_ALLOW_ROOTS on the sidecar (older
+            // sidecars don't say); otherwise images travel as bytes.
+            pathMode: typeof h.path_mode === 'boolean' ? h.path_mode : null,
+            transfer: features.includes('upload') ? 'upload' : 'base64',
+            tokenSent: !!token,
         });
     } catch (e) {
-        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
-        res.json({ ok: false, error: msg });
+        res.json({ ok: false, error: e?.message || String(e) });
     }
 });
 
@@ -7349,7 +7440,11 @@ app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
 // /maintenance/nsfw page so the model-status pill reflects reality
 // even between WS messages.
 app.get('/api/maintenance/nsfw/model-status', async (req, res) => {
-    res.json({ success: true, ...nsfwClassifierReady() });
+    res.json({
+        success: true,
+        ...nsfwClassifierReady(),
+        sidecar: { ...getNsfwSidecarInfo(), sources: getNsfwSidecarSources() },
+    });
 });
 
 // Wipe the cached weights on disk. Confirm-gated in the UI; safe-by-
@@ -7836,6 +7931,7 @@ async function _fetchSidecarInfo(url) {
     try {
         const res = await fetch(`${url.replace(/\/+$/, '')}/info`, {
             signal: controller.signal,
+            headers: aiSidecarAuthHeaders(),
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -7848,6 +7944,27 @@ async function _fetchSidecarInfo(url) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+// `faces.quality_score IS NULL` has no index, so the count reads every
+// face row including its 2 KB embedding (~0.2 s at 50 k faces, all on the
+// event loop) — and the AI page refetches status on every WS nudge. The
+// number only moves during a quality backfill, so cache it: 30 s normally,
+// 5 s while the backfill runs so its progress still shows.
+const _QUALITY_PENDING_CACHE = { ts: 0, value: 0 };
+function _qualityBackfillPending() {
+    const ttl = _jobTrackers.qualityBackfill.isRunning() ? 5000 : 30_000;
+    const now = Date.now();
+    if (now - _QUALITY_PENDING_CACHE.ts < ttl) return _QUALITY_PENDING_CACHE.value;
+    try {
+        _QUALITY_PENDING_CACHE.value = aiGetDb()
+            .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
+            .get().n;
+    } catch {
+        _QUALITY_PENDING_CACHE.value = 0;
+    }
+    _QUALITY_PENDING_CACHE.ts = now;
+    return _QUALITY_PENDING_CACHE.value;
 }
 
 app.get('/api/ai/status', async (_req, res) => {
@@ -7887,6 +8004,15 @@ app.get('/api/ai/status', async (_req, res) => {
                     scanVideos: facesBlock.scanVideos === true,
                     sidecarUrl:
                         typeof facesBlock.sidecarUrl === 'string' ? facesBlock.sidecarUrl : '',
+                    // External sidecar extras. The token itself is never
+                    // returned; env vars that override a field are named.
+                    sidecarTokenSet: !!facesBlock.sidecarToken,
+                    pathMap: typeof facesBlock.pathMap === 'string' ? facesBlock.pathMap : '',
+                    sources: {
+                        url: process.env.TGDL_FACES_SIDECAR_URL?.trim() ? 'env' : 'config',
+                        token: process.env.TGDL_FACES_SIDECAR_TOKEN?.trim() ? 'env' : 'config',
+                        pathMap: process.env.TGDL_FACES_PATH_MAP?.trim() ? 'env' : 'config',
+                    },
                 },
             },
             counts,
@@ -7927,11 +8053,13 @@ app.get('/api/ai/status', async (_req, res) => {
                         /* sidecar offline / fetch failed — fall through */
                     }
                     let sidecarMode = null;
+                    let sidecarModeLabel = null;
                     try {
                         const facesSpawnStatus = (
                             await import('../core/ai/faces-spawn.js')
                         ).getSidecarStatus();
                         sidecarMode = facesSpawnStatus?.mode || null;
+                        sidecarModeLabel = facesSpawnStatus?.modeLabel || null;
                     } catch {}
                     return {
                         id,
@@ -7946,6 +8074,7 @@ app.get('/api/ai/status', async (_req, res) => {
                         providersRequested: String(facesBlock.providers || 'auto'),
                         version: sidecarVersion,
                         mode: sidecarMode,
+                        modeLabel: sidecarModeLabel,
                     };
                 })(),
             },
@@ -7956,15 +8085,7 @@ app.get('/api/ai/status', async (_req, res) => {
                     return { realtime: 0, backfill: 0 };
                 }
             })(),
-            qualityBackfillPending: (() => {
-                try {
-                    return aiGetDb()
-                        .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
-                        .get().n;
-                } catch {
-                    return 0;
-                }
-            })(),
+            qualityBackfillPending: _qualityBackfillPending(),
             trackers: {
                 aiPeople: _jobTrackers.aiPeople.getStatus(),
                 qualityBackfill: _jobTrackers.qualityBackfill.getStatus(),
@@ -7982,6 +8103,20 @@ app.get('/api/ai/status', async (_req, res) => {
 // field so older clients fail with a clear `unknown feature` error
 // rather than a silent no-op.
 const AI_SCAN_FEATURES = new Set(['faces']);
+
+// A scan needs a sidecar. If none was started (AI was off at boot) or the
+// last spawn attempt failed, try again with the current config; the scan
+// itself waits for it to become ready. Also re-checks the stock compose
+// URL: the `faces` profile may have been started or stopped since boot.
+// A custom URL that is merely unreachable is left alone.
+async function _ensureFacesSidecar() {
+    try {
+        const spawnMod = await import('../core/ai/faces-spawn.js');
+        await spawnMod.ensureSidecarForScan();
+    } catch {
+        /* the scan reports the missing sidecar itself */
+    }
+}
 
 function _aiTrackerFor(feature) {
     if (feature === 'faces') return _jobTrackers.aiPeople;
@@ -8025,6 +8160,7 @@ app.post('/api/ai/scan/start', async (req, res) => {
         if (aiIsScanRunning(feature)) {
             return res.status(409).json({ error: 'Scan already running', code: 'ALREADY_RUNNING' });
         }
+        await _ensureFacesSidecar();
         const tracker = _aiTrackerFor(feature);
         const starter = _aiStarterFor(feature);
         const claim = tracker.tryStart(({ onProgress, signal }) => {
@@ -8097,26 +8233,38 @@ app.post('/api/ai/faces/health-test', async (req, res) => {
     const probe = _sidecarHealthUrl(req.body?.url);
     if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
     try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        let r;
-        try {
-            r = await fetch(probe.url, { method: 'GET', signal: ctrl.signal });
-        } finally {
-            clearTimeout(timer);
-        }
-        if (!r.ok) return res.json({ ok: false, error: `http_${r.status}` });
-        const body = await r.json();
+        const { resolveFacesValue } = await import('../core/ai/faces-config.js');
+        const saved = _aiCfg().faces || {};
+        const token = _sidecarTestToken(
+            req.body,
+            resolveFacesValue('sidecarUrl', saved),
+            resolveFacesValue('sidecarToken', saved),
+        );
+        // An empty /detect is a cheap token check: 401 = rejected, 400
+        // (validation) = accepted or no token required.
+        const r = await probeSidecar({
+            url: probe.base,
+            token,
+            authCheck: { method: 'POST', path: '/detect', body: {} },
+        });
+        const h = r.health || {};
         res.json({
-            ok: body?.ok === true,
-            version: body?.version ?? null,
-            model: body?.model ?? null,
-            ready: body?.ready === true,
-            providers: body?.providers_resolved ?? null,
+            ok: r.ok,
+            reachable: r.reachable,
+            error: r.error,
+            version: r.version,
+            model: h.model ?? null,
+            ready: h.ready === true,
+            providers: h.providers_resolved ?? h.providers ?? null,
+            features: r.features,
+            auth: r.auth,
+            authRequired: r.authRequired,
+            // 0.5.1+ takes raw uploads; older sidecars get base64.
+            transfer: r.features.includes('upload') ? 'upload' : 'base64',
+            tokenSent: !!token,
         });
     } catch (e) {
-        const msg = e?.name === 'AbortError' ? 'timeout' : e?.message || String(e);
-        res.json({ ok: false, error: msg });
+        res.json({ ok: false, error: e?.message || String(e) });
     }
 });
 
@@ -8136,7 +8284,10 @@ app.get('/api/ai/faces/provider-probe', async (_req, res) => {
         const t = setTimeout(() => ctrl.abort(), 10_000);
         let r;
         try {
-            r = await globalThis.fetch(`${url}/providers`, { signal: ctrl.signal });
+            r = await globalThis.fetch(`${url}/providers`, {
+                signal: ctrl.signal,
+                headers: aiSidecarAuthHeaders(),
+            });
         } finally {
             clearTimeout(t);
         }
@@ -8230,6 +8381,7 @@ app.post('/api/ai/faces/recluster', async (_req, res) => {
                 message: 'A face scan is already in progress.',
             });
         }
+        await _ensureFacesSidecar();
         const tracker = _aiTrackerFor('faces');
         const claim = tracker.tryStart(({ onProgress, signal }) => {
             return new Promise((resolve, reject) => {
@@ -8289,6 +8441,7 @@ app.post('/api/ai/faces/reindex', async (_req, res) => {
             ).run(...types);
         });
         tx();
+        _purgeFaceCropCache();
         broadcast({ type: 'ai_faces_reindexed', ts: Date.now() });
         res.json({ success: true });
     } catch (e) {
@@ -8391,6 +8544,7 @@ app.post('/api/ai/preload-model/:name', async (_req, res) => {
         const r = await fetch(`${url}/preload/${encodeURIComponent(name)}`, {
             method: 'POST',
             signal: AbortSignal.timeout(5000),
+            headers: aiSidecarAuthHeaders(),
         });
         res.json(await r.json());
     } catch (e) {
@@ -8406,6 +8560,7 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
         if (!url) return res.status(503).json({ error: 'sidecar not running' });
         const r = await fetch(`${url}/preload/${encodeURIComponent(name)}/status`, {
             signal: AbortSignal.timeout(3000),
+            headers: aiSidecarAuthHeaders(),
         });
         res.json(await r.json());
     } catch (e) {
@@ -8415,14 +8570,42 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
 
 // ---- People (face clusters) ---------------------------------------------
 
+// Same order as db.js listPeople() for rows merged from several peers.
+function _peopleComparator(sort, dir) {
+    const sign = dir === 'asc' ? 1 : -1;
+    const tie = (a, b) =>
+        (Number(b.face_count) || 0) - (Number(a.face_count) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0);
+    if (sort === 'name') {
+        return (a, b) => {
+            const an = a.label ? 0 : 1;
+            const bn = b.label ? 0 : 1;
+            // Unlabelled first ascending, last descending.
+            if (an !== bn) return (bn - an) * sign;
+            const c = String(a.label || '').localeCompare(String(b.label || ''), undefined, {
+                sensitivity: 'base',
+            });
+            return c * sign || tie(a, b);
+        };
+    }
+    const key = sort === 'avg_quality' ? 'avg_quality' : 'face_count';
+    return (a, b) => ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * sign || tie(a, b);
+}
+
 app.get('/api/ai/people', async (req, res) => {
     try {
         const limit = Math.max(1, Math.min(2000, Number(req.query?.limit) || 100));
         const offset = Math.max(0, Number(req.query?.offset) || 0);
         const scope = String(req.query?.scope || 'local').toLowerCase();
-        const local = listPeople({ limit, offset });
+        // Sorted server-side so "top N by quality / name" really is the top N
+        // of the whole library, not of the first N by face count.
+        const { sort, dir } = resolvePeopleSort(
+            String(req.query?.sort || ''),
+            String(req.query?.dir || '').toLowerCase(),
+        );
+        const local = listPeople({ limit, offset, sort, dir });
         if (scope !== 'federated') {
-            return res.json({ success: true, scope: 'local', ...local });
+            return res.json({ success: true, scope: 'local', sort, dir, ...local });
         }
         // Federated — list local clusters first, then peer summaries
         // tagged with the owning peer id. The UI's cover thumbnail is
@@ -8438,7 +8621,7 @@ app.get('/api/ai/people', async (req, res) => {
                         const r = await relayTo({
                             targetPeerId: p.peerId,
                             method: 'GET',
-                            path: `/api/ai/people?limit=${limit}`,
+                            path: `/api/ai/people?limit=${limit}&sort=${sort}&dir=${dir}`,
                         });
                         if (!r.ok) return [];
                         const json = await r.json();
@@ -8457,10 +8640,12 @@ app.get('/api/ai/people', async (req, res) => {
             const merged = [
                 ...(local.people || []).map((row) => ({ ...row, _peerId: 'local' })),
                 ...peerLists.flat(),
-            ];
+            ].sort(_peopleComparator(sort, dir));
             return res.json({
                 success: true,
                 scope: 'federated',
+                sort,
+                dir,
                 people: merged,
                 total: merged.length,
                 peerErrors,
@@ -8516,42 +8701,23 @@ app.get('/api/ai/group-by-person', async (req, res) => {
     }
 });
 
-// Extract a single frame from a video file as a raw image buffer using ffmpeg.
-// Used by the face crop endpoints when the source is a video file.
-async function _extractVideoFrame(videoPath) {
-    const { execFile } = await import('child_process');
-    const { resolveFfmpegBin } = await import('../core/thumbs.js');
-    const ffmpeg = resolveFfmpegBin();
-    return new Promise((resolve, reject) => {
-        execFile(
-            ffmpeg,
-            ['-i', videoPath, '-vframes', '1', '-f', 'image2', '-vcodec', 'png', 'pipe:1'],
-            { encoding: 'buffer', maxBuffer: 20 * 1024 * 1024, timeout: 10000 },
-            (err, stdout) => {
-                if (err) return reject(err);
-                resolve(stdout);
-            },
-        );
-    });
-}
+// ---- Face crops ------------------------------------------------------------
+//
+// Cached on disk, concurrency-capped, video-frame-aware — see
+// src/core/ai/face-crops.js for the why. `TGDL_FACE_CROP_CONCURRENCY`
+// (default 4) bounds how many crops render at once.
+const _faceCropper = createFaceCropper({
+    cacheDir: path.join(DATA_DIR, 'thumbs', 'face-crops'),
+    concurrency: Number(process.env.TGDL_FACE_CROP_CONCURRENCY) || 4,
+    resolveFfmpeg: resolveFfmpegBin,
+    // Legacy video rows: find the frame whose face matches the stored
+    // embedding. Null (sidecar away) makes the cropper fall back uncached.
+    detectInImage: (jpeg) => aiDetectFacesInImage(jpeg, _aiCfg()),
+});
 
-// Crop a face from an image buffer (or file path) with padding.
-async function _cropFace(source, row, size) {
-    const pad = 0.4;
-    const meta = await sharp(source, { failOn: 'none' }).metadata();
-    const imgW = meta.width || 9999;
-    const imgH = meta.height || 9999;
-    const left = Math.max(0, Math.round(row.x - row.w * pad));
-    const top = Math.max(0, Math.round(row.y - row.h * pad));
-    const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-    const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-    const width = Math.max(1, right - left);
-    const height = Math.max(1, bottom - top);
-    return sharp(source, { failOn: 'none' })
-        .extract({ left, top, width, height })
-        .resize(size, size, { fit: 'cover', position: 'centre' })
-        .jpeg({ quality: 82, progressive: true })
-        .toBuffer();
+/** Drop every cached crop (after a reindex the boxes are all new anyway). */
+function _purgeFaceCropCache() {
+    _faceCropper.purge();
 }
 
 // Face crop for person avatar — best (highest-quality/largest) face for this person.
@@ -8566,7 +8732,8 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path, d.file_type
+                `SELECT f.x, f.y, f.w, f.h, f.exif_oriented, f.frame_time_sec, f.embedding,
+                        d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.person_id = ?
@@ -8583,21 +8750,7 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        let buf;
-        if (row.file_type === 'video') {
-            const frameBuf = await _extractVideoFrame(resolved.real);
-            try {
-                buf = await _cropFace(frameBuf, row, size);
-            } catch {
-                buf = await sharp(frameBuf, { failOn: 'none' })
-                    .resize(size, size, { fit: 'cover', position: 'attention' })
-                    .jpeg({ quality: 82, progressive: true })
-                    .toBuffer();
-            }
-        } else {
-            buf = await _cropFace(resolved.real, row, size);
-        }
-
+        const buf = await _faceCropper.crop(row, resolved.real, size);
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
@@ -8612,7 +8765,8 @@ app.get('/api/ai/person/:id/face', async (req, res) => {
 });
 
 // Face crop for an individual face (used in the per-person photo gallery).
-// Crops the face bbox from the source image with the same 40% padding.
+// Crops the face bbox from the source image with the same 40% padding;
+// video faces go through the same frame-aware path as the avatar.
 app.get('/api/ai/faces/:id/crop', async (req, res) => {
     try {
         const faceId = Number(req.params.id);
@@ -8622,7 +8776,8 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
 
         const row = aiGetDb()
             .prepare(
-                `SELECT f.x, f.y, f.w, f.h, d.file_path
+                `SELECT f.x, f.y, f.w, f.h, f.exif_oriented, f.frame_time_sec, f.embedding,
+                        d.file_path, d.file_type
                    FROM faces f
                    JOIN downloads d ON d.id = f.download_id
                   WHERE f.id = ?`,
@@ -8636,24 +8791,7 @@ app.get('/api/ai/faces/:id/crop', async (req, res) => {
                 .status(resolved.reason === 'missing' ? 404 : 403)
                 .json({ error: resolved.reason });
 
-        const pad = 0.4;
-        const meta = await sharp(resolved.real, { failOn: 'none' }).metadata();
-        const imgW = meta.width || 9999;
-        const imgH = meta.height || 9999;
-
-        const left = Math.max(0, Math.round(row.x - row.w * pad));
-        const top = Math.max(0, Math.round(row.y - row.h * pad));
-        const right = Math.min(imgW, Math.round(row.x + row.w + row.w * pad));
-        const bottom = Math.min(imgH, Math.round(row.y + row.h + row.h * pad));
-        const width = Math.max(1, right - left);
-        const height = Math.max(1, bottom - top);
-
-        const buf = await sharp(resolved.real, { failOn: 'none' })
-            .extract({ left, top, width, height })
-            .resize(size, size, { fit: 'cover', position: 'centre' })
-            .jpeg({ quality: 82, progressive: true })
-            .toBuffer();
-
+        const buf = await _faceCropper.crop(row, resolved.real, size);
         res.set('content-type', 'image/jpeg');
         res.set('cache-control', 'public, max-age=604800, immutable');
         res.send(buf);
@@ -8730,8 +8868,9 @@ app.post('/api/ai/people/:id/merge', async (req, res) => {
 app.post('/api/ai/people/:id/split', async (req, res) => {
     try {
         const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds : [];
+        // The AI page sends `newLabel`; older clients / scripts send `label`.
         const label =
-            String(req.body?.label || '')
+            String(req.body?.newLabel ?? req.body?.label ?? '')
                 .trim()
                 .slice(0, 100) || null;
         if (!faceIds.length) {
@@ -8911,6 +9050,7 @@ app.post('/api/ai/reindex', async (req, res) => {
         // Settle one tick so the scan loops see the abort signal.
         if (cancelled) await new Promise((r) => setTimeout(r, 100));
         const r = resetAllAiData();
+        _purgeFaceCropCache();
         log({
             source: 'ai',
             level: 'info',
@@ -9130,7 +9270,7 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'ok',
-                detail: `v${facesVer} · running at ${st.url}`,
+                detail: `v${facesVer} · ${st.modeLabel || 'running'} at ${st.url}`,
             });
         } else if (st.state === 'downloading') {
             checks.push({
@@ -9158,7 +9298,9 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'info',
-                detail: 'disabled',
+                detail: st.composeFallback
+                    ? 'compose `faces` profile not running — one is auto-spawned in this container once AI + face clustering are on'
+                    : 'disabled',
             });
         }
     } catch (e) {
@@ -11005,6 +11147,11 @@ app.get('/api/maintenance/config/raw', async (req, res) => {
         if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
         if (config.web?.password) config.web.password = '••••••• (redacted)';
         if (config.proxy?.password) config.proxy.password = '••••••• (redacted)';
+        for (const block of [config.advanced?.nsfw, config.advanced?.seekbar]) {
+            if (block?.apiToken) block.apiToken = '••••••• (redacted)';
+        }
+        const rawFaces = config.advanced?.ai?.faces;
+        if (rawFaces?.sidecarToken) rawFaces.sidecarToken = '••••••• (redacted)';
         if (Array.isArray(config.accounts)) {
             // Phone numbers are stored alongside the metadata; keep but show
             // the user what they're about to download.
@@ -11031,6 +11178,17 @@ app.get('/api/config', async (req, res) => {
         if (safe.web) {
             delete safe.web.password;
             delete safe.web.passwordHash;
+        }
+        // Sidecar tokens are write-only from the dashboard's point of view.
+        for (const block of [safe.advanced?.nsfw, safe.advanced?.seekbar]) {
+            if (!block || typeof block !== 'object') continue;
+            block.apiTokenSet = !!block.apiToken;
+            delete block.apiToken;
+        }
+        const safeFaces = safe.advanced?.ai?.faces;
+        if (safeFaces && typeof safeFaces === 'object') {
+            safeFaces.sidecarTokenSet = !!safeFaces.sidecarToken;
+            delete safeFaces.sidecarToken;
         }
         if (Array.isArray(safe.accounts)) {
             safe.accounts = safe.accounts.map((a) => ({
@@ -11217,6 +11375,8 @@ app.post('/api/config', async (req, res) => {
                             ...((cur.ai || {}).faces || {}),
                             ...inc.ai.faces,
                         };
+                        // Read-only flag from GET /api/config, never stored.
+                        delete merged.faces.sidecarTokenSet;
                     }
                     return merged;
                 })(),
@@ -11328,6 +11488,12 @@ app.post('/api/config', async (req, res) => {
                 .map((s) => String(s).toLowerCase())
                 .filter((s) => ALLOWED_TYPES.includes(s));
             if (!ns.fileTypes.length) ns.fileTypes = NSFW_DEFAULTS.fileTypes.slice();
+            // External sidecar: URL, shared token, app→sidecar path map.
+            // GET /api/config never returns the token (apiTokenSet instead).
+            ns.sidecarUrl = typeof ns.sidecarUrl === 'string' ? ns.sidecarUrl.trim() : '';
+            ns.apiToken = typeof ns.apiToken === 'string' ? ns.apiToken.trim().slice(0, 256) : '';
+            ns.pathMap = typeof ns.pathMap === 'string' ? ns.pathMap.slice(0, 4096) : '';
+            delete ns.apiTokenSet;
 
             // AI subsystem (semantic search + auto-tag + face clustering).
             // All values are config-driven — same posture as NSFW. Master
@@ -11335,6 +11501,19 @@ app.post('/api/config', async (req, res) => {
             // an operator flips master to true they get all three out of
             // the box.
             const ai = merged.ai;
+            if (ai.faces && typeof ai.faces === 'object') {
+                // External sidecar: token + app→sidecar path map, strings only.
+                if ('pathMap' in ai.faces) {
+                    ai.faces.pathMap =
+                        typeof ai.faces.pathMap === 'string' ? ai.faces.pathMap.slice(0, 4096) : '';
+                }
+                if ('sidecarToken' in ai.faces) {
+                    ai.faces.sidecarToken =
+                        typeof ai.faces.sidecarToken === 'string'
+                            ? ai.faces.sidecarToken.trim().slice(0, 256)
+                            : '';
+                }
+            }
             ai.enabled = ai.enabled === true;
             ai.semanticSearch = ai.semanticSearch !== false;
             ai.autoTags = ai.autoTags !== false;
@@ -11497,6 +11676,8 @@ app.post('/api/config', async (req, res) => {
             // it alongside the dashboard passwordHash).
             sk.sidecarUrl = typeof sk.sidecarUrl === 'string' ? sk.sidecarUrl.trim() : '';
             sk.apiToken = typeof sk.apiToken === 'string' ? sk.apiToken.trim().slice(0, 256) : '';
+            sk.pathMap = typeof sk.pathMap === 'string' ? sk.pathMap.slice(0, 4096) : '';
+            delete sk.apiTokenSet;
 
             newConfig.advanced = merged;
         }
@@ -11633,10 +11814,15 @@ app.post('/api/config', async (req, res) => {
                 // rather than the merged config so a no-op save doesn't restart.
                 const bodyAi = req.body.advanced.ai || {};
                 const bodyFaces = bodyAi.faces || {};
+                // `enabled` too: the auto-spawned sidecar only starts once AI
+                // is switched on, so flipping it has to (re)run the spawn path.
                 const needsRestart =
                     bodyFaces.detectorModel !== undefined ||
                     bodyFaces.providers !== undefined ||
                     bodyFaces.backend !== undefined ||
+                    bodyFaces.sidecarUrl !== undefined ||
+                    bodyFaces.sidecarToken !== undefined ||
+                    bodyAi.enabled !== undefined ||
                     bodyAi.faceClustering !== undefined;
                 if (needsRestart && facesSpawnMod) {
                     facesSpawnMod.stopSidecar();
@@ -11655,8 +11841,13 @@ app.post('/api/config', async (req, res) => {
             }
         }
 
-        // Re-init NSFW sidecar when the URL changes.
-        if (req.body.advanced?.nsfw?.sidecarUrl !== undefined) {
+        // Re-init the NSFW sidecar client when its URL / token / path map change.
+        const nsIn = req.body.advanced?.nsfw || {};
+        if (
+            nsIn.sidecarUrl !== undefined ||
+            nsIn.apiToken !== undefined ||
+            nsIn.pathMap !== undefined
+        ) {
             try {
                 initNsfwSidecar(loadConfig());
             } catch {}
@@ -13281,6 +13472,7 @@ ${tip}
                 const aiCfg = _aiCfg();
                 if (aiCfg.enabled) {
                     console.log('[auto-resume] resuming AI faces scan');
+                    await _ensureFacesSidecar();
                     const tracker = _aiTrackerFor('faces');
                     tracker.tryStart(({ onProgress, signal }) => {
                         try {
