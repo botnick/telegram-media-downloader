@@ -74,7 +74,7 @@ import {
 } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
-import { AccountManager } from '../core/accounts.js';
+import { AccountManager, hasAccountSessions } from '../core/accounts.js';
 import { loadConfig, saveConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
@@ -1660,7 +1660,7 @@ async function _fetchLatestRelease() {
     const t = setTimeout(() => ctrl.abort(), 5000);
     try {
         const r = await fetch(
-            `https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases?per_page=30`,
+            `https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases?per_page=100`,
             {
                 headers: {
                     Accept: 'application/vnd.github+json',
@@ -1851,6 +1851,9 @@ async function getAccountManager() {
     }
     _accountManager = new AccountManager(config);
     await _accountManager.loadAll();
+    // loadAll() may just have migrated data/session.enc into sessions/ —
+    // close the legacy client so that key isn't used on two connections.
+    await dropLegacyClientIfOwned();
     return _accountManager;
 }
 
@@ -12607,6 +12610,13 @@ async function _connectLegacy() {
         return null;
     }
     if (!config.telegram?.apiId || !config.telegram?.apiHash) return null;
+    // AccountManager owns every account in data/sessions/ — including the
+    // migrated copy of data/session.enc. Connecting the legacy file as well
+    // would put the same auth key on two connections (AUTH_KEY_DUPLICATED).
+    if (hasAccountSessions()) {
+        _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
+        return null;
+    }
 
     let client = null;
     try {
@@ -12620,6 +12630,14 @@ async function _connectLegacy() {
         );
         client.setLogLevel('none');
         await client.connect();
+        // Re-check: AccountManager may have migrated this session while we
+        // were connecting (first boot after upgrading from a single-session
+        // install).
+        if (hasAccountSessions()) {
+            await client.destroy().catch(() => {});
+            _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
+            return null;
+        }
         if (await client.isUserAuthorized()) {
             telegramClient = client;
             isConnected = true;
@@ -12636,6 +12654,15 @@ async function _connectLegacy() {
     if (client) await client.destroy().catch(() => {});
     _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
     return null;
+}
+
+async function dropLegacyClientIfOwned() {
+    if (!telegramClient || !hasAccountSessions()) return;
+    const c = telegramClient;
+    telegramClient = null;
+    isConnected = false;
+    _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
+    await c.destroy().catch(() => {});
 }
 
 // Entity & Photo Helpers — stores `{ entity, client, at }` (NOT bare entity).
