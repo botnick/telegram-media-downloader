@@ -6965,6 +6965,7 @@ function _nsfwCfg() {
             preload: cfg.preload === true,
             blocklistEnabled: cfg.blocklistEnabled === true,
             model: cfg.model || NSFW_DEFAULTS.model,
+            dtype: cfg.dtype || NSFW_DEFAULTS.dtype,
             threshold: Number.isFinite(cfg.threshold) ? cfg.threshold : NSFW_DEFAULTS.threshold,
             concurrency: Number.isFinite(cfg.concurrency)
                 ? cfg.concurrency

@@ -69,12 +69,11 @@ RUN mkdir -p /app/data /app/data/downloads /app/data/logs /app/data/sessions /ap
     && chmod +x /app/scripts/docker-entrypoint.sh \
     && chown -R node:node /app
 
-# Pre-warm the AI model cache at build time so a first scan completes in
-# milliseconds instead of waiting on a cold ~150 MB download. Allowed to
-# fail with `|| true` for offline / firewalled CI machines — first run
-# falls back to lazy download. Skips silently when @huggingface/transformers
-# isn't installed (minimal builds without the optional dep).
-RUN node scripts/pre-download-models.js || true
+# The NSFW model is NOT baked into the image: it would land in /app/data,
+# which the ./data bind-mount hides at runtime, and it would add ~85 MB for
+# an opt-in feature. It downloads lazily on the first scan; to seed it ahead
+# of time (e.g. before going offline) run inside the container:
+#   docker compose exec -u node telegram-downloader npm run pre-download-models
 
 # We deliberately run the entrypoint as root so it can chown the bind-mounted
 # /app/data volume on first boot — gosu drops to `node` before exec'ing
