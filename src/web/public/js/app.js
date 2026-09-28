@@ -38,7 +38,15 @@ import {
     repaintSelection,
     selectAllVisible,
 } from './gallery-select.js';
-import { trimGalleryDOM, resetGalleryWindow } from './gallery-virtual.js';
+import {
+    configureGalleryWindow,
+    resetGalleryWindow,
+    rerenderGalleryWindow,
+    appendPositions,
+    hasPendingBelow,
+    extendBottom,
+    removeFileIndex,
+} from './gallery-virtual.js';
 import {
     initI18n,
     setLang,
@@ -209,27 +217,28 @@ async function init() {
     });
     // Auto-prune / disk-rotator / rescue sweeper all broadcast file_deleted —
     // drop the matching tile from the open gallery if any, otherwise just
-    // refresh stats so disk-usage / file-count chip stay current. We do
-    // this in two surgical moves to avoid a full grid re-render (which on
-    // a thousand-tile gallery is a visible jank): mutate state.files +
-    // remove the single matching DOM node by data-path. The originalIndex
-    // attribute on remaining tiles stays valid because we never re-index
-    // after removal — the viewer's index lookup falls back to filename
-    // resolution if it ever becomes stale.
+    // refresh stats so disk-usage / file-count chip stay current. Surgical
+    // (no full grid re-render, which on a thousand-tile gallery is a
+    // visible jank): splice state.files in place and let the gallery
+    // window drop the position + re-index the `data-index` of later tiles
+    // so the viewer keeps opening the right file.
     const dropFileFromView = (m) => {
         const droppedPath = m?.path;
         const droppedId = m?.id;
         if (Array.isArray(state.files) && (droppedPath || droppedId != null)) {
-            const before = state.files.length;
-            state.files = state.files.filter((f) => {
-                if (droppedPath && (f.fullPath === droppedPath || f.path === droppedPath))
-                    return false;
-                if (droppedId != null && f.id === droppedId) return false;
-                return true;
-            });
-            if (state.files.length !== before && state.currentPage === 'viewer') {
-                _removeTileFromGrid({ path: droppedPath, id: droppedId });
+            const isGallery = state.files === _galleryFilesRef;
+            for (let i = state.files.length - 1; i >= 0; i--) {
+                const f = state.files[i];
+                const hit =
+                    (droppedPath && (f.fullPath === droppedPath || f.path === droppedPath)) ||
+                    (droppedId != null && f.id === droppedId);
+                if (!hit) continue;
+                state.files.splice(i, 1);
+                if (isGallery) removeFileIndex(i);
+            }
+            if (isGallery) {
                 _renderedFileCount = state.files.length;
+                if (state.files.length === 0) renderGalleryEmptyState();
             }
         }
         loadStats();
@@ -1541,7 +1550,7 @@ function showAllMedia() {
     updateHeaderAvatar(null, null);
 
     const grid = document.getElementById('media-grid');
-    if (grid) grid.innerHTML = '';
+    if (grid) _clearGalleryGrid(grid);
 
     // Make sure the viewer page section is actually visible BEFORE we
     // start the fetch — clicking "All Media" while the user is on
@@ -1750,7 +1759,7 @@ function _renderGalleryScopeMenu() {
 async function loadAllFiles() {
     state.loading = true;
     const grid = document.getElementById('media-grid');
-    if (state.page === 1 && grid) grid.innerHTML = renderGallerySkeletons(12);
+    if (state.page === 1 && grid) _clearGalleryGrid(grid, renderGallerySkeletons(12));
 
     try {
         const type =
@@ -1804,7 +1813,7 @@ async function loadGroupFiles(groupId) {
     // adds rows so we don't replace what's already there.
     if (state.page === 1) {
         const grid = document.getElementById('media-grid');
-        if (grid) grid.innerHTML = renderGallerySkeletons(12);
+        if (grid) _clearGalleryGrid(grid, renderGallerySkeletons(12));
         document.getElementById('empty-state')?.classList.add('hidden');
     }
 
@@ -1846,22 +1855,22 @@ async function loadGroupFiles(groupId) {
     }
 }
 
-// Track how many state.files entries are already painted as tiles in the
-// DOM. Append-only on infinite scroll: page-2+ loads add only the new
-// tail to the grid via insertAdjacentHTML rather than re-rendering the
-// whole thing. Reset on every full re-render (filter/group change).
+// Track how many state.files entries have been handed to the gallery
+// window (rendered or queued below it). Append-only on infinite scroll:
+// page-2+ loads only add the new tail. Reset on every full re-render
+// (filter/group change).
 let _renderedFileCount = 0;
 
 // Off-screen tile content unloader. `content-visibility: auto` skips
 // layout/paint for off-screen tiles, but the `<img>` element + decoded
-// bitmap stay in memory regardless — a 5000-tile gallery would hold
-// ~5000 cached thumbnails (10-30 KB each ≈ 150 MB resident). This
-// IntersectionObserver detaches the children of `.tile-thumb` for
-// tiles that are far from the viewport (stashed in a WeakMap so they
-// survive DOM moves) and reattaches them when the tile comes back
-// near. The empty `<div class="tile-thumb">` outer node stays so
-// layout + `aspect-ratio` are unaffected; only the heavy thumbnail
-// bitmap is freed.
+// bitmap stay in memory regardless. This IntersectionObserver detaches
+// the children of `.tile-thumb` for tiles that are far from the viewport
+// (stashed in a WeakMap so they survive DOM moves) and reattaches them
+// when the tile comes back near. The empty `<div class="tile-thumb">`
+// outer node stays so layout + `aspect-ratio` are unaffected; only the
+// heavy thumbnail bitmap is freed. Rooted on #content-area — the real
+// scroller — so the 1500 px buffer actually applies (with the viewport
+// as root the scroller clipped it to ~0 and tiles popped in blank).
 let _tileWindowObserver = null;
 const _tileStash = new WeakMap();
 function _ensureTileWindowObserver() {
@@ -1876,7 +1885,11 @@ function _ensureTileWindowObserver() {
         },
         // Generous buffer so a fast-flick scroll doesn't flash empty
         // tiles. 1500 px ≈ 8-12 rows in grid mode at typical viewports.
-        { rootMargin: '1500px 0px 1500px 0px', threshold: 0 },
+        {
+            root: document.getElementById('content-area'),
+            rootMargin: '1500px 0px 1500px 0px',
+            threshold: 0,
+        },
     );
     return _tileWindowObserver;
 }
@@ -1899,243 +1912,207 @@ function _restoreTile(tile) {
     _tileStash.delete(tile);
 }
 
-function renderMediaGrid(opts = {}) {
-    const grid = document.getElementById('media-grid');
-    const empty = document.getElementById('empty-state');
-    if (!grid) return;
+// Sticky inside a CSS Grid was clipping the trailing media tiles and
+// stacking multiple headers at the top of the scrollport (each header
+// sticks until the next pushes it). Plain inline header keeps each
+// section's title aligned with its row without hijacking the scroll
+// geometry. Spans the full row (gallery-virtual.js relies on that for
+// its row math).
+function _gallerySectionHeaderHtml(label) {
+    return `<h4 class="grid-section-header" style="grid-column: 1 / -1; padding: 16px 4px 8px; color: var(--tg-textSecondary, #8B9BAA); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtml(label)}</h4>`;
+}
 
-    const append = opts.append === true;
-    const fromIndex = append ? (opts.fromIndex ?? _renderedFileCount) : 0;
-
-    if (state.files.length === 0) {
-        grid.innerHTML = '';
-        _renderedFileCount = 0;
-        renderGalleryEmptyState();
-        return;
-    }
-    if (empty) empty.classList.add('hidden');
-
-    if (!state.selected) state.selected = new Set();
-
-    // Walk only the slice we need (full list on full render, tail on
-    // append). Each file's index in the UNFILTERED list (`originalIndex`)
-    // is preserved so the viewer's `state.files[idx]` lookup stays
-    // correct under filter.
-    const slice = state.files.slice(fromIndex);
-    const filteredWithIndex = [];
-    slice.forEach((file, sliceIdx) => {
-        if (state.currentFilter === 'all' || file.type === state.currentFilter) {
-            filteredWithIndex.push({ file, originalIndex: fromIndex + sliceIdx });
-        }
-    });
-
-    // On append, skip the time-section banding entirely — the existing
-    // headers up the page stay correct visually, and re-bucketing the
-    // tail in isolation can't produce sensible relative labels anyway.
-    const sections = append ? [['', filteredWithIndex]] : groupFilesByTime(filteredWithIndex);
-
-    const html = sections
-        .map(([label, items]) => {
-            // Sticky inside a CSS Grid was clipping the trailing media tiles
-            // and stacking multiple headers at the top of the scrollport
-            // (each header sticks until the next pushes it). Plain inline
-            // header keeps each section's title aligned with its row without
-            // hijacking the scroll geometry.
-            const headerHtml = label
-                ? `<h4 class="grid-section-header" style="grid-column: 1 / -1; padding: 16px 4px 8px; color: var(--tg-textSecondary, #8B9BAA); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtml(label)}</h4>`
-                : '';
-            const tiles = items
-                .map(({ file, originalIndex }) => {
-                    // CSS-driven selection visuals: `.media-grid.in-select-mode`
-                    // reveals the badge on every tile, and `.media-item.is-selected`
-                    // flips it to "checked". Both classes are toggled in place by
-                    // gallery-select.js — no re-render needed for selection
-                    // changes, which is what keeps the lasso smooth on a long
-                    // gallery.
-                    const checked = state.selected?.has(file.fullPath);
-                    const selectedCls = checked ? 'is-selected' : '';
-                    const checkBadge = `<div class="select-badge"><i class="ri-check-line"></i></div>`;
-                    // Rescue Mode badges. Rescued tiles win over pending (a row
-                    // shouldn't carry both, but if it does, "rescued" is the more
-                    // useful signal). Pending shows a remaining-hours estimate +
-                    // tooltip with the local-time deadline.
-                    const rescueBadge = renderRescueBadge(file);
-                    // Server-side WebP thumbnails. One ~6-12 KB image per tile
-                    // — replaces both the previous full-resolution image source
-                    // and the mobile-vs-desktop branching. v2.x collapsed the
-                    // cache to a single canonical 320-px width (see thumbs.js
-                    // ALLOWED_WIDTHS); every viewport asks for the same URL so
-                    // the cache hits 100% of the time. Server snaps any `?w=`
-                    // value to 320 via clampWidth() so legacy bookmarked tabs
-                    // still get a valid response.
-                    // Falls back to a typed-icon placeholder if the source isn't
-                    // thumbnailable (audio / document / dead source).
-                    // Federated rows (file.peer_id !== 'self') route through
-                    // the cluster thumb proxy via getThumbUrl(); see media-url.js.
-                    const thumbUrl = getThumbUrl(file, 320);
-                    // Onerror falls back to displaying nothing (the panel
-                    // background shows through), which is the desired graceful
-                    // degradation for a missing/dead file.
-                    // CSS skeleton starts img at opacity:0 and fades to 1 on `.loaded`.
-                    // Native loading="lazy" + delegated `load`/`error`
-                    // listeners on `#media-grid` (see `_wireMediaGridDelegation`)
-                    // pop the skeleton open. We used to inline `onload` /
-                    // `onerror` per-tile, but every inline handler closure
-                    // adds DOM-parse overhead and ~100 bytes of GC pressure
-                    // per row — at 5000 tiles that compounds into measurable
-                    // scroll lag. The delegated listeners run in capture
-                    // phase so the visual outcome stays identical (fade-in
-                    // on success, hide on failure).
-                    const imgFallback =
-                        `<img loading="lazy" decoding="async" class="w-full h-full object-cover" alt=""` +
-                        (thumbUrl ? ` src="${escapeHtml(thumbUrl)}"` : '') +
-                        '>';
-                    const docFallback = `<div class="w-full h-full flex flex-col items-center justify-center">
-                <i class="${getFileIcon(file.extension)} text-3xl text-tg-textSecondary"></i>
+// One gallery tile. `originalIndex` is the position in `state.files`
+// (the viewer's backing list) so a click opens the right file even
+// under a type filter.
+function _galleryTileHtml(file, originalIndex) {
+    // CSS-driven selection visuals: `.media-grid.in-select-mode`
+    // reveals the badge on every tile, and `.media-item.is-selected`
+    // flips it to "checked". Both classes are toggled in place by
+    // gallery-select.js — no re-render needed for selection
+    // changes, which is what keeps the lasso smooth on a long
+    // gallery.
+    const checked = state.selected?.has(file.fullPath);
+    const selectedCls = checked ? 'is-selected' : '';
+    const checkBadge = `<div class="select-badge"><i class="ri-check-line"></i></div>`;
+    // Rescue Mode badges. Rescued tiles win over pending (a row
+    // shouldn't carry both, but if it does, "rescued" is the more
+    // useful signal). Pending shows a remaining-hours estimate +
+    // tooltip with the local-time deadline.
+    const rescueBadge = renderRescueBadge(file);
+    // Server-side WebP thumbnails. One ~6-12 KB image per tile
+    // — replaces both the previous full-resolution image source
+    // and the mobile-vs-desktop branching. v2.x collapsed the
+    // cache to a single canonical 320-px width (see thumbs.js
+    // ALLOWED_WIDTHS); every viewport asks for the same URL so
+    // the cache hits 100% of the time. Server snaps any `?w=`
+    // value to 320 via clampWidth() so legacy bookmarked tabs
+    // still get a valid response.
+    // Falls back to a typed-icon placeholder if the source isn't
+    // thumbnailable (audio / document / dead source).
+    // Federated rows (file.peer_id !== 'self') route through
+    // the cluster thumb proxy via getThumbUrl(); see media-url.js.
+    const thumbUrl = getThumbUrl(file, 320);
+    // Onerror falls back to displaying nothing (the panel
+    // background shows through), which is the desired graceful
+    // degradation for a missing/dead file.
+    // CSS skeleton starts img at opacity:0 and fades to 1 on `.loaded`.
+    // Native loading="lazy" + delegated `load`/`error`
+    // listeners on `#media-grid` (see `_wireMediaGridDelegation`)
+    // pop the skeleton open. We used to inline `onload` /
+    // `onerror` per-tile, but every inline handler closure
+    // adds DOM-parse overhead and ~100 bytes of GC pressure
+    // per row — at 5000 tiles that compounds into measurable
+    // scroll lag. The delegated listeners run in capture
+    // phase so the visual outcome stays identical (fade-in
+    // on success, hide on failure).
+    const imgFallback =
+        `<img loading="lazy" decoding="async" class="w-full h-full object-cover" alt=""` +
+        (thumbUrl ? ` src="${escapeHtml(thumbUrl)}"` : '') +
+        '>';
+    const docFallback = `<div class="w-full h-full flex flex-col items-center justify-center">
+<i class="${getFileIcon(file.extension)} text-3xl text-tg-textSecondary"></i>
             </div>`;
-                    // Inner thumb content — the visual changes per file type (img,
-                    // video w/ play overlay, doc icon). Wrapped in `.tile-thumb`
-                    // so list-mode CSS can size it as a 56 px square cell.
-                    const durLabel =
-                        file.type === 'videos' && file.duration
-                            ? formatDuration(file.duration)
-                            : '';
-                    const durBadge = durLabel
-                        ? `<span class="video-duration">${durLabel}</span>`
-                        : '';
-                    const thumbInner =
-                        file.type === 'images'
-                            ? imgFallback
-                            : file.type === 'videos'
-                              ? `<div class="relative w-full h-full bg-black">
-                        ${thumbUrl ? imgFallback : ''}
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <div class="w-10 h-10 rounded-full bg-black/55 flex items-center justify-center">
-                                <i class="ri-play-fill text-white text-xl ml-0.5"></i>
-                            </div>
-                        </div>
-                        ${durBadge}
-                       </div>`
-                              : docFallback;
-                    // Filename-under-tile fallback for non-image-non-video types
-                    // in GRID/COMPACT modes (where doc icon needs context). CSS
-                    // hides this in list mode (which has its own tile-name).
-                    const gridDocLabel =
-                        file.type !== 'images' && file.type !== 'videos'
-                            ? `<span class="absolute inset-x-0 bottom-0 text-[11px] text-tg-textSecondary truncate text-center px-2 py-1 bg-black/40">${escapeHtml(file.name || '')}</span>`
-                            : '';
-                    // List-mode metadata. `tile-text/size/date` are display:none in
-                    // grid+compact (CSS), display:flex/grid in list. Group name +
-                    // file extension in the sub line, full size + date in their
-                    // own columns. Date format = locale short.
-                    // Federated rows (file.peer_id !== 'self') get a "from {peer}"
-                    // pill appended after the group name so the operator can
-                    // tell at a glance which dashboard owns the file. The pill
-                    // is also visible in grid mode via the `tile-peer-badge`
-                    // overlay positioned bottom-right.
-                    const isPeerTile = isPeerRow(file);
-                    const peerName = isPeerTile ? file.peer_name || '' : '';
-                    const peerBadgeOverlay = isPeerTile
-                        ? `<div class="tile-peer-badge" title="${escapeHtml(
-                              i18nTf('gallery.peer_badge', { peer: peerName }, `from ${peerName}`),
-                          )}"><i class="ri-broadcast-line"></i><span>${escapeHtml(
-                              peerName || i18nT('gallery.scope.this_peer', 'peer'),
-                          )}</span></div>`
-                        : '';
-                    const peerSubInline =
-                        isPeerTile && peerName
-                            ? ` · <span class="text-tg-blue">${escapeHtml(
-                                  i18nTf(
-                                      'gallery.peer_badge',
-                                      { peer: peerName },
-                                      `from ${peerName}`,
-                                  ),
-                              )}</span>`
-                            : '';
-                    const groupLine = file.groupName || file.groupId || '';
-                    const sizeLine =
-                        file.sizeFormatted || (file.size ? formatBytes(file.size) : '');
-                    const dateLine = file.modified ? formatRelativeTime(file.modified) : '';
-                    // Pin chip — appears on hover, golden when pinned. data-tile-pin
-                    // is what the gallery delegation handler keys off below.
-                    const pinnedCls = file.pinned ? 'is-pinned' : '';
-                    const pinTitle = file.pinned
-                        ? i18nT('favorites.unpin', 'Unpin')
-                        : i18nT('favorites.pin', 'Pin');
-                    const pinIcon = file.pinned ? 'ri-pushpin-2-fill' : 'ri-pushpin-2-line';
-                    const pinChip =
-                        file.id != null && state.role === 'admin'
-                            ? `<button type="button" class="pin-chip" data-tile-pin title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}">
-                       <i class="${pinIcon}"></i>
-                   </button>`
-                            : '';
-                    return `
+    // Inner thumb content — the visual changes per file type (img,
+    // video w/ play overlay, doc icon). Wrapped in `.tile-thumb`
+    // so list-mode CSS can size it as a 56 px square cell.
+    const durLabel = file.type === 'videos' && file.duration ? formatDuration(file.duration) : '';
+    const durBadge = durLabel ? `<span class="video-duration">${durLabel}</span>` : '';
+    const thumbInner =
+        file.type === 'images'
+            ? imgFallback
+            : file.type === 'videos'
+              ? `<div class="relative w-full h-full bg-black">
+        ${thumbUrl ? imgFallback : ''}
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-10 h-10 rounded-full bg-black/55 flex items-center justify-center">
+                <i class="ri-play-fill text-white text-xl ml-0.5"></i>
+            </div>
+        </div>
+        ${durBadge}
+       </div>`
+              : docFallback;
+    // Filename-under-tile fallback for non-image-non-video types
+    // in GRID/COMPACT modes (where doc icon needs context). CSS
+    // hides this in list mode (which has its own tile-name).
+    const gridDocLabel =
+        file.type !== 'images' && file.type !== 'videos'
+            ? `<span class="absolute inset-x-0 bottom-0 text-[11px] text-tg-textSecondary truncate text-center px-2 py-1 bg-black/40">${escapeHtml(file.name || '')}</span>`
+            : '';
+    // List-mode metadata. `tile-text/size/date` are display:none in
+    // grid+compact (CSS), display:flex/grid in list. Group name +
+    // file extension in the sub line, full size + date in their
+    // own columns. Date format = locale short.
+    // Federated rows (file.peer_id !== 'self') get a "from {peer}"
+    // pill appended after the group name so the operator can
+    // tell at a glance which dashboard owns the file. The pill
+    // is also visible in grid mode via the `tile-peer-badge`
+    // overlay positioned bottom-right.
+    const isPeerTile = isPeerRow(file);
+    const peerName = isPeerTile ? file.peer_name || '' : '';
+    const peerBadgeOverlay = isPeerTile
+        ? `<div class="tile-peer-badge" title="${escapeHtml(
+              i18nTf('gallery.peer_badge', { peer: peerName }, `from ${peerName}`),
+          )}"><i class="ri-broadcast-line"></i><span>${escapeHtml(
+              peerName || i18nT('gallery.scope.this_peer', 'peer'),
+          )}</span></div>`
+        : '';
+    const peerSubInline =
+        isPeerTile && peerName
+            ? ` · <span class="text-tg-blue">${escapeHtml(
+                  i18nTf('gallery.peer_badge', { peer: peerName }, `from ${peerName}`),
+              )}</span>`
+            : '';
+    const groupLine = file.groupName || file.groupId || '';
+    const sizeLine = file.sizeFormatted || (file.size ? formatBytes(file.size) : '');
+    const dateLine = file.modified ? formatRelativeTime(file.modified) : '';
+    // Pin chip — appears on hover, golden when pinned. data-tile-pin
+    // is what the gallery delegation handler keys off below.
+    const pinnedCls = file.pinned ? 'is-pinned' : '';
+    const pinTitle = file.pinned
+        ? i18nT('favorites.unpin', 'Unpin')
+        : i18nT('favorites.pin', 'Pin');
+    const pinIcon = file.pinned ? 'ri-pushpin-2-fill' : 'ri-pushpin-2-line';
+    const pinChip =
+        file.id != null && state.role === 'admin'
+            ? `<button type="button" class="pin-chip" data-tile-pin title="${escapeHtml(pinTitle)}" aria-label="${escapeHtml(pinTitle)}">
+       <i class="${pinIcon}"></i>
+   </button>`
+            : '';
+    return `
             <div class="media-item relative ${selectedCls} ${pinnedCls}${isPeerTile ? ' is-peer-tile' : ''}" data-index="${originalIndex}" data-path="${escapeHtml(file.fullPath)}"${file.id != null ? ` data-id="${file.id}"` : ''}${isPeerTile ? ` data-peer-id="${escapeHtml(file.peer_id)}"` : ''} tabindex="0">
-                <div class="tile-thumb relative w-full h-full overflow-hidden">
-                    ${thumbInner}
-                    ${gridDocLabel}
-                    ${peerBadgeOverlay}
-                </div>
-                ${pinChip}
-                <div class="tile-text">
-                    <div class="tile-name" title="${escapeHtml(file.name || '')}">${escapeHtml(file.name || '')}</div>
-                    <div class="tile-sub">${escapeHtml(groupLine)}${peerSubInline}</div>
-                </div>
-                <div class="tile-size">${escapeHtml(sizeLine)}</div>
-                <div class="tile-date" title="${file.modified ? new Date(file.modified).toLocaleString() : ''}">${escapeHtml(dateLine)}</div>
-                <div class="tile-actions">
-                    <button type="button" class="w-7 h-7 rounded-md hover:bg-tg-hover flex items-center justify-center text-tg-textSecondary"
-                            data-tile-open title="${escapeHtml(i18nT('viewer.open', 'Open'))}" aria-label="${escapeHtml(i18nT('viewer.open', 'Open'))}">
-                        <i class="ri-eye-line"></i>
-                    </button>
-                    <button type="button" class="w-7 h-7 rounded-md hover:bg-tg-hover flex items-center justify-center text-tg-textSecondary"
-                            data-tile-similar data-id="${file.id}"
-                            title="${escapeHtml(i18nT('viewer.find_similar', 'Find similar photos'))}"
-                            aria-label="${escapeHtml(i18nT('viewer.find_similar', 'Find similar photos'))}">
-                        <i class="ri-search-eye-line"></i>
-                    </button>
-                </div>
-                ${checkBadge}
-                ${rescueBadge}
+<div class="tile-thumb relative w-full h-full overflow-hidden">
+    ${thumbInner}
+    ${gridDocLabel}
+    ${peerBadgeOverlay}
+</div>
+${pinChip}
+<div class="tile-text">
+    <div class="tile-name" title="${escapeHtml(file.name || '')}">${escapeHtml(file.name || '')}</div>
+    <div class="tile-sub">${escapeHtml(groupLine)}${peerSubInline}</div>
+</div>
+<div class="tile-size">${escapeHtml(sizeLine)}</div>
+<div class="tile-date" title="${file.modified ? new Date(file.modified).toLocaleString() : ''}">${escapeHtml(dateLine)}</div>
+<div class="tile-actions">
+    <button type="button" class="w-7 h-7 rounded-md hover:bg-tg-hover flex items-center justify-center text-tg-textSecondary"
+            data-tile-open title="${escapeHtml(i18nT('viewer.open', 'Open'))}" aria-label="${escapeHtml(i18nT('viewer.open', 'Open'))}">
+        <i class="ri-eye-line"></i>
+    </button>
+    <button type="button" class="w-7 h-7 rounded-md hover:bg-tg-hover flex items-center justify-center text-tg-textSecondary"
+            data-tile-similar data-id="${file.id}"
+            title="${escapeHtml(i18nT('viewer.find_similar', 'Find similar photos'))}"
+            aria-label="${escapeHtml(i18nT('viewer.find_similar', 'Find similar photos'))}">
+        <i class="ri-search-eye-line"></i>
+    </button>
+</div>
+${checkBadge}
+${rescueBadge}
             </div>`;
-                })
-                .join('');
-            return headerHtml + tiles;
-        })
-        .join('');
+}
 
-    if (append) {
-        // Tail-append. insertAdjacentHTML doesn't re-parse the existing
-        // children — O(N_appended) instead of O(N_total) per scroll page,
-        // which is the difference between buttery scroll and stutter on
-        // a 1000-tile gallery.
-        grid.insertAdjacentHTML('beforeend', html);
-        // Sliding window: trim oldest tiles from top to cap DOM size.
-        trimGalleryDOM(grid);
-    } else {
-        resetGalleryWindow(grid);
-        grid.innerHTML = html;
+// The gallery DOM is a bounded window over the full list (see
+// gallery-virtual.js). Wired lazily on first render.
+let _galleryWindowWired = false;
+function _ensureGalleryWindow(grid) {
+    if (_galleryWindowWired) return;
+    _galleryWindowWired = true;
+    configureGalleryWindow({
+        grid,
+        scroller: document.getElementById('content-area'),
+        renderItem: (idx) => _galleryTileHtml(state.files[idx] || {}, idx),
+        renderHeader: (label) => _gallerySectionHeaderHtml(label),
+        onInserted: _onGalleryTilesInserted,
+        onRemoved: _onGalleryTilesRemoved,
+    });
+}
+
+// New tiles entered the DOM (full render, page append, or rows the
+// window re-inserted on scroll): wire them into the thumbnail-eviction
+// + lazy-media observers, and flag cache-hit images as loaded.
+function _onGalleryTilesInserted(nodes) {
+    const obs = _ensureTileWindowObserver();
+    const imgs = [];
+    for (const el of nodes) {
+        if (!el.classList?.contains('media-item')) continue;
+        obs.observe(el);
+        if (state.imageObserver) {
+            for (const m of el.querySelectorAll('img[data-src], video[data-src]')) {
+                state.imageObserver.observe(m);
+            }
+        }
+        const img = el.querySelector('img');
+        if (img) imgs.push(img);
     }
-    _renderedFileCount = state.files.length;
-
-    // Click handling lives on the grid itself via event delegation
-    // (wired once below). Per-tile addEventListener was the second-
-    // biggest cost on a full re-render — eliminating it keeps tab
-    // switches snappy on a thousand-tile grid.
-    _wireMediaGridDelegation(grid);
+    if (!imgs.length) return;
     // Race fix — when an image is already in the HTTP cache, the browser
-    // can fire `load` synchronously between `innerHTML =` and the
-    // delegation handler attaching above. The delegated capture-phase
-    // listener misses that event, the tile never gets `.loaded`, and the
-    // CSS rule `.media-item img { opacity: 0 }` keeps the thumb invisible
-    // (the DOM contains a valid <img src=…>, but the pixel never paints).
-    // Sweep one frame later, after the browser has run its initial layout
-    // pass on the freshly-inserted HTML, and flag every <img> whose
-    // `complete` flag is already true. naturalWidth=0 means the request
-    // 404'd from cache → fall back to `display:none` just like the
-    // delegated error path would.
+    // can fire `load` before the delegated capture-phase listener sees
+    // it, the tile never gets `.loaded`, and the CSS rule
+    // `.media-item img { opacity: 0 }` keeps the thumb invisible. Sweep
+    // one frame later and flag every <img> whose `complete` flag is
+    // already true. naturalWidth=0 means the request 404'd from cache →
+    // fall back to `display:none` just like the delegated error path.
     requestAnimationFrame(() => {
-        for (const img of grid.querySelectorAll('.media-item img')) {
+        for (const img of imgs) {
             if (!img.complete) continue;
             if (img.naturalWidth > 0) {
                 img.classList.add('loaded');
@@ -2145,30 +2122,100 @@ function renderMediaGrid(opts = {}) {
             }
         }
     });
-    _attachLazyObservers(grid);
-    _attachTileWindowObserver(grid, append, fromIndex);
+}
+
+// Tiles left the DOM (window trim / re-render) — stop observing them so
+// the observers never pin detached nodes.
+function _onGalleryTilesRemoved(nodes) {
+    for (const el of nodes) {
+        _tileWindowObserver?.unobserve(el);
+        _tileStash.delete(el);
+        if (state.imageObserver) {
+            for (const m of el.querySelectorAll?.('img, video') || []) {
+                state.imageObserver.unobserve(m);
+            }
+        }
+    }
+}
+
+// Clear the grid through the window module so its bookkeeping (spacer,
+// positions) never drifts from the DOM, then optionally paint loading
+// skeletons.
+function _clearGalleryGrid(grid, skeletonHtml = '') {
+    _ensureGalleryWindow(grid);
+    resetGalleryWindow([], new Map());
+    _galleryFilesRef = null;
+    if (skeletonHtml) grid.innerHTML = skeletonHtml;
+}
+
+// `state.files` array the grid currently renders. Other surfaces (queue
+// single-file viewer, review mode, AI search) swap `state.files` for
+// their own list; comparing identity tells us the grid is stale.
+let _galleryFilesRef = null;
+
+function renderMediaGrid(opts = {}) {
+    const grid = document.getElementById('media-grid');
+    const empty = document.getElementById('empty-state');
+    if (!grid) return;
+    _ensureGalleryWindow(grid);
+
+    const append = opts.append === true;
+    const fromIndex = append ? (opts.fromIndex ?? _renderedFileCount) : 0;
+
+    if (state.files.length === 0) {
+        resetGalleryWindow([], new Map());
+        _renderedFileCount = 0;
+        _galleryFilesRef = state.files;
+        renderGalleryEmptyState();
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+
+    if (!state.selected) state.selected = new Set();
+
+    const matches = (file) => state.currentFilter === 'all' || file.type === state.currentFilter;
+    if (append) {
+        // Page 2+: hand only the new tail to the window. No time-section
+        // banding — re-bucketing the tail in isolation can't produce
+        // sensible relative labels, and the headers up the page stay
+        // correct visually.
+        const indices = [];
+        for (let i = fromIndex; i < state.files.length; i++) {
+            if (matches(state.files[i])) indices.push(i);
+        }
+        appendPositions(indices);
+    } else {
+        // Full render. Each file keeps its index in the UNFILTERED list
+        // (`originalIndex`) so the viewer's `state.files[idx]` lookup stays
+        // correct under filter. Sections become (position → label) headers.
+        const filteredWithIndex = [];
+        state.files.forEach((file, originalIndex) => {
+            if (matches(file)) filteredWithIndex.push({ file, originalIndex });
+        });
+        const order = [];
+        const headers = new Map();
+        for (const [label, items] of groupFilesByTime(filteredWithIndex)) {
+            if (label && items.length) headers.set(order.length, label);
+            for (const it of items) order.push(it.originalIndex);
+        }
+        if (opts.keepScroll) rerenderGalleryWindow(order, headers);
+        else resetGalleryWindow(order, headers);
+    }
+    _renderedFileCount = state.files.length;
+    _galleryFilesRef = state.files;
+
+    // Click handling lives on the grid itself via event delegation
+    // (wired once below). Per-tile addEventListener was the second-
+    // biggest cost on a full re-render — eliminating it keeps tab
+    // switches snappy on a thousand-tile grid.
+    _wireMediaGridDelegation(grid);
     // Re-apply select-mode class + repaint .is-selected on tiles after
     // any full or append render so the visual state survives mutations
     // (e.g. infinite scroll, filter switch, file_deleted).
     repaintSelection();
-}
-
-// Wire every tile (or just the freshly-appended tail) into the
-// `_tileWindowObserver` so off-screen tiles drop their thumbnail
-// content under memory pressure. Idempotent: `observer.observe(el)`
-// on an already-observed node is a no-op.
-function _attachTileWindowObserver(grid, append, fromIndex) {
-    const obs = _ensureTileWindowObserver();
-    const tiles = grid.querySelectorAll('.media-item');
-    if (append) {
-        // The tail-append path adds tiles after `fromIndex`; only those
-        // need fresh observers. The earlier ones are already wired.
-        for (let i = fromIndex; i < tiles.length; i++) obs.observe(tiles[i]);
-    } else {
-        // Full re-render: previous tiles were torn out of the DOM, so
-        // the observer's references are GC-eligible. Wire everything.
-        tiles.forEach((tile) => obs.observe(tile));
-    }
+    // A short page may leave the load-more sentinel inside the prefetch
+    // margin, where the IntersectionObserver never fires again.
+    _recheckLoadMore();
 }
 
 let _gridDelegated = false;
@@ -2253,39 +2300,6 @@ function _wireMediaGridDelegation(grid) {
         }
         Viewer.openMediaViewer(idx);
     });
-}
-
-// Lazy <img>/<video> observer hookup — runs after every render (full or
-// append) so newly-added tiles are picked up by the same IntersectionObserver
-// that swaps `data-src` → `src` when the tile scrolls into view. Idempotent
-// — `observer.observe(el)` is a no-op for an already-observed node.
-function _attachLazyObservers(grid) {
-    if (!state.imageObserver) return;
-    grid.querySelectorAll('img[data-src], video[data-src]').forEach((el) =>
-        state.imageObserver.observe(el),
-    );
-}
-
-// Remove a single tile from the grid in place. Saves the full
-// renderMediaGrid() pass when a WS file_deleted lands — important on a
-// big gallery, where re-painting 1000 tiles to drop one shows up as a
-// visible scroll-stutter. Falls through to a no-op if no tile matches
-// (the tile was already removed, or the gallery doesn't have it cached).
-function _removeTileFromGrid({ path, id }) {
-    const grid = document.getElementById('media-grid');
-    if (!grid) return;
-    let el = null;
-    if (path) {
-        // CSS.escape is required because file paths can carry quotes /
-        // brackets / colons that would otherwise break the selector.
-        el = grid.querySelector(`.media-item[data-path="${CSS.escape(path)}"]`);
-    }
-    if (!el && id != null) {
-        el = grid.querySelector(`.media-item[data-id="${CSS.escape(String(id))}"]`);
-    }
-    if (el) el.remove();
-    // Surface the empty-state when the last tile disappears.
-    if (state.files.length === 0) renderGalleryEmptyState();
 }
 
 /**
@@ -2628,7 +2642,7 @@ async function setupMediaSearch() {
             if (state.savedFiles)
                 state.savedFiles = state.savedFiles.filter((f) => !set.has(f.fullPath));
             updateSelectionBar();
-            renderMediaGrid();
+            renderMediaGrid({ keepScroll: true });
         } catch (e) {
             if (e?.data?.code === 'ALREADY_RUNNING') {
                 showToast(
@@ -3788,9 +3802,17 @@ async function confirmDeleteFile() {
 
     try {
         await api.delete(`/api/file?path=${encodeURIComponent(file.fullPath)}`);
-        state.files.splice(state.currentFileIndex, 1);
+        const idx = state.currentFileIndex;
+        const isGallery = state.files === _galleryFilesRef;
+        state.files.splice(idx, 1);
         Viewer.closeMediaViewer();
-        renderMediaGrid();
+        if (isGallery) {
+            // Drop just that tile — a full re-render would throw away the
+            // window + scroll position on a deep-scrolled gallery.
+            removeFileIndex(idx);
+            _renderedFileCount = state.files.length;
+            if (state.files.length === 0) renderGalleryEmptyState();
+        }
         showToast(i18nT('viewer.delete.success', 'File deleted'), 'success');
     } catch (e) {
         showToast(
@@ -3867,31 +3889,34 @@ function setupMediaTabs() {
 
 // ============ Utils ============
 function setupLazyLoading() {
-    state.imageObserver = new IntersectionObserver((entries) => {
-        entries.forEach((e) => {
-            if (!e.isIntersecting) return;
-            const el = e.target;
-            // Reveal regardless of success/failure: a broken/404 thumb still
-            // needs to drop out of the opacity:0 skeleton state, otherwise
-            // the tile stays permanently invisible.
-            const reveal = () => el.classList.add('loaded');
-            if (el.tagName === 'VIDEO') {
-                el.preload = 'metadata';
-                el.onloadeddata = reveal;
-                el.onerror = reveal;
-            } else {
-                el.onload = reveal;
-                el.onerror = reveal;
-            }
-            el.src = el.dataset.src;
-            el.removeAttribute('data-src');
-            // Cached images can fire `load` synchronously when `src` is
-            // set, before we even get here — without this, a re-rendered
-            // grid full of cache hits would stay invisible forever.
-            if (el.tagName === 'IMG' && el.complete) reveal();
-            state.imageObserver.unobserve(el);
-        });
-    });
+    state.imageObserver = new IntersectionObserver(
+        (entries) => {
+            entries.forEach((e) => {
+                if (!e.isIntersecting) return;
+                const el = e.target;
+                // Reveal regardless of success/failure: a broken/404 thumb still
+                // needs to drop out of the opacity:0 skeleton state, otherwise
+                // the tile stays permanently invisible.
+                const reveal = () => el.classList.add('loaded');
+                if (el.tagName === 'VIDEO') {
+                    el.preload = 'metadata';
+                    el.onloadeddata = reveal;
+                    el.onerror = reveal;
+                } else {
+                    el.onload = reveal;
+                    el.onerror = reveal;
+                }
+                el.src = el.dataset.src;
+                el.removeAttribute('data-src');
+                // Cached images can fire `load` synchronously when `src` is
+                // set, before we even get here — without this, a re-rendered
+                // grid full of cache hits would stay invisible forever.
+                if (el.tagName === 'IMG' && el.complete) reveal();
+                state.imageObserver.unobserve(el);
+            });
+        },
+        { root: document.getElementById('content-area'), rootMargin: '600px 0px' },
+    );
 }
 
 function setupEventListeners() {
@@ -3959,6 +3984,9 @@ async function _runSimilarSearch(downloadId) {
             fullPath: row.file_path,
         }));
         state.files = mapped;
+        // Result set is complete — don't let infinite scroll append the
+        // next page of the previous view underneath it.
+        state.hasMore = false;
         try {
             renderMediaGrid();
         } catch (e) {
@@ -4029,6 +4057,9 @@ async function _runSemanticSearch(q) {
             fullPath: row.file_path,
         }));
         state.files = mapped;
+        // Result set is complete — don't let infinite scroll append the
+        // next page of the previous view underneath it.
+        state.hasMore = false;
         try {
             renderMediaGrid();
         } catch (e) {
@@ -4335,6 +4366,8 @@ function refreshCurrentPage() {
     }
 }
 
+const LOAD_MORE_MARGIN_PX = 1200;
+
 function setupInfiniteScroll() {
     const sentinel = document.getElementById('load-more-sentinel');
     if (!sentinel) return;
@@ -4342,23 +4375,58 @@ function setupInfiniteScroll() {
     // `rootMargin: '1200px'` makes the IntersectionObserver fire when
     // the sentinel is still ~1200 px BELOW the visible area, so the
     // next batch is requested long before the user actually runs out
-    // of rows. Combined with FILES_PER_PAGE = 100, the gallery feels
-    // smooth even on a fast flick scroll: by the time the user nears
-    // the end of the current batch, the next 100 files have usually
-    // already arrived.
+    // of rows. The root must be #content-area — the element that
+    // actually scrolls. With the viewport as root the scroller clipped
+    // the margin to ~0 and the next page only loaded once the sentinel
+    // was already on screen.
     const observer = new IntersectionObserver(
         (entries) => {
-            if (!entries[0].isIntersecting || state.loading || !state.hasMore) return;
-            // currentGroupId === null on the All-Media surface — page through
-            // /api/downloads/all instead of the per-group endpoint.
-            if (state.currentPage !== 'viewer') return;
-            state.page++;
-            if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
-            else loadAllFiles();
+            if (entries[0].isIntersecting) _galleryNearBottom();
         },
-        { rootMargin: '1200px 0px 1200px 0px' },
+        {
+            root: document.getElementById('content-area'),
+            rootMargin: `${LOAD_MORE_MARGIN_PX}px 0px ${LOAD_MORE_MARGIN_PX}px 0px`,
+        },
     );
     observer.observe(sentinel);
+}
+
+// The bottom of the gallery is near the viewport: first re-render rows the
+// DOM window trimmed earlier (already in memory), otherwise fetch the next
+// page. currentGroupId === null on the All-Media surface — page through
+// /api/downloads/all instead of the per-group endpoint.
+function _galleryNearBottom() {
+    if (state.currentPage !== 'viewer' || state.loading) return;
+    if (hasPendingBelow()) {
+        extendBottom();
+        _recheckLoadMore();
+        return;
+    }
+    if (!state.hasMore) return;
+    state.page++;
+    if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
+    else loadAllFiles();
+}
+
+// IntersectionObserver only reports *changes*. When a page (or a chunk
+// re-rendered from memory) is too short to push the sentinel back out of
+// the prefetch margin, no further callback fires and paging stalls — so
+// re-check the geometry once per frame after every render.
+let _recheckLoadMoreQueued = false;
+function _recheckLoadMore() {
+    if (_recheckLoadMoreQueued) return;
+    _recheckLoadMoreQueued = true;
+    requestAnimationFrame(() => {
+        _recheckLoadMoreQueued = false;
+        const sentinel = document.getElementById('load-more-sentinel');
+        const root = document.getElementById('content-area');
+        if (!sentinel || !root || sentinel.getClientRects().length === 0) return;
+        const r = root.getBoundingClientRect();
+        const b = sentinel.getBoundingClientRect();
+        if (b.top < r.bottom + LOAD_MORE_MARGIN_PX && b.bottom > r.top - LOAD_MORE_MARGIN_PX) {
+            _galleryNearBottom();
+        }
+    });
 }
 
 async function loadStats() {

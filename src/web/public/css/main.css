@@ -1007,6 +1007,15 @@ html.theme-light .badge-pending {
    the list keeps columns aligned; hover fills the row background.
 */
 
+/* The gallery keeps a bounded DOM window (js/gallery-virtual.js): rows
+   scrolled far away are swapped for a spacer of the same measured height
+   and re-inserted on the way back. The window pins the visible rows
+   itself, so browser scroll anchoring must not "correct" the scroll
+   position on top of that (Chrome/Firefox would otherwise double-shift). */
+#content-area {
+    overflow-anchor: none;
+}
+
 /* GRID mode (default) */
 .media-grid {
     display: grid;

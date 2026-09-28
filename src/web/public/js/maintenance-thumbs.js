@@ -554,7 +554,12 @@ function _clearSkeletons() {
     grid.querySelectorAll('.thumbs-gallery-tile.is-skeleton').forEach((n) => n.remove());
 }
 
+// Both observers are rooted on #content-area — the element that actually
+// scrolls. With the viewport as root the scroller clipped the rootMargin
+// to ~0, so thumbnails only started loading once already on screen and the
+// next page only loaded when the sentinel was visible.
 function _ensureObservers() {
+    const root = document.getElementById('content-area');
     if (!_imgObs) {
         _imgObs = new IntersectionObserver(
             (entries) => {
@@ -597,7 +602,7 @@ function _ensureObservers() {
                     img.src = src;
                 }
             },
-            { root: null, rootMargin: '200% 0px 200% 0px', threshold: 0.01 },
+            { root, rootMargin: '200% 0px 200% 0px', threshold: 0.01 },
         );
     }
     if (!_scrollObs) {
@@ -609,7 +614,7 @@ function _ensureObservers() {
                     _loadGalleryPage().catch(() => {});
                 }
             },
-            { root: null, rootMargin: '600px 0px', threshold: 0.01 },
+            { root, rootMargin: '600px 0px', threshold: 0.01 },
         );
     }
 }
