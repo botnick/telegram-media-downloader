@@ -3571,9 +3571,56 @@ body[data-page="maintenance"] {
 }
 
 /* ============================================================
-   Navigation shell (js/nav.js) — Chats | Backfill tabs, the
-   per-group tool strip.
+   Navigation shell (js/nav.js) — sidebar search, Chats | Backfill
+   tabs, the per-group tool strip.
    ============================================================ */
+.palette-trigger {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 0 12px;
+    border-radius: 10px;
+    background: var(--tg-panel, #242f3d);
+    border: 1px solid rgba(139, 155, 170, 0.18);
+    color: var(--tg-textSecondary, #8b9baa);
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+.palette-trigger:hover {
+    border-color: var(--tg-blue, #2aabee);
+    color: var(--tg-text, #f5f5f5);
+}
+.palette-trigger > i {
+    font-size: 17px;
+}
+.palette-trigger-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.palette-trigger-kbd {
+    flex-shrink: 0;
+    padding: 2px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(139, 155, 170, 0.3);
+    background: var(--tg-bg, #17212b);
+    font-size: 11px;
+    line-height: 1.4;
+}
+@media (hover: none) {
+    .palette-trigger-kbd {
+        display: none;
+    }
+}
 .sidebar-nav .nav-item {
     min-height: 44px;
 }
@@ -4087,6 +4134,187 @@ html.theme-light .tool-pill[data-tone="bad"] {
     }
 }
 
+/* ============================================================
+   Go anywhere — command palette (js/command-palette.js). Built
+   on the sheet primitive: a top-anchored card on every size so
+   the on-screen keyboard never covers the input.
+   ============================================================ */
+.sheet-root.sheet-palette {
+    align-items: flex-start;
+}
+.sheet-palette .sheet-card {
+    width: 100%;
+    max-width: 640px;
+    max-height: min(560px, 80dvh);
+    border-radius: 0 0 14px 14px;
+    transform: translateY(-16px);
+    opacity: 0;
+    padding: 0;
+    transition:
+        transform 150ms cubic-bezier(0.32, 0.72, 0, 1),
+        opacity 100ms ease-out;
+}
+@media (min-width: 768px) {
+    .sheet-palette .sheet-card {
+        min-width: 0;
+        margin-top: 12vh;
+        border-radius: 14px;
+    }
+}
+.sheet-root.sheet-palette.sheet-open .sheet-card {
+    transform: none;
+    opacity: 1;
+}
+.sheet-palette .sheet-handle {
+    display: none;
+}
+.sheet-palette .sheet-body {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+.palette {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+.palette-field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: max(6px, env(safe-area-inset-top)) 6px 6px 14px;
+    border-bottom: 1px solid rgba(139, 155, 170, 0.18);
+}
+.palette-field-icon {
+    font-size: 18px;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.palette-input {
+    flex: 1;
+    min-width: 0;
+    height: 48px;
+    padding: 0 8px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--tg-text, #f5f5f5);
+    font-size: 16px;
+}
+.palette-input::placeholder {
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.palette-cancel {
+    min-height: 44px;
+    padding: 0 10px;
+    border-radius: 8px;
+    color: var(--tg-blue, #2aabee);
+    font-size: 15px;
+}
+@media (min-width: 768px) {
+    .palette-cancel {
+        display: none;
+    }
+}
+.palette-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 4px 6px 8px;
+}
+.palette-section {
+    padding: 10px 10px 4px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.palette-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--tg-text, #f5f5f5);
+}
+.palette-option[aria-selected="true"] {
+    background: rgba(42, 171, 238, 0.16);
+}
+html.theme-light .palette-option[aria-selected="true"] {
+    background: rgba(14, 120, 194, 0.12);
+}
+.palette-option-icon {
+    width: 20px;
+    text-align: center;
+    font-size: 18px;
+    color: var(--tg-textSecondary, #8b9baa);
+    flex-shrink: 0;
+}
+.palette-option[aria-selected="true"] .palette-option-icon {
+    color: var(--tg-blue, #2aabee);
+}
+.palette-option-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.palette-option-label {
+    font-size: 14.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.palette-option-hint {
+    font-size: 12px;
+    color: var(--tg-textSecondary, #8b9baa);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.palette-option-enter {
+    font-size: 16px;
+    color: var(--tg-textSecondary, #8b9baa);
+    visibility: hidden;
+}
+.palette-option[aria-selected="true"] .palette-option-enter {
+    visibility: visible;
+}
+.palette-empty {
+    padding: 28px 16px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.palette-foot {
+    display: flex;
+    gap: 14px;
+    padding: 8px 14px;
+    border-top: 1px solid rgba(139, 155, 170, 0.18);
+    font-size: 12px;
+    color: var(--tg-textSecondary, #8b9baa);
+}
+.palette-foot kbd {
+    display: inline-block;
+    min-width: 18px;
+    margin-right: 2px;
+    padding: 0 4px;
+    border-radius: 4px;
+    border: 1px solid rgba(139, 155, 170, 0.35);
+    font-size: 11px;
+    text-align: center;
+}
+@media (hover: none) {
+    .palette-foot {
+        display: none;
+    }
+}
 body[data-page="maintenance-duplicates"] {
     --page-accent: var(--tg-orange, #ff9800);
 }
@@ -6865,6 +7093,13 @@ html.theme-light .settings-search-hit {
     top: -8px;
     padding-top: 12px;
     background: var(--tg-lightBg, #182533);
+}
+/* Phones: the header also carries the Go anywhere button; below 420 px
+   the page glyph gives its room to the title. */
+@media (max-width: 419.98px) {
+    #header-avatar {
+        display: none !important;
+    }
 }
 @media (min-width: 640px) {
     .settings-top-bar {

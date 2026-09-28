@@ -13,7 +13,8 @@
 //
 // Also owns the small bits of shell chrome that follow the page: the
 // Chats | Backfill tabs, the tool tab strip on a tool page, the Library
-// link's target and the Settings scroll offset / section chips.
+// link's target, the Settings scroll offset, and the Ctrl/Cmd+K entry to
+// the command palette (js/command-palette.js, loaded on first use).
 
 import { state } from './store.js';
 import { navigate } from './router.js';
@@ -259,7 +260,38 @@ export function scrollToSettingsSection(rawSection, { smooth = true } = {}) {
     return true;
 }
 
+// ------------------------------------------------------------ command palette
+
+let _palette = null;
+export function openPalette() {
+    if (!_palette) {
+        _palette = import('./command-palette.js').catch((e) => {
+            _palette = null;
+            throw e;
+        });
+    }
+    _palette.then((m) => m.openCommandPalette()).catch((e) => console.error('palette', e));
+}
+
+function _wirePalette() {
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+        if (String(e.key).toLowerCase() !== 'k') return;
+        e.preventDefault();
+        openPalette();
+    });
+    for (const id of ['palette-btn', 'sidebar-search-btn']) {
+        document.getElementById(id)?.addEventListener('click', () => openPalette());
+    }
+    // Show the right modifier in the hint.
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+    for (const k of document.querySelectorAll('[data-palette-kbd]')) {
+        k.textContent = mac ? '⌘K' : 'Ctrl K';
+    }
+}
+
 export function initNav() {
+    _wirePalette();
     _watchSettingsBar();
     _wireSettingsToc();
 }

@@ -140,7 +140,8 @@ src/web/public/js/
 ├── ws.js             # WebSocket client with auto-reconnect
 ├── store.js          # state container (carries `role` + `selected`)
 ├── router.js         # hash router with admin-route redirect for guest sessions
-├── nav.js            # the four places (Library / Chats / Queue / Settings), Tools routes
+├── nav.js            # the four places (Library / Chats / Queue / Settings), Tools routes, Ctrl/Cmd+K
+├── command-palette.js # "Go anywhere" — pages, tools, settings, chats, actions (lazy)
 ├── tools-catalog.js  # the 11 tools in 4 groups (Library health, Safety & AI, Backup & sync, System)
 ├── tools-hub.js      # Settings → Tools card (needs attention) + the Tools group pages
 ├── settings.js       # Settings page + accounts + proxy + security + maintenance

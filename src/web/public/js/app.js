@@ -499,7 +499,8 @@ async function init() {
         ws.on('monitor_state', refreshOnboarding);
     }
 
-    // Global keyboard shortcuts (press ? for the cheatsheet).
+    // Global keyboard shortcuts (press ? for the cheatsheet), and the
+    // Go anywhere palette on Ctrl/Cmd+K + the header / sidebar buttons.
     initShortcuts();
     Nav.initNav();
 

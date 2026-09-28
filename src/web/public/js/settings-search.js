@@ -325,6 +325,88 @@ function jumpToFirst() {
     }
 }
 
+/**
+ * Scroll to one setting on the (visible) Settings page, flash it and
+ * focus its control. Used by the command palette.
+ */
+export function revealSetting(el) {
+    if (!el?.isConnected) return;
+    const details = el.closest('details');
+    if (details && !details.open) details.open = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add(HIT);
+    setTimeout(() => el.classList.remove(HIT), 2200);
+    const control = _controlFor(el);
+    if (control && typeof control.focus === 'function') {
+        setTimeout(() => control.focus({ preventScroll: true }), 350);
+    }
+}
+
+// Field labels worth a palette entry: headings and control labels, not
+// help text, buttons or <option>s.
+const ENTRY_SKIP_KEY = /(_help|_html|_sub|subtitle|placeholder|_hint|\.help)$/;
+
+/**
+ * Settings entries for the command palette — each card's title and each
+ * field label in it, from the same page DOM (and English strings) the
+ * search box uses. `admin: false` drops admin-only cards and fields.
+ * Resolves to [{ label, en, card, words, el, cardEl, anchor }], where
+ * `anchor` is the #/settings/<anchor> section of a card with an id.
+ */
+export async function paletteEntries({ admin = true } = {}) {
+    await loadEnglish();
+    const en = _en || {};
+    const out = [];
+    for (const { card } of _cards()) {
+        if (!admin && card.closest('[data-admin-only]')) continue;
+        const heading =
+            card.querySelector('h3 [data-i18n], h3[data-i18n]') ||
+            card.querySelector('summary [data-i18n]') ||
+            card.querySelector('h3');
+        const cardTitle = (heading?.textContent || '').trim();
+        const target = card.matches('[id^="settings-"]')
+            ? card
+            : card.querySelector('[id^="settings-card-"]');
+        const anchor = target ? target.id.slice('settings-'.length) : null;
+        const seen = new Set();
+        if (cardTitle) {
+            const key = heading.dataset?.i18n || '';
+            seen.add(cardTitle.toLowerCase());
+            out.push({
+                label: cardTitle,
+                en: key ? en[key] || '' : '',
+                card: '',
+                words: key ? key.split('.').slice(1).join(' ').replace(/_/g, ' ') : '',
+                el: heading,
+                cardEl: card,
+                anchor,
+            });
+        }
+        for (const el of card.querySelectorAll('[data-i18n]')) {
+            if (el === heading) continue;
+            if (el.closest('p, option, button, a, .settings-search-links')) continue;
+            if (!admin && el.closest('[data-admin-only]')) continue;
+            const key = el.dataset.i18n;
+            if (ENTRY_SKIP_KEY.test(key)) continue;
+            const label = (el.textContent || '').trim().replace(/\s+/g, ' ');
+            // Slider scale ends ("1 (Safe)", "20 (Max)") aren't settings.
+            if (label.length < 2 || label.length > 60 || /^\d/.test(label)) continue;
+            if (seen.has(label.toLowerCase())) continue;
+            seen.add(label.toLowerCase());
+            out.push({
+                label,
+                en: en[key] || '',
+                card: cardTitle,
+                words: key.split('.').slice(1).join(' ').replace(/_/g, ' '),
+                el,
+                cardEl: card,
+                anchor: null,
+            });
+        }
+    }
+    return out;
+}
+
 export function initSettingsSearch() {
     const input = $('settings-search-input');
     if (!input) return;

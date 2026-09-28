@@ -26,6 +26,12 @@ const SHORTCUTS = [
         def: 'Open this shortcuts cheatsheet',
     },
     {
+        id: 'palette',
+        keys: 'Ctrl/⌘ K',
+        k: 'shortcuts.palette',
+        def: 'Go anywhere — pages, settings, tools, chats',
+    },
+    {
         id: 'close_modal',
         keys: 'Esc',
         k: 'shortcuts.close_modal',
@@ -226,6 +232,10 @@ function _runAction(id) {
         return;
     }
     if (id === 'focus_search') {
+        return;
+    }
+    if (id === 'palette') {
+        import('./nav.js').then((m) => m.openPalette()).catch(() => {});
         return;
     }
     if (id === 'go_library') {

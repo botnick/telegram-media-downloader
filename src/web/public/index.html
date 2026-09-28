@@ -163,12 +163,19 @@
         <aside id="sidebar"
             class="fixed md:relative w-[min(85vw,18rem)] sm:w-80 bg-tg-sidebar border-r border-tg-border flex flex-col h-full z-50 sidebar-mobile md:transform-none">
 
-            <!-- Header: on phones, the drawer's close button. -->
+            <!-- Header: Go anywhere (js/command-palette.js, Ctrl/Cmd+K) and,
+                 on phones, the drawer's close button. -->
             <div class="p-2 flex items-center gap-2 border-b border-tg-border/40">
                 <button id="sidebar-close" type="button"
                     class="md:hidden w-11 h-11 shrink-0 flex items-center justify-center rounded-full hover:bg-tg-hover"
                     data-i18n-aria-label="common.close" aria-label="Close">
                     <i class="ri-arrow-left-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
+                </button>
+                <button id="sidebar-search-btn" type="button" class="palette-trigger" aria-haspopup="dialog"
+                    data-i18n-aria-label="palette.title" aria-label="Go anywhere">
+                    <i class="ri-search-line" aria-hidden="true"></i>
+                    <span class="palette-trigger-label" data-i18n="palette.trigger">Search or jump to…</span>
+                    <kbd class="palette-trigger-kbd" data-palette-kbd aria-hidden="true">Ctrl K</kbd>
                 </button>
             </div>
 
@@ -576,6 +583,15 @@
                         <span class="engine-status-label" data-i18n="status.idle">Idle</span>
                         <span id="engine-nav-badge" class="nav-badge hidden"></span>
                     </a>
+
+                    <!-- Go anywhere (command palette). Phones and tablets; wider
+                         screens have it at the top of the sidebar + Ctrl/Cmd+K. -->
+                    <button id="palette-btn" type="button" aria-haspopup="dialog"
+                        class="md:hidden w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
+                        data-i18n-aria-label="palette.title" aria-label="Go anywhere"
+                        data-i18n-title="palette.title" title="Go anywhere">
+                        <i class="ri-search-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
+                    </button>
 
                     <div class="relative" data-admin-only>
                         <button id="notify-bell-btn" type="button"
