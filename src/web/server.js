@@ -7692,6 +7692,27 @@ async function _fetchSidecarInfo(url) {
     }
 }
 
+// `faces.quality_score IS NULL` has no index, so the count reads every
+// face row including its 2 KB embedding (~0.2 s at 50 k faces, all on the
+// event loop) — and the AI page refetches status on every WS nudge. The
+// number only moves during a quality backfill, so cache it: 30 s normally,
+// 5 s while the backfill runs so its progress still shows.
+const _QUALITY_PENDING_CACHE = { ts: 0, value: 0 };
+function _qualityBackfillPending() {
+    const ttl = _jobTrackers.qualityBackfill.isRunning() ? 5000 : 30_000;
+    const now = Date.now();
+    if (now - _QUALITY_PENDING_CACHE.ts < ttl) return _QUALITY_PENDING_CACHE.value;
+    try {
+        _QUALITY_PENDING_CACHE.value = aiGetDb()
+            .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
+            .get().n;
+    } catch {
+        _QUALITY_PENDING_CACHE.value = 0;
+    }
+    _QUALITY_PENDING_CACHE.ts = now;
+    return _QUALITY_PENDING_CACHE.value;
+}
+
 app.get('/api/ai/status', async (_req, res) => {
     try {
         const cfg = _aiCfg();
@@ -7798,15 +7819,7 @@ app.get('/api/ai/status', async (_req, res) => {
                     return { realtime: 0, backfill: 0 };
                 }
             })(),
-            qualityBackfillPending: (() => {
-                try {
-                    return aiGetDb()
-                        .prepare('SELECT COUNT(*) AS n FROM faces WHERE quality_score IS NULL')
-                        .get().n;
-                } catch {
-                    return 0;
-                }
-            })(),
+            qualityBackfillPending: _qualityBackfillPending(),
             trackers: {
                 aiPeople: _jobTrackers.aiPeople.getStatus(),
                 qualityBackfill: _jobTrackers.qualityBackfill.getStatus(),

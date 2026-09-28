@@ -33,7 +33,7 @@
 import { existsSync } from 'fs';
 
 import { clusterFlat, dbscanFlat, packPoints } from './dbscan.js';
-import { getSidecarUrl } from './faces-client.js';
+import { getSidecarUrl, SidecarUnavailableError } from './faces-client.js';
 
 // ArcFace 512-dim embeddings are L2-normalised to unit length, so the
 // Euclidean distance between two unit vectors maps to cosine similarity
@@ -73,11 +73,17 @@ let _warnedNoSidecar = false;
  *     stamps `ai_indexed_at` and moves on so the loop doesn't re-spin.
  *   - `[]` when the sidecar replied but found no faces.
  *   - `[{x, y, w, h, score, embedding: Float32Array, landmarks?}, …]` on success.
+ *
+ * `opts.throwOnUnavailable` — throw `SidecarUnavailableError` instead of
+ * returning null when the sidecar (not the file) is the problem, so the
+ * caller can leave the row for a later scan.
  */
-export async function detectFaces(absPath, cfg = {}, onLog) {
+export async function detectFaces(absPath, cfg = {}, onLog, opts = {}) {
     if (!absPath || !existsSync(absPath)) return null;
+    const strict = opts?.throwOnUnavailable === true;
     const url = getSidecarUrl();
     if (!url) {
+        if (strict) throw new SidecarUnavailableError('sidecar URL unset');
         if (!_warnedNoSidecar) {
             _warnedNoSidecar = true;
             try {
@@ -99,8 +105,9 @@ export async function detectFaces(absPath, cfg = {}, onLog) {
     let detected;
     try {
         const mod = await import('./faces-client.js');
-        detected = await mod.detectFaces(absPath, cfg, onLog);
+        detected = await mod.detectFaces(absPath, cfg, onLog, { throwOnUnavailable: strict });
     } catch (e) {
+        if (strict && e?.code === 'SIDECAR_UNAVAILABLE') throw e;
         try {
             if (typeof onLog === 'function') {
                 onLog({

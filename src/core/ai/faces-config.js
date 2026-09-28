@@ -51,6 +51,9 @@ const NUMBER_KEYS = new Set([
     'healthMonitorIntervalMs',
     'healthFailuresBeforeRelaunch',
     'downloadRedirectCap',
+    'cpuThrottleRatio',
+    'sidecarWaitMs',
+    'sidecarNice',
 ]);
 
 const BOOL_KEYS = new Set(['autoDownload', 'federate', 'qualityWeightedCentroid']);
@@ -85,6 +88,13 @@ const ENV_MAP = Object.freeze({
     fileTypes: 'TGDL_FACES_FILE_TYPES',
     excludeExtensions: 'TGDL_FACES_EXCLUDE_EXTENSIONS',
     sidecarMaxConcurrency: 'TGDL_FACES_MAX_CONCURRENCY',
+    // Documented in docs/AI.md since the throttle landed but never wired.
+    cpuThrottleRatio: 'TGDL_FACES_CPU_THROTTLE_RATIO',
+    // How long a scan waits for the sidecar to come (back) up before it
+    // gives up and leaves the remaining rows for the next run.
+    sidecarWaitMs: 'TGDL_FACES_SIDECAR_WAIT_MS',
+    // Priority (nice) of an auto-spawned sidecar; 0 = same as Node.
+    sidecarNice: 'TGDL_FACES_SIDECAR_NICE',
     healthCacheTtlMs: 'TGDL_FACES_HEALTH_CACHE_TTL_MS',
     requestTimeoutMs: 'TGDL_FACES_REQUEST_TIMEOUT_MS',
     maxRetries: 'TGDL_FACES_MAX_RETRIES',
