@@ -821,11 +821,15 @@ async function refreshRateLimitConfig() {
         const config = await readConfigSafe();
         const cfg = config.web?.rateLimit || {};
         const rpm = parseInt(cfg.perMinute, 10);
+        const wasEnabled = _rateLimitConfig.enabled;
         _rateLimitConfig = {
             enabled: cfg.enabled === true,
             perMinute:
                 Number.isFinite(rpm) && rpm >= 10 ? Math.min(1000000, rpm) : RATE_LIMIT_DEFAULT_RPM,
         };
+        // The tgdl-core front server answers thumbnail hits itself only
+        // while this limiter is off; tell it at once.
+        if (wasEnabled !== _rateLimitConfig.enabled) pushFrontState();
     } catch {
         /* keep last-known-good */
     }

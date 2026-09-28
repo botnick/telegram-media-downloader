@@ -1,7 +1,10 @@
 // Seeds a data directory for the front-server parity suite
 // (tests/front-parity.e2e.test.js, scripts/front-parity.js).
 //
-//   node tests/helpers/front-parity-seed.js <dataDir>
+//   node tests/helpers/front-parity-seed.js <dataDir> [webPatch]
+//
+// webPatch: optional JSON merged into config.web (a null value deletes
+// the key — {"passwordHash":null} leaves the dashboard unconfigured).
 //
 // Runs in its own process because src/core/db.js reads TGDL_DATA_DIR once,
 // at import time. Everything is deterministic — file bytes, mtimes, session
@@ -89,6 +92,10 @@ cfg.web = {
     guestEnabled: true,
     shareSecret: PARITY_SHARE_SECRET,
 };
+for (const [k, v] of Object.entries(JSON.parse(process.argv[3] || '{}'))) {
+    if (v === null) delete cfg.web[k];
+    else cfg.web[k] = v;
+}
 saveConfig(cfg);
 db.getDb().close();
 process.stdout.write(`${JSON.stringify({ ok: true, dataDir })}\n`);
