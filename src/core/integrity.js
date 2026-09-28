@@ -29,6 +29,15 @@ let _broadcast = () => {};
 // Cached batch size, refreshed from config on each start() call.
 let _batchSize = 64;
 
+// Automatic runs (boot + timer) refuse to prune when more than this share
+// of the library looks missing at once — that's an unmounted disk or a
+// stale network share far more often than real deletions.
+const AUTO_PRUNE_MAX_SHARE = 0.5;
+const AUTO_PRUNE_MIN_ROWS = 20;
+// Only these mean "the file is gone". EACCES / EIO / ENOTCONN / ESTALE …
+// are an unreadable disk, not a deleted file.
+const MISSING_CODES = new Set(['ENOENT', 'ENOTDIR']);
+
 /**
  * Walk every row, stat each file, drop rows where the file is missing
  * or zero-bytes. Returns `{ scanned, pruned, sizeFixed }`. Concurrency-
@@ -38,7 +47,7 @@ let _batchSize = 64;
  * after every batch so the verify-files admin page can render a
  * determinate bar without polling.
  */
-export async function sweep(onProgress) {
+export async function sweep(onProgress, { auto = false } = {}) {
     if (_running) return { scanned: 0, pruned: 0, skipped: true };
     _running = true;
     const result = { scanned: 0, pruned: 0, sizeFixed: 0 };
@@ -49,6 +58,17 @@ export async function sweep(onProgress) {
         } catch {}
     };
     try {
+        // An unmounted / unreadable downloads disk makes every file look
+        // missing — never prune the library because of that.
+        try {
+            await fs.readdir(DOWNLOADS_DIR);
+        } catch (e) {
+            console.warn(
+                `[integrity] downloads dir unavailable (${e?.code || e?.message}) — sweep skipped, nothing pruned`,
+            );
+            return { ...result, skipped: true, reason: 'downloads_dir_unavailable' };
+        }
+
         // Use keyset-paginated `.all()` instead of `.iterate()`. A live
         // `.iterate()` cursor holds the better-sqlite3 connection open for
         // its entire lifetime — if an `await` (fs.stat, Promise.all) yields
@@ -101,10 +121,13 @@ export async function sweep(onProgress) {
                     // safeResolveDownload() does in the request path.
                     while (rel.startsWith('data/downloads/'))
                         rel = rel.slice('data/downloads/'.length);
-                    // Defence-in-depth: refuse to stat anything that walks outside
-                    // DOWNLOADS_DIR. Rows with bogus paths get pruned.
-                    if (rel.includes('..') || path.isAbsolute(rel)) return r.id;
-                    const abs = path.join(DOWNLOADS_DIR, rel);
+                    // Federated-dedup rows point at a peer's copy; there is
+                    // nothing local to stat.
+                    if (rel.startsWith('_clusterref/')) return null;
+                    // Absolute or `../` paths come from a custom download
+                    // path outside DOWNLOADS_DIR — stat where they point
+                    // instead of pruning them for their shape.
+                    const abs = path.resolve(DOWNLOADS_DIR, rel);
                     try {
                         const st = await fs.stat(abs);
                         if (st.size <= 0) return r.id;
@@ -114,8 +137,8 @@ export async function sweep(onProgress) {
                         const stored = Number(r.file_size) || 0;
                         if (stored !== st.size) sizeFixes.push({ id: r.id, size: st.size });
                         return null;
-                    } catch {
-                        return r.id;
+                    } catch (e) {
+                        return MISSING_CODES.has(e?.code) ? r.id : null;
                     }
                 }),
             );
@@ -148,22 +171,40 @@ export async function sweep(onProgress) {
             result.sizeFixed = sizeFixed;
         }
 
+        if (
+            auto &&
+            deleteIds.length >= AUTO_PRUNE_MIN_ROWS &&
+            deleteIds.length > total * AUTO_PRUNE_MAX_SHARE
+        ) {
+            console.warn(
+                `[integrity] ${deleteIds.length} of ${total} files look missing — not pruning ` +
+                    'automatically (disk unmounted?). Run Maintenance → Verify files to prune.',
+            );
+            result.skipped = true;
+            result.reason = 'too_many_missing';
+            result.missing = deleteIds.length;
+            deleteIds.length = 0;
+        }
+
         if (deleteIds.length) {
             _emit({ processed, total, stage: 'pruning' });
             const seekbarMap = collectSeekbarPaths(deleteIds);
+            // One transaction per chunk with a yield in between: a single
+            // transaction over every dead row (plus its cascades) blocked
+            // the event loop for ~35 s at 150k rows.
             const DELETE_CHUNK = 500;
-            const tx = getDb().transaction((ids) => {
-                let changed = 0;
-                for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
-                    const slice = ids.slice(i, i + DELETE_CHUNK);
-                    const stmt = getDb().prepare(
-                        `DELETE FROM downloads WHERE id IN (${slice.map(() => '?').join(',')})`,
-                    );
-                    changed += stmt.run(...slice).changes;
-                }
-                return changed;
+            const tx = getDb().transaction((slice) => {
+                const stmt = getDb().prepare(
+                    `DELETE FROM downloads WHERE id IN (${slice.map(() => '?').join(',')})`,
+                );
+                return stmt.run(...slice).changes;
             });
-            result.pruned = tx(deleteIds);
+            result.pruned = 0;
+            for (let i = 0; i < deleteIds.length; i += DELETE_CHUNK) {
+                result.pruned += tx(deleteIds.slice(i, i + DELETE_CHUNK));
+                _emit({ processed: i, total: deleteIds.length, stage: 'pruning' });
+                await new Promise((r) => setImmediate(r));
+            }
             for (const id of deleteIds) {
                 purgeThumbsForDownload(id).catch(() => {});
                 purgeSeekbarForDownload(id, seekbarMap.get(id)).catch(() => {});
@@ -199,7 +240,7 @@ export function start({ broadcast, intervalMin = 60, batchSize = 64 } = {}) {
     if (Number.isFinite(batchSize) && batchSize > 0) _batchSize = Math.floor(batchSize);
     if (_timer) clearInterval(_timer);
     setTimeout(() => {
-        sweep()
+        sweep(null, { auto: true })
             .then(({ scanned, pruned }) => {
                 if (pruned > 0) {
                     console.log(
@@ -211,7 +252,7 @@ export function start({ broadcast, intervalMin = 60, batchSize = 64 } = {}) {
     }, 30 * 1000);
     _timer = setInterval(
         () => {
-            sweep()
+            sweep(null, { auto: true })
                 .then(({ scanned, pruned }) => {
                     if (pruned > 0) {
                         console.log(

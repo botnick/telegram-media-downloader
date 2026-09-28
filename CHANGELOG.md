@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Fixed — integrity sweep could wipe the library
+- **An unmounted or unreadable downloads disk no longer deletes your library.** The integrity sweep (runs 30 s after boot and hourly) treated any `stat` error as "file deleted" and pruned those downloads — with a split-disk setup, an HDD that isn't mounted yet, or a network share that dropped, that meant every row (plus faces, NSFW scores, pins). It now skips entirely when the downloads folder can't be read, only counts `ENOENT`/`ENOTDIR` as missing, and automatic runs refuse to prune when more than half the library looks missing (Maintenance → Verify files still prunes on demand).
+- Downloads stored through a federated-dedup reference (`_clusterref/…`) or under a custom `download.path` outside `data/downloads` were pruned on every sweep; they're kept now.
+- Pruning is done in chunks with yields instead of one transaction, which blocked the server for ~35 s at 150k dead rows (long enough to fail the Docker healthcheck).
+
 ### Performance
 - **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
 - **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
