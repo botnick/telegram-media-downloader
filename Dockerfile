@@ -21,8 +21,18 @@ FROM node:24.18.0-bookworm-slim AS runtime
 # status-bar chip always reflects what's actually deployed.
 ARG GIT_SHA=dev
 ARG BUILT_AT=
+# MALLOC_ARENA_MAX: glibc gives every thread that allocates its own malloc
+# arena, and freed native memory (sharp/libvips, onnxruntime, SQLite)
+# fragments across them, so RSS keeps creeping up in a long-running
+# process. Two arenas keep it compact at a negligible speed cost.
+# UV_THREADPOOL_SIZE — libuv's worker pool (default 4) is shared by every
+# fs call, sendFile stream, crypto hash, dns lookup AND each sharp
+# thumbnail job. libuv reads it once at process start, so it has to be
+# set here rather than from inside the app.
 ENV NODE_ENV=production \
     PORT=3000 \
+    MALLOC_ARENA_MAX=2 \
+    UV_THREADPOOL_SIZE=16 \
     GIT_SHA=${GIT_SHA} \
     BUILT_AT=${BUILT_AT}
 

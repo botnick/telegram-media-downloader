@@ -13,9 +13,8 @@ import fs from 'fs/promises';
 import fsSync, { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
 import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js';
+import { DedupStringSession } from '../core/telegram-session.js';
 import crypto from 'crypto';
 import sharp from 'sharp';
 
@@ -43,6 +42,7 @@ import {
     backfillGroupNames,
     searchDownloads,
     deleteDownloadsBy,
+    findDownloadsByPaths,
     purgeOrphanPeople,
     createShareLink,
     getShareLinkForServe,
@@ -69,6 +69,8 @@ import {
     recordUpdateFailure,
     listUpdateHistory,
     getUnindexedAiBatch,
+    planDeferredIndexBuilds,
+    buildDeferredIndex,
 } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
@@ -80,6 +82,10 @@ import * as integrity from '../core/integrity.js';
 import {
     findDuplicates as dedupFindDuplicates,
     deleteByIds as dedupDeleteByIds,
+    buildDuplicateSets,
+    expandToSharedRefs,
+    idsWithFileInUse,
+    removeGroupFolder,
 } from '../core/dedup.js';
 import {
     ensureShareSecret,
@@ -103,6 +109,7 @@ import {
     thumbKindTypes,
     hasCachedThumb,
     resolveFfmpegBin,
+    THUMB_CACHE_CONTROL,
 } from '../core/thumbs.js';
 import { createFaceCropper } from '../core/ai/face-crops.js';
 import {
@@ -240,6 +247,11 @@ import { publishConfigChange } from '../core/cluster/config-sync.js';
 import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
+import { createSwrCache } from './lib/swr-cache.js';
+import { lookupEntityAcrossClients } from './lib/entity-lookup.js';
+import { createWsBroadcaster } from './lib/ws-broadcaster.js';
+import { lruCap } from '../core/util/streaming.js';
+import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
     recordClusterAudit,
     listClusterAudit,
@@ -365,6 +377,11 @@ const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const SESSION_PATH = path.join(DATA_DIR, 'session.enc');
 const SESSION_PASSWORD = getOrGenerateSecret();
 
+// libvips' operation cache (default 50 MB) only pays off when the same
+// image is processed repeatedly; thumbnails are generated once and cached
+// on disk, so it would just hold decoded pixels.
+sharp.cache(false);
+
 const app = express();
 const server = createServer(app);
 // Cloudflare's idle/origin window is ~100 s; nginx default proxy_read_timeout
@@ -380,6 +397,14 @@ server.requestTimeout = 120_000;
 // accepts every connection including unauthenticated ones.
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Set();
+// Coalesces high-rate engine events, skips backed-up sockets and runs the
+// 30 s ping/terminate heartbeat — see lib/ws-broadcaster.js. `broadcast()`
+// below is the only writer.
+const _wsBroadcaster = createWsBroadcaster({
+    getClients: () => clients,
+    onTerminate: (ws) => clients.delete(ws),
+});
+_wsBroadcaster.startHeartbeat();
 
 // Recursive directory size — used by /api/stats as the fallback when the DB
 // catalogue is empty. We can't trust `data/disk_usage.json` alone because
@@ -568,38 +593,19 @@ app.use(async (req, res, next) => {
     return res.redirect(308, `https://${host}${req.originalUrl}`);
 });
 
-// Optional gzip/deflate/br compression for text responses (HTML / JS / CSS /
-// JSON / SVG). The middleware ships as a separate npm package so we
-// `createRequire` it here and silently skip when the host hasn't installed
-// it (e.g. an old `node_modules/`). When present, configure to skip
-// already-compressed media (image/* / video/* / audio/*) and tunable level
-// via `COMPRESSION_LEVEL` (1-9, default 6 — the same default the package
-// uses, exposed for operators on slow CPUs who want a lower setting).
-try {
-    const _localRequire = createRequire(import.meta.url);
-    const compression = _localRequire('compression');
-    const lvlEnv = parseInt(process.env.COMPRESSION_LEVEL, 10);
-    const level = Number.isFinite(lvlEnv) && lvlEnv >= 0 && lvlEnv <= 9 ? lvlEnv : 6;
-    app.use(
-        compression({
-            level,
-            // Skip already-compressed payloads — gzipping a JPEG or MP4 burns
-            // CPU for a fraction of a percent of size win and breaks
-            // range-request semantics that the video player depends on.
-            filter: (req, res) => {
-                if (req.headers['x-no-compression']) return false;
-                const ct = String(res.getHeader('Content-Type') || '');
-                if (/^(image|video|audio)\//i.test(ct)) return false;
-                return compression.filter(req, res);
-            },
-        }),
-    );
-    if (process.env.TGDL_DEBUG === '1') {
-        console.log(`[startup] compression middleware enabled (level=${level})`);
+// gzip/deflate/br for text responses (see lib/http-compression.js for what
+// is skipped: raw file routes, Range requests, media types). Level via
+// `COMPRESSION_LEVEL` (1-9, default 6 — the package default, exposed for
+// operators on slow CPUs); `0` turns the middleware off entirely.
+{
+    const level = compressionLevelFromEnv(process.env.COMPRESSION_LEVEL);
+    const mw = createCompression(level);
+    if (mw) {
+        app.use(mw);
+        if (process.env.TGDL_DEBUG === '1') {
+            console.log(`[startup] compression middleware enabled (level=${level})`);
+        }
     }
-} catch {
-    // Module not installed — fine, dashboard runs uncompressed (Cloudflare /
-    // a reverse proxy in front will usually handle it instead).
 }
 
 // Security headers. CSP is on but allows the SPA's two CDN dependencies
@@ -2128,7 +2134,14 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Nothing under public/ lives at /api/* or /files/*, but express.static
+// would still stat() a candidate file for every such request — every API
+// call and every 64 KB video range request — on the shared libuv pool.
+const _publicStatic = express.static(path.join(__dirname, 'public'));
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/files/')) return next();
+    return _publicStatic(req, res, next);
+});
 app.use('/photos', express.static(PHOTOS_DIR));
 
 // Serve CHANGELOG.md from the project root for the in-app changelog
@@ -2781,6 +2794,10 @@ app.post('/api/history', async (req, res) => {
                 if (_activeBackfillsByGroup.get(groupKey) === jobId) {
                     _activeBackfillsByGroup.delete(groupKey);
                 }
+                // Same grace-window eviction as the success path — failed
+                // jobs are persisted above, so keeping them in memory
+                // forever only grew the map (and GET /api/history).
+                setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
             });
 
         log({
@@ -3711,10 +3728,27 @@ function broadcastStatsSoon() {
     _statsBroadcastTimer = setTimeout(async () => {
         _statsBroadcastTimer = null;
         try {
-            // Admin payload — guests just refetch via HTTP on reconnect.
             const body = await _computeStatsPayload('admin');
             _statsCache = { role: 'admin', at: Date.now(), body };
-            broadcast({ type: 'stats_update', stats: body });
+            // Per role: guest sessions get the guest payload (no cluster
+            // peer stats), not the admin one everyone used to receive.
+            // Sent directly rather than through broadcast(): a stats push
+            // is superseded by the next one, so a backed-up client just
+            // skips it.
+            const adminText = JSON.stringify({ type: 'stats_update', stats: body });
+            let guestText = null;
+            for (const ws of Array.from(clients)) {
+                if (ws.readyState !== 1 || ws.bufferedAmount > 1 << 20) continue;
+                if (ws.role === 'guest') {
+                    guestText ??= JSON.stringify({
+                        type: 'stats_update',
+                        stats: await _computeStatsPayload('guest'),
+                    });
+                    ws.send(guestText);
+                } else {
+                    ws.send(adminText);
+                }
+            }
         } catch (e) {
             console.warn('[stats] broadcast failed:', e.message);
         }
@@ -3993,7 +4027,7 @@ app.get('/api/dialogs', async (req, res) => {
         //   accountIds[id]  -> Set of every accountId that sees this chat
         const firstDialog = new Map();
         const accountIds = new Map();
-        const nameById = new Map(_dialogsNameCache.byId);
+        const nameById = new Map(_dialogsNames.current() || []);
 
         for (const p of perClient) {
             for (const isArchived of [false, true]) {
@@ -4022,7 +4056,7 @@ app.get('/api/dialogs', async (req, res) => {
                 }
             }
         }
-        _dialogsNameCache = { at: now, byId: nameById };
+        if (nameById.size > 0) _dialogsNames.set(nameById);
 
         // Account directory for the response — lets the SPA render account
         // chips by id without a second round-trip to /api/accounts.
@@ -4126,75 +4160,94 @@ function bestGroupName(id, configName, dbName, dialogsName) {
 }
 
 // Server-side cache of `id -> name` from every connected account's
-// dialog list. Refreshed on demand with a 5-minute TTL — Telegram
-// rate-limits getDialogs heavily, so we don't want to call it on
-// every /api/groups request.
-let _dialogsNameCache = { at: 0, byId: new Map() };
+// dialog list, 5-minute TTL — Telegram rate-limits getDialogs heavily.
+// Stale-while-revalidate: /api/groups + /api/downloads (the dashboard's
+// first paint) never wait on Telegram once any names are cached; an
+// expired map is served as-is while ONE shared background refresh runs.
+// Before, every request after expiry re-ran getDialogs for each account
+// serially, and gramJS' 60 s flood-sleep could park the request for a
+// minute. A failed / empty refresh keeps the previous names and is
+// retried at most every 30 s instead of on every request. With nothing
+// cached yet (first boot) a request waits at most this long, then renders
+// with config / DB names and picks the live ones up on the next load.
+const DIALOGS_COLD_WAIT_MS = 2000;
 // Parallel type cache so the sidebar's Downloaded Groups list can
 // distinguish channel / group / user / bot icons (matches what Manage
 // Groups already shows). Keyed by the same string id; values are one
 // of 'channel' | 'group' | 'user' | 'bot'.
 let _dialogsTypeCache = new Map();
-async function getDialogsNameCache() {
-    const now = Date.now();
-    if (
-        Math.max(0, now - _dialogsNameCache.at) < DIALOG_CACHE_TTL_MS &&
-        _dialogsNameCache.byId.size > 0
-    ) {
-        return _dialogsNameCache.byId;
-    }
-    const byId = new Map();
-    const typeById = new Map();
+const _dialogsNames = createSwrCache({
+    ttlMs: DIALOG_CACHE_TTL_MS,
+    retryAfterFailureMs: 30_000,
+    // Above gramJS' default floodSleepThreshold (60 s) so a flood-sleep
+    // finishes instead of being cut off mid-way.
+    loadTimeoutMs: 90_000,
+    isUsable: (byId) => byId instanceof Map && byId.size > 0,
+    load: loadDialogsNames,
+});
+async function loadDialogsNames() {
+    const clients = [];
     try {
         const am = await getAccountManager();
-        const clients = [];
         for (const [, c] of am.clients) clients.push(c);
-        if (telegramClient?.connected && !clients.includes(telegramClient))
-            clients.push(telegramClient);
-
-        for (const client of clients) {
-            if (!client?.connected) continue;
-            try {
-                const [active, archived] = await Promise.all([
-                    client.getDialogs({ limit: 500 }).catch(() => []),
-                    client.getDialogs({ limit: 200, archived: true }).catch(() => []),
-                ]);
-                for (const d of [...active, ...archived]) {
-                    const id = String(d.id);
-                    const name =
-                        d.title ||
-                        d.name ||
-                        (
-                            (d.entity?.firstName || '') +
-                            (d.entity?.lastName ? ' ' + d.entity.lastName : '')
-                        ).trim() ||
-                        d.entity?.username ||
-                        null;
-                    if (name && !nameLooksUnresolved(name, id) && !byId.has(id)) {
-                        byId.set(id, name);
-                    }
-                    if (!typeById.has(id)) {
-                        let t = 'group';
-                        if (d.isChannel) t = 'channel';
-                        else if (d.isUser && d.entity?.bot) t = 'bot';
-                        else if (d.isUser) t = 'user';
-                        typeById.set(id, t);
-                    }
-                    // Hard cap so a runaway upstream (multi-account user
-                    // with 50 k+ joined dialogs) can't blow the heap. See
-                    // CLAUDE.md → Big-data patterns rule 3.
-                    if (byId.size > 50000) break;
-                }
-            } catch {
-                /* one bad client doesn't kill the whole sweep */
-            }
-        }
     } catch {
         /* no AM — fresh install */
     }
-    _dialogsNameCache = { at: now, byId };
-    _dialogsTypeCache = typeById;
+    if (telegramClient?.connected && !clients.includes(telegramClient))
+        clients.push(telegramClient);
+
+    // Accounts in parallel; results keep account order so first-wins
+    // naming stays deterministic.
+    const perClient = await Promise.all(
+        clients
+            .filter((c) => c?.connected)
+            .map(async (client) => {
+                try {
+                    const [active, archived] = await Promise.all([
+                        client.getDialogs({ limit: 500 }).catch(() => []),
+                        client.getDialogs({ limit: 200, archived: true }).catch(() => []),
+                    ]);
+                    return [...active, ...archived];
+                } catch {
+                    return []; /* one bad client doesn't kill the whole sweep */
+                }
+            }),
+    );
+    const byId = new Map();
+    const typeById = new Map();
+    for (const dialogs of perClient) {
+        for (const d of dialogs) {
+            const id = String(d.id);
+            const name =
+                d.title ||
+                d.name ||
+                (
+                    (d.entity?.firstName || '') +
+                    (d.entity?.lastName ? ' ' + d.entity.lastName : '')
+                ).trim() ||
+                d.entity?.username ||
+                null;
+            if (name && !nameLooksUnresolved(name, id) && !byId.has(id)) {
+                byId.set(id, name);
+            }
+            if (!typeById.has(id)) {
+                let t = 'group';
+                if (d.isChannel) t = 'channel';
+                else if (d.isUser && d.entity?.bot) t = 'bot';
+                else if (d.isUser) t = 'user';
+                typeById.set(id, t);
+            }
+            // Hard cap so a runaway upstream (multi-account user
+            // with 50 k+ joined dialogs) can't blow the heap. See
+            // CLAUDE.md → Big-data patterns rule 3.
+            if (byId.size > 50000) break;
+        }
+    }
+    if (typeById.size > 0) _dialogsTypeCache = typeById;
     return byId;
+}
+async function getDialogsNameCache() {
+    return (await _dialogsNames.get({ waitMs: DIALOGS_COLD_WAIT_MS })) || new Map();
 }
 
 // Lookup helper used by /api/groups and /api/downloads to enrich each
@@ -4206,34 +4259,61 @@ function dialogsTypeFor(id) {
     return _dialogsTypeCache.get(String(id)) || null;
 }
 
+// Per-group aggregate — best DB-side display name, file count, total
+// size — shared by /api/groups and /api/downloads. Even index-only
+// (idx_group_name_size) it's a pass over every row, and one sidebar paint
+// hits both routes, so the rows are cached briefly. Invalidated by the
+// same broadcasts that refresh the footer stats (_STATS_TRIGGER_TYPES in
+// broadcast()) plus _GROUP_AGG_INVALIDATE_TYPES; the TTL bounds staleness
+// from any writer that doesn't broadcast.
+//
+// Plain MAX(group_name) misbehaves on this schema because "Unknown"
+// sorts above most ASCII titles — a group with rows ["Unknown", "Cool
+// Channel"] would surface "Unknown". CASE-filter out the placeholders
+// before MAX, then fall back to MAX(any) only if every row was one.
+const GROUP_AGG_TTL_MS = 15_000;
+let _groupAggCache = { at: 0, rows: null };
+function getGroupAggregates() {
+    const now = Date.now();
+    if (_groupAggCache.rows && Math.max(0, now - _groupAggCache.at) < GROUP_AGG_TTL_MS) {
+        return _groupAggCache.rows;
+    }
+    const rows = getDb()
+        .prepare(`
+            SELECT group_id,
+                   MAX(CASE
+                         WHEN group_name IS NOT NULL
+                          AND group_name != ''
+                          AND group_name != 'Unknown'
+                          AND group_name != 'unknown'
+                          AND group_name NOT GLOB '-?[0-9]*'
+                          AND group_name NOT GLOB 'Group [0-9]*'
+                       THEN group_name END) AS best_name,
+                   MAX(group_name) AS any_name,
+                   COUNT(*) as count,
+                   SUM(file_size) as size
+              FROM downloads
+             GROUP BY group_id
+        `)
+        .all();
+    _groupAggCache = { at: now, rows };
+    return rows;
+}
+function invalidateGroupAggregates() {
+    _groupAggCache = { at: 0, rows: null };
+}
+
 app.get('/api/groups', async (req, res) => {
     try {
         const config = loadConfig();
         // Pull the best DB-side name per group_id so a config row with
         // "Unknown" doesn't shadow a real name we already saved at
-        // download time. Plain MAX(group_name) misbehaves on this
-        // schema because "Unknown" sorts above most ASCII titles —
-        // a group with rows ["Unknown", "Cool Channel"] would surface
-        // "Unknown". CASE-filter out the placeholders before MAX, then
-        // fall back to MAX(any) only if every row was a placeholder.
+        // download time.
         let dbNames = new Map();
         try {
-            const rows = getDb()
-                .prepare(`
-                SELECT group_id,
-                       MAX(CASE
-                             WHEN group_name IS NOT NULL
-                              AND group_name != ''
-                              AND group_name != 'Unknown'
-                              AND group_name != 'unknown'
-                              AND group_name NOT GLOB '-?[0-9]*'
-                              AND group_name NOT GLOB 'Group [0-9]*'
-                           THEN group_name END) AS best_name,
-                       MAX(group_name) AS any_name
-                  FROM downloads
-                 GROUP BY group_id`)
-                .all();
-            for (const r of rows) dbNames.set(String(r.group_id), r.best_name || r.any_name);
+            for (const r of getGroupAggregates()) {
+                dbNames.set(String(r.group_id), r.best_name || r.any_name);
+            }
         } catch {}
 
         // Live dialogs from every connected account — same source the
@@ -4350,29 +4430,9 @@ app.get('/api/downloads', async (req, res) => {
     try {
         const config = loadConfig();
         const configGroups = config.groups || [];
-        const db = getDb();
-
-        // CASE-filter "Unknown" / numeric-id placeholders BEFORE MAX so
-        // a group with mixed rows ["Cool Channel", "Unknown"] returns
-        // "Cool Channel" instead of the lexically-larger "Unknown".
-        const rows = db
-            .prepare(`
-            SELECT group_id,
-                   MAX(CASE
-                         WHEN group_name IS NOT NULL
-                          AND group_name != ''
-                          AND group_name != 'Unknown'
-                          AND group_name != 'unknown'
-                          AND group_name NOT GLOB '-?[0-9]*'
-                          AND group_name NOT GLOB 'Group [0-9]*'
-                       THEN group_name END) AS best_name,
-                   MAX(group_name) AS any_name,
-                   COUNT(*) as count,
-                   SUM(file_size) as size
-              FROM downloads
-             GROUP BY group_id
-        `)
-            .all();
+        // Placeholder-filtered best name + count + size per group (cached;
+        // see getGroupAggregates).
+        const rows = getGroupAggregates();
 
         const dialogsNames = await getDialogsNameCache();
 
@@ -4790,28 +4850,47 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
         // downloader writes file_path with the OS-native separator (which
         // on Windows is `\`), so `DELETE WHERE file_path = ?` against the
         // raw frontend string never matches the row. Resolve to ids up
-        // front via a slash-insensitive comparison, then merge into the
-        // id-keyed delete path that already works everywhere. Files still
-        // unlink off disk via the path because the OS treats `/` and `\`
-        // identically on Windows path resolution.
+        // front (both separator forms, indexed — the old per-path
+        // REPLACE(file_path, …) comparison was a full scan each, ~7 s of
+        // frozen event loop for 1000 paths at 150k rows), then merge into
+        // the id-keyed delete path that already works everywhere. Files
+        // still unlink off disk via the path because the OS treats `/` and
+        // `\` identically on Windows path resolution. The SPA sends ids for
+        // its own tiles; paths stay for older clients + peer tiles.
+        //
+        // A path names a file, and several rows can point at one file
+        // (download-time dedup), so take every row for the path — deleting
+        // the file must not leave another row pointing at nothing.
         const resolvedIdsFromPaths = [];
+        const idsByPath = new Map();
         if (pathList.length) {
-            const db = getDb();
-            const stmt = db.prepare(
-                "SELECT id FROM downloads WHERE REPLACE(file_path, '\\', '/') = ?",
-            );
+            const idsByNorm = new Map();
+            for (const row of findDownloadsByPaths(pathList.map((p) => String(p || '')))) {
+                const norm = String(row.file_path).replace(/\\/g, '/');
+                if (!idsByNorm.has(norm)) idsByNorm.set(norm, []);
+                idsByNorm.get(norm).push(row.id);
+            }
             for (const p of pathList) {
                 const norm = String(p || '').replace(/\\/g, '/');
                 if (!norm) continue;
-                const row = stmt.get(norm);
-                if (row?.id) resolvedIdsFromPaths.push(row.id);
+                const pathIds = idsByNorm.get(norm) || [];
+                idsByPath.set(p, pathIds);
+                resolvedIdsFromPaths.push(...pathIds);
             }
         }
+        const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
+        // Rows whose file another (not deleted) row still uses: drop the
+        // row, keep the file.
+        const fileInUse = idsWithFileInUse(allIds);
         const total = idList.length + pathList.length;
         let processed = 0;
         let unlinked = 0;
         onProgress({ processed: 0, total, stage: 'deleting_files' });
         for (const p of pathList) {
+            if ((idsByPath.get(p) || []).some((id) => fileInUse.has(id))) {
+                processed += 1;
+                continue;
+            }
             const sr = await safeResolveDownload(p);
             if (sr.ok) {
                 try {
@@ -4842,16 +4921,26 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             // any drift (group renamed in UI, special chars sanitised
             // differently, custom file_path from the downloader) made
             // safeResolveDownload return ENOENT and the file survived
-            // on disk while the DB row got dropped.
-            const rows = db
-                .prepare(
-                    `SELECT id, group_id, group_name, file_name, file_type, file_path FROM downloads WHERE id IN (${idList.map(() => '?').join(',')})`,
-                )
-                .all(...idList);
+            // on disk while the DB row got dropped. Chunked so a huge
+            // gallery selection can't overflow SQLite's bound-parameter cap.
+            const selectRows = (chunk) =>
+                db
+                    .prepare(
+                        `SELECT id, group_id, group_name, file_name, file_type, file_path FROM downloads WHERE id IN (${chunk.map(() => '?').join(',')})`,
+                    )
+                    .all(...chunk);
+            const rows = [];
+            for (let i = 0; i < idList.length; i += 500) {
+                rows.push(...selectRows(idList.slice(i, i + 500)));
+            }
             const config = loadConfig();
             const folderById = new Map();
             for (const g of config.groups || []) folderById.set(String(g.id), sanitizeName(g.name));
             for (const row of rows) {
+                if (fileInUse.has(row.id)) {
+                    processed += 1;
+                    continue;
+                }
                 // Prefer the stored file_path — it's the authoritative
                 // record of where the downloader wrote the file. Fall back
                 // to the reconstructed candidate ONLY when file_path is
@@ -4895,7 +4984,6 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
                 }
             }
         }
-        const allIds = Array.from(new Set([...idList, ...resolvedIdsFromPaths]));
         const seekbarMap = collectSeekbarPaths(allIds);
         const dbDeleted = deleteDownloadsBy({ ids: allIds });
         onProgress({ processed: total, total, stage: 'purging_cache' });
@@ -5098,26 +5186,65 @@ app.delete('/api/file', async (req, res) => {
                 .json({ error: r.reason === 'missing' ? 'File not found' : 'Access denied' });
         }
 
-        try {
-            const { deferDelete } = await import('../core/deferred-delete.js');
-            deferDelete(r.real);
-        } catch {
-            await fs.unlink(r.real);
-        }
-        console.log(`🗑️ Deleted: ${filePath}`);
-
-        // Remove from DB (by basename — the DB stores filenames, not paths).
-        // Capture matching ids first so we can wipe their cached thumbnails;
-        // a stale thumb pointing at a deleted file would otherwise serve
-        // bytes from cache until the next "Rebuild thumbnails".
+        // Resolve the DB row(s) for THIS file before it's moved away, so an
+        // SPA-supplied `?id=` can be checked against the real on-disk path.
+        // Capture ids first so we can wipe their cached thumbnails; a stale
+        // thumb pointing at a deleted file would otherwise serve bytes from
+        // cache until the next "Rebuild thumbnails". This used to match
+        // every row sharing the basename, so deleting `photo_123.jpg` in one
+        // group also dropped another group's row for its own file.
         const db = getDb();
         const fileName = path.basename(r.real);
-        const matchingIds = db
-            .prepare('SELECT id FROM downloads WHERE file_name = ?')
-            .all(fileName)
-            .map((row) => row.id);
+        let matchingIds = [];
+        const idParam = parseInt(req.query.id, 10);
+        if (Number.isInteger(idParam) && idParam > 0) {
+            const row = db
+                .prepare('SELECT id, file_name, file_path FROM downloads WHERE id = ?')
+                .get(idParam);
+            const hasDir = /[\\/]/.test(row?.file_path || '');
+            if (row && hasDir) {
+                const own = await safeResolveDownload(row.file_path);
+                if (own.ok && own.real === r.real) matchingIds = [row.id];
+            } else if (row && row.file_name === fileName) {
+                matchingIds = [row.id];
+            }
+        }
+        if (!matchingIds.length) {
+            matchingIds = findDownloadsByPaths([String(filePath)]).map((row) => row.id);
+        }
+        if (!matchingIds.length) {
+            // Legacy rows written before file_path carried the folder only
+            // know their basename — match those, but never a row that has a
+            // real stored path (that one belongs to some other folder).
+            matchingIds = db
+                .prepare(
+                    `SELECT id FROM downloads WHERE file_name = ?
+                        AND (file_path IS NULL OR (instr(file_path, '/') = 0 AND instr(file_path, '\\') = 0))`,
+                )
+                .all(fileName)
+                .map((row) => row.id);
+        }
+
+        // Download-time dedup points several rows (often in other groups)
+        // at one file. With `?id=` only that row goes, so the file stays
+        // while any other row still uses it. Without an id every row for
+        // the path is in `matchingIds`, so the file is free to go.
+        const fileStillUsed = idsWithFileInUse(matchingIds).size > 0;
+        if (!fileStillUsed) {
+            try {
+                const { deferDelete } = await import('../core/deferred-delete.js');
+                deferDelete(r.real);
+            } catch {
+                await fs.unlink(r.real);
+            }
+            console.log(`🗑️ Deleted: ${filePath}`);
+        }
+
         const seekbarMap = collectSeekbarPaths(matchingIds);
-        db.prepare('DELETE FROM downloads WHERE file_name = ?').run(fileName);
+        const delStmt = db.prepare('DELETE FROM downloads WHERE id = ?');
+        db.transaction((ids) => {
+            for (const id of ids) delStmt.run(id);
+        })(matchingIds);
         for (const id of matchingIds) {
             try {
                 await purgeThumbsForDownload(id);
@@ -5131,7 +5258,13 @@ app.delete('/api/file', async (req, res) => {
         } catch {}
         import('../core/deferred-delete.js').then((m) => m.startDrain()).catch(() => {});
 
-        broadcast({ type: 'file_deleted', path: filePath });
+        if (fileStillUsed) {
+            // Name the removed row(s) by id: other tiles showing the same
+            // path are still valid and must not be dropped from open views.
+            for (const id of matchingIds) broadcast({ type: 'file_deleted', id });
+        } else {
+            broadcast({ type: 'file_deleted', path: filePath });
+        }
         res.json({ success: true });
     } catch (error) {
         if (error.code === 'ENOENT') return res.status(404).json({ error: 'File not found' });
@@ -5396,7 +5529,8 @@ app.delete('/api/groups/:id/purge', async (req, res) => {
             };
             filesDeleted = countFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
-            await fs.rm(folderPath, { recursive: true, force: true });
+            // Files other groups still use (download-time dedup) stay.
+            filesDeleted -= await removeGroupFolder(groupId, folderPath);
             onProgress({
                 stage: 'deleting_files',
                 groupId,
@@ -5536,7 +5670,8 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
             };
             filesDeleted = countFiles(folderPath);
             onProgress({ stage: 'deleting_files', groupId, total: filesDeleted, processed: 0 });
-            await fs.rm(folderPath, { recursive: true, force: true });
+            // Files other groups still use (download-time dedup) stay.
+            filesDeleted -= await removeGroupFolder(groupId, folderPath);
             onProgress({
                 stage: 'deleting_files',
                 groupId,
@@ -5805,7 +5940,7 @@ app.post('/api/maintenance/resync-dialogs', async (req, res) => {
         }
         if (mutated) await writeConfigAtomic(config);
         _dialogsResponseCache = { at: 0, body: null };
-        _dialogsNameCache = { at: 0, byId: new Map() };
+        _dialogsNames.invalidate();
         broadcast({ type: 'config_updated' });
         return { scanned: total, updated };
     });
@@ -6140,14 +6275,28 @@ app.post('/api/maintenance/dedup/scan/stop', (req, res) => {
 
 app.get('/api/maintenance/dedup/status', async (req, res) => {
     const snap = _jobTrackers.dedupScan.getStatus();
-    // Re-attach the non-enumerable duplicateSets so the frontend can
-    // pull the full result via this endpoint (the WS done event strips
-    // it to avoid multi-MB frames).
-    const out = { ...snap, ...(snap.progress || {}) };
-    if (snap.result && !out.result?.duplicateSets && snap.result.duplicateSets) {
+    // Flat progress fields for older clients, but `running` must come from
+    // the tracker — the last progress event still says running:true after
+    // the scan has finished.
+    const out = { ...snap, ...(snap.progress || {}), running: snap.running };
+    // duplicateSets is non-enumerable on the stored result (so the WS done
+    // event doesn't carry multi-MB frames); copy it onto an enumerable
+    // result here or JSON serialisation drops it and the page shows nothing.
+    if (snap.result?.duplicateSets) {
         out.result = { ...snap.result, duplicateSets: snap.result.duplicateSets };
     }
     res.json(out);
+});
+
+// Duplicate sets rebuilt from the hashes already stored in the DB. The last
+// scan's result only lives in memory, so after a restart the Duplicates
+// page would stay empty until a full re-scan; this needs no hashing.
+app.get('/api/maintenance/dedup/sets', async (req, res) => {
+    try {
+        res.json({ duplicateSets: await buildDuplicateSets() });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Library hash-coverage stats — total rows, how many already have a SHA-256
@@ -6222,7 +6371,10 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
         let processed = 0;
         onProgress({ processed: 0, total, stage: 'deleting' });
         for (let off = 0; off < cleanIds.length; off += BATCH) {
-            const slice = cleanIds.slice(off, off + BATCH);
+            // Each listed id is one physical copy; take every row that uses
+            // that file with it, or the file can't be freed.
+            const listed = cleanIds.slice(off, off + BATCH);
+            const slice = expandToSharedRefs(listed);
             const seekbarMap = collectSeekbarPaths(slice);
             const part = dedupDeleteByIds(slice);
             aggregate.removed += part.removed || 0;
@@ -6236,7 +6388,7 @@ app.post('/api/maintenance/dedup/delete', async (req, res) => {
                     await purgeSeekbarForDownload(id, seekbarMap.get(id));
                 } catch {}
             }
-            processed += slice.length;
+            processed += listed.length;
             onProgress({ processed, total, stage: 'deleting' });
             await new Promise((r) => setImmediate(r));
         }
@@ -6339,13 +6491,9 @@ app.get('/api/thumbs/:id', async (req, res) => {
         }
 
         res.setHeader('Content-Type', 'image/webp');
-        // Browser cache for an hour + must-revalidate so stale entries
-        // (e.g. a 404 the client cached before this URL had a real thumb
-        // on disk) get rechecked against Last-Modified instead of being
-        // served forever from the local cache. `immutable` was the wrong
-        // hint for this URL: the same id+width can legitimately serve
-        // different bytes after a source replacement or a manual purge.
-        res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+        // See THUMB_CACHE_CONTROL in core/thumbs.js. A 404 is sent with
+        // no-store (above), so a missing thumb is never cached.
+        res.setHeader('Cache-Control', THUMB_CACHE_CONTROL);
         // ETag derived from mtime + size so a regenerated thumb produces
         // a different validator and the browser can't reuse the old
         // body byte-for-byte under a 304.
@@ -10334,7 +10482,8 @@ app.post('/api/cluster/files/delete', async (req, res) => {
         }
         const r = await safeResolveDownload(row.file_path);
         let freedBytes = 0;
-        if (r.ok) {
+        // Another local row (download-time dedup) may still use the file.
+        if (r.ok && !idsWithFileInUse([Number(row.id)]).has(Number(row.id))) {
             try {
                 const { deferDelete } = await import('../core/deferred-delete.js');
                 deferDelete(r.real);
@@ -11123,7 +11272,6 @@ app.post('/api/config', async (req, res) => {
             if (d.maxConcurrency < d.minConcurrency) d.maxConcurrency = d.minConcurrency;
             d.scalerIntervalSec = clampInt(d.scalerIntervalSec, 1, 600, 5);
             d.idleSleepMs = clampInt(d.idleSleepMs, 50, 10000, 200);
-            d.spilloverThreshold = clampInt(d.spilloverThreshold, 100, 100000, 2000);
 
             const h = merged.history;
             h.backpressureCap = clampInt(h.backpressureCap, 10, 100000, BACKPRESSURE_CAP_DEFAULT);
@@ -11559,7 +11707,7 @@ app.put('/api/groups/:id', async (req, res) => {
                 groupName === groupId ||
                 groupName.startsWith('Group ')
             ) {
-                const r = await resolveEntityAcrossAccounts(groupId);
+                const r = await resolveEntityAcrossAccounts(groupId, { force: true });
                 if (r?.entity) {
                     const e = r.entity;
                     groupName =
@@ -11835,6 +11983,10 @@ async function _spawnInternalBackfill({
             saveHistoryJobsToStore();
             if (_activeBackfillsByGroup.get(groupKey) === jobId)
                 _activeBackfillsByGroup.delete(groupKey);
+            // Evict like the success path; a group that fails its catch-up
+            // on every boot / gap check otherwise accumulated one entry per
+            // attempt for the life of the process.
+            setTimeout(() => _historyJobs.delete(jobId), HISTORY_JOB_TTL_MS);
         });
     return jobId;
 }
@@ -11922,6 +12074,10 @@ app.get('/api/groups/:id/photo', async (req, res) => {
     const url = await downloadProfilePhoto(id);
     if (url && existsSync(photoPath)) return send();
 
+    // The 404 itself stays uncached (the /api/* no-store default): a
+    // browser-cached miss would keep hiding a photo that "Refresh photos"
+    // fetched a minute later. Repeat misses are cheap anyway — answered
+    // from the server-side miss caches above without touching Telegram.
     res.status(404).send('Not found');
 });
 
@@ -11940,10 +12096,20 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         const config = loadConfig();
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
-            const rows = getDb()
-                .prepare('SELECT DISTINCT group_id, group_name FROM downloads LIMIT 10000')
-                .all();
-            for (const rr of rows) ids.add(String(rr.group_id));
+            // One row per group from the (usually still cached) sidebar
+            // aggregate instead of another DISTINCT pass over every row.
+            for (const rr of getGroupAggregates()) {
+                if (ids.size >= 10000) break;
+                ids.add(String(rr.group_id));
+            }
+        } catch {}
+        let renameStmt = null;
+        try {
+            // Seeks idx_group_name_size (group_id = ?) — one prepare for the
+            // whole sweep instead of one per group.
+            renameStmt = getDb().prepare(
+                `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`,
+            );
         } catch {}
 
         let updated = 0;
@@ -11953,7 +12119,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         let processed = 0;
         onProgress({ processed: 0, total, updated: 0, stage: 'resolving' });
         for (const id of ids) {
-            const resolved = await resolveEntityAcrossAccounts(id);
+            const resolved = await resolveEntityAcrossAccounts(id, { force: true });
             if (resolved) {
                 const { entity } = resolved;
                 const realName =
@@ -11975,10 +12141,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
                         mutatedConfig = true;
                     }
                     try {
-                        const stmt = getDb().prepare(
-                            `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`,
-                        );
-                        stmt.run(realName, id, id);
+                        renameStmt?.run(realName, id, id);
                     } catch {}
                     updates.push({ id, name: realName });
                     updated++;
@@ -12022,7 +12185,7 @@ app.post('/api/groups/refresh-photos', async (req, res) => {
         const results = [];
         onProgress({ processed: 0, total, stage: 'downloading' });
         for (const group of groups) {
-            const url = await downloadProfilePhoto(group.id).catch(() => null);
+            const url = await downloadProfilePhoto(group.id, { force: true }).catch(() => null);
             results.push({ id: group.id, url });
             processed += 1;
             onProgress({ processed, total, stage: 'downloading' });
@@ -12126,7 +12289,15 @@ app.use('/files', async (req, res, next) => {
             // basename, and a 404 on one would mass-delete the other's
             // rows. Done in the background so the HTTP response isn't
             // blocked by the DB write.
-            if (r.reason === 'missing') {
+            // If the file's folder is missing as well, the disk is more likely
+            // unmounted (or the group folder renamed) than the file deleted,
+            // so leave the rows alone.
+            // ('missing' already implies the path passed the containment
+            // checks; re-check so nothing outside DOWNLOADS_DIR is probed.)
+            const downloadsRoot = path.resolve(DOWNLOADS_DIR);
+            const parentDir = path.dirname(path.resolve(downloadsRoot, reqPath));
+            const insideRoot = parentDir.startsWith(downloadsRoot + path.sep);
+            if (r.reason === 'missing' && insideRoot && existsSync(parentDir)) {
                 queueMicrotask(() => {
                     try {
                         const fwd = reqPath.replace(/\\/g, '/');
@@ -12231,8 +12402,25 @@ async function loadSession() {
     return '';
 }
 
-async function connectTelegram() {
-    if (telegramClient && isConnected) return telegramClient;
+// A failed attempt (e.g. a revoked legacy session) is retried at most
+// every 5 min — this runs on every entity-cache miss, and each attempt
+// opens a new MTProto connection.
+const LEGACY_RETRY_MS = 5 * 60 * 1000;
+let _legacyRetryAt = 0;
+let _legacyConnecting = null;
+
+function connectTelegram() {
+    if (telegramClient && isConnected) return Promise.resolve(telegramClient);
+    if (Date.now() < _legacyRetryAt) return Promise.resolve(null);
+    if (!_legacyConnecting) {
+        _legacyConnecting = _connectLegacy().finally(() => {
+            _legacyConnecting = null;
+        });
+    }
+    return _legacyConnecting;
+}
+
+async function _connectLegacy() {
     // Quiet, configuration-aware: no creds → no work, no scary warning.
     let config;
     try {
@@ -12243,28 +12431,33 @@ async function connectTelegram() {
     }
     if (!config.telegram?.apiId || !config.telegram?.apiHash) return null;
 
+    let client = null;
     try {
         const sessionString = await loadSession();
         if (!sessionString) return null;
-        const stringSession = new StringSession(sessionString);
-        telegramClient = new TelegramClient(
-            stringSession,
+        client = new TelegramClient(
+            new DedupStringSession(sessionString),
             parseInt(config.telegram.apiId),
             config.telegram.apiHash,
             { connectionRetries: 3, useWSS: false },
         );
-        telegramClient.setLogLevel('none');
-        await telegramClient.connect();
-        if (await telegramClient.isUserAuthorized()) {
+        client.setLogLevel('none');
+        await client.connect();
+        if (await client.isUserAuthorized()) {
+            telegramClient = client;
             isConnected = true;
             console.log(
                 '✅ Telegram connected (legacy single-session client; AccountManager is the canonical source)',
             );
-            return telegramClient;
+            return client;
         }
     } catch (error) {
         console.log('⚠️ Telegram connect attempt failed:', error.message);
     }
+    // destroy(), not disconnect(): only destroy() stops gramJS's update
+    // loop, which otherwise keeps the client (and its socket) alive forever.
+    if (client) await client.destroy().catch(() => {});
+    _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
     return null;
 }
 
@@ -12275,13 +12468,27 @@ async function connectTelegram() {
 // hard cap so a long-running process doesn't grow this Map without bound.
 const entityCache = new Map();
 const ENTITY_CACHE_TTL_MS = 30 * 60 * 1000;
+// Definite misses (every connected account answered "no such chat" —
+// left it, deleted, never joined; see lib/entity-lookup.js) are cached as
+// `{ entity: null }` for a shorter window, so avatar renders don't re-ask
+// each account for the same unknown id. Transient failures (FLOOD_WAIT,
+// timeouts, connection errors) are never cached.
+const ENTITY_MISS_TTL_MS = 10 * 60 * 1000;
 const ENTITY_CACHE_MAX = 5000;
 
-/** Walk every loaded account looking for one that can resolve `idStr`. */
-async function resolveEntityAcrossAccounts(idStr) {
+/**
+ * Walk every loaded account looking for one that can resolve `idStr`.
+ * `force` skips the failed-lookup cache — refresh-info, PUT
+ * /api/groups/:id and Refresh photos always ask Telegram again.
+ */
+async function resolveEntityAcrossAccounts(idStr, { force = false } = {}) {
     const cached = entityCache.get(idStr);
-    if (cached && Date.now() - cached.at < ENTITY_CACHE_TTL_MS) {
-        return { entity: cached.entity, client: cached.client };
+    if (cached) {
+        const age = Math.max(0, Date.now() - cached.at);
+        if (cached.entity && age < ENTITY_CACHE_TTL_MS) {
+            return { entity: cached.entity, client: cached.client };
+        }
+        if (!cached.entity && !force && age < ENTITY_MISS_TTL_MS) return null;
     }
 
     let am;
@@ -12296,7 +12503,7 @@ async function resolveEntityAcrossAccounts(idStr) {
     const legacy = await connectTelegram();
     if (legacy && !candidates.includes(legacy)) candidates.push(legacy);
 
-    const cacheHit = (e, c) => {
+    const remember = (e, c) => {
         // Hard-cap the cache by evicting the oldest entry on overflow.
         if (entityCache.size >= ENTITY_CACHE_MAX) {
             const firstKey = entityCache.keys().next().value;
@@ -12306,25 +12513,42 @@ async function resolveEntityAcrossAccounts(idStr) {
         return { entity: e, client: c };
     };
 
-    for (const c of candidates) {
-        try {
-            const e = await c.getEntity(idStr);
-            if (e) return cacheHit(e, c);
-        } catch {}
-        try {
-            const e = await c.getEntity(BigInt(idStr));
-            if (e) return cacheHit(e, c);
-        } catch {}
-    }
+    const found = await lookupEntityAcrossClients(idStr, candidates);
+    if (found.entity) return remember(found.entity, found.client);
+    // Remember the miss only when every connected account said "no such
+    // chat". A FLOOD_WAIT / timeout / connection error, or every client
+    // still (re)connecting, stays retryable on the next call.
+    if (found.definite) remember(null, null);
     return null;
 }
 
-async function downloadProfilePhoto(groupId) {
+// Chats known to have no profile photo → expiry (ms). The sidebar
+// re-renders every avatar on each list refresh, and each miss used to
+// resolve the entity across all accounts again. Bounded + TTL'd.
+const _photoMissUntil = new Map();
+const PHOTO_MISS_TTL_MS = 60 * 60 * 1000;
+const PHOTO_MISS_MAX = 5000;
+
+/** Remaining ms of a cached "no photo" answer for `idStr` (0 = none). */
+function photoMissRemainingMs(idStr) {
+    const until = _photoMissUntil.get(idStr);
+    if (!until) return 0;
+    const left = until - Date.now();
+    if (left <= 0) _photoMissUntil.delete(idStr);
+    return Math.max(0, left);
+}
+
+/**
+ * Fetch + cache a chat's small profile photo. `force` (explicit operator
+ * refresh) ignores the cached "no photo" / failed-lookup answers.
+ */
+async function downloadProfilePhoto(groupId, { force = false } = {}) {
     const idStr = String(groupId);
     const photoPath = path.join(PHOTOS_DIR, `${idStr}.jpg`);
     if (existsSync(photoPath)) return `/photos/${idStr}.jpg`;
+    if (!force && photoMissRemainingMs(idStr) > 0) return null;
 
-    const resolved = await resolveEntityAcrossAccounts(idStr);
+    const resolved = await resolveEntityAcrossAccounts(idStr, { force });
     if (!resolved) return null;
     const { entity, client } = resolved;
     try {
@@ -12332,9 +12556,13 @@ async function downloadProfilePhoto(groupId) {
             const buffer = await client.downloadProfilePhoto(entity, { isBig: false });
             if (buffer) {
                 await fs.writeFile(photoPath, buffer);
+                _photoMissUntil.delete(idStr);
                 return `/photos/${idStr}.jpg`;
             }
         }
+        // Resolved, but the chat has no photo set.
+        _photoMissUntil.set(idStr, Date.now() + PHOTO_MISS_TTL_MS);
+        lruCap(_photoMissUntil, PHOTO_MISS_MAX);
     } catch (e) {
         console.log(`Error processing ${idStr}:`, e.message);
     }
@@ -12363,23 +12591,32 @@ const _STATS_TRIGGER_TYPES = new Set([
     'download_complete',
 ]);
 
+// Other events that change group names / row counts without being stats
+// triggers — drop the cached sidebar aggregate for them too.
+const _GROUP_AGG_INVALIDATE_TYPES = new Set([
+    'groups_refreshed',
+    'integrity_swept',
+    'reindex_done',
+    'dedup_delete_done',
+]);
+
 function broadcast(data) {
-    const message = JSON.stringify(data);
-    for (const client of Array.from(clients)) {
-        if (client.readyState === 1) client.send(message);
-    }
+    // Per-chunk download progress, per-message scan progress and
+    // per-enqueue queue events are coalesced (≤ 2/s per key, same message
+    // shapes); everything else is sent right away.
+    _wsBroadcaster.broadcast(data);
     // Side-channel: if the event meaningfully changed stats, schedule a
     // single recompute + push. Debounce inside broadcastStatsSoon() makes
     // a 50-row bulk delete still cost one stats broadcast, not fifty.
     try {
-        if (
-            data &&
-            typeof data === 'object' &&
-            typeof data.type === 'string' &&
-            _STATS_TRIGGER_TYPES.has(data.type) &&
-            typeof broadcastStatsSoon === 'function'
-        ) {
-            broadcastStatsSoon();
+        if (data && typeof data === 'object' && typeof data.type === 'string') {
+            if (_STATS_TRIGGER_TYPES.has(data.type)) {
+                // Same events move the sidebar's per-group counts / names.
+                invalidateGroupAggregates();
+                if (typeof broadcastStatsSoon === 'function') broadcastStatsSoon();
+            } else if (_GROUP_AGG_INVALIDATE_TYPES.has(data.type)) {
+                invalidateGroupAggregates();
+            }
         }
     } catch {}
 }
@@ -12579,7 +12816,14 @@ app.get('/api/maintenance/logs/recent', async (req, res) => {
 
 wss.on('connection', (ws) => {
     clients.add(ws);
+    // Ping/pong liveness for the heartbeat — a half-open phone socket is
+    // terminated after one missed pong instead of buffering for minutes.
+    _wsBroadcaster.attach(ws);
     ws.on('close', () => clients.delete(ws));
+    // Protocol errors (bad frame, oversized payload) are emitted as
+    // 'error'; without a listener EventEmitter re-throws them as an
+    // uncaught exception, which crashes the process.
+    ws.on('error', () => clients.delete(ws));
 });
 
 // Last-resort handler — converts any throw or rejected promise that
@@ -12595,6 +12839,66 @@ app.use((err, req, res, _next) => {
     });
     res.status(500).json({ error: err?.message || 'Internal Server Error' });
 });
+
+// Deferred index builds — see the call site in the listen callback.
+const DEFERRED_INDEX_START_DELAY_MS = 90_000;
+const DEFERRED_INDEX_GAP_MS = 45_000;
+function scheduleDeferredIndexBuilds() {
+    let pending;
+    try {
+        const plan = planDeferredIndexBuilds();
+        pending = plan.build;
+        for (const idx of plan.interrupted) {
+            // A previous start was killed while building this index — most
+            // likely a restart loop on a very large library / slow disk.
+            // Don't walk into it again; everything works without it.
+            log({
+                source: 'db',
+                level: 'warn',
+                msg:
+                    `index ${idx.name}: the previous build attempt never finished (the process was stopped mid-build), so it is not retried automatically. ` +
+                    'The dashboard works without it (bulk deletes / sidebar are just slower). To build it, stop the dashboard and run ' +
+                    '`npm run build-indexes` (Docker: `docker compose stop telegram-downloader && docker compose run --rm telegram-downloader node scripts/build-indexes.js && docker compose start telegram-downloader`).',
+            });
+        }
+    } catch {
+        return;
+    }
+    if (!pending.length) return;
+    log({
+        source: 'db',
+        level: 'info',
+        msg: `building ${pending.length} new index(es) in the background: ${pending.map((i) => i.name).join(', ')}`,
+    });
+    let busyRetries = 0;
+    const buildNext = () => {
+        const idx = pending.shift();
+        if (!idx) return;
+        try {
+            const ms = buildDeferredIndex(idx.name);
+            log({ source: 'db', level: 'info', msg: `index ${idx.name} built in ${ms} ms` });
+            // The sidebar aggregate cache may hold rows computed without it —
+            // harmless, but let the next paint use the faster plan.
+            invalidateGroupAggregates();
+        } catch (e) {
+            const msg = String(e?.message || e);
+            if (/busy|locked/i.test(msg) && busyRetries < 20) {
+                // A maintenance sweep holds the connection — try again later.
+                busyRetries += 1;
+                pending.unshift(idx);
+            } else {
+                // Retried on the next boot (IF NOT EXISTS); queries still work.
+                log({
+                    source: 'db',
+                    level: 'warn',
+                    msg: `index ${idx.name} build failed (will retry next start): ${msg}`,
+                });
+            }
+        }
+        if (pending.length) setTimeout(buildNext, DEFERRED_INDEX_GAP_MS).unref();
+    };
+    setTimeout(buildNext, DEFERRED_INDEX_START_DELAY_MS).unref();
+}
 
 const PORT = process.env.PORT || 3000;
 // Without this, EADDRINUSE made the container exit silently with no clue
@@ -12698,6 +13002,17 @@ ${tip}
             console.warn('[thumbs] one-shot purge guard threw:', e.message);
         }
     });
+
+    // New indexes on an existing big library (see DEFERRED_INDEXES in
+    // core/db.js) are built here instead of in initSchema, so an upgrade
+    // never delays the first healthcheck. Each CREATE INDEX still blocks
+    // the loop while it runs (~1 s per index per 1M rows on SSD), so start
+    // well after boot (past the compose start_period + autoheal grace) and
+    // leave more than one healthcheck interval between builds: a single
+    // slow build can fail at most one check, never the three in a row that
+    // mark the container unhealthy. Queries work (slower) until done; a
+    // restart mid-way just resumes on the next boot.
+    scheduleDeferredIndexBuilds();
 
     // Boot the disk rotator. No-op when diskManagement.enabled is false —
     // safe to call at every startup. Restarts via POST /api/config (above).

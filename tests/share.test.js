@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
     ensureShareSecret,
@@ -126,6 +127,19 @@ describe('mintFileToken / verifyFileToken', () => {
     it('defaults to guest for a missing or unknown role', () => {
         expect(verifyFileToken(mintFileToken(60).token)).toBe('guest');
         expect(verifyFileToken(mintFileToken(60, 'root').token)).toBe('guest');
+    });
+
+    it('accepts pre-upgrade (role-less) tokens as guest, never admin', () => {
+        _resetShareSecretCache();
+        ensureShareSecret({ web: { shareSecret: 'c'.repeat(64) } });
+        const exp = Math.floor(Date.now() / 1000) + 60;
+        const secret = Buffer.from('c'.repeat(64), 'hex');
+        const sig = crypto
+            .createHmac('sha256', secret)
+            .update(`filetoken|${exp}`)
+            .digest('base64url');
+        expect(verifyFileToken(`${exp}.${sig}`)).toBe('guest');
+        expect(verifyFileToken(`${exp - 120}.${sig}`)).toBeNull();
     });
 
     it('rejects expired, tampered and malformed tokens', () => {

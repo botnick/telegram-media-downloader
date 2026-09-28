@@ -22,6 +22,7 @@ import {
 import { purgeThumbsForDownload } from './thumbs.js';
 import { purgeSeekbarForDownload, collectSeekbarPaths } from './seekbar/index.js';
 import { getDownloadsDir } from './paths.js';
+import { idsWithFileInUse } from './dedup.js';
 
 const DOWNLOADS_DIR = getDownloadsDir();
 
@@ -36,6 +37,9 @@ const MAX_SWEEP_MIN = 1440;
  */
 async function tryUnlink(row) {
     if (!row.file_path) return;
+    // Download-time dedup can point other rows (often other groups) at this
+    // same file — only the row goes then, the file stays for them.
+    if (idsWithFileInUse([row.id]).has(row.id)) return;
     const normalized = path.normalize(String(row.file_path));
     if (path.isAbsolute(normalized) || normalized.split(path.sep).includes('..')) return;
     const target = path.join(DOWNLOADS_DIR, normalized);

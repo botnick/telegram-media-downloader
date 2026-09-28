@@ -4,7 +4,7 @@
  */
 
 import { TelegramClient, Api } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js';
+import { DedupStringSession } from './telegram-session.js';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -107,7 +107,7 @@ export class AccountManager {
                     console.log(
                         colorize(`⚠️  Account "${accountId}" session expired, skipping`, 'yellow'),
                     );
-                    await client.disconnect().catch(() => {});
+                    await client.destroy().catch(() => {});
                     continue;
                 }
 
@@ -122,7 +122,7 @@ export class AccountManager {
                 // disconnectAll().
                 const existing = this.clients.get(accountId);
                 if (existing && existing !== client) {
-                    await existing.disconnect().catch(() => {});
+                    await existing.destroy().catch(() => {});
                 }
                 this.clients.set(accountId, client);
                 this.metadata.set(accountId, {
@@ -333,7 +333,7 @@ export class AccountManager {
             const client = await this.createClient('legacy', sessionString);
             await client.connect();
             const me = await client.getMe();
-            await client.disconnect().catch(() => {});
+            await client.destroy().catch(() => {});
 
             // Save with a friendly account ID
             const accountId = me.username || `acc_${me.phone || '1'}`;
@@ -373,7 +373,7 @@ export class AccountManager {
             );
         }
         return new TelegramClient(
-            new StringSession(sessionString),
+            new DedupStringSession(sessionString),
             parseInt(this.config.telegram.apiId),
             this.config.telegram.apiHash,
             opts,
@@ -502,7 +502,7 @@ export class AccountManager {
             return finalAccountId;
         } catch (e) {
             console.log(colorize(`❌ Login failed: ${e.message}`, 'red'));
-            await client.disconnect().catch(() => {});
+            await client.destroy().catch(() => {});
             return null;
         }
     }
@@ -513,7 +513,7 @@ export class AccountManager {
     removeAccount(accountId) {
         const client = this.clients.get(accountId);
         if (client) {
-            client.disconnect().catch(() => {});
+            client.destroy().catch(() => {});
             this.clients.delete(accountId);
             this.metadata.delete(accountId);
         }
@@ -661,7 +661,7 @@ export class AccountManager {
     async disconnectAll() {
         for (const [_id, client] of this.clients) {
             try {
-                await client.disconnect();
+                await client.destroy();
             } catch (e) {
                 // Ignore disconnect errors
             }
@@ -789,7 +789,7 @@ export class AccountManager {
                 flow.error = err?.message || String(err);
                 setState('error');
                 try {
-                    client.disconnect().catch(() => {});
+                    client.destroy().catch(() => {});
                 } catch {}
                 setTimeout(() => this._authFlows.delete(sessionId), 60000);
             });
@@ -862,7 +862,7 @@ export class AccountManager {
         } catch {}
         if (flow.client) {
             try {
-                await flow.client.disconnect();
+                await flow.client.destroy();
             } catch {}
         }
         this._authFlows.delete(sessionId);

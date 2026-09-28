@@ -16,16 +16,25 @@
 import fs from 'fs';
 import { Transform } from 'stream';
 import path from 'path';
-import {
-    S3Client,
-    DeleteObjectCommand,
-    HeadObjectCommand,
-    HeadBucketCommand,
-    ListObjectsV2Command,
-} from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
 import { BackupProvider } from './base.js';
 import { encryptStream } from '../encryption.js';
+
+// The AWS SDK costs ~20 MB RSS on import, and the backup manager loads
+// every provider class at boot (for the wizard's schemas) — so the SDK is
+// only loaded once an S3 destination is actually initialised.
+let S3Client;
+let DeleteObjectCommand;
+let HeadObjectCommand;
+let HeadBucketCommand;
+let ListObjectsV2Command;
+let Upload;
+
+async function loadSdk() {
+    if (S3Client) return;
+    ({ S3Client, DeleteObjectCommand, HeadObjectCommand, HeadBucketCommand, ListObjectsV2Command } =
+        await import('@aws-sdk/client-s3'));
+    ({ Upload } = await import('@aws-sdk/lib-storage'));
+}
 
 export class S3Provider extends BackupProvider {
     static get name() {
@@ -101,6 +110,7 @@ export class S3Provider extends BackupProvider {
     }
 
     async init(cfg, _ctx) {
+        await loadSdk();
         const region = String(cfg?.region || '').trim();
         const bucket = String(cfg?.bucket || '').trim();
         const accessKeyId = String(cfg?.accessKeyId || '').trim();

@@ -223,13 +223,23 @@ export function verifyFileToken(token) {
     const exp = Number(token.slice(0, dot));
     if (!Number.isFinite(exp) || Date.now() / 1000 > exp) return null;
     const gotBuf = Buffer.from(token.slice(dot + 1), 'utf8');
+    const matches = (sig) => {
+        const expectedBuf = Buffer.from(sig, 'utf8');
+        return expectedBuf.length === gotBuf.length && crypto.timingSafeEqual(expectedBuf, gotBuf);
+    };
     for (const role of FILE_TOKEN_ROLES) {
-        const expectedBuf = Buffer.from(fileTokenSig(exp, role), 'utf8');
-        if (expectedBuf.length === gotBuf.length && crypto.timingSafeEqual(expectedBuf, gotBuf)) {
-            return role;
-        }
+        if (matches(fileTokenSig(exp, role))) return role;
     }
-    return null;
+    // Tokens minted before role binding (v2.24.5 and older) carry no role.
+    // Honour them as guest until they expire (1 h) so tabs left open across
+    // an upgrade keep loading media instead of breaking until a reload.
+    const legacy = toBase64Url(
+        crypto
+            .createHmac('sha256', Buffer.from(getCachedSecret(), 'hex'))
+            .update(`filetoken|${exp}`)
+            .digest(),
+    );
+    return matches(legacy) ? 'guest' : null;
 }
 
 // ---- TTL clamp -------------------------------------------------------------

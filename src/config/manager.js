@@ -72,9 +72,6 @@ const DEFAULT_CONFIG = {
             // Idle worker sleep when no job is available. Lower = snappier
             // pickup of new jobs at the cost of a bit more CPU.
             idleSleepMs: 200,
-            // History (priority 2) queue length above which new jobs spill
-            // to disk instead of growing RAM. Realtime never spills.
-            spilloverThreshold: 2000,
         },
         history: {
             // Backfill pauses iteration when the downloader queue is above

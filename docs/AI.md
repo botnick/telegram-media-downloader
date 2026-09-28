@@ -781,9 +781,19 @@ File a bug with the stack trace.
 
 ---
 
+## NSFW Built-in Classifier
+
+When no sidecar URL is set, the classifier runs on the app's CPU through onnxruntime-node, inside a worker thread so scans never block the web server. Images are decoded and resized to the model's input size by sharp before inference, and photos are classified in batches.
+
+| Env var | Default | Description |
+|---|---|---|
+| `TGDL_NSFW_THREADS` | half the CPU threads, max 8 | Inference threads. Lower it to leave more CPU for downloads on small boxes |
+
+The worker (and the model's memory) is released after 5 minutes without NSFW work and reloads from the on-disk cache on the next scan.
+
 ## NSFW External Sidecar (v2.20.0+)
 
-The NSFW classifier can be offloaded to a remote GPU server, mirroring the faces sidecar pattern. When no URL is set, the built-in WASM classifier runs in-process (CPU).
+The NSFW classifier can be offloaded to a remote GPU server, mirroring the faces sidecar pattern. When no URL is set, the built-in classifier above runs in-process (CPU).
 
 ### Setup
 
@@ -794,18 +804,24 @@ python main.py                        # default: 0.0.0.0:8012
 TGDL_NSFW_PORT=9000 python main.py    # custom port
 ```
 
-Or use the GPU Dockerfile:
+Or run a published image (`nsfw-v*` releases):
 
 ```bash
-docker build -f Dockerfile.gpu -t nsfw-sidecar .
-docker run --gpus all -p 8012:8012 nsfw-sidecar
+# CPU (linux/amd64 + linux/arm64)
+docker run -p 8012:8012 -v /path/to/downloads:/downloads:ro \
+  -e TGDL_NSFW_ALLOW_ROOTS=/downloads ghcr.io/botnick/tgdl-nsfw:latest
+# NVIDIA GPU (linux/amd64)
+docker run --gpus all -p 8012:8012 ghcr.io/botnick/tgdl-nsfw:gpu-latest
 ```
+
+`TGDL_NSFW_ALLOW_ROOTS` is only needed for path mode (the sidecar reading files directly, at the same paths the app uses); without it the app sends images as base64. To build locally instead: `docker build -f Dockerfile.gpu -t nsfw-sidecar .`
 
 ### Configuration
 
 | Config key | Env var | Default | Description |
 |---|---|---|---|
 | `advanced.nsfw.sidecarUrl` | `TGDL_NSFW_SIDECAR_URL` | `''` | External classifier URL; empty = local WASM |
+| — (sidecar env) | `TGDL_NSFW_ALLOW_ROOTS` | `''` | Comma-separated directories the sidecar may read in path mode. Empty = path mode off (every request uses `image_b64`) |
 
 Set via **Maintenance → NSFW → External classifier URL** in the dashboard, or via env var for Docker deployments.
 
@@ -817,4 +833,4 @@ Set via **Maintenance → NSFW → External classifier URL** in the dashboard, o
 | `POST` | `/classify` | `{path \| image_b64}` → `{score, label}` |
 | `POST` | `/classify/batch` | `{files[]}` → `{results[]}` |
 
-The Node client (`src/core/nsfw-client.js`) tries path mode first; if the sidecar returns 403 (can't see the file — common when running on a different machine), it falls back to sending the image as base64.
+The Node client (`src/core/nsfw-client.js`) tries path mode first; if the sidecar returns 403 (the path is outside `TGDL_NSFW_ALLOW_ROOTS`, or the sidecar runs on a different machine), it falls back to sending the image as base64. When the sidecar shares the downloads directory with the app (same host or a shared mount), set `TGDL_NSFW_ALLOW_ROOTS` to that directory to keep the faster path mode.
