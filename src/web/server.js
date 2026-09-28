@@ -238,6 +238,7 @@ import { listDiscoveredPeers } from '../core/db.js';
 import WebSocketLib from 'ws';
 import { getOwnerPeerForGroup, isLocalGroup } from '../core/cluster/router.js';
 import { createSwrCache } from './lib/swr-cache.js';
+import { createWsBroadcaster } from './lib/ws-broadcaster.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
     recordClusterAudit,
@@ -384,6 +385,14 @@ server.requestTimeout = 120_000;
 // accepts every connection including unauthenticated ones.
 const wss = new WebSocketServer({ noServer: true });
 const clients = new Set();
+// Coalesces high-rate engine events, skips backed-up sockets and runs the
+// 30 s ping/terminate heartbeat — see lib/ws-broadcaster.js. `broadcast()`
+// below is the only writer.
+const _wsBroadcaster = createWsBroadcaster({
+    getClients: () => clients,
+    onTerminate: (ws) => clients.delete(ws),
+});
+_wsBroadcaster.startHeartbeat();
 
 // Recursive directory size — used by /api/stats as the fallback when the DB
 // catalogue is empty. We can't trust `data/disk_usage.json` alone because
@@ -12462,10 +12471,9 @@ const _STATS_TRIGGER_TYPES = new Set([
 ]);
 
 function broadcast(data) {
-    const message = JSON.stringify(data);
-    for (const client of Array.from(clients)) {
-        if (client.readyState === 1) client.send(message);
-    }
+    // Per-chunk progress / per-row deletes are coalesced (≤ 2/s per key,
+    // same message shapes); everything else is sent right away.
+    _wsBroadcaster.broadcast(data);
     // Side-channel: if the event meaningfully changed stats, schedule a
     // single recompute + push. Debounce inside broadcastStatsSoon() makes
     // a 50-row bulk delete still cost one stats broadcast, not fifty.
@@ -12677,7 +12685,14 @@ app.get('/api/maintenance/logs/recent', async (req, res) => {
 
 wss.on('connection', (ws) => {
     clients.add(ws);
+    // Ping/pong liveness for the heartbeat — a half-open phone socket is
+    // terminated after one missed pong instead of buffering for minutes.
+    _wsBroadcaster.attach(ws);
     ws.on('close', () => clients.delete(ws));
+    // Protocol errors (bad frame, oversized payload) are emitted as
+    // 'error'; without a listener EventEmitter re-throws them as an
+    // uncaught exception, which crashes the process.
+    ws.on('error', () => clients.delete(ws));
 });
 
 // Last-resort handler — converts any throw or rejected promise that
