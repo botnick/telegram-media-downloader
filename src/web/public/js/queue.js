@@ -540,6 +540,19 @@ function handleWs(msg) {
             scheduleStructuralRender();
             return;
         }
+        // A chat that can't be reached any more: its queued jobs were
+        // dropped server-side (they'd all fail).
+        if (p.op === 'drop-group' && p.groupId != null) {
+            for (const [k, v] of store) {
+                if (
+                    String(v.groupId) === String(p.groupId) &&
+                    (v.status === 'queued' || v.status === 'paused')
+                )
+                    remove(k);
+            }
+            scheduleStructuralRender();
+            return;
+        }
         if (!p.key) {
             scheduleRender();
             return;

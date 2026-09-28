@@ -12,9 +12,15 @@ import { markRescued } from './db.js';
 import { effectiveRescueMs } from './rescue.js';
 import { loadConfig, saveConfig, watchConfig } from '../config/manager.js';
 import { resolveConfigDownloadPath } from './paths.js';
+import * as chatAccess from './chat-access.js';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+
+// Re-checks of chats that can't be reached run on this tick, one chat per
+// tick at most, so a long list of dead chats never turns into a burst of
+// calls. Which chat is due comes from the back-off in chat-access.js.
+const ACCESS_TICK_MS = 60 * 1000;
 
 export class RealtimeMonitor extends EventEmitter {
     constructor(client, downloader, config, accountManager = null) {
@@ -41,6 +47,14 @@ export class RealtimeMonitor extends EventEmitter {
         // line + auto-disable failed groups via saveConfig().
         // Map<groupId, reasonCode>. Cleared at the start of each `start()`.
         this._lastResolveReason = new Map();
+        // Newest message id seen by the discovery probe (getMessages limit
+        // 1), so start() doesn't ask Telegram for the same message twice.
+        this._probeTopIds = new Map();
+        // Groups with an access-loss check in flight (poll + a download
+        // error can both notice the same chat at once).
+        this._accessLossInFlight = new Set();
+        // Pause between two chats in one polling pass (rate-limit guard).
+        this.pollGapMs = 1000;
 
         // Live sync with Web UI: config changes arrive on the in-process
         // EventEmitter from src/config/manager.js — no filesystem watch
@@ -192,22 +206,41 @@ export class RealtimeMonitor extends EventEmitter {
         // Probe the pinned account first (when still connected) so a healthy
         // pin keeps winning, then fall through to the rest. A dead pin simply
         // isn't in `clients`, so it's skipped and the loop re-binds + re-pins.
-        const ordered = this._orderedClientsForGroup(group);
-        for (const acctClient of ordered) {
-            try {
-                const history = await acctClient.getMessages(group.id, { limit: 1 });
-                if (history) {
-                    // Cache the working client + remember it on the group so the
-                    // binding survives restarts and re-added accounts self-heal.
-                    this.groupClientCache.set(group.id, acctClient);
-                    this._rememberGroupAccount(group, acctClient);
-                    return acctClient;
-                }
-            } catch (e) {
-                // This client can't access the group, try next
-            }
+        // Each account's answer is classified and recorded (chat-access.js):
+        // a chat no account can read is paused with the reason; a flood wait
+        // or a timeout says nothing about the chat and marks nothing.
+        const r = await chatAccess.probeChatAccess(group.id, this._clientPairsForGroup(group), {
+            isRecheck: chatAccess.isBlocked(group.id),
+        });
+        if (r.client) {
+            // Cache the working client + remember it on the group so the
+            // binding survives restarts and re-added accounts self-heal.
+            this.groupClientCache.set(group.id, r.client);
+            this._rememberGroupAccount(group, r.client);
+            if (r.topId != null) this._probeTopIds.set(String(group.id), r.topId);
+            return r.client;
         }
+        const code = r.results.find((x) => x.code)?.code || 'unknown';
+        this._lastResolveReason.set(
+            group.id,
+            chatAccess.isBlockingState(r.state)
+                ? `access:${r.state}:${code}`
+                : `probe_failed:${code}`,
+        );
         return null; // No client can access
+    }
+
+    /**
+     * Every connected client as `{ accountId, client }`, pinned account
+     * first — the shape chat-access.probeChatAccess() takes. Without an
+     * AccountManager (CLI standalone) it's the one default client.
+     */
+    _clientPairsForGroup(group) {
+        if (!this.accountManager) return [{ accountId: null, client: this.client }];
+        return this._orderedClientsForGroup(group).map((client) => ({
+            accountId: this.accountManager.getIdForClient(client),
+            client,
+        }));
     }
 
     /**
@@ -241,7 +274,8 @@ export class RealtimeMonitor extends EventEmitter {
     async _buildDialogsIndex() {
         const idx = new Map();
         if (!this.accountManager) return idx;
-        for (const [_id, acctClient] of this.accountManager.clients) {
+        const configIds = new Set((this.config?.groups || []).map((g) => String(g?.id)));
+        for (const [acctId, acctClient] of this.accountManager.clients) {
             if (!acctClient?.connected) continue;
             let active = [];
             let archived = [];
@@ -255,6 +289,16 @@ export class RealtimeMonitor extends EventEmitter {
                 ]);
             } catch {
                 continue;
+            }
+            // Free access information: a chat back in this account's list
+            // is reachable again; a forbidden / migrated one is recorded
+            // before start() spends a probe on it.
+            try {
+                chatAccess.syncFromDialogs(acctId, [...(active || []), ...(archived || [])], {
+                    configIds,
+                });
+            } catch {
+                /* bookkeeping only */
             }
             for (const d of [...(active || []), ...(archived || [])]) {
                 const title =
@@ -596,36 +640,86 @@ export class RealtimeMonitor extends EventEmitter {
         // subsequent restarts are silent. Operator surfaces the list +
         // bulk operations on Maintenance → Recovery cleanup.
         this._lastResolveReason.clear();
+        this._probeTopIds.clear();
         const _topPerGroup = new Map();
-        const _resolveFailures = []; // [{ group, reason }]
+        const _resolveFailures = []; // [{ group, reason }] — synthetic ids only
+        // Chats no account can read (chat-access.js). They stay enabled —
+        // that's the operator's intent — and are skipped until a re-check
+        // or a dialogs sync sees them readable again.
+        const _unreachable = []; // [{ group, state }]
+        let _skippedKnown = 0;
         let _resolvedCount = 0;
         for (const group of enabledGroups) {
             const wasUnknown = typeof group.id === 'string' && group.id.startsWith('unknown:');
+            // Already known unreachable and not due for a re-check: skip it
+            // without a single call (the periodic re-check picks it up).
+            if (!wasUnknown && chatAccess.isBlocked(group.id) && !chatAccess.isDue(group.id)) {
+                _skippedKnown += 1;
+                _unreachable.push({ group, state: chatAccess.accessOf(group.id).state });
+                continue;
+            }
             try {
                 const workingClient = await this.discoverClientForGroup(group, dialogsIdx);
                 if (!workingClient) {
-                    const reason =
-                        this._lastResolveReason.get(group.id) ||
-                        (wasUnknown ? 'index_miss' : 'probe_failed:unknown');
-                    _resolveFailures.push({ group, reason });
-                    group.enabled = false;
+                    if (wasUnknown) {
+                        const reason = this._lastResolveReason.get(group.id) || 'index_miss';
+                        _resolveFailures.push({ group, reason });
+                        group.enabled = false;
+                    } else if (chatAccess.isBlocked(group.id)) {
+                        _unreachable.push({ group, state: chatAccess.accessOf(group.id).state });
+                    }
+                    // Otherwise every account only answered with a transient
+                    // error (flood wait, timeout): leave the chat as it is —
+                    // polling retries it like before, nothing is disabled.
                     continue;
                 }
                 if (wasUnknown && !String(group.id).startsWith('unknown:')) {
                     // The resolver rewrote the id in-place — count it.
                     _resolvedCount += 1;
                 }
-                const history = await workingClient.getMessages(group.id, { limit: 1 });
-                if (history && history.length > 0) {
-                    this.lastIds.set(group.id, history[0].id);
-                    _topPerGroup.set(String(group.id), history[0].id);
+                // The discovery probe already fetched the newest message;
+                // only a synthetic-id resolve (which probes differently)
+                // needs its own call here.
+                let top = this._probeTopIds.get(String(group.id));
+                if (top == null && wasUnknown) {
+                    const history = await workingClient.getMessages(group.id, { limit: 1 });
+                    if (history && history.length > 0) top = history[0].id;
+                }
+                if (top != null) {
+                    this.lastIds.set(group.id, top);
+                    _topPerGroup.set(String(group.id), top);
                 }
             } catch (e) {
-                if (e.errorMessage === 'CHANNEL_INVALID') {
-                    _resolveFailures.push({ group, reason: 'probe_failed:CHANNEL_INVALID' });
-                    group.enabled = false;
+                const cls = chatAccess.classifyChatError(group.id, e);
+                if (cls.definite) {
+                    const client = this.getClientForGroup(group);
+                    chatAccess.recordResult(
+                        group.id,
+                        this.accountManager?.getIdForClient?.(client) ?? null,
+                        cls,
+                    );
+                    if (chatAccess.isBlocked(group.id)) {
+                        _unreachable.push({ group, state: chatAccess.accessOf(group.id).state });
+                    }
                 }
             }
+        }
+        if (_unreachable.length) {
+            const tally = new Map();
+            for (const { state } of _unreachable) tally.set(state, (tally.get(state) || 0) + 1);
+            const tallyStr = [...tally.entries()].map(([k, v]) => `${k}=${v}`).join(', ');
+            console.log(
+                colorize(
+                    `⏸  ${_unreachable.length} chat(s) can't be reached by any loaded account (${this._describeLoadedAccounts()}) — skipped until they're reachable again. Reasons: ${tallyStr}${_skippedKnown ? ` (${_skippedKnown} already known, not re-asked)` : ''}`,
+                    'yellow',
+                ),
+            );
+            console.log(
+                colorize(
+                    '   See Chats → Needs attention: rejoin in Telegram then Check again, switch account, or stop monitoring.',
+                    'dim',
+                ),
+            );
         }
 
         // ---- Single summary line + persisted auto-disable -----------------
@@ -734,6 +828,23 @@ export class RealtimeMonitor extends EventEmitter {
             console.warn('[catch-up] hook error:', e?.message || e);
         }
 
+        // A download that hits "this chat is gone" reports it here, so the
+        // other accounts get one try before the chat is paused.
+        this._onDownloadAccessError = ({ job, cls }) => {
+            const group = this.config.groups.find((g) => String(g.id) === String(job?.groupId));
+            if (!group) return;
+            this._handleAccessLoss(group, job.client || null, cls).catch(() => {});
+        };
+        this.downloader?.on?.('access_error', this._onDownloadAccessError);
+
+        // Periodic re-check of unreachable chats: one chat per tick, only
+        // when its back-off says it's due.
+        this._isLocalGroup = isLocalGroup;
+        this._accessTimer = setInterval(() => {
+            this._accessTick().catch(() => {});
+        }, ACCESS_TICK_MS);
+        this._accessTimer.unref?.();
+
         // Start Polling Loop (Smart Recursive Mode)
         this.startPollingLoop();
 
@@ -820,15 +931,24 @@ export class RealtimeMonitor extends EventEmitter {
         const { isLocalGroup } = await import('./cluster/router.js').catch(() => ({
             isLocalGroup: () => true,
         }));
-        const enabledGroups = this.config.groups.filter((g) => g.enabled && isLocalGroup(g));
+        // Chats no account can read are skipped here — a local lookup, no
+        // call. They come back on their own once a re-check or a dialogs
+        // sync sees them readable again.
+        const enabledGroups = this.config.groups.filter(
+            (g) => g.enabled && isLocalGroup(g) && !chatAccess.isBlocked(g.id),
+        );
 
         for (const group of enabledGroups) {
             // Tiny delay between groups to prevent flood (Rate Limit Protection)
-            await new Promise((r) => setTimeout(r, 1000));
+            await new Promise((r) => setTimeout(r, this.pollGapMs));
+            if (!this.running) return;
+            // Marked unreachable while this pass was sleeping (a download
+            // error, the re-checker) — don't ask again.
+            if (chatAccess.isBlocked(group.id)) continue;
 
+            const pollClient = this.getClientForGroup(group);
             try {
                 const lastId = this.lastIds.get(group.id) || 0;
-                const pollClient = this.getClientForGroup(group);
 
                 // Fetch messages NEWER than lastId
                 const messages = await pollClient.getMessages(group.id, {
@@ -847,8 +967,123 @@ export class RealtimeMonitor extends EventEmitter {
                     }
                 }
             } catch (e) {
-                // Silent fail
+                // Transient errors (flood wait, timeout) stay silent and are
+                // retried next pass, as before. A definite "this chat is
+                // gone" gives the other accounts one try, then pauses the
+                // chat instead of asking again every pass.
+                const cls = chatAccess.classifyChatError(group.id, e);
+                if (cls.definite) await this._handleAccessLoss(group, pollClient, cls);
             }
+        }
+    }
+
+    /**
+     * An account couldn't read `group` (definite error `cls`). Try every
+     * other account once; the first that can read it takes over (cached +
+     * pinned) and the chat stays monitored. When none can, the chat is
+     * recorded as unreachable — polling, backfill, avatars and forwarding
+     * skip it from then on — and its queued downloads are dropped.
+     */
+    async _handleAccessLoss(group, failedClient, cls) {
+        const gid = String(group.id);
+        if (this._accessLossInFlight.has(gid)) return;
+        this._accessLossInFlight.add(gid);
+        try {
+            const failedAccount = failedClient
+                ? (this.accountManager?.getIdForClient?.(failedClient) ?? null)
+                : null;
+            let access;
+            if (cls.state === 'migrated') {
+                // Chat-wide — asking the other accounts can't change it.
+                access = chatAccess.recordResult(group.id, failedAccount, cls);
+            } else {
+                chatAccess.recordResult(group.id, failedAccount, cls);
+                const others = this._clientPairsForGroup(group).filter(
+                    (p) => p.client && p.client !== failedClient,
+                );
+                const r = others.length
+                    ? await chatAccess.probeChatAccess(group.id, others)
+                    : { client: null, access: chatAccess.accessOf(group.id) };
+                if (r.client) {
+                    this.groupClientCache?.set(group.id, r.client);
+                    this._rememberGroupAccount(group, r.client);
+                    console.log(
+                        colorize(
+                            `🔁 "${group.name}": ${failedAccount || 'the default account'} lost access (${cls.code}) — switched to ${r.accountId || 'another account'}`,
+                            'cyan',
+                        ),
+                    );
+                    return;
+                }
+                access = r.access;
+            }
+            this.groupClientCache?.delete(group.id);
+            if (chatAccess.isBlocked(group.id)) {
+                const dropped = this.downloader?.dropGroup?.(group.id, access?.state) || 0;
+                console.log(
+                    colorize(
+                        `⏸  "${group.name}" can't be reached (${access?.state}: ${access?.code || cls.code}) — skipped until it's reachable again${dropped ? `; ${dropped} queued download(s) dropped` : ''}`,
+                        'yellow',
+                    ),
+                );
+                this.emit('access_changed', { groupId: gid, access });
+            }
+        } catch {
+            /* never let bookkeeping break the poll loop */
+        } finally {
+            this._accessLossInFlight.delete(gid);
+        }
+    }
+
+    /**
+     * Ask every account (pinned first) whether it can read `group` again.
+     * Used by the periodic re-check and the dashboard's "Check again".
+     * On success the working client is cached + pinned and polling resumes
+     * from the chat's newest message (what it missed while unreachable is
+     * left to a backfill — no surprise burst of downloads).
+     */
+    async recheckGroup(group) {
+        const r = await chatAccess.probeChatAccess(group.id, this._clientPairsForGroup(group), {
+            isRecheck: true,
+        });
+        if (r.client) {
+            this.groupClientCache?.set(group.id, r.client);
+            this._rememberGroupAccount(group, r.client);
+            if (r.topId != null && this.lastIds) this.lastIds.set(group.id, r.topId);
+        }
+        return r;
+    }
+
+    /** One tick of the re-checker: at most one due chat. */
+    async _accessTick(now = Date.now()) {
+        if (!this.running || this._accessTickBusy) return null;
+        const isLocal = this._isLocalGroup || (() => true);
+        const candidates = (this.config.groups || []).filter(
+            (g) =>
+                g &&
+                g.enabled &&
+                isLocal(g) &&
+                !(typeof g.id === 'string' && g.id.startsWith('unknown:')),
+        );
+        const id = chatAccess.nextDueId(
+            candidates.map((g) => g.id),
+            now,
+        );
+        if (id == null) return null;
+        const group = candidates.find((g) => g.id === id);
+        if (!group) return null;
+        this._accessTickBusy = true;
+        try {
+            const r = await this.recheckGroup(group);
+            if (r.client) {
+                console.log(
+                    colorize(`✅ "${group.name}" is reachable again — monitoring resumed`, 'green'),
+                );
+                this.emit('access_changed', { groupId: String(group.id), access: r.access });
+            }
+            return r;
+        } finally {
+            this._accessTickBusy = false;
         }
     }
 
@@ -867,6 +1102,18 @@ export class RealtimeMonitor extends EventEmitter {
         if (this.pollTimeout) {
             clearTimeout(this.pollTimeout); // Stop Hybrid Polling
             this.pollTimeout = null;
+        }
+        if (this._accessTimer) {
+            clearInterval(this._accessTimer);
+            this._accessTimer = null;
+        }
+        if (this._onDownloadAccessError) {
+            try {
+                this.downloader?.off?.('access_error', this._onDownloadAccessError);
+            } catch {
+                /* downloader already gone */
+            }
+            this._onDownloadAccessError = null;
         }
         // Release the config-file watcher + any pending debounce timer.
         if (this._configWatcher) {
@@ -954,6 +1201,46 @@ export class RealtimeMonitor extends EventEmitter {
                     this._unknownGroups.add(chatId);
                 }
                 return;
+            }
+
+            // A basic group upgraded to a supergroup: its last message is
+            // the "migrated to" service message. Record it (chat-wide) so
+            // the dashboard can offer to follow the new group.
+            const migrated = chatAccess.classifyMessage(message);
+            if (migrated) {
+                chatAccess.recordResult(
+                    group.id,
+                    this.accountManager?.getIdForClient?.(event.client || message._client) ?? null,
+                    migrated,
+                );
+                this.emit('access_changed', {
+                    groupId: String(group.id),
+                    access: chatAccess.accessOf(group.id),
+                });
+                return;
+            }
+
+            // Chat recorded as unreachable. A live update from it is proof
+            // an account is in it again (Telegram only pushes updates for
+            // chats you're in) — for a lost membership that flips it back to
+            // ok. Restricted / migrated chats stay paused.
+            if (chatAccess.isBlocked(group.id)) {
+                const st = chatAccess.accessOf(group.id).state;
+                // Update-handler deliveries only (the poll path passes
+                // event.client and never reaches a blocked chat anyway).
+                const liveClient = !event.client ? message._client || message.client : null;
+                if (liveClient && ['left', 'private', 'banned', 'deleted'].includes(st)) {
+                    const acct = this.accountManager?.getIdForClient?.(liveClient) ?? null;
+                    chatAccess.markReachable(group.id, acct);
+                    this.emit('access_changed', {
+                        groupId: String(group.id),
+                        access: chatAccess.accessOf(group.id),
+                    });
+                }
+                if (chatAccess.isBlocked(group.id)) {
+                    this.stats.skipped++;
+                    return;
+                }
             }
 
             // DEBUG: Matched Group

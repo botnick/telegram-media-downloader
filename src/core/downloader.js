@@ -18,6 +18,7 @@ import {
     kvSet,
 } from './db.js';
 import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
+import { accessOf, classifyChatError, isBlocked, recordResult } from './chat-access.js';
 import { pregenerateThumb } from './thumbs.js';
 import { optimizeDownloadInBackground as faststartInBackground } from './faststart.js';
 import { pregenerateNsfw } from './nsfw.js';
@@ -601,6 +602,17 @@ export class DownloadManager extends EventEmitter {
                 continue;
             }
 
+            // The chat was marked unreachable after this job was queued —
+            // don't spend a download call (and five retries) on it.
+            if (job.groupId != null && isBlocked(job.groupId)) {
+                this._jobs.delete(job.key);
+                const st = accessOf(job.groupId).state;
+                const reason = `Skipped — chat can't be reached (${st})`;
+                await this.reportFailure(job, reason);
+                this.emit('error', { job, error: reason, access: st });
+                continue;
+            }
+
             this.active.set(job.key, { ...job, workerId: id, progress: 0, startedAt: Date.now() });
             this._jobs.delete(job.key);
             this.emit('start', job);
@@ -621,6 +633,56 @@ export class DownloadManager extends EventEmitter {
 
             this.active.delete(job.key);
         }
+    }
+
+    /**
+     * Build the error for a download refused because the chat is gone for
+     * this account, and report it once. With the realtime monitor wired
+     * (it listens for `access_error`) the other accounts get a try before
+     * the chat is paused; without it (standalone downloader) the answer is
+     * recorded directly.
+     */
+    _accessFailure(job, cls) {
+        const err = new Error(`Chat can't be reached (${cls.state}: ${cls.code})`);
+        err.accessError = cls;
+        err.errorMessage = cls.code;
+        try {
+            if (this.listenerCount('access_error') > 0) {
+                this.emit('access_error', { job, cls });
+            } else if (job?.groupId != null) {
+                recordResult(job.groupId, job.accountId ?? null, cls);
+            }
+        } catch {
+            /* bookkeeping only */
+        }
+        return err;
+    }
+
+    /**
+     * Drop every queued (not yet started) job of a chat that can't be
+     * reached — they'd all fail. Returns how many were dropped. Running
+     * downloads finish or fail on their own.
+     */
+    dropGroup(groupId, state = null) {
+        const gid = String(groupId);
+        const drop = [];
+        const keep = (j) => {
+            if (String(j.groupId) === gid) {
+                drop.push(j);
+                return false;
+            }
+            return true;
+        };
+        this._high = this._high.filter(keep);
+        this.queue = this.queue.filter(keep);
+        if (!drop.length) return 0;
+        for (const j of drop) {
+            this._jobs.delete(j.key);
+            this._paused.delete(j.key);
+        }
+        this.emit('queue', this.pendingCount);
+        this.emit('queue_changed', { op: 'drop-group', groupId: gid, count: drop.length, state });
+        return drop.length;
     }
 
     async reportFailure(job, reason) {
@@ -821,6 +883,16 @@ export class DownloadManager extends EventEmitter {
                 return; // swallow — runWorker treats absence of throw as "done"
             }
 
+            // Already classified on a nested attempt — pass it up untouched.
+            if (error?.accessError) throw error;
+
+            // The chat itself is gone for this account (left, banned,
+            // private, deleted, restricted). Retrying can't help — fail now
+            // instead of spending five more calls, and report it so the
+            // monitor can try the other accounts / pause the chat.
+            const accessCls = classifyChatError(job.groupId, error);
+            if (accessCls.definite) throw this._accessFailure(job, accessCls);
+
             if (error.errorMessage === 'FLOOD_WAIT' || error.message?.includes('FLOOD_WAIT')) {
                 const seconds = error.seconds || 60;
                 this.throttle(); // Dynamic: reduce concurrency on flood
@@ -856,7 +928,13 @@ export class DownloadManager extends EventEmitter {
                             job.message = messages[0];
                             return this.download(job, attempt + 1);
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        if (e?.accessError) throw e;
+                        // Refreshing the file reference is where a lost chat
+                        // usually shows up (CHANNEL_PRIVATE on getMessages).
+                        const cls = classifyChatError(job.groupId, e);
+                        if (cls.definite) throw this._accessFailure(job, cls);
+                    }
                 }
             }
 
