@@ -37,6 +37,9 @@ type Job struct {
 	// Params are per-job overrides of the thumb config (nil = defaults),
 	// so a caller's settings apply without restarting the sidecar.
 	Params *JobParams `json:"params,omitempty"`
+	// Overwrite overrides storage.overwrite for this job ("" = default).
+	// A caller that keeps its own cache sends "always".
+	Overwrite string `json:"overwrite,omitempty"`
 	// Result fields (populated on done)
 	SpritePath  string  `json:"sprite_path,omitempty"`
 	MetaPath    string  `json:"meta_path,omitempty"`
@@ -371,10 +374,17 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 	metaPath := filepath.Join(outDir, j.VideoID+".json")
 	// An uploaded source is a fresh temp file every time: the caller
 	// already decided the sprite is stale, so skip the cache shortcuts.
-	uploaded := j.Source == "upload"
+	policy := cfg.Storage.Overwrite
+	switch j.Overwrite {
+	case "never", "if-changed", "always":
+		policy = j.Overwrite
+	}
+	if j.Source == "upload" {
+		policy = "always"
+	}
 
 	// Overwrite policy check.
-	if cfg.Storage.Overwrite == "never" && !uploaded {
+	if policy == "never" {
 		if fileExists(dstPath) && fileExists(metaPath) {
 			j.Status = "done"
 			j.SpritePath = dstPath
@@ -396,7 +406,9 @@ func (p *Pool) processJob(ctx context.Context, j *Job) {
 	plan := ffmpeg.Plan(dur, thumb.IntervalSec, thumb.Columns, thumb.MaxTiles, thumb.Width)
 
 	// if-changed: compare source size/mtime with prior meta.
-	if cfg.Storage.Overwrite == "if-changed" && !uploaded && fileExists(metaPath) {
+	// The sprite itself must still be there — a meta file alone (sprite
+	// deleted, or meta written by the parent app) is not a cache hit.
+	if policy == "if-changed" && fileExists(metaPath) && fileExists(dstPath) {
 		if prior, ok := readMeta(metaPath); ok {
 			si, _ := os.Stat(j.SrcPath)
 			if si != nil && prior.SourceSize == si.Size() && prior.SourceMtime == si.ModTime().UnixMilli() {

@@ -325,6 +325,14 @@ type submitOneReq struct {
 	Quality     int     `json:"quality,omitempty"`
 }
 
+func (req submitOneReq) overwrite() string {
+	switch o := strings.ToLower(strings.TrimSpace(req.Overwrite)); o {
+	case "never", "if-changed", "always":
+		return o
+	}
+	return ""
+}
+
 func (req submitOneReq) params() *worker.JobParams {
 	jp := &worker.JobParams{
 		IntervalSec: req.IntervalSec,
@@ -353,10 +361,11 @@ func (s *Server) buildJob(req submitOneReq) (*worker.Job, error) {
 		return nil, &errSource{map[string]any{"error": "bad video_id"}}
 	}
 	j := &worker.Job{
-		ID:       uuid.NewString(),
-		VideoID:  req.VideoID,
-		Priority: req.Priority,
-		Params:   req.params(),
+		ID:        uuid.NewString(),
+		VideoID:   req.VideoID,
+		Priority:  req.Priority,
+		Params:    req.params(),
+		Overwrite: req.overwrite(),
 	}
 	if req.UploadID != "" {
 		if !validID(req.UploadID) {
@@ -467,12 +476,13 @@ func (s *Server) handleSubmitBatch(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			j = &worker.Job{
-				ID:       uuid.NewString(),
-				VideoID:  item.VideoID,
-				SrcPath:  item.Path,
-				Source:   "path",
-				Priority: item.Priority,
-				Params:   item.params(),
+				ID:        uuid.NewString(),
+				VideoID:   item.VideoID,
+				SrcPath:   item.Path,
+				Source:    "path",
+				Priority:  item.Priority,
+				Params:    item.params(),
+				Overwrite: item.overwrite(),
 			}
 		}
 		s.trackJob(j)
