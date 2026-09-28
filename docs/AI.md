@@ -702,6 +702,7 @@ docker run --gpus all -p 8012:8012 nsfw-sidecar
 | Config key | Env var | Default | Description |
 |---|---|---|---|
 | `advanced.nsfw.sidecarUrl` | `TGDL_NSFW_SIDECAR_URL` | `''` | External classifier URL; empty = local WASM |
+| — (sidecar env) | `TGDL_NSFW_ALLOW_ROOTS` | `''` | Comma-separated directories the sidecar may read in path mode. Empty = path mode off (every request uses `image_b64`) |
 
 Set via **Maintenance → NSFW → External classifier URL** in the dashboard, or via env var for Docker deployments.
 
@@ -713,4 +714,4 @@ Set via **Maintenance → NSFW → External classifier URL** in the dashboard, o
 | `POST` | `/classify` | `{path \| image_b64}` → `{score, label}` |
 | `POST` | `/classify/batch` | `{files[]}` → `{results[]}` |
 
-The Node client (`src/core/nsfw-client.js`) tries path mode first; if the sidecar returns 403 (can't see the file — common when running on a different machine), it falls back to sending the image as base64.
+The Node client (`src/core/nsfw-client.js`) tries path mode first; if the sidecar returns 403 (the path is outside `TGDL_NSFW_ALLOW_ROOTS`, or the sidecar runs on a different machine), it falls back to sending the image as base64. When the sidecar shares the downloads directory with the app (same host or a shared mount), set `TGDL_NSFW_ALLOW_ROOTS` to that directory to keep the faster path mode.

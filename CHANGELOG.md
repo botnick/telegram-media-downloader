@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on 
 ## [Unreleased]
 
 ### Security
+- **NSFW sidecar path mode is now default-deny.** With `TGDL_NSFW_ALLOW_ROOTS` unset, `nsfw-service` used to read any path it was sent — and it listens on `0.0.0.0` without auth. It now matches the faces sidecar: path mode only for files under `TGDL_NSFW_ALLOW_ROOTS`, otherwise 403 and the app falls back to `image_b64` automatically. **Action:** if the sidecar shares the downloads directory with the app, set `TGDL_NSFW_ALLOW_ROOTS` to keep the faster path mode. Decoder / internal error messages are logged instead of returned.
+- `telegram-notify.yml` runs with an empty `GITHUB_TOKEN` permission set.
 - **Guest sessions could reach admin-only `/files/?peer=` fetches.** `GET /api/files/token` is on the guest allowlist, and any valid file token made `/files/` treat the request as admin, bypassing the guest block on federated peer files. File tokens now carry the minting session's role in their HMAC, and `/files/` applies that role. Tokens issued before the upgrade stop verifying; the SPA falls back to cookie auth and refreshes its token on its normal schedule.
 - **Sidecar URL probes** (`POST /api/maintenance/nsfw/sidecar-test`, `POST /api/ai/faces/health-test`) now parse the admin-supplied URL with `URL`, reject embedded credentials and inputs over 2048 chars, and trim trailing slashes without the quadratic `/\/+$/` regex.
 - **LIKE patterns didn't escape `\`.** Folder-rename path rewrites and file search escaped `%` / `_` but not the escape character itself, so a folder name containing `\` could match — and rewrite — another folder's `file_path` rows.
