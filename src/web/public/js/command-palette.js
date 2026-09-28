@@ -228,15 +228,25 @@ function actionItems() {
                           'success',
                       ),
               }),
-        item('actions', i18nT('palette.action.add_chat', 'Add a chat'), 'Add a chat', {
+        // The Add sheet — same as the + button / Chats → Add chat or link.
+        item('actions', i18nT('add.button', 'Add chat or link'), 'Add chat or link', {
             icon: 'ri-add-circle-line',
-            words: 'new group channel monitor',
-            run: () => document.getElementById('fab')?.click(),
+            words: 'new group channel monitor link username t.me',
+            run: () =>
+                import('./add-sheet.js')
+                    .then((m) => m.openAddSheet())
+                    .catch((e) => console.error('add sheet', e)),
         }),
+        // The account wizard opens where you are, like any in-app
+        // #/account/add link (app.js); a typed #/account/add URL opens it
+        // over Settings → Accounts.
         item('actions', i18nT('fab.add_account', 'Add Telegram account'), 'Add Telegram account', {
             icon: 'ri-user-add-line',
-            words: 'login phone new account',
-            href: '#/account/add',
+            words: 'login phone new account wizard',
+            run: () =>
+                import('./account-wizard.js')
+                    .then((m) => m.openAccountWizard())
+                    .catch(() => navigate('#/account/add')),
         }),
         item('actions', i18nT('fab.paste_link', 'Paste a Telegram link'), 'Paste a Telegram link', {
             icon: 'ri-link-m',
@@ -456,7 +466,12 @@ export async function openCommandPalette() {
         }
         let html = '';
         let idx = 0;
-        for (const section of SECTION_ORDER) {
+        // Sections in the order of their best match, so the top hit is
+        // the first row (and the one Enter opens).
+        const order = input.value.trim()
+            ? [...new Set(results.map((r) => r.section))]
+            : SECTION_ORDER;
+        for (const section of order) {
             const rows = results.filter((r) => r.section === section);
             if (!rows.length) continue;
             html += `<div role="group" aria-labelledby="palette-sec-${section}">

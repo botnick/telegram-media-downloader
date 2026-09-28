@@ -13,7 +13,7 @@ import fs from 'fs/promises';
 import fsSync, { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { TelegramClient } from 'telegram';
+import { TelegramClient, Api as TgApi, utils as tgUtils } from 'telegram';
 import { DedupStringSession } from '../core/telegram-session.js';
 import crypto from 'crypto';
 import sharp from 'sharp';
@@ -62,6 +62,7 @@ import {
     clearNsfwBlocklist,
     getDownloadHashesForIds,
     setDownloadPinned,
+    setDownloadsPinned,
     getDownloadById,
     kvGet,
     kvSet,
@@ -74,7 +75,7 @@ import {
 } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
-import { AccountManager } from '../core/accounts.js';
+import { AccountManager, hasAccountSessions } from '../core/accounts.js';
 import { loadConfig, saveConfig } from '../config/manager.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
@@ -189,7 +190,12 @@ import {
     getDb as aiGetDb,
 } from '../core/db.js';
 import * as backup from '../core/backup/index.js';
-import { parseTelegramUrl, parseUrlList, UrlParseError } from '../core/url-resolver.js';
+import {
+    parseTelegramUrl,
+    parseUrlList,
+    parseChatQuery,
+    UrlParseError,
+} from '../core/url-resolver.js';
 import { listUserStories, listAllStories, storyToJob } from '../core/stories.js';
 import { metrics } from '../core/metrics.js';
 import {
@@ -1660,7 +1666,7 @@ async function _fetchLatestRelease() {
     const t = setTimeout(() => ctrl.abort(), 5000);
     try {
         const r = await fetch(
-            `https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases?per_page=30`,
+            `https://api.github.com/repos/${UPDATE_CHECK_REPO}/releases?per_page=100`,
             {
                 headers: {
                     Accept: 'application/vnd.github+json',
@@ -1851,6 +1857,9 @@ async function getAccountManager() {
     }
     _accountManager = new AccountManager(config);
     await _accountManager.loadAll();
+    // loadAll() may just have migrated data/session.enc into sessions/ —
+    // close the legacy client so that key isn't used on two connections.
+    await dropLegacyClientIfOwned();
     return _accountManager;
 }
 
@@ -4153,6 +4162,128 @@ app.get('/api/dialogs', async (req, res) => {
     }
 });
 
+// "Add" sheet lookup: resolve a @username / t.me link / invite link /
+// message link to the chat behind it. The sheet searches the dialogs list
+// by name on its own; this covers what a name search can't — chats that
+// aren't in the dialogs list, invite previews, and the chat a message link
+// points at. Admin-only through the guest gate (not on the GET allowlist).
+// Username / id answers ride resolveEntityAcrossAccounts()'s cache, so a
+// repeated lookup doesn't spend another ResolveUsername call.
+function _chatDescriptor(entity, config) {
+    const id = String(tgUtils.getPeerId(entity));
+    const cls = entity?.className;
+    let type = 'group';
+    if (cls === 'Channel') type = entity.broadcast ? 'channel' : 'group';
+    else if (cls === 'User') type = entity.bot ? 'bot' : 'user';
+    const name =
+        entity.title ||
+        [entity.firstName, entity.lastName].filter(Boolean).join(' ') ||
+        entity.username ||
+        id;
+    const cfg = (config.groups || []).find((g) => String(g.id) === id);
+    const isUser = cls === 'User';
+    return {
+        id,
+        name,
+        type,
+        username: entity.username || null,
+        members: entity.participantsCount ?? null,
+        // Channels / groups carry `left` when this account isn't a member.
+        joined: isUser ? true : entity.left !== true,
+        inConfig: !!cfg,
+        enabled: cfg?.enabled === true,
+        suspended: cfg?.suspended === true,
+        dmDisabled: isUser && config.allowDmDownloads !== true,
+    };
+}
+
+app.get('/api/chats/lookup', async (req, res) => {
+    const q = String(req.query.q || '')
+        .trim()
+        .slice(0, 300);
+    if (!q) return res.status(400).json({ error: 'q required' });
+    const parsed = parseChatQuery(q);
+    if (parsed.kind === 'name') return res.json({ kind: 'name', chat: null });
+    if (parsed.kind === 'unsupported') {
+        return res.status(422).json({ kind: 'unsupported', error: parsed.reason });
+    }
+    const message =
+        parsed.kind === 'message'
+            ? { messageId: parsed.messageId, topicId: parsed.topicId ?? null, url: q }
+            : null;
+
+    let clients = [];
+    try {
+        const am = await getAccountManager();
+        clients = [...am.clients.values()].filter((c) => c?.connected);
+    } catch {
+        /* no API credentials / no account yet */
+    }
+    if (!clients.length) {
+        return res.status(503).json({ kind: parsed.kind, error: 'no_account', message });
+    }
+    const config = loadConfig();
+
+    try {
+        if (parsed.kind === 'invite') {
+            let preview = null;
+            let lastErr = null;
+            for (const c of clients) {
+                try {
+                    const r = await c.invoke(
+                        new TgApi.messages.CheckChatInvite({ hash: parsed.hash }),
+                    );
+                    if (r instanceof TgApi.ChatInviteAlready) {
+                        return res.json({ kind: 'invite', chat: _chatDescriptor(r.chat, config) });
+                    }
+                    if (!preview) preview = r;
+                } catch (e) {
+                    lastErr = e;
+                }
+            }
+            if (!preview) {
+                const code = lastErr?.errorMessage || '';
+                if (/FLOOD/.test(code)) {
+                    return res.status(429).json({
+                        kind: 'invite',
+                        error: 'flood',
+                        seconds: Number(lastErr?.seconds) || null,
+                    });
+                }
+                return res.status(404).json({ kind: 'invite', error: 'invite_invalid' });
+            }
+            // Not a member on any account: a preview only (ChatInvitePeek
+            // carries the chat, ChatInvite just the title + member count).
+            const chat = preview.chat ? _chatDescriptor(preview.chat, config) : null;
+            if (chat) chat.joined = false;
+            return res.json({
+                kind: 'invite',
+                chat,
+                invite: {
+                    title: preview.title || chat?.name || '',
+                    members: preview.participantsCount ?? chat?.members ?? null,
+                    type: preview.broadcast ? 'channel' : 'group',
+                    url: `https://t.me/+${parsed.hash}`,
+                },
+            });
+        }
+
+        const ref = parsed.kind === 'username' ? `@${parsed.username}` : parsed.chatRef;
+        const found = await resolveEntityAcrossAccounts(ref);
+        if (!found?.entity) {
+            return res.status(404).json({ kind: parsed.kind, error: 'not_found', message });
+        }
+        return res.json({
+            kind: parsed.kind,
+            chat: _chatDescriptor(found.entity, config),
+            message,
+        });
+    } catch (e) {
+        console.error('GET /api/chats/lookup:', e);
+        return res.status(500).json({ kind: parsed.kind, error: e?.message || 'Lookup failed' });
+    }
+});
+
 // 3. Config Groups List (with Photo URLs)
 // Mirror of the SPA's `looksUnresolved`. If a name is empty / "Unknown" /
 // the bare numeric id / a "Group ..." placeholder, the caller should
@@ -5044,6 +5175,35 @@ app.post('/api/downloads/bulk-delete', async (req, res) => {
             .json({ error: 'A bulk delete is already running', code: 'ALREADY_RUNNING' });
     }
     res.json({ success: true, started: true, queued: idList.length + pathList.length });
+});
+
+// Pin / unpin many rows at once (gallery bulk Pin). Body:
+// `{ ids: [1,2,3], pinned: true | false }`. The gallery used to send one
+// request per selected file. Registered before `/:id/pin`; admin-only via
+// the guest gate like every other mutation.
+const PIN_BATCH_MAX = 5000;
+app.post('/api/downloads/pin', async (req, res) => {
+    const { ids, pinned } = req.body || {};
+    if (typeof pinned !== 'boolean') {
+        return res.status(400).json({ error: 'Body must include `pinned` (boolean)' });
+    }
+    if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: '`ids` must be a non-empty array' });
+    }
+    if (ids.length > PIN_BATCH_MAX) {
+        return res.status(413).json({
+            error: `Too many ids in one request (max ${PIN_BATCH_MAX})`,
+            max: PIN_BATCH_MAX,
+        });
+    }
+    try {
+        const updated = setDownloadsPinned(ids, pinned);
+        if (updated.length) broadcast({ type: 'downloads_pinned', ids: updated, pinned });
+        res.json({ success: true, pinned, ids: updated, updated: updated.length });
+    } catch (e) {
+        console.error('POST /api/downloads/pin:', e);
+        res.status(500).json({ error: 'Update failed' });
+    }
 });
 
 // Toggle the `pinned` flag on a single download row. Pinned rows survive
@@ -12607,6 +12767,13 @@ async function _connectLegacy() {
         return null;
     }
     if (!config.telegram?.apiId || !config.telegram?.apiHash) return null;
+    // AccountManager owns every account in data/sessions/ — including the
+    // migrated copy of data/session.enc. Connecting the legacy file as well
+    // would put the same auth key on two connections (AUTH_KEY_DUPLICATED).
+    if (hasAccountSessions()) {
+        _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
+        return null;
+    }
 
     let client = null;
     try {
@@ -12620,6 +12787,14 @@ async function _connectLegacy() {
         );
         client.setLogLevel('none');
         await client.connect();
+        // Re-check: AccountManager may have migrated this session while we
+        // were connecting (first boot after upgrading from a single-session
+        // install).
+        if (hasAccountSessions()) {
+            await client.destroy().catch(() => {});
+            _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
+            return null;
+        }
         if (await client.isUserAuthorized()) {
             telegramClient = client;
             isConnected = true;
@@ -12636,6 +12811,15 @@ async function _connectLegacy() {
     if (client) await client.destroy().catch(() => {});
     _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
     return null;
+}
+
+async function dropLegacyClientIfOwned() {
+    if (!telegramClient || !hasAccountSessions()) return;
+    const c = telegramClient;
+    telegramClient = null;
+    isConnected = false;
+    _legacyRetryAt = Date.now() + LEGACY_RETRY_MS;
+    await c.destroy().catch(() => {});
 }
 
 // Entity & Photo Helpers — stores `{ entity, client, at }` (NOT bare entity).

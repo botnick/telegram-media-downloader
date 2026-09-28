@@ -1,7 +1,7 @@
 // Navigation model — four top-level places on every screen size:
 //
 //   Library   #/viewer, #/viewer/<chat>          (gallery, All Media or one chat)
-//   Chats     #/groups, #/backfill               (chat list + Backfill tab)
+//   Chats     #/groups, #/backfill, #/groups/<chat> (list, Backfill tab, a chat's details)
 //   Queue     #/queue, #/queue/<filter>
 //   Settings  #/settings[/<section>], #/engine, and the Tools pages:
 //             #/settings/tools/<group>[/<tool>]
@@ -26,6 +26,7 @@ const PLACE = {
     viewer: 'viewer',
     groups: 'groups',
     backfill: 'groups',
+    chat: 'groups', // a chat's details page (#/groups/<id>, js/chat-details.js)
     queue: 'queue',
     settings: 'settings',
     engine: 'settings',

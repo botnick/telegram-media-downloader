@@ -292,251 +292,6 @@
             </div>
         </aside>
 
-        <!-- Group Settings Modal -->
-        <div id="group-modal" class="fixed inset-0 z-50 flex items-center justify-center p-3 modal-backdrop hidden">
-            <div
-                class="group-modal-card bg-tg-sidebar w-full max-w-lg rounded-xl overflow-hidden shadow-2xl transform scale-100 transition-all flex flex-col">
-                <!-- Header — slimmer than before so the modal fits more
-                     content on short viewports. -->
-                <div class="bg-tg-panel px-4 py-3 flex items-center justify-between border-b border-tg-border shrink-0">
-                    <h3 class="text-white font-medium text-base" data-i18n="group.modal.title">Group Settings</h3>
-                    <button onclick="closeGroupSettings()"
-                        class="w-10 h-10 -mr-2 rounded-full hover:bg-tg-hover flex items-center justify-center transition-colors"
-                        data-i18n-aria-label="common.close" aria-label="Close">
-                        <i class="ri-close-line text-tg-textSecondary text-lg"></i>
-                    </button>
-                </div>
-
-                <!-- Tabs — 3 instead of 5 so they always fit on one row
-                     without horizontal scroll. The merge:
-                       Filters  = Media filters + Topics
-                       Routing  = Auto Forward + Accounts + Cluster
-                       Data     = Stats + Recent + Backfill + Rescue + Danger
-                     Icons keep the labels short enough for narrow viewports;
-                     `flex-1` makes each tap target evenly sized. -->
-                <div class="flex border-b border-tg-border shrink-0">
-                    <div class="tab-item active flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('media')" id="tab-media">
-                        <i class="ri-filter-line"></i><span data-i18n="group.modal.tab.media">Filters</span>
-                    </div>
-                    <div class="tab-item flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('forward')" id="tab-forward">
-                        <i class="ri-share-forward-line"></i><span data-i18n="group.modal.tab.forward">Routing</span>
-                    </div>
-                    <div class="tab-item flex-1 text-center inline-flex items-center justify-center gap-1.5 text-sm" onclick="switchSettingsTab('data')" id="tab-data">
-                        <i class="ri-database-2-line"></i><span data-i18n="group.modal.tab.data">Data</span>
-                    </div>
-                </div>
-
-                <!-- Suspended group warning banner — shown when group.suspended === true -->
-                <div id="group-suspended-banner" class="hidden px-4 py-2.5 bg-red-500/10 border-b border-red-500/20 flex items-center gap-2 shrink-0">
-                    <i class="ri-forbid-line text-red-400 text-sm flex-shrink-0"></i>
-                    <span class="text-red-400 text-xs leading-snug" data-i18n="group.suspended.banner">This group was deleted or suspended on Telegram. Monitoring is permanently disabled.</span>
-                </div>
-
-                <!-- Content — compact density + tall scroll area so most
-                     of the modal real estate goes to actual content. -->
-                <div class="p-3 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-
-                    <!-- Filters tab — master enable + allowed media types
-                         + forum-topic filter (was its own tab). -->
-                    <div id="content-media" class="space-y-3">
-                        <label class="flex items-center justify-between p-3 bg-tg-panel rounded-lg cursor-pointer hover:bg-tg-hover transition-colors">
-                            <span class="text-white text-sm font-medium" data-i18n="group.modal.enable_monitoring">Enable Monitoring</span>
-                            <div class="tg-toggle" id="group-enable-toggle" onclick="toggleGroupEnabled(event)"></div>
-                        </label>
-
-                        <div>
-                            <p class="text-tg-textSecondary text-[11px] px-2 mb-1 uppercase font-medium tracking-wide" data-i18n="group.modal.allowed_media">Allowed Media Types</p>
-                            <div class="grid grid-cols-1 gap-1" id="filter-options">
-                                <!-- injected by JS -->
-                            </div>
-                        </div>
-
-                        <!-- Forum-topic filter (folded in from the old
-                             "Topics" tab — same fields/IDs). -->
-                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40">
-                            <label class="flex items-center justify-between mb-2">
-                                <span class="text-white text-sm font-medium" data-i18n="group.topics.title">Forum-topic filter</span>
-                                <div class="tg-toggle" id="topics-enable-toggle" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('active');"></div>
-                            </label>
-                            <p class="text-[11px] text-tg-textSecondary mb-2 leading-snug" data-i18n="group.topics.help_html">
-                                Forum supergroups only. Restrict downloads to specific topic IDs. Empty = all topics.
-                            </p>
-                            <input id="topics-ids" type="text" class="tg-input w-full text-sm" data-i18n-placeholder="group.topics.ids_placeholder" placeholder="e.g., 12, 34, 56">
-                        </div>
-                    </div>
-
-                    <!-- Routing tab — Auto-Forward + per-role account
-                         assignment + cluster routing. The old standalone
-                         "Accounts" and "Topics" tabs were folded in (Topics
-                         moved up into Filters; Accounts + Cluster live here)
-                         to drop the tab count from 5 to 3. All field IDs
-                         preserved so the save handler keeps working. -->
-                    <div id="content-forward" class="hidden space-y-3">
-                        <!-- Auto Forward -->
-                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40">
-                            <label class="flex items-center justify-between mb-2 cursor-pointer">
-                                <div class="min-w-0">
-                                    <div class="text-white text-sm font-medium" data-i18n="group.fwd.title">Auto Forward</div>
-                                    <p class="text-[11px] text-tg-textSecondary" data-i18n="group.fwd.subtitle">Forward media to another channel</p>
-                                </div>
-                                <div class="tg-toggle shrink-0" id="fwd-enable-toggle" onclick="toggleFwdEnabled(event)"></div>
-                            </label>
-                            <div class="space-y-2" id="fwd-settings">
-                                <div>
-                                    <label class="block text-tg-textSecondary text-[11px] mb-1" data-i18n="group.fwd.destination">Destination</label>
-                                    <div class="relative">
-                                        <input type="text" id="fwd-destination" class="tg-input pr-9 text-sm py-2"
-                                            data-i18n-placeholder="group.fwd.dest_placeholder"
-                                            placeholder="Use 'Select' button or type ID">
-                                        <button onclick="openDestinationPicker()"
-                                            class="absolute right-2 top-1/2 transform -translate-y-1/2 text-tg-textSecondary hover:text-white p-0.5 rounded hover:bg-white/10 transition-colors"
-                                            data-i18n-title="group.fwd.select_from_list" title="Select from list">
-                                            <i class="ri-list-check-2"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <label onclick="toggleFwdDelete(event)" class="flex items-center justify-between py-1.5 cursor-pointer">
-                                    <span class="text-tg-text text-xs" data-i18n="group.fwd.delete_after">Delete after forward</span>
-                                    <div class="tg-toggle" id="fwd-delete-toggle"></div>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Account assignment (was its own tab). -->
-                        <div class="p-3 bg-tg-panel rounded-lg border border-tg-border/40 space-y-2">
-                            <div class="text-white text-sm font-medium" data-i18n="group.accounts.title">Account Assignment</div>
-                            <div>
-                                <label class="block text-tg-textSecondary text-[11px] mb-1">
-                                    <i class="ri-download-line mr-1"></i><span data-i18n="group.accounts.monitor">Monitor</span>
-                                </label>
-                                <select id="monitor-account" class="tg-input w-full text-sm py-2">
-                                    <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-tg-textSecondary text-[11px] mb-1">
-                                    <i class="ri-share-forward-line mr-1"></i><span data-i18n="group.accounts.forward">Forward</span>
-                                </label>
-                                <select id="forward-account" class="tg-input w-full text-sm py-2">
-                                    <option value="" data-i18n="group.accounts.default_option">(Default Account)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <!-- Cluster routing — auto-hidden when no peers paired. -->
-                        <div id="group-cluster-routing" class="hidden p-3 bg-tg-panel rounded-lg border border-tg-border/40 space-y-2">
-                            <div class="text-white text-sm font-medium flex items-center gap-2">
-                                <i class="ri-broadcast-line text-tg-blue"></i>
-                                <span data-i18n="group.cluster.title">Cluster routing</span>
-                            </div>
-                            <div>
-                                <label class="block text-tg-textSecondary text-[11px] mb-1">
-                                    <i class="ri-server-line mr-1"></i><span data-i18n="group.cluster.owner_peer">Owner peer</span>
-                                </label>
-                                <select id="group-owner-peer" class="tg-input w-full text-sm py-2">
-                                    <option value="" data-i18n="group.cluster.any_peer">(Any peer — first online wins)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-tg-textSecondary text-[11px] mb-1">
-                                    <i class="ri-shield-flash-line mr-1"></i><span data-i18n="group.cluster.backup_peer">Backup peer</span>
-                                </label>
-                                <select id="group-backup-peer" class="tg-input w-full text-sm py-2">
-                                    <option value="" data-i18n="group.cluster.no_backup">(No automatic failover)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Data tab — single home for everything related to this
-                         group's stored content. Layout (top → bottom):
-                           1. Stats  (Files / Size / Type breakdown / Last download)
-                           2. Recent files (paginated list, Load more)
-                           3. Backfill history (quick-shortcut preset row)
-                           4. Rescue mode (per-group retention policy)
-                           5. Danger zone (Delete files only / Wipe all data)
-                         Rescue + Backfill used to live OUTSIDE the tab container,
-                         which meant they bled into every tab. Folding them into
-                         the Data tab keeps the modal focused — each tab now owns
-                         a single concern. -->
-                    <div id="content-data" class="hidden space-y-3">
-                        <!-- 1. Stats -->
-                        <div id="group-data-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5"></div>
-
-                        <!-- 2. Recent files -->
-                        <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
-                            <div class="flex items-center justify-between mb-1.5">
-                                <h4 class="text-tg-text text-sm font-medium flex items-center gap-1.5">
-                                    <i class="ri-file-list-3-line text-tg-blue"></i>
-                                    <span data-i18n="group.data.recent">Recent files</span>
-                                </h4>
-                                <span id="group-data-files-count" class="text-[10px] text-tg-textSecondary tabular-nums"></span>
-                            </div>
-                            <div id="group-data-files" class="space-y-1 max-h-64 overflow-y-auto pr-1"></div>
-                            <button id="group-data-loadmore" type="button" class="text-[11px] text-tg-blue hover:underline mt-1.5 hidden" data-i18n="group.data.loadmore">Load more</button>
-                        </div>
-
-                        <!-- 3. Backfill — one button; the backfill sheet (js/backfill.js)
-                             picks the limit and starts the job in one place. -->
-                        <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
-                            <h4 class="text-tg-text text-sm font-medium mb-1 flex items-center gap-1.5">
-                                <i class="ri-history-line text-tg-blue"></i>
-                                <span data-i18n="backfill.modal.title">Backfill history</span>
-                            </h4>
-                            <p class="text-[11px] text-tg-textSecondary mb-2 leading-snug" data-i18n="backfill.modal.help_sheet">Download media from messages sent before monitoring started.</p>
-                            <button id="group-backfill-btn" type="button" class="tg-btn-secondary w-full min-h-[44px] text-sm inline-flex items-center justify-center gap-2">
-                                <i class="ri-download-2-line" aria-hidden="true"></i><span data-i18n="backfill.modal.open_sheet">Backfill older messages…</span>
-                            </button>
-                            <p id="history-progress" class="text-[11px] text-tg-textSecondary mt-1.5 hidden"></p>
-                        </div>
-
-                        <!-- 4. Rescue mode -->
-                        <div class="bg-tg-panel rounded-lg p-3 border border-tg-border/40">
-                            <h4 class="text-tg-text text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                <i class="ri-lifebuoy-line text-tg-blue"></i>
-                                <span data-i18n="group.rescue.title">Rescue mode</span>
-                            </h4>
-                            <div class="flex gap-1 mb-2" id="setting-rescue-mode" role="radiogroup" data-i18n-aria-label="group.rescue.title" aria-label="Rescue mode">
-                                <button type="button" data-rescue-value="auto" class="rescue-chip flex-1 py-1 px-2 rounded text-[11px] bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_auto">Auto</button>
-                                <button type="button" data-rescue-value="on" class="rescue-chip flex-1 py-1 px-2 rounded text-[11px] bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_on">On</button>
-                                <button type="button" data-rescue-value="off" class="rescue-chip flex-1 py-1 px-2 rounded text-[11px] bg-tg-bg/40 hover:bg-tg-hover transition-colors" data-i18n="group.rescue.mode_off">Off</button>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <label for="setting-rescue-hours" class="text-[11px] text-tg-textSecondary shrink-0" data-i18n="group.rescue.hours_label">Retention (h)</label>
-                                <input id="setting-rescue-hours" type="number" min="1" max="720" placeholder="48" class="tg-input flex-1 text-sm py-1.5" />
-                            </div>
-                        </div>
-
-                        <!-- 5. Danger zone -->
-                        <div class="bg-tg-panel rounded-lg p-3 border border-red-500/30">
-                            <h4 class="text-red-300 text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                <i class="ri-alert-line"></i>
-                                <span data-i18n="group.data.actions">Danger zone</span>
-                            </h4>
-                            <div class="grid grid-cols-2 gap-1.5">
-                                <button id="group-data-delete-files-btn" type="button" class="px-2 py-1.5 rounded bg-tg-orange/15 hover:bg-tg-orange/25 text-tg-orange text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors">
-                                    <i class="ri-eraser-line"></i><span data-i18n="group.data.delete_files">Delete files</span>
-                                </button>
-                                <button id="group-data-purge-btn" type="button" class="px-2 py-1.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 text-[11px] font-medium inline-flex items-center justify-center gap-1 transition-colors">
-                                    <i class="ri-delete-bin-line"></i><span data-i18n="group.data.wipe_all">Wipe all</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-
-                <!-- Footer — slimmer; the modal already eats more vertical
-                     space than most other surfaces, so trim where we can. -->
-                <div class="px-3 py-2.5 border-t border-tg-border flex justify-end gap-2 bg-tg-sidebar shrink-0">
-                    <button onclick="closeGroupSettings()"
-                        class="px-3 py-1.5 text-sm rounded-lg text-tg-textButton hover:bg-tg-hover transition-colors" data-i18n="common.cancel">Cancel</button>
-                    <button onclick="saveGroupSettings()"
-                        class="px-4 py-1.5 text-sm rounded-lg bg-tg-blue text-white font-medium hover:bg-opacity-90 transition-all shadow-lg shadow-tg-blue/20" data-i18n="group.modal.save_changes">Save Changes</button>
-                </div>
-            </div>
-        </div>
-
         <!-- Main column. onboarding.js inserts the banner as a sibling
              of <main>; without this wrapper the parent would be the
              outer row flex (`<div class="flex h-full">` above), turning
@@ -584,10 +339,11 @@
                         <span id="engine-nav-badge" class="nav-badge hidden"></span>
                     </a>
 
-                    <!-- Go anywhere (command palette). Phones and tablets; wider
-                         screens have it at the top of the sidebar + Ctrl/Cmd+K. -->
+                    <!-- Go anywhere (command palette). Phones; wider screens have
+                         it at the top of the sidebar (the drawer on tablets) +
+                         Ctrl/Cmd+K — the header has no room left there. -->
                     <button id="palette-btn" type="button" aria-haspopup="dialog"
-                        class="md:hidden w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
+                        class="sm:hidden w-10 h-10 min-w-[44px] min-h-[44px] rounded-full hover:bg-tg-hover flex items-center justify-center"
                         data-i18n-aria-label="palette.title" aria-label="Go anywhere"
                         data-i18n-title="palette.title" title="Go anywhere">
                         <i class="ri-search-line text-xl text-tg-textSecondary" aria-hidden="true"></i>
@@ -917,8 +673,8 @@
                         </button>
                     </div>
                     <!-- Search Box -->
-                    <div id="groups-search-box" class="mb-4">
-                        <div class="relative">
+                    <div id="groups-search-box" class="mb-4 flex items-center gap-2">
+                        <div class="relative flex-1 min-w-0">
                             <i
                                 class="ri-search-line absolute left-3 top-1/2 transform -translate-y-1/2 text-tg-textSecondary"></i>
                             <input type="text" name="prevent_autofill_2" autocomplete="username"
@@ -933,6 +689,10 @@
                                 data-i18n-placeholder="groups.search_placeholder"
                                 placeholder="Search groups/channels..." oninput="filterDialogs(this.value)">
                         </div>
+                        <!-- Add sheet (js/add-sheet.js); phones use the + button. -->
+                        <button type="button" id="groups-add-btn" class="tg-btn groups-add-btn" data-admin-only>
+                            <i class="ri-add-line" aria-hidden="true"></i><span data-i18n="add.button">Add chat or link</span>
+                        </button>
                     </div>
                     <div id="groups-config-list" class="space-y-3"></div>
                 </div>
@@ -1257,7 +1017,7 @@
                     <div id="settings-card-accounts" data-settings-section="card-accounts" class="bg-tg-panel rounded-xl p-4 mb-4 scroll-mt-24" data-admin-only>
                         <h3 class="text-tg-text font-medium mb-4 flex items-center gap-2">
                             <i class="ri-user-line text-tg-blue"></i> <span data-i18n="settings.accounts">Telegram Accounts</span>
-                            <a href="/add-account.html" class="ml-auto tg-btn-secondary text-xs px-3 py-1 inline-flex items-center gap-1">
+                            <a href="#/account/add" class="ml-auto tg-btn-secondary text-xs px-3 py-1 inline-flex items-center gap-1">
                                 <i class="ri-add-line"></i> <span data-i18n="settings.accounts.add">Add account</span>
                             </a>
                         </h3>
