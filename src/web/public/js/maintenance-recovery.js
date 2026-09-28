@@ -15,6 +15,7 @@ import { api } from './api.js';
 import { showToast, escapeHtml } from './utils.js';
 import { confirmSheet } from './sheet.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
+import { accessLabel, accessReason } from './chat-access.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -58,6 +59,10 @@ function _formatRelative(unixMs) {
 function _reasonText(it) {
     const code = String(it.resolveFailedReason || (it.isSynthetic ? 'index_miss' : 'unknown'));
     const head = code.split(':')[0];
+    // Paused by the chat access check — same wording as the Chats page.
+    if (head === 'access' && it.access) {
+        return `${accessLabel(it.access)} — ${accessReason(it.access)}`;
+    }
     if (head === 'banned' || code.startsWith('banned:')) {
         return i18nT(
             'maintenance.recovery.reason.banned',

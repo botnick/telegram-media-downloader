@@ -25,6 +25,19 @@ import { confirmSheet, openSheet } from './sheet.js';
 import { navigate } from './router.js';
 import { ws } from './ws.js';
 import { NEW_CHAT_FILTERS, saveChatConfig, findConfigGroup, findDialog } from './add-sheet.js';
+import {
+    accessAccountsLine,
+    accessAdvice,
+    accessFor,
+    accessLabel,
+    accessMetaLine,
+    accessReason,
+    followMigration,
+    isBlockedAccess,
+    recheckChat,
+    removeChatsFromList,
+    stopMonitoringChats,
+} from './chat-access.js';
 
 const FILTERS = [
     { key: 'photos', icon: 'ri-image-line', label: () => i18nT('group.filter.photos', 'Photos') },
@@ -138,6 +151,202 @@ function monitoringNow() {
     return !!g && g.suspended !== true && g.enabled !== false;
 }
 
+// ---- Access state (js/chat-access.js) -------------------------------------
+
+function accessNow() {
+    return cur.group?.access || accessFor(cur.id, findDialog(cur.id));
+}
+
+function blockedNow() {
+    return isBlockedAccess(accessNow());
+}
+
+const ACCESS_ICON = {
+    migrated: 'ri-arrow-right-up-line',
+    deleted: 'ri-delete-bin-6-line',
+    banned: 'ri-forbid-2-line',
+    restricted: 'ri-error-warning-line',
+};
+
+/**
+ * The banner for a chat no account can read: what happened in plain
+ * words, what to do, when it's checked next, and the actions. Keeps the
+ * old `#group-suspended-banner` id.
+ */
+function accessBannerHtml() {
+    const a = accessNow();
+    if (!isBlockedAccess(a)) {
+        return '<div id="group-suspended-banner" class="cd-banner hidden" role="note"></div>';
+    }
+    const g = cur.group;
+    const migrated = a.state === 'migrated';
+    const title = migrated
+        ? i18nT('access.banner.moved', 'Moved to a new group')
+        : i18nTf(
+              'access.banner.title',
+              { state: accessLabel(a) },
+              `Can't reach this chat — ${accessLabel(a)}`,
+          );
+    const actions = [];
+    if (migrated && a.migratedTo) {
+        actions.push(
+            `<button type="button" class="tg-btn" data-cd-access="follow"><i class="ri-arrow-right-up-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.follow', 'Follow the new group'))}</span></button>`,
+        );
+    }
+    actions.push(
+        `<button type="button" class="${migrated ? 'tg-btn-secondary' : 'tg-btn'}" data-cd-access="recheck"><i class="ri-refresh-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.recheck', 'Check again'))}</span></button>`,
+    );
+    if (g && (cur.accountCount || 0) >= 2 && !['deleted', 'migrated'].includes(a.state)) {
+        actions.push(
+            `<button type="button" class="tg-btn-secondary" data-cd-access="switch"><i class="ri-user-shared-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.switch', 'Switch account'))}</span></button>`,
+        );
+    }
+    if (g && g.enabled !== false) {
+        actions.push(
+            `<button type="button" class="tg-btn-secondary" data-cd-access="stop"><i class="ri-pause-circle-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('access.action.stop', 'Stop monitoring'))}</span></button>`,
+        );
+    }
+    if (g) {
+        actions.push(
+            `<button type="button" class="cd-access-quiet" data-cd-access="remove">${escapeHtml(i18nT('access.action.remove', 'Remove from list'))}</button>`,
+        );
+    }
+    return `
+        <div id="group-suspended-banner" class="cd-banner cd-access" data-access="${escapeHtml(a.state)}" role="status">
+            <div class="cd-access-head">
+                <i class="${ACCESS_ICON[a.state] || 'ri-lock-2-line'}" aria-hidden="true"></i>
+                <span>${escapeHtml(title)}</span>
+            </div>
+            <p class="cd-access-text">${escapeHtml(accessReason(a))} ${escapeHtml(accessAdvice(a))}</p>
+            <p class="cd-access-meta">${escapeHtml(
+                migrated
+                    ? i18nT(
+                          'access.paused_note_moved',
+                          'Monitoring, backfill and forwarding are paused for this chat. Downloaded files are kept.',
+                      )
+                    : g && g.enabled !== false
+                      ? i18nT(
+                            'access.paused_note',
+                            "Monitoring, backfill and forwarding are paused for this chat so they don't use up Telegram's limits; it's checked again on its own. Downloaded files are kept.",
+                        )
+                      : i18nT(
+                            'access.paused_note_off',
+                            "Monitoring is off for this chat, and backfill is paused while it can't be reached. Downloaded files are kept.",
+                        ),
+            )}</p>
+            <p class="cd-access-meta" data-cd-access-meta>${escapeHtml(accessMetaLine(a, { showNext: !!g && g.enabled !== false }))}</p>
+            <p class="cd-access-meta">${escapeHtml(accessAccountsLine(a))}</p>
+            <div class="cd-access-actions">${actions.join('')}</div>
+        </div>`;
+}
+
+/** Repaint everything that depends on the access state, in place. */
+function paintAccess() {
+    if (!cur) return;
+    const el = document.getElementById('group-suspended-banner');
+    if (el) el.outerHTML = accessBannerHtml();
+    const blocked = blockedNow();
+    const bf = document.getElementById('group-backfill-btn');
+    if (bf) {
+        bf.disabled = blocked;
+        bf.title = blocked ? i18nT('access.backfill_off', "This chat can't be reached") : '';
+    }
+    const sw = document.getElementById('group-enable-toggle');
+    if (sw) {
+        const legacyOff = cur.group?.suspended === true;
+        sw.disabled = legacyOff;
+        if (legacyOff) sw.setAttribute('aria-disabled', 'true');
+        else sw.removeAttribute('aria-disabled');
+    }
+    setSwitch('group-enable-toggle', monitoringNow(), monitorSub());
+}
+
+/** WS `chat_access_changed` / a groups reload: pick up the new state. */
+export function refreshChatAccess() {
+    if (!cur) return;
+    const fresh = findConfigGroup(cur.id);
+    if (fresh && cur.group) {
+        cur.group.access = fresh.access;
+        if (fresh.suspended !== true) delete cur.group.suspended;
+        cur.group.enabled = fresh.enabled;
+        cur.group.forwardAccess = fresh.forwardAccess;
+    }
+    paintAccess();
+}
+
+async function onAccessAction(kind, btn) {
+    if (!cur) return;
+    const target = cur;
+    const setBusy = (on) => {
+        if (!btn) return;
+        btn.disabled = on;
+        if (on) {
+            btn.dataset.label = btn.querySelector('span')?.textContent || '';
+            const s = btn.querySelector('span');
+            if (s && kind === 'recheck') s.textContent = i18nT('access.checking', 'Checking…');
+        } else if (btn.dataset.label) {
+            const s = btn.querySelector('span');
+            if (s) s.textContent = btn.dataset.label;
+        }
+    };
+    try {
+        if (kind === 'recheck') {
+            setBusy(true);
+            const r = await recheckChat(target.id, { name: target.name });
+            if (cur !== target) return;
+            if (target.group && r?.access) {
+                target.group.access = r.access;
+                if (r.state === 'ok') delete target.group.suspended;
+            }
+            paintAccess();
+        } else if (kind === 'switch') {
+            const sec = document.getElementById('cd-accounts');
+            sec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(() => document.getElementById('monitor-account')?.focus(), 350);
+        } else if (kind === 'stop') {
+            setBusy(true);
+            await stopMonitoringChats([target.id]);
+            if (cur !== target) return;
+            if (target.group) target.group.enabled = false;
+            paintAccess();
+        } else if (kind === 'remove') {
+            const ok = await confirmSheet({
+                title: i18nT('access.confirm.remove_title', 'Remove from list?'),
+                message: i18nTf(
+                    'access.confirm.remove_body',
+                    { name: target.name },
+                    `Removes ${target.name} from your chats list. Downloaded files stay in the library, and nothing changes in Telegram.`,
+                ),
+                confirmLabel: i18nT('access.action.remove', 'Remove from list'),
+            });
+            if (!ok) return;
+            pending = null;
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = null;
+            await removeChatsFromList([target.id]);
+            goBack();
+        } else if (kind === 'follow') {
+            const ok = await confirmSheet({
+                title: i18nT('access.confirm.follow_title', 'Follow the new group?'),
+                message: i18nT(
+                    'access.confirm.follow_body',
+                    "Adds the new group with this chat's settings and stops monitoring this one. Files already downloaded stay where they are.",
+                ),
+                confirmLabel: i18nT('access.action.follow', 'Follow the new group'),
+            });
+            if (!ok) return;
+            const r = await followMigration(target.id);
+            const next = r?.group?.id;
+            if (next != null) navigate(`#/groups/${encodeURIComponent(String(next))}`);
+        }
+    } catch (e) {
+        const msg = e?.data?.error || e?.message || 'Failed';
+        showToast(msg, 'error');
+    } finally {
+        if (btn?.isConnected) setBusy(false);
+    }
+}
+
 // ---- Rendering ------------------------------------------------------------
 
 function switchRow({ id, label, sub, on, disabled = false, extraClass = '' }) {
@@ -155,6 +364,9 @@ function switchRow({ id, label, sub, on, disabled = false, extraClass = '' }) {
 function monitorSub() {
     if (cur.group?.suspended) return i18nT('groups.status.suspended', 'Suspended');
     if (!cur.group) return i18nT('chat.monitor.sub_new', 'Not monitored yet');
+    if (monitoringNow() && blockedNow()) {
+        return i18nT('access.monitor_paused', "Paused — this chat can't be reached");
+    }
     return monitoringNow()
         ? i18nT('chat.monitor.sub_on', 'New posts download automatically')
         : i18nT('chat.monitor.sub_off', 'Off — new posts are not downloaded');
@@ -169,6 +381,8 @@ function render() {
     const filters = filtersNow();
     const rescue = ['on', 'off', 'auto'].includes(g?.rescueMode) ? g.rescueMode : 'auto';
     const suspended = g?.suspended === true;
+    const blocked = blockedNow();
+    const fwdBlocked = isBlockedAccess(g?.forwardAccess) && fwd.enabled === true;
     const d = findDialog(cur.id);
 
     el.classList.add('cd-page');
@@ -190,10 +404,7 @@ function render() {
                     <p class="cd-meta" data-cd-stats>${escapeHtml(statsLine(cur.stats))}</p>
                 </div>
             </div>
-            <div id="group-suspended-banner" class="cd-banner ${suspended ? '' : 'hidden'}" role="note">
-                <i class="ri-forbid-line" aria-hidden="true"></i>
-                <span>${escapeHtml(i18nT('group.suspended.banner', 'This group was deleted or suspended on Telegram. Monitoring is permanently disabled.'))}</span>
-            </div>
+            ${accessBannerHtml()}
             ${
                 g
                     ? ''
@@ -211,7 +422,7 @@ function render() {
                 <button type="button" class="tg-btn-secondary cd-action" data-cd-gallery>
                     <i class="ri-gallery-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('chat.open_gallery', 'Open gallery'))}</span>
                 </button>
-                <button type="button" id="group-backfill-btn" class="tg-btn cd-action">
+                <button type="button" id="group-backfill-btn" class="tg-btn cd-action" ${blocked ? `disabled title="${escapeHtml(i18nT('access.backfill_off', "This chat can't be reached"))}"` : ''}>
                     <i class="ri-history-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('chat.backfill', 'Backfill…'))}</span>
                 </button>
             </div>
@@ -278,6 +489,17 @@ function render() {
                         </button>
                     </div>
                     <p id="cd-fwd-help" class="cd-help">${escapeHtml(i18nT('group.fwd.dest_help', 'Leave empty to use "Telegram Downloader Storage".'))}</p>
+                    ${
+                        fwdBlocked
+                            ? `<p class="cd-fwd-warn" role="note"><i class="ri-error-warning-line" aria-hidden="true"></i><span>${escapeHtml(
+                                  i18nTf(
+                                      'access.fwd_blocked',
+                                      { state: accessLabel(g.forwardAccess) },
+                                      `Can't post to this destination (${accessLabel(g.forwardAccess)}) — forwarding is paused. Pick another destination.`,
+                                  ),
+                              )}</span></p>`
+                            : ''
+                    }
                     ${switchRow({
                         id: 'fwd-delete-toggle',
                         label: i18nT('group.fwd.delete_after', 'Delete after forward'),
@@ -432,6 +654,10 @@ async function loadAccountsAndPeers(token) {
     const many = Array.isArray(accounts) && accounts.length >= 2;
     const hasPeers = peers.length > 0;
     cur.clusterEditable = hasPeers;
+    // "Switch account" in the access banner only makes sense with 2+.
+    cur.accountCount = Array.isArray(accounts) ? accounts.length : 0;
+    if (Array.isArray(accounts)) state.accountsList = accounts;
+    if (blockedNow()) paintAccess();
     if (many && accFields) {
         const def = i18nT('group.accounts.default_option_star', '(Default Account ⭐)');
         const opts = (sel) =>
@@ -843,6 +1069,8 @@ function onClick(e) {
     if (t.closest('[data-cd-gallery]')) return openGallery();
     if (t.closest('#group-backfill-btn')) return void openBackfill();
     if (t.closest('[data-cd-pick]')) return void openDestinationPicker();
+    const accessBtn = t.closest('[data-cd-access]');
+    if (accessBtn) return void onAccessAction(accessBtn.dataset.cdAccess, accessBtn);
     if (t.closest('#group-data-delete-files-btn')) return void deleteFiles();
     if (t.closest('#group-data-purge-btn')) return void wipeAll();
     if (t.closest('[data-cd-retry]')) {
@@ -1029,6 +1257,7 @@ export function showChatDetails({ groupId, from = null, fromGroup = null, onName
         onName,
         stats: null,
         clusterEditable: false,
+        accountCount: (state.dialogsAccounts || []).length,
     };
     pending = null;
     render();

@@ -19,6 +19,7 @@ import { createAvatar, escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf } from './i18n.js';
 import { openSheet } from './sheet.js';
 import { navigate } from './router.js';
+import { accessBadgeHtml, accessFor, isBlockedAccess } from './chat-access.js';
 
 /** Media types a chat gets when it's added from a row or the Add sheet. */
 export const NEW_CHAT_FILTERS = {
@@ -102,7 +103,9 @@ function rowState(chat) {
     const inConfig = !!cfg || !!chat.inConfig;
     const suspended = cfg ? cfg.suspended === true : chat.suspended === true;
     const enabled = cfg ? cfg.enabled !== false && !suspended : !!chat.enabled && !suspended;
-    return { inConfig, suspended, enabled, blocked: chat.dmDisabled === true };
+    // Can we still use it? (config entry's answer, else the row's own)
+    const access = cfg?.access || chat.access || accessFor(chat.id);
+    return { inConfig, suspended, enabled, blocked: chat.dmDisabled === true, access };
 }
 
 /**
@@ -116,7 +119,8 @@ function rowState(chat) {
 export function renderChatResultRow(chat, opts = {}) {
     const id = String(chat.id);
     const name = getGroupName(id, { fallback: chat.name || chat.title });
-    const { suspended, enabled, blocked } = rowState(chat);
+    const { suspended, enabled, blocked, access } = rowState(chat);
+    const unreachable = isBlockedAccess(access);
     const sub = [];
     const tl = typeLabel(chat.type);
     if (tl) sub.push(tl);
@@ -131,7 +135,10 @@ export function renderChatResultRow(chat, opts = {}) {
     }
     if (chat.archived) sub.push(i18nT('groups.archived', 'archived'));
     let flag = '';
-    if (suspended) {
+    if (unreachable) {
+        // The same badge the sidebar and the chat page show.
+        flag = accessBadgeHtml(access);
+    } else if (suspended) {
         flag = `<span class="status-pill status-pill-suspended">${escapeHtml(i18nT('groups.status.suspended', 'Suspended'))}</span>`;
     } else if (blocked) {
         flag = `<span class="cr-flag">${escapeHtml(i18nT('add.row.dm_off', 'Direct messages are off in Settings'))}</span>`;
@@ -147,8 +154,11 @@ export function renderChatResultRow(chat, opts = {}) {
               .join('')}</span>`
         : '';
     const disabled = suspended || blocked;
+    // Backfill of a chat no account can read is refused (the chat page
+    // says why); its Monitor switch stays usable so it can be stopped.
+    const noBackfill = disabled || unreachable;
     return `
-        <div class="cr-row" data-chat-id="${escapeHtml(id)}" role="listitem">
+        <div class="cr-row${unreachable ? ' is-unreachable' : ''}" data-chat-id="${escapeHtml(id)}" role="listitem">
             <button type="button" class="cr-main" data-cr-open
                 aria-label="${escapeHtml(i18nTf('add.row.open_aria', { name }, `Settings of ${name}`))}">
                 ${createAvatar({ id, name, type: chat.type, size: 'md' })}
@@ -158,7 +168,7 @@ export function renderChatResultRow(chat, opts = {}) {
                     ${flag}${chips}
                 </span>
             </button>
-            <button type="button" class="cr-backfill" data-cr-backfill ${disabled ? 'disabled' : ''}
+            <button type="button" class="cr-backfill" data-cr-backfill ${noBackfill ? 'disabled' : ''}
                 aria-label="${escapeHtml(i18nTf('add.row.backfill_aria', { name }, `Backfill older messages of ${name}`))}">
                 <i class="ri-history-line" aria-hidden="true"></i><span>${escapeHtml(i18nT('add.row.backfill', 'Backfill…'))}</span>
             </button>
