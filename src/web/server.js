@@ -4229,34 +4229,61 @@ function dialogsTypeFor(id) {
     return _dialogsTypeCache.get(String(id)) || null;
 }
 
+// Per-group aggregate — best DB-side display name, file count, total
+// size — shared by /api/groups and /api/downloads. Even index-only
+// (idx_group_name_size) it's a pass over every row, and one sidebar paint
+// hits both routes, so the rows are cached briefly. Invalidated by the
+// same broadcasts that refresh the footer stats (see _STATS_TRIGGER_TYPES
+// in broadcast()) plus `groups_refreshed`; the TTL bounds staleness from
+// any writer that doesn't broadcast.
+//
+// Plain MAX(group_name) misbehaves on this schema because "Unknown"
+// sorts above most ASCII titles — a group with rows ["Unknown", "Cool
+// Channel"] would surface "Unknown". CASE-filter out the placeholders
+// before MAX, then fall back to MAX(any) only if every row was one.
+const GROUP_AGG_TTL_MS = 15_000;
+let _groupAggCache = { at: 0, rows: null };
+function getGroupAggregates() {
+    const now = Date.now();
+    if (_groupAggCache.rows && Math.max(0, now - _groupAggCache.at) < GROUP_AGG_TTL_MS) {
+        return _groupAggCache.rows;
+    }
+    const rows = getDb()
+        .prepare(`
+            SELECT group_id,
+                   MAX(CASE
+                         WHEN group_name IS NOT NULL
+                          AND group_name != ''
+                          AND group_name != 'Unknown'
+                          AND group_name != 'unknown'
+                          AND group_name NOT GLOB '-?[0-9]*'
+                          AND group_name NOT GLOB 'Group [0-9]*'
+                       THEN group_name END) AS best_name,
+                   MAX(group_name) AS any_name,
+                   COUNT(*) as count,
+                   SUM(file_size) as size
+              FROM downloads
+             GROUP BY group_id
+        `)
+        .all();
+    _groupAggCache = { at: now, rows };
+    return rows;
+}
+function invalidateGroupAggregates() {
+    _groupAggCache = { at: 0, rows: null };
+}
+
 app.get('/api/groups', async (req, res) => {
     try {
         const config = loadConfig();
         // Pull the best DB-side name per group_id so a config row with
         // "Unknown" doesn't shadow a real name we already saved at
-        // download time. Plain MAX(group_name) misbehaves on this
-        // schema because "Unknown" sorts above most ASCII titles —
-        // a group with rows ["Unknown", "Cool Channel"] would surface
-        // "Unknown". CASE-filter out the placeholders before MAX, then
-        // fall back to MAX(any) only if every row was a placeholder.
+        // download time.
         let dbNames = new Map();
         try {
-            const rows = getDb()
-                .prepare(`
-                SELECT group_id,
-                       MAX(CASE
-                             WHEN group_name IS NOT NULL
-                              AND group_name != ''
-                              AND group_name != 'Unknown'
-                              AND group_name != 'unknown'
-                              AND group_name NOT GLOB '-?[0-9]*'
-                              AND group_name NOT GLOB 'Group [0-9]*'
-                           THEN group_name END) AS best_name,
-                       MAX(group_name) AS any_name
-                  FROM downloads
-                 GROUP BY group_id`)
-                .all();
-            for (const r of rows) dbNames.set(String(r.group_id), r.best_name || r.any_name);
+            for (const r of getGroupAggregates()) {
+                dbNames.set(String(r.group_id), r.best_name || r.any_name);
+            }
         } catch {}
 
         // Live dialogs from every connected account — same source the
@@ -4373,29 +4400,9 @@ app.get('/api/downloads', async (req, res) => {
     try {
         const config = loadConfig();
         const configGroups = config.groups || [];
-        const db = getDb();
-
-        // CASE-filter "Unknown" / numeric-id placeholders BEFORE MAX so
-        // a group with mixed rows ["Cool Channel", "Unknown"] returns
-        // "Cool Channel" instead of the lexically-larger "Unknown".
-        const rows = db
-            .prepare(`
-            SELECT group_id,
-                   MAX(CASE
-                         WHEN group_name IS NOT NULL
-                          AND group_name != ''
-                          AND group_name != 'Unknown'
-                          AND group_name != 'unknown'
-                          AND group_name NOT GLOB '-?[0-9]*'
-                          AND group_name NOT GLOB 'Group [0-9]*'
-                       THEN group_name END) AS best_name,
-                   MAX(group_name) AS any_name,
-                   COUNT(*) as count,
-                   SUM(file_size) as size
-              FROM downloads
-             GROUP BY group_id
-        `)
-            .all();
+        // Placeholder-filtered best name + count + size per group (cached;
+        // see getGroupAggregates).
+        const rows = getGroupAggregates();
 
         const dialogsNames = await getDialogsNameCache();
 
@@ -12013,10 +12020,20 @@ app.post('/api/groups/refresh-info', async (req, res) => {
         const config = loadConfig();
         const ids = new Set((config.groups || []).map((g) => String(g.id)));
         try {
-            const rows = getDb()
-                .prepare('SELECT DISTINCT group_id, group_name FROM downloads LIMIT 10000')
-                .all();
-            for (const rr of rows) ids.add(String(rr.group_id));
+            // One row per group from the (usually still cached) sidebar
+            // aggregate instead of another DISTINCT pass over every row.
+            for (const rr of getGroupAggregates()) {
+                if (ids.size >= 10000) break;
+                ids.add(String(rr.group_id));
+            }
+        } catch {}
+        let renameStmt = null;
+        try {
+            // Seeks idx_group_name_size (group_id = ?) — one prepare for the
+            // whole sweep instead of one per group.
+            renameStmt = getDb().prepare(
+                `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`,
+            );
         } catch {}
 
         let updated = 0;
@@ -12048,10 +12065,7 @@ app.post('/api/groups/refresh-info', async (req, res) => {
                         mutatedConfig = true;
                     }
                     try {
-                        const stmt = getDb().prepare(
-                            `UPDATE downloads SET group_name = ? WHERE group_id = ? AND (group_name IS NULL OR group_name = '' OR group_name = 'Unknown' OR group_name = ?)`,
-                        );
-                        stmt.run(realName, id, id);
+                        renameStmt?.run(realName, id, id);
                     } catch {}
                     updates.push({ id, name: realName });
                     updated++;
@@ -12475,14 +12489,14 @@ function broadcast(data) {
     // single recompute + push. Debounce inside broadcastStatsSoon() makes
     // a 50-row bulk delete still cost one stats broadcast, not fifty.
     try {
-        if (
-            data &&
-            typeof data === 'object' &&
-            typeof data.type === 'string' &&
-            _STATS_TRIGGER_TYPES.has(data.type) &&
-            typeof broadcastStatsSoon === 'function'
-        ) {
-            broadcastStatsSoon();
+        if (data && typeof data === 'object' && typeof data.type === 'string') {
+            if (_STATS_TRIGGER_TYPES.has(data.type)) {
+                // Same events move the sidebar's per-group counts / names.
+                invalidateGroupAggregates();
+                if (typeof broadcastStatsSoon === 'function') broadcastStatsSoon();
+            } else if (data.type === 'groups_refreshed') {
+                invalidateGroupAggregates();
+            }
         }
     } catch {}
 }
