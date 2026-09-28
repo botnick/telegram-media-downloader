@@ -1,16 +1,25 @@
 # core-service (`tgdl-core`)
 
-The Go companion process of
+The Go engine of
 [telegram-media-downloader](https://github.com/botnick/telegram-media-downloader).
-The Node app spawns it, talks to it over HTTP on `127.0.0.1`, and moves
-CPU- and I/O-heavy work into it one feature at a time. Phase 1 ships one
-feature: SHA-256 file hashing. See [docs/GO-CORE.md](../docs/GO-CORE.md)
-for the plan and the rules every feature follows.
+The Node app spawns it, talks to it over HTTP on `127.0.0.1`, and relies on
+it for:
 
-Nothing here is required. If the binary is missing, can't be downloaded,
-crashes or answers wrong, the app does exactly what it did before (the
-Node worker pool). tgdl-core never opens `db.sqlite`, and it only reads
-files inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`).
+| Feature (`/health.features`) | Route | Used by |
+|---|---|---|
+| `hash` | `POST /v1/hash` | download-time dedup, the duplicate scan, the NSFW hash blocklist |
+| `stat` | `POST /v1/fs/stat-batch` | the integrity sweep (Verify files, boot + hourly) |
+| `walk` | `POST /v1/fs/walk` | Re-index from disk, the disk-usage fallback of `/api/stats` |
+| `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
+
+It is the only implementation of these — the Node code it replaced is gone
+— so every answer must be the one Node gave: same digests, the same
+`fs.stat` / `fs.readdir` results and error codes, the same clusters. See
+[docs/GO-CORE.md](../docs/GO-CORE.md) for how that is proven and what the
+app does when tgdl-core can't run.
+
+tgdl-core never opens `db.sqlite` (Node is the only writer), and it only
+reads inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`).
 
 ## Commands
 
@@ -30,70 +39,139 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 | Variable | Default | Meaning |
 |---|---|---|
 | `TGDL_CORE_TOKEN` | — (required) | Shared secret; every route except `/health` needs it as `X-API-Token`. The app mints a new one per spawn. |
-| `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes the downloads dir, `<data dir>/downloads` and a custom `download.path`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app hashes it itself. |
-| `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.1.0","pid":123}`. |
+| `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes the downloads dir, `<data dir>/downloads` and a custom `download.path`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app reads that path itself. |
+| `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.2.0","pid":123}`. |
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
-| `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once. Same parsing as the Node worker pool (`parseInt`, values ≥ 1 capped at 32). |
+| `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
 
 ## HTTP API
 
-All responses are JSON. Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
+Errors are `{"error":{"code":"ENOENT","message":"…"}}`.
 
 | Route | Auth | |
 |---|---|---|
-| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash"], pid, go, platform, hash:{concurrency, roots}}` (`roots` is a count) |
-| `POST /v1/hash` | token | Body `{"path":"/absolute/file"}` → `{"sha256":"<64 lowercase hex>","size":<bytes hashed>,"mtimeMs":<float>}` |
-| `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{concurrency, inFlight, waiting, completed, failed, bytes, roots:[…]}}` |
+| `GET /health` | open | `{ok, service:"tgdl-core", version, features:["hash","stat","walk","dbscan"], pid, go, platform, hash:{concurrency, roots}, fs:{maxBatch, fastStat}}` (`roots` is a count) |
+| `POST /v1/hash` | token | Body `{"path":"/abs/file"}` → `{"sha256","size","mtimeMs"}` |
+| `POST /v1/fs/stat-batch` | token | Body `{"paths":["/abs/a", …]}` (≤ 1000) → `{"results":[…]}`, see below |
+| `POST /v1/fs/walk` | token | Body `{"root","maxDepth","stat","entries"}` → NDJSON stream, see below |
+| `POST /v1/dbscan` | token | Query `n, dim, eps, minPts, weights=0|1`, binary body → NDJSON stream, see below |
+| `GET /v1/stats` | token | Counters: `{uptimeSec, hash:{…}, fs:{statCalls, statPaths, walks, walkFiles}}` |
 
-`/v1/hash` status codes:
+### `/v1/hash`
 
 | Status | Codes | Meaning |
 |---|---|---|
-| 200 | — | Digest of the whole file, read until EOF (identical to Node's `crypto.createHash('sha256')` over `fs.createReadStream`). |
+| 200 | — | Digest of the whole file, read until EOF (identical to `crypto.createHash('sha256')` over `fs.createReadStream`). |
 | 400 | `EINVAL` | Bad body, empty or relative path, NUL byte. |
 | 401 | `EAUTH` | Missing / wrong token (also for unknown routes). |
-| 403 | `EOUTSIDE` | The path isn't inside an allowed root, as written or after resolving symlinks / junctions. Not an error for the app: it hashes the file with its Node pool. |
-| 422 | `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`, `ELOOP`, `ENAMETOOLONG`, `EMFILE`, `EBUSY`, `EIO` | The file can't be read — the codes Node reports for the same failure on the same OS. |
+| 403 | `EOUTSIDE` | Not inside an allowed root, as written or after resolving symlinks / junctions. |
+| 422 | `ENOENT`, `EACCES`, `EISDIR`, `ENOTDIR`, `ELOOP`, `ENAMETOOLONG`, `EMFILE`, `EBUSY`, `EIO` | The file can't be read. |
 | 503 | `EQUEUEFULL` | More than 1024 requests waiting for a hash slot. |
 
-Implementation notes:
+### `/v1/fs/stat-batch` — `fs.stat`, exactly
 
-- Containment (`internal/hash/roots.go`): the path must be absolute; it is
-  checked against each root as written (so a path outside every root is
-  refused without touching the file system), then resolved with
-  `filepath.EvalSymlinks` and checked again against each root's resolved
-  form — a link inside a root that points elsewhere is refused, a
-  downloads dir that is itself a link works. Each check is
-  `filepath.Rel(root, p)` + `filepath.IsLocal(rel)` (no `..`, no other
-  volume), and the file opened is `filepath.Join(resolvedRoot, rel)`.
-  Roots that don't exist yet are resolved again on later requests.
-  Residual race: someone who can write inside a root could swap a
-  directory for a link between the check and the open; that needs write
+Each result is `{"ok":true,"size":N,"mtimeMs":F,"isFile":B,"isDir":B}` or
+`{"code":"…"}`, in request order. `code` is what Node's `fs.stat` puts in
+`err.code` for the same path on the same OS — `src/core/integrity.js`
+deletes a library row on `ENOENT` / `ENOTDIR` and on nothing else, so this
+is the part that must never be wrong:
+
+- **Windows**: the same calls in the same order as libuv 1.51
+  (`fs__stat_impl_from_path`): `GetFileInformationByName` when the OS has
+  it (found the way libuv finds it), else / then `CreateFileW` with
+  `FILE_READ_ATTRIBUTES` + `NtQueryVolumeInformationFile` /
+  `NtQueryInformationFile`, and on access-denied / sharing-violation the
+  parent directory listing (`fs__stat_directory`) — on the `\\?\` path
+  Node builds. The Win32 error is named by `uverr_windows.go`, generated
+  from libuv's `uv_translate_sys_error` (all 100 cases; anything else is
+  `UNKNOWN`). Directories report size 0, like libuv. `mtimeMs` reproduces
+  Node's 32-bit `tv_sec` on Windows, including its wrap for dates before
+  1970. Go's own `os.Stat` is not used: it reports an offline network
+  share (`ERROR_BAD_NETPATH`) as "does not exist", which libuv — and so
+  Node — reports as `UNKNOWN`.
+- **Linux / macOS**: `lstat` then `stat` for links, `errno` named from
+  libuv's `UV_ERRNO_MAP` (`ESTALE` and anything else outside it is
+  `UNKNOWN`, as in Node).
+- `EOUTSIDE`: the path (as written, its parent folder with links resolved,
+  or the link itself) is outside the allowed roots. Paths with a NUL byte
+  get `ERR_INVALID_ARG_VALUE`, relative ones `EINVAL`.
+
+`tests/gocore-fs.errors.test.js` compares every situation it can set up on
+the OS it runs on against Node's own `fs.stat`, live.
+
+### `/v1/fs/walk` — recursive `fs.readdir(…, {withFileTypes})` (+ `fs.stat`)
+
+Request: `root` (absolute, inside a root), `maxDepth` (entries of the root
+are depth 1; directories at `maxDepth` are listed, not entered; `0` = no
+limit), `stat` (`none` | `files`: entries that are files | `nondir`: every
+entry that is not a directory, following links), `entries` (default `true`;
+`false` sends only the summary). Streams one JSON object per line, in the
+order a recursive Node walk visits them — depth first, pre-order, each
+directory in libuv's order (file-system order on Windows, `strcmp` order
+elsewhere):
+
+```
+{"t":"d","p":"group/images"}                                   a directory entry
+{"t":"f","p":"group/images/a.jpg","k":"file","ok":true,"size":N,"mtimeMs":F,"isFile":true,"isDir":false}
+{"t":"f","p":"group/link","k":"link","code":"EOUTSIDE"}        any other entry (k: file|link|char|…)
+{"t":"e","p":"group/locked","code":"EACCES"}                   a directory that could not be listed ("" = root)
+{"t":"end","dirs":N,"files":N,"errors":N,"stated":N,"bytes":N,"outside":["group/link"]}
+```
+
+`p` is relative to the root with `/` separators; names are what Node would
+see (invalid UTF-8 / lone UTF-16 surrogates as U+FFFD). Links are entries,
+never entered. `bytes` sums the stat'ed entries that are files. A stream
+without an `end` line was cut off.
+
+### `/v1/dbscan` — face clustering
+
+Query `n`, `dim` (n × dim ≤ 2²⁸), `eps`, `minPts`, `weights=1` when per-face
+float64 weights follow the n × dim float32 embeddings in the body (little
+endian). One clustering runs at a time (4 may wait; more → 503
+`EQUEUEFULL`). The answer streams `{"t":"progress","done":D,"n":N}` about
+once a second, then
+`{"t":"result","count":C,"noiseCount":K,"starts":b64,"members":b64,"centroids":b64}`
+— int32 / int32 / float32, the packing of the old Node cluster worker —
+or `{"t":"error",…}`. It is a line-by-line port of
+`src/core/ai/dbscan.js`: the same visit order and queue, float64 sums in
+dimension order with no fused multiply-add, the same `_rejectBound` early
+exit, Float32 centroid arithmetic. Neighbour lists are computed on all
+cores ahead of use and consumed in the exact sequential order, so the
+result does not depend on the number of cores. A client that disconnects
+stops the work.
+
+## Implementation notes
+
+- Containment (`internal/hash/roots.go`): checked as written first (a path
+  outside every root is refused without touching the file system), then
+  with links resolved — for hashing via `filepath.EvalSymlinks`, for stats
+  per directory (a plain directory under an inside directory is inside;
+  only a link costs a full resolution; verdicts are reused for 2 s). Each
+  check is `filepath.Rel` + `filepath.IsLocal` (UNC share roots compared
+  without a trailing separator: `filepath.Rel` never returns for that
+  pair). Residual race: someone who can write inside a root could swap a
+  directory for a link between the check and the read; that needs write
   access to the downloads folder, which is already the app's own data.
-- Streams with a 1 MiB buffer; the request context is checked between
-  reads, so a caller that times out or disconnects stops the read and
-  frees its slot.
-- On Windows files are opened with `FILE_SHARE_DELETE` and the `\\?\`
-  prefix, like libuv does for Node: the app can delete or rename a file
-  while tgdl-core reads it (download-time dedup unlinks a fresh duplicate
-  right after hashing), and paths over 260 characters work.
-- No `WriteTimeout`: a multi-GB hash legitimately takes minutes; the
-  client's deadline is what bounds it.
+- Windows files are opened with `FILE_SHARE_DELETE` and the `\\?\`
+  prefix, like libuv: the app can delete or rename a file while tgdl-core
+  reads it, and paths over 260 characters work.
+- No `WriteTimeout`: a multi-GB hash or a 50 k-face clustering
+  legitimately takes minutes; the client's deadline cancels the request
+  context instead.
 
 ## Build
 
 ```bash
 npm run build:core                  # host binary → core-service/bin/tgdl-core-<slug>(.exe)
 npm run build:core -- --release     # all targets → core-service/dist/*.tar.gz + SHA256SUMS
+npm run install:core                # what `npm install` runs: download, else build, else explain
 cd core-service && go vet ./... && go test ./...
-TGDL_GO_CORE_TEST=1 npx vitest run gocore   # Node suites against the real binary
 ```
 
-The Node suites that spawn the real binary only run with
-`TGDL_GO_CORE_TEST=1` (they use `TGDL_CORE_BIN`, the dev build, or build
-one with Go; with the flag set and none of those, they fail). A plain
-`npm test` skips them.
+`npm test` builds tgdl-core from this tree (Go on PATH; cached by a hash of
+the sources) and runs every suite against it — including the Node-vs-Go
+parity suites (`tests/gocore-*.test.js`).
 
 Go 1.22+ (CI and releases use 1.25). CGO is off, so every target
 cross-compiles from any host:
@@ -104,11 +182,13 @@ cross-compiles from any host:
 | `win-arm64` | windows/arm64 |
 | `linux-x64` | linux/amd64 |
 | `linux-arm64` | linux/arm64 |
+| `linux-arm` | linux/arm, GOARM=7 (Raspberry Pi 2+, 32-bit ARM NAS) |
 | `linux-x86` | linux/386 (Synology DSM x86, older NAS) |
 | `mac-arm64` | darwin/arm64 |
+| `mac-x64` | darwin/amd64 |
 
-Other hosts (macOS on Intel, 32-bit Windows, FreeBSD, …) get no binary
-and keep using Node; `TGDL_CORE_BIN` can point at a hand-built one.
+Other hosts (32-bit Windows, ARMv6, FreeBSD, …) get no binary: build one
+with Go and point `TGDL_CORE_BIN` at it.
 
 ## How the app finds it
 
@@ -116,19 +196,30 @@ and keep using Node; `TGDL_CORE_BIN` can point at a hand-built one.
 
 1. `TGDL_CORE_BIN` — an explicit path; when set, nothing else is tried.
 2. `/app/bin/tgdl-core` — built into the Docker image.
-3. `core-service/bin/tgdl-core-<slug>` — `npm run build:core`.
-4. `data/core-service/bin/tgdl-core-<slug>` — downloaded from the GitHub
-   release `core-v<CORE_VERSION>` (`tgdl-core-<slug>.tar.gz`), verified
-   against the release's `SHA256SUMS`, with a `.version` marker so a
-   `CORE_VERSION` bump fetches the new build. `TGDL_CORE_RELEASE_URL`
+3. `core-service/bin/tgdl-core-<slug>` — `npm run build:core`, used only
+   when it reports the pinned version.
+4. `data/core-service/bin/tgdl-core-<slug>` — `npm install`
+   (`scripts/install-core.js`) or the app itself at startup downloads the
+   GitHub release `core-v<CORE_VERSION>` (`tgdl-core-<slug>.tar.gz`),
+   verified against the release's `SHA256SUMS`, with a `.version` marker so
+   a `CORE_VERSION` bump fetches the new build. `TGDL_CORE_RELEASE_URL`
    overrides the release URL (mirrors, air-gapped installs).
 
 ## Releasing
 
 1. Bump `Version` in `internal/version/version.go` and `CORE_VERSION` in
-   `src/core/gocore/spawn.js` together (a test checks they match).
+   `src/core/gocore/spawn.js` together (a test checks they match), and
+   add a line to `CHANGELOG.md` below.
 2. Push the tag `core-v<version>`. `.github/workflows/release-core-service.yml`
-   checks the tag against `CORE_VERSION`, runs the Go tests, builds the six
-   tarballs + `SHA256SUMS`, smoke-runs the Linux binary and attaches it all
-   to the release (never marked Latest).
+   checks the tag against `CORE_VERSION`, runs the Go tests, builds the
+   eight tarballs + `SHA256SUMS`, smoke-runs the Linux binary and attaches
+   it all to the release (never marked Latest).
 3. Only then release an app version that pins it.
+
+## Changelog
+
+- **0.2.0** — `stat` (`/v1/fs/stat-batch`), `walk` (`/v1/fs/walk`) and
+  `dbscan` (`/v1/dbscan`); builds for `linux-arm` (ARMv7) and `mac-x64`;
+  containment no longer hangs on a UNC share root and no longer re-resolves
+  missing roots on every request.
+- **0.1.0** — `hash` (`/v1/hash`).

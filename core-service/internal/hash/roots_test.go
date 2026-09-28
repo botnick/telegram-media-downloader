@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // link makes a directory link at `at` pointing to `target`: a symlink
@@ -196,5 +197,38 @@ func TestParseRoots(t *testing.T) {
 	got := ParseRoots("/a" + sep + "/b")
 	if len(got) != 2 || got[0] != "/a" || got[1] != "/b" {
 		t.Fatalf("ParseRoots = %q", got)
+	}
+}
+
+// filepath.Rel spins forever on Windows for a UNC share root against the
+// same root with a trailing separator; within() must answer instead.
+func TestWithinUNCShareRootDoesNotHang(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("UNC paths are Windows-only")
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		cases := []struct {
+			base, p string
+			ok      bool
+		}{
+			{`\host\share`, `\host\share\`, true},
+			{`\host\share\`, `\host\share`, true},
+			{`\host\share`, `\host\share\a\b`, true},
+			{`\host\share\a`, `\host\share\`, false},
+			{`\host\share`, `\host\other\`, false},
+			{`C:\`, `C:\x`, true},
+		}
+		for _, c := range cases {
+			if _, ok := within(c.base, c.p); ok != c.ok {
+				t.Errorf("within(%q, %q) = %v, want %v", c.base, c.p, ok, c.ok)
+			}
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("within() did not return")
 	}
 }

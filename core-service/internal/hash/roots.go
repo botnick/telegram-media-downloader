@@ -19,6 +19,12 @@ import (
 type Roots struct {
 	mu    sync.Mutex
 	items []*root
+	// Cached forms (rebuilt when a root resolves): lexical holds every
+	// root as written plus the resolved form of those that exist; real
+	// holds the resolved forms only. pending: some root doesn't exist yet.
+	lex     []string
+	real    []string
+	pending bool
 }
 
 type root struct {
@@ -56,7 +62,25 @@ func NewRoots(dirs []string) (*Roots, []string) {
 		}
 		r.items = append(r.items, it)
 	}
+	r.rebuildLocked()
 	return r, warnings
+}
+
+// rebuildLocked recomputes the cached forms. r.mu must be held (or r not
+// yet shared).
+func (r *Roots) rebuildLocked() {
+	var lex, real []string
+	pending := false
+	for _, it := range r.items {
+		lex = append(lex, it.lexical)
+		if it.real != "" {
+			lex = append(lex, it.real)
+			real = append(real, it.real)
+		} else {
+			pending = true
+		}
+	}
+	r.lex, r.real, r.pending = lex, real, pending
 }
 
 // ParseRoots splits a TGDL_CORE_ALLOW_ROOTS value: the OS path-list
@@ -89,24 +113,46 @@ func (r *Roots) List() []string {
 	return out
 }
 
-// snapshot returns lexical and resolved forms, resolving roots that did
-// not exist when tgdl-core started (a downloads dir created later).
+// snapshot returns the cached lexical and resolved forms (read-only).
 func (r *Roots) snapshot() (lexical, real []string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.lex, r.real
+}
+
+// refresh tries again to resolve roots that did not exist yet (a downloads
+// dir created after tgdl-core started). Callers use it after a miss, so a
+// path inside an existing root never pays for it. Reports whether
+// anything changed.
+func (r *Roots) refresh() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.pending {
+		return false
+	}
+	changed := false
 	for _, it := range r.items {
 		if it.real == "" {
 			if rr, err := filepath.EvalSymlinks(it.lexical); err == nil {
 				it.real = rr
+				changed = true
 			}
 		}
-		lexical = append(lexical, it.lexical)
-		if it.real != "" {
-			lexical = append(lexical, it.real)
-			real = append(real, it.real)
+	}
+	if changed {
+		r.rebuildLocked()
+	}
+	return changed
+}
+
+// anyWithin reports whether p is within one of bases.
+func anyWithin(bases []string, p string) bool {
+	for _, base := range bases {
+		if _, ok := within(base, p); ok {
+			return true
 		}
 	}
-	return lexical, real
+	return false
 }
 
 // within returns base joined with p's path relative to base when p is
@@ -115,6 +161,11 @@ func (r *Roots) snapshot() (lexical, real []string) {
 // result is rebuilt from base so nothing but the relative part of p is
 // used.
 func within(base, p string) (string, bool) {
+	// filepath.Rel never returns on Windows for a UNC share root against
+	// the same root spelled with a trailing separator
+	// (Rel(`\\h\s`, `\\h\s\`) spins in its element loop), so compare
+	// share roots without it.
+	base, p = trimShareRoot(base), trimShareRoot(p)
 	rel, err := filepath.Rel(base, p)
 	if err != nil || !filepath.IsLocal(rel) {
 		return "", false
@@ -122,8 +173,73 @@ func within(base, p string) (string, bool) {
 	return filepath.Join(base, rel), true
 }
 
+// trimShareRoot turns `\\host\share\` into `\\host\share` (Windows UNC
+// roots only; `C:\` and every other path are returned unchanged).
+func trimShareRoot(p string) string {
+	vol := filepath.VolumeName(p)
+	if len(vol) > 2 && len(p) > len(vol) && strings.Trim(p[len(vol):], `\/`) == "" {
+		return vol
+	}
+	return p
+}
+
 func outside(p string) error {
 	return &Error{Code: "EOUTSIDE", Path: p, Err: errors.New("path is outside the allowed roots")}
+}
+
+// Outside is the EOUTSIDE error for p.
+func Outside(p string) error { return outside(p) }
+
+// WithinLexical reports whether the absolute, cleaned path p lies inside
+// a root as written (or inside a root's resolved form), without touching
+// the file system.
+func (r *Roots) WithinLexical(p string) bool {
+	if r == nil {
+		return false
+	}
+	lexRoots, _ := r.snapshot()
+	if anyWithin(lexRoots, p) {
+		return true
+	}
+	if r.refresh() {
+		lexRoots, _ = r.snapshot()
+		return anyWithin(lexRoots, p)
+	}
+	return false
+}
+
+// IsRoot reports whether p (absolute, cleaned) is one of the roots, as
+// written or resolved.
+func (r *Roots) IsRoot(p string) bool {
+	if r == nil {
+		return false
+	}
+	lexRoots, _ := r.snapshot()
+	p = trimShareRoot(p)
+	for _, base := range lexRoots {
+		base = trimShareRoot(base)
+		if base == p || (runtime.GOOS == "windows" && strings.EqualFold(base, p)) {
+			return true
+		}
+	}
+	return false
+}
+
+// WithinResolved reports whether p, a path with every symlink / junction
+// already resolved, lies inside a root's resolved form.
+func (r *Roots) WithinResolved(p string) bool {
+	if r == nil {
+		return false
+	}
+	_, realRoots := r.snapshot()
+	if anyWithin(realRoots, p) {
+		return true
+	}
+	if r.refresh() {
+		_, realRoots = r.snapshot()
+		return anyWithin(realRoots, p)
+	}
+	return false
 }
 
 // Resolve checks that p lies inside a root, both as written and after
@@ -139,6 +255,7 @@ func (r *Roots) Resolve(p string) (string, error) {
 	if r == nil {
 		return "", outside(p)
 	}
+	r.refresh()
 	lexRoots, realRoots := r.snapshot()
 
 	// 1. As written: refuse before touching the file system, so paths
