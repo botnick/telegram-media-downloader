@@ -17,6 +17,8 @@ import {
     applyShareLimits,
     getShareLimits,
     getShareSecretFingerprint,
+    mintFileToken,
+    verifyFileToken,
 } from '../src/core/share.js';
 
 function freshSecretConfig() {
@@ -107,6 +109,36 @@ describe('signShareToken / verifyShareToken', () => {
         expect(sigA).not.toBe(sigB);
         // And the OLD sig no longer verifies under the new secret.
         expect(verifyShareToken(42, 1750000000, sigA)).toBe(false);
+    });
+});
+
+describe('mintFileToken / verifyFileToken', () => {
+    beforeEach(() => {
+        _resetShareSecretCache();
+        freshSecretConfig();
+    });
+
+    it('returns the role the token was minted for', () => {
+        expect(verifyFileToken(mintFileToken(60, 'admin').token)).toBe('admin');
+        expect(verifyFileToken(mintFileToken(60, 'guest').token)).toBe('guest');
+    });
+
+    it('defaults to guest for a missing or unknown role', () => {
+        expect(verifyFileToken(mintFileToken(60).token)).toBe('guest');
+        expect(verifyFileToken(mintFileToken(60, 'root').token)).toBe('guest');
+    });
+
+    it('rejects expired, tampered and malformed tokens', () => {
+        const { token } = mintFileToken(60, 'admin');
+        const [exp, sig] = token.split('.');
+        const flipped = sig.slice(0, -1) + (sig.endsWith('A') ? 'B' : 'A');
+        expect(verifyFileToken(`${Number(exp) + 1}.${sig}`)).toBeNull();
+        expect(verifyFileToken(`${exp}.${flipped}`)).toBeNull();
+        expect(verifyFileToken(`${Math.floor(Date.now() / 1000) - 1}.${sig}`)).toBeNull();
+        expect(verifyFileToken('')).toBeNull();
+        expect(verifyFileToken('nodot')).toBeNull();
+        expect(verifyFileToken(['a', 'b'])).toBeNull();
+        expect(verifyFileToken(undefined)).toBeNull();
     });
 });
 

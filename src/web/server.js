@@ -1107,10 +1107,12 @@ async function checkAuth(req, res, next) {
     if (isPublicPath(req.path)) return next();
 
     // Bearer-token auth for /files/ — lets the URL work without a session
-    // cookie (e.g. after a Cloudflare redirect to a direct DDNS host).
-    if (req.path.startsWith('/files/') && req.query.token) {
-        if (verifyFileToken(req.query.token)) {
-            req.role = 'admin';
+    // cookie (e.g. after a Cloudflare redirect to a direct DDNS host). The
+    // token carries the role of the session that minted it.
+    if (req.path.startsWith('/files/')) {
+        const tokenRole = verifyFileToken(req.query.token);
+        if (tokenRole) {
+            req.role = tokenRole;
             return next();
         }
     }
@@ -5134,8 +5136,8 @@ app.delete('/api/file', async (req, res) => {
 // Mint a short-lived bearer token for /files/ paths. The token lets a URL
 // work without the session cookie — useful when Cloudflare redirects the
 // request to a direct DDNS host where the cookie doesn't follow.
-app.get('/api/files/token', (_req, res) => {
-    const { token, exp } = mintFileToken();
+app.get('/api/files/token', (req, res) => {
+    const { token, exp } = mintFileToken(undefined, req.role);
     res.json({ token, exp });
 });
 
@@ -7131,18 +7133,43 @@ app.post('/api/maintenance/nsfw/preload', async (req, res) => {
     }
 });
 
+// Admin-typed sidecar base URL (not yet saved) → its `/health` URL.
+// Returns { error } for input the probe endpoints should reject. There's
+// deliberately no host allowlist — sidecars live on LAN / tunnel hosts —
+// so the guard is: admin-only route (guestGate), http(s) only, no embedded
+// credentials, and only a few whitelisted JSON fields echoed back.
+// Trailing slashes are trimmed with a scan, not /\/+$/ — that regex is
+// quadratic on long runs of '/' in attacker-sized input.
+function _sidecarHealthUrl(raw) {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    if (!s) return { error: 'url_required' };
+    if (s.length > 2048) return { error: 'invalid_url' };
+    let u;
+    try {
+        u = new URL(s);
+    } catch {
+        return { error: 'invalid_url' };
+    }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return { error: 'invalid_scheme' };
+    if (u.username || u.password) return { error: 'invalid_url' };
+    let end = u.pathname.length;
+    while (end > 0 && u.pathname[end - 1] === '/') end--;
+    u.pathname = `${u.pathname.slice(0, end)}/health`;
+    u.search = '';
+    u.hash = '';
+    return { url: u.href };
+}
+
 // Server-side health probe for an arbitrary NSFW sidecar URL (CORS proxy).
 app.post('/api/maintenance/nsfw/sidecar-test', async (req, res) => {
-    const url = typeof req.body?.url === 'string' ? req.body.url.trim().replace(/\/+$/, '') : '';
-    if (!url) return res.status(400).json({ ok: false, error: 'url_required' });
-    if (!/^https?:\/\//i.test(url))
-        return res.status(400).json({ ok: false, error: 'invalid_scheme' });
+    const probe = _sidecarHealthUrl(req.body?.url);
+    if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
     try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 5000);
         let r;
         try {
-            r = await fetch(`${url}/health`, { method: 'GET', signal: ctrl.signal });
+            r = await fetch(probe.url, { method: 'GET', signal: ctrl.signal });
         } finally {
             clearTimeout(timer);
         }
@@ -7909,16 +7936,14 @@ app.get('/api/ai/scan/status', async (req, res) => {
 // The browser can't hit a Cloudflare-tunnelled endpoint directly (CORS),
 // so we proxy the health check. Accepts { url } in the POST body.
 app.post('/api/ai/faces/health-test', async (req, res) => {
-    const url = typeof req.body?.url === 'string' ? req.body.url.trim().replace(/\/+$/, '') : '';
-    if (!url) return res.status(400).json({ ok: false, error: 'url_required' });
-    if (!/^https?:\/\//i.test(url))
-        return res.status(400).json({ ok: false, error: 'invalid_scheme' });
+    const probe = _sidecarHealthUrl(req.body?.url);
+    if (probe.error) return res.status(400).json({ ok: false, error: probe.error });
     try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 5000);
         let r;
         try {
-            r = await fetch(`${url}/health`, { method: 'GET', signal: ctrl.signal });
+            r = await fetch(probe.url, { method: 'GET', signal: ctrl.signal });
         } finally {
             clearTimeout(timer);
         }
@@ -10328,7 +10353,7 @@ app.get('/api/cluster/search/peer', (req, res) => {
     const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
     if (!q) return res.json({ rows: [] });
     try {
-        const like = `%${q.replace(/[%_]/g, '\\$&')}%`;
+        const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
         const rows = getDb()
             .prepare(
                 `SELECT id, group_id, group_name, message_id, file_name, file_size, file_type,
@@ -10351,7 +10376,7 @@ app.get('/api/cluster/search', async (req, res) => {
     const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 50));
     if (!q) return res.json({ rows: [] });
     try {
-        const like = `%${q.replace(/[%_]/g, '\\$&')}%`;
+        const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
         const ownPid = getSelfPeerId();
         const local = getDb()
             .prepare(

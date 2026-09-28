@@ -190,37 +190,46 @@ export function buildShareUrlPath(linkId, expEpochSeconds, fileName = null) {
 // ---- file-access token (bearer auth for /files/) --------------------------
 
 const FILE_TOKEN_TTL_DEFAULT = 3600;
+const FILE_TOKEN_ROLES = ['admin', 'guest'];
 
-export function mintFileToken(ttlSec) {
-    const ttl = Number.isFinite(ttlSec) && ttlSec > 0 ? Math.floor(ttlSec) : FILE_TOKEN_TTL_DEFAULT;
-    const exp = Math.floor(Date.now() / 1000) + ttl;
+// The minting session's role is part of the HMAC input, so a token handed
+// to a guest can't be replayed as an admin credential on /files/ (where the
+// admin-only `?peer=` federated fetch lives).
+function fileTokenSig(exp, role) {
     const secret = getCachedSecret();
-    const mac = crypto
-        .createHmac('sha256', Buffer.from(secret, 'hex'))
-        .update(`filetoken|${exp}`)
-        .digest();
-    return { token: `${exp}.${toBase64Url(mac)}`, exp };
+    return toBase64Url(
+        crypto
+            .createHmac('sha256', Buffer.from(secret, 'hex'))
+            .update(`filetoken:${role}|${exp}`)
+            .digest(),
+    );
 }
 
+export function mintFileToken(ttlSec, role = 'guest') {
+    const ttl = Number.isFinite(ttlSec) && ttlSec > 0 ? Math.floor(ttlSec) : FILE_TOKEN_TTL_DEFAULT;
+    const exp = Math.floor(Date.now() / 1000) + ttl;
+    const tokenRole = role === 'admin' ? 'admin' : 'guest';
+    return { token: `${exp}.${fileTokenSig(exp, tokenRole)}`, exp };
+}
+
+/**
+ * @returns {'admin'|'guest'|null} the role the token was minted for, or
+ *   null when it is malformed, expired or forged.
+ */
 export function verifyFileToken(token) {
-    if (typeof token !== 'string') return false;
+    if (typeof token !== 'string') return null;
     const dot = token.indexOf('.');
-    if (dot < 1) return false;
+    if (dot < 1) return null;
     const exp = Number(token.slice(0, dot));
-    if (!Number.isFinite(exp) || Date.now() / 1000 > exp) return false;
-    const sig = token.slice(dot + 1);
-    const secret = getCachedSecret();
-    const expected = toBase64Url(
-        crypto.createHmac('sha256', Buffer.from(secret, 'hex')).update(`filetoken|${exp}`).digest(),
-    );
-    const expectedBuf = Buffer.from(expected, 'utf8');
-    const gotBuf = Buffer.from(sig, 'utf8');
-    if (expectedBuf.length !== gotBuf.length) return false;
-    try {
-        return crypto.timingSafeEqual(expectedBuf, gotBuf);
-    } catch {
-        return false;
+    if (!Number.isFinite(exp) || Date.now() / 1000 > exp) return null;
+    const gotBuf = Buffer.from(token.slice(dot + 1), 'utf8');
+    for (const role of FILE_TOKEN_ROLES) {
+        const expectedBuf = Buffer.from(fileTokenSig(exp, role), 'utf8');
+        if (expectedBuf.length === gotBuf.length && crypto.timingSafeEqual(expectedBuf, gotBuf)) {
+            return role;
+        }
     }
+    return null;
 }
 
 // ---- TTL clamp -------------------------------------------------------------
