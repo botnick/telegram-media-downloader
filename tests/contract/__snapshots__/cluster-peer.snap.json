@@ -1,0 +1,2964 @@
+{
+  "entries": {
+    "health unsigned → 401 missing_headers": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health bad ts → 401 bad_ts": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/bad-ts"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_ts",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health clock skew → 401 clock_skew": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/ts-120s-old"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "clock_skew",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health wrong key → 401 bad_signature": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/other-key"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_signature",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health non-hex signature → 401 bad_signature": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/non-hex-sig"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_signature",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health signed (first use)": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "ok": true,
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "ts": "<time:ms>",
+          "version": null
+        }
+      }
+    },
+    "health same signature again → 401 replay": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/alpha (replayed)"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "replay",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health signature for another path → 401": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/signed-other-path"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_signature",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "health signed with alpha secret": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "ok": true,
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "ts": "<time:ms>",
+          "version": null
+        }
+      }
+    },
+    "health signed with cluster token as alpha": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:alpha/token"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "ok": true,
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "ts": "<time:ms>",
+          "version": null
+        }
+      }
+    },
+    "health signed with cluster token as unknown peer": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:00000000-0000-4000-8000-00000000beef/token"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "ok": true,
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "ts": "<time:ms>",
+          "version": null
+        }
+      }
+    },
+    "health signed with alpha secret but beta id → 401": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:00000000-0000-4000-8000-0000000000b2/alpha"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_signature",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "POST /api/cluster/handshake unsigned → 401": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:unsigned",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "GET /api/cluster/downloads/since unsigned → 401": {
+      "route": "GET /api/cluster/downloads/since",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads/since",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "GET /api/cluster/groups/snapshot unsigned → 401": {
+      "route": "GET /api/cluster/groups/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/groups/snapshot",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "GET /api/cluster/accounts/snapshot unsigned → 401": {
+      "route": "GET /api/cluster/accounts/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/accounts/snapshot",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "POST /api/cluster/sign-url unsigned → 401": {
+      "route": "POST /api/cluster/sign-url",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sign-url",
+        "as": "peer:unsigned",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "POST /api/cluster/relay/proxy unsigned → 401": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:unsigned",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "POST /api/cluster/files/delete unsigned → 401": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:unsigned",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "GET /api/cluster/search/peer?q=x unsigned → 401": {
+      "route": "GET /api/cluster/search/peer",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search/peer?q=x",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "GET /api/cluster/files/Alpha%20Photos/images/IMG_0001.jpg unsigned → 401": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "GET /api/cluster/peer-thumbs/1 unsigned → 401": {
+      "route": "GET /api/cluster/peer-thumbs/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peer-thumbs/1",
+        "as": "peer:unsigned"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "missing_headers",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "audit kind=request (admin)": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit?kind=request&limit=100",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "GET /api/cluster/accounts/snapshot: missing_headers",
+              "id": 14,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/downloads/since: missing_headers",
+              "id": 12,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/files/Alpha%20Photos/images/IMG_0001.jpg: missing_headers",
+              "id": 19,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/groups/snapshot: missing_headers",
+              "id": 13,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: bad_signature",
+              "id": 10,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000b2",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: bad_signature",
+              "id": 6,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: bad_signature",
+              "id": 7,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: bad_signature",
+              "id": 9,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: bad_ts",
+              "id": 4,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: clock_skew",
+              "id": 5,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: missing_headers",
+              "id": 3,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/health: replay",
+              "id": 8,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/peer-thumbs/1: missing_headers",
+              "id": 20,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "GET /api/cluster/search/peer?q=x: missing_headers",
+              "id": 18,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "POST /api/cluster/files/delete: missing_headers",
+              "id": 17,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "POST /api/cluster/handshake: missing_headers",
+              "id": 11,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "POST /api/cluster/relay/proxy: missing_headers",
+              "id": 16,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "POST /api/cluster/sign-url: missing_headers",
+              "id": 15,
+              "kind": "request",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            }
+          ]
+        }
+      },
+      "unordered": [
+        "entries"
+      ],
+      "note": "ORDER BY ts DESC with same-millisecond ties; compared as a set"
+    },
+    "peers after signed health (alpha online)": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-alpha",
+              "notes": "primary peer",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+              "id": 2,
+              "lastSeenAt": null,
+              "migrationRequired": true,
+              "name": "peer-beta",
+              "notes": null,
+              "pairedAt": 1717200001000,
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "direct",
+              "url": "http://<FAKE_PEER>",
+              "version": "2.26.3",
+              "wsLastSeen": null
+            }
+          ]
+        }
+      }
+    },
+    "handshake missing name → 400": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
+        "body": {
+          "peer_id": "<uuid:1>",
+          "url": "http://peer-delta.invalid:3000"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_request",
+          "error": "peer_id, name, url required"
+        }
+      }
+    },
+    "handshake as self → 400": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-00000000c0de/token",
+        "body": {
+          "name": "me",
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "url": "http://me.invalid"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "self",
+          "error": "peer_id matches self"
+        }
+      }
+    },
+    "handshake without url → 500 (stored as \"unknown\", rejected by the URL check)": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
+        "body": {
+          "name": "peer-delta",
+          "peer_id": "<uuid:1>"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "error",
+          "error": "peer URL must be http:// or https://"
+        }
+      }
+    },
+    "handshake bad pairing code → 400": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
+        "body": {
+          "name": "peer-delta",
+          "pairing_code": "NOPE1234",
+          "peer_id": "<uuid:1>",
+          "url": "http://peer-delta.invalid:3000"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_pairing_code",
+          "error": "pairing code expired or invalid"
+        }
+      }
+    },
+    "handshake new peer delta": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
+        "body": {
+          "name": "peer-delta",
+          "peer_id": "<uuid:1>",
+          "shared_secret": "<hex64:1>",
+          "ts": 1717200000000,
+          "url": "http://peer-delta.invalid:3000/",
+          "version": "1.2.3"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "fingerprint": "<hex64:2>",
+          "name": "contract-node",
+          "paired_at": "<time:ms>",
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "shared_secret_ack": "<hex64:1>",
+          "version": null
+        }
+      }
+    },
+    "handshake fingerprint (derived)": {
+      "derived": {
+        "fingerprintIsSha256OfTokenAndPeerId": true,
+        "ackEchoesSecret": true
+      }
+    },
+    "health signed with delta per-pair secret": {
+      "route": "GET /api/cluster/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/delta"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "ok": true,
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "ts": "<time:ms>",
+          "version": null
+        }
+      }
+    },
+    "re-handshake is idempotent": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/token",
+        "body": {
+          "name": "peer-delta renamed",
+          "peer_id": "<uuid:1>",
+          "url": "http://peer-delta.invalid:3000"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "fingerprint": "<hex64:2>",
+          "name": "contract-node",
+          "paired_at": "<time:ms>",
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "shared_secret_ack": null,
+          "version": null
+        }
+      }
+    },
+    "peers after handshake": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-alpha",
+              "notes": "primary peer",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+              "id": 2,
+              "lastSeenAt": null,
+              "migrationRequired": true,
+              "name": "peer-beta",
+              "notes": null,
+              "pairedAt": 1717200001000,
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "direct",
+              "url": "http://<FAKE_PEER>",
+              "version": "2.26.3",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:2>",
+              "id": 3,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-delta renamed",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:1>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-delta.invalid:3000",
+              "version": "1.2.3",
+              "wsLastSeen": null
+            }
+          ]
+        }
+      }
+    },
+    "handshake signed with pairing-code secret → 401": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000e5/other-key",
+        "body": {
+          "name": "peer-epsilon",
+          "pairing_code": "<pairing-code>",
+          "peer_id": "<uuid:2>",
+          "url": "http://peer-epsilon.invalid:3000"
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_signature",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "handshake with pairing code, signed with token": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000e5/token",
+        "body": {
+          "name": "peer-epsilon",
+          "pairing_code": "<pairing-code>",
+          "peer_id": "<uuid:2>",
+          "url": "http://peer-epsilon.invalid:3000"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "fingerprint": "<hex64:3>",
+          "name": "contract-node",
+          "paired_at": "<time:ms>",
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "shared_secret_ack": null,
+          "version": null
+        }
+      }
+    },
+    "pairing code is single-use → 400": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000e5/token",
+        "body": {
+          "name": "peer-epsilon",
+          "pairing_code": "<pairing-code>",
+          "peer_id": "<uuid:2>",
+          "url": "http://peer-epsilon.invalid:3000"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_pairing_code",
+          "error": "pairing code expired or invalid"
+        }
+      }
+    },
+    "downloads since 0 limit 3": {
+      "route": "GET /api/cluster/downloads/since",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads/since?sinceId=0&limit=3",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "now": "<time:ms>",
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "message_id": 102,
+              "nsfw_score": 0.45,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "message_id": 103,
+              "nsfw_score": 0.72,
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    },
+    "downloads since 18": {
+      "route": "GET /api/cluster/downloads/since",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads/since?sinceId=18",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "now": "<time:ms>",
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "rows": [
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-03 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 20,
+              "message_id": 120,
+              "nsfw_score": null,
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    },
+    "downloads since (defaults)": {
+      "route": "GET /api/cluster/downloads/since",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads/since",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "now": "<time:ms>",
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "message_id": 102,
+              "nsfw_score": 0.45,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "message_id": 103,
+              "nsfw_score": 0.72,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "message_id": 104,
+              "nsfw_score": 0.93,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_hash": "ce945d65064f2d29837f6c6c7ba6a4683ce8fcdc98068a1d2618f698c781bac6",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 5,
+              "message_id": 105,
+              "nsfw_score": 0.88,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-15 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 6,
+              "message_id": 106,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-01 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 7,
+              "message_id": 107,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-02 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 8,
+              "message_id": 108,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-03 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 9,
+              "message_id": 109,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_hash": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_hash": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_hash": "58aa53bb557ed5cb1738381da9c3cb4cd4d8297bcec93abbdd535440663c8723",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_hash": "26f7bdea33497913221a07e8ad18922c8c3c57542cb1b2d3437152947e625e0a",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-01 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 14,
+              "message_id": 114,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-02 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 15,
+              "message_id": 115,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-03 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 16,
+              "message_id": 116,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-04 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 17,
+              "message_id": 117,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-01 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 18,
+              "message_id": 118,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-03 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 20,
+              "message_id": 120,
+              "nsfw_score": null,
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    },
+    "downloads since garbage params": {
+      "route": "GET /api/cluster/downloads/since",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads/since?sinceId=x&limit=y",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "now": "<time:ms>",
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "message_id": 102,
+              "nsfw_score": 0.45,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "message_id": 103,
+              "nsfw_score": 0.72,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "message_id": 104,
+              "nsfw_score": 0.93,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_hash": "ce945d65064f2d29837f6c6c7ba6a4683ce8fcdc98068a1d2618f698c781bac6",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 5,
+              "message_id": 105,
+              "nsfw_score": 0.88,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-15 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 6,
+              "message_id": 106,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-01 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 7,
+              "message_id": 107,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-02 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 8,
+              "message_id": 108,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-03 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 9,
+              "message_id": 109,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_hash": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_hash": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_hash": "58aa53bb557ed5cb1738381da9c3cb4cd4d8297bcec93abbdd535440663c8723",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_hash": "26f7bdea33497913221a07e8ad18922c8c3c57542cb1b2d3437152947e625e0a",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-01 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 14,
+              "message_id": 114,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-02 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 15,
+              "message_id": 115,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-03 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 16,
+              "message_id": 116,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-04 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 17,
+              "message_id": 117,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-01 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 18,
+              "message_id": 118,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-03 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 20,
+              "message_id": 120,
+              "nsfw_score": null,
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    },
+    "groups snapshot": {
+      "route": "GET /api/cluster/groups/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/groups/snapshot",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "groups": [
+            {
+              "enabled": true,
+              "filters": {
+                "audio": false,
+                "files": false,
+                "gifs": false,
+                "links": false,
+                "photos": true,
+                "stickers": false,
+                "urls": true,
+                "videos": true,
+                "voice": false
+              },
+              "id": "-1001000000001",
+              "name": "Alpha Photos"
+            },
+            {
+              "enabled": true,
+              "filters": {
+                "audio": false,
+                "files": false,
+                "gifs": false,
+                "links": false,
+                "photos": false,
+                "stickers": false,
+                "urls": true,
+                "videos": true,
+                "voice": false
+              },
+              "id": "-1001000000002",
+              "name": "Beta Videos"
+            },
+            {
+              "enabled": false,
+              "filters": {
+                "audio": false,
+                "files": true,
+                "gifs": false,
+                "links": false,
+                "photos": false,
+                "stickers": false,
+                "urls": true,
+                "videos": false,
+                "voice": false
+              },
+              "id": "-1001000000003",
+              "name": "Gamma Docs"
+            },
+            {
+              "enabled": true,
+              "filters": {
+                "audio": false,
+                "files": true,
+                "gifs": false,
+                "links": false,
+                "photos": true,
+                "stickers": false,
+                "urls": true,
+                "videos": true,
+                "voice": false
+              },
+              "id": "-1001000000004",
+              "name": "Delta Mixed",
+              "rescueMode": "on"
+            }
+          ],
+          "now": "<time:ms>",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "accounts snapshot": {
+      "route": "GET /api/cluster/accounts/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/accounts/snapshot",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": [],
+          "now": "<time:ms>",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "search/peer no q": {
+      "route": "GET /api/cluster/search/peer",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search/peer",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": []
+        }
+      }
+    },
+    "search/peer q=IMG_001 limit=2": {
+      "route": "GET /api/cluster/search/peer",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search/peer?q=IMG_001&limit=2",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "q": "IMG_001",
+          "rows": [
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-01 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 18,
+              "message_id": 118,
+              "nsfw_score": null,
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    },
+    "search/peer by group name": {
+      "route": "GET /api/cluster/search/peer",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search/peer?q=gamma",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "q": "gamma",
+          "rows": [
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_hash": "26f7bdea33497913221a07e8ad18922c8c3c57542cb1b2d3437152947e625e0a",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_hash": "58aa53bb557ed5cb1738381da9c3cb4cd4d8297bcec93abbdd535440663c8723",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_hash": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_hash": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null,
+              "status": "completed"
+            }
+          ]
+        }
+      }
+    },
+    "search/peer LIKE wildcard is literal": {
+      "route": "GET /api/cluster/search/peer",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search/peer?q=%25",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peerId": "00000000-0000-4000-8000-00000000c0de",
+          "q": "%",
+          "rows": []
+        }
+      }
+    },
+    "file bridge": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/Alpha%20Photos/images/IMG_0002.jpg",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store",
+        "content-length": "3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+        "bytes": 3228
+      }
+    },
+    "file bridge Range 0-99": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/Alpha%20Photos/images/IMG_0002.jpg",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store",
+        "content-length": "100",
+        "content-range": "bytes 0-99/3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "37f1c2e52963aa23f9e9e5a9f626a40ac7dfa2f545939d7a0f3a533735143ab5",
+        "bytes": 100
+      }
+    },
+    "file bridge HEAD": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "HEAD",
+        "path": "/api/cluster/files/Alpha%20Photos/images/IMG_0002.jpg",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store",
+        "content-length": "3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "file bridge unicode name": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/Delta%20Mixed/images/%E0%B8%A0%E0%B8%B2%E0%B8%9E%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A%20%E0%B8%A3%E0%B8%B9%E0%B8%9B.jpg",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store",
+        "content-length": "3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+        "bytes": 3228
+      }
+    },
+    "file bridge missing → 404": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/Alpha%20Photos/images/nope.jpg",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "file bridge traversal → refused": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/..%2Fdb.sqlite",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Forbidden"
+      }
+    },
+    "file bridge undecodable path → 500 (Express decode error)": {
+      "route": "GET /api/cluster/files/:path(*)",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/files/%E0%A4%A",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Failed to decode param '%E0%A4%A'"
+        }
+      }
+    },
+    "peer thumb photo": {
+      "route": "GET /api/cluster/peer-thumbs/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peer-thumbs/1",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-type": "image/webp; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "mtime": "<masked:number>",
+          "path": "<DATA>/thumbs/<hex32:1>.webp",
+          "width": 320
+        }
+      },
+      "masked": {
+        "mtime": "mtime of the thumbnail file generated during this run"
+      }
+    },
+    "peer thumb w=320": {
+      "route": "GET /api/cluster/peer-thumbs/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peer-thumbs/2?w=320",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "private, no-store",
+        "content-type": "image/webp; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "mtime": "<masked:number>",
+          "path": "<DATA>/thumbs/<hex32:2>.webp",
+          "width": 320
+        }
+      },
+      "masked": {
+        "mtime": "mtime of the thumbnail file generated during this run"
+      }
+    },
+    "peer thumb document → 404": {
+      "route": "GET /api/cluster/peer-thumbs/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peer-thumbs/10",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "No thumb"
+      }
+    },
+    "peer thumb unknown id → 404": {
+      "route": "GET /api/cluster/peer-thumbs/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peer-thumbs/999",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "No thumb"
+      }
+    },
+    "peer thumb bad id → 400": {
+      "route": "GET /api/cluster/peer-thumbs/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peer-thumbs/abc",
+        "as": "peer:alpha/alpha"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Bad id"
+      }
+    },
+    "sign-url without path → 400": {
+      "route": "POST /api/cluster/sign-url",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sign-url",
+        "as": "peer:alpha/alpha",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "path required"
+        }
+      }
+    },
+    "sign-url unknown path → 404": {
+      "route": "POST /api/cluster/sign-url",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sign-url",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "path": "Nope/images/x.jpg"
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "file not catalogued"
+        }
+      }
+    },
+    "sign-url": {
+      "route": "POST /api/cluster/sign-url",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sign-url",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "path": "Alpha Photos/images/IMG_0001.jpg",
+          "ttlSec": 120
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "expiresAt": "<time:ms>",
+          "url": "http://<HOST>/share/4?s=<sig:1>"
+        }
+      }
+    },
+    "sign-url behind a proxy": {
+      "route": "POST /api/cluster/sign-url",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sign-url",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "path": "Alpha Photos/images/IMG_0001.jpg"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "expiresAt": "<time:ms>",
+          "url": "https://dl.example.test/share/5?s=<sig:2>"
+        }
+      }
+    },
+    "fetch the minted share url": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/4?s=<sig:1>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=59, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_sig",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "minted share link row (derived)": {
+      "derived": {
+        "label": "cluster:00000000",
+        "ttlWindow": true,
+        "storedExpiresAtIsMilliseconds": true
+      }
+    },
+    "relay empty envelope → 400": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:alpha/alpha",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad envelope"
+        }
+      }
+    },
+    "relay to self → 400": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "method": "GET",
+          "path": "/api/cluster/health",
+          "to_peer_id": "00000000-0000-4000-8000-00000000c0de"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "relay target is self — call direct"
+        }
+      }
+    },
+    "relay to unknown peer → 404": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "method": "GET",
+          "path": "/api/cluster/health",
+          "to_peer_id": "<uuid:3>"
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "relay target not paired with this peer"
+        }
+      }
+    },
+    "relay to unreachable peer → 502": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:00000000-0000-4000-8000-0000000000d4/delta",
+        "body": {
+          "inner_sig": "aa",
+          "inner_ts": 1,
+          "method": "GET",
+          "path": "/api/cluster/health",
+          "to_peer_id": "00000000-0000-4000-8000-0000000000a1"
+        }
+      },
+      "status": 502,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "relay fetch failed: fetch failed"
+        }
+      }
+    },
+    "relay POST to beta (fake peer)": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "body_b64": "eyJoZWxsbyI6ImJldGEifQ==",
+          "inner_sig": "c0ffee",
+          "inner_ts": 1717200000000,
+          "method": "POST",
+          "path": "/api/cluster/files/delete",
+          "to_peer_id": "00000000-0000-4000-8000-0000000000b2"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": true,
+          "relayedTo": "beta"
+        }
+      }
+    },
+    "relay GET to beta (fake peer)": {
+      "route": "POST /api/cluster/relay/proxy",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/relay/proxy",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "body_b64": "",
+          "inner_sig": "beef",
+          "method": "GET",
+          "path": "/api/cluster/health",
+          "to_peer_id": "00000000-0000-4000-8000-0000000000b2",
+          "ts": 1717200000001
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": true,
+          "relayedTo": "beta"
+        }
+      }
+    },
+    "what beta received through the relay (derived)": {
+      "received": [
+        {
+          "method": "POST",
+          "path": "/api/cluster/files/delete",
+          "xPeerId": "alpha",
+          "xPeerTs": "1717200000000",
+          "xPeerSignature": "c0ffee",
+          "contentType": "application/json",
+          "body": "{\"hello\":\"beta\"}"
+        },
+        {
+          "method": "GET",
+          "path": "/api/cluster/health",
+          "xPeerId": "alpha",
+          "xPeerTs": "1717200000001",
+          "xPeerSignature": "beef",
+          "contentType": null,
+          "body": ""
+        }
+      ]
+    },
+    "delete: no selector → 404": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:alpha/alpha",
+        "body": {}
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "file not catalogued"
+        }
+      }
+    },
+    "delete: unknown remote_id → 404": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "remote_id": 999
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "file not catalogued"
+        }
+      }
+    },
+    "delete by remote_id (notes.txt)": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "reason": "contract",
+          "remote_id": 11
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "deleted": true,
+          "freedBytes": 38
+        }
+      }
+    },
+    "delete by file_path shared with another row": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "file_path": "Delta Mixed/images/IMG_0014.jpg"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "deleted": true,
+          "freedBytes": 0
+        }
+      }
+    },
+    "delete by file_path, last user of the file": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "file_path": "Delta Mixed/images/IMG_0014.jpg"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "deleted": true,
+          "freedBytes": 3365
+        }
+      }
+    },
+    "delete already gone → 404": {
+      "route": "POST /api/cluster/files/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/files/delete",
+        "as": "peer:alpha/alpha",
+        "body": {
+          "remote_id": 11
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "file not catalogued"
+        }
+      }
+    },
+    "files after cross-peer delete (derived)": {
+      "derived": {
+        "notesTxt": false,
+        "deltaShared": false
+      }
+    },
+    "audit kind=cross_delete": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit?kind=cross_delete",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
+              "id": 30,
+              "kind": "cross_delete",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
+              "id": 31,
+              "kind": "cross_delete",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "Gamma Docs/documents/notes.txt (reason=contract)",
+              "id": 29,
+              "kind": "cross_delete",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            }
+          ]
+        }
+      },
+      "unordered": [
+        "entries"
+      ]
+    },
+    "ws: dashboard during cross-peer delete": {
+      "ws": "dashboard",
+      "events": []
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

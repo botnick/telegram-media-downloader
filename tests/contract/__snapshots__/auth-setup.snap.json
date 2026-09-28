@@ -1,0 +1,430 @@
+{
+  "entries": {
+    "auth_check before setup": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": false,
+          "enabled": true,
+          "guestEnabled": false,
+          "role": null,
+          "setupRequired": true
+        }
+      }
+    },
+    "api before setup → 503": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads",
+        "as": "anon"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Web dashboard not initialised. Run `npm run auth` to set a password.",
+          "setupRequired": true
+        }
+      }
+    },
+    "POST api before setup → 503": {
+      "route": "POST /api/config",
+      "request": {
+        "method": "POST",
+        "path": "/api/config",
+        "as": "anon",
+        "body": {}
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Web dashboard not initialised. Run `npm run auth` to set a password.",
+          "setupRequired": true
+        }
+      }
+    },
+    "GET / before setup → setup-needed redirect": {
+      "route": "GET /",
+      "request": {
+        "method": "GET",
+        "path": "/",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/setup-needed.html",
+        "vary": "Accept, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /setup-needed.html"
+      }
+    },
+    "GET /setup-needed.html": {
+      "route": "GET /setup-needed.html",
+      "request": {
+        "method": "GET",
+        "path": "/setup-needed.html",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "textSha256": "9b94a57ffa60103886a0b3b9c17e5baa1a4bca24cdc5e5ce86e7fcfbcddaf29e",
+        "chars": 4932
+      }
+    },
+    "GET /api/version before setup (public)": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "login before setup → 503": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "anything-at-all"
+        }
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=9, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Web dashboard not initialised. Run `npm run auth`.",
+          "setupRequired": true
+        }
+      }
+    },
+    "reset/request before setup → 409": {
+      "route": "POST /api/auth/reset/request",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/reset/request",
+        "as": "anon"
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=8, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No password configured yet — use /api/auth/setup"
+        }
+      }
+    },
+    "ws upgrade before setup": {
+      "ws": "dashboard",
+      "upgrade": 503
+    },
+    "setup short password → 400": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "body": {
+          "password": "short"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=19, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password must be at least 8 characters"
+        }
+      }
+    },
+    "setup non-string password → 400": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "body": {
+          "password": 12345678
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=18, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password must be at least 8 characters"
+        }
+      }
+    },
+    "setup from a non-local client → 403": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "203.0.113.9"
+        },
+        "body": {
+          "password": "first-admin-pass"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=19, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Initial setup must be done from the local machine. Run `npm run auth` instead."
+        }
+      }
+    },
+    "setup → 200 + admin cookie": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "body": {
+          "password": "first-admin-pass"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=17, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "<session-token>",
+            "attributes": {
+              "expires": "<time:http>",
+              "httponly": true,
+              "max-age": "604800",
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "auth_check with the setup cookie": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "setup-admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": true,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": false,
+          "role": "admin",
+          "setupRequired": false
+        }
+      }
+    },
+    "setup again → 409": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "body": {
+          "password": "second-admin-pass"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=16, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Already configured — use POST /api/auth/change-password"
+        }
+      }
+    },
+    "login with the configured password": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "first-admin-pass"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=7, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "<session-token>",
+            "attributes": {
+              "expires": "<time:http>",
+              "httponly": true,
+              "max-age": "604800",
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "role": "admin",
+          "success": true
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

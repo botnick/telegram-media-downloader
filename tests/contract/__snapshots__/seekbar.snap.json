@@ -1,0 +1,1663 @@
+{
+  "entries": {
+    "sprite of row 6": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/6",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-length": "468",
+        "content-type": "image/webp",
+        "etag": "\"sk-6-1717286400000\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "d63c56d78c9bed54f8760ac08880e113aeac19250f9f97886a8cb31c03672efc",
+        "bytes": 468
+      }
+    },
+    "sprite of row 6 with matching If-None-Match → 304": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/6",
+        "as": "admin",
+        "headers": {
+          "if-none-match": "\"sk-6-1717286400000\""
+        }
+      },
+      "status": 304,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "etag": "\"sk-6-1717286400000\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "sprite of row 6 with stale If-None-Match": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/6",
+        "as": "admin",
+        "headers": {
+          "if-none-match": "\"sk-6-0\""
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-length": "468",
+        "content-type": "image/webp",
+        "etag": "\"sk-6-1717286400000\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "d63c56d78c9bed54f8760ac08880e113aeac19250f9f97886a8cb31c03672efc",
+        "bytes": 468
+      }
+    },
+    "sprite as guest (allowed)": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/6",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-length": "468",
+        "content-type": "image/webp",
+        "etag": "\"sk-6-1717286400000\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "d63c56d78c9bed54f8760ac08880e113aeac19250f9f97886a8cb31c03672efc",
+        "bytes": 468
+      }
+    },
+    "sprite as anon → 401": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/6",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "sprite of a video without one → 404": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/7",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "sprite of a bad id → 404": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/abc",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "sprite of id 0 → 404": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/0",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "meta of row 6": {
+      "route": "GET /api/seekbar/meta/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/meta/6",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cols": 2,
+          "duration": 2,
+          "format": "webp",
+          "frames": 2,
+          "interval": 1,
+          "rows": 1,
+          "sprite": "6.webp",
+          "tileHeight": 60,
+          "tileWidth": 160,
+          "version": 1
+        }
+      }
+    },
+    "meta as guest (allowed)": {
+      "route": "GET /api/seekbar/meta/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/meta/6",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cols": 2,
+          "duration": 2,
+          "format": "webp",
+          "frames": 2,
+          "interval": 1,
+          "rows": 1,
+          "sprite": "6.webp",
+          "tileHeight": 60,
+          "tileWidth": 160,
+          "version": 1
+        }
+      }
+    },
+    "meta of a video without one → 404": {
+      "route": "GET /api/seekbar/meta/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/meta/7",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "meta of a bad id → 404": {
+      "route": "GET /api/seekbar/meta/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/meta/-1",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "seekbar stats": {
+      "route": "GET /api/maintenance/seekbar/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": 468,
+          "count": 1,
+          "ffmpegAvailable": true,
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": "fetch failed",
+            "mode": "remote",
+            "ok": false,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://seekbar.invalid:9"
+          },
+          "success": true,
+          "totalVideos": 4
+        }
+      }
+    },
+    "seekbar queue stats": {
+      "route": "GET /api/maintenance/seekbar/queue/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/queue/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed": 1,
+          "failed": 0,
+          "processing": 0,
+          "queued": 0,
+          "running": false,
+          "success": true
+        }
+      }
+    },
+    "seekbar list": {
+      "route": "GET /api/maintenance/seekbar/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [
+            {
+              "bytes": 468,
+              "cols": 2,
+              "duration_sec": 2,
+              "file_name": "VID_0006.mp4",
+              "format": "webp",
+              "frames": 2,
+              "generated_at": 1717286400000,
+              "id": 6,
+              "rows": 1
+            }
+          ],
+          "total": 1
+        }
+      }
+    },
+    "seekbar list limit/offset": {
+      "route": "GET /api/maintenance/seekbar/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/list?limit=1&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 1,
+          "offset": 1,
+          "rows": [],
+          "total": 1
+        }
+      }
+    },
+    "seekbar list limit clamps": {
+      "route": "GET /api/maintenance/seekbar/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/list?limit=999&offset=-3",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 200,
+          "offset": 0,
+          "rows": [
+            {
+              "bytes": 468,
+              "cols": 2,
+              "duration_sec": 2,
+              "file_name": "VID_0006.mp4",
+              "format": "webp",
+              "frames": 2,
+              "generated_at": 1717286400000,
+              "id": 6,
+              "rows": 1
+            }
+          ],
+          "total": 1
+        }
+      }
+    },
+    "build status idle": {
+      "route": "GET /api/maintenance/seekbar/build/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/build/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "seekbarBuild",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "build stats (never built)": {
+      "route": "GET /api/maintenance/seekbar/build/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/build/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastBuild": null
+        }
+      }
+    },
+    "rebuild status idle": {
+      "route": "GET /api/maintenance/seekbar/rebuild/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/rebuild/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "seekbarRebuild",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "seekbar health": {
+      "route": "GET /api/maintenance/seekbar/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/health",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ffmpegAvailable": true,
+          "hwaccel": null,
+          "node": "<masked:string>",
+          "platform": "<masked:string>",
+          "richHealth": null,
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": "fetch failed",
+            "mode": "remote",
+            "ok": false,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://seekbar.invalid:9"
+          },
+          "success": true,
+          "version": "0.4.0"
+        }
+      },
+      "masked": {
+        "platform": "process.platform/process.arch of the host running the server",
+        "node": "Node.js version of the host (a Go server reports its own runtime)"
+      }
+    },
+    "hwaccel probe without a running sidecar": {
+      "route": "GET /api/maintenance/seekbar/hwaccel-probe",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/hwaccel-probe",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "available": [],
+          "compiled": [],
+          "error": "sidecar not running",
+          "ffmpeg_path": ""
+        }
+      }
+    },
+    "seekbar stats as guest → 403": {
+      "route": "GET /api/maintenance/seekbar/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/stats",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "sidecar-test without url → 400": {
+      "route": "POST /api/maintenance/seekbar/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar-test",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "url_required",
+          "ok": false
+        }
+      }
+    },
+    "sidecar-test javascript: url → 400": {
+      "route": "POST /api/maintenance/seekbar/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "javascript:alert(1)"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid_scheme",
+          "ok": false
+        }
+      }
+    },
+    "sidecar-test unreachable host": {
+      "route": "POST /api/maintenance/seekbar/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "http://seek-other.invalid:1"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "unknown",
+          "authRequired": null,
+          "error": "fetch failed",
+          "features": [],
+          "ffmpeg": null,
+          "hwaccel": null,
+          "ok": false,
+          "platform": null,
+          "reachable": false,
+          "tokenSent": false,
+          "version": null
+        }
+      }
+    },
+    "sidecar-test saved url reuses the saved token": {
+      "route": "POST /api/maintenance/seekbar/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "http://seekbar.invalid:9"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "unknown",
+          "authRequired": null,
+          "error": "fetch failed",
+          "features": [],
+          "ffmpeg": null,
+          "hwaccel": null,
+          "ok": false,
+          "platform": null,
+          "reachable": false,
+          "tokenSent": true,
+          "version": null
+        }
+      }
+    },
+    "sidecar-test fake sidecar, right token": {
+      "route": "POST /api/maintenance/seekbar/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar-test",
+        "as": "admin",
+        "body": {
+          "token": "seek-token",
+          "url": "<fake-sidecar>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "ok",
+          "authRequired": true,
+          "error": null,
+          "features": [
+            "upload"
+          ],
+          "ffmpeg": "7.0-fake",
+          "hwaccel": "none",
+          "ok": true,
+          "platform": "linux/amd64",
+          "reachable": true,
+          "tokenSent": true,
+          "version": "0.9.0-fake"
+        }
+      }
+    },
+    "sidecar-test fake sidecar, no token": {
+      "route": "POST /api/maintenance/seekbar/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "<fake-sidecar>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "failed",
+          "authRequired": true,
+          "error": "token_required",
+          "features": [
+            "upload"
+          ],
+          "ffmpeg": "7.0-fake",
+          "hwaccel": "none",
+          "ok": false,
+          "platform": "linux/amd64",
+          "reachable": true,
+          "tokenSent": false,
+          "version": "0.9.0-fake"
+        }
+      }
+    },
+    "sidecar restart (remote down)": {
+      "route": "POST /api/maintenance/seekbar/sidecar/restart",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar/restart",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": "fetch failed",
+            "mode": "remote",
+            "ok": false,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://seekbar.invalid:9"
+          },
+          "success": true
+        }
+      }
+    },
+    "ws events: sidecar restart (remote down)": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "checkedAt": "<time:ms>",
+          "error": "fetch failed",
+          "mode": "remote",
+          "ok": false,
+          "pid": null,
+          "sources": {
+            "pathMap": null,
+            "token": "config",
+            "url": "config"
+          },
+          "type": "seekbar_sidecar_status",
+          "url": "http://seekbar.invalid:9"
+        }
+      ]
+    },
+    "regen bad id → 400": {
+      "route": "POST /api/maintenance/seekbar/regen/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/regen/abc",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid id"
+        }
+      }
+    },
+    "regen id 0 → 400": {
+      "route": "POST /api/maintenance/seekbar/regen/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/regen/0",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid id"
+        }
+      }
+    },
+    "regen unknown row → 404": {
+      "route": "POST /api/maintenance/seekbar/regen/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/regen/9999",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "not_found"
+        }
+      }
+    },
+    "regen a photo → 400": {
+      "route": "POST /api/maintenance/seekbar/regen/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/regen/1",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "not a video"
+        }
+      }
+    },
+    "regen as guest → 403": {
+      "route": "POST /api/maintenance/seekbar/regen/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/regen/7",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "regen row 7": {
+      "route": "POST /api/maintenance/seekbar/regen/:id",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/regen/7",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": "<masked:number>",
+          "cols": 10,
+          "download_id": 7,
+          "duration_sec": 1,
+          "format": "webp",
+          "frames": 8,
+          "generated_at": "<time:ms>",
+          "interval_sec": 0.125,
+          "meta_url": "/api/seekbar/meta/7",
+          "rows": 1,
+          "source_mtime": 1704164645000,
+          "source_size": 2171,
+          "sprite_url": "/api/seekbar/sprite/7",
+          "success": true,
+          "tile_h": null,
+          "tile_w": 160,
+          "version": 1
+        }
+      },
+      "masked": {
+        "bytes": "size of a sprite encoded by the host ffmpeg/libwebp build during the run"
+      }
+    },
+    "meta of row 7 after regen": {
+      "route": "GET /api/seekbar/meta/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/meta/7",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=300",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": "<masked:number>",
+          "cols": 10,
+          "download_id": 7,
+          "duration_sec": 1,
+          "format": "webp",
+          "frames": 8,
+          "generated_at": "<time:ms>",
+          "interval_sec": 0.125,
+          "meta_url": "/api/seekbar/meta/7",
+          "rows": 1,
+          "source_mtime": 1704164645000,
+          "source_size": 2171,
+          "sprite_url": "/api/seekbar/sprite/7",
+          "tile_h": null,
+          "tile_w": 160,
+          "version": 1
+        }
+      },
+      "masked": {
+        "bytes": "size of a sprite encoded by the host ffmpeg/libwebp build during the run"
+      }
+    },
+    "build-all": {
+      "route": "POST /api/maintenance/seekbar/build-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/build-all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true
+        }
+      }
+    },
+    "build status after run": {
+      "route": "GET /api/maintenance/seekbar/build/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/build/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "seekbarBuild",
+          "progress": {
+            "errored": 0,
+            "generated": 2,
+            "processed": 2,
+            "skipped": 0,
+            "stage": "done",
+            "total": 4
+          },
+          "result": {
+            "cancelled": false,
+            "durationMs": "<durationMs:number>",
+            "errored": 0,
+            "generated": 2,
+            "processed": 2,
+            "skipped": 0
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "build stats after run": {
+      "route": "GET /api/maintenance/seekbar/build/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/build/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "lastBuild": {
+            "cancelled": false,
+            "durationMs": "<durationMs:number>",
+            "errored": 0,
+            "finishedAt": "<time:ms>",
+            "generated": 2,
+            "processed": 2,
+            "skipped": 0
+          }
+        }
+      }
+    },
+    "build cancel when idle": {
+      "route": "POST /api/maintenance/seekbar/build/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/build/cancel",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "seekbar list after build": {
+      "route": "GET /api/maintenance/seekbar/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [
+            {
+              "bytes": "<masked:number>",
+              "cols": 10,
+              "duration_sec": 1,
+              "file_name": "VID_0007.mp4",
+              "format": "webp",
+              "frames": 8,
+              "generated_at": "<time:ms>",
+              "id": 7,
+              "rows": 1
+            },
+            {
+              "bytes": "<masked:number>",
+              "cols": 10,
+              "duration_sec": 1,
+              "file_name": "VID_0020.mp4",
+              "format": "webp",
+              "frames": 8,
+              "generated_at": "<time:ms>",
+              "id": 20,
+              "rows": 1
+            },
+            {
+              "bytes": "<masked:number>",
+              "cols": 10,
+              "duration_sec": 2,
+              "file_name": "VID_0008.mp4",
+              "format": "webp",
+              "frames": 8,
+              "generated_at": "<time:ms>",
+              "id": 8,
+              "rows": 1
+            },
+            {
+              "bytes": "<masked:number>",
+              "cols": 2,
+              "duration_sec": 2,
+              "file_name": "VID_0006.mp4",
+              "format": "webp",
+              "frames": 2,
+              "generated_at": 1717286400000,
+              "id": 6,
+              "rows": 1
+            }
+          ],
+          "total": 4
+        }
+      },
+      "masked": {
+        "rows[].bytes": "size of a sprite encoded by the host ffmpeg/libwebp build during the run (the seeded row 6 is masked too — one path covers all rows)"
+      },
+      "unordered": [
+        "rows"
+      ]
+    },
+    "seekbar queue stats after build": {
+      "route": "GET /api/maintenance/seekbar/queue/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/queue/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed": 4,
+          "failed": 0,
+          "processing": 0,
+          "queued": 0,
+          "running": false,
+          "success": true
+        }
+      }
+    },
+    "ws events: build-all": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "seekbar_progress",
+          "collapsed": true
+        },
+        {
+          "cancelled": false,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "generated": 2,
+          "kind": "seekbarBuild",
+          "processed": 2,
+          "skipped": 0,
+          "type": "seekbar_done"
+        }
+      ],
+      "collapsed": [
+        "seekbar_progress"
+      ]
+    },
+    "rebuild wipeOnly": {
+      "route": "POST /api/maintenance/seekbar/rebuild",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/rebuild",
+        "as": "admin",
+        "body": {
+          "wipeOnly": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true
+        }
+      }
+    },
+    "rebuild status after wipe": {
+      "route": "GET /api/maintenance/seekbar/rebuild/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/rebuild/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "seekbarRebuild",
+          "progress": {
+            "phase": "wiped",
+            "wiped": {
+              "bytes": "<masked:number>",
+              "cancelled": false,
+              "removed": 4
+            }
+          },
+          "result": {
+            "regenerated": 0,
+            "wiped": {
+              "bytes": "<masked:number>",
+              "cancelled": false,
+              "removed": 4
+            }
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      },
+      "masked": {
+        "progress.wiped.bytes": "sum of sprite sizes — includes size of a sprite encoded by the host ffmpeg/libwebp build during the run",
+        "result.wiped.bytes": "sum of sprite sizes — includes size of a sprite encoded by the host ffmpeg/libwebp build during the run"
+      }
+    },
+    "sprite of row 6 after wipe → 404": {
+      "route": "GET /api/seekbar/sprite/:id",
+      "request": {
+        "method": "GET",
+        "path": "/api/seekbar/sprite/6",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": null
+    },
+    "seekbar stats after wipe": {
+      "route": "GET /api/maintenance/seekbar/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": 0,
+          "count": 0,
+          "ffmpegAvailable": true,
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": "fetch failed",
+            "mode": "remote",
+            "ok": false,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://seekbar.invalid:9"
+          },
+          "success": true,
+          "totalVideos": 4
+        }
+      }
+    },
+    "ws events: rebuild wipeOnly": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "seekbar_rebuild_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "seekbarRebuild",
+          "regenerated": 0,
+          "type": "seekbar_rebuild_done",
+          "wiped": {
+            "bytes": "<masked:number>",
+            "cancelled": false,
+            "removed": 4
+          }
+        }
+      ],
+      "masked": {
+        "wiped.bytes": "sum of sprite sizes — includes size of a sprite encoded by the host ffmpeg/libwebp build during the run"
+      },
+      "collapsed": [
+        "seekbar_rebuild_progress"
+      ]
+    },
+    "fake: seekbar stats": {
+      "route": "GET /api/maintenance/seekbar/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": 468,
+          "count": 1,
+          "ffmpegAvailable": true,
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": null,
+            "features": [
+              "upload"
+            ],
+            "mode": "remote",
+            "ok": true,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://127.0.0.1:<fake-sidecar>",
+            "version": "0.9.0-fake"
+          },
+          "success": true,
+          "totalVideos": 4
+        }
+      }
+    },
+    "fake: seekbar health": {
+      "route": "GET /api/maintenance/seekbar/health",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/health",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ffmpegAvailable": true,
+          "hwaccel": {
+            "available": [
+              "none"
+            ],
+            "compiled": [
+              "vaapi",
+              "cuda"
+            ],
+            "ffmpeg_path": "/opt/fake/ffmpeg"
+          },
+          "node": "<masked:string>",
+          "platform": "<masked:string>",
+          "richHealth": {
+            "gpu_provider": null,
+            "hwaccel_resolved": "none",
+            "ok": true,
+            "platform": "linux",
+            "stats": {
+              "done": 3,
+              "queued": 0,
+              "running": 0
+            },
+            "version": "0.9.0-fake"
+          },
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": null,
+            "features": [
+              "upload"
+            ],
+            "mode": "remote",
+            "ok": true,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://127.0.0.1:<fake-sidecar>",
+            "version": "0.9.0-fake"
+          },
+          "success": true,
+          "version": "0.4.0"
+        }
+      },
+      "masked": {
+        "platform": "process.platform/process.arch of the host running the server",
+        "node": "Node.js version of the host (a Go server reports its own runtime)"
+      }
+    },
+    "fake: hwaccel probe": {
+      "route": "GET /api/maintenance/seekbar/hwaccel-probe",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/seekbar/hwaccel-probe",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "available": [
+            "none"
+          ],
+          "compiled": [
+            "vaapi",
+            "cuda"
+          ],
+          "ffmpeg_path": "/opt/fake/ffmpeg"
+        }
+      }
+    },
+    "fake: sidecar restart": {
+      "route": "POST /api/maintenance/seekbar/sidecar/restart",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/seekbar/sidecar/restart",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "sidecar": {
+            "checkedAt": "<time:ms>",
+            "error": null,
+            "features": [
+              "upload"
+            ],
+            "mode": "remote",
+            "ok": true,
+            "pid": null,
+            "sources": {
+              "pathMap": null,
+              "token": "config",
+              "url": "config"
+            },
+            "url": "http://127.0.0.1:<fake-sidecar>",
+            "version": "0.9.0-fake"
+          },
+          "success": true
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

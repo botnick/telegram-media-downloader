@@ -1,0 +1,3865 @@
+{
+  "entries": {
+    "identity": {
+      "route": "GET /api/cluster/identity",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "identity as guest → 403": {
+      "route": "GET /api/cluster/identity",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "identity as anon → 401": {
+      "route": "GET /api/cluster/identity",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "token": {
+      "route": "GET /api/cluster/identity/token",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity/token",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        }
+      }
+    },
+    "token as guest → 403": {
+      "route": "GET /api/cluster/identity/token",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity/token",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "rename without name → 400": {
+      "route": "PUT /api/cluster/identity",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/identity",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "name required"
+        }
+      }
+    },
+    "rename trims": {
+      "route": "PUT /api/cluster/identity",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/identity",
+        "as": "admin",
+        "body": {
+          "name": "  Contract Node  "
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "Contract Node",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "rename clips to 64 chars": {
+      "route": "PUT /api/cluster/identity",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/identity",
+        "as": "admin",
+        "body": {
+          "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "rename whitespace-only → 400": {
+      "route": "PUT /api/cluster/identity",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/identity",
+        "as": "admin",
+        "body": {
+          "name": "   "
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer name must be non-empty"
+        }
+      }
+    },
+    "rename back": {
+      "route": "PUT /api/cluster/identity",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/identity",
+        "as": "admin",
+        "body": {
+          "name": "contract-node"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "identity after rename": {
+      "route": "GET /api/cluster/identity",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "name": "contract-node",
+          "peerId": "00000000-0000-4000-8000-00000000c0de"
+        }
+      }
+    },
+    "set-token missing → 400": {
+      "route": "POST /api/cluster/identity/set-token",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/identity/set-token",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "token required"
+        }
+      }
+    },
+    "set-token not hex → 400": {
+      "route": "POST /api/cluster/identity/set-token",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/identity/set-token",
+        "as": "admin",
+        "body": {
+          "token": "xyz"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "cluster token must be 32+ hex chars"
+        }
+      }
+    },
+    "set-token uppercase is lowered": {
+      "route": "POST /api/cluster/identity/set-token",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/identity/set-token",
+        "as": "admin",
+        "body": {
+          "token": "  ABABABABABABABABABABABABABABABABABABABAB  "
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "token": "abababababababababababababababababababab"
+        }
+      }
+    },
+    "rotate-token": {
+      "route": "POST /api/cluster/identity/rotate-token",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/identity/rotate-token",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "token": "<hex64:1>"
+        }
+      }
+    },
+    "set-token back to seed": {
+      "route": "POST /api/cluster/identity/set-token",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/identity/set-token",
+        "as": "admin",
+        "body": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        }
+      }
+    },
+    "token after restore": {
+      "route": "GET /api/cluster/identity/token",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/identity/token",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+        }
+      }
+    },
+    "pairing-code": {
+      "route": "POST /api/cluster/identity/pairing-code",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/identity/pairing-code",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "<masked:string>",
+          "expiresAt": "<time:ms>"
+        }
+      },
+      "masked": {
+        "code": "random 8-char pairing code (crypto.randomBytes)"
+      }
+    },
+    "pairing-code shape (derived)": {
+      "derived": {
+        "code": true,
+        "ttlMs": true
+      }
+    },
+    "peers (seeded)": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": 1717545600000,
+              "migrationRequired": false,
+              "name": "peer-alpha",
+              "notes": "primary peer",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+              "id": 2,
+              "lastSeenAt": null,
+              "migrationRequired": true,
+              "name": "peer-beta",
+              "notes": null,
+              "pairedAt": 1717200001000,
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "direct",
+              "url": "http://peer-beta.invalid:3000",
+              "version": "2.26.3",
+              "wsLastSeen": null
+            }
+          ]
+        }
+      }
+    },
+    "add peer without token → 400": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "admin",
+        "body": {
+          "url": "http://x"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "url + (token or pairingCode) are required"
+        }
+      }
+    },
+    "add peer bad url → 400": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "admin",
+        "body": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+          "url": "ftp://peer"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_url",
+          "error": "URL must start with http:// or https://"
+        }
+      }
+    },
+    "add peer bad token → 400": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "admin",
+        "body": {
+          "token": "short",
+          "url": "http://peer"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_token",
+          "error": "Token must be 32+ hex chars"
+        }
+      }
+    },
+    "add peer bad pairing code → 400": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "admin",
+        "body": {
+          "pairingCode": "!!",
+          "url": "http://peer"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_pairing_code",
+          "error": "Pairing code must be 6-16 alphanumeric characters"
+        }
+      }
+    },
+    "add peer unreachable → 400": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "admin",
+        "body": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+          "url": "http://peer-gamma.invalid:3000/"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "unreachable",
+          "error": "Could not reach http://peer-gamma.invalid:3000: fetch failed"
+        }
+      }
+    },
+    "add peer as guest → 403": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "guest",
+        "body": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+          "url": "http://<FAKE_PEER>"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "add peer gamma → paired": {
+      "route": "POST /api/cluster/peers",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers",
+        "as": "admin",
+        "body": {
+          "token": "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7",
+          "url": "http://<FAKE_PEER>/"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peer": {
+            "fingerprint": "<hex64:2>",
+            "id": 3,
+            "lastSeenAt": "<time:ms>",
+            "migrationRequired": true,
+            "name": "peer-gamma",
+            "notes": null,
+            "pairedAt": "<time:ms>",
+            "peerId": "<uuid:1>",
+            "role": "admin",
+            "status": "online",
+            "streamMode": "proxy",
+            "url": "http://<FAKE_PEER>",
+            "version": "9.9.9",
+            "wsLastSeen": null
+          }
+        }
+      }
+    },
+    "handshake request the node sent (derived)": {
+      "received": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "signedBy": "self",
+        "signatureValid": true,
+        "contentType": "application/json",
+        "body": {
+          "name": "contract-node",
+          "pairing_code": null,
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "shared_secret": "<hex64:3>",
+          "ts": "<time:ms>",
+          "url": "http://<HOST>",
+          "version": null
+        }
+      },
+      "fingerprintIsSha256OfTokenAndPeerId": true
+    },
+    "peers after pairing": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": 1717545600000,
+              "migrationRequired": false,
+              "name": "peer-alpha",
+              "notes": "primary peer",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+              "id": 2,
+              "lastSeenAt": null,
+              "migrationRequired": true,
+              "name": "peer-beta",
+              "notes": null,
+              "pairedAt": 1717200001000,
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "direct",
+              "url": "http://peer-beta.invalid:3000",
+              "version": "2.26.3",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:2>",
+              "id": 3,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-gamma",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:1>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://<FAKE_PEER>",
+              "version": "9.9.9",
+              "wsLastSeen": null
+            }
+          ]
+        }
+      }
+    },
+    "edit bad peer id → 400": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/not-a-peer",
+        "as": "admin",
+        "body": {
+          "name": "x"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer_id must be a UUID-like hex string"
+        }
+      }
+    },
+    "edit unknown peer → 404": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/<uuid:2>",
+        "as": "admin",
+        "body": {
+          "name": "x"
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer not found"
+        }
+      }
+    },
+    "edit bad url → 400": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000a1",
+        "as": "admin",
+        "body": {
+          "url": "nope"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer URL must be http:// or https://"
+        }
+      }
+    },
+    "edit bad streamMode → 400": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000a1",
+        "as": "admin",
+        "body": {
+          "streamMode": "weird"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "streamMode must be proxy or direct"
+        }
+      }
+    },
+    "edit empty name → 400": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000a1",
+        "as": "admin",
+        "body": {
+          "name": "  "
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer name must be non-empty"
+        }
+      }
+    },
+    "edit alpha": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000a1",
+        "as": "admin",
+        "body": {
+          "name": "  peer-alpha (edited)  ",
+          "notes": "edited note",
+          "streamMode": "direct",
+          "url": "http://peer-alpha.invalid:3000///"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peer": {
+            "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+            "id": 1,
+            "lastSeenAt": 1717545600000,
+            "migrationRequired": false,
+            "name": "peer-alpha (edited)",
+            "notes": "edited note",
+            "pairedAt": 1717200000000,
+            "peerId": "00000000-0000-4000-8000-0000000000a1",
+            "role": "admin",
+            "status": "offline",
+            "streamMode": "direct",
+            "url": "http://peer-alpha.invalid:3000",
+            "version": "2.27.1",
+            "wsLastSeen": null
+          }
+        }
+      }
+    },
+    "edit alpha back to proxy": {
+      "route": "PUT /api/cluster/peers/:peerId",
+      "request": {
+        "method": "PUT",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000a1",
+        "as": "admin",
+        "body": {
+          "streamMode": "proxy"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peer": {
+            "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+            "id": 1,
+            "lastSeenAt": 1717545600000,
+            "migrationRequired": false,
+            "name": "peer-alpha (edited)",
+            "notes": "edited note",
+            "pairedAt": 1717200000000,
+            "peerId": "00000000-0000-4000-8000-0000000000a1",
+            "role": "admin",
+            "status": "offline",
+            "streamMode": "proxy",
+            "url": "http://peer-alpha.invalid:3000",
+            "version": "2.27.1",
+            "wsLastSeen": null
+          }
+        }
+      }
+    },
+    "test alpha → unreachable": {
+      "route": "POST /api/cluster/peers/:peerId/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000a1/test",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "unreachable",
+          "message": "fetch failed",
+          "ok": false
+        }
+      }
+    },
+    "test unknown peer → 404": {
+      "route": "POST /api/cluster/peers/:peerId/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers/<uuid:2>/test",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer not found"
+        }
+      }
+    },
+    "test gamma → ok": {
+      "route": "POST /api/cluster/peers/:peerId/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/peers/<uuid:1>/test",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": true,
+          "payload": {
+            "name": "peer-gamma",
+            "ok": true,
+            "peer_id": "<uuid:1>",
+            "ts": 1717200000000,
+            "version": "9.9.9"
+          }
+        }
+      }
+    },
+    "health probe the node sent to gamma (derived)": {
+      "received": {
+        "method": "GET",
+        "path": "/api/cluster/health",
+        "signedBy": "self",
+        "signatureValid": true,
+        "contentType": null,
+        "body": null
+      }
+    },
+    "discovered (sandbox: nothing on the LAN)": {
+      "route": "GET /api/cluster/discovered",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/discovered",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": []
+        }
+      }
+    },
+    "audit": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "admin issued pairing code",
+              "id": 6,
+              "kind": "pairing_code",
+              "ok": 1,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "admin rotated cluster token",
+              "id": 4,
+              "kind": "rotate_token",
+              "ok": 1,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "admin set cluster token to externally-supplied value",
+              "id": 3,
+              "kind": "set_token",
+              "ok": 1,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "admin set cluster token to externally-supplied value",
+              "id": 5,
+              "kind": "set_token",
+              "ok": 1,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "bad signature",
+              "id": 2,
+              "kind": "signed_request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": 1717545600000
+            },
+            {
+              "detail": "outbound to http://<FAKE_PEER>: paired",
+              "id": 8,
+              "kind": "handshake",
+              "ok": 1,
+              "peer_id": "<uuid:1>",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "outbound to http://peer-gamma.invalid:3000: fetch failed",
+              "id": 7,
+              "kind": "handshake",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "paired",
+              "id": 1,
+              "kind": "handshake",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": 1717200000000
+            },
+            {
+              "detail": "unreachable",
+              "id": 9,
+              "kind": "test",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": null,
+              "id": 10,
+              "kind": "test",
+              "ok": 1,
+              "peer_id": "<uuid:1>",
+              "ts": "<time:ms>"
+            }
+          ]
+        }
+      },
+      "unordered": [
+        "entries"
+      ],
+      "note": "rows are ORDER BY ts DESC; rows written in the same millisecond tie-break by rowid, so the array is compared as a set and the order checked separately"
+    },
+    "audit is newest first (derived)": {
+      "derived": {
+        "newestFirst": true,
+        "count": 10
+      }
+    },
+    "audit kind=handshake": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit?kind=handshake",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "outbound to http://<FAKE_PEER>: paired",
+              "id": 8,
+              "kind": "handshake",
+              "ok": 1,
+              "peer_id": "<uuid:1>",
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "outbound to http://peer-gamma.invalid:3000: fetch failed",
+              "id": 7,
+              "kind": "handshake",
+              "ok": 0,
+              "peer_id": null,
+              "ts": "<time:ms>"
+            },
+            {
+              "detail": "paired",
+              "id": 1,
+              "kind": "handshake",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": 1717200000000
+            }
+          ]
+        }
+      },
+      "unordered": [
+        "entries"
+      ]
+    },
+    "audit peerId=alpha": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit?peerId=00000000-0000-4000-8000-0000000000a1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "bad signature",
+              "id": 2,
+              "kind": "signed_request",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": 1717545600000
+            },
+            {
+              "detail": "paired",
+              "id": 1,
+              "kind": "handshake",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": 1717200000000
+            },
+            {
+              "detail": "unreachable",
+              "id": 9,
+              "kind": "test",
+              "ok": 0,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": "<time:ms>"
+            }
+          ]
+        }
+      },
+      "unordered": [
+        "entries"
+      ]
+    },
+    "audit limit=1": {
+      "route": "GET /api/cluster/audit",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/audit?limit=1&kind=handshake&peerId=00000000-0000-4000-8000-0000000000a1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "detail": "paired",
+              "id": 1,
+              "kind": "handshake",
+              "ok": 1,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "ts": 1717200000000
+            }
+          ]
+        }
+      }
+    },
+    "sync state before": {
+      "route": "GET /api/cluster/sync/state",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/sync/state",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {}
+      }
+    },
+    "sync run": {
+      "route": "POST /api/cluster/sync/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sync/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": 3,
+          "rows": 2
+        }
+      }
+    },
+    "delta pull the node sent to gamma (derived)": {
+      "received": [
+        {
+          "method": "GET",
+          "path": "/api/cluster/downloads/since?sinceId=0&limit=500",
+          "signedBy": "self",
+          "signatureValid": true,
+          "contentType": null,
+          "body": null
+        }
+      ]
+    },
+    "sync state after": {
+      "route": "GET /api/cluster/sync/state",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/sync/state",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "00000000-0000-4000-8000-0000000000a1": {
+            "lastError": "sync 00000000-0000-4000-8000-0000000000a1: fetch failed"
+          },
+          "00000000-0000-4000-8000-0000000000b2": {
+            "lastError": "sync 00000000-0000-4000-8000-0000000000b2: fetch failed"
+          },
+          "00000000-0000-4000-8000-0000000000c3": {
+            "lastError": null,
+            "lastSuccessAt": "<time:ms>",
+            "sinceId": 7002
+          }
+        }
+      }
+    },
+    "sync run again (sinceId advanced)": {
+      "route": "POST /api/cluster/sync/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sync/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": 3,
+          "rows": 0
+        }
+      }
+    },
+    "peers after sync": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-alpha (edited)",
+              "notes": "edited note",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+              "id": 2,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": true,
+              "name": "peer-beta",
+              "notes": null,
+              "pairedAt": 1717200001000,
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "direct",
+              "url": "http://peer-beta.invalid:3000",
+              "version": "2.26.3",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:2>",
+              "id": 3,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-gamma",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:1>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://<FAKE_PEER>",
+              "version": "9.9.9",
+              "wsLastSeen": null
+            }
+          ]
+        }
+      }
+    },
+    "cluster downloads all": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "cached_at": "<time:ms>",
+              "created_at": 1719914400000,
+              "file_hash": null,
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Gamma Remote/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1009000000003",
+              "group_name": "Gamma Remote",
+              "message_id": 2,
+              "nsfw_score": 0.1,
+              "peer_id": "<uuid:1>",
+              "peer_name": "peer-gamma",
+              "remote_id": 7002,
+              "status": "completed"
+            },
+            {
+              "cached_at": "<time:ms>",
+              "created_at": 1719828000000,
+              "file_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "file_name": "G_7001.jpg",
+              "file_path": "Gamma Remote/images/G_7001.jpg",
+              "file_size": 2222,
+              "file_type": "photo",
+              "group_id": "-1009000000003",
+              "group_name": "Gamma Remote",
+              "message_id": 1,
+              "nsfw_score": null,
+              "peer_id": "<uuid:1>",
+              "peer_name": "peer-gamma",
+              "remote_id": 7001,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632002000,
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "R_0503.jpg",
+              "file_path": "Remote Chat/images/R_0503.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9003,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha (edited)",
+              "remote_id": 503,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632001000,
+              "file_hash": null,
+              "file_name": "R_0502.mp4",
+              "file_path": "Remote Chat/videos/R_0502.mp4",
+              "file_size": 54321,
+              "file_type": "video",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9002,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha (edited)",
+              "remote_id": 502,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632000000,
+              "file_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "file_name": "R_0501.jpg",
+              "file_path": "Remote Chat/images/R_0501.jpg",
+              "file_size": 12345,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9001,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha (edited)",
+              "remote_id": 501,
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-03 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 20,
+              "message_id": 120,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-01 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 18,
+              "message_id": 118,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-04 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 17,
+              "message_id": 117,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-03 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 16,
+              "message_id": 116,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-02 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 15,
+              "message_id": 115,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-01 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 14,
+              "message_id": 114,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_hash": "26f7bdea33497913221a07e8ad18922c8c3c57542cb1b2d3437152947e625e0a",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_hash": "58aa53bb557ed5cb1738381da9c3cb4cd4d8297bcec93abbdd535440663c8723",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_hash": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_hash": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-03 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 9,
+              "message_id": 109,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-02 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 8,
+              "message_id": 108,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-01 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 7,
+              "message_id": 107,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-15 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 6,
+              "message_id": 106,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_hash": "ce945d65064f2d29837f6c6c7ba6a4683ce8fcdc98068a1d2618f698c781bac6",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 5,
+              "message_id": 105,
+              "nsfw_score": 0.88,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "message_id": 104,
+              "nsfw_score": 0.93,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "message_id": 103,
+              "nsfw_score": 0.72,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "message_id": 102,
+              "nsfw_score": 0.45,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            }
+          ],
+          "total": 25
+        }
+      }
+    },
+    "cluster downloads self": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=self",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "created_at": "2024-05-03 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 20,
+              "message_id": 120,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-01 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 18,
+              "message_id": 118,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-04 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 17,
+              "message_id": 117,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-03 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 16,
+              "message_id": 116,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-02 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 15,
+              "message_id": 115,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-04-01 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000004",
+              "group_name": "Delta Mixed",
+              "id": 14,
+              "message_id": 114,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_hash": "26f7bdea33497913221a07e8ad18922c8c3c57542cb1b2d3437152947e625e0a",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_hash": "58aa53bb557ed5cb1738381da9c3cb4cd4d8297bcec93abbdd535440663c8723",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_hash": "4062e08c6ab576daa4d0a713f790ce4f6e1e675c44cfefb31cd19e8c35268de6",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_hash": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "group_id": "-1001000000003",
+              "group_name": "Gamma Docs",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-03 10:00:00",
+              "file_hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 9,
+              "message_id": 109,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-02 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0008.mp4",
+              "file_path": "Beta Videos/videos/VID_0008.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 8,
+              "message_id": 108,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-02-01 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0007.mp4",
+              "file_path": "Beta Videos/videos/VID_0007.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000002",
+              "group_name": "Beta Videos",
+              "id": 7,
+              "message_id": 107,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-15 10:00:00",
+              "file_hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 6,
+              "message_id": 106,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_hash": "ce945d65064f2d29837f6c6c7ba6a4683ce8fcdc98068a1d2618f698c781bac6",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 5,
+              "message_id": 105,
+              "nsfw_score": 0.88,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "message_id": 104,
+              "nsfw_score": 0.93,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "message_id": 103,
+              "nsfw_score": 0.72,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "message_id": 102,
+              "nsfw_score": 0.45,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            }
+          ],
+          "total": 20
+        }
+      }
+    },
+    "cluster downloads self by id": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=00000000-0000-4000-8000-00000000c0de&limit=3",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "created_at": "2024-05-03 10:00:00",
+              "file_hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "file_name": "VID_0020.mp4",
+              "file_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "file_size": 2171,
+              "file_type": "video",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 20,
+              "message_id": 120,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-02 10:00:00",
+              "file_hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "file_name": "IMG_0019.webp",
+              "file_path": "Epsilon Archive/images/IMG_0019.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 19,
+              "message_id": 119,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-05-01 10:00:00",
+              "file_hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "file_name": "IMG_0018.png",
+              "file_path": "Epsilon Archive/images/IMG_0018.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000005",
+              "group_name": "Epsilon Archive",
+              "id": 18,
+              "message_id": 118,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            }
+          ],
+          "total": 3
+        }
+      }
+    },
+    "cluster downloads alpha": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=00000000-0000-4000-8000-0000000000a1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632002000,
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "R_0503.jpg",
+              "file_path": "Remote Chat/images/R_0503.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9003,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha (edited)",
+              "remote_id": 503,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632001000,
+              "file_hash": null,
+              "file_name": "R_0502.mp4",
+              "file_path": "Remote Chat/videos/R_0502.mp4",
+              "file_size": 54321,
+              "file_type": "video",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9002,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha (edited)",
+              "remote_id": 502,
+              "status": "completed"
+            },
+            {
+              "cached_at": 1717632010000,
+              "created_at": 1717632000000,
+              "file_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "file_name": "R_0501.jpg",
+              "file_path": "Remote Chat/images/R_0501.jpg",
+              "file_size": 12345,
+              "file_type": "photo",
+              "group_id": "-1009000000001",
+              "group_name": "Remote Chat",
+              "message_id": 9001,
+              "nsfw_score": null,
+              "peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "peer_name": "peer-alpha (edited)",
+              "remote_id": 501,
+              "status": "completed"
+            }
+          ],
+          "total": 3
+        }
+      }
+    },
+    "cluster downloads gamma limit=1 offset=1": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=<uuid:1>&limit=1&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "cached_at": "<time:ms>",
+              "created_at": 1719828000000,
+              "file_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "file_name": "G_7001.jpg",
+              "file_path": "Gamma Remote/images/G_7001.jpg",
+              "file_size": 2222,
+              "file_type": "photo",
+              "group_id": "-1009000000003",
+              "group_name": "Gamma Remote",
+              "message_id": 1,
+              "nsfw_score": null,
+              "peer_id": "<uuid:1>",
+              "peer_name": "peer-gamma",
+              "remote_id": 7001,
+              "status": "completed"
+            }
+          ],
+          "total": 1
+        }
+      }
+    },
+    "cluster downloads unknown peer": {
+      "route": "GET /api/cluster/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/downloads?peerId=<uuid:2>",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [],
+          "total": 0
+        }
+      }
+    },
+    "cluster stats": {
+      "route": "GET /api/cluster/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "egress30d": [],
+          "peers": [
+            {
+              "name": "peer-alpha (edited)",
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "status": "offline",
+              "totalBytes": 70031
+            },
+            {
+              "name": "peer-beta",
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "status": "offline",
+              "totalBytes": 0
+            },
+            {
+              "name": "peer-gamma",
+              "peerId": "<uuid:1>",
+              "status": "online",
+              "totalBytes": 5587
+            }
+          ],
+          "self": {
+            "name": "contract-node",
+            "peerId": "00000000-0000-4000-8000-00000000c0de",
+            "totalBytes": 47942
+          }
+        }
+      }
+    },
+    "search without q": {
+      "route": "GET /api/cluster/search",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": []
+        }
+      }
+    },
+    "search q=IMG_0001 (local + gamma fan-out)": {
+      "route": "GET /api/cluster/search",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search?q=IMG_0001",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "created_at": "2024-07-02 10:00:00",
+              "file_hash": null,
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Gamma Remote/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1009000000003",
+              "group_name": "Gamma Remote",
+              "id": 7002,
+              "message_id": 2,
+              "nsfw_score": 0.1,
+              "peer_id": "<uuid:1>",
+              "peer_name": "peer-gamma",
+              "status": "completed"
+            },
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05,
+              "peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "peer_name": "contract-node",
+              "status": "completed"
+            }
+          ],
+          "total": 2
+        }
+      }
+    },
+    "search q=gamma limit=5": {
+      "route": "GET /api/cluster/search",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search?q=G_7001&limit=5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [
+            {
+              "created_at": "2024-07-01 10:00:00",
+              "file_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "file_name": "G_7001.jpg",
+              "file_path": "Gamma Remote/images/G_7001.jpg",
+              "file_size": 2222,
+              "file_type": "photo",
+              "group_id": "-1009000000003",
+              "group_name": "Gamma Remote",
+              "id": 7001,
+              "message_id": 1,
+              "nsfw_score": null,
+              "peer_id": "<uuid:1>",
+              "peer_name": "peer-gamma",
+              "status": "completed"
+            }
+          ],
+          "total": 1
+        }
+      }
+    },
+    "search escapes LIKE wildcards": {
+      "route": "GET /api/cluster/search",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/search?q=%25",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "rows": [],
+          "total": 0
+        }
+      }
+    },
+    "search fan-out the node sent to gamma (derived)": {
+      "received": [
+        {
+          "method": "GET",
+          "path": "/api/cluster/search/peer?q=IMG_0001&limit=50",
+          "signedBy": "self",
+          "signatureValid": true,
+          "contentType": null,
+          "body": null
+        },
+        {
+          "method": "GET",
+          "path": "/api/cluster/search/peer?q=G_7001&limit=5",
+          "signedBy": "self",
+          "signatureValid": true,
+          "contentType": null,
+          "body": null
+        },
+        {
+          "method": "GET",
+          "path": "/api/cluster/search/peer?q=%25&limit=50",
+          "signedBy": "self",
+          "signatureValid": true,
+          "contentType": null,
+          "body": null
+        }
+      ]
+    },
+    "peer thumb unknown peer → placeholder": {
+      "route": "GET /api/cluster/thumbs/:peerId/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/thumbs/<uuid:2>/501",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=60",
+        "content-length": "68",
+        "content-type": "image/png",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "63ef318d96b5d0d0ceba6e04a4e622b1158335cdc67c49e27839132c6f655058",
+        "bytes": 68
+      }
+    },
+    "peer thumb alpha unreachable → placeholder": {
+      "route": "GET /api/cluster/thumbs/:peerId/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/thumbs/00000000-0000-4000-8000-0000000000a1/501?w=320",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=60",
+        "content-length": "68",
+        "content-type": "image/png",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "63ef318d96b5d0d0ceba6e04a4e622b1158335cdc67c49e27839132c6f655058",
+        "bytes": 68
+      }
+    },
+    "peer thumb bad id → 400": {
+      "route": "GET /api/cluster/thumbs/:peerId/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/thumbs/00000000-0000-4000-8000-0000000000a1/abc",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Bad id"
+      }
+    },
+    "peer thumb gamma → proxied": {
+      "route": "GET /api/cluster/thumbs/:peerId/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/thumbs/<uuid:1>/7001?w=320",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=86400, immutable",
+        "content-length": "468",
+        "content-type": "image/webp",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "d63c56d78c9bed54f8760ac08880e113aeac19250f9f97886a8cb31c03672efc",
+        "bytes": 468
+      }
+    },
+    "thumb fetch the node sent to gamma (derived)": {
+      "received": [
+        {
+          "method": "GET",
+          "path": "/api/cluster/peer-thumbs/7001?w=320",
+          "signedBy": "self",
+          "signatureValid": true,
+          "contentType": null,
+          "body": null
+        }
+      ]
+    },
+    "conflicts before sweep": {
+      "route": "GET /api/cluster/conflicts",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/conflicts",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "conflicts": [],
+          "stats": {}
+        }
+      }
+    },
+    "sweep status idle": {
+      "route": "GET /api/cluster/sweep/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/sweep/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "conflicts": [],
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "cluster_sweep",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "stats": {},
+          "successes": 0
+        }
+      }
+    },
+    "sweep cancel when idle": {
+      "route": "POST /api/cluster/sweep/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sweep/cancel",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": false
+        }
+      }
+    },
+    "sweep run": {
+      "route": "POST /api/cluster/sweep/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/sweep/run",
+        "as": "admin",
+        "body": {
+          "minSize": 1024
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true
+        }
+      }
+    },
+    "ws: sweep": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "cluster_sweep",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 1,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 2,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 3,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 4,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 5,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 6,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 7,
+          "type": "cluster_sweep_progress"
+        },
+        {
+          "conflicts": 7,
+          "duplicateRows": 9,
+          "durationMs": "<durationMs:number>",
+          "type": "cluster_sweep_done",
+          "wastedBytes": 26707
+        },
+        {
+          "conflicts": 7,
+          "duplicateRows": 9,
+          "durationMs": "<durationMs:number>",
+          "kind": "cluster_sweep",
+          "lastRunAt": "<time:ms>",
+          "type": "cluster_sweep_done",
+          "wastedBytes": 26707
+        }
+      ]
+    },
+    "sweep status done": {
+      "route": "GET /api/cluster/sweep/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/sweep/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "conflicts": [
+            {
+              "count": 4,
+              "fileHash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "fileSize": 3365,
+              "id": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc|3365",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0001.jpg",
+                  "peerId": "self",
+                  "remoteId": 1
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                  "peerId": "self",
+                  "remoteId": 14
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                  "peerId": "self",
+                  "remoteId": 15
+                },
+                {
+                  "filePath": "Remote Chat/images/R_0503.jpg",
+                  "peerId": "00000000-0000-4000-8000-0000000000a1",
+                  "remoteId": 503
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "fileSize": 4820,
+              "id": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6|4820",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0003.png",
+                  "peerId": "self",
+                  "remoteId": 3
+                },
+                {
+                  "filePath": "Epsilon Archive/images/IMG_0018.png",
+                  "peerId": "self",
+                  "remoteId": 18
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "fileSize": 3228,
+              "id": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c|3228",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "peerId": "self",
+                  "remoteId": 2
+                },
+                {
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "peerId": "self",
+                  "remoteId": 16
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "fileSize": 2679,
+              "id": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1|2679",
+              "owners": [
+                {
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "peerId": "self",
+                  "remoteId": 9
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "peerId": "self",
+                  "remoteId": 17
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "fileSize": 2414,
+              "id": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d|2414",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                  "peerId": "self",
+                  "remoteId": 6
+                },
+                {
+                  "filePath": "Beta Videos/videos/VID_0008.mp4",
+                  "peerId": "self",
+                  "remoteId": 8
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "fileSize": 2171,
+              "id": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275|2171",
+              "owners": [
+                {
+                  "filePath": "Beta Videos/videos/VID_0007.mp4",
+                  "peerId": "self",
+                  "remoteId": 7
+                },
+                {
+                  "filePath": "Epsilon Archive/videos/VID_0020.mp4",
+                  "peerId": "self",
+                  "remoteId": 20
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "fileSize": 1300,
+              "id": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a|1300",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0004.webp",
+                  "peerId": "self",
+                  "remoteId": 4
+                },
+                {
+                  "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                  "peerId": "self",
+                  "remoteId": 19
+                }
+              ]
+            }
+          ],
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "cluster_sweep",
+          "progress": {},
+          "result": {
+            "conflicts": 7,
+            "duplicateRows": 9,
+            "durationMs": "<durationMs:number>",
+            "lastRunAt": "<time:ms>",
+            "wastedBytes": 26707
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "stats": {
+            "conflicts": 7,
+            "duplicateRows": 9,
+            "durationMs": "<durationMs:number>",
+            "lastRunAt": "<time:ms>",
+            "wastedBytes": 26707
+          },
+          "successes": 1
+        }
+      }
+    },
+    "conflicts after sweep": {
+      "route": "GET /api/cluster/conflicts",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/conflicts",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "conflicts": [
+            {
+              "count": 4,
+              "fileHash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+              "fileSize": 3365,
+              "id": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc|3365",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0001.jpg",
+                  "peerId": "self",
+                  "remoteId": 1
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                  "peerId": "self",
+                  "remoteId": 14
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                  "peerId": "self",
+                  "remoteId": 15
+                },
+                {
+                  "filePath": "Remote Chat/images/R_0503.jpg",
+                  "peerId": "00000000-0000-4000-8000-0000000000a1",
+                  "remoteId": 503
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "fileSize": 4820,
+              "id": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6|4820",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0003.png",
+                  "peerId": "self",
+                  "remoteId": 3
+                },
+                {
+                  "filePath": "Epsilon Archive/images/IMG_0018.png",
+                  "peerId": "self",
+                  "remoteId": 18
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "fileSize": 3228,
+              "id": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c|3228",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "peerId": "self",
+                  "remoteId": 2
+                },
+                {
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "peerId": "self",
+                  "remoteId": 16
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "fileSize": 2679,
+              "id": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1|2679",
+              "owners": [
+                {
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "peerId": "self",
+                  "remoteId": 9
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "peerId": "self",
+                  "remoteId": 17
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "fileSize": 2414,
+              "id": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d|2414",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                  "peerId": "self",
+                  "remoteId": 6
+                },
+                {
+                  "filePath": "Beta Videos/videos/VID_0008.mp4",
+                  "peerId": "self",
+                  "remoteId": 8
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "fileSize": 2171,
+              "id": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275|2171",
+              "owners": [
+                {
+                  "filePath": "Beta Videos/videos/VID_0007.mp4",
+                  "peerId": "self",
+                  "remoteId": 7
+                },
+                {
+                  "filePath": "Epsilon Archive/videos/VID_0020.mp4",
+                  "peerId": "self",
+                  "remoteId": 20
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "fileSize": 1300,
+              "id": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a|1300",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0004.webp",
+                  "peerId": "self",
+                  "remoteId": 4
+                },
+                {
+                  "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                  "peerId": "self",
+                  "remoteId": 19
+                }
+              ]
+            }
+          ],
+          "stats": {
+            "conflicts": 7,
+            "duplicateRows": 9,
+            "durationMs": "<durationMs:number>",
+            "lastRunAt": "<time:ms>",
+            "wastedBytes": 26707
+          }
+        }
+      }
+    },
+    "resolve without keep → 400": {
+      "route": "POST /api/cluster/conflicts/:id/resolve",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/conflicts/7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc%7C3365/resolve",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "keep.peerId + keep.remoteId required"
+        }
+      }
+    },
+    "resolve unknown conflict → 404": {
+      "route": "POST /api/cluster/conflicts/:id/resolve",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/conflicts/nope/resolve",
+        "as": "admin",
+        "body": {
+          "keep": {
+            "peerId": "self",
+            "remoteId": 1
+          }
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "conflict not found (already resolved or expired)"
+        }
+      }
+    },
+    "resolve photo-a keeping self:1": {
+      "route": "POST /api/cluster/conflicts/:id/resolve",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/conflicts/7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc%7C3365/resolve",
+        "as": "admin",
+        "body": {
+          "keep": {
+            "peerId": "self",
+            "remoteId": 1
+          }
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 1,
+          "remoteDeleted": 0,
+          "unlinked": 2
+        }
+      }
+    },
+    "conflicts after resolve": {
+      "route": "GET /api/cluster/conflicts",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/conflicts",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "conflicts": [
+            {
+              "count": 2,
+              "fileHash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6",
+              "fileSize": 4820,
+              "id": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6|4820",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0003.png",
+                  "peerId": "self",
+                  "remoteId": 3
+                },
+                {
+                  "filePath": "Epsilon Archive/images/IMG_0018.png",
+                  "peerId": "self",
+                  "remoteId": 18
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+              "fileSize": 3228,
+              "id": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c|3228",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "peerId": "self",
+                  "remoteId": 2
+                },
+                {
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "peerId": "self",
+                  "remoteId": 16
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+              "fileSize": 2679,
+              "id": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1|2679",
+              "owners": [
+                {
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "peerId": "self",
+                  "remoteId": 9
+                },
+                {
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "peerId": "self",
+                  "remoteId": 17
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d",
+              "fileSize": 2414,
+              "id": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d|2414",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                  "peerId": "self",
+                  "remoteId": 6
+                },
+                {
+                  "filePath": "Beta Videos/videos/VID_0008.mp4",
+                  "peerId": "self",
+                  "remoteId": 8
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275",
+              "fileSize": 2171,
+              "id": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275|2171",
+              "owners": [
+                {
+                  "filePath": "Beta Videos/videos/VID_0007.mp4",
+                  "peerId": "self",
+                  "remoteId": 7
+                },
+                {
+                  "filePath": "Epsilon Archive/videos/VID_0020.mp4",
+                  "peerId": "self",
+                  "remoteId": 20
+                }
+              ]
+            },
+            {
+              "count": 2,
+              "fileHash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a",
+              "fileSize": 1300,
+              "id": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a|1300",
+              "owners": [
+                {
+                  "filePath": "Alpha Photos/images/IMG_0004.webp",
+                  "peerId": "self",
+                  "remoteId": 4
+                },
+                {
+                  "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                  "peerId": "self",
+                  "remoteId": 19
+                }
+              ]
+            }
+          ],
+          "stats": {
+            "conflicts": 7,
+            "duplicateRows": 9,
+            "durationMs": "<durationMs:number>",
+            "lastRunAt": "<time:ms>",
+            "wastedBytes": 26707
+          }
+        }
+      }
+    },
+    "rows left after resolve (derived)": {
+      "derived": {
+        "ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "deltaFileOnDisk": false,
+        "alphaFileOnDisk": true
+      }
+    },
+    "delete unknown peer → 404": {
+      "route": "DELETE /api/cluster/peers/:peerId",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/cluster/peers/<uuid:2>",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer not found"
+        }
+      }
+    },
+    "delete bad peer id → 500": {
+      "route": "DELETE /api/cluster/peers/:peerId",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/cluster/peers/not-a-peer",
+        "as": "admin"
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "peer_id must be a UUID-like hex string"
+        }
+      }
+    },
+    "delete beta": {
+      "route": "DELETE /api/cluster/peers/:peerId",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/cluster/peers/00000000-0000-4000-8000-0000000000b2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "peers after delete": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-alpha (edited)",
+              "notes": "edited note",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:2>",
+              "id": 3,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-gamma",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:1>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://<FAKE_PEER>",
+              "version": "9.9.9",
+              "wsLastSeen": null
+            }
+          ]
+        }
+      }
+    },
+    "failover log": {
+      "route": "GET /api/cluster/failover-log",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/failover-log",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "from_peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "group_id": "-1001000000002",
+              "id": 1,
+              "reason": "peer offline",
+              "to_peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "ts": 1717549200000
+            }
+          ]
+        }
+      }
+    },
+    "failover log limit=1": {
+      "route": "GET /api/cluster/failover-log",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/failover-log?limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "entries": [
+            {
+              "from_peer_id": "00000000-0000-4000-8000-0000000000a1",
+              "group_id": "-1001000000002",
+              "id": 1,
+              "reason": "peer offline",
+              "to_peer_id": "00000000-0000-4000-8000-00000000c0de",
+              "ts": 1717549200000
+            }
+          ]
+        }
+      }
+    },
+    "failover run (nothing to take over)": {
+      "route": "POST /api/cluster/failover/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/failover/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "applied": []
+        }
+      }
+    },
+    "failover run as guest → 403": {
+      "route": "POST /api/cluster/failover/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/failover/run",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "unknown cluster route → 404": {
+      "route": null,
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/does-not-exist",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/cluster/does-not-exist</pre>\n</body>\n</html>\n"
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "29db244183": {
+      "content-security-policy": "default-src 'none'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

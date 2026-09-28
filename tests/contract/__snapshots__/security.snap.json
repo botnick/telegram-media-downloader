@@ -1,0 +1,1944 @@
+{
+  "entries": {
+    "GET via proxy hop, forceHttps off": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "203.0.113.9",
+          "x-forwarded-proto": "https"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "gzip negotiated on a large JSON response": {
+      "route": "GET /api/downloads/all",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/all?limit=50",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "gzip"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-encoding": "gzip",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Epsilon Archive/videos/VID_0020.mp4",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 20,
+              "modified": "2024-05-03 10:00:00",
+              "name": "VID_0020.mp4",
+              "path": "Epsilon Archive/videos/VID_0020.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Epsilon Archive/images/IMG_0019.webp",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 19,
+              "modified": "2024-05-02 10:00:00",
+              "name": "IMG_0019.webp",
+              "path": "Epsilon Archive/images/IMG_0019.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": 1715299200000,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Epsilon Archive/images/IMG_0018.png",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 18,
+              "modified": "2024-05-01 10:00:00",
+              "name": "IMG_0018.png",
+              "path": "Epsilon Archive/images/IMG_0018.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0017.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 17,
+              "modified": "2024-04-04 10:00:00",
+              "name": "IMG_0017.jpg",
+              "path": "Delta Mixed/images/IMG_0017.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": 4102444800000,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 16,
+              "modified": "2024-04-03 10:00:00",
+              "name": "ภาพทดสอบ รูป.jpg",
+              "path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 15,
+              "modified": "2024-04-02 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 14,
+              "modified": "2024-04-01 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".gz",
+              "fullPath": "Gamma Docs/documents/notes.txt.gz",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 13,
+              "modified": "2024-03-04 10:00:00",
+              "name": "notes.txt.gz",
+              "path": "Gamma Docs/documents/notes.txt.gz",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 55,
+              "sizeFormatted": "55 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".zip",
+              "fullPath": "Gamma Docs/documents/bundle.zip",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 12,
+              "modified": "2024-03-03 10:00:00",
+              "name": "bundle.zip",
+              "path": "Gamma Docs/documents/bundle.zip",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 246,
+              "sizeFormatted": "246 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".txt",
+              "fullPath": "Gamma Docs/documents/notes.txt",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 11,
+              "modified": "2024-03-02 10:00:00",
+              "name": "notes.txt",
+              "path": "Gamma Docs/documents/notes.txt",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 38,
+              "sizeFormatted": "38 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".pdf",
+              "fullPath": "Gamma Docs/documents/report.pdf",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 10,
+              "modified": "2024-03-01 10:00:00",
+              "name": "report.pdf",
+              "path": "Gamma Docs/documents/report.pdf",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 314,
+              "sizeFormatted": "314 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Beta Videos/images/IMG_0009.jpg",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 9,
+              "modified": "2024-02-03 10:00:00",
+              "name": "IMG_0009.jpg",
+              "path": "Beta Videos/images/IMG_0009.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0008.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 8,
+              "modified": "2024-02-02 10:00:00",
+              "name": "VID_0008.mp4",
+              "path": "Beta Videos/videos/VID_0008.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0007.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 7,
+              "modified": "2024-02-01 10:00:00",
+              "name": "VID_0007.mp4",
+              "path": "Beta Videos/videos/VID_0007.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": 2,
+              "extension": ".mp4",
+              "fullPath": "Alpha Photos/videos/VID_0006.mp4",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 6,
+              "modified": "2024-01-15 10:00:00",
+              "name": "VID_0006.mp4",
+              "path": "Alpha Photos/videos/VID_0006.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0005.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 5,
+              "modified": "2024-01-14 10:00:00",
+              "name": "IMG_0005.jpg",
+              "path": "Alpha Photos/images/IMG_0005.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3970,
+              "sizeFormatted": "3.88 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Alpha Photos/images/IMG_0004.webp",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 4,
+              "modified": "2024-01-13 10:00:00",
+              "name": "IMG_0004.webp",
+              "path": "Alpha Photos/images/IMG_0004.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Alpha Photos/images/IMG_0003.png",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "modified": "2024-01-12 10:00:00",
+              "name": "IMG_0003.png",
+              "path": "Alpha Photos/images/IMG_0003.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0002.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 2,
+              "modified": "2024-01-11 10:00:00",
+              "name": "IMG_0002.jpg",
+              "path": "Alpha Photos/images/IMG_0002.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0001.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "modified": "2024-01-10 10:00:00",
+              "name": "IMG_0001.jpg",
+              "path": "Alpha Photos/images/IMG_0001.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 20,
+          "totalPages": 1
+        }
+      }
+    },
+    "br negotiated on a large JSON response": {
+      "route": "GET /api/downloads/all",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/all?limit=50",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "br"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-encoding": "br",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Epsilon Archive/videos/VID_0020.mp4",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 20,
+              "modified": "2024-05-03 10:00:00",
+              "name": "VID_0020.mp4",
+              "path": "Epsilon Archive/videos/VID_0020.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Epsilon Archive/images/IMG_0019.webp",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 19,
+              "modified": "2024-05-02 10:00:00",
+              "name": "IMG_0019.webp",
+              "path": "Epsilon Archive/images/IMG_0019.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": 1715299200000,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Epsilon Archive/images/IMG_0018.png",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 18,
+              "modified": "2024-05-01 10:00:00",
+              "name": "IMG_0018.png",
+              "path": "Epsilon Archive/images/IMG_0018.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0017.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 17,
+              "modified": "2024-04-04 10:00:00",
+              "name": "IMG_0017.jpg",
+              "path": "Delta Mixed/images/IMG_0017.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": 4102444800000,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 16,
+              "modified": "2024-04-03 10:00:00",
+              "name": "ภาพทดสอบ รูป.jpg",
+              "path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 15,
+              "modified": "2024-04-02 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 14,
+              "modified": "2024-04-01 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".gz",
+              "fullPath": "Gamma Docs/documents/notes.txt.gz",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 13,
+              "modified": "2024-03-04 10:00:00",
+              "name": "notes.txt.gz",
+              "path": "Gamma Docs/documents/notes.txt.gz",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 55,
+              "sizeFormatted": "55 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".zip",
+              "fullPath": "Gamma Docs/documents/bundle.zip",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 12,
+              "modified": "2024-03-03 10:00:00",
+              "name": "bundle.zip",
+              "path": "Gamma Docs/documents/bundle.zip",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 246,
+              "sizeFormatted": "246 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".txt",
+              "fullPath": "Gamma Docs/documents/notes.txt",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 11,
+              "modified": "2024-03-02 10:00:00",
+              "name": "notes.txt",
+              "path": "Gamma Docs/documents/notes.txt",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 38,
+              "sizeFormatted": "38 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".pdf",
+              "fullPath": "Gamma Docs/documents/report.pdf",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 10,
+              "modified": "2024-03-01 10:00:00",
+              "name": "report.pdf",
+              "path": "Gamma Docs/documents/report.pdf",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 314,
+              "sizeFormatted": "314 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Beta Videos/images/IMG_0009.jpg",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 9,
+              "modified": "2024-02-03 10:00:00",
+              "name": "IMG_0009.jpg",
+              "path": "Beta Videos/images/IMG_0009.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0008.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 8,
+              "modified": "2024-02-02 10:00:00",
+              "name": "VID_0008.mp4",
+              "path": "Beta Videos/videos/VID_0008.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0007.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 7,
+              "modified": "2024-02-01 10:00:00",
+              "name": "VID_0007.mp4",
+              "path": "Beta Videos/videos/VID_0007.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": 2,
+              "extension": ".mp4",
+              "fullPath": "Alpha Photos/videos/VID_0006.mp4",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 6,
+              "modified": "2024-01-15 10:00:00",
+              "name": "VID_0006.mp4",
+              "path": "Alpha Photos/videos/VID_0006.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0005.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 5,
+              "modified": "2024-01-14 10:00:00",
+              "name": "IMG_0005.jpg",
+              "path": "Alpha Photos/images/IMG_0005.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3970,
+              "sizeFormatted": "3.88 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Alpha Photos/images/IMG_0004.webp",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 4,
+              "modified": "2024-01-13 10:00:00",
+              "name": "IMG_0004.webp",
+              "path": "Alpha Photos/images/IMG_0004.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Alpha Photos/images/IMG_0003.png",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "modified": "2024-01-12 10:00:00",
+              "name": "IMG_0003.png",
+              "path": "Alpha Photos/images/IMG_0003.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0002.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 2,
+              "modified": "2024-01-11 10:00:00",
+              "name": "IMG_0002.jpg",
+              "path": "Alpha Photos/images/IMG_0002.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0001.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "modified": "2024-01-10 10:00:00",
+              "name": "IMG_0001.jpg",
+              "path": "Alpha Photos/images/IMG_0001.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 20,
+          "totalPages": 1
+        }
+      }
+    },
+    "deflate negotiated on the SPA shell": {
+      "route": "GET /index.html",
+      "request": {
+        "method": "GET",
+        "path": "/index.html",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "deflate"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "content-encoding": "deflate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "textSha256": "5c5196e75539fb9f70dbaecbf4a8a3cd4b50ae970f25108d3cbd064217bf8d24",
+        "chars": 399746
+      }
+    },
+    "small response stays uncompressed": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "gzip"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "x-no-compression opt-out": {
+      "route": "GET /api/downloads/all",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads/all?limit=50",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "gzip",
+          "x-no-compression": "1"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "files": [
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Epsilon Archive/videos/VID_0020.mp4",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 20,
+              "modified": "2024-05-03 10:00:00",
+              "name": "VID_0020.mp4",
+              "path": "Epsilon Archive/videos/VID_0020.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Epsilon Archive/images/IMG_0019.webp",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 19,
+              "modified": "2024-05-02 10:00:00",
+              "name": "IMG_0019.webp",
+              "path": "Epsilon Archive/images/IMG_0019.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": 1715299200000,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Epsilon Archive/images/IMG_0018.png",
+              "groupId": "-1001000000005",
+              "groupName": "Epsilon Archive",
+              "id": 18,
+              "modified": "2024-05-01 10:00:00",
+              "name": "IMG_0018.png",
+              "path": "Epsilon Archive/images/IMG_0018.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0017.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 17,
+              "modified": "2024-04-04 10:00:00",
+              "name": "IMG_0017.jpg",
+              "path": "Delta Mixed/images/IMG_0017.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": 4102444800000,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 16,
+              "modified": "2024-04-03 10:00:00",
+              "name": "ภาพทดสอบ รูป.jpg",
+              "path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 15,
+              "modified": "2024-04-02 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Delta Mixed/images/IMG_0014.jpg",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 14,
+              "modified": "2024-04-01 10:00:00",
+              "name": "IMG_0014.jpg",
+              "path": "Delta Mixed/images/IMG_0014.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".gz",
+              "fullPath": "Gamma Docs/documents/notes.txt.gz",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 13,
+              "modified": "2024-03-04 10:00:00",
+              "name": "notes.txt.gz",
+              "path": "Gamma Docs/documents/notes.txt.gz",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 55,
+              "sizeFormatted": "55 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".zip",
+              "fullPath": "Gamma Docs/documents/bundle.zip",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 12,
+              "modified": "2024-03-03 10:00:00",
+              "name": "bundle.zip",
+              "path": "Gamma Docs/documents/bundle.zip",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 246,
+              "sizeFormatted": "246 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".txt",
+              "fullPath": "Gamma Docs/documents/notes.txt",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 11,
+              "modified": "2024-03-02 10:00:00",
+              "name": "notes.txt",
+              "path": "Gamma Docs/documents/notes.txt",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 38,
+              "sizeFormatted": "38 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".pdf",
+              "fullPath": "Gamma Docs/documents/report.pdf",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 10,
+              "modified": "2024-03-01 10:00:00",
+              "name": "report.pdf",
+              "path": "Gamma Docs/documents/report.pdf",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 314,
+              "sizeFormatted": "314 B",
+              "type": "documents"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Beta Videos/images/IMG_0009.jpg",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 9,
+              "modified": "2024-02-03 10:00:00",
+              "name": "IMG_0009.jpg",
+              "path": "Beta Videos/images/IMG_0009.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 2679,
+              "sizeFormatted": "2.62 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0008.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 8,
+              "modified": "2024-02-02 10:00:00",
+              "name": "VID_0008.mp4",
+              "path": "Beta Videos/videos/VID_0008.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".mp4",
+              "fullPath": "Beta Videos/videos/VID_0007.mp4",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 7,
+              "modified": "2024-02-01 10:00:00",
+              "name": "VID_0007.mp4",
+              "path": "Beta Videos/videos/VID_0007.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2171,
+              "sizeFormatted": "2.12 KB",
+              "type": "videos"
+            },
+            {
+              "duration": 2,
+              "extension": ".mp4",
+              "fullPath": "Alpha Photos/videos/VID_0006.mp4",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 6,
+              "modified": "2024-01-15 10:00:00",
+              "name": "VID_0006.mp4",
+              "path": "Alpha Photos/videos/VID_0006.mp4",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 2414,
+              "sizeFormatted": "2.36 KB",
+              "type": "videos"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0005.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 5,
+              "modified": "2024-01-14 10:00:00",
+              "name": "IMG_0005.jpg",
+              "path": "Alpha Photos/images/IMG_0005.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3970,
+              "sizeFormatted": "3.88 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".webp",
+              "fullPath": "Alpha Photos/images/IMG_0004.webp",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 4,
+              "modified": "2024-01-13 10:00:00",
+              "name": "IMG_0004.webp",
+              "path": "Alpha Photos/images/IMG_0004.webp",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 1300,
+              "sizeFormatted": "1.27 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".png",
+              "fullPath": "Alpha Photos/images/IMG_0003.png",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "modified": "2024-01-12 10:00:00",
+              "name": "IMG_0003.png",
+              "path": "Alpha Photos/images/IMG_0003.png",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 4820,
+              "sizeFormatted": "4.71 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0002.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 2,
+              "modified": "2024-01-11 10:00:00",
+              "name": "IMG_0002.jpg",
+              "path": "Alpha Photos/images/IMG_0002.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": false,
+              "rescuedAt": null,
+              "size": 3228,
+              "sizeFormatted": "3.15 KB",
+              "type": "images"
+            },
+            {
+              "duration": null,
+              "extension": ".jpg",
+              "fullPath": "Alpha Photos/images/IMG_0001.jpg",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "modified": "2024-01-10 10:00:00",
+              "name": "IMG_0001.jpg",
+              "path": "Alpha Photos/images/IMG_0001.jpg",
+              "peer_id": "self",
+              "peer_name": null,
+              "pendingUntil": null,
+              "pinned": true,
+              "rescuedAt": null,
+              "size": 3365,
+              "sizeFormatted": "3.29 KB",
+              "type": "images"
+            }
+          ],
+          "page": 1,
+          "total": 20,
+          "totalPages": 1
+        }
+      }
+    },
+    "files are never compressed": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Gamma%20Docs/documents/notes.txt",
+        "as": "admin",
+        "headers": {
+          "accept-encoding": "gzip"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"notes.txt\"; filename*=UTF-8''notes.txt",
+        "content-type": "text/plain; charset=UTF-8",
+        "etag": "W/\"26-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Contract fixture text file.\nLine two.\n"
+      }
+    },
+    "forceHttps: loopback GET passes": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "9eaed49367",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "forceHttps: remote GET → 308 to https": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version?x=1",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "203.0.113.9"
+        }
+      },
+      "status": 308,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "location": "https://<HOST>/api/version?x=1",
+        "vary": "Accept",
+        "x-powered-by": "Express"
+      },
+      "security": "bf21a9e8fb",
+      "body": {
+        "text": "Permanent Redirect. Redirecting to https://<HOST>/api/version?x=1"
+      }
+    },
+    "forceHttps: remote HEAD → 308 to https": {
+      "route": "GET /login.html",
+      "request": {
+        "method": "HEAD",
+        "path": "/login.html",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "203.0.113.9"
+        }
+      },
+      "status": 308,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "location": "https://<HOST>/login.html",
+        "vary": "Accept",
+        "x-powered-by": "Express"
+      },
+      "security": "bf21a9e8fb",
+      "body": null
+    },
+    "forceHttps: remote POST → 403": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "203.0.113.9"
+        },
+        "body": {
+          "password": "x"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "x-powered-by": "Express"
+      },
+      "security": "bf21a9e8fb",
+      "body": {
+        "json": {
+          "error": "HTTPS required"
+        }
+      }
+    },
+    "forceHttps: remote over https → HSTS + upgrade-insecure-requests": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "203.0.113.9",
+          "x-forwarded-proto": "https"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "7001744e9b",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 1 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=9, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 2 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=8, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 3 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=7, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 4 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=6, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 5 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=5, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 6 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=4, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 7 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=3, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 8 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=2, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 9 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=1, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: request 10 of 10": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=0, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "rate limit: 11th request → 429": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 429,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=0, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "retry-after": "<seconds>",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Too many requests, please try again later."
+      }
+    },
+    "rate limit: non-API paths are not limited": {
+      "route": "GET /login.html",
+      "request": {
+        "method": "GET",
+        "path": "/login.html",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.7"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "textSha256": "2c2072d5ed6a435af06f0b07c4e0a9fd3a29962d61b2c18a0055f298de056396",
+        "chars": 16898
+      }
+    },
+    "rate limit: another client is unaffected": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon",
+        "headers": {
+          "x-forwarded-for": "198.51.100.8"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=9, reset=<s>",
+        "ratelimit-policy": "10;w=60",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "production login cookie flags": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=9, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "<session-token>",
+            "attributes": {
+              "expires": "<time:http>",
+              "httponly": true,
+              "max-age": "604800",
+              "path": "/",
+              "samesite": "Strict",
+              "secure": true
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "role": "admin",
+          "success": true
+        }
+      }
+    },
+    "production logout cookie flags": {
+      "route": "POST /api/logout",
+      "request": {
+        "method": "POST",
+        "path": "/api/logout",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "",
+            "attributes": {
+              "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+              "httponly": true,
+              "path": "/",
+              "samesite": "Strict",
+              "secure": true
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "9eaed49367": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "bf21a9e8fb": {},
+    "7001744e9b": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self';upgrade-insecure-requests",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=31536000; includeSubDomains",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

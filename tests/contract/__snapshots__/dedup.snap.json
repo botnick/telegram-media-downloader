@@ -1,0 +1,1638 @@
+{
+  "entries": {
+    "guest GET dedup/sets → 403": {
+      "route": "GET /api/maintenance/dedup/sets",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/sets",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest POST dedup/delete → 403": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "guest",
+        "body": {
+          "ids": [
+            14
+          ]
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "anon POST dedup/scan → 401": {
+      "route": "POST /api/maintenance/dedup/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/scan",
+        "as": "anon",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "dedup/stats before scan": {
+      "route": "GET /api/maintenance/dedup/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hashed": 17,
+          "lastScan": null,
+          "missing": 3,
+          "partialProgress": null,
+          "totalFiles": 20
+        }
+      }
+    },
+    "dedup/sets before scan": {
+      "route": "GET /api/maintenance/dedup/sets",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/sets",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "duplicateSets": [
+            {
+              "count": 2,
+              "fileSize": 3365,
+              "files": [
+                {
+                  "createdAt": "2024-01-10 10:00:00",
+                  "fileName": "IMG_0001.jpg",
+                  "filePath": "Alpha Photos/images/IMG_0001.jpg",
+                  "fileSize": 3365,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 1
+                },
+                {
+                  "createdAt": "2024-04-01 10:00:00",
+                  "fileName": "IMG_0014.jpg",
+                  "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                  "fileSize": 3365,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 14
+                }
+              ],
+              "hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc"
+            },
+            {
+              "count": 2,
+              "fileSize": 3228,
+              "files": [
+                {
+                  "createdAt": "2024-01-11 10:00:00",
+                  "fileName": "IMG_0002.jpg",
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 2
+                },
+                {
+                  "createdAt": "2024-04-03 10:00:00",
+                  "fileName": "ภาพทดสอบ รูป.jpg",
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 16
+                }
+              ],
+              "hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c"
+            },
+            {
+              "count": 2,
+              "fileSize": 2679,
+              "files": [
+                {
+                  "createdAt": "2024-02-03 10:00:00",
+                  "fileName": "IMG_0009.jpg",
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 9
+                },
+                {
+                  "createdAt": "2024-04-04 10:00:00",
+                  "fileName": "IMG_0017.jpg",
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 17
+                }
+              ],
+              "hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1"
+            },
+            {
+              "count": 2,
+              "fileSize": 2414,
+              "files": [
+                {
+                  "createdAt": "2024-01-15 10:00:00",
+                  "fileName": "VID_0006.mp4",
+                  "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                  "fileSize": 2414,
+                  "fileType": "video",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 6
+                },
+                {
+                  "createdAt": "2024-02-02 10:00:00",
+                  "fileName": "VID_0008.mp4",
+                  "filePath": "Beta Videos/videos/VID_0008.mp4",
+                  "fileSize": 2414,
+                  "fileType": "video",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 8
+                }
+              ],
+              "hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d"
+            }
+          ]
+        }
+      }
+    },
+    "dedup/status idle": {
+      "route": "GET /api/maintenance/dedup/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupScan",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "dedup/scan/stop while idle": {
+      "route": "POST /api/maintenance/dedup/scan/stop",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/scan/stop",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "stopped": true,
+          "wasRunning": false
+        }
+      }
+    },
+    "dedup/delete/status idle": {
+      "route": "GET /api/maintenance/dedup/delete/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/delete/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "dedupDelete",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "dedup/scan: start": {
+      "route": "POST /api/maintenance/dedup/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "dedup/scan: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "dedup_progress",
+          "collapsed": true
+        },
+        {
+          "aborted": false,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "hashed": 3,
+          "kind": "dedupScan",
+          "scanned": 3,
+          "type": "dedup_done"
+        }
+      ],
+      "collapsed": [
+        "dedup_progress"
+      ]
+    },
+    "dedup/status after scan": {
+      "route": "GET /api/maintenance/dedup/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "duplicatesFound": 7,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "errored": 0,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "hashed": 3,
+          "kind": "dedupScan",
+          "processed": 3,
+          "progress": {
+            "duplicatesFound": 7,
+            "errored": 0,
+            "hashed": 3,
+            "processed": 3,
+            "stage": "done",
+            "total": 3
+          },
+          "result": {
+            "aborted": false,
+            "duplicateSets": [
+              {
+                "count": 2,
+                "fileSize": 4820,
+                "files": [
+                  {
+                    "createdAt": "2024-01-12 10:00:00",
+                    "fileName": "IMG_0003.png",
+                    "filePath": "Alpha Photos/images/IMG_0003.png",
+                    "fileSize": 4820,
+                    "fileType": "photo",
+                    "groupId": "-1001000000001",
+                    "groupName": "Alpha Photos",
+                    "id": 3
+                  },
+                  {
+                    "createdAt": "2024-05-01 10:00:00",
+                    "fileName": "IMG_0018.png",
+                    "filePath": "Epsilon Archive/images/IMG_0018.png",
+                    "fileSize": 4820,
+                    "fileType": "photo",
+                    "groupId": "-1001000000005",
+                    "groupName": "Epsilon Archive",
+                    "id": 18
+                  }
+                ],
+                "hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6"
+              },
+              {
+                "count": 2,
+                "fileSize": 3365,
+                "files": [
+                  {
+                    "createdAt": "2024-01-10 10:00:00",
+                    "fileName": "IMG_0001.jpg",
+                    "filePath": "Alpha Photos/images/IMG_0001.jpg",
+                    "fileSize": 3365,
+                    "fileType": "photo",
+                    "groupId": "-1001000000001",
+                    "groupName": "Alpha Photos",
+                    "id": 1
+                  },
+                  {
+                    "createdAt": "2024-04-01 10:00:00",
+                    "fileName": "IMG_0014.jpg",
+                    "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                    "fileSize": 3365,
+                    "fileType": "photo",
+                    "groupId": "-1001000000004",
+                    "groupName": "Delta Mixed",
+                    "id": 14
+                  }
+                ],
+                "hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc"
+              },
+              {
+                "count": 2,
+                "fileSize": 3228,
+                "files": [
+                  {
+                    "createdAt": "2024-01-11 10:00:00",
+                    "fileName": "IMG_0002.jpg",
+                    "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                    "fileSize": 3228,
+                    "fileType": "photo",
+                    "groupId": "-1001000000001",
+                    "groupName": "Alpha Photos",
+                    "id": 2
+                  },
+                  {
+                    "createdAt": "2024-04-03 10:00:00",
+                    "fileName": "ภาพทดสอบ รูป.jpg",
+                    "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                    "fileSize": 3228,
+                    "fileType": "photo",
+                    "groupId": "-1001000000004",
+                    "groupName": "Delta Mixed",
+                    "id": 16
+                  }
+                ],
+                "hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c"
+              },
+              {
+                "count": 2,
+                "fileSize": 2679,
+                "files": [
+                  {
+                    "createdAt": "2024-02-03 10:00:00",
+                    "fileName": "IMG_0009.jpg",
+                    "filePath": "Beta Videos/images/IMG_0009.jpg",
+                    "fileSize": 2679,
+                    "fileType": "photo",
+                    "groupId": "-1001000000002",
+                    "groupName": "Beta Videos",
+                    "id": 9
+                  },
+                  {
+                    "createdAt": "2024-04-04 10:00:00",
+                    "fileName": "IMG_0017.jpg",
+                    "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                    "fileSize": 2679,
+                    "fileType": "photo",
+                    "groupId": "-1001000000004",
+                    "groupName": "Delta Mixed",
+                    "id": 17
+                  }
+                ],
+                "hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1"
+              },
+              {
+                "count": 2,
+                "fileSize": 2414,
+                "files": [
+                  {
+                    "createdAt": "2024-01-15 10:00:00",
+                    "fileName": "VID_0006.mp4",
+                    "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                    "fileSize": 2414,
+                    "fileType": "video",
+                    "groupId": "-1001000000001",
+                    "groupName": "Alpha Photos",
+                    "id": 6
+                  },
+                  {
+                    "createdAt": "2024-02-02 10:00:00",
+                    "fileName": "VID_0008.mp4",
+                    "filePath": "Beta Videos/videos/VID_0008.mp4",
+                    "fileSize": 2414,
+                    "fileType": "video",
+                    "groupId": "-1001000000002",
+                    "groupName": "Beta Videos",
+                    "id": 8
+                  }
+                ],
+                "hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d"
+              },
+              {
+                "count": 2,
+                "fileSize": 2171,
+                "files": [
+                  {
+                    "createdAt": "2024-02-01 10:00:00",
+                    "fileName": "VID_0007.mp4",
+                    "filePath": "Beta Videos/videos/VID_0007.mp4",
+                    "fileSize": 2171,
+                    "fileType": "video",
+                    "groupId": "-1001000000002",
+                    "groupName": "Beta Videos",
+                    "id": 7
+                  },
+                  {
+                    "createdAt": "2024-05-03 10:00:00",
+                    "fileName": "VID_0020.mp4",
+                    "filePath": "Epsilon Archive/videos/VID_0020.mp4",
+                    "fileSize": 2171,
+                    "fileType": "video",
+                    "groupId": "-1001000000005",
+                    "groupName": "Epsilon Archive",
+                    "id": 20
+                  }
+                ],
+                "hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275"
+              },
+              {
+                "count": 2,
+                "fileSize": 1300,
+                "files": [
+                  {
+                    "createdAt": "2024-01-13 10:00:00",
+                    "fileName": "IMG_0004.webp",
+                    "filePath": "Alpha Photos/images/IMG_0004.webp",
+                    "fileSize": 1300,
+                    "fileType": "photo",
+                    "groupId": "-1001000000001",
+                    "groupName": "Alpha Photos",
+                    "id": 4
+                  },
+                  {
+                    "createdAt": "2024-05-02 10:00:00",
+                    "fileName": "IMG_0019.webp",
+                    "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                    "fileSize": 1300,
+                    "fileType": "photo",
+                    "groupId": "-1001000000005",
+                    "groupName": "Epsilon Archive",
+                    "id": 19
+                  }
+                ],
+                "hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a"
+              }
+            ],
+            "errored": 0,
+            "hashed": 3,
+            "scanned": 3
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1,
+          "total": 3
+        }
+      }
+    },
+    "dedup/stats after scan": {
+      "route": "GET /api/maintenance/dedup/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hashed": 20,
+          "lastScan": {
+            "duplicateSets": 7,
+            "extraCopies": 7,
+            "finishedAt": "<time:ms>",
+            "hashed": 3,
+            "reclaimableBytes": 19977,
+            "scanned": 3
+          },
+          "missing": 0,
+          "partialProgress": null,
+          "totalFiles": 20
+        }
+      }
+    },
+    "dedup/sets after scan": {
+      "route": "GET /api/maintenance/dedup/sets",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/sets",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "duplicateSets": [
+            {
+              "count": 2,
+              "fileSize": 4820,
+              "files": [
+                {
+                  "createdAt": "2024-01-12 10:00:00",
+                  "fileName": "IMG_0003.png",
+                  "filePath": "Alpha Photos/images/IMG_0003.png",
+                  "fileSize": 4820,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 3
+                },
+                {
+                  "createdAt": "2024-05-01 10:00:00",
+                  "fileName": "IMG_0018.png",
+                  "filePath": "Epsilon Archive/images/IMG_0018.png",
+                  "fileSize": 4820,
+                  "fileType": "photo",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 18
+                }
+              ],
+              "hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6"
+            },
+            {
+              "count": 2,
+              "fileSize": 3365,
+              "files": [
+                {
+                  "createdAt": "2024-01-10 10:00:00",
+                  "fileName": "IMG_0001.jpg",
+                  "filePath": "Alpha Photos/images/IMG_0001.jpg",
+                  "fileSize": 3365,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 1
+                },
+                {
+                  "createdAt": "2024-04-01 10:00:00",
+                  "fileName": "IMG_0014.jpg",
+                  "filePath": "Delta Mixed/images/IMG_0014.jpg",
+                  "fileSize": 3365,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 14
+                }
+              ],
+              "hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc"
+            },
+            {
+              "count": 2,
+              "fileSize": 3228,
+              "files": [
+                {
+                  "createdAt": "2024-01-11 10:00:00",
+                  "fileName": "IMG_0002.jpg",
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 2
+                },
+                {
+                  "createdAt": "2024-04-03 10:00:00",
+                  "fileName": "ภาพทดสอบ รูป.jpg",
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 16
+                }
+              ],
+              "hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c"
+            },
+            {
+              "count": 2,
+              "fileSize": 2679,
+              "files": [
+                {
+                  "createdAt": "2024-02-03 10:00:00",
+                  "fileName": "IMG_0009.jpg",
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 9
+                },
+                {
+                  "createdAt": "2024-04-04 10:00:00",
+                  "fileName": "IMG_0017.jpg",
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 17
+                }
+              ],
+              "hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1"
+            },
+            {
+              "count": 2,
+              "fileSize": 2414,
+              "files": [
+                {
+                  "createdAt": "2024-01-15 10:00:00",
+                  "fileName": "VID_0006.mp4",
+                  "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                  "fileSize": 2414,
+                  "fileType": "video",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 6
+                },
+                {
+                  "createdAt": "2024-02-02 10:00:00",
+                  "fileName": "VID_0008.mp4",
+                  "filePath": "Beta Videos/videos/VID_0008.mp4",
+                  "fileSize": 2414,
+                  "fileType": "video",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 8
+                }
+              ],
+              "hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d"
+            },
+            {
+              "count": 2,
+              "fileSize": 2171,
+              "files": [
+                {
+                  "createdAt": "2024-02-01 10:00:00",
+                  "fileName": "VID_0007.mp4",
+                  "filePath": "Beta Videos/videos/VID_0007.mp4",
+                  "fileSize": 2171,
+                  "fileType": "video",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 7
+                },
+                {
+                  "createdAt": "2024-05-03 10:00:00",
+                  "fileName": "VID_0020.mp4",
+                  "filePath": "Epsilon Archive/videos/VID_0020.mp4",
+                  "fileSize": 2171,
+                  "fileType": "video",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 20
+                }
+              ],
+              "hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275"
+            },
+            {
+              "count": 2,
+              "fileSize": 1300,
+              "files": [
+                {
+                  "createdAt": "2024-01-13 10:00:00",
+                  "fileName": "IMG_0004.webp",
+                  "filePath": "Alpha Photos/images/IMG_0004.webp",
+                  "fileSize": 1300,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 4
+                },
+                {
+                  "createdAt": "2024-05-02 10:00:00",
+                  "fileName": "IMG_0019.webp",
+                  "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                  "fileSize": 1300,
+                  "fileType": "photo",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 19
+                }
+              ],
+              "hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a"
+            }
+          ]
+        }
+      }
+    },
+    "dedup/scan (again): start": {
+      "route": "POST /api/maintenance/dedup/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "dedup/scan (again): ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "dedup_progress",
+          "collapsed": true
+        },
+        {
+          "aborted": false,
+          "durationMs": "<durationMs:number>",
+          "errored": 0,
+          "hashed": 0,
+          "kind": "dedupScan",
+          "scanned": 0,
+          "type": "dedup_done"
+        }
+      ],
+      "collapsed": [
+        "dedup_progress"
+      ]
+    },
+    "dedup/stats after re-scan": {
+      "route": "GET /api/maintenance/dedup/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hashed": 20,
+          "lastScan": {
+            "duplicateSets": 7,
+            "extraCopies": 7,
+            "finishedAt": "<time:ms>",
+            "hashed": 0,
+            "reclaimableBytes": 19977,
+            "scanned": 0
+          },
+          "missing": 0,
+          "partialProgress": null,
+          "totalFiles": 20
+        }
+      }
+    },
+    "dedup/delete without body → 400": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids array required"
+        }
+      }
+    },
+    "dedup/delete empty ids → 400": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "admin",
+        "body": {
+          "ids": []
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids array required"
+        }
+      }
+    },
+    "dedup/delete ids not an array → 400": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "admin",
+        "body": {
+          "ids": "14"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids array required"
+        }
+      }
+    },
+    "dedup/delete only invalid ids → 400": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "abc",
+            -1,
+            0,
+            1.5
+          ]
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No valid ids supplied"
+        }
+      }
+    },
+    "dedup/delete [14]: start": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            14
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 1,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "dedup/delete [14]: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "dedup_delete_progress",
+          "collapsed": true
+        },
+        {
+          "count": 1,
+          "type": "bulk_delete"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "freedBytes": 3365,
+          "kind": "dedupDelete",
+          "missingFiles": 1,
+          "removed": 2,
+          "requested": 1,
+          "type": "dedup_delete_done"
+        }
+      ],
+      "collapsed": [
+        "dedup_delete_progress"
+      ]
+    },
+    "dedup/delete/status after [14]": {
+      "route": "GET /api/maintenance/dedup/delete/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/delete/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "dedupDelete",
+          "progress": {
+            "processed": 1,
+            "stage": "deleting",
+            "total": 1
+          },
+          "result": {
+            "freedBytes": 3365,
+            "missingFiles": 1,
+            "removed": 2,
+            "requested": 1
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "dedup/sets after deleting 14": {
+      "route": "GET /api/maintenance/dedup/sets",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/sets",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "duplicateSets": [
+            {
+              "count": 2,
+              "fileSize": 4820,
+              "files": [
+                {
+                  "createdAt": "2024-01-12 10:00:00",
+                  "fileName": "IMG_0003.png",
+                  "filePath": "Alpha Photos/images/IMG_0003.png",
+                  "fileSize": 4820,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 3
+                },
+                {
+                  "createdAt": "2024-05-01 10:00:00",
+                  "fileName": "IMG_0018.png",
+                  "filePath": "Epsilon Archive/images/IMG_0018.png",
+                  "fileSize": 4820,
+                  "fileType": "photo",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 18
+                }
+              ],
+              "hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6"
+            },
+            {
+              "count": 2,
+              "fileSize": 3228,
+              "files": [
+                {
+                  "createdAt": "2024-01-11 10:00:00",
+                  "fileName": "IMG_0002.jpg",
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 2
+                },
+                {
+                  "createdAt": "2024-04-03 10:00:00",
+                  "fileName": "ภาพทดสอบ รูป.jpg",
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 16
+                }
+              ],
+              "hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c"
+            },
+            {
+              "count": 2,
+              "fileSize": 2679,
+              "files": [
+                {
+                  "createdAt": "2024-02-03 10:00:00",
+                  "fileName": "IMG_0009.jpg",
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 9
+                },
+                {
+                  "createdAt": "2024-04-04 10:00:00",
+                  "fileName": "IMG_0017.jpg",
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 17
+                }
+              ],
+              "hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1"
+            },
+            {
+              "count": 2,
+              "fileSize": 2414,
+              "files": [
+                {
+                  "createdAt": "2024-01-15 10:00:00",
+                  "fileName": "VID_0006.mp4",
+                  "filePath": "Alpha Photos/videos/VID_0006.mp4",
+                  "fileSize": 2414,
+                  "fileType": "video",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 6
+                },
+                {
+                  "createdAt": "2024-02-02 10:00:00",
+                  "fileName": "VID_0008.mp4",
+                  "filePath": "Beta Videos/videos/VID_0008.mp4",
+                  "fileSize": 2414,
+                  "fileType": "video",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 8
+                }
+              ],
+              "hash": "99e9f226b851e745accb23da4aa2e6e9ff92551f6c08f0a65e04eaabcc83959d"
+            },
+            {
+              "count": 2,
+              "fileSize": 2171,
+              "files": [
+                {
+                  "createdAt": "2024-02-01 10:00:00",
+                  "fileName": "VID_0007.mp4",
+                  "filePath": "Beta Videos/videos/VID_0007.mp4",
+                  "fileSize": 2171,
+                  "fileType": "video",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 7
+                },
+                {
+                  "createdAt": "2024-05-03 10:00:00",
+                  "fileName": "VID_0020.mp4",
+                  "filePath": "Epsilon Archive/videos/VID_0020.mp4",
+                  "fileSize": 2171,
+                  "fileType": "video",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 20
+                }
+              ],
+              "hash": "1ebeab5c9e2d6330c69d1b562579cda7e37c482b7a89e6fce894ee2c61b22275"
+            },
+            {
+              "count": 2,
+              "fileSize": 1300,
+              "files": [
+                {
+                  "createdAt": "2024-01-13 10:00:00",
+                  "fileName": "IMG_0004.webp",
+                  "filePath": "Alpha Photos/images/IMG_0004.webp",
+                  "fileSize": 1300,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 4
+                },
+                {
+                  "createdAt": "2024-05-02 10:00:00",
+                  "fileName": "IMG_0019.webp",
+                  "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                  "fileSize": 1300,
+                  "fileType": "photo",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 19
+                }
+              ],
+              "hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a"
+            }
+          ]
+        }
+      }
+    },
+    "dedup/stats after deleting 14": {
+      "route": "GET /api/maintenance/dedup/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hashed": 18,
+          "lastScan": {
+            "duplicateSets": 7,
+            "extraCopies": 7,
+            "finishedAt": "<time:ms>",
+            "hashed": 0,
+            "reclaimableBytes": 19977,
+            "scanned": 0
+          },
+          "missing": 0,
+          "partialProgress": null,
+          "totalFiles": 18
+        }
+      }
+    },
+    "deleted copy is gone from /files": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Delta%20Mixed/images/IMG_0014.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "kept copy still served": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "dedup/delete [8, 9999, 8, \"7\"]: start": {
+      "route": "POST /api/maintenance/dedup/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/dedup/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            8,
+            9999,
+            8,
+            "7"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "queued": 4,
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "dedup/delete [8, 9999, 8, \"7\"]: ws sequence": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "dedup_delete_progress",
+          "collapsed": true
+        },
+        {
+          "count": 4,
+          "type": "bulk_delete"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "freedBytes": 4585,
+          "kind": "dedupDelete",
+          "missingFiles": 0,
+          "removed": 2,
+          "requested": 4,
+          "type": "dedup_delete_done"
+        }
+      ],
+      "collapsed": [
+        "dedup_delete_progress"
+      ]
+    },
+    "dedup/delete/status after mixed batch": {
+      "route": "GET /api/maintenance/dedup/delete/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/delete/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 2,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "dedupDelete",
+          "progress": {
+            "processed": 4,
+            "stage": "deleting",
+            "total": 4
+          },
+          "result": {
+            "freedBytes": 4585,
+            "missingFiles": 0,
+            "removed": 2,
+            "requested": 4
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 2
+        }
+      }
+    },
+    "dedup/sets after mixed batch": {
+      "route": "GET /api/maintenance/dedup/sets",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/dedup/sets",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "duplicateSets": [
+            {
+              "count": 2,
+              "fileSize": 4820,
+              "files": [
+                {
+                  "createdAt": "2024-01-12 10:00:00",
+                  "fileName": "IMG_0003.png",
+                  "filePath": "Alpha Photos/images/IMG_0003.png",
+                  "fileSize": 4820,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 3
+                },
+                {
+                  "createdAt": "2024-05-01 10:00:00",
+                  "fileName": "IMG_0018.png",
+                  "filePath": "Epsilon Archive/images/IMG_0018.png",
+                  "fileSize": 4820,
+                  "fileType": "photo",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 18
+                }
+              ],
+              "hash": "73bdfb7be51400172cf879f325e5f936a67816c6aec556b54a64e2c426ee07b6"
+            },
+            {
+              "count": 2,
+              "fileSize": 3228,
+              "files": [
+                {
+                  "createdAt": "2024-01-11 10:00:00",
+                  "fileName": "IMG_0002.jpg",
+                  "filePath": "Alpha Photos/images/IMG_0002.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 2
+                },
+                {
+                  "createdAt": "2024-04-03 10:00:00",
+                  "fileName": "ภาพทดสอบ รูป.jpg",
+                  "filePath": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+                  "fileSize": 3228,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 16
+                }
+              ],
+              "hash": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c"
+            },
+            {
+              "count": 2,
+              "fileSize": 2679,
+              "files": [
+                {
+                  "createdAt": "2024-02-03 10:00:00",
+                  "fileName": "IMG_0009.jpg",
+                  "filePath": "Beta Videos/images/IMG_0009.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000002",
+                  "groupName": "Beta Videos",
+                  "id": 9
+                },
+                {
+                  "createdAt": "2024-04-04 10:00:00",
+                  "fileName": "IMG_0017.jpg",
+                  "filePath": "Delta Mixed/images/IMG_0017.jpg",
+                  "fileSize": 2679,
+                  "fileType": "photo",
+                  "groupId": "-1001000000004",
+                  "groupName": "Delta Mixed",
+                  "id": 17
+                }
+              ],
+              "hash": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1"
+            },
+            {
+              "count": 2,
+              "fileSize": 1300,
+              "files": [
+                {
+                  "createdAt": "2024-01-13 10:00:00",
+                  "fileName": "IMG_0004.webp",
+                  "filePath": "Alpha Photos/images/IMG_0004.webp",
+                  "fileSize": 1300,
+                  "fileType": "photo",
+                  "groupId": "-1001000000001",
+                  "groupName": "Alpha Photos",
+                  "id": 4
+                },
+                {
+                  "createdAt": "2024-05-02 10:00:00",
+                  "fileName": "IMG_0019.webp",
+                  "filePath": "Epsilon Archive/images/IMG_0019.webp",
+                  "fileSize": 1300,
+                  "fileType": "photo",
+                  "groupId": "-1001000000005",
+                  "groupName": "Epsilon Archive",
+                  "id": 19
+                }
+              ],
+              "hash": "1f2f7f74972c8dd83e8cb5c409389a9a24f1f31dc927ad2e0bc246f34478ed4a"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

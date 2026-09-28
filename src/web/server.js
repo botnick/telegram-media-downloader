@@ -813,6 +813,18 @@ app.use((req, res, next) => {
 // after POST /api/config so toggling in the UI takes effect without a
 // restart. The skip + limit functions read this in-memory cache to stay
 // sync (express-rate-limit's hooks don't accept async).
+//
+// Module-level config cache (definition; the `readConfigSafe` helper that
+// uses it is declared further down). Declared ABOVE the first module-load
+// caller — the refreshRateLimitConfig() call just below and the
+// share-secret bootstrap IIFE — because both call `readConfigSafe()`
+// synchronously up to its first internal await, and inside the helper we
+// read `_configCache.value` immediately. Declared any later it would be in
+// TDZ at that read ("Cannot access '_configCache' before initialization"):
+// the share secret bootstrap was deferred (`[share] secret bootstrap
+// deferred`) and the configured API rate limit ignored until the first
+// 30 s refresh.
+let _configCache = { at: 0, value: null };
 const RATE_LIMIT_DEFAULT_RPM = 10000;
 let _rateLimitConfig = { enabled: false, perMinute: RATE_LIMIT_DEFAULT_RPM };
 
@@ -903,16 +915,6 @@ app.use((req, res, next) => {
 // Rolling expiry-cleanup for session tokens. Unref'd so it doesn't keep the
 // process alive on shutdown.
 startSessionGc();
-
-// Module-level config cache (definition; the `readConfigSafe` helper that
-// uses it is declared further down). Hoisted to ABOVE the share-secret
-// bootstrap IIFE because that IIFE awaits `readConfigSafe()` synchronously
-// up to its first internal await, and inside the helper we read
-// `_configCache.value` immediately — if the `let` below were still in its
-// original position (after the IIFE) it would be in TDZ at that read,
-// crashing module load with "Cannot access '_configCache' before
-// initialization". Logged in the wild as `[share] secret bootstrap deferred`.
-let _configCache = { at: 0, value: null };
 
 // Bootstrap the share-link HMAC secret + apply runtime limits from
 // config. Lazy-generated secret on first boot, persisted to
@@ -1803,6 +1805,14 @@ app.get('/api/update/status', async (req, res) => {
 });
 
 app.post('/api/update', async (req, res) => {
+    // Registered before the global checkAuth / guestGate (like the rest of
+    // the update routes), so it gates itself: an update snapshots the DB and
+    // asks watchtower to recreate the container — admin sessions only.
+    const session = validateSession(req.cookies?.tg_dl_session);
+    if (!session) return res.status(401).json({ error: 'Unauthorized' });
+    if (session.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin only', adminRequired: true });
+    }
     const tracker = _jobTrackers.autoUpdate;
     const fromVersion = _readCurrentVersion();
     const r = tracker.tryStart(async () => {
@@ -6602,7 +6612,9 @@ async function _requirePassword(req, res) {
         // Export-Session into a full account-takeover surface for anyone
         // who already holds a session cookie.
         const result = loginVerify(supplied, config.web);
-        if (!result?.ok) {
+        // loginVerify also accepts the guest password (role 'guest'); the
+        // re-auth guard must only take the admin one.
+        if (!result?.ok || result.role !== 'admin') {
             res.status(403).json({ error: 'Invalid password' });
             return false;
         }
@@ -12740,7 +12752,10 @@ app.put('/api/groups/:id', async (req, res) => {
         // "Monitored Only" tab keeps the group hidden for up to
         // DIALOG_CACHE_TTL_MS even though it's now in config.
         _dialogsResponseCache = { at: 0, body: null };
-        broadcast({ type: 'config_updated', config });
+        // Payload-less like every other config_updated: the dashboard
+        // refetches /api/config, and the event also reaches guest sockets,
+        // which must never see password hashes or the share secret.
+        broadcast({ type: 'config_updated' });
 
         // Auto-backfill on first add (v2.3.34) — when a group transitions
         // from "never seen / disabled" → "enabled" AND has zero rows in

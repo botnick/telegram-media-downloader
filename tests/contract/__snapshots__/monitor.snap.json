@@ -1,0 +1,1229 @@
+{
+  "entries": {
+    "monitor/status admin": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 0,
+          "active": 0,
+          "error": null,
+          "hint": "configure-api",
+          "queue": 0,
+          "startedAt": null,
+          "state": "stopped",
+          "stats": null,
+          "uptimeMs": "<uptimeMs:number>",
+          "workers": 0
+        }
+      }
+    },
+    "monitor/status guest (allowed)": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 0,
+          "active": 0,
+          "error": null,
+          "hint": "configure-api",
+          "queue": 0,
+          "startedAt": null,
+          "state": "stopped",
+          "stats": null,
+          "uptimeMs": "<uptimeMs:number>",
+          "workers": 0
+        }
+      }
+    },
+    "monitor/status anon → 401": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "monitor/start without API creds → 503": {
+      "route": "POST /api/monitor/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/start",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "monitor/restart without API creds → 503": {
+      "route": "POST /api/monitor/restart",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/restart",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "monitor/stop while stopped": {
+      "route": "POST /api/monitor/stop",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/stop",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "status": {
+            "accounts": 0,
+            "active": 0,
+            "error": null,
+            "queue": 0,
+            "startedAt": null,
+            "state": "stopped",
+            "stats": null,
+            "uptimeMs": "<uptimeMs:number>",
+            "workers": 0
+          },
+          "success": true
+        }
+      }
+    },
+    "monitor/start guest → 403": {
+      "route": "POST /api/monitor/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/start",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "monitor/stop anon → 401": {
+      "route": "POST /api/monitor/stop",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/stop",
+        "as": "anon",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "history start without body → 400": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "groupId required"
+        }
+      }
+    },
+    "history start without groupId → 400": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "admin",
+        "body": {
+          "limit": 10
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "groupId required"
+        }
+      }
+    },
+    "history start for an unreachable chat → 409": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "admin",
+        "body": {
+          "groupId": "-1001000000003",
+          "limit": 10
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "access": {
+            "accounts": [],
+            "checkedAt": 1717718400000,
+            "checks": 1,
+            "code": "USER_NOT_PARTICIPANT",
+            "detail": "account left the chat",
+            "firstSeenAt": 1717718400000,
+            "migratedTo": null,
+            "nextCheckAt": 4102444800000,
+            "state": "left"
+          },
+          "code": "CHAT_UNREACHABLE",
+          "error": "This chat can't be reached (left: USER_NOT_PARTICIPANT) — no account can read it"
+        }
+      }
+    },
+    "history start without API creds → 500": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "admin",
+        "body": {
+          "groupId": "-1001000000001",
+          "limit": 0,
+          "mode": "rescan"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "history start guest → 403": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "guest",
+        "body": {
+          "groupId": "-1001000000001"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "history/jobs with seeded finished jobs": {
+      "route": "GET /api/history/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/history/jobs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "active": [],
+          "past": [
+            {
+              "cancelled": false,
+              "downloaded": 0,
+              "error": "No available account can read this chat",
+              "finishedAt": 1718179202000,
+              "group": "Delta Mixed",
+              "groupId": "-1001000000004",
+              "id": "a1b2c3000003",
+              "limit": 50,
+              "processed": 0,
+              "startedAt": 1718179200000,
+              "state": "error"
+            },
+            {
+              "cancelled": true,
+              "downloaded": 3,
+              "error": null,
+              "finishedAt": 1718092860000,
+              "group": "Beta Videos",
+              "groupId": "-1001000000002",
+              "id": "a1b2c3000002",
+              "limit": null,
+              "mode": "catch-up",
+              "processed": 40,
+              "startedAt": 1718092800000,
+              "state": "cancelled"
+            },
+            {
+              "cancelled": false,
+              "downloaded": 14,
+              "error": null,
+              "finishedAt": 1718006700000,
+              "group": "Alpha Photos",
+              "groupId": "-1001000000001",
+              "id": "a1b2c3000001",
+              "limit": 100,
+              "mode": "pull-older",
+              "processed": 120,
+              "startedAt": 1718006400000,
+              "state": "done"
+            }
+          ],
+          "recent": [
+            {
+              "cancelled": false,
+              "downloaded": 0,
+              "error": "No available account can read this chat",
+              "finishedAt": 1718179202000,
+              "group": "Delta Mixed",
+              "groupId": "-1001000000004",
+              "id": "a1b2c3000003",
+              "limit": 50,
+              "processed": 0,
+              "startedAt": 1718179200000,
+              "state": "error"
+            },
+            {
+              "cancelled": true,
+              "downloaded": 3,
+              "error": null,
+              "finishedAt": 1718092860000,
+              "group": "Beta Videos",
+              "groupId": "-1001000000002",
+              "id": "a1b2c3000002",
+              "limit": null,
+              "mode": "catch-up",
+              "processed": 40,
+              "startedAt": 1718092800000,
+              "state": "cancelled"
+            },
+            {
+              "cancelled": false,
+              "downloaded": 14,
+              "error": null,
+              "finishedAt": 1718006700000,
+              "group": "Alpha Photos",
+              "groupId": "-1001000000001",
+              "id": "a1b2c3000001",
+              "limit": 100,
+              "mode": "pull-older",
+              "processed": 120,
+              "startedAt": 1718006400000,
+              "state": "done"
+            }
+          ]
+        }
+      }
+    },
+    "history (in-memory jobs) is empty": {
+      "route": "GET /api/history",
+      "request": {
+        "method": "GET",
+        "path": "/api/history",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": []
+      }
+    },
+    "history/:jobId unknown → 404": {
+      "route": "GET /api/history/:jobId",
+      "request": {
+        "method": "GET",
+        "path": "/api/history/ffffffffffff",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Job not found"
+        }
+      }
+    },
+    "history/:jobId seeded-but-not-in-memory → 404": {
+      "route": "GET /api/history/:jobId",
+      "request": {
+        "method": "GET",
+        "path": "/api/history/a1b2c3000001",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Job not found"
+        }
+      }
+    },
+    "history/:jobId/cancel unknown → 404": {
+      "route": "POST /api/history/:jobId/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/history/ffffffffffff/cancel",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Job not found"
+        }
+      }
+    },
+    "history/jobs guest → 403": {
+      "route": "GET /api/history/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/history/jobs",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "history delete one finished job": {
+      "route": "DELETE /api/history/:jobId",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/history/a1b2c3000002",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "history/jobs after delete": {
+      "route": "GET /api/history/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/history/jobs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "active": [],
+          "past": [
+            {
+              "cancelled": false,
+              "downloaded": 0,
+              "error": "No available account can read this chat",
+              "finishedAt": 1718179202000,
+              "group": "Delta Mixed",
+              "groupId": "-1001000000004",
+              "id": "a1b2c3000003",
+              "limit": 50,
+              "processed": 0,
+              "startedAt": 1718179200000,
+              "state": "error"
+            },
+            {
+              "cancelled": false,
+              "downloaded": 14,
+              "error": null,
+              "finishedAt": 1718006700000,
+              "group": "Alpha Photos",
+              "groupId": "-1001000000001",
+              "id": "a1b2c3000001",
+              "limit": 100,
+              "mode": "pull-older",
+              "processed": 120,
+              "startedAt": 1718006400000,
+              "state": "done"
+            }
+          ],
+          "recent": [
+            {
+              "cancelled": false,
+              "downloaded": 0,
+              "error": "No available account can read this chat",
+              "finishedAt": 1718179202000,
+              "group": "Delta Mixed",
+              "groupId": "-1001000000004",
+              "id": "a1b2c3000003",
+              "limit": 50,
+              "processed": 0,
+              "startedAt": 1718179200000,
+              "state": "error"
+            },
+            {
+              "cancelled": false,
+              "downloaded": 14,
+              "error": null,
+              "finishedAt": 1718006700000,
+              "group": "Alpha Photos",
+              "groupId": "-1001000000001",
+              "id": "a1b2c3000001",
+              "limit": 100,
+              "mode": "pull-older",
+              "processed": 120,
+              "startedAt": 1718006400000,
+              "state": "done"
+            }
+          ]
+        }
+      }
+    },
+    "history delete unknown id (idempotent)": {
+      "route": "DELETE /api/history/:jobId",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/history/ffffffffffff",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "history clear all": {
+      "route": "DELETE /api/history",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/history",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "removed": 0,
+          "success": true
+        }
+      }
+    },
+    "history/jobs after clear": {
+      "route": "GET /api/history/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/history/jobs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "active": [],
+          "past": [],
+          "recent": []
+        }
+      }
+    },
+    "history clear guest → 403": {
+      "route": "DELETE /api/history",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/history",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "ws events from history delete + clear": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "jobId": "a1b2c3000002",
+          "type": "history_deleted"
+        },
+        {
+          "jobId": "ffffffffffff",
+          "type": "history_deleted"
+        },
+        {
+          "type": "history_cleared"
+        }
+      ]
+    },
+    "resync-dialogs without API creds → 503": {
+      "route": "POST /api/maintenance/resync-dialogs",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/resync-dialogs",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "resync-dialogs status (idle)": {
+      "route": "GET /api/maintenance/resync-dialogs/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/resync-dialogs/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "resyncDialogs",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "resync-dialogs guest → 403": {
+      "route": "POST /api/maintenance/resync-dialogs",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/resync-dialogs",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "restart-monitor status before (idle)": {
+      "route": "GET /api/maintenance/restart-monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/restart-monitor/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "restartMonitor",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "restart-monitor without confirm → 400": {
+      "route": "POST /api/maintenance/restart-monitor",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/restart-monitor",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "restart-monitor confirmed": {
+      "route": "POST /api/maintenance/restart-monitor",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/restart-monitor",
+        "as": "admin",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "restart-monitor status after (done)": {
+      "route": "GET /api/maintenance/restart-monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/restart-monitor/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "restartMonitor",
+          "progress": {},
+          "result": {
+            "note": "Monitor was not running; nothing to restart.",
+            "restarted": false
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "ws events from restart-monitor": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "restartMonitor",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "restart_monitor_progress"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "restartMonitor",
+          "note": "Monitor was not running; nothing to restart.",
+          "restarted": false,
+          "type": "restart_monitor_done"
+        }
+      ]
+    },
+    "[creds] monitor/status hint add-account": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 0,
+          "active": 0,
+          "error": null,
+          "hint": "add-account",
+          "queue": 0,
+          "startedAt": null,
+          "state": "stopped",
+          "stats": null,
+          "uptimeMs": "<uptimeMs:number>",
+          "workers": 0
+        }
+      }
+    },
+    "[creds] monitor/start → 409": {
+      "route": "POST /api/monitor/start",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/start",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded. Add one in Settings → Accounts first."
+        }
+      }
+    },
+    "[creds] monitor/restart → 409": {
+      "route": "POST /api/monitor/restart",
+      "request": {
+        "method": "POST",
+        "path": "/api/monitor/restart",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded. Add one in Settings → Accounts first."
+        }
+      }
+    },
+    "[creds] history start → 409": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "admin",
+        "body": {
+          "groupId": "-1001000000001"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    },
+    "[creds] history start for a DB-only group → 409": {
+      "route": "POST /api/history",
+      "request": {
+        "method": "POST",
+        "path": "/api/history",
+        "as": "admin",
+        "body": {
+          "groupId": "-1001000000005",
+          "limit": 5
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    },
+    "[creds] resync-dialogs → 409": {
+      "route": "POST /api/maintenance/resync-dialogs",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/resync-dialogs",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No Telegram accounts loaded"
+        }
+      }
+    },
+    "[creds] restart-monitor confirmed": {
+      "route": "POST /api/maintenance/restart-monitor",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/restart-monitor",
+        "as": "admin",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "[creds] ws events from restart-monitor": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "restartMonitor",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "restart_monitor_progress"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "restartMonitor",
+          "note": "Monitor was not running; nothing to restart.",
+          "restarted": false,
+          "type": "restart_monitor_done"
+        }
+      ]
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

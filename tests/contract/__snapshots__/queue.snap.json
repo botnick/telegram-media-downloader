@@ -1,0 +1,558 @@
+{
+  "entries": {
+    "queue/snapshot admin": {
+      "route": "GET /api/queue/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/queue/snapshot",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "active": [],
+          "engineRunning": false,
+          "globalPaused": false,
+          "maxSpeed": null,
+          "pausedCount": 0,
+          "pending": 0,
+          "queued": [],
+          "recent": [
+            {
+              "addedAt": 1717236000000,
+              "deduped": false,
+              "error": null,
+              "fileName": "IMG_0001.jpg",
+              "filePath": "Alpha Photos/images/IMG_0001.jpg",
+              "fileSize": 3365,
+              "finishedAt": 1717236005000,
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "key": "-1001000000001_101",
+              "mediaType": "photos",
+              "messageId": 101,
+              "status": "done"
+            },
+            {
+              "addedAt": 1717232400000,
+              "error": "FILE_REFERENCE_EXPIRED",
+              "fileName": "VID_0199.mp4",
+              "fileSize": 0,
+              "finishedAt": 1717232430000,
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "key": "-1001000000002_199",
+              "mediaType": "videos",
+              "messageId": 199,
+              "status": "failed"
+            }
+          ],
+          "workers": 0
+        }
+      }
+    },
+    "queue/snapshot guest → 403": {
+      "route": "GET /api/queue/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/queue/snapshot",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "queue/snapshot anon → 401": {
+      "route": "GET /api/queue/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/queue/snapshot",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "queue/pause-all → 409": {
+      "route": "POST /api/queue/pause-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/pause-all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/resume-all → 409": {
+      "route": "POST /api/queue/resume-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/resume-all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/cancel-all → 409": {
+      "route": "POST /api/queue/cancel-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/cancel-all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/retry-all → 409": {
+      "route": "POST /api/queue/retry-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/retry-all",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/:key/pause → 409": {
+      "route": "POST /api/queue/:key/pause",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/-1001000000001_101/pause",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/:key/resume → 409": {
+      "route": "POST /api/queue/:key/resume",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/-1001000000001_101/resume",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/:key/cancel → 409": {
+      "route": "POST /api/queue/:key/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/-1001000000001_101/cancel",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/:key/retry → 409": {
+      "route": "POST /api/queue/:key/retry",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/-1001000000001_101/retry",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/:key/retry unknown key → 409": {
+      "route": "POST /api/queue/:key/retry",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/nope/retry",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/batch valid body → 409": {
+      "route": "POST /api/queue/batch",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/batch",
+        "as": "admin",
+        "body": {
+          "action": "dismiss",
+          "keys": [
+            "-1001000000001_101"
+          ]
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/batch empty keys → 409 (not 400)": {
+      "route": "POST /api/queue/batch",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/batch",
+        "as": "admin",
+        "body": {
+          "action": "pause",
+          "keys": []
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/batch bad action → 409 (not 400)": {
+      "route": "POST /api/queue/batch",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/batch",
+        "as": "admin",
+        "body": {
+          "action": "explode",
+          "keys": [
+            "x"
+          ]
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Engine is not running. Start the monitor first."
+        }
+      }
+    },
+    "queue/pause-all guest → 403": {
+      "route": "POST /api/queue/pause-all",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/pause-all",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "queue/batch anon → 401": {
+      "route": "POST /api/queue/batch",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/batch",
+        "as": "anon",
+        "body": {
+          "action": "pause",
+          "keys": [
+            "x"
+          ]
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "queue/clear-finished": {
+      "route": "POST /api/queue/clear-finished",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/clear-finished",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "queue/snapshot after clear-finished": {
+      "route": "GET /api/queue/snapshot",
+      "request": {
+        "method": "GET",
+        "path": "/api/queue/snapshot",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "active": [],
+          "engineRunning": false,
+          "globalPaused": false,
+          "maxSpeed": null,
+          "pausedCount": 0,
+          "pending": 0,
+          "queued": [],
+          "recent": [],
+          "workers": 0
+        }
+      }
+    },
+    "queue/clear-finished again (idempotent)": {
+      "route": "POST /api/queue/clear-finished",
+      "request": {
+        "method": "POST",
+        "path": "/api/queue/clear-finished",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "ws events from clear-finished ×2": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "payload": {
+            "op": "clear-finished"
+          },
+          "type": "queue_changed"
+        },
+        {
+          "payload": {
+            "op": "clear-finished"
+          },
+          "type": "queue_changed"
+        }
+      ]
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
