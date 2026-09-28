@@ -651,9 +651,10 @@ export class RealtimeMonitor extends EventEmitter {
         let _resolvedCount = 0;
         for (const group of enabledGroups) {
             const wasUnknown = typeof group.id === 'string' && group.id.startsWith('unknown:');
-            // Already known unreachable and not due for a re-check: skip it
-            // without a single call (the periodic re-check picks it up).
-            if (!wasUnknown && chatAccess.isBlocked(group.id) && !chatAccess.isDue(group.id)) {
+            // Already known unreachable: skip it without a single call. Even
+            // when its re-check is due, the re-check tick asks — one chat a
+            // minute — so a restart with many dead chats is never a burst.
+            if (!wasUnknown && chatAccess.isBlocked(group.id)) {
                 _skippedKnown += 1;
                 _unreachable.push({ group, state: chatAccess.accessOf(group.id).state });
                 continue;
@@ -710,7 +711,7 @@ export class RealtimeMonitor extends EventEmitter {
             const tallyStr = [...tally.entries()].map(([k, v]) => `${k}=${v}`).join(', ');
             console.log(
                 colorize(
-                    `⏸  ${_unreachable.length} chat(s) can't be reached by any loaded account (${this._describeLoadedAccounts()}) — skipped until they're reachable again. Reasons: ${tallyStr}${_skippedKnown ? ` (${_skippedKnown} already known, not re-asked)` : ''}`,
+                    `⏸  ${_unreachable.length} chat(s) can't be reached by any loaded account (${this._describeLoadedAccounts()}) — skipped until they're reachable again. Reasons: ${tallyStr}${_skippedKnown ? ` (${_skippedKnown} already known — re-checked one a minute when due)` : ''}`,
                     'yellow',
                 ),
             );

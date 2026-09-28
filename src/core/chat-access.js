@@ -386,7 +386,7 @@ export function isBlocked(chatId) {
 export function isDue(chatId, now = Date.now()) {
     _load();
     const rec = _rows.get(key(chatId));
-    return !!rec && BLOCKING.has(rec.state) && (rec.nextCheckAt ?? 0) <= now;
+    return !!rec && BLOCKING.has(rec.state) && rec.nextCheckAt != null && rec.nextCheckAt <= now;
 }
 
 /**
@@ -483,7 +483,9 @@ export function recordCheck(chatId, results, { now = Date.now(), isRecheck = fal
     const sameState = wasBlocked && prev.state === verdict.state;
     const checks = wasBlocked ? (prev.checks || 0) + (isRecheck ? 1 : 0) : 0;
     let nextCheckAt;
-    if (!wasBlocked) nextCheckAt = now + recheckDelay(0, { transient });
+    if (verdict.state === 'migrated')
+        nextCheckAt = null; // permanent — nothing to re-check
+    else if (!wasBlocked) nextCheckAt = now + recheckDelay(0, { transient });
     else if (isRecheck) nextCheckAt = now + recheckDelay(checks);
     else nextCheckAt = prev.nextCheckAt ?? now + recheckDelay(checks);
     const rec = {
@@ -562,8 +564,8 @@ export function nextDueId(candidateIds, now = Date.now()) {
     let bestAt = Infinity;
     for (const raw of candidateIds || []) {
         const rec = _rows.get(key(raw));
-        if (!rec || !BLOCKING.has(rec.state)) continue;
-        const at = rec.nextCheckAt ?? 0;
+        if (!rec || !BLOCKING.has(rec.state) || rec.nextCheckAt == null) continue;
+        const at = rec.nextCheckAt;
         if (at <= now && at < bestAt) {
             best = raw;
             bestAt = at;
@@ -592,7 +594,7 @@ export function accountsChanged(liveAccountIds, { added = false, now = Date.now(
                 _persist(id, null);
                 continue;
             }
-        } else if (added || !Object.keys(accounts).length) {
+        } else if ((added || !Object.keys(accounts).length) && rec.state !== 'migrated') {
             next = { ...next, nextCheckAt: Math.min(rec.nextCheckAt ?? now, now) };
         }
         _rows.set(id, next);

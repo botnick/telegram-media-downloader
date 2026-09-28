@@ -267,6 +267,13 @@ describe('registry — per-account answers and the chat-level verdict', () => {
         const a = access.accessOf('-5');
         expect(a.state).toBe('migrated');
         expect(a.migratedTo).toBe('-1009');
+        // permanent: never scheduled for a re-check (not even after an
+        // account is added)
+        expect(a.nextCheckAt).toBeNull();
+        expect(access.isDue('-5', Date.now() + 365 * 86400e3)).toBe(false);
+        expect(access.nextDueId(['-5'], Date.now() + 365 * 86400e3)).toBeNull();
+        access.accountsChanged(['A', 'B', 'C'], { added: true });
+        expect(access.isDue('-5')).toBe(false);
     });
 
     it('re-checks back off 1 h → 6 h → daily', () => {
