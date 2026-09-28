@@ -6257,6 +6257,13 @@ body {
         bottom: calc(56px + 28px + 12px + env(safe-area-inset-bottom));
         right: calc(16px + env(safe-area-inset-right));
     }
+    /* The FAB floats 12 px above the status bar and is 56 px tall: room at
+       the end of every page so the last row (a Chats switch, the last
+       gallery tiles, a Settings card) scrolls clear of it. The id rule
+       beats the element's Tailwind p-2. Guests have no FAB. */
+    body:not([data-role="guest"]) #content-area {
+        padding-bottom: 80px;
+    }
     /* The FAB would sit on top of a floating selection bar. */
     body:has(#selection-bar:not(.hidden)) .fab,
     body:has(#queue-selection-bar:not(.hidden)) .fab {
