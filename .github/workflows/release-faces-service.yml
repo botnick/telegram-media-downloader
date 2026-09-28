@@ -174,3 +174,52 @@ jobs:
             ghcr.io/botnick/tgdl-faces:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------
+  # Job 3 — CUDA container image (linux/amd64 only)
+  # ---------------------------------------------------------------
+  #
+  # Backs the `faces-cuda` compose profile, which pulls
+  # ghcr.io/botnick/tgdl-faces:cuda-latest. NVIDIA publishes no arm64
+  # onnxruntime-gpu wheels, so this is amd64-only.
+  build-docker-cuda:
+    name: docker cuda (linux/amd64)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # The CUDA + cuDNN base layers are several GB unpacked; reclaim
+      # runner disk that the build doesn't use before starting.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push CUDA image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./faces-service
+          file: ./faces-service/Dockerfile.cuda
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/botnick/tgdl-faces:cuda-${{ github.ref_name }}
+            ghcr.io/botnick/tgdl-faces:cuda-latest
+          # Separate cache scope so the CPU and CUDA builds don't evict
+          # each other's layers.
+          cache-from: type=gha,scope=faces-cuda
+          cache-to: type=gha,mode=max,scope=faces-cuda

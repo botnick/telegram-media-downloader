@@ -1,12 +1,19 @@
 # syntax=docker/dockerfile:1.7
 #
-# CUDA variant of the tgdl-faces sidecar.
+# CUDA variant of the tgdl-faces sidecar. Published by
+# .github/workflows/release-faces-service.yml as
+# ghcr.io/botnick/tgdl-faces:cuda-latest (linux/amd64 only) and used by the
+# `faces-cuda` compose profile.
 #
 # Requires:
 #   - NVIDIA container toolkit on the host (nvidia-container-runtime)
-#   - CUDA 12.x drivers on the host
-#   - `--runtime=nvidia` (or `deploy.resources.reservations.devices` in
-#     compose) when starting the container
+#   - an NVIDIA driver new enough for CUDA 12.4 (R550+; forward
+#     compatibility covers older 12.x drivers on datacenter GPUs)
+#   - `--runtime=nvidia` / `--gpus all` (the compose profile sets
+#     `runtime: nvidia`)
+#
+# Without a usable GPU the sidecar logs a warning and falls back to the
+# CPU provider inside onnxruntime-gpu.
 #
 # Build:
 #   docker build -f Dockerfile.cuda -t tgdl-faces:cuda .
@@ -14,61 +21,75 @@
 # Run:
 #   docker run --runtime=nvidia --gpus all -p 8011:8011 tgdl-faces:cuda
 
+# The cudnn-runtime image ships the CUDA 12 runtime + cuBLAS + cuDNN 9,
+# which is what the PyPI onnxruntime-gpu (>= 1.19) wheels link against.
+ARG CUDA_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
 # ---------------------------------------------------------------------------
 # Stage 1 — builder
 # ---------------------------------------------------------------------------
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS builder
+FROM ${CUDA_IMAGE} AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Ubuntu 22.04's own python3 (3.10) + venv — no third-party interpreter,
+# so pip is the one ensurepip bundles for exactly this Python.
+# gcc / g++ / python3-dev — insightface ships as an sdist with a Cython
+# extension that is compiled at install time.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-dev python3-pip \
+        python3 python3-venv python3-dev \
         gcc g++ \
         libgl1 libglib2.0-0 \
         ca-certificates \
-    && ln -sf python3.11 /usr/bin/python3 \
-    && ln -sf python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
 
 WORKDIR /build
 
 COPY pyproject.toml README.md ./
 COPY tgdl_faces ./tgdl_faces
 
-# Install CPU variant first, then overlay onnxruntime-gpu which pip will
-# use to satisfy the onnxruntime requirement (they share the module name).
-RUN pip install --user --no-cache-dir ".[gpu]"
+# `onnxruntime` and `onnxruntime-gpu` install into the same `onnxruntime`
+# module directory and cannot coexist — installing both (what the `[gpu]`
+# extra does) leaves whichever wheel pip unpacked last, often the CPU one.
+# Install the package, drop the CPU runtime, then add the GPU runtime.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir . \
+    && pip uninstall -y onnxruntime \
+    && pip install --no-cache-dir "onnxruntime-gpu>=1.20,<2" \
+    && python -c "import onnxruntime as o; p = o.get_available_providers(); print(p); assert 'CUDAExecutionProvider' in p"
 
-# Pre-download buffalo_l model weights.
+# Pre-download buffalo_l model weights (CPU provider — the build host has
+# no GPU).
 ENV TGDL_FACES_MODELS_DIR=/root/.cache/tgdl-faces/models
 RUN python -c "from insightface.app import FaceAnalysis; a = FaceAnalysis(name='buffalo_l', root='/root/.cache/tgdl-faces/models', providers=['CPUExecutionProvider']); a.prepare(ctx_id=-1)"
 
 # ---------------------------------------------------------------------------
 # Stage 2 — runtime
 # ---------------------------------------------------------------------------
-FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS runtime
+FROM ${CUDA_IMAGE} AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3.11 python3-pip \
+        python3 \
         libgl1 libglib2.0-0 \
         ca-certificates \
         tini \
         wget \
-    && ln -sf python3.11 /usr/bin/python3 \
-    && ln -sf python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /root/.cache/tgdl-faces/models /root/.cache/tgdl-faces/models
 
 WORKDIR /app
 COPY tgdl_faces /app/tgdl_faces
 
-ENV PATH="/root/.local/bin:${PATH}" \
+ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     TGDL_FACES_HOST=0.0.0.0 \
@@ -83,7 +104,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
 
 LABEL org.opencontainers.image.title="tgdl-faces-cuda" \
       org.opencontainers.image.description="Face detection + 512-dim embedding sidecar (CUDA GPU variant)" \
-      org.opencontainers.image.version="0.2.0" \
+      org.opencontainers.image.version="0.5.0" \
       org.opencontainers.image.source="https://github.com/botnick/telegram-media-downloader" \
       org.opencontainers.image.licenses="MIT" \
       com.centurylinklabs.watchtower.enable="true"
