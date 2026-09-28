@@ -374,7 +374,7 @@
         "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
         "as": "admin",
         "headers": {
-          "if-none-match": "W/\"0-0\""
+          "if-none-match": "W/\"<size-hex>-<mtime-hex>\""
         }
       },
       "status": 200,
@@ -688,7 +688,7 @@
         "path": "/files/Alpha%20Photos/videos/VID_0006.mp4?inline=1",
         "as": "admin",
         "headers": {
-          "if-range": "W/\"0-0\"",
+          "if-range": "W/\"<size-hex>-<mtime-hex>\"",
           "range": "bytes=0-9"
         }
       },
