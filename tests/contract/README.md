@@ -246,9 +246,6 @@ Rules that keep runs deterministic:
 Recorded as today's behaviour. Fix them in Node first (then re-record),
 never silently in the Go port.
 
-- `GET /api/config` returns `web.shareSecret`, `web.guestPasswordHash` and
-  `proxy.password` to admin sessions; `/api/maintenance/config/raw` doesn't
-  redact `shareSecret` or `guestPasswordHash`.
 - Guests can read `GET /api/groups/:id/files`, `/stats`, `/purge/status` and
   `/refresh-info/status` (the guest allow-list matches the `/api/groups`
   prefix).

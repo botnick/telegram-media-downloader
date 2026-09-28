@@ -248,8 +248,8 @@ The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidec
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET`  | `/api/config`     | `apiHash` + `password` redacted; `apiHashSet` boolean replaces hash. |
-| `POST` | `/api/config`     | Deep-merge updates; `advanced.*` namespaces are clamped per-field on save and re-applied at runtime via `config_updated`. |
+| `GET`  | `/api/config`     | Admin only. Secrets are write-only: `web.password` / `web.passwordHash` are left out, and `telegram.apiHash`, `web.shareSecret`, `web.guestPasswordHash`, `proxy.password`, `advanced.nsfw.apiToken`, `advanced.seekbar.apiToken` and `advanced.ai.faces.sidecarToken` are replaced by a `<name>Set` boolean (`apiHashSet`, `shareSecretSet`, `guestPasswordHashSet`, `passwordSet`, `apiTokenSet`, `sidecarTokenSet`). |
+| `POST` | `/api/config`     | Deep-merge updates; `advanced.*` namespaces are clamped per-field on save and re-applied at runtime via `config_updated`. A secret left out of the body keeps its saved value (send `proxy.password: null` to clear it); the `<name>Set` flags are ignored. |
 | `POST` | `/api/proxy/test` | `{host, port}` → 5-s TCP probe. |
 
 ## File serving

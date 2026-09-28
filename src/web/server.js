@@ -11833,6 +11833,8 @@ app.get('/api/maintenance/config/raw', async (req, res) => {
         if (config.telegram?.apiHash) config.telegram.apiHash = '••••••• (redacted)';
         if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
         if (config.web?.password) config.web.password = '••••••• (redacted)';
+        if (config.web?.guestPasswordHash) config.web.guestPasswordHash = '••••••• (redacted)';
+        if (config.web?.shareSecret) config.web.shareSecret = '••••••• (redacted)';
         if (config.proxy?.password) config.proxy.password = '••••••• (redacted)';
         for (const block of [config.advanced?.nsfw, config.advanced?.seekbar]) {
             if (block?.apiToken) block.apiToken = '••••••• (redacted)';
@@ -11865,6 +11867,19 @@ app.get('/api/config', async (req, res) => {
         if (safe.web) {
             delete safe.web.password;
             delete safe.web.passwordHash;
+            // Write-only secrets, same shape as the sidecar tokens below: a
+            // `<name>Set` presence flag instead of the value. The share
+            // secret signs share links / file tokens and keys the backup
+            // credential blobs; the guest hash is managed by
+            // /api/auth/guest-password. POST keeps both when they're left out.
+            safe.web.shareSecretSet = !!safe.web.shareSecret;
+            delete safe.web.shareSecret;
+            safe.web.guestPasswordHashSet = !!safe.web.guestPasswordHash;
+            delete safe.web.guestPasswordHash;
+        }
+        if (safe.proxy && typeof safe.proxy === 'object') {
+            safe.proxy.passwordSet = !!safe.proxy.password;
+            delete safe.proxy.password;
         }
         // Sidecar tokens are write-only from the dashboard's point of view.
         for (const block of [safe.advanced?.nsfw, safe.advanced?.seekbar]) {
@@ -11970,6 +11985,8 @@ app.post('/api/config', async (req, res) => {
             // field to remove it.
             const merged = { ...(currentConfig.proxy || {}), ...req.body.proxy };
             for (const k of Object.keys(merged)) if (merged[k] === null) delete merged[k];
+            // Read-only flag from GET /api/config, never stored.
+            delete merged.passwordSet;
             newConfig.proxy = merged;
         }
         if (req.body.web) {
@@ -11979,6 +11996,10 @@ app.post('/api/config', async (req, res) => {
             delete safeWeb.password;
             if (!currentConfig.web?.passwordHash) delete safeWeb.passwordHash;
             else safeWeb.passwordHash = currentConfig.web.passwordHash;
+            // Read-only flags from GET /api/config, never stored. The values
+            // they stand for stay as saved unless the body names them.
+            delete safeWeb.shareSecretSet;
+            delete safeWeb.guestPasswordHashSet;
             newConfig.web = safeWeb;
         }
 

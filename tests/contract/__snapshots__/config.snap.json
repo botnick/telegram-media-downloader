@@ -401,16 +401,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -904,17 +896,9 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
+            "guestPasswordHash": "••••••• (redacted)",
             "passwordHash": "••••••• (redacted)",
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "shareSecret": "••••••• (redacted)"
           }
         }
       }
@@ -1511,16 +1495,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -2145,16 +2121,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -2628,16 +2596,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -3070,16 +3030,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -3483,17 +3435,9 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
+            "guestPasswordHash": "••••••• (redacted)",
             "passwordHash": "••••••• (redacted)",
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "shareSecret": "••••••• (redacted)"
           }
         }
       }
@@ -3925,16 +3869,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -4231,7 +4167,7 @@
           "pollingInterval": 15,
           "proxy": {
             "host": "proxy.invalid",
-            "password": "proxy-pass",
+            "passwordSet": true,
             "port": 1080,
             "type": "socks5",
             "username": "u"
@@ -4255,16 +4191,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -4553,17 +4481,9 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
+            "guestPasswordHash": "••••••• (redacted)",
             "passwordHash": "••••••• (redacted)",
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "shareSecret": "••••••• (redacted)"
           }
         }
       }
@@ -4857,6 +4777,7 @@
           "pollingInterval": 15,
           "proxy": {
             "host": "proxy.invalid",
+            "passwordSet": false,
             "port": 1081,
             "type": "socks5",
             "username": "u"
@@ -4880,16 +4801,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -5198,16 +5111,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -5557,16 +5462,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -5895,16 +5792,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -6222,16 +6111,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -6548,16 +6429,8 @@
           "web": {
             "enabled": true,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "guestPasswordHashSet": true,
+            "shareSecretSet": true
           }
         }
       }
@@ -6880,20 +6753,12 @@
             "enabled": true,
             "forceHttps": false,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
+            "guestPasswordHashSet": true,
             "rateLimit": {
               "enabled": false,
               "perMinute": 50
             },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "shareSecretSet": true
           }
         }
       }
@@ -7242,20 +7107,12 @@
             "enabled": true,
             "forceHttps": false,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
+            "guestPasswordHashSet": true,
             "rateLimit": {
               "enabled": false,
               "perMinute": 50
             },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "shareSecretSet": true
           }
         }
       }
@@ -7575,20 +7432,12 @@
             "enabled": true,
             "forceHttps": false,
             "guestEnabled": true,
-            "guestPasswordHash": {
-              "N": 16384,
-              "algo": "scrypt",
-              "hash": "0a01408c60a84657de8a124518f8367250f1bfbc2978c889c45281c1d3b1ecf55c61e757c935fee4bffb6a0fc82712114b132f64e7f153acc938003443299565",
-              "keylen": 64,
-              "p": 1,
-              "r": 8,
-              "salt": "ffeeddccbbaa99887766554433221100"
-            },
+            "guestPasswordHashSet": true,
             "rateLimit": {
               "enabled": false,
               "perMinute": 50
             },
-            "shareSecret": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e"
+            "shareSecretSet": true
           }
         }
       }
