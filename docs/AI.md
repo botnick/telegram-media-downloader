@@ -158,6 +158,18 @@ the compose network so the main app's `FACES_SERVICE_URL=http://
 tgdl-faces:8011` resolves to whichever variant you bring up. Compose
 refuses to start more than one at a time.
 
+**No profile at all** — the stock compose file sets
+`FACES_SERVICE_URL=http://tgdl-faces:8011` either way. When that host
+doesn't resolve (no `faces*` profile running), the app ignores the URL and
+auto-spawns the sidecar binary inside its own container instead — the
+same path bare-metal installs use (downloaded to
+`data/faces-service/bin/` once AI + face clustering are on). The check is
+repeated when a scan starts, so bringing a profile up later switches to it
+(and stopping it falls back again). A custom `FACES_SERVICE_URL` or an
+**External sidecar URL** is always used as-is. The AI doctor shows which
+mode is active: *compose sidecar*, *auto-spawned in this container*, or
+*external URL*.
+
 **CUDA path** — requires the host to have:
 1. NVIDIA driver matching the CUDA runtime baked into the image (the
    sidecar uses CUDA 12.x; driver 525+ on Linux, 530+ on Windows WSL2).
@@ -313,7 +325,9 @@ The auto-spawned sidecar (binary download + process) starts only when both
 `advanced.ai.enabled` and `advanced.ai.faceClustering` are on. Fresh
 installs therefore download nothing until AI is switched on in
 **Maintenance → AI**; saving that setting, or starting a scan, starts it.
-URL-based sidecars (external, Docker `FACES_SERVICE_URL`) are unaffected.
+URL-based sidecars (external URL, a custom or reachable Docker
+`FACES_SERVICE_URL`) don't depend on this. The stock compose URL with no
+`faces` profile running counts as "no sidecar" and takes this path.
 
 ### External sidecar
 
@@ -739,10 +753,11 @@ the error code. Common causes:
 
 **Face scan stops with "face sidecar unavailable"** — the scan waited
 `sidecarWaitMs` (default 5 min) for the sidecar and gave up. Nothing was
-lost: files it hadn't scanned stay queued. In Docker, `FACES_SERVICE_URL`
-defaults to `http://tgdl-faces:8011`, which only exists when the `faces`
-profile is up (`docker compose --profile faces up -d`). Older releases
-marked every photo "no faces" in this situation — if an earlier scan
+lost: files it hadn't scanned stay queued. Check the sidecar row of the
+AI doctor: an unreachable external / custom URL, or a local sidecar that
+couldn't be downloaded or started, shows its error there. Older releases
+marked every photo "no faces" in this situation — including every stock
+Docker install without the `faces` profile — so if an earlier scan
 finished suspiciously fast with zero faces, run **Reindex** once the
 sidecar is reachable.
 

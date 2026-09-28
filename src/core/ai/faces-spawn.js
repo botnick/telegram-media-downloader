@@ -20,6 +20,7 @@
  * old binary stays on disk but the new one is fetched and used.
  */
 
+import dns from 'dns';
 import { existsSync, promises as fs, readdirSync, statSync } from 'fs';
 import { createWriteStream } from 'fs';
 import path from 'path';
@@ -203,7 +204,11 @@ let _starting = null;
 let _child = null;
 let _childUrl = null;
 let _state = 'idle'; // idle | downloading | spawning | healthy | failed
-let _sidecarMode = null; // external | docker | override | local | null
+let _sidecarMode = null; // external | docker | override | discovered | spawn | python | null
+// True when FACES_SERVICE_URL is the stock compose value but the `tgdl-faces`
+// service isn't running, so this process falls back to spawning its own.
+let _composeFallback = false;
+let _lookupHost = (host) => dns.promises.lookup(host);
 let _error = null;
 let _healthMonitorTimer = null;
 let _healthMonitorFailCount = 0;
@@ -226,10 +231,121 @@ export function getSidecarStatus() {
         state: _state,
         url: _childUrl || getSidecarUrl() || null,
         mode: _sidecarMode || null,
+        modeLabel: _modeLabel(),
+        composeFallback: _composeFallback,
         error: _error,
         pid: _child?.pid || null,
         version: SIDECAR_VERSION,
     };
+}
+
+/** Human-readable sidecar mode for the log feed and the AI doctor. */
+function _modeLabel() {
+    switch (_sidecarMode) {
+        case 'external':
+            return 'external URL';
+        case 'override':
+            return 'external URL (legacy facesServiceUrl)';
+        case 'docker':
+            return _isComposeDefaultUrl(_childUrl) ? 'compose sidecar' : 'FACES_SERVICE_URL';
+        case 'discovered':
+            return 'discovered on localhost';
+        case 'spawn':
+        case 'python':
+            return _composeFallback
+                ? 'auto-spawned in this container (compose `faces` profile not running)'
+                : 'auto-spawned';
+        default:
+            return _composeFallback ? 'compose `faces` profile not running' : null;
+    }
+}
+
+// docker-compose.yml sets FACES_SERVICE_URL to this whether or not the
+// `faces` profile is running.
+const COMPOSE_DEFAULT_HOST = 'tgdl-faces';
+const COMPOSE_DEFAULT_PORT = '8011';
+const COMPOSE_DNS_TIMEOUT_MS = 3000;
+
+/** True for the stock compose sidecar URL (http://tgdl-faces:8011). */
+export function _isComposeDefaultUrl(url) {
+    const u = _parseUrl(String(url || ''));
+    return (
+        !!u &&
+        u.protocol === 'http:' &&
+        u.hostname.toLowerCase() === COMPOSE_DEFAULT_HOST &&
+        u.port === COMPOSE_DEFAULT_PORT &&
+        (u.pathname === '/' || u.pathname === '')
+    );
+}
+
+/**
+ * Decide what FACES_SERVICE_URL means right now.
+ *
+ *   'docker' — use it as-is: a custom URL, or the compose default whose
+ *              `tgdl-faces` host resolves (profile up). Same as before.
+ *   'local'  — the compose default, but `tgdl-faces` doesn't resolve: the
+ *              profile isn't running, so nothing will ever answer there.
+ *              Fall back to the auto-spawned sidecar in this container.
+ *
+ * Docker's embedded DNS answers for running containers instantly, so any
+ * lookup failure (ENOTFOUND, EAI_AGAIN, …) or a slow answer means the
+ * service isn't there.
+ */
+export async function _decideEnvSidecar(
+    envUrl,
+    lookup = _lookupHost,
+    timeoutMs = COMPOSE_DNS_TIMEOUT_MS,
+) {
+    if (!envUrl) return { use: 'none' };
+    if (!_isComposeDefaultUrl(envUrl)) return { use: 'docker', reason: 'custom URL' };
+    let timer;
+    try {
+        await Promise.race([
+            lookup(COMPOSE_DEFAULT_HOST),
+            new Promise((_, reject) => {
+                timer = setTimeout(
+                    () =>
+                        reject(Object.assign(new Error('lookup timed out'), { code: 'ETIMEOUT' })),
+                    timeoutMs,
+                );
+            }),
+        ]);
+        return { use: 'docker', reason: 'resolves' };
+    } catch (e) {
+        return { use: 'local', reason: e?.code || e?.message || 'lookup failed' };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Called before a face scan starts (and on its auto-resume). Starts the
+ * sidecar if nothing is running / the last spawn failed, and re-checks the
+ * compose default: the `faces` profile may have been started (switch to
+ * it, dropping the local child) or stopped (fall back) since boot.
+ * Returns true when a (re)start was kicked off.
+ */
+export async function ensureSidecarForScan() {
+    if (_starting) await _starting;
+    let restart = _state === 'idle' || (_state === 'failed' && !getSidecarUrl());
+    const envUrl = _normaliseUrl(process.env.FACES_SERVICE_URL);
+    if (!restart && _sidecarMode !== 'external' && envUrl && _isComposeDefaultUrl(envUrl)) {
+        const d = await _decideEnvSidecar(envUrl);
+        if ((d.use === 'local') !== _composeFallback) {
+            _log(
+                'info',
+                d.use === 'docker'
+                    ? 'compose `faces` profile is up now — switching to the compose sidecar'
+                    : `compose sidecar ${envUrl} went away (${d.reason}) — falling back to the auto-spawned sidecar`,
+            );
+            restart = true;
+        }
+    }
+    if (restart) {
+        stopSidecar();
+        startSidecar().catch(() => {});
+    }
+    return restart;
 }
 
 /**
@@ -284,6 +400,8 @@ async function _doStart() {
         _log('warn', `config load failed: ${e?.message || e}`);
     }
     _resolvedCfg = resolveAllFaces(facesCfg);
+    // Set again by whichever mode below takes effect.
+    _sidecarMode = null;
     // Push the resolved knobs into the client so HTTP timeouts / retry
     // backoffs / health-cache TTL respect operator config + env.
     try {
@@ -322,8 +440,22 @@ async function _doStart() {
 
     // Mode 2 — Docker compose sets `FACES_SERVICE_URL` to the sidecar's
     // in-network URL. No spawn needed; just hand the URL to the client.
+    // The stock compose file sets it even when the `faces` profile isn't
+    // running; then nothing answers there and — unless the operator set
+    // another URL — this falls through to the local auto-spawn below.
     const envUrl = _normaliseUrl(process.env.FACES_SERVICE_URL);
-    if (envUrl) {
+    const envDecision = envUrl ? await _decideEnvSidecar(envUrl) : { use: 'none' };
+    _composeFallback = envDecision.use === 'local';
+    if (_composeFallback) {
+        // Don't leave the client (and the scan's readiness wait) pointed at
+        // a host that doesn't exist.
+        if (getSidecarUrl() === envUrl) setSidecarUrl('');
+        _log(
+            'info',
+            `compose sidecar ${envUrl} is not running (${envDecision.reason} for "${COMPOSE_DEFAULT_HOST}" — the \`faces\` profile is not up); using a sidecar auto-spawned in this container instead`,
+        );
+    }
+    if (envUrl && envDecision.use === 'docker') {
         setSidecarUrl(envUrl);
         _childUrl = envUrl;
         _state = 'healthy';
@@ -371,6 +503,7 @@ async function _doStart() {
                 _childUrl = url;
                 _state = 'healthy';
                 _error = null;
+                _sidecarMode = 'discovered';
                 _log('info', `discovered externally-running sidecar at ${url}`);
                 await _maybeMigrateDim(url);
                 _broadcast({
@@ -597,7 +730,11 @@ async function _doStart() {
                         _error = null;
                         _healthMonitorFailCount = 0;
                         setSidecarUrl(url);
-                        _log('info', `sidecar healthy at ${url} (pid=${_child?.pid}, mode=python)`);
+                        _sidecarMode = 'python';
+                        _log(
+                            'info',
+                            `sidecar healthy at ${url} (pid=${_child?.pid}, mode=python, ${_modeLabel()})`,
+                        );
                         _firstBoot = false;
                         pyHealthy = true; // Enable auto-restart for future unexpected exits.
                         await _maybeMigrateDim(url);
@@ -694,7 +831,8 @@ async function _spawnWithRetry(spawnFn, binPath) {
             _error = null;
             _healthMonitorFailCount = 0;
             setSidecarUrl(url);
-            _log('info', `sidecar healthy at ${url} (pid=${_child?.pid})`);
+            _sidecarMode = 'spawn';
+            _log('info', `sidecar healthy at ${url} (pid=${_child?.pid}, ${_modeLabel()})`);
             _firstBoot = false;
             _scheduleHealthMonitor(binPath);
             await _maybeMigrateDim(url);
@@ -1980,4 +2118,12 @@ export function _resetForTests() {
     _firstBoot = true;
     _shutdownHooksWired = false;
     _resolvedCfg = null;
+    _sidecarMode = null;
+    _composeFallback = false;
+    _lookupHost = (host) => dns.promises.lookup(host);
+}
+
+/** Test-only: replace the DNS lookup used for the compose-default check. */
+export function _setLookupForTests(fn) {
+    _lookupHost = typeof fn === 'function' ? fn : (host) => dns.promises.lookup(host);
 }

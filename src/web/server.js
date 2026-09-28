@@ -7946,11 +7946,13 @@ app.get('/api/ai/status', async (_req, res) => {
                         /* sidecar offline / fetch failed — fall through */
                     }
                     let sidecarMode = null;
+                    let sidecarModeLabel = null;
                     try {
                         const facesSpawnStatus = (
                             await import('../core/ai/faces-spawn.js')
                         ).getSidecarStatus();
                         sidecarMode = facesSpawnStatus?.mode || null;
+                        sidecarModeLabel = facesSpawnStatus?.modeLabel || null;
                     } catch {}
                     return {
                         id,
@@ -7965,6 +7967,7 @@ app.get('/api/ai/status', async (_req, res) => {
                         providersRequested: String(facesBlock.providers || 'auto'),
                         version: sidecarVersion,
                         mode: sidecarMode,
+                        modeLabel: sidecarModeLabel,
                     };
                 })(),
             },
@@ -7996,16 +7999,13 @@ const AI_SCAN_FEATURES = new Set(['faces']);
 
 // A scan needs a sidecar. If none was started (AI was off at boot) or the
 // last spawn attempt failed, try again with the current config; the scan
-// itself waits for it to become ready. A URL-based sidecar that is merely
-// unreachable keeps its URL and is left alone.
+// itself waits for it to become ready. Also re-checks the stock compose
+// URL: the `faces` profile may have been started or stopped since boot.
+// A custom URL that is merely unreachable is left alone.
 async function _ensureFacesSidecar() {
     try {
         const spawnMod = await import('../core/ai/faces-spawn.js');
-        const st = spawnMod.getSidecarStatus();
-        if (st.state === 'idle' || (st.state === 'failed' && !st.url)) {
-            spawnMod.stopSidecar();
-            spawnMod.startSidecar().catch(() => {});
-        }
+        await spawnMod.ensureSidecarForScan();
     } catch {
         /* the scan reports the missing sidecar itself */
     }
@@ -9151,7 +9151,7 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'ok',
-                detail: `v${facesVer} · running at ${st.url}`,
+                detail: `v${facesVer} · ${st.modeLabel || 'running'} at ${st.url}`,
             });
         } else if (st.state === 'downloading') {
             checks.push({
@@ -9179,7 +9179,9 @@ app.get(['/api/ai/doctor', '/api/ai/health'], async (_req, res) => {
                 id: 'sidecar',
                 label: 'Python face sidecar',
                 status: 'info',
-                detail: 'disabled',
+                detail: st.composeFallback
+                    ? 'compose `faces` profile not running — one is auto-spawned in this container once AI + face clustering are on'
+                    : 'disabled',
             });
         }
     } catch (e) {
