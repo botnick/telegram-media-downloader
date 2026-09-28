@@ -57,9 +57,9 @@ _stats = {"requests": 0, "errors": 0}
 # TGDL_NSFW_ALLOW_ROOTS, path mode is off and the Node client falls back to
 # sending image_b64 — so an unauthenticated sidecar on 0.0.0.0 can't be used
 # to read or probe arbitrary files on its host.
-_allowed_roots: list[Path] = []
+_allowed_roots: list[str] = []
 if ALLOW_ROOTS:
-    _allowed_roots = [Path(r.strip()).resolve() for r in ALLOW_ROOTS.split(",") if r.strip()]
+    _allowed_roots = [os.path.realpath(r.strip()) for r in ALLOW_ROOTS.split(",") if r.strip()]
 
 
 def _allowed_path(p: str) -> Optional[Path]:
@@ -67,11 +67,12 @@ def _allowed_path(p: str) -> Optional[Path]:
     if not _allowed_roots:
         return None
     try:
-        resolved = Path(p).resolve()
+        resolved = os.path.realpath(p)
     except (OSError, ValueError):
         return None
-    if any(resolved.is_relative_to(root) for root in _allowed_roots):
-        return resolved
+    for root in _allowed_roots:
+        if resolved == root or resolved.startswith(root.rstrip(os.sep) + os.sep):
+            return Path(resolved)
     return None
 
 
@@ -216,5 +217,11 @@ async def classify_batch(req: BatchRequest):
 
 if __name__ == "__main__":
     _LOG.info("Starting NSFW sidecar — model=%s host=%s port=%d", MODEL_ID, HOST, PORT)
+    if not _allowed_roots:
+        _LOG.warning(
+            "TGDL_NSFW_ALLOW_ROOTS is not set: path mode is off and the app sends images "
+            "as base64 (works, but slower). Set it to the downloads directory the app "
+            "shares with this sidecar to re-enable path mode."
+        )
     _load_classifier()
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
