@@ -16,4 +16,8 @@ ENV TGDL_NSFW_PORT=8012
 
 EXPOSE 8012
 
+# The model downloads on first start, so give it time before counting failures.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
+  CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('TGDL_NSFW_PORT', '8012'), timeout=4)"
+
 CMD ["python3", "main.py"]

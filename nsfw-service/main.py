@@ -34,7 +34,7 @@ from PIL import Image
 from pydantic import BaseModel, Field
 from transformers import pipeline
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 _LOG = logging.getLogger("nsfw-service")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
