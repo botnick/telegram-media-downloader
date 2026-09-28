@@ -12126,8 +12126,12 @@ app.use('/files', async (req, res, next) => {
             // If the file's folder is missing as well, the disk is more likely
             // unmounted (or the group folder renamed) than the file deleted,
             // so leave the rows alone.
-            const parentDir = path.dirname(path.resolve(DOWNLOADS_DIR, reqPath));
-            if (r.reason === 'missing' && existsSync(parentDir)) {
+            // ('missing' already implies the path passed the containment
+            // checks; re-check so nothing outside DOWNLOADS_DIR is probed.)
+            const downloadsRoot = path.resolve(DOWNLOADS_DIR);
+            const parentDir = path.dirname(path.resolve(downloadsRoot, reqPath));
+            const insideRoot = parentDir.startsWith(downloadsRoot + path.sep);
+            if (r.reason === 'missing' && insideRoot && existsSync(parentDir)) {
                 queueMicrotask(() => {
                     try {
                         const fwd = reqPath.replace(/\\/g, '/');
