@@ -60,6 +60,21 @@ function createLogger(label) {
     };
 }
 
+/**
+ * True when at least one account session exists under data/sessions/.
+ * The web server's legacy single-session client (data/session.enc) must
+ * stay off then: migrateLegacy() copies that session into sessions/, and
+ * two MTProto connections on one auth key can get the key revoked by
+ * Telegram (AUTH_KEY_DUPLICATED), forcing a re-login.
+ */
+export function hasAccountSessions(dir = SESSIONS_DIR) {
+    try {
+        return fs.readdirSync(dir).some((f) => f.endsWith('.enc'));
+    } catch {
+        return false;
+    }
+}
+
 export class AccountManager {
     /**
      * @param {object} config - Full app config (must have telegram.apiId, telegram.apiHash)
