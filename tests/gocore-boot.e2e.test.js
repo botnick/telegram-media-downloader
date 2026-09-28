@@ -1,5 +1,7 @@
 // Boot with tgdl-core unavailable: the dashboard must come up exactly as
-// before, and /api/auth_check must answer right away.
+// before, and /api/auth_check must answer right away. Without the binary
+// the front server can't run either, so Node serves PORT itself and shows
+// a banner saying why.
 //
 //   1. TGDL_GO_CORE unset (default shadow) and no binary
 //      (TGDL_CORE_BIN points nowhere).
@@ -69,6 +71,8 @@ async function bootServer(extraEnv) {
     const env = { ...process.env, ...extraEnv, PORT: String(port), TGDL_DATA_DIR: dataDir };
     delete env.TGDL_GO_CORE;
     delete env.TGDL_GO_FEATURES;
+    // These cases boot without tgdl-core on purpose.
+    delete env.TGDL_FRONT_REQUIRED;
     for (const [k, v] of Object.entries(extraEnv)) if (v === undefined) delete env[k];
     env.NODE_ENV = 'test';
     env.TGDL_DISABLE_AUTOSTART = '1';
@@ -148,6 +152,13 @@ describe.skipIf(SKIP)('boot without a usable tgdl-core', () => {
         expect(h.goCore.modeSource).toBe('default');
         expect(h.goCore.state).toBe('binary_missing');
         expect(h.goCore.features.hash.active).toBe('node');
+        // No front server either: Node serves PORT itself and every page
+        // says why.
+        expect(h.goCoreFront.state).toBe('binary_missing');
+        expect(h.goCoreFront.servedByNode).toMatch(/TGDL_CORE_BIN/);
+        const page = await (await fetch(`${s.base}/login.html`)).text();
+        expect(page).toContain('id="tgdl-core-banner"');
+        expect(s.log()).toMatch(/tgdl-core is not serving port/);
     });
 
     it('download hanging (or dev binary present): boot and auth_check unaffected', {
