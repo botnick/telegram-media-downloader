@@ -124,6 +124,36 @@ describe('coalescing', () => {
             { type: 'queue_changed', payload: { key: 'k1', op: 'pause' } },
         ]);
     });
+
+    it("delivers a job's held progress before its cancel (no resurrected row)", () => {
+        // Queue page: cancel removes the row; progress upserts it as active.
+        b.broadcast(progress('a', 40));
+        b.broadcast(progress('b', 10));
+        b.broadcast({ type: 'queue_changed', payload: { key: 'a', op: 'cancel' } });
+        expect(first().sent).toEqual([
+            progress('a', 40),
+            { type: 'queue_changed', payload: { key: 'a', op: 'cancel' } },
+        ]);
+        vi.advanceTimersByTime(WS_COALESCE_WINDOW_MS);
+        // Nothing for 'a' arrives after the cancel.
+        expect(first().sent.slice(2)).toEqual([progress('b', 10)]);
+    });
+
+    it('flushes all held frames before a global queue op', () => {
+        b.broadcast(progress('a', 40));
+        b.broadcast({ type: 'queue_changed', payload: { op: 'cancel-all' } });
+        expect(first().types()).toEqual(['download_progress', 'queue_changed']);
+        expect(b.pendingCount()).toBe(0);
+    });
+
+    it('flushes a scan progress frame before history_cancelling', () => {
+        b.broadcast({ type: 'history_progress', jobId: 'j1', processed: 5 });
+        b.broadcast({ type: 'history_cancelling', jobId: 'j1' });
+        expect(first().sent).toEqual([
+            { type: 'history_progress', jobId: 'j1', processed: 5 },
+            { type: 'history_cancelling', jobId: 'j1' },
+        ]);
+    });
 });
 
 describe('per-row events', () => {
@@ -137,13 +167,25 @@ describe('per-row events', () => {
 });
 
 describe('backpressure + heartbeat', () => {
-    it('skips a client whose send buffer is over the limit', () => {
+    it('lets a backed-up client skip coalesced progress frames', () => {
         const [slow, fast] = Array.from(clients);
         slow.bufferedAmount = WS_MAX_BUFFERED_BYTES + 1;
-        b.broadcast({ type: 'config_updated' });
+        b.broadcast(progress('a', 1));
+        vi.advanceTimersByTime(WS_COALESCE_WINDOW_MS);
         expect(slow.sent).toEqual([]);
-        expect(fast.sent).toEqual([{ type: 'config_updated' }]);
+        expect(slow.terminated).toBe(false);
+        expect(fast.sent).toEqual([progress('a', 1)]);
         expect(b.stats().skippedBackpressure).toBe(1);
+    });
+
+    it('terminates (never silently drops) a backed-up client on a state change', () => {
+        const [slow, fast] = Array.from(clients);
+        slow.bufferedAmount = WS_MAX_BUFFERED_BYTES + 1;
+        b.broadcast({ type: 'download_complete', payload: { key: 'a' } });
+        expect(slow.sent).toEqual([]);
+        expect(slow.terminated).toBe(true);
+        expect(clients.has(slow)).toBe(false);
+        expect(fast.sent).toEqual([{ type: 'download_complete', payload: { key: 'a' } }]);
     });
 
     it('pings live clients and terminates ones that never pong', () => {

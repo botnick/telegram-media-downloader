@@ -16,9 +16,11 @@
  *   - Ordering: before an uncoalesced message goes out, the pending
  *     messages it depends on are flushed first (e.g. a job's last progress
  *     before its `download_complete`, everything before `monitor_state`).
- *   - Backpressure: a client with more than `maxBufferedBytes` queued is
- *     skipped; the heartbeat terminates it if it is still backed up on the
- *     next tick.
+ *   - Backpressure: a client with more than `maxBufferedBytes` queued
+ *     skips coalesced progress frames (the next one supersedes them). A
+ *     state-changing message is never dropped silently: such a client is
+ *     terminated instead, so the SPA reconnects and re-syncs. The
+ *     heartbeat also terminates a client still backed up on the next tick.
  *   - Heartbeat: every tick, clients that didn't answer the previous ping
  *     are terminated and the rest are pinged (browsers pong automatically).
  */
@@ -58,10 +60,17 @@ export function defaultFlushBefore(msg) {
         }
         case 'history_done':
         case 'history_error':
+        case 'history_cancelling':
         case 'history_cancelled':
             return [`history_progress:${msg.jobId ?? ''}`];
-        case 'queue_changed':
-            return ['queue_changed:enqueue', 'queue_length'];
+        case 'queue_changed': {
+            // A cancel removes the row client-side; a held progress frame
+            // delivered after it would re-add the job as active. Global ops
+            // (pause-all / cancel-all …) carry no key — flush everything.
+            const key = msg.payload?.key;
+            if (key == null) return ['*'];
+            return ['queue_changed:enqueue', 'queue_length', `download_progress:${key}`];
+        }
         case 'monitor_state':
             // Stopping drops active rows client-side; a late progress
             // frame would resurrect them.
@@ -94,12 +103,18 @@ export function createWsBroadcaster({
     const liveness = new WeakMap(); // ws → { alive, stalledTicks }
     const counters = { sent: 0, skippedBackpressure: 0, terminated: 0, coalesced: 0 };
 
-    function sendNow(msg) {
+    // `droppable`: a coalesced latest-state frame (progress, queue length)
+    // — the next one supersedes it, so a backed-up client may skip it.
+    // Anything else changes client state (download_complete, file_deleted,
+    // *_done …) and must never be lost silently: a client too backed up to
+    // take it is terminated instead, and the SPA re-syncs on reconnect.
+    function sendNow(msg, { droppable = false } = {}) {
         const text = JSON.stringify(msg);
         for (const ws of Array.from(getClients())) {
             if (ws.readyState !== OPEN) continue;
             if (ws.bufferedAmount > maxBufferedBytes) {
                 counters.skippedBackpressure += 1;
+                if (!droppable) terminate(ws);
                 continue;
             }
             try {
@@ -118,7 +133,7 @@ export function createWsBroadcaster({
         }
         const entries = Array.from(pending.values());
         pending.clear();
-        for (const entry of entries) sendNow(entry);
+        for (const entry of entries) sendNow(entry, { droppable: true });
     }
 
     // Deliver the given pending keys now, in the order they were queued.
@@ -130,7 +145,7 @@ export function createWsBroadcaster({
         for (const [k, entry] of pending) if (wanted.includes(k)) due.push([k, entry]);
         for (const [k, entry] of due) {
             pending.delete(k);
-            sendNow(entry);
+            sendNow(entry, { droppable: true });
         }
     }
 
