@@ -195,6 +195,113 @@ The setting persists in the `kv['config']` row of `data/db.sqlite` under `web.fo
 
 For HSTS preload (chrome global list), submit your domain at <https://hstspreload.org> after the header has been live for at least a few weeks. The dashboard does **not** add `preload` to the HSTS header automatically — preload is a one-way commitment that needs operator opt-in.
 
+## Running a sidecar on another machine
+
+The NSFW classifier, the seekbar sprite generator and the face-clustering sidecar can each run on a different host than the app — a GPU box, a separate container, a NAS — reached directly on the LAN, through a reverse proxy, or through a Cloudflare Tunnel. Local / auto-spawned sidecars need none of this.
+
+How files get to a remote sidecar:
+
+| Setup | What happens |
+|---|---|
+| Sidecar mounts the downloads **at the same path** as the app | Path mode — the sidecar reads files directly. |
+| Sidecar mounts the downloads **at a different path** | Set a **path mapping** (`app path=sidecar path`, one rule per line or `;`-separated). Path mode keeps working. |
+| **No shared storage** | NSFW: images are uploaded (anything over 1.5 MB is downscaled to 1024 px first). Seekbar: the video is uploaded in 32 MB chunks and the finished sprite is downloaded back. Faces: frames/images are sent as base64. |
+
+Chunks and requests stay under Cloudflare's 100 MB request-body limit, and seekbar jobs are polled, so nothing depends on a request outliving Cloudflare's 100 s timeout.
+
+Always set a **token** on a sidecar that is reachable from anything but the app: the same value on the sidecar (`TGDL_NSFW_API_TOKEN` / `SEEKBAR_API_TOKEN`) and in the app (the dashboard field or the env var below). The app sends it as `X-API-Token`. `/health` stays open for health checks.
+
+### NSFW classifier (`nsfw-service` 1.2.0+)
+
+```bash
+# On the remote host — NVIDIA GPU (drop --gpus and use :latest for CPU)
+docker run -d --name tgdl-nsfw --restart unless-stopped --gpus all \
+  -p 8012:8012 \
+  -e TGDL_NSFW_API_TOKEN=change-me-to-a-long-random-string \
+  -v tgdl-nsfw-hf:/root/.cache/huggingface \
+  ghcr.io/botnick/tgdl-nsfw:gpu-latest
+
+# Optional, only with shared storage: let it read files in place
+#   -v /mnt/media:/media:ro -e TGDL_NSFW_ALLOW_ROOTS=/media
+#   and in the app: path mapping  /app/data/downloads=/media
+```
+
+In the app: **Maintenance → NSFW → Classifier mode → External** — URL, API token, optional path mapping → **Test** → **Apply**. Or in the app's environment:
+
+```bash
+TGDL_NSFW_SIDECAR_URL=https://nsfw.example.com
+TGDL_NSFW_API_TOKEN=change-me-to-a-long-random-string
+TGDL_NSFW_PATH_MAP=/app/data/downloads=/media   # only with shared storage
+```
+
+nsfw-service 1.1.0 still works (no token, base64 instead of raw uploads).
+
+### Seekbar sprites (`seekbar-service` 0.4.0+)
+
+```bash
+# On the remote host
+docker run -d --name tgdl-seekbar --restart unless-stopped \
+  -p 8089:8089 \
+  -e SEEKBAR_API_TOKEN=change-me-to-a-long-random-string \
+  -e SEEKBAR_HWACCEL=auto \
+  -v tgdl-seekbar:/data \
+  ghcr.io/botnick/tgdl-seekbar:latest
+# Intel / AMD hardware decode: add  --device /dev/dri
+# Optional shared storage: add  -v /mnt/media:/media:ro  and map
+#   /app/data/downloads=/media  in the app
+```
+
+Without Docker, download `tgdl-seekbar-<os>-<arch>.tar.gz` from the `seekbar-v0.4.0` release, make sure `ffmpeg`/`ffprobe` are on `PATH`, and run `SEEKBAR_API_TOKEN=… SEEKBAR_HTTP_LISTEN=:8089 ./seekbar-server`.
+
+In the app: **Maintenance → Seekbar previews → System health → Sidecar mode → External** — URL, API token, optional path mapping → **Test** → **Use External**. Or:
+
+```bash
+SEEKBAR_SIDECAR_URL=https://seekbar.example.com
+SEEKBAR_API_TOKEN=change-me-to-a-long-random-string
+SEEKBAR_PATH_MAP=/app/data/downloads=/media      # only with shared storage
+```
+
+The app's sprite settings (interval, tile width, columns, format, quality) apply to the remote sidecar per job. Uploaded videos are deleted on the sidecar as soon as their sprite is done, and the sidecar's copy of each sprite is removed once the app has it. seekbar-service 0.3.3 still works when it can read the videos (same path or a path mapping); videos it can't read are rendered by the app's own ffmpeg, as before. One sidecar per app instance — sprites are named by download id.
+
+### Face clustering (`faces-service`)
+
+```bash
+docker run -d --name tgdl-faces --restart unless-stopped --gpus all \
+  -p 8011:8011 \
+  -e TGDL_FACES_HOST=0.0.0.0 -e TGDL_FACES_PORT=8011 \
+  -e TGDL_FACES_MODELS_DIR=/models -v tgdl-faces-models:/models \
+  ghcr.io/botnick/tgdl-faces:cuda-latest     # :latest = CPU, :openvino-latest = Intel
+```
+
+In the app: **Maintenance → AI → System health → Sidecar mode → External**, or `advanced.ai.faces.sidecarUrl` / `TGDL_FACES_SIDECAR_URL`. The faces sidecar has **no token support yet** — keep it on a private network or VPN (Tailscale, WireGuard), not on a public tunnel. Images and video frames it can't read are sent as base64.
+
+### Reverse proxy / tunnel notes
+
+- **Cloudflare Tunnel** can't strip a path prefix — give each sidecar its own hostname (`nsfw.example.com` → `http://localhost:8012`, `seekbar.example.com` → `http://localhost:8089`). Don't put Cloudflare Access in front of these hostnames: the app can't sign in to Access; the sidecar token protects them.
+- **Path prefixes** (`https://gpu.example.com/nsfw`) work when the proxy strips the prefix:
+
+  ```caddyfile
+  gpu.example.com {
+      handle_path /nsfw/*    { reverse_proxy 127.0.0.1:8012 }
+      handle_path /seekbar/* { reverse_proxy 127.0.0.1:8089 }
+  }
+  ```
+
+  ```nginx
+  location /seekbar/ {
+      proxy_pass http://127.0.0.1:8089/;   # trailing slash strips /seekbar
+      client_max_body_size 64m;            # nginx defaults to 1m — uploads need more
+      proxy_request_buffering off;
+      proxy_read_timeout 300s;
+  }
+  location /nsfw/ {
+      proxy_pass http://127.0.0.1:8012/;
+      client_max_body_size 64m;
+  }
+  ```
+
+- **Test** in the dashboard tells a wrong URL / missing prefix (`HTTP 404`, "not the sidecar"), a rejected or missing token, and whether files will be read in place or uploaded. A remote seekbar sidecar that is down is re-checked every 30 s; meanwhile the app renders previews with its own ffmpeg.
+
 ## systemd unit (bare-metal Node)
 
 ```ini
