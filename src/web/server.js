@@ -166,6 +166,7 @@ import { getRescueStats } from '../core/db.js';
 import {
     getAiCounts,
     listPeople,
+    resolvePeopleSort,
     listPhotosForPerson,
     renamePerson,
     deletePerson,
@@ -8274,14 +8275,42 @@ app.get('/api/ai/preload-model/:name/status', async (_req, res) => {
 
 // ---- People (face clusters) ---------------------------------------------
 
+// Same order as db.js listPeople() for rows merged from several peers.
+function _peopleComparator(sort, dir) {
+    const sign = dir === 'asc' ? 1 : -1;
+    const tie = (a, b) =>
+        (Number(b.face_count) || 0) - (Number(a.face_count) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0);
+    if (sort === 'name') {
+        return (a, b) => {
+            const an = a.label ? 0 : 1;
+            const bn = b.label ? 0 : 1;
+            // Unlabelled first ascending, last descending.
+            if (an !== bn) return (bn - an) * sign;
+            const c = String(a.label || '').localeCompare(String(b.label || ''), undefined, {
+                sensitivity: 'base',
+            });
+            return c * sign || tie(a, b);
+        };
+    }
+    const key = sort === 'avg_quality' ? 'avg_quality' : 'face_count';
+    return (a, b) => ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * sign || tie(a, b);
+}
+
 app.get('/api/ai/people', async (req, res) => {
     try {
         const limit = Math.max(1, Math.min(2000, Number(req.query?.limit) || 100));
         const offset = Math.max(0, Number(req.query?.offset) || 0);
         const scope = String(req.query?.scope || 'local').toLowerCase();
-        const local = listPeople({ limit, offset });
+        // Sorted server-side so "top N by quality / name" really is the top N
+        // of the whole library, not of the first N by face count.
+        const { sort, dir } = resolvePeopleSort(
+            String(req.query?.sort || ''),
+            String(req.query?.dir || '').toLowerCase(),
+        );
+        const local = listPeople({ limit, offset, sort, dir });
         if (scope !== 'federated') {
-            return res.json({ success: true, scope: 'local', ...local });
+            return res.json({ success: true, scope: 'local', sort, dir, ...local });
         }
         // Federated — list local clusters first, then peer summaries
         // tagged with the owning peer id. The UI's cover thumbnail is
@@ -8297,7 +8326,7 @@ app.get('/api/ai/people', async (req, res) => {
                         const r = await relayTo({
                             targetPeerId: p.peerId,
                             method: 'GET',
-                            path: `/api/ai/people?limit=${limit}`,
+                            path: `/api/ai/people?limit=${limit}&sort=${sort}&dir=${dir}`,
                         });
                         if (!r.ok) return [];
                         const json = await r.json();
@@ -8316,10 +8345,12 @@ app.get('/api/ai/people', async (req, res) => {
             const merged = [
                 ...(local.people || []).map((row) => ({ ...row, _peerId: 'local' })),
                 ...peerLists.flat(),
-            ];
+            ].sort(_peopleComparator(sort, dir));
             return res.json({
                 success: true,
                 scope: 'federated',
+                sort,
+                dir,
                 people: merged,
                 total: merged.length,
                 peerErrors,
@@ -8542,8 +8573,9 @@ app.post('/api/ai/people/:id/merge', async (req, res) => {
 app.post('/api/ai/people/:id/split', async (req, res) => {
     try {
         const faceIds = Array.isArray(req.body?.faceIds) ? req.body.faceIds : [];
+        // The AI page sends `newLabel`; older clients / scripts send `label`.
         const label =
-            String(req.body?.label || '')
+            String(req.body?.newLabel ?? req.body?.label ?? '')
                 .trim()
                 .slice(0, 100) || null;
         if (!faceIds.length) {

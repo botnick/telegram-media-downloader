@@ -2757,12 +2757,50 @@ export function insertPerson({ label = null, centroidBlob, faceCount = 0 }) {
     return r.lastInsertRowid;
 }
 
-export function listPeople({ limit = 500, offset = 0 } = {}) {
+// People list orderings. Allow-listed — the SQL is built from these
+// fragments only, never from request input. Every order ends on
+// face_count DESC, id ASC so pages are stable.
+const PEOPLE_SORTS = Object.freeze({
+    face_count: { asc: 'p.face_count ASC', desc: 'p.face_count DESC' },
+    avg_quality: { asc: 'COALESCE(aq.q, 0) ASC', desc: 'COALESCE(aq.q, 0) DESC' },
+    // Unlabelled people first when ascending, last when descending.
+    name: {
+        asc: "(COALESCE(p.label, '') = '') DESC, p.label COLLATE NOCASE ASC",
+        desc: "(COALESCE(p.label, '') = '') ASC, p.label COLLATE NOCASE DESC",
+    },
+});
+
+/** Normalise `sort` / `dir` query values to an allow-listed pair. */
+export function resolvePeopleSort(sort, dir) {
+    const key = Object.hasOwn(PEOPLE_SORTS, sort) ? sort : 'face_count';
+    const d = dir === 'asc' || dir === 'desc' ? dir : key === 'name' ? 'asc' : 'desc';
+    return { sort: key, dir: d };
+}
+
+export function listPeople({ limit = 500, offset = 0, sort = 'face_count', dir } = {}) {
     const lim = Math.max(1, Math.min(2000, Number(limit) || 500));
     const off = Math.max(0, Number(offset) || 0);
+    const order = resolvePeopleSort(sort, dir);
+    const orderSql = `${PEOPLE_SORTS[order.sort][order.dir]}, p.face_count DESC, p.id ASC`;
+    // Only the quality sort needs the per-person average up front; the
+    // page is picked from `people` alone and the heavier per-row columns
+    // (cover face, video count, average) are computed for that page only.
+    const qualityJoin =
+        order.sort === 'avg_quality'
+            ? `LEFT JOIN (SELECT person_id, AVG(quality_score) AS q FROM faces
+                          WHERE person_id IS NOT NULL AND quality_score IS NOT NULL
+                          GROUP BY person_id) aq ON aq.person_id = p.id`
+            : '';
     const db = getDb();
     const rows = db
         .prepare(`
+        WITH page AS (
+            SELECT p.id, ROW_NUMBER() OVER (ORDER BY ${orderSql}) AS ord
+              FROM people p
+              ${qualityJoin}
+             ORDER BY ord
+             LIMIT ? OFFSET ?
+        )
         SELECT p.id, p.label, p.face_count, p.created_at, p.updated_at,
                f.download_id AS cover_download_id,
                f.id          AS cover_face_id,
@@ -2779,15 +2817,15 @@ export function listPeople({ limit = 500, offset = 0 } = {}) {
                    SELECT AVG(f3.quality_score) FROM faces f3
                     WHERE f3.person_id = p.id AND f3.quality_score IS NOT NULL
                ), 0) AS avg_quality
-          FROM people p
+          FROM page
+          JOIN people p ON p.id = page.id
           LEFT JOIN faces f ON f.id = (
             SELECT ff.id FROM faces ff
              WHERE ff.person_id = p.id
              ORDER BY COALESCE(ff.quality_score, 0) DESC, ff.w * ff.h DESC
              LIMIT 1
           )
-         ORDER BY p.face_count DESC, p.id ASC
-         LIMIT ? OFFSET ?
+         ORDER BY page.ord
     `)
         .all(lim, off);
     const total = db.prepare('SELECT COUNT(*) AS n FROM people').get().n;

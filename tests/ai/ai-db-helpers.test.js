@@ -113,3 +113,92 @@ describe('iterateAllFaces / insertFace', () => {
         expect(rows.map((r) => r.exif_oriented)).toEqual([1, null]);
     });
 });
+
+describe('listPeople sorting', () => {
+    const blob = Buffer.from(new Float32Array([1, 0]).buffer);
+
+    function seed() {
+        db.prepare('DELETE FROM people').run();
+        const dl = add('photo', 'p.jpg');
+        const mk = (label, n, q) => {
+            const pid = api.insertPerson({ label, centroidBlob: blob, faceCount: n });
+            for (let i = 0; i < n; i++) {
+                api.insertFace({
+                    downloadId: dl,
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 10,
+                    embeddingBlob: blob,
+                    personId: pid,
+                    qualityScore: q,
+                });
+            }
+            return pid;
+        };
+        return {
+            bob: mk('bob', 5, 0.2),
+            anon1: mk(null, 9, 0.5),
+            alice: mk('Alice', 1, 0.9),
+            anon2: mk(null, 2, null),
+            carol: mk('carol', 3, 0.7),
+        };
+    }
+
+    const ids = (r) => r.people.map((p) => p.id);
+
+    it('face_count desc by default', () => {
+        const p = seed();
+        expect(ids(api.listPeople({ limit: 10 }))).toEqual([
+            p.anon1,
+            p.bob,
+            p.carol,
+            p.anon2,
+            p.alice,
+        ]);
+    });
+
+    it('avg_quality over the whole table, both directions', () => {
+        const p = seed();
+        expect(ids(api.listPeople({ limit: 10, sort: 'avg_quality', dir: 'desc' }))).toEqual([
+            p.alice,
+            p.carol,
+            p.anon1,
+            p.bob,
+            p.anon2,
+        ]);
+        // Top-1 is the best of everyone, not of the first N by face count.
+        expect(ids(api.listPeople({ limit: 1, sort: 'avg_quality', dir: 'desc' }))).toEqual([
+            p.alice,
+        ]);
+        expect(ids(api.listPeople({ limit: 10, sort: 'avg_quality', dir: 'asc' }))[0]).toBe(
+            p.anon2,
+        );
+    });
+
+    it('name: case-insensitive, unlabelled first ascending and last descending', () => {
+        const p = seed();
+        expect(ids(api.listPeople({ limit: 10, sort: 'name', dir: 'asc' }))).toEqual([
+            p.anon1,
+            p.anon2,
+            p.alice,
+            p.bob,
+            p.carol,
+        ]);
+        expect(ids(api.listPeople({ limit: 10, sort: 'name', dir: 'desc' }))).toEqual([
+            p.carol,
+            p.bob,
+            p.alice,
+            p.anon1,
+            p.anon2,
+        ]);
+    });
+
+    it('unknown sort / dir fall back to the allow-listed defaults', () => {
+        expect(api.resolvePeopleSort('id; DROP TABLE people', 'sideways')).toEqual({
+            sort: 'face_count',
+            dir: 'desc',
+        });
+        expect(api.resolvePeopleSort('name', undefined)).toEqual({ sort: 'name', dir: 'asc' });
+    });
+});
