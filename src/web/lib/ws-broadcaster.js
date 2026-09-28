@@ -4,8 +4,7 @@
  * The engine emits some events far faster than any phone needs them:
  * `download_progress` per gramJS chunk (dozens per second per job),
  * `history_progress` per scanned message, `queue_length` +
- * `queue_changed{op:'enqueue'}` per enqueued job, and `file_deleted` per
- * row from the rescue sweeper / disk rotator. Previously each one was
+ * `queue_changed{op:'enqueue'}` per enqueued job. Previously each one was
  * JSON-encoded and written to every socket immediately, and a phone whose
  * TCP connection went half-open kept buffering megabytes until the kernel
  * gave up (~15 min).
@@ -17,9 +16,6 @@
  *   - Ordering: before an uncoalesced message goes out, the pending
  *     messages it depends on are flushed first (e.g. a job's last progress
  *     before its `download_complete`, everything before `monitor_state`).
- *   - Burst collapse: more than `threshold` `file_deleted` in one window
- *     collapse into one `bulk_delete`, which makes the SPA refresh the
- *     gallery + stats once instead of refetching per row.
  *   - Backpressure: a client with more than `maxBufferedBytes` queued is
  *     skipped; the heartbeat terminates it if it is still backed up on the
  *     next tick.
@@ -75,13 +71,6 @@ export function defaultFlushBefore(msg) {
     }
 }
 
-export const DEFAULT_COLLAPSE = {
-    file_deleted: {
-        threshold: 25,
-        into: (count) => ({ type: 'bulk_delete', count, coalesced: true }),
-    },
-};
-
 /**
  * @param {object} opts
  * @param {() => Iterable<import('ws').WebSocket>} opts.getClients
@@ -95,13 +84,10 @@ export function createWsBroadcaster({
     heartbeatMs = WS_HEARTBEAT_MS,
     coalesceKey = defaultCoalesceKey,
     flushBefore = defaultFlushBefore,
-    collapse = DEFAULT_COLLAPSE,
 }) {
-    // key → message (or { __collapse: type, count }). Map keeps first-seen
-    // order, so coalesced messages go out in the order they started.
+    // key → latest message. Map keeps first-seen order, so coalesced
+    // messages go out in the order they started.
     const pending = new Map();
-    const collapseSeen = new Map(); // type → count this window
-    let seq = 0;
     let timer = null;
     let heartbeatTimer = null;
     // Per-socket liveness without monkey-patching the ws objects.
@@ -125,14 +111,6 @@ export function createWsBroadcaster({
         }
     }
 
-    function emitPending(entry) {
-        if (entry?.__collapse) {
-            sendNow(collapse[entry.__collapse].into(entry.count));
-        } else {
-            sendNow(entry);
-        }
-    }
-
     function flush() {
         if (timer) {
             clearTimeout(timer);
@@ -140,8 +118,7 @@ export function createWsBroadcaster({
         }
         const entries = Array.from(pending.values());
         pending.clear();
-        collapseSeen.clear();
-        for (const entry of entries) emitPending(entry);
+        for (const entry of entries) sendNow(entry);
     }
 
     // Deliver the given pending keys now, in the order they were queued.
@@ -153,7 +130,7 @@ export function createWsBroadcaster({
         for (const [k, entry] of pending) if (wanted.includes(k)) due.push([k, entry]);
         for (const [k, entry] of due) {
             pending.delete(k);
-            emitPending(entry);
+            sendNow(entry);
         }
     }
 
@@ -164,39 +141,6 @@ export function createWsBroadcaster({
     }
 
     function hold(msg) {
-        const rule = collapse[msg.type];
-        if (rule) {
-            const n = (collapseSeen.get(msg.type) || 0) + 1;
-            collapseSeen.set(msg.type, n);
-            const bucket = `collapse:${msg.type}`;
-            if (n > rule.threshold) {
-                if (!pending.has(bucket)) {
-                    // Crossed the threshold: fold the individually-held
-                    // messages into one bucket at the first one's position.
-                    const kept = [];
-                    for (const [k, v] of pending) kept.push([k, v]);
-                    pending.clear();
-                    let placed = false;
-                    for (const [k, v] of kept) {
-                        if (v?.type === msg.type) {
-                            if (!placed) {
-                                pending.set(bucket, { __collapse: msg.type, count: 0 });
-                                placed = true;
-                            }
-                            continue;
-                        }
-                        pending.set(k, v);
-                    }
-                    if (!placed) pending.set(bucket, { __collapse: msg.type, count: 0 });
-                }
-                pending.get(bucket).count = n;
-            } else {
-                seq += 1;
-                pending.set(`${msg.type}#${seq}`, msg);
-            }
-            schedule();
-            return true;
-        }
         const key = coalesceKey(msg);
         if (key == null) return false;
         if (pending.has(key)) counters.coalesced += 1;

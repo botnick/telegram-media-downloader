@@ -126,21 +126,12 @@ describe('coalescing', () => {
     });
 });
 
-describe('file_deleted bursts', () => {
-    it('delivers a small burst row by row', () => {
-        for (let i = 0; i < 5; i++) b.broadcast({ type: 'file_deleted', id: i });
-        vi.advanceTimersByTime(WS_COALESCE_WINDOW_MS);
-        expect(first().sent).toEqual([0, 1, 2, 3, 4].map((id) => ({ type: 'file_deleted', id })));
-    });
-
-    it('collapses a large burst into one bulk_delete', () => {
-        b.broadcast(progress('a', 1));
-        for (let i = 0; i < 1000; i++) b.broadcast({ type: 'file_deleted', id: i });
-        vi.advanceTimersByTime(WS_COALESCE_WINDOW_MS);
-        expect(first().sent).toEqual([
-            progress('a', 1),
-            { type: 'bulk_delete', count: 1000, coalesced: true },
-        ]);
+describe('per-row events', () => {
+    it('delivers every file_deleted immediately and unchanged (tiles are removed per row)', () => {
+        for (let i = 0; i < 30; i++) b.broadcast({ type: 'file_deleted', id: i });
+        expect(first().sent).toEqual(
+            Array.from({ length: 30 }, (_, id) => ({ type: 'file_deleted', id })),
+        );
         expect(b.pendingCount()).toBe(0);
     });
 });
