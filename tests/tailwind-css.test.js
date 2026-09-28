@@ -29,7 +29,6 @@ describe('prebuilt Tailwind stylesheet', () => {
                 join(ROOT, 'scripts', 'tailwind.config.cjs'),
                 '-i',
                 join(ROOT, 'scripts', 'tailwind.input.css'),
-                '--minify',
             ],
             { cwd: ROOT, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
         );
