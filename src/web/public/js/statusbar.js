@@ -61,12 +61,17 @@ function applyMonitor(mon) {
 
 function _applyStatsToBar(stats) {
     if (!stats) return;
+    // A field missing from the payload keeps its last value: the periodic
+    // `stats_push` carries files + disk only, and used to reset the chat
+    // count to 0.
     const f = $('status-files');
-    if (f) f.textContent = (stats.totalFiles ?? 0).toLocaleString();
+    if (f && stats.totalFiles != null) f.textContent = Number(stats.totalFiles).toLocaleString();
     const d = $('status-disk');
-    if (d) d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
+    if (d && (stats.diskUsageFormatted || stats.diskUsage != null)) {
+        d.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
+    }
     const g = $('status-groups');
-    if (g) g.textContent = stats.totalGroups ?? 0;
+    if (g && stats.totalGroups != null) g.textContent = stats.totalGroups;
 }
 
 async function refreshStats() {
