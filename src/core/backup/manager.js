@@ -782,10 +782,16 @@ function _scheduleSnapshot(dest) {
     // with `*` and integer values. For full cron grammar we'd pull a
     // dependency, but the dashboard restricts the field to a small set
     // of presets in practice. We re-evaluate every 30 s, which is plenty
-    // since the smallest cron unit is a minute.
+    // since the smallest cron unit is a minute — but that also means two
+    // ticks land in every matching minute, so remember the minute we fired.
+    let firedMinute = -1;
     const handle = setInterval(() => {
         if (_snapshotInflight.has(dest.id)) return;
-        if (_cronMatches(dest.cron, new Date())) {
+        const now = new Date();
+        const minute = Math.floor(now.getTime() / 60_000);
+        if (minute === firedMinute) return;
+        if (_cronMatches(dest.cron, now)) {
+            firedMinute = minute;
             _kickSnapshotRun(_loadDestRow(dest.id)).catch((e) => {
                 _log({
                     source: 'backup',

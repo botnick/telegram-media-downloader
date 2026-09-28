@@ -2,7 +2,7 @@
 // retention and destination edits, against a throwaway TGDL_DATA_DIR and
 // the local-filesystem provider.
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -265,5 +265,45 @@ describe('snapshot retention', () => {
         expect(fs.existsSync(local)).toBe(true);
         expect(destRow(destId).total_files).toBe(1);
         manager.removeDestination(destId);
+    });
+});
+
+describe('snapshot schedule', () => {
+    it('builds one snapshot per matching cron minute', async () => {
+        // Only the 30 s interval + the clock are faked; archive building
+        // and the polling below use real timers.
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+        try {
+            vi.setSystemTime(new Date(2026, 8, 28, 2, 59, 50));
+            const destId = manager.addDestination({
+                name: 'cron',
+                provider: 'local',
+                config: { rootPath: path.join(REMOTE_ROOT, 'cron') },
+                mode: 'snapshot',
+                cron: '0 3 * * *',
+            });
+            manager.pause(destId);
+            const jobs = () => queue.listJobs({ destinationId: destId }).length;
+            // Resolves once cond() holds, or after timeoutMs either way.
+            const settle = async (cond, timeoutMs) => {
+                const end = performance.now() + timeoutMs;
+                while (!cond() && performance.now() < end) {
+                    await new Promise((r) => setTimeout(r, 25));
+                }
+            };
+
+            vi.advanceTimersByTime(30_000); // 03:00:20 — due
+            await settle(() => jobs() > 0, 5000);
+            expect(jobs()).toBe(1);
+            vi.advanceTimersByTime(30_000); // 03:00:50 — same minute
+            await settle(() => jobs() > 1, 1500);
+            expect(jobs()).toBe(1);
+            vi.advanceTimersByTime(60_000); // 03:01:50 — not due
+            await settle(() => jobs() > 1, 500);
+            expect(jobs()).toBe(1);
+            manager.removeDestination(destId);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
