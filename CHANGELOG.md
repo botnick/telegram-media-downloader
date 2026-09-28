@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Fixed
 - **Backup mirror "Run now" failed with "This database connection is busy".** The catch-up walk held a SQLite cursor open while queueing upload jobs on the same connection. It now walks the library in batches of 500 and yields between them, so a large library no longer stalls the dashboard either.
+- **A backup job whose local file is gone no longer errors the whole destination.** A missing or unreadable file (deleted, rotated away) now fails that one job immediately instead of retrying five times and then flagging the destination as errored. A successful mirror "Run now" also clears a stale error badge.
 
 ## [2.25.0] — 2026-09-29
 

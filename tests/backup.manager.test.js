@@ -99,4 +99,47 @@ describe('mirror Run now', () => {
         expect(again.enqueued).toBe(0);
         manager.removeDestination(destId);
     });
+
+    it('fails a job whose local file is missing without erroring the destination', async () => {
+        const destId = manager.addDestination({
+            name: 'mirror-missing',
+            provider: 'local',
+            config: { rootPath: path.join(REMOTE_ROOT, 'missing') },
+            mode: 'mirror',
+        });
+        manager.pause(destId);
+        // Start from an empty library so the walk queues exactly one job.
+        db.prepare('DELETE FROM downloads').run();
+        const [dlId] = insertDownloads(1, (name) => `g/images/${name}`);
+        await manager.runBackup(destId);
+        const job = queue.listJobs({ destinationId: destId })[0];
+        expect(job.download_id).toBe(dlId);
+
+        manager.resume(destId);
+        const err = await waitForEvent((m) => m.type === 'backup_error' && m.jobId === job.id);
+        expect(err.willRetry).toBe(false);
+        const after = queue.getJob(job.id);
+        expect(after.status).toBe('failed');
+        expect(after.attempts).toBe(1);
+        expect(after.error).toMatch(/local file missing/);
+        expect(destRow(destId).last_error).toBeNull();
+        manager.removeDestination(destId);
+    });
+
+    it('a successful Run now clears a stale error badge', async () => {
+        const destId = manager.addDestination({
+            name: 'mirror-badge',
+            provider: 'local',
+            config: { rootPath: path.join(REMOTE_ROOT, 'badge') },
+            mode: 'mirror',
+        });
+        manager.pause(destId);
+        db.prepare(
+            'UPDATE backup_destinations SET last_error = ?, last_failure_at = ? WHERE id = ?',
+        ).run('old failure', Date.now(), destId);
+        await manager.runBackup(destId);
+        expect(destRow(destId).last_error).toBeNull();
+        expect(manager.getDestinationStatus(destId).lastError).toBeNull();
+        manager.removeDestination(destId);
+    });
 });

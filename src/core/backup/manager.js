@@ -328,6 +328,10 @@ export async function runBackup(id) {
         if (rows.length < MIRROR_BATCH) break;
         await new Promise((r) => setImmediate(r));
     }
+    // The catch-up succeeded, so an old error badge is stale. Jobs that
+    // still fail from here set it again. The dashboard re-reads it on the
+    // worker's `backup_queue_drained` broadcast.
+    db.prepare('UPDATE backup_destinations SET last_error = NULL WHERE id = ?').run(Number(id));
     _wakeWorker(id);
     _log({
         source: 'backup',
@@ -602,6 +606,28 @@ class Worker {
             remotePath = remotePath || _mirrorRemotePath(downloadRow);
         } else {
             queue.markFailed(job.id, 'job missing both snapshot_path and download_id');
+            return;
+        }
+
+        // A missing / unreadable source can't be fixed by retrying: fail
+        // this job only, without flagging the whole destination as errored.
+        try {
+            await fsp.access(localPath, fs.constants.R_OK);
+        } catch (e) {
+            const msg = `local file ${e.code === 'ENOENT' ? 'missing' : 'unreadable'}: ${localPath}`;
+            queue.markFailed(job.id, msg);
+            _broadcast({
+                type: 'backup_error',
+                destinationId: this.destinationId,
+                jobId: job.id,
+                error: msg,
+                willRetry: false,
+            });
+            _log({
+                source: 'backup',
+                level: 'warn',
+                msg: `job #${job.id} on dest #${this.destinationId} failed: ${msg}`,
+            });
             return;
         }
 
