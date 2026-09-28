@@ -43,6 +43,10 @@
         "build:css": "tailwindcss -c scripts/tailwind.config.cjs -i scripts/tailwind.input.css -o src/web/public/css/tailwind.css",
         "test": "vitest run",
         "test:watch": "vitest",
+        "test:contract": "vitest run --config tests/contract/vitest.config.js",
+        "test:contract:update": "node scripts/contract-run.mjs --update",
+        "contract:inventory": "node scripts/contract-inventory.mjs",
+        "contract:schema": "node scripts/contract-schema.mjs",
         "prepare": "lefthook install || exit 0"
     },
     "repository": {

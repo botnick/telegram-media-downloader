@@ -14,7 +14,9 @@
             "!docs/**",
             "!**/*.min.js",
             "!src/web/public/css/tailwind.css",
-            "!package-lock.json"
+            "!package-lock.json",
+            "!tests/contract/__snapshots__/**",
+            "!tests/contract/inventory.json"
         ]
     },
     "formatter": {
