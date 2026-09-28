@@ -1,7 +1,7 @@
 // Settings search — the box above the section chips. Typing hides the
 // cards that don't match, highlights the matching labels, opens the
 // Advanced panel when a hit is inside it, and lists matching tools that
-// live elsewhere (Maintenance, Backfill, Queue, …) as shortcuts. Enter
+// live elsewhere (Tools, Backfill, Queue, …) as shortcuts. Enter
 // jumps to the first hit. Matches both the current language and English,
 // so "proxy" finds พร็อกซี on a Thai dashboard and vice versa.
 
@@ -16,77 +16,77 @@ const DEBOUNCE_MS = 120;
 // "duplicates" still leads somewhere. [route, name key, name, keywords key, keywords]
 const ELSEWHERE = [
     [
-        '#/maintenance/duplicates',
+        '#/settings/tools/library/duplicates',
         'nav.maintenance.duplicates',
         'Duplicates',
         'maintenance.duplicates.subtitle',
         'Hash every file and reclaim space from byte-identical copies',
     ],
     [
-        '#/maintenance/thumbs',
+        '#/settings/tools/library/thumbs',
         'nav.maintenance.thumbs',
         'Thumbnails',
         'maintenance.thumbs.subtitle',
         'Generate WebP previews for older files',
     ],
     [
-        '#/maintenance/seekbar',
+        '#/settings/tools/library/seekbar',
         'nav.maintenance.seekbar',
         'Seekbar previews',
         'maintenance.seekbar.subtitle',
         'Generate WebP sprite sheets for video hover-preview thumbnails.',
     ],
     [
-        '#/maintenance/video',
-        'nav.maintenance.video',
-        'Videos',
+        '#/settings/tools/library/video',
+        'tools.video',
+        'Video faststart',
         'maintenance.video.subtitle',
         'faststart streaming optimise',
     ],
     [
-        '#/maintenance/nsfw',
+        '#/settings/tools/safety/nsfw',
         'nav.maintenance.nsfw',
         'NSFW',
         'maintenance.nsfw.subtitle',
         'classifier review 18+',
     ],
     [
-        '#/maintenance/ai',
-        'nav.maintenance.ai',
-        'AI',
+        '#/settings/tools/safety/ai',
+        'tools.faces',
+        'Faces',
         'maintenance.ai.subtitle',
-        'Face clustering people search',
+        'AI face clustering people search',
     ],
     [
-        '#/maintenance/backup',
+        '#/settings/tools/sync/backup',
         'nav.maintenance.backup',
         'Backup',
         'maintenance.backup.subtitle',
         'Mirror new downloads to S3 / SFTP / local NAS storage',
     ],
     [
-        '#/maintenance/cluster',
+        '#/settings/tools/sync/cluster',
         'nav.maintenance.cluster',
         'Cluster',
         'maintenance.cluster.subtitle',
         'Federate multiple instances peers pair',
     ],
     [
-        '#/maintenance/recovery',
+        '#/settings/tools/system/recovery',
         'nav.maintenance.recovery',
         'Recovery',
         'maintenance.recovery.subtitle',
         'groups no account can access',
     ],
     [
-        '#/maintenance/logs',
+        '#/settings/tools/system/logs',
         'nav.maintenance.logs',
         'Logs',
         'maintenance.logs.subtitle',
         'Realtime tail of every backend log source',
     ],
     [
-        '#/maintenance/updates',
+        '#/settings/tools/system/updates',
         'nav.maintenance.updates',
         'Updates',
         'update.history.help',
@@ -305,19 +305,106 @@ function apply(raw) {
     return firstHit;
 }
 
+// The control a label / heading belongs to, when it's obvious which one.
+function _controlFor(el) {
+    return (
+        (el.matches('select, input') && el) ||
+        (el.htmlFor && document.getElementById(el.htmlFor)) ||
+        el.closest('label')?.querySelector('input, select, textarea, .tg-toggle') ||
+        null
+    );
+}
+
 function jumpToFirst() {
     const first = $('page-settings')?.querySelector(`.${HIT}`);
     if (!first) return;
     first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Focus the matching control when it's obvious which one it is.
-    const control =
-        (first.matches('select, input') && first) ||
-        (first.htmlFor && document.getElementById(first.htmlFor)) ||
-        first.closest('label')?.querySelector('input, select, textarea, .tg-toggle') ||
-        null;
+    const control = _controlFor(first);
     if (control && typeof control.focus === 'function') {
         setTimeout(() => control.focus({ preventScroll: true }), 300);
     }
+}
+
+/**
+ * Scroll to one setting on the (visible) Settings page, flash it and
+ * focus its control. Used by the command palette.
+ */
+export function revealSetting(el) {
+    if (!el?.isConnected) return;
+    const details = el.closest('details');
+    if (details && !details.open) details.open = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add(HIT);
+    setTimeout(() => el.classList.remove(HIT), 2200);
+    const control = _controlFor(el);
+    if (control && typeof control.focus === 'function') {
+        setTimeout(() => control.focus({ preventScroll: true }), 350);
+    }
+}
+
+// Field labels worth a palette entry: headings and control labels, not
+// help text, buttons or <option>s.
+const ENTRY_SKIP_KEY = /(_help|_html|_sub|subtitle|placeholder|_hint|\.help)$/;
+
+/**
+ * Settings entries for the command palette — each card's title and each
+ * field label in it, from the same page DOM (and English strings) the
+ * search box uses. `admin: false` drops admin-only cards and fields.
+ * Resolves to [{ label, en, card, words, el, cardEl, anchor }], where
+ * `anchor` is the #/settings/<anchor> section of a card with an id.
+ */
+export async function paletteEntries({ admin = true } = {}) {
+    await loadEnglish();
+    const en = _en || {};
+    const out = [];
+    for (const { card } of _cards()) {
+        if (!admin && card.closest('[data-admin-only]')) continue;
+        const heading =
+            card.querySelector('h3 [data-i18n], h3[data-i18n]') ||
+            card.querySelector('summary [data-i18n]') ||
+            card.querySelector('h3');
+        const cardTitle = (heading?.textContent || '').trim();
+        const target = card.matches('[id^="settings-"]')
+            ? card
+            : card.querySelector('[id^="settings-card-"]');
+        const anchor = target ? target.id.slice('settings-'.length) : null;
+        const seen = new Set();
+        if (cardTitle) {
+            const key = heading.dataset?.i18n || '';
+            seen.add(cardTitle.toLowerCase());
+            out.push({
+                label: cardTitle,
+                en: key ? en[key] || '' : '',
+                card: '',
+                words: key ? key.split('.').slice(1).join(' ').replace(/_/g, ' ') : '',
+                el: heading,
+                cardEl: card,
+                anchor,
+            });
+        }
+        for (const el of card.querySelectorAll('[data-i18n]')) {
+            if (el === heading) continue;
+            if (el.closest('p, option, button, a, .settings-search-links')) continue;
+            if (!admin && el.closest('[data-admin-only]')) continue;
+            const key = el.dataset.i18n;
+            if (ENTRY_SKIP_KEY.test(key)) continue;
+            const label = (el.textContent || '').trim().replace(/\s+/g, ' ');
+            // Slider scale ends ("1 (Safe)", "20 (Max)") aren't settings.
+            if (label.length < 2 || label.length > 60 || /^\d/.test(label)) continue;
+            if (seen.has(label.toLowerCase())) continue;
+            seen.add(label.toLowerCase());
+            out.push({
+                label,
+                en: en[key] || '',
+                card: cardTitle,
+                words: key.split('.').slice(1).join(' ').replace(/_/g, ' '),
+                el,
+                cardEl: card,
+                anchor: null,
+            });
+        }
+    }
+    return out;
 }
 
 export function initSettingsSearch() {

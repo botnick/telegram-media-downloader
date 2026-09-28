@@ -22,6 +22,8 @@ import {
 import { initReauthModal } from './reauth-modal.js';
 import { initShortcuts } from './shortcuts.js';
 import * as router from './router.js';
+import * as Nav from './nav.js';
+import { getGroup as getToolGroup } from './tools-catalog.js';
 import { openSheet, confirmSheet } from './sheet.js';
 import {
     renderChatRow,
@@ -582,8 +584,10 @@ async function init() {
         ws.on('monitor_state', refreshOnboarding);
     }
 
-    // Global keyboard shortcuts (press ? for the cheatsheet).
+    // Global keyboard shortcuts (press ? for the cheatsheet), and the
+    // Go anywhere palette on Ctrl/Cmd+K + the header / sidebar buttons.
     initShortcuts();
+    Nav.initNav();
 
     // Mobile-friendly header chrome: overflow ⋮ menu (collapses paste-link /
     // stories / view-mode / refresh on <640 px viewports) + notification
@@ -902,11 +906,9 @@ function renderPage(page, params = {}) {
     updateSelectionBar();
     state.currentRouteParams = params;
 
-    // Allow callers to override the highlighted nav slot independent of the
-    // page section (e.g. `#/engine` is a sub-route of the Settings page but
-    // the bottom-nav Engine tab should still light up). Falls back to the
-    // page name itself when no override is supplied.
-    const navKey = params.navKey || page;
+    // The nav place (Library / Chats / Queue / Settings) the page belongs
+    // to — js/nav.js. Callers may override it (e.g. `#/engine`).
+    const navKey = Nav.navPlace(params.navKey || page);
 
     document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
     document.querySelector(`.nav-item[data-page="${navKey}"]`)?.classList.add('active');
@@ -932,6 +934,7 @@ function renderPage(page, params = {}) {
     if (page !== 'viewer') updateHeaderAvatar(null, null);
     setHeaderPageIcon(page);
     setActiveMaintenanceTab(page);
+    Nav.syncShell(page);
 
     if (page === 'settings') {
         // Auto-save: every Setting input is watched and a debounced
@@ -947,33 +950,26 @@ function renderPage(page, params = {}) {
         import('./settings-search.js')
             .then((m) => m.initSettingsSearch())
             .catch((e) => console.error('settings search', e));
+        if (state.role === 'admin') {
+            import('./tools-hub.js')
+                .then((m) => m.initToolsCard())
+                .catch((e) => console.error('tools card', e));
+        }
         // Engine controls live in the admin-only System section; guests
         // never see the card, and `initEngine` polls /api/monitor/status
         // (admin-gated) so skip it for them.
         if (state.role === 'admin') initEngine();
         _setPageText('title', 'settings.page.title', 'Settings');
         _setPageText('subtitle', 'settings.page.subtitle', 'System Configuration');
-        // Optional deep-link: #/settings/<section> scrolls to that section.
-        // Prefer #settings-<anchor> (unique by construction on the chip-nav
-        // wrappers) over a [data-settings-section] match — the latter can
-        // also live on inner cards (legacy attrs like rescue, video-player)
-        // and querySelector returns the first match, which may not be the
-        // section heading we want to scroll to.
+        // Optional deep-link: #/settings/<section> scrolls to that section
+        // (#settings-<anchor> first — see Nav.scrollToSettingsSection).
         if (params.section) {
-            setTimeout(() => {
-                const el =
-                    document.getElementById(`settings-${params.section}`) ||
-                    document.querySelector(`[data-settings-section="${params.section}"]`) ||
-                    document.querySelector(
-                        `#setting-${params.section}, .${params.section}-section`,
-                    );
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 80);
+            setTimeout(() => Nav.scrollToSettingsSection(params.section, { smooth: false }), 80);
         }
     } else if (page === 'groups') {
         renderGroupsConfig({ restoreScroll: prevPage === 'chat' });
-        _setPageText('title', 'groups.page.title', 'Manage Groups');
-        _setPageText('subtitle', 'groups.page.subtitle', 'Configure monitoring and filters');
+        _setPageText('title', 'groups.page.title', 'Chats');
+        _setPageText('subtitle', 'groups.page.subtitle', 'Pick what to monitor and backfill');
     } else if (page === 'chat') {
         const name = getGroupName(params.groupId);
         _setPageRaw('title', name);
@@ -995,7 +991,7 @@ function renderPage(page, params = {}) {
             })
             .catch((e) => console.error('chat details', e));
     } else if (page === 'viewer') {
-        if (state.currentGroup) {
+        if (state.currentGroup && !params.allMedia) {
             _setPageRaw('title', state.currentGroup);
             // Back in a chat's gallery from another page: its avatar, not
             // the generic gallery glyph setHeaderPageIcon() just put there.
@@ -1006,7 +1002,9 @@ function renderPage(page, params = {}) {
                 _restoreGalleryChrome();
             }
         } else {
-            showAllMedia();
+            const opts = _allMediaOpts;
+            _allMediaOpts = null;
+            showAllMedia(opts || undefined);
         }
     } else if (page === 'backfill') {
         _setPageText('title', 'backfill.page.title', 'Backfill');
@@ -1024,20 +1022,13 @@ function renderPage(page, params = {}) {
         );
         showQueuePage(params).catch((e) => console.error('queue page', e));
     } else if (page === 'maintenance') {
-        // Hub page — single sidebar entry that lists every maintenance
-        // tool as a card. Cleans up the sidebar (used to be 5+ rows of
-        // sub-pages, now one). Power users keep the per-feature deep
-        // links: /maintenance/duplicates etc. still resolve to their
-        // dedicated pages directly.
-        _setPageText('title', 'maintenance.hub.title', 'Maintenance');
-        _setPageText(
-            'subtitle',
-            'maintenance.hub.subtitle',
-            'Catalogue, thumbnails, NSFW review, logs, backup destinations',
-        );
-        import('./maintenance-hub.js')
-            .then((m) => m.init())
-            .catch((e) => console.error('maintenance-hub', e));
+        // A Tools group page (#/settings/tools/<group>) — js/tools-hub.js.
+        const group = getToolGroup(params.group);
+        if (group) _setPageText('title', group.title[0], group.title[1]);
+        _setPageText('subtitle', 'tools.title', 'Tools');
+        import('./tools-hub.js')
+            .then((m) => m.showGroupPage(params))
+            .catch((e) => console.error('tools group', e));
     } else if (page === 'maintenance-duplicates') {
         _setPageText('title', 'maintenance.duplicates.title', 'Find duplicate files');
         _setPageText(
@@ -1153,14 +1144,27 @@ function renderPage(page, params = {}) {
 
 // Register hash routes. Patterns documented in router.js.
 function registerRoutes() {
-    router.route('/viewer', () => renderPage('viewer'));
-    router.route('/viewer/:groupId', ({ params }) => {
-        // Open a specific group's gallery — match the existing openGroup()
-        // behaviour so the sidebar selection stays consistent.
-        renderPage('viewer');
-        // Always resolve through the canonical lookup so deep-linking to a
-        // group whose name was only just refreshed still picks it up.
-        openGroup(params.groupId, getGroupName(params.groupId));
+    // Tools pages + the old #/maintenance hashes (js/nav.js). First, so
+    // `/settings/tools/...` wins over `/settings/:section` below.
+    Nav.registerNavRoutes(router, renderPage);
+    // #/viewer is All Media; a chat's gallery is #/viewer/<id>.
+    router.route('/viewer', () => renderPage('viewer', { allMedia: true }));
+    router.route('/viewer/:groupId', ({ params, query }) => {
+        const id = params.groupId;
+        // Back / forward to the chat that's already loaded: keep its grid,
+        // filters and scroll position.
+        if (
+            String(state.currentGroupId) === String(id) &&
+            (state.viewerPeerScope || null) === (query.peer || null) &&
+            _galleryLoadedFor(_galleryViewKey())
+        ) {
+            renderPage('viewer');
+            return;
+        }
+        state.viewerPeerScope = query.peer || null;
+        // Resolve through the canonical lookup so deep-linking to a group
+        // whose name was only just refreshed still picks it up.
+        _showGroup(id, getGroupName(id));
     });
     router.route('/groups', () => renderPage('groups'));
     router.route('/groups/:groupId', ({ params }) => {
@@ -1188,20 +1192,8 @@ function registerRoutes() {
                 ...(state.currentRouteParams || {}),
                 section: params.section,
             };
-            const el =
-                document.getElementById(`settings-${params.section}`) ||
-                document.querySelector(`[data-settings-section="${params.section}"]`) ||
-                document.querySelector(`#setting-${params.section}, .${params.section}-section`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            // Light up the matching chip immediately rather than waiting for
-            // the IntersectionObserver to catch up after the smooth-scroll —
-            // gives instant visual feedback even on slow scrolls.
-            document.querySelectorAll('.settings-chip').forEach((c) => {
-                c.setAttribute(
-                    'aria-selected',
-                    c.dataset.chip === params.section ? 'true' : 'false',
-                );
-            });
+            // Also lights up the matching chip straight away.
+            Nav.scrollToSettingsSection(params.section);
             return;
         }
         renderPage('settings', { section: params.section });
@@ -1224,7 +1216,13 @@ function registerRoutes() {
         // BEFORE opening the sheet: the sheet pushes its own (Back-to-
         // close) history entry, which this replace must not clobber.
         try {
-            history.replaceState(null, '', '#/viewer');
+            history.replaceState(
+                null,
+                '',
+                state.currentGroupId != null
+                    ? `#/viewer/${encodeURIComponent(String(state.currentGroupId))}`
+                    : '#/viewer',
+            );
         } catch {
             /* ignore */
         }
@@ -1245,18 +1243,6 @@ function registerRoutes() {
                 window.location.href = '/add-account.html';
             });
     });
-    router.route('/maintenance', () => renderPage('maintenance'));
-    router.route('/maintenance/duplicates', () => renderPage('maintenance-duplicates'));
-    router.route('/maintenance/thumbs', () => renderPage('maintenance-thumbs'));
-    router.route('/maintenance/seekbar', () => renderPage('maintenance-seekbar'));
-    router.route('/maintenance/video', () => renderPage('maintenance-video'));
-    router.route('/maintenance/nsfw', () => renderPage('maintenance-nsfw'));
-    router.route('/maintenance/ai', () => renderPage('maintenance-ai'));
-    router.route('/maintenance/logs', () => renderPage('maintenance-logs'));
-    router.route('/maintenance/backup', () => renderPage('maintenance-backup'));
-    router.route('/maintenance/cluster', () => renderPage('maintenance-cluster'));
-    router.route('/maintenance/recovery', () => renderPage('maintenance-recovery'));
-    router.route('/maintenance/updates', () => renderPage('maintenance-updates'));
 }
 
 function closeSidebar() {
@@ -1625,7 +1611,18 @@ function normalize(str) {
 }
 
 // ============ Open Group / Show All ============
+// Open a chat's gallery. Goes through the hash (#/viewer/<id>, plus
+// ?peer= for a peer's chat) so the chat has its own URL: reload, Back
+// and shared links land on it. The route runs _showGroup().
 function openGroup(groupId, groupName) {
+    const peer = state.viewerPeerScope ? `?peer=${encodeURIComponent(state.viewerPeerScope)}` : '';
+    const target = `viewer/${encodeURIComponent(String(groupId))}${peer}`;
+    // Clicking the chat that's already open reloads it.
+    if (location.hash === `#/${target}`) _showGroup(groupId, groupName);
+    else navigateTo(target);
+}
+
+function _showGroup(groupId, groupName) {
     state.currentGroupId = groupId;
     // Always reconcile with the canonical store so the modal/header never
     // show a stale "Unknown" or numeric id when /api/groups/refresh-info
@@ -1641,14 +1638,13 @@ function openGroup(groupId, groupName) {
     // out everything else for the new group.
     resetGalleryFilter();
 
+    renderPage('viewer');
     _setPageRaw('title', state.currentGroup);
     _setPageText('subtitle', 'viewer.subtitle.loading', 'Loading...');
     // Mirror the sidebar avatar into the header so the user sees which
-    // chat they're inside. Falls back to a coloured initial when there's
-    // no profile photo cached yet.
+    // chat they're inside (after renderPage, which sets the page glyph).
+    // Falls back to a coloured initial when there's no profile photo yet.
     updateHeaderAvatar(groupId, state.currentGroup);
-    _syncChatHeaderActions();
-    navigateTo('viewer');
     loadGroupFiles(groupId);
 }
 
@@ -1657,7 +1653,7 @@ function openGroup(groupId, groupName) {
 // instead of all sharing the gallery glyph from the viewer page.
 const PAGE_HEADER_ICON = {
     viewer: 'ri-gallery-line',
-    groups: 'ri-group-line',
+    groups: 'ri-chat-3-line',
     backfill: 'ri-history-line',
     queue: 'ri-list-check-2',
     settings: 'ri-settings-3-line',
@@ -1882,7 +1878,15 @@ function _restoreGalleryChrome() {
 // filter and the scroll position when nothing that shapes the list
 // (group, filter, pinned, scope) changed; they used to throw 10k+ tiles
 // away and refetch from page 1 on every return.
+let _allMediaOpts = null; // showAllMedia() options carried across the hash change
 function showAllMedia(opts) {
+    // In a chat (#/viewer/<id>): switch the URL to #/viewer first; its
+    // route comes back here with the same options.
+    if (state.currentPage === 'viewer' && /^#\/viewer\/./.test(location.hash)) {
+        _allMediaOpts = opts || null;
+        navigateTo('viewer');
+        return;
+    }
     const force = opts?.force === true;
     const wasAllMedia = state.currentGroupId == null && !state.viewerPeerScope;
     state.currentGroup = null;
@@ -2757,7 +2761,7 @@ function renderGalleryEmptyState() {
                 {
                     label: i18nT('viewer.empty.action.reindex', 'Re-index from disk'),
                     icon: 'ri-refresh-line',
-                    onClick: () => window.navigateTo?.('maintenance/duplicates'),
+                    onClick: () => window.navigateTo?.('settings/tools/library/duplicates'),
                 },
             ];
         }
@@ -2781,8 +2785,8 @@ function renderGalleryEmptyState() {
                     onClick: () => openAccountWizard(),
                 },
                 {
-                    label: i18nT('viewer.empty.action.groups', 'Manage groups'),
-                    icon: 'ri-group-line',
+                    label: i18nT('viewer.empty.action.groups', 'Go to Chats'),
+                    icon: 'ri-chat-3-line',
                     onClick: () => window.navigateTo?.('groups'),
                 },
             ];
