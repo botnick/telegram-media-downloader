@@ -48,22 +48,40 @@ describe('downloads schema', () => {
         );
     });
 
-    it('carries the aggregate + pinned-first gallery indexes, not the redundant group ones', () => {
-        const names = db
+    const indexNames = () =>
+        db
             .prepare(
                 `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'downloads'`,
             )
             .all()
             .map((r) => r.name);
+
+    it('builds the deferred indexes inline on a small library and keeps the old ones', () => {
+        const names = indexNames();
         expect(names).toEqual(
             expect.arrayContaining([
-                'idx_group_name_size',
-                'idx_gallery_type_pinned_date',
-                'idx_gallery_group_pinned_date',
+                ...downloadsApi.DEFERRED_INDEXES.map((i) => i.name),
+                // Still created by older releases — never dropped, so a
+                // rollback doesn't have to rebuild them at boot.
+                'idx_group_id',
+                'idx_group_message',
             ]),
         );
-        expect(names).not.toContain('idx_group_id');
-        expect(names).not.toContain('idx_group_message');
+        expect(downloadsApi.listMissingDeferredIndexes()).toEqual([]);
+    });
+
+    it('reports and builds a missing deferred index (big-library path)', () => {
+        db.exec('DROP INDEX idx_gallery_type_pinned_date');
+        expect(downloadsApi.listMissingDeferredIndexes().map((i) => i.name)).toEqual([
+            'idx_gallery_type_pinned_date',
+        ]);
+        expect(typeof downloadsApi.buildDeferredIndex('idx_gallery_type_pinned_date')).toBe(
+            'number',
+        );
+        expect(indexNames()).toContain('idx_gallery_type_pinned_date');
+        // Idempotent.
+        downloadsApi.buildDeferredIndex('idx_gallery_type_pinned_date');
+        expect(() => downloadsApi.buildDeferredIndex('nope')).toThrow();
     });
 
     it('serves the sidebar aggregate from the covering index', () => {
@@ -254,5 +272,19 @@ describe('findDownloadsByPaths', () => {
         paths.push('Paths/images/posix.jpg');
         const rows = downloadsApi.findDownloadsByPaths(paths);
         expect(rows.map((r) => r.file_path)).toEqual(['Paths/images/posix.jpg']);
+    });
+
+    it('still finds rows stored with mixed separators (old REPLACE semantics)', () => {
+        downloadsApi.insertDownload({
+            groupId: '-100779',
+            groupName: 'Mixed',
+            messageId: 1,
+            fileName: 'm.jpg',
+            fileSize: 1,
+            fileType: 'photo',
+            filePath: String.raw`Mixed/images\m.jpg`,
+        });
+        const rows = downloadsApi.findDownloadsByPaths(['Mixed/images/m.jpg']);
+        expect(rows.map((r) => r.file_path)).toEqual([String.raw`Mixed/images\m.jpg`]);
     });
 });

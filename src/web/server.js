@@ -69,6 +69,8 @@ import {
     recordUpdateFailure,
     listUpdateHistory,
     getUnindexedAiBatch,
+    listMissingDeferredIndexes,
+    buildDeferredIndex,
 } from '../core/db.js';
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
@@ -12786,6 +12788,52 @@ app.use((err, req, res, _next) => {
     res.status(500).json({ error: err?.message || 'Internal Server Error' });
 });
 
+// Deferred index builds — see the call site in the listen callback.
+const DEFERRED_INDEX_START_DELAY_MS = 90_000;
+const DEFERRED_INDEX_GAP_MS = 45_000;
+function scheduleDeferredIndexBuilds() {
+    let pending;
+    try {
+        pending = listMissingDeferredIndexes();
+    } catch {
+        return;
+    }
+    if (!pending.length) return;
+    log({
+        source: 'db',
+        level: 'info',
+        msg: `building ${pending.length} new index(es) in the background: ${pending.map((i) => i.name).join(', ')}`,
+    });
+    let busyRetries = 0;
+    const buildNext = () => {
+        const idx = pending.shift();
+        if (!idx) return;
+        try {
+            const ms = buildDeferredIndex(idx.name);
+            log({ source: 'db', level: 'info', msg: `index ${idx.name} built in ${ms} ms` });
+            // The sidebar aggregate cache may hold rows computed without it —
+            // harmless, but let the next paint use the faster plan.
+            invalidateGroupAggregates();
+        } catch (e) {
+            const msg = String(e?.message || e);
+            if (/busy|locked/i.test(msg) && busyRetries < 20) {
+                // A maintenance sweep holds the connection — try again later.
+                busyRetries += 1;
+                pending.unshift(idx);
+            } else {
+                // Retried on the next boot (IF NOT EXISTS); queries still work.
+                log({
+                    source: 'db',
+                    level: 'warn',
+                    msg: `index ${idx.name} build failed (will retry next start): ${msg}`,
+                });
+            }
+        }
+        if (pending.length) setTimeout(buildNext, DEFERRED_INDEX_GAP_MS).unref();
+    };
+    setTimeout(buildNext, DEFERRED_INDEX_START_DELAY_MS).unref();
+}
+
 const PORT = process.env.PORT || 3000;
 // Without this, EADDRINUSE made the container exit silently with no clue
 // where to look. Print a clear message + exit non-zero so docker-compose
@@ -12888,6 +12936,17 @@ ${tip}
             console.warn('[thumbs] one-shot purge guard threw:', e.message);
         }
     });
+
+    // New indexes on an existing big library (see DEFERRED_INDEXES in
+    // core/db.js) are built here instead of in initSchema, so an upgrade
+    // never delays the first healthcheck. Each CREATE INDEX still blocks
+    // the loop while it runs (~1 s per index per 1M rows on SSD), so start
+    // well after boot (past the compose start_period + autoheal grace) and
+    // leave more than one healthcheck interval between builds: a single
+    // slow build can fail at most one check, never the three in a row that
+    // mark the container unhealthy. Queries work (slower) until done; a
+    // restart mid-way just resumes on the next boot.
+    scheduleDeferredIndexBuilds();
 
     // Boot the disk rotator. No-op when diskManagement.enabled is false —
     // safe to call at every startup. Restarts via POST /api/config (above).

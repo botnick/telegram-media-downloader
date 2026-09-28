@@ -125,6 +125,70 @@ function _readPackageVersion() {
     }
 }
 
+// Indexes added after v2.24.5. CREATE INDEX on an existing library is one
+// synchronous statement (~0.4 s for all four at 150k rows on SSD, roughly
+// linear, several seconds per index on a 1M+ row library on a NAS disk), so
+// on a big DB they are NOT built inside initSchema — that would delay the
+// first healthcheck after an upgrade. initSchema builds them inline only
+// for small libraries (fresh installs, tests); otherwise the web server
+// builds the missing ones one at a time after it is listening
+// (buildDeferredIndex). Every query is correct without them, just slower,
+// and IF NOT EXISTS makes an interrupted build simply resume next boot.
+export const DEFERRED_INDEXES = [
+    // Bulk delete / 404 auto-prune / single-file delete / backup resolve a
+    // row by its exact stored path; without this each lookup is a full
+    // table scan (~15 ms at 150k rows — seconds for a 1000-tile delete).
+    {
+        name: 'idx_file_path',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_file_path ON downloads(file_path)',
+    },
+    // Per-group aggregates behind the sidebar (/api/groups, /api/downloads)
+    // and the group-name refresh passes: GROUP BY group_id reading only
+    // group_name + file_size never touches the table b-tree.
+    {
+        name: 'idx_group_name_size',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_group_name_size ON downloads(group_id, group_name, file_size)',
+    },
+    // Pinned-first with a type tab: WHERE file_type = ? ORDER BY pinned DESC, created_at DESC, id DESC
+    {
+        name: 'idx_gallery_type_pinned_date',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_gallery_type_pinned_date ON downloads(file_type, pinned DESC, created_at DESC, id DESC)',
+    },
+    // Per-group pinned-first: WHERE group_id = ? ORDER BY pinned DESC, created_at DESC
+    {
+        name: 'idx_gallery_group_pinned_date',
+        sql: 'CREATE INDEX IF NOT EXISTS idx_gallery_group_pinned_date ON downloads(group_id, pinned DESC, created_at DESC, id DESC)',
+    },
+];
+// Below this many rows (by MAX(id), an O(log n) upper bound) all deferred
+// indexes build inline in well under 150 ms.
+const DEFERRED_INDEX_INLINE_MAX_ROWS = 50_000;
+
+/** Deferred indexes that don't exist yet, in build order. */
+export function listMissingDeferredIndexes() {
+    const have = new Set(
+        getDb()
+            .prepare(
+                `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'downloads'`,
+            )
+            .all()
+            .map((r) => r.name),
+    );
+    return DEFERRED_INDEXES.filter((idx) => !have.has(idx.name));
+}
+
+/**
+ * Build one deferred index (no-op if it already exists).
+ * @returns {number} elapsed ms
+ */
+export function buildDeferredIndex(name) {
+    const idx = DEFERRED_INDEXES.find((i) => i.name === name);
+    if (!idx) throw new Error(`unknown deferred index ${name}`);
+    const t0 = Date.now();
+    getDb().exec(idx.sql);
+    return Date.now() - t0;
+}
+
 function initSchema() {
     // Downloads Table
     db.exec(`
@@ -141,6 +205,7 @@ function initSchema() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(group_id, message_id)
         );
+        CREATE INDEX IF NOT EXISTS idx_group_id ON downloads(group_id);
         CREATE INDEX IF NOT EXISTS idx_created_at ON downloads(created_at);
     `);
 
@@ -190,29 +255,8 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_pending_until ON downloads(pending_until) WHERE pending_until IS NOT NULL',
         );
     } catch {}
-    // idx_group_id / idx_group_message were exact prefixes of the
-    // UNIQUE(group_id, message_id) autoindex — pure write amplification on
-    // every insert. Every group_id lookup they served (COUNT, MIN/MAX
-    // message_id, DISTINCT group_id) runs covered by the autoindex instead.
     try {
-        db.exec('DROP INDEX IF EXISTS idx_group_id');
-        db.exec('DROP INDEX IF EXISTS idx_group_message');
-    } catch {}
-    // Bulk delete / 404 auto-prune / single-file delete / backup resolve a
-    // row by its exact stored path. Without this each lookup was a full
-    // table scan (~15 ms at 150k rows, so a 1000-tile delete blocked the
-    // event loop for seconds).
-    try {
-        db.exec('CREATE INDEX IF NOT EXISTS idx_file_path ON downloads(file_path)');
-    } catch {}
-    // Covering index for the per-group aggregates behind the sidebar
-    // (/api/groups, /api/downloads) and the group-name refresh passes:
-    // GROUP BY group_id reading only group_name + file_size never touches
-    // the table b-tree.
-    try {
-        db.exec(
-            'CREATE INDEX IF NOT EXISTS idx_group_name_size ON downloads(group_id, group_name, file_size)',
-        );
+        db.exec('CREATE INDEX IF NOT EXISTS idx_group_message ON downloads(group_id, message_id)');
     } catch {}
     // Indexes that drive the NSFW review sheet's hot queries:
     //   - "what's left to scan" (file_type='photo' AND nsfw_checked_at IS NULL)
@@ -278,17 +322,17 @@ function initSchema() {
             'CREATE INDEX IF NOT EXISTS idx_gallery_pinned_date ON downloads(pinned DESC, created_at DESC, id DESC)',
         );
     } catch {}
-    // Pinned-first with a type tab: WHERE file_type = ? ORDER BY pinned DESC, created_at DESC, id DESC
+    // Newer indexes: built right here on small libraries, after the web
+    // server is listening on big ones (see DEFERRED_INDEXES).
     try {
-        db.exec(
-            'CREATE INDEX IF NOT EXISTS idx_gallery_type_pinned_date ON downloads(file_type, pinned DESC, created_at DESC, id DESC)',
-        );
-    } catch {}
-    // Per-group pinned-first: WHERE group_id = ? ORDER BY pinned DESC, created_at DESC
-    try {
-        db.exec(
-            'CREATE INDEX IF NOT EXISTS idx_gallery_group_pinned_date ON downloads(group_id, pinned DESC, created_at DESC, id DESC)',
-        );
+        const maxId = db.prepare('SELECT MAX(id) AS m FROM downloads').get()?.m || 0;
+        if (maxId <= DEFERRED_INDEX_INLINE_MAX_ROWS) {
+            for (const idx of DEFERRED_INDEXES) {
+                try {
+                    db.exec(idx.sql);
+                } catch {}
+            }
+        }
     } catch {}
     // Seekbar scan: WHERE file_type = 'video' AND file_path IS NOT NULL (LEFT JOIN seekbar_sprites)
     try {
@@ -1667,23 +1711,38 @@ const PATH_LOOKUP_CHUNK = 800;
  * @returns {Array<{ id: number, file_path: string }>}
  */
 export function findDownloadsByPaths(paths) {
+    const wanted = new Set(); // forward-slash forms
     const forms = new Set();
     for (const p of Array.isArray(paths) ? paths : []) {
         if (typeof p !== 'string' || !p) continue;
         const fwd = p.replace(/\\/g, '/');
+        wanted.add(fwd);
         forms.add(fwd);
         forms.add(fwd.replace(/\//g, '\\'));
     }
-    const all = Array.from(forms);
-    const out = [];
-    for (let i = 0; i < all.length; i += PATH_LOOKUP_CHUNK) {
-        const chunk = all.slice(i, i + PATH_LOOKUP_CHUNK);
-        const rows = getDb()
-            .prepare(
-                `SELECT id, file_path FROM downloads WHERE file_path IN (${chunk.map(() => '?').join(',')})`,
-            )
-            .all(...chunk);
-        for (const r of rows) out.push(r);
+    const lookup = (sql, values) => {
+        const rows = [];
+        for (let i = 0; i < values.length; i += PATH_LOOKUP_CHUNK) {
+            const chunk = values.slice(i, i + PATH_LOOKUP_CHUNK);
+            const stmt = getDb().prepare(sql.replace('%IN%', chunk.map(() => '?').join(',')));
+            rows.push(...stmt.all(...chunk));
+        }
+        return rows;
+    };
+    const out = lookup('SELECT id, file_path FROM downloads WHERE file_path IN (%IN%)', [...forms]);
+    const found = new Set(out.map((r) => String(r.file_path).replace(/\\/g, '/')));
+    const missing = [...wanted].filter((p) => !found.has(p));
+    if (missing.length) {
+        // A row stored with mixed separators matches neither form. The old
+        // per-path REPLACE() lookup found those, so keep doing it for the
+        // leftovers only — one table pass per chunk, not one per path.
+        const ids = new Set(out.map((r) => r.id));
+        for (const r of lookup(
+            `SELECT id, file_path FROM downloads WHERE REPLACE(file_path, '\\', '/') IN (%IN%)`,
+            missing,
+        )) {
+            if (!ids.has(r.id)) out.push(r);
+        }
     }
     return out;
 }
