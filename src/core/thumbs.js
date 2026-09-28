@@ -23,9 +23,13 @@
  * UI / `purgeThumbsForDownload`).
  *
  * Concurrency:
- *   - Image jobs: 8 in parallel (sharp is mostly libvips C, RAM-bound).
- *   - Video jobs: 3 in parallel (ffmpeg pins a CPU core during decode).
- * Both caps are env-overridable.
+ *   - Image jobs: 4 in parallel. Each sharp pipeline holds a libuv
+ *     threadpool worker for its whole run (and libvips fans out to all
+ *     cores inside it), so more than a few just queues behind the pool
+ *     and starves fs / crypto / dns work for the HTTP side.
+ *   - Video jobs: 6 in parallel (ffmpeg child processes — no pool slot).
+ * Both caps are env-overridable (THUMBS_IMG_CONCURRENCY /
+ * THUMBS_VID_CONCURRENCY).
  *
  * In-flight dedupe: 50 simultaneous requests for the same (id, w)
  * collapse to a single generation — without this, a fast scroll spawns
@@ -295,7 +299,11 @@ const FFMPEG_WEBP_COMPRESSION = 6; // libwebp -compression_level 0-6
 
 // sharp can run multiple jobs concurrently; ffmpeg pins a core. Cap them
 // separately so the more expensive video work doesn't starve image work.
-const IMG_CONCURRENCY = Math.max(1, Math.min(32, Number(process.env.THUMBS_IMG_CONCURRENCY) || 16));
+// Every sharp job occupies a libuv threadpool worker (UV_THREADPOOL_SIZE,
+// 4 by default, 16 in the Docker image / runner / PM2 config) that
+// fs.stat, sendFile, crypto and dns share — 16 parallel jobs left the
+// HTTP side queueing behind thumbnails during a gallery scroll.
+const IMG_CONCURRENCY = Math.max(1, Math.min(32, Number(process.env.THUMBS_IMG_CONCURRENCY) || 4));
 const VID_CONCURRENCY = Math.max(1, Math.min(16, Number(process.env.THUMBS_VID_CONCURRENCY) || 6));
 
 function makeSemaphore(max) {
@@ -338,6 +346,16 @@ const _inflight = new Map(); // cacheKey → Promise
 // resolve to the same on-disk file the gallery already cached.
 // Net effect on the operator's disk: ~80% smaller thumbs/ directory
 // at parity coverage (5 widths → 1, plus the -30% quality/effort win).
+// Browser cache policy for GET /api/thumbs/:id. Fresh for an hour (as
+// before), so a regenerated thumbnail — source replaced, cache purged and
+// rebuilt — still shows up within the hour; after that the tile renders
+// from cache at once while the browser revalidates in the background
+// (the mtime-based ETag / Last-Modified turn that into a 304), instead
+// of every tile blocking on a 304 round-trip (the old must-revalidate).
+// `private`: thumbnails sit behind the dashboard login, so shared caches
+// must not keep them.
+export const THUMB_CACHE_CONTROL = 'private, max-age=3600, stale-while-revalidate=2592000';
+
 export const ALLOWED_WIDTHS = [320];
 export const DEFAULT_WIDTH = 320;
 
