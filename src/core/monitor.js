@@ -988,11 +988,17 @@ export class RealtimeMonitor extends EventEmitter {
     async _handleAccessLoss(group, failedClient, cls) {
         const gid = String(group.id);
         if (this._accessLossInFlight.has(gid)) return;
+        const failedAccount = failedClient
+            ? (this.accountManager?.getIdForClient?.(failedClient) ?? null)
+            : null;
+        // Already paused (e.g. the other downloads of the same chat failing
+        // one after another): note this account's answer, ask no one else.
+        if (chatAccess.isBlocked(group.id)) {
+            chatAccess.recordResult(group.id, failedAccount, cls);
+            return;
+        }
         this._accessLossInFlight.add(gid);
         try {
-            const failedAccount = failedClient
-                ? (this.accountManager?.getIdForClient?.(failedClient) ?? null)
-                : null;
             let access;
             if (cls.state === 'migrated') {
                 // Chat-wide — asking the other accounts can't change it.

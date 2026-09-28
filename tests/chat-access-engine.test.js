@@ -195,6 +195,30 @@ describe('monitor polling', () => {
         mon.stop().catch(() => {});
     });
 
+    it('downloads failing one after another on a paused chat ask nobody else', async () => {
+        const a = fakeClient(() => {
+            throw rpc('CHANNEL_PRIVATE');
+        });
+        const b = fakeClient(() => {
+            throw rpc('CHANNEL_PRIVATE');
+        });
+        const am = fakeAccountManager([
+            ['A', a],
+            ['B', b],
+        ]);
+        const mon = monitorFor([{ id: -100445, name: 'gone', enabled: true }], am);
+        const group = mon.config.groups[0];
+        const cls = { state: 'private', code: 'CHANNEL_PRIVATE', definite: true };
+        // the first failure asks the other account once, then pauses
+        await mon._handleAccessLoss(group, a, cls);
+        expect(access.isBlocked(-100445)).toBe(true);
+        expect(b.calls.length).toBe(1);
+        // five more in-flight downloads fail: no more probes
+        for (let i = 0; i < 5; i++) await mon._handleAccessLoss(group, a, cls);
+        expect(a.calls.length + b.calls.length).toBe(1);
+        mon.stop().catch(() => {});
+    });
+
     it('a flood wait changes nothing — the chat is polled again next pass', async () => {
         let n = 0;
         const a = fakeClient(() => {

@@ -4296,12 +4296,33 @@ function _dialogsWithAccess(body, role) {
 function _syncAccessFromDialogs(perClient, configGroups) {
     try {
         const configIds = new Set((configGroups || []).map((g) => String(g.id)));
+        // Entries an older version switched off (no registry row): back in
+        // an account's list as a member → drop the old flags too.
+        const legacyIds = new Set(
+            (configGroups || [])
+                .filter(
+                    (g) =>
+                        g &&
+                        (g.suspended === true || g._resolveFailedAt) &&
+                        !String(g.id).startsWith('unknown:'),
+                )
+                .map((g) => String(g.id)),
+        );
+        const legacyBack = [];
         for (const p of perClient || []) {
             if (!p || p.accountId === 'legacy') continue;
-            chatAccess.syncFromDialogs(p.accountId, [...(p.active || []), ...(p.archived || [])], {
-                configIds,
-            });
+            const list = [...(p.active || []), ...(p.archived || [])];
+            chatAccess.syncFromDialogs(p.accountId, list, { configIds });
+            if (!legacyIds.size) continue;
+            for (const d of list) {
+                const id = String(d?.id);
+                if (legacyIds.has(id) && chatAccess.classifyEntity(d.entity)?.state === 'ok') {
+                    legacyBack.push(id);
+                    legacyIds.delete(id);
+                }
+            }
         }
+        if (legacyBack.length) _clearLegacyAccessFlags(legacyBack);
     } catch (e) {
         console.warn('[chat-access] dialogs sync failed:', e?.message || e);
     }
