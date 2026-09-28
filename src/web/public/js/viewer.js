@@ -2,7 +2,9 @@ import { state } from './store.js';
 import { formatDate, showToast } from './utils.js';
 import { attachSwipe, attachDragDismiss } from './gestures.js';
 import { tf as i18nTf, t as i18nT } from './i18n.js';
-import { getMediaUrl, getDownloadUrl } from './media-url.js';
+import { getMediaUrl, getDownloadUrl, isPeerRow } from './media-url.js';
+import { api } from './api.js';
+import { pushOverlay, popOverlay } from './overlay-history.js';
 import { ws } from './ws.js';
 import { renderTextInto, renderCodeInto, renderMarkdownInto, langFromExt } from './viewer-text.js';
 import { renderArchiveInto } from './viewer-archive.js';
@@ -283,6 +285,8 @@ function _wireFacesToolbarOnce() {
 // ============================================================================
 
 let zoomState = { scale: 1, panning: false, pointX: 0, pointY: 0, startX: 0, startY: 0 };
+// overlay-history token while the modal is open (Back closes it).
+let _viewerOverlay = null;
 /** @type {VideoPlayer|null} */
 let videoPlayer = null;
 
@@ -779,8 +783,14 @@ export function openMediaViewer(index) {
     document.getElementById('modal-download').href = downloadUrl;
     _setTypeChip(file);
 
+    const wasHidden = modal.classList.contains('hidden');
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+    // Back (Android / browser / PWA edge swipe) closes the viewer instead
+    // of leaving the page. Only the first open pushes; prev/next reuse it.
+    if (wasHidden && _viewerOverlay == null) {
+        _viewerOverlay = pushOverlay(() => closeMediaViewer());
+    }
 
     // Continuous player: start slideshow for photos, videos handle it via onended.
     _stopSlideshow();
@@ -1322,8 +1332,9 @@ class VideoPlayer {
         // interaction, so if we ever can't start with audio we fall back
         // to a muted start — the user can unmute with one click. The
         // mute state we already restored above wins when present.
-        const shouldAutoplay = localStorage.getItem(AUTOPLAY_LS_KEY) === '1'
-            || localStorage.getItem('viewer-auto-advance') === '1';
+        const shouldAutoplay =
+            localStorage.getItem(AUTOPLAY_LS_KEY) === '1' ||
+            localStorage.getItem('viewer-auto-advance') === '1';
         if (shouldAutoplay) {
             const tryPlay = () => {
                 this.video.play().catch(() => {
@@ -2078,7 +2089,9 @@ class VideoPlayer {
         label.textContent = `${step}s`;
         show.style.opacity = '1';
         clearTimeout(this._seekOverlayTimer);
-        this._seekOverlayTimer = setTimeout(() => { show.style.opacity = '0'; }, 600);
+        this._seekOverlayTimer = setTimeout(() => {
+            show.style.opacity = '0';
+        }, 600);
     }
 
     _showSpinner(on) {
@@ -2358,6 +2371,12 @@ export function closeMediaViewer() {
     _stopSlideshow();
     modal.classList.add('hidden');
     document.body.style.overflow = '';
+    if (_viewerOverlay != null) {
+        const token = _viewerOverlay;
+        _viewerOverlay = null;
+        popOverlay(token);
+    }
+    resetZoom();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     if (videoPlayer) videoPlayer.unload();
     const image = document.getElementById('modal-image');

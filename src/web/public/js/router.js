@@ -16,10 +16,18 @@
 // prefixed with ":" become named params (e.g. "/viewer/:groupId/:fileId").
 // The handler receives a single object: { params, hash, query, raw }.
 
+import { whenHistoryIdle } from './overlay-history.js';
+
 const routes = []; // { regex, paramNames, handler }
 let beforeNav = null;
 let activeRoute = null;
 let listening = false;
+// location.hash as of the last dispatch. popstate also fires for history
+// entries that only differ in state (overlay-history.js pushes one per
+// open viewer / sheet / modal, same URL) — those must not re-render the
+// page. Chrome also fires popstate + hashchange for one hash change,
+// which used to dispatch twice.
+let lastDispatchedHash = null;
 
 // Routes that require admin role. Guests browsing one of these get
 // re-routed to /viewer instead of running the handler. The guest
@@ -91,6 +99,7 @@ function parseHash(raw) {
 }
 
 function dispatch() {
+    lastDispatchedHash = window.location.hash;
     const { path, query } = parseHash();
 
     // Guest sessions are bounced from admin-only routes to the viewer.
@@ -128,7 +137,13 @@ function dispatch() {
     }
 }
 
-export function navigate(hash, { replace = false } = {}) {
+export function navigate(hash, opts = {}) {
+    // Closing an overlay steps back over its history entry asynchronously;
+    // navigating before that lands would be undone by it.
+    whenHistoryIdle(() => navigateNow(hash, opts));
+}
+
+function navigateNow(hash, { replace = false } = {}) {
     const target = hash.startsWith('#') ? hash : `#${hash}`;
     if (window.location.hash === target) {
         // Force a re-dispatch even when the hash didn't change (e.g. clicking
@@ -144,8 +159,12 @@ export function navigate(hash, { replace = false } = {}) {
 export function start() {
     if (listening) return;
     listening = true;
-    window.addEventListener('hashchange', dispatch);
-    window.addEventListener('popstate', dispatch);
+    const onHistory = () => {
+        if (window.location.hash === lastDispatchedHash) return;
+        dispatch();
+    };
+    window.addEventListener('hashchange', onHistory);
+    window.addEventListener('popstate', onHistory);
     // Kick off the initial render once routes are registered.
     queueMicrotask(dispatch);
 }

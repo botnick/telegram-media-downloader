@@ -61,6 +61,7 @@ import { setupDragDropLink } from './dragdrop-link.js';
 import { setupMiniPlayer, shrinkToMini, dismiss as dismissMiniPlayer } from './mini-player.js';
 import { wireChangelogTrigger } from './changelog-viewer.js';
 import * as WakeLock from './wake-lock.js';
+import { pushOverlay, popOverlay } from './overlay-history.js';
 
 // ============ Lazy page modules ============
 //
@@ -1086,15 +1087,17 @@ function registerRoutes() {
         // re-fires this handler and re-opens the sheet long after the
         // user moved on).
         renderPage('viewer');
-        const btn = document.getElementById('stories-btn');
-        if (btn) {
-            btn.click();
-        }
-        // Drop the /stories hash so back-button doesn't re-trigger.
+        // Drop the /stories hash so back-button doesn't re-trigger. Done
+        // BEFORE opening the sheet: the sheet pushes its own (Back-to-
+        // close) history entry, which this replace must not clobber.
         try {
             history.replaceState(null, '', '#/viewer');
         } catch {
             /* ignore */
+        }
+        const btn = document.getElementById('stories-btn');
+        if (btn) {
+            btn.click();
         }
     });
     router.route('/account/add', () => {
@@ -3478,8 +3481,15 @@ async function openGroupSettings(groupId, groupName) {
     // Wire the Data tab's action buttons once per modal open. The buttons
     // live inside the modal so re-binding on every open is harmless.
     _wireGroupDataActions(groupId);
+    // Back (Android / browser) closes the modal instead of the page.
+    if (modal.classList.contains('hidden') && _groupModalOverlay == null) {
+        _groupModalOverlay = pushOverlay(() => closeGroupSettings());
+    }
     modal.classList.remove('hidden');
 }
+
+// overlay-history token while Group Settings is open.
+let _groupModalOverlay = null;
 
 // Idempotent — replaces handlers via .onclick so re-opening the modal
 // for a different group always re-targets the right id.
@@ -3563,6 +3573,11 @@ function closeGroupSettings() {
     const modal = document.getElementById('group-modal');
     if (modal) modal.classList.add('hidden');
     currentEditGroup = null;
+    if (_groupModalOverlay != null) {
+        const token = _groupModalOverlay;
+        _groupModalOverlay = null;
+        popOverlay(token);
+    }
 }
 
 async function saveGroupSettings() {
