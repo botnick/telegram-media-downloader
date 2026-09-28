@@ -55,6 +55,7 @@ A wrong phone number / code / password keeps the step's state and sets `error` p
 |---|---|---|
 | `GET`  | `/api/stats`                  | `{totalFiles, totalSize, diskUsage, telegramConnected, peerStats:[{peerId, peerName, online, totalFiles, totalSize, totalSizeFormatted}], …}`. Also broadcast over WS as `stats_push` every 30 s. `peerStats` is `[]` for non-cluster installs and for guest sessions. |
 | `GET`  | `/api/dialogs`                | Active + archived chats; DMs gated by `config.allowDmDownloads`. |
+| `GET`  | `/api/chats/lookup?q=`        | Resolve what the dashboard's Add box can't find by name: `@username`, `t.me/<name>`, `t.me/c/<id>`, invite links (`t.me/+…`, `joinchat/…`) and message links. → `{kind, chat?, invite?, message?}`; `chat` has `id, name, type, username, members, joined, inConfig, enabled, suspended, dmDisabled`. An invite this account isn't in returns an `invite` preview (`title, members, url`). 404 `not_found` / `invite_invalid`, 422 for t.me links that aren't chats, 503 `no_account`. |
 | `GET`  | `/api/groups`                 | Configured groups with photo URLs. |
 | `PUT`  | `/api/groups/:id`             | Update group config (filters, autoForward, topics, accounts, **cluster routing** — `ownerPeerId` / `backupPeerId`). Auto-spawns a first-add backfill when the group is newly enabled and has no rows yet. |
 | `DELETE` | `/api/groups/:id/purge`     | Drop files + DB rows + config + photo. |
