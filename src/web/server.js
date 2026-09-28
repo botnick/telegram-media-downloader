@@ -11094,6 +11094,8 @@ app.get('/api/maintenance/config/raw', async (req, res) => {
         for (const block of [config.advanced?.nsfw, config.advanced?.seekbar]) {
             if (block?.apiToken) block.apiToken = '••••••• (redacted)';
         }
+        const rawFaces = config.advanced?.ai?.faces;
+        if (rawFaces?.sidecarToken) rawFaces.sidecarToken = '••••••• (redacted)';
         if (Array.isArray(config.accounts)) {
             // Phone numbers are stored alongside the metadata; keep but show
             // the user what they're about to download.
@@ -11126,6 +11128,11 @@ app.get('/api/config', async (req, res) => {
             if (!block || typeof block !== 'object') continue;
             block.apiTokenSet = !!block.apiToken;
             delete block.apiToken;
+        }
+        const safeFaces = safe.advanced?.ai?.faces;
+        if (safeFaces && typeof safeFaces === 'object') {
+            safeFaces.sidecarTokenSet = !!safeFaces.sidecarToken;
+            delete safeFaces.sidecarToken;
         }
         if (Array.isArray(safe.accounts)) {
             safe.accounts = safe.accounts.map((a) => ({
@@ -11312,6 +11319,8 @@ app.post('/api/config', async (req, res) => {
                             ...((cur.ai || {}).faces || {}),
                             ...inc.ai.faces,
                         };
+                        // Read-only flag from GET /api/config, never stored.
+                        delete merged.faces.sidecarTokenSet;
                     }
                     return merged;
                 })(),

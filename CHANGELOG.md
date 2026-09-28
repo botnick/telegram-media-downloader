@@ -48,7 +48,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Security
 - Guest sessions received the admin statistics push over WebSocket (including cluster peer stats); each connection now gets the payload for its own role, like `GET /api/stats`.
-- **Sidecar API tokens are write-only in the dashboard.** `GET /api/config` returns `apiTokenSet` instead of the token and the raw-config view redacts it — this also covers `advanced.seekbar.apiToken`, which was returned in clear before.
+- **Sidecar API tokens are write-only in the dashboard.** `GET /api/config` returns `apiTokenSet` instead of the token and the raw-config view redacts it — this also covers `advanced.seekbar.apiToken` and the faces sidecar's `advanced.ai.faces.sidecarToken`, which were returned in clear.
 - **seekbar-service 0.4.0:** with `SEEKBAR_API_TOKEN` set, `/sprite/{id}` and `/meta/{id}` need the token too, so a sidecar exposed through a tunnel doesn't hand out thumbnails of your videos (`SEEKBAR_PUBLIC_MEDIA=true` keeps them open). Both sidecars log a warning when they listen beyond localhost without a token.
 
 ### Performance
