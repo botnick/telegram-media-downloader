@@ -45,7 +45,7 @@ A wrong phone number / code / password keeps the step's state and sets `error` p
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET`  | `/api/monitor/status` | `{state, queue, active, workers, accounts, stats, uptimeMs}`. Also broadcast over WS as `monitor_status_push` every 3 s when at least one client is connected. |
+| `GET`  | `/api/monitor/status` | `{state, queue, active, workers, accounts, stats, uptimeMs, hint, core}`. `core` is `null`, or `{state, fix}` while tgdl-core (the app's Go engine) can't run — the dashboard shows it as a banner. Also broadcast over WS as `monitor_status_push` every 3 s when at least one client is connected. |
 | `POST` | `/api/monitor/start`  | Loads `AccountManager`, starts realtime monitor in-process. |
 | `POST` | `/api/monitor/stop`   | Cleans up watchers + the worker pool. |
 
@@ -141,17 +141,17 @@ All five are admin-only. `POST /api/history` for a chat that can't be reached an
 
 | Method | Path | Notes |
 |---|---|---|
-| `POST` | `/api/maintenance/files/verify`  | Re-stat every cataloged download; prune rows whose file is missing on disk. |
+| `POST` | `/api/maintenance/files/verify`  | Re-stat every cataloged download; prune rows whose file is missing on disk. `503 TGDL_CORE_UNAVAILABLE` (with the fix) while tgdl-core can't run. |
 | `GET`  | `/api/maintenance/files/verify/status` | JobTracker snapshot — `{running, stage, progress, result}`. |
 | `GET`  | `/api/maintenance/files/verify/stats`  | `{lastRun: {finishedAt, removed, scanned}}` — survives restart. |
-| `POST` | `/api/maintenance/reindex`       | Walk `data/downloads/` and `INSERT OR IGNORE` rows for files the catalog doesn't have yet. |
+| `POST` | `/api/maintenance/reindex`       | Walk `data/downloads/` and `INSERT OR IGNORE` rows for files the catalog doesn't have yet. `503 TGDL_CORE_UNAVAILABLE` while tgdl-core can't run. |
 | `GET`  | `/api/maintenance/reindex/status`| JobTracker snapshot. |
 | `GET`  | `/api/maintenance/reindex/stats` | `{lastRun: {finishedAt, added, scanned}}`. |
 | `POST` | `/api/maintenance/resync-dialogs`| Re-resolve every group's name + profile photo. |
 | `POST` | `/api/maintenance/restart-monitor`| Stop + start the in-process monitor. |
 | `POST` | `/api/maintenance/db/integrity`  | `PRAGMA integrity_check`. |
 | `POST` | `/api/maintenance/db/vacuum`     | `VACUUM`. |
-| `POST` | `/api/maintenance/dedup/scan`    | SHA-256 catch-up + groups duplicate sets. Single in-flight guard; broadcasts `dedup_progress` over WS. |
+| `POST` | `/api/maintenance/dedup/scan`    | SHA-256 catch-up + groups duplicate sets. Single in-flight guard; broadcasts `dedup_progress` over WS. `503 TGDL_CORE_UNAVAILABLE` while tgdl-core can't run. |
 | `GET`  | `/api/maintenance/dedup/status`  | JobTracker snapshot — `{running, stage, processed, total, result}`. |
 | `GET`  | `/api/maintenance/dedup/stats`   | `{totalFiles, hashed, missing, lastScan: {finishedAt, scanned, hashed, duplicateSets, extraCopies, reclaimableBytes}}`. Survives restart. |
 | `POST` | `/api/maintenance/dedup/delete`  | `{ids:[…]}` — delete from disk + DB + thumbs cache. |
@@ -212,7 +212,7 @@ Opt-in face detection + clustering, backed by the Python sidecar in `faces-servi
 | `POST`   | `/api/ai/faces/health-test`         | CORS proxy — test connection to an arbitrary faces sidecar URL. Body: `{url}`. Returns `{ok, version, model, ready, providers}`. |
 | `POST`   | `/api/ai/faces/restart`             | Restart the faces sidecar (after switching detector model / providers / det_size). Broadcasts `ai_faces_status`. |
 | `POST`   | `/api/ai/faces/install-deps`        | Stream `python -m tgdl_faces.install` over `ai_faces_install_progress` / `ai_faces_install_done`. Accepts `{force?:'cpu'\|'gpu'\|'directml'\|'openvino', dryRun?:bool, noUninstall?:bool}`. |
-| `POST`   | `/api/ai/faces/recluster`           | Re-run DBSCAN over the existing `faces` table without re-detecting (cheap; preserves labels via centroid match). |
+| `POST`   | `/api/ai/faces/recluster`           | Re-run DBSCAN over the existing `faces` table without re-detecting (cheap; preserves labels via centroid match). `503 TGDL_CORE_UNAVAILABLE` while tgdl-core can't run. |
 | `POST`   | `/api/ai/faces/reindex`             | Confirm-sheet gated — wipes every detection + cluster and re-scans every photo. Use after switching detector model. Broadcasts `ai_faces_reindexed`. |
 | `POST`   | `/api/ai/preload-model/:name`       | Trigger background download of a face detection model. Proxies to sidecar `POST /preload/:name`. Returns `{model, status}`. `status` ∈ `not_downloaded`, `downloading`, `ready`, `error:…`. |
 | `GET`    | `/api/ai/preload-model/:name/status`| Check model download status. Returns `{model, status}`. |
