@@ -211,10 +211,14 @@ async function init() {
         } catch {}
     });
     ws.on('group_purged', () => loadGroups());
-    ws.on('purge_all', () => {
-        loadGroups();
-        loadStats();
-    });
+    ws.on('purge_all', () => loadGroups());
+    // Footer counters ride the server's debounced `stats_update` push
+    // (fired after every download_complete / file_deleted / bulk_delete /
+    // purge / config change). Refetching /api/stats per file event, as
+    // this module used to, flooded the server during backfills and
+    // auto-prune sweeps. Re-sync once after a reconnect.
+    ws.on('stats_update', (m) => _applyStats(m?.stats || m?.payload || null));
+    ws.on('__ws_open', () => loadStats());
     // Auto-prune / disk-rotator / rescue sweeper all broadcast file_deleted —
     // drop the matching tile from the open gallery if any, otherwise just
     // refresh stats so disk-usage / file-count chip stay current. Surgical
@@ -241,7 +245,6 @@ async function init() {
                 if (state.files.length === 0) renderGalleryEmptyState();
             }
         }
-        loadStats();
     };
     ws.on('file_deleted', dropFileFromView);
     // Federated gallery live-refresh (Layer 1, v2.12+). Server broadcasts
@@ -262,7 +265,6 @@ async function init() {
     });
     ws.on('bulk_delete', () => {
         if (state.currentPage === 'viewer') refreshCurrentPage();
-        loadStats();
     });
     // Rescue Mode aggregate — fires once after every sweep. The per-row
     // `file_deleted` events above already kept the gallery + stats in
@@ -681,6 +683,12 @@ function renderPage(page, params = {}) {
         try {
             stopBackfillPage();
         } catch {}
+    }
+    // Cluster page polls /api/cluster/peers every 30 s — stop it when the
+    // page goes away (init() restarts it on the next visit). The module is
+    // already loaded, so this import resolves from the module map.
+    if (state.currentPage === 'maintenance-cluster' && page !== 'maintenance-cluster') {
+        import('./maintenance-cluster.js').then((m) => m.destroy?.()).catch(() => {});
     }
     state.currentPage = page;
     document.body.dataset.page = page;
@@ -1764,8 +1772,9 @@ function _renderGalleryScopeMenu() {
             state.page = 1;
             state.hasMore = true;
             state.files = [];
-            // Refresh the footer so peer counts pick up the new scope.
-            loadStats();
+            // Re-apply the footer so peer counts pick up the new scope.
+            if (_lastStats) _applyStats(_lastStats);
+            else loadStats();
             if (state.currentPage === 'viewer') {
                 if (state.currentGroupId) loadGroupFiles(state.currentGroupId);
                 else loadAllFiles();
@@ -4447,46 +4456,63 @@ function _recheckLoadMore() {
     });
 }
 
-async function loadStats() {
-    try {
-        const stats = await api.get('/api/stats');
-        const diskEl = document.getElementById('disk-usage');
-        const filesEl = document.getElementById('total-files');
-        if (diskEl)
-            diskEl.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
-        // Federated footer total. When the gallery scope is 'all' or a
-        // specific peer, the footer file count should reflect what the
-        // user is currently looking at — otherwise "1234 files" + a
-        // gallery showing 5,000 tiles read as a contradiction.
-        // peerStats is empty on non-cluster installs and for guest
-        // sessions, so the local-only path stays unchanged.
-        if (filesEl) {
-            const local = Number(stats.totalFiles) || 0;
-            const peers = Array.isArray(stats.peerStats) ? stats.peerStats : [];
-            const peerTotal = peers.reduce((s, p) => s + (Number(p.totalFiles) || 0), 0);
-            const scope = state.galleryScope || 'local';
-            if (scope === 'all' && peerTotal > 0) {
-                filesEl.textContent = i18nTf(
-                    'footer.files.merged',
-                    { local, peers: peerTotal },
-                    `${local} + ${peerTotal} peers`,
-                );
-                filesEl.title = peers
-                    .map(
-                        (p) =>
-                            `${p.peerName}: ${p.totalFiles} ${p.totalSizeFormatted ? `(${p.totalSizeFormatted})` : ''}${p.online ? '' : ' (offline)'}`,
-                    )
-                    .join('\n');
-            } else if (scope !== 'local' && scope !== 'all') {
-                const p = peers.find((x) => String(x.peerId) === String(scope));
-                filesEl.textContent = String(p?.totalFiles ?? 0);
-                filesEl.title = p ? `${p.peerName}${p.online ? '' : ' (offline)'}` : '';
-            } else {
-                filesEl.textContent = String(local);
-                filesEl.title = '';
-            }
+// Latest /api/stats payload (HTTP or `stats_update` push) — kept so a
+// gallery-scope change can re-render the footer without a refetch.
+let _lastStats = null;
+let _statsInFlight = null;
+
+// One-shot fetch (boot, WS reconnect, explicit refresh). Concurrent calls
+// share the in-flight request instead of stacking.
+function loadStats() {
+    if (_statsInFlight) return _statsInFlight;
+    _statsInFlight = api
+        .get('/api/stats')
+        .then((stats) => _applyStats(stats))
+        .catch(() => {})
+        .finally(() => {
+            _statsInFlight = null;
+        });
+    return _statsInFlight;
+}
+
+function _applyStats(stats) {
+    if (!stats || typeof stats !== 'object') return;
+    _lastStats = stats;
+    const diskEl = document.getElementById('disk-usage');
+    const filesEl = document.getElementById('total-files');
+    if (diskEl) diskEl.textContent = stats.diskUsageFormatted || formatBytes(stats.diskUsage || 0);
+    // Federated footer total. When the gallery scope is 'all' or a
+    // specific peer, the footer file count should reflect what the
+    // user is currently looking at — otherwise "1234 files" + a
+    // gallery showing 5,000 tiles read as a contradiction.
+    // peerStats is empty on non-cluster installs and for guest
+    // sessions, so the local-only path stays unchanged.
+    if (filesEl) {
+        const local = Number(stats.totalFiles) || 0;
+        const peers = Array.isArray(stats.peerStats) ? stats.peerStats : [];
+        const peerTotal = peers.reduce((s, p) => s + (Number(p.totalFiles) || 0), 0);
+        const scope = state.galleryScope || 'local';
+        if (scope === 'all' && peerTotal > 0) {
+            filesEl.textContent = i18nTf(
+                'footer.files.merged',
+                { local, peers: peerTotal },
+                `${local} + ${peerTotal} peers`,
+            );
+            filesEl.title = peers
+                .map(
+                    (p) =>
+                        `${p.peerName}: ${p.totalFiles} ${p.totalSizeFormatted ? `(${p.totalSizeFormatted})` : ''}${p.online ? '' : ' (offline)'}`,
+                )
+                .join('\n');
+        } else if (scope !== 'local' && scope !== 'all') {
+            const p = peers.find((x) => String(x.peerId) === String(scope));
+            filesEl.textContent = String(p?.totalFiles ?? 0);
+            filesEl.title = p ? `${p.peerName}${p.online ? '' : ' (offline)'}` : '';
+        } else {
+            filesEl.textContent = String(local);
+            filesEl.title = '';
         }
-    } catch (e) {}
+    }
 }
 
 // ============ Purge Functions ============
