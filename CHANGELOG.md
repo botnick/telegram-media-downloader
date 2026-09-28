@@ -4,24 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
-### Changed
-- **Redesigned release notes** (click the version in the status bar): one card per version with its date and summary, sections tagged by kind (Security, Fixed, Performance, …) with counts on collapsed cards, the installed version marked, older versions collapsed, and a search box. Maintainer-only details (the empty "Unreleased" heading, service-worker cache versions) are no longer shown.
+## [2.25.0] — 2026-09-29
+
+Data-safety, security and performance release — nothing can wipe or orphan your library any more (unmounted disks, shared files, duplicates), NSFW scans no longer freeze the dashboard or restart Docker containers, memory leaks fixed, and a redesigned release-notes viewer. No action needed when updating.
 
 ### Fixed — integrity sweep could wipe the library
 - **An unmounted or unreadable downloads disk no longer deletes your library.** The integrity sweep (runs 30 s after boot and hourly) treated any `stat` error as "file deleted" and pruned those downloads — with a split-disk setup, an HDD that isn't mounted yet, or a network share that dropped, that meant every row (plus faces, NSFW scores, pins). It now skips entirely when the downloads folder can't be read, only counts `ENOENT`/`ENOTDIR` as missing, and automatic runs refuse to prune when more than half the library looks missing (Maintenance → Verify files still prunes on demand).
 - Downloads stored through a federated-dedup reference (`_clusterref/…`) or under a custom `download.path` outside `data/downloads` were pruned on every sweep; they're kept now.
 - Pruning is done in chunks with yields instead of one transaction, which blocked the server for ~35 s at 150k dead rows (long enough to fail the Docker healthcheck).
-
-### Performance
-- **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
-- **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
-- The NSFW model is released after 5 minutes idle instead of staying loaded for the life of the process.
-
-### Memory
-- **Telegram session cache no longer grows forever.** gramJS added a fresh copy of every user/chat it saw to an in-memory set that never de-duplicated — tens of MB per day per account on a monitoring install. It now keeps one entry per peer.
-- **Discarded Telegram clients are fully shut down** (`destroy()` instead of `disconnect()`), so reloads, removed accounts and failed logins no longer leave clients running in the background. A revoked legacy session no longer opens a new connection on every avatar request.
-- **Dropbox backups stream large files** instead of holding up to 150 MB per file in memory (3 in parallel); S3/SFTP libraries load only when such a destination is used (~16 MB less at boot).
-- Idle hash workers are released after a minute; the libvips operation cache is off (thumbnails are cached on disk); the Docker image sets `MALLOC_ARENA_MAX=2` to curb native-memory fragmentation.
 
 ### Fixed — duplicates / deleting files
 - **Maintenance → Duplicates showed nothing after a scan.** The status endpoint dropped the found sets from its response and kept reporting `running: true` after the scan finished, so the page rendered an empty result (or a scan that never ended) since v2.x's WS-payload trim.
@@ -40,10 +30,26 @@ All notable changes to this project are documented here. The format is based on 
 - **Sidecar URL probes** (`POST /api/maintenance/nsfw/sidecar-test`, `POST /api/ai/faces/health-test`) now parse the admin-supplied URL with `URL`, reject embedded credentials and inputs over 2048 chars, and trim trailing slashes without the quadratic `/\/+$/` regex.
 - **LIKE patterns didn't escape `\`.** Folder-rename path rewrites and file search escaped `%` / `_` but not the escape character itself, so a folder name containing `\` could match — and rewrite — another folder's `file_path` rows.
 
+### Performance
+- **NSFW scans no longer freeze the dashboard or trip the Docker healthcheck.** onnxruntime-node runs inference synchronously on the calling thread, so the in-process classifier blocked the event loop for the whole batch (1.3 s per step measured; ~8 s on a 2-thread box) — HTTP/WS stalled and autoheal restarted the container mid-scan when `/api/auth_check` timed out. Inference and image decoding now run in a worker thread (max event-loop delay during a scan: 1.28 s → 36 ms).
+- **~2.3× faster local NSFW scans.** Photos are resized by sharp to the model's input size before inference instead of being decoded at full resolution into JS memory, and are classified in batches; video sprites are decoded once instead of once per sampled tile, with no temp-JPEG round trip. Inference threads default to half the CPU threads (max 8) instead of every logical core; override with `TGDL_NSFW_THREADS`.
+- The NSFW model is released after 5 minutes idle instead of staying loaded for the life of the process.
+
+### Memory
+- **Telegram session cache no longer grows forever.** gramJS added a fresh copy of every user/chat it saw to an in-memory set that never de-duplicated — tens of MB per day per account on a monitoring install. It now keeps one entry per peer.
+- **Discarded Telegram clients are fully shut down** (`destroy()` instead of `disconnect()`), so reloads, removed accounts and failed logins no longer leave clients running in the background. A revoked legacy session no longer opens a new connection on every avatar request.
+- **Dropbox backups stream large files** instead of holding up to 150 MB per file in memory (3 in parallel); S3/SFTP libraries load only when such a destination is used (~16 MB less at boot).
+- Idle hash workers are released after a minute; the libvips operation cache is off (thumbnails are cached on disk); the Docker image sets `MALLOC_ARENA_MAX=2` to curb native-memory fragmentation.
+
+### Changed
+- **Redesigned release notes** (click the version in the status bar): one card per version with its date and summary, sections tagged by kind (Security, Fixed, Performance, …) with counts on collapsed cards, the installed version marked, older versions collapsed, and a search box. Maintainer-only details (the empty "Unreleased" heading, service-worker cache versions) are no longer shown.
+
 ### Fixed
 - **`npm run pre-download-models` failed with `Cannot find module`** ([#64](https://github.com/botnick/telegram-media-downloader/issues/64)). `scripts/pre-download-models.js` was referenced since v2.15 but never committed. It now exists and seeds the NSFW model cache with the configured model + precision (no-op when an NSFW sidecar is configured). The Docker build no longer runs it: `/app/data` is hidden by the `./data` bind-mount at runtime, so a build-time download never reached the running container. See [DEPLOY.md](docs/DEPLOY.md#split-disk-setup) for offline seeding.
 - **NSFW "Precision" setting was ignored.** Scans and preloads always loaded the `q8` variant because the server dropped `advanced.nsfw.dtype` when building the scan config.
 
+### Service worker
+- `VERSION = 'v2250'`
 ## [2.24.5] — 2026-05-31
 
 Hardening follow-up to v2.24.4 — connection-leak + revoked-session fixes from an adversarial audit of the reconnect/self-heal code.
