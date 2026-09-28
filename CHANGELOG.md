@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The format is based on 
 ## [Unreleased]
 
 ### Added
+- **faces-service 0.5.0 is now the bundled face sidecar** (20-30x faster on CPU, see its changelog). Bare-metal installs download it on the next start; the old binary stays on disk. Embeddings are compatible, so existing People groups are kept.
 - **Back closes the open overlay.** Android's system Back, the browser Back button and the iOS PWA edge swipe now close the media viewer, a bottom sheet or the Group Settings modal (topmost first) instead of leaving the page underneath. Closing an overlay with ✕ / Esc / swipe consumes its history entry, so the next Back still goes to the previous page; navigating from an overlay (e.g. Group Settings → Backfill shortcut, FAB → Browse chats) waits for that step so it can't be undone.
 - **Pinch and double-tap zoom in the image viewer** (touch / pen), with panning while zoomed; the mouse-wheel zoom now zooms toward the cursor. Swipe-to-navigate and drag-down-to-close are paused while zoomed or pinching.
 - **Pin / unpin from the viewer's action bar** (admins, local files) — same endpoint as the tile's pin chip; the gallery tile updates in place.
