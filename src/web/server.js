@@ -1768,6 +1768,14 @@ app.get('/api/update/status', async (req, res) => {
 });
 
 app.post('/api/update', async (req, res) => {
+    // Registered before the global checkAuth / guestGate (like the rest of
+    // the update routes), so it gates itself: an update snapshots the DB and
+    // asks watchtower to recreate the container — admin sessions only.
+    const session = validateSession(req.cookies?.tg_dl_session);
+    if (!session) return res.status(401).json({ error: 'Unauthorized' });
+    if (session.role !== 'admin') {
+        return res.status(403).json({ error: 'Admin only', adminRequired: true });
+    }
     const tracker = _jobTrackers.autoUpdate;
     const fromVersion = _readCurrentVersion();
     const r = tracker.tryStart(async () => {
@@ -6529,7 +6537,9 @@ async function _requirePassword(req, res) {
         // Export-Session into a full account-takeover surface for anyone
         // who already holds a session cookie.
         const result = loginVerify(supplied, config.web);
-        if (!result?.ok) {
+        // loginVerify also accepts the guest password (role 'guest'); the
+        // re-auth guard must only take the admin one.
+        if (!result?.ok || result.role !== 'admin') {
             res.status(403).json({ error: 'Invalid password' });
             return false;
         }
@@ -12666,7 +12676,10 @@ app.put('/api/groups/:id', async (req, res) => {
         // "Monitored Only" tab keeps the group hidden for up to
         // DIALOG_CACHE_TTL_MS even though it's now in config.
         _dialogsResponseCache = { at: 0, body: null };
-        broadcast({ type: 'config_updated', config });
+        // Payload-less like every other config_updated: the dashboard
+        // refetches /api/config, and the event also reaches guest sockets,
+        // which must never see password hashes or the share secret.
+        broadcast({ type: 'config_updated' });
 
         // Auto-backfill on first add (v2.3.34) — when a group transitions
         // from "never seen / disabled" → "enabled" AND has zero rows in
