@@ -39,6 +39,7 @@ All notable changes to this project are documented here. The format is based on 
 - **Deleting from the viewer could delete-then-hide the wrong file.** `file_deleted` is broadcast before the HTTP response returns, so the index-based splice removed the neighbour too. The file is now removed by identity and the viewer advances to the next item instead of closing.
 - **Empty gap in the viewer.** The never-populated preview strip reserved a 72 px band between the media and the info bar.
 - **One tap on a sidebar chat could open it several times / send several monitor-toggle PUTs.** Click + keydown handlers were re-attached to every row on each sidebar render, but rows keep their DOM when nothing changed, so after N `config_updated` events a tap ran N times. The list now uses one delegated listener, the ▶/⏸ toggle ignores repeat taps while its PUT is in flight, and Enter/Space on the row's inner buttons no longer also opens the chat.
+- **Saving a chat's settings on the Groups page no longer reloads the list.** It re-fetched every chat from Telegram, blanked the list, jumped back to the top and dropped the search filter; now only that row updates.
 
 ### Security
 - Guest sessions received the admin statistics push over WebSocket (including cluster peer stats); each connection now gets the payload for its own role, like `GET /api/stats`.
