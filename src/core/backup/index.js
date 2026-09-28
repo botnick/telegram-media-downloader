@@ -11,6 +11,7 @@ export {
     updateDestination,
     removeDestination,
     getDestinationStatus,
+    getDestinationConfig,
     runBackup,
     pause,
     resume,

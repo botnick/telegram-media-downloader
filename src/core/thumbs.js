@@ -471,7 +471,10 @@ async function _generateImageThumb(srcAbs, width, dstAbs) {
 
 const FFMPEG_TIMEOUT_MS = 120_000;
 
-function _runFfmpeg(args) {
+// A thumbnail grab that takes 120 s means a broken file, hence the default
+// timeout message reads as a permanent failure. Callers with legitimately
+// long runs (seekbar sprites) pass their own timeout + message.
+function _runFfmpeg(args, { timeoutMs = FFMPEG_TIMEOUT_MS, timeoutMessage } = {}) {
     return new Promise((resolve, reject) => {
         const p = spawn(_resolveFfmpegBin(), args, { windowsHide: true });
         const errChunks = [];
@@ -481,8 +484,12 @@ function _runFfmpeg(args) {
             try {
                 p.kill('SIGKILL');
             } catch {}
-            reject(new Error('does not contain any stream (ffmpeg timeout 120s)'));
-        }, FFMPEG_TIMEOUT_MS);
+            const err = new Error(
+                timeoutMessage || 'does not contain any stream (ffmpeg timeout 120s)',
+            );
+            err.timedOut = true;
+            reject(err);
+        }, timeoutMs);
         p.stderr.on('data', (c) => errChunks.push(c));
         p.on('error', (e) => {
             clearTimeout(timer);
@@ -699,8 +706,9 @@ export function hwaccelUploadPipeline(override) {
 
 // Public ffmpeg arg-runner. Exported so the seekbar module can spawn a
 // sprite encode without copy/pasting the stderr-capture wrapper.
-export function runFfmpegArgs(args) {
-    return _runFfmpeg(args);
+// `opts`: { timeoutMs, timeoutMessage } — see _runFfmpeg.
+export function runFfmpegArgs(args, opts) {
+    return _runFfmpeg(args, opts);
 }
 
 // True when the local ffmpeg build links libwebp. Seekbar uses this to

@@ -196,7 +196,7 @@ import {
     startSessionGc,
 } from '../core/web-auth.js';
 import { suppressNoise, wrapConsoleMethod, NATIVE_LOAD_FAIL } from '../core/logger.js';
-import { createJobTracker } from '../core/job-tracker.js';
+import { createJobTracker, flattenStatus } from '../core/job-tracker.js';
 import {
     getSelfPeerId,
     getSelfPeerName,
@@ -6100,8 +6100,7 @@ app.post('/api/maintenance/reindex', async (req, res) => {
 });
 
 app.get('/api/maintenance/reindex/status', async (req, res) => {
-    const snap = _jobTrackers.reindex.getStatus();
-    res.json({ ...snap, ...(snap.progress || {}) });
+    res.json(flattenStatus(_jobTrackers.reindex.getStatus()));
 });
 
 app.get('/api/maintenance/reindex/stats', async (req, res) => {
@@ -6628,8 +6627,7 @@ app.post('/api/maintenance/thumbs/build/cancel', async (req, res) => {
 });
 
 app.get('/api/maintenance/thumbs/build/status', async (req, res) => {
-    const snap = _jobTrackers.thumbsBuild.getStatus();
-    res.json({ ...snap, ...(snap.progress || {}) });
+    res.json(flattenStatus(_jobTrackers.thumbsBuild.getStatus()));
 });
 
 app.get('/api/maintenance/thumbs/build/stats', async (req, res) => {
@@ -7060,8 +7058,7 @@ app.post('/api/maintenance/faststart/scan', async (req, res) => {
 });
 
 app.get('/api/maintenance/faststart/status', async (req, res) => {
-    const snap = _jobTrackers.faststart.getStatus();
-    res.json({ ...snap, ...(snap.progress || {}) });
+    res.json(flattenStatus(_jobTrackers.faststart.getStatus()));
 });
 
 app.get('/api/maintenance/faststart/stats', async (req, res) => {
@@ -9801,6 +9798,18 @@ app.get('/api/backup/destinations/:id/status', async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
     try {
         res.json({ success: true, ...backup.getDestinationStatus(id) });
+    } catch (e) {
+        res.status(404).json({ error: e.message });
+    }
+});
+
+// Non-secret provider fields for the Edit form. Secrets never leave the
+// server — the form leaves them blank and PUT keeps the stored values.
+app.get('/api/backup/destinations/:id/config', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'bad id' });
+    try {
+        res.json({ success: true, config: backup.getDestinationConfig(id) });
     } catch (e) {
         res.status(404).json({ error: e.message });
     }

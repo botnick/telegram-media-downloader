@@ -101,6 +101,15 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
         return _running;
     }
 
+    // A run's last progress tick can carry its own `running: true` (dedup
+    // sends it on every tick). Drop it once the run settles so a caller that
+    // flattens progress next to the snapshot can't report a finished job as
+    // still running.
+    function _settledProgress() {
+        const { running: _r, ...rest } = _state.progress || {};
+        return rest;
+    }
+
     /**
      * Attempt to start a new run. If a run is already in flight, returns
      * `{ started:false, code:'ALREADY_RUNNING', snapshot }` so the
@@ -169,6 +178,7 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
                     ..._state,
                     running: false,
                     stage: 'done',
+                    progress: _settledProgress(),
                     finishedAt,
                     durationMs: finishedAt - startedAt,
                     result: result && typeof result === 'object' ? result : (result ?? null),
@@ -193,6 +203,7 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
                     ..._state,
                     running: false,
                     stage: 'error',
+                    progress: _settledProgress(),
                     finishedAt,
                     durationMs: finishedAt - startedAt,
                     error: msg,
@@ -231,6 +242,16 @@ export function createJobTracker({ kind, broadcast, log, eventPrefix } = {}) {
     }
 
     return { tryStart, cancel, getStatus, isRunning };
+}
+
+/**
+ * Status payload for endpoints that also expose progress fields flat
+ * (`processed`, `total`, …) for older clients. Snapshot fields win, so
+ * `running` / `stage` / `error` always describe the run as the tracker
+ * sees it, never a stale progress tick.
+ */
+export function flattenStatus(snap) {
+    return { ...(snap?.progress || {}), ...snap };
 }
 
 function _shortProgress(p) {

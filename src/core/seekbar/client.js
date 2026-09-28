@@ -30,12 +30,14 @@ async function _fetch(path, opts = {}) {
     const t = setTimeout(() => ctrl.abort(), opts.timeoutMs || 120_000);
     // Forward external abort signal so JobTracker cancellation kills
     // in-flight HTTP requests immediately instead of waiting for the
-    // sidecar's 10-minute processing timeout.
+    // sidecar's 10-minute processing timeout. The listener is removed
+    // again below — one scan signal outlives thousands of requests.
+    const onAbort = () => ctrl.abort();
     if (opts.signal) {
         if (opts.signal.aborted) {
             ctrl.abort();
         } else {
-            opts.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+            opts.signal.addEventListener('abort', onAbort, { once: true });
         }
     }
     try {
@@ -56,6 +58,7 @@ async function _fetch(path, opts = {}) {
         return body;
     } finally {
         clearTimeout(t);
+        opts.signal?.removeEventListener('abort', onAbort);
     }
 }
 
@@ -130,6 +133,27 @@ export async function submitOne({
         body: JSON.stringify(body),
         timeoutMs: 10 * 60_000,
         signal,
+    });
+}
+
+/**
+ * One job's current state (`GET /v1/jobs/:id`). Throws with
+ * `err.status === 404` once the sidecar has dropped the job — it keeps
+ * only its most recent 1000.
+ */
+export async function getJob(jobId, signal = null) {
+    return _fetch(`/v1/jobs/${encodeURIComponent(jobId)}`, {
+        method: 'GET',
+        timeoutMs: 15_000,
+        signal,
+    });
+}
+
+/** Best-effort cancel — the sidecar can only cancel a job still queued. */
+export async function cancelJob(jobId) {
+    return _fetch(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {
+        method: 'POST',
+        timeoutMs: 5_000,
     });
 }
 
