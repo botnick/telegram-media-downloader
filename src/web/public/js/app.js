@@ -2793,7 +2793,6 @@ function updateSelectionBar() {
         if (b) b.disabled = count === 0;
     }
     if (bar) bar.classList.toggle('hidden', !show);
-    document.body.classList.toggle('gallery-selecting', show);
     if (state.selectMode) _dismissSelectHint();
 }
 

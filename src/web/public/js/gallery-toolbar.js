@@ -57,11 +57,6 @@ export function pinnedQs() {
     return mode === 'first' ? '&pinnedFirst=1' : '';
 }
 
-/** True when the type tab or pinned filter narrows the gallery. */
-export function hasActiveFilters() {
-    return (state.currentFilter || 'all') !== 'all' || state.pinnedFilter === true;
-}
-
 const $ = (id) => document.getElementById(id);
 
 /**
@@ -205,7 +200,6 @@ export function syncGalleryToolbar() {
             if (document.activeElement !== input) input.value = state.searchQuery || '';
         }
     }
-    document.body.classList.toggle('gallery-searching', !!state.searchQuery);
     _syncClear();
     _syncCount();
     _syncFilterButton();
