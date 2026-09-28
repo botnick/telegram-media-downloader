@@ -1956,5 +1956,13 @@
     "queue.empty.filter_body": "No downloads match this filter.",
     "queue.empty.search_title": "No downloads match “{q}”",
     "queue.empty.search_body": "Search looks at file names and chat names.",
-    "queue.empty.show_all": "Show all downloads"
+    "queue.empty.show_all": "Show all downloads",
+    "settings.search.placeholder": "Search settings",
+    "settings.search.label": "Search settings by name",
+    "settings.search.clear": "Clear search",
+    "settings.search.elsewhere": "Also on other pages",
+    "settings.search.none_here": "No settings match “{q}” — but see below.",
+    "settings.search.none": "No settings match “{q}”. Try another word, in English or your language.",
+    "settings.search.count_one": "1 section matches",
+    "settings.search.count": "{count} sections match"
 }

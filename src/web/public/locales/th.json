@@ -1956,5 +1956,13 @@
     "queue.empty.filter_body": "ไม่มีรายการดาวน์โหลดที่ตรงกับตัวกรองนี้",
     "queue.empty.search_title": "ไม่พบรายการดาวน์โหลดที่ตรงกับ “{q}”",
     "queue.empty.search_body": "การค้นหาดูจากชื่อไฟล์และชื่อแชต",
-    "queue.empty.show_all": "แสดงรายการทั้งหมด"
+    "queue.empty.show_all": "แสดงรายการทั้งหมด",
+    "settings.search.placeholder": "ค้นหาการตั้งค่า",
+    "settings.search.label": "ค้นหาการตั้งค่าตามชื่อ",
+    "settings.search.clear": "ล้างการค้นหา",
+    "settings.search.elsewhere": "อยู่ในหน้าอื่นด้วย",
+    "settings.search.none_here": "ไม่มีการตั้งค่าที่ตรงกับ “{q}” แต่ดูด้านล่างได้",
+    "settings.search.none": "ไม่มีการตั้งค่าที่ตรงกับ “{q}” ลองคำอื่น เป็นภาษาไทยหรืออังกฤษก็ได้",
+    "settings.search.count_one": "ตรงกัน 1 ส่วน",
+    "settings.search.count": "ตรงกัน {count} ส่วน"
 }

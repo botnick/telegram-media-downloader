@@ -934,6 +934,26 @@
                          updates the hash; an IntersectionObserver at the
                          bottom of the page mirrors active section back
                          to the chip via [aria-selected]. -->
+                    <!-- Sticky top bar: settings search (js/settings-search.js) +
+                         the section chips. While a query is typed the chips
+                         hide, non-matching cards hide, matching labels are
+                         highlighted and tools on other pages are listed. -->
+                    <div class="settings-top-bar">
+                    <div class="settings-search" role="search">
+                        <i class="ri-search-line settings-search-icon" aria-hidden="true"></i>
+                        <!-- biome-ignore lint/a11y/useValidAutocomplete: deliberate autofill defence, see #sidebar-groups-search -->
+                        <input type="search" id="settings-search-input" name="settings-q" autocomplete="nope"
+                            autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                            data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true"
+                            data-i18n-placeholder="settings.search.placeholder" placeholder="Search settings"
+                            data-i18n-aria-label="settings.search.label" aria-label="Search settings by name"
+                            aria-describedby="settings-search-status">
+                        <button type="button" id="settings-search-clear" class="settings-search-clear hidden"
+                            data-i18n-aria-label="settings.search.clear" aria-label="Clear search"
+                            data-i18n-title="settings.search.clear" title="Clear search">
+                            <i class="ri-close-circle-fill" aria-hidden="true"></i>
+                        </button>
+                    </div>
                     <nav class="settings-chip-nav" role="tablist" aria-label="Settings sections">
                         <!-- Trimmed in v2.9: 10 chips → 5. Engine card +
                              Maintenance card moved to a header Session menu /
@@ -966,6 +986,9 @@
                             <span data-i18n="settings.security">Security</span>
                         </button>
                     </nav>
+                    </div>
+                    <p id="settings-search-status" class="settings-search-status hidden" role="status" aria-live="polite"></p>
+                    <div id="settings-search-elsewhere" class="settings-search-elsewhere hidden"></div>
 
                     <!-- PWA install affordance — hidden until the browser
                          fires `beforeinstallprompt` (handled in js/pwa.js).
@@ -1798,7 +1821,7 @@
                     </div>
 
                     <!-- Danger Zone -->
-                    <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4" data-admin-only>
+                    <div class="mt-6 bg-red-500/5 border border-red-500/20 rounded-xl p-4" data-admin-only data-settings-search-card>
                         <h3 class="text-red-400 font-medium mb-2 flex items-center gap-2">
                             <i class="ri-error-warning-line"></i> <span data-i18n="settings.danger.title">Danger Zone</span>
                         </h3>

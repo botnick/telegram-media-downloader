@@ -413,8 +413,7 @@ async function init() {
                 const fresh = getGroupName(state.currentGroupId);
                 if (fresh && fresh !== state.currentGroup) {
                     state.currentGroup = fresh;
-                    const t = document.getElementById('page-title');
-                    if (t) t.textContent = fresh;
+                    _setPageRaw('title', fresh);
                 }
             }
         }
@@ -840,18 +839,15 @@ function renderPage(page, params = {}) {
                 if (state.role === 'admin') Settings.setupAutoSave();
             })
             .catch((e) => console.error('settings page', e));
+        import('./settings-search.js')
+            .then((m) => m.initSettingsSearch())
+            .catch((e) => console.error('settings search', e));
         // Engine controls live in the admin-only System section; guests
         // never see the card, and `initEngine` polls /api/monitor/status
         // (admin-gated) so skip it for them.
         if (state.role === 'admin') initEngine();
-        document.getElementById('page-title').textContent = i18nT(
-            'settings.page.title',
-            'Settings',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
-            'settings.page.subtitle',
-            'System Configuration',
-        );
+        _setPageText('title', 'settings.page.title', 'Settings');
+        _setPageText('subtitle', 'settings.page.subtitle', 'System Configuration');
         // Optional deep-link: #/settings/<section> scrolls to that section.
         // Prefer #settings-<anchor> (unique by construction on the chip-nav
         // wrappers) over a [data-settings-section] match — the latter can
@@ -871,17 +867,11 @@ function renderPage(page, params = {}) {
         }
     } else if (page === 'groups') {
         renderGroupsConfig();
-        document.getElementById('page-title').textContent = i18nT(
-            'groups.page.title',
-            'Manage Groups',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
-            'groups.page.subtitle',
-            'Configure monitoring and filters',
-        );
+        _setPageText('title', 'groups.page.title', 'Manage Groups');
+        _setPageText('subtitle', 'groups.page.subtitle', 'Configure monitoring and filters');
     } else if (page === 'viewer') {
         if (state.currentGroup) {
-            document.getElementById('page-title').textContent = state.currentGroup;
+            _setPageRaw('title', state.currentGroup);
             // Returning to an already-loaded group gallery: keep the grid
             // and put the scroll + file count back.
             if (prevPage !== 'viewer' && _galleryLoadedFor(_galleryViewKey())) {
@@ -891,21 +881,16 @@ function renderPage(page, params = {}) {
             showAllMedia();
         }
     } else if (page === 'backfill') {
-        document.getElementById('page-title').textContent = i18nT(
-            'backfill.page.title',
-            'Backfill',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
-            'backfill.page.subtitle',
-            'Pull older messages into the queue',
-        );
+        _setPageText('title', 'backfill.page.title', 'Backfill');
+        _setPageText('subtitle', 'backfill.page.subtitle', 'Pull older messages into the queue');
         // Show the page first; backfill module loads server state then renders.
         loadBackfillModule()
             .then((m) => m.showBackfillPage(params))
             .catch((e) => console.error('backfill page', e));
     } else if (page === 'queue') {
-        document.getElementById('page-title').textContent = i18nT('queue.page.title', 'Queue');
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'queue.page.title', 'Queue');
+        _setPageText(
+            'subtitle',
             'queue.page.subtitle',
             'Active + pending + recently finished downloads',
         );
@@ -916,11 +901,9 @@ function renderPage(page, params = {}) {
         // sub-pages, now one). Power users keep the per-feature deep
         // links: /maintenance/duplicates etc. still resolve to their
         // dedicated pages directly.
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.hub.title',
-            'Maintenance',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.hub.title', 'Maintenance');
+        _setPageText(
+            'subtitle',
             'maintenance.hub.subtitle',
             'Catalogue, thumbnails, NSFW review, logs, backup destinations',
         );
@@ -928,11 +911,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-hub', e));
     } else if (page === 'maintenance-duplicates') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.duplicates.title',
-            'Find duplicate files',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.duplicates.title', 'Find duplicate files');
+        _setPageText(
+            'subtitle',
             'maintenance.duplicates.subtitle',
             'Hash every file and reclaim space from byte-identical copies',
         );
@@ -940,11 +921,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-duplicates', e));
     } else if (page === 'maintenance-thumbs') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.thumbs.page_title',
-            'Build thumbnails',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.thumbs.page_title', 'Build thumbnails');
+        _setPageText(
+            'subtitle',
             'maintenance.thumbs.subtitle',
             'Generate WebP previews for older files',
         );
@@ -952,11 +931,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-thumbs', e));
     } else if (page === 'maintenance-seekbar') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.seekbar.page_title',
-            'Seekbar previews',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.seekbar.page_title', 'Seekbar previews');
+        _setPageText(
+            'subtitle',
             'maintenance.seekbar.subtitle',
             'Generate WebP sprite sheets for video hover-preview thumbnails.',
         );
@@ -964,11 +941,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-seekbar', e));
     } else if (page === 'maintenance-video') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.video.page_title',
-            'Optimise videos for streaming',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.video.page_title', 'Optimise videos for streaming');
+        _setPageText(
+            'subtitle',
             'maintenance.video.subtitle',
             'Rewrite MP4s with `+faststart` so the HTML5 player can seek + play audio without buffering the whole file.',
         );
@@ -976,11 +951,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-video', e));
     } else if (page === 'maintenance-nsfw') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.nsfw.page_title',
-            'NSFW review',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.nsfw.page_title', 'NSFW review');
+        _setPageText(
+            'subtitle',
             'maintenance.nsfw.subtitle',
             "Five-tier classifier review — keep what's confidently 18+, delete what's confidently not, eyeball the borderline cases.",
         );
@@ -988,11 +961,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-nsfw', e));
     } else if (page === 'maintenance-ai') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.ai.page_title',
-            'AI Face Clustering',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.ai.page_title', 'AI Face Clustering');
+        _setPageText(
+            'subtitle',
             'maintenance.ai.subtitle',
             'Face clustering groups people across your library — all running locally.',
         );
@@ -1000,11 +971,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-ai', e));
     } else if (page === 'maintenance-logs') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.logs.page_title',
-            'Log viewer',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.logs.page_title', 'Log viewer');
+        _setPageText(
+            'subtitle',
             'maintenance.logs.subtitle',
             'Realtime tail of every backend log source',
         );
@@ -1012,11 +981,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-logs', e));
     } else if (page === 'maintenance-backup') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.backup.page_title',
-            'Backup destinations',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.backup.page_title', 'Backup destinations');
+        _setPageText(
+            'subtitle',
             'maintenance.backup.subtitle',
             'Mirror new downloads to S3 / SFTP / local NAS storage',
         );
@@ -1024,11 +991,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-backup', e));
     } else if (page === 'maintenance-cluster') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.cluster.page_title',
-            'Cluster',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.cluster.page_title', 'Cluster');
+        _setPageText(
+            'subtitle',
             'maintenance.cluster.subtitle',
             'Federate multiple instances. Files, downloads, and dedup span every paired peer.',
         );
@@ -1036,11 +1001,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-cluster', e));
     } else if (page === 'maintenance-recovery') {
-        document.getElementById('page-title').textContent = i18nT(
-            'maintenance.recovery.page_title',
-            'Recovery cleanup',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'maintenance.recovery.page_title', 'Recovery cleanup');
+        _setPageText(
+            'subtitle',
             'maintenance.recovery.subtitle',
             'Resolve, disable, or delete groups that no loaded account can access.',
         );
@@ -1048,11 +1011,9 @@ function renderPage(page, params = {}) {
             .then((m) => m.init())
             .catch((e) => console.error('maintenance-recovery', e));
     } else if (page === 'maintenance-updates') {
-        document.getElementById('page-title').textContent = i18nT(
-            'update.history.title',
-            'Update history',
-        );
-        document.getElementById('page-subtitle').textContent = i18nT(
+        _setPageText('title', 'update.history.title', 'Update history');
+        _setPageText(
+            'subtitle',
             'update.history.help',
             'Audit log of every Install update click — the structured error code makes repeat failures easy to diagnose.',
         );
@@ -1536,11 +1497,8 @@ function openGroup(groupId, groupName) {
     // out everything else for the new group.
     resetGalleryFilter();
 
-    document.getElementById('page-title').textContent = state.currentGroup;
-    document.getElementById('page-subtitle').textContent = i18nT(
-        'viewer.subtitle.loading',
-        'Loading...',
-    );
+    _setPageRaw('title', state.currentGroup);
+    _setPageText('subtitle', 'viewer.subtitle.loading', 'Loading...');
     // Mirror the sidebar avatar into the header so the user sees which
     // chat they're inside. Falls back to a coloured initial when there's
     // no profile photo cached yet.
@@ -1692,14 +1650,35 @@ function _galleryViewKey() {
     ].join('|');
 }
 
+// Page title / subtitle in the header. A translated string keeps its i18n
+// key on the element, so the language loading (or switching) after the
+// first render re-translates it instead of falling back to the markup's
+// "Viewer"; a dynamic text (a chat's name, "12 files") drops the key.
+function _setPageText(which, key, fallback) {
+    const el = document.getElementById(`page-${which}`);
+    if (!el) return;
+    el.dataset.i18n = key;
+    el.dataset.i18nFallback = fallback;
+    el.textContent = i18nT(key, fallback);
+}
+function _setPageRaw(which, text) {
+    const el = document.getElementById(`page-${which}`);
+    if (!el) return;
+    el.removeAttribute('data-i18n');
+    el.removeAttribute('data-i18n-fallback');
+    el.textContent = text;
+}
+
 // Header subtitle for the gallery: "N files", or "N results" while the
 // toolbar holds a search query.
 function _setGallerySubtitle(total) {
-    const sub = document.getElementById('page-subtitle');
-    if (!sub || total == null) return;
-    sub.textContent = state.searchQuery
-        ? formatResultCount(total)
-        : i18nTf('viewer.subtitle.files', { count: total }, `${total} files`);
+    if (total == null) return;
+    _setPageRaw(
+        'subtitle',
+        state.searchQuery
+            ? formatResultCount(total)
+            : i18nTf('viewer.subtitle.files', { count: total }, `${total} files`),
+    );
 }
 
 // URL for one page of the current gallery view: the chat / All Media feed,
@@ -1781,14 +1760,8 @@ function showAllMedia(opts) {
     }
     syncGalleryToolbar();
 
-    document.getElementById('page-title').textContent = i18nT(
-        'viewer.all_media.title',
-        'All Media',
-    );
-    document.getElementById('page-subtitle').textContent = i18nT(
-        'viewer.all_media.subtitle',
-        'All downloaded files',
-    );
+    _setPageText('title', 'viewer.all_media.title', 'All Media');
+    _setPageText('subtitle', 'viewer.all_media.subtitle', 'All downloaded files');
     // Header avatar back to the generic gallery glyph — switching from
     // a per-group view used to leave that chat's avatar in the header.
     updateHeaderAvatar(null, null);
@@ -4296,10 +4269,10 @@ async function _runSimilarSearch(downloadId) {
         } catch (e) {
             console.warn('renderMediaGrid after similar search:', e);
         }
-        const title = document.getElementById('page-title');
-        if (title) {
-            title.textContent = `🔍 ${i18nT('viewer.find_similar', 'Similar')} — ${mapped.length} ${i18nT('common.results', 'results')}`;
-        }
+        _setPageRaw(
+            'title',
+            `🔍 ${i18nT('viewer.find_similar', 'Similar')} — ${mapped.length} ${i18nT('common.results', 'results')}`,
+        );
     } catch (e) {
         showToast(`${i18nT('common.error', 'Error')}: ${e.message}`, 'error');
     }
@@ -4372,9 +4345,7 @@ async function _runSemanticSearch(q) {
         }
         // Update the page title so the operator knows they're in
         // search-results mode.
-        const title = document.getElementById('page-title');
-        if (title)
-            title.textContent = `🔍 "${q}" — ${mapped.length} ${i18nT('common.results', 'results')}`;
+        _setPageRaw('title', `🔍 "${q}" — ${mapped.length} ${i18nT('common.results', 'results')}`);
     } catch (e) {
         showToast(`${i18nT('common.error', 'Error')}: ${e.message}`, 'error');
     }

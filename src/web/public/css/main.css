@@ -6131,3 +6131,158 @@ html.theme-light #queue-actions-menu-slot .queue-global-actions button:hover {
     width: 100%;
     max-width: none;
 }
+
+/* ── Settings search (js/settings-search.js) ─────────────────────── */
+.settings-top-bar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--tg-bg, #17212b);
+    margin: 0 0 16px;
+    padding-top: 4px;
+}
+.settings-top-bar .settings-chip-nav {
+    position: static;
+    margin: 0;
+}
+.settings-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 44px;
+    margin-bottom: 4px;
+    border-radius: 10px;
+    background: var(--tg-panel);
+    border: 1px solid transparent;
+    transition:
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+.settings-search:focus-within {
+    border-color: var(--tg-blue);
+    box-shadow: 0 0 0 3px rgba(42, 171, 238, 0.18);
+}
+.settings-search-icon {
+    position: absolute;
+    left: 13px;
+    font-size: 17px;
+    color: var(--tg-textSecondary);
+    pointer-events: none;
+}
+#settings-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0 8px 0 40px;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--tg-text);
+    font-size: 16px;
+}
+@media (min-width: 640px) {
+    #settings-search-input {
+        font-size: 14px;
+    }
+}
+#settings-search-input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+.settings-search-clear {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--tg-textSecondary);
+}
+.settings-search-clear:hover {
+    color: var(--tg-text);
+}
+/* While searching: chips, PWA button and the save pill step aside. */
+#page-settings.is-searching .settings-chip-nav,
+#page-settings.is-searching #pwa-install-btn,
+#page-settings.is-searching #settings-autosave-status {
+    display: none !important;
+}
+.settings-search-miss {
+    display: none !important;
+}
+.settings-search-hit {
+    border-radius: 4px;
+    background: rgba(255, 196, 0, 0.18);
+    box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.18);
+}
+html.theme-light .settings-search-hit {
+    background: rgba(255, 196, 0, 0.32);
+    box-shadow: 0 0 0 3px rgba(255, 196, 0, 0.32);
+}
+.settings-search-status {
+    margin: -8px 2px 12px;
+    font-size: 13px;
+    color: var(--tg-textSecondary);
+}
+.settings-search-elsewhere {
+    margin: 0 0 16px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--tg-panel);
+}
+.settings-search-elsewhere-title {
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--tg-textSecondary);
+}
+.settings-search-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.settings-search-link {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px 0 14px;
+    border-radius: 999px;
+    background: var(--tg-bg);
+    border: 1px solid var(--tg-border);
+    color: var(--tg-text);
+    font-size: 14px;
+}
+.settings-search-link:hover {
+    border-color: var(--tg-blue);
+    color: var(--tg-blue);
+}
+.settings-search-clear:focus-visible,
+.settings-search-link:focus-visible {
+    outline: 2px solid var(--tg-blue);
+    outline-offset: 2px;
+}
+/* The sticky bar is taller now (search + chips): land section jumps
+   below it. */
+.settings-section {
+    scroll-margin-top: 112px;
+}
+.settings-search-status.is-empty {
+    margin: 8px 0 24px;
+    padding: 40px 16px;
+    text-align: center;
+    font-size: 14px;
+    border-radius: 12px;
+    background: var(--tg-panel);
+}
+.settings-search-status.is-empty::before {
+    content: "\f0d1"; /* ri-search-line (remixicon 4.0.0) */
+    display: block;
+    margin-bottom: 8px;
+    font-family: "remixicon", sans-serif;
+    font-size: 40px;
+    line-height: 1;
+    color: var(--tg-textSecondary);
+}
