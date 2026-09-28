@@ -22,7 +22,7 @@ import path from 'path';
 
 import { deleteFacesForDownload, getDb, insertFace, setAiIndexedAt } from '../db.js';
 import { detectFaces } from './faces.js';
-import { getDataDir } from '../paths.js';
+import { getDataDir, getDownloadsDir } from '../paths.js';
 
 const DATA_DIR = getDataDir();
 
@@ -121,7 +121,10 @@ async function _drainBg() {
         try {
             const live = loadConfig();
             cfg = live?.advanced?.ai || {};
-            if (cfg.enabled !== true) {
+            // Faces is the only capability left; with it off there is
+            // nothing to detect, and stamping ai_indexed_at anyway would
+            // hide these rows from the scan once face clustering is on.
+            if (cfg.enabled !== true || cfg.faceClustering !== true) {
                 _bgQueueRealtime.length = 0;
                 _bgQueueBackfill.length = 0;
                 return;
@@ -160,12 +163,20 @@ async function _drainBg() {
             // (kicked off via the AI maintenance page), so here we only
             // populate the faces table with embeddings.
             let detected = null;
-            if (cfg.faceClustering === true) {
-                try {
-                    detected = await detectFaces(abs, cfg);
-                } catch {
-                    /* swallow — clustering refresh retries */
+            try {
+                detected = await detectFaces(abs, cfg, undefined, { throwOnUnavailable: true });
+            } catch (e) {
+                if (e?.code === 'SIDECAR_UNAVAILABLE') {
+                    // Sidecar down / restarting / still loading: leave this
+                    // row and everything queued behind it un-stamped — the
+                    // next scan or auto-scan tick picks them up. Stamping
+                    // here recorded "no faces" for every download made
+                    // while the sidecar was away.
+                    _bgQueueRealtime.length = 0;
+                    _bgQueueBackfill.length = 0;
+                    break;
                 }
+                /* anything else: swallow — clustering refresh retries */
             }
 
             // All DB writes go through the busy-aware retry: a long-running
@@ -185,6 +196,14 @@ async function _drainBg() {
                                 w: f.w,
                                 h: f.h,
                                 embeddingBlob: _f32ToBlob(f.embedding),
+                                // Same fallback as the scan runner so these
+                                // rows don't land in the quality backfill queue.
+                                qualityScore: Number.isFinite(f.qualityScore)
+                                    ? f.qualityScore
+                                    : Number.isFinite(f.score)
+                                      ? f.score
+                                      : null,
+                                exifOriented: f.exifOriented === true,
                             });
                         }
                     }
@@ -211,8 +230,12 @@ function _resolveAbs(storedPath) {
     if (path.isAbsolute(storedPath) && existsSync(storedPath)) return storedPath;
     let s = String(storedPath).replace(/\\/g, '/');
     while (s.startsWith('data/downloads/')) s = s.slice('data/downloads/'.length);
-    const candidate = path.join(DATA_DIR, 'downloads', s);
-    if (existsSync(candidate)) return candidate;
+    // TGDL_DOWNLOADS_DIR (split-disk) first — the downloader stores paths
+    // relative to it — then the legacy <data>/downloads.
+    for (const root of new Set([getDownloadsDir(), path.join(DATA_DIR, 'downloads')])) {
+        const candidate = path.join(root, s);
+        if (existsSync(candidate)) return candidate;
+    }
     if (existsSync(storedPath)) return storedPath;
     return null;
 }

@@ -15,6 +15,8 @@ vi.mock('../../src/core/ai/faces-client.js', async (importOriginal) => {
         ...orig,
         detectFacesBatch: vi.fn().mockResolvedValue([]),
         detectFacesInVideo: vi.fn().mockResolvedValue([]),
+        // No real sidecar in unit tests — report it ready straight away.
+        waitForSidecarReady: vi.fn().mockResolvedValue(true),
     };
 });
 

@@ -48,7 +48,52 @@ const _peopleFilter = {
     videosOnly: false,
     hideLowQuality: false,
     sortBy: 'face_count',
+    // Server-side order (see /api/ai/people ?sort=&dir=). Clicking the
+    // active sort button flips it.
+    sortDir: 'desc',
 };
+
+// Natural first direction per sort key.
+const _SORT_DEFAULT_DIR = { face_count: 'desc', avg_quality: 'desc', name: 'asc' };
+
+// Face-crop images load at most this many at a time. The first request
+// for a crop costs the server a full-resolution decode (or an ffmpeg frame
+// grab for video faces), and the People grid asks for dozens at once.
+const CROP_LOAD_CONCURRENCY = 4;
+let _cropLoadsActive = 0;
+const _cropLoadQueue = [];
+
+function _pumpCropLoads() {
+    while (_cropLoadsActive < CROP_LOAD_CONCURRENCY && _cropLoadQueue.length) {
+        const img = _cropLoadQueue.shift();
+        const src = img.dataset.cropSrc;
+        if (!src || !img.isConnected) continue;
+        delete img.dataset.cropSrc;
+        _cropLoadsActive++;
+        const done = () => {
+            img.removeEventListener('load', done);
+            img.removeEventListener('error', done);
+            _cropLoadsActive--;
+            _pumpCropLoads();
+        };
+        img.addEventListener('load', done);
+        img.addEventListener('error', done);
+        img.src = src;
+    }
+}
+
+function _queueCropImages(root) {
+    if (!root) return;
+    for (const img of root.querySelectorAll('img[data-crop-src]')) _cropLoadQueue.push(img);
+    _pumpCropLoads();
+}
+
+// Person ids are never reused, but a merge / split / reassign changes which
+// face represents a person while the avatar URL is cached for a week —
+// version it by the row's updated_at.
+function _personFaceUrl(p, w) {
+    return `/api/ai/person/${p.id}/face?w=${w}&v=${encodeURIComponent(p.updated_at || '')}`;
+}
 
 // Scan phase tracking — distinguishes Phase A (per-image detect) from
 // Phase B (DBSCAN clustering, runs after A completes, typically seconds).
@@ -215,18 +260,31 @@ function _bindOnce() {
         const btn = e.target.closest('.ai-sort-btn');
         if (!btn) return;
         const sortBy = btn.dataset.sort;
-        if (!sortBy || sortBy === _peopleFilter.sortBy) return;
-        _peopleFilter.sortBy = sortBy;
+        if (!sortBy) return;
+        if (sortBy === _peopleFilter.sortBy) {
+            _peopleFilter.sortDir = _peopleFilter.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            _peopleFilter.sortBy = sortBy;
+            _peopleFilter.sortDir = _SORT_DEFAULT_DIR[sortBy] || 'desc';
+        }
         for (const b of document.querySelectorAll('#ai-people-sort-group .ai-sort-btn')) {
+            b.querySelector('.ai-sort-dir')?.remove();
             if (b.dataset.sort === sortBy) {
                 b.classList.remove('text-tg-textSecondary');
                 b.classList.add('bg-tg-blue/10', 'text-tg-blue');
+                const arrow = document.createElement('i');
+                arrow.className = `ai-sort-dir text-[9px] ml-0.5 ${
+                    _peopleFilter.sortDir === 'asc' ? 'ri-arrow-up-line' : 'ri-arrow-down-line'
+                }`;
+                b.appendChild(arrow);
             } else {
                 b.classList.remove('bg-tg-blue/10', 'text-tg-blue');
                 b.classList.add('text-tg-textSecondary');
             }
         }
-        _renderPeopleGrid().catch(() => {});
+        // The order is applied server-side so the 2 000-row page is the
+        // real top of the whole library for that key.
+        _loadPeople();
     });
     $('#ai-people-refresh-btn')?.addEventListener('click', () => _loadPeople());
 
@@ -1424,7 +1482,9 @@ function _onScanDone(feature, msg) {
 
 async function _loadPeople() {
     try {
-        const r = await api.get('/api/ai/people?limit=2000');
+        const sort = encodeURIComponent(_peopleFilter.sortBy || 'face_count');
+        const dir = encodeURIComponent(_peopleFilter.sortDir || 'desc');
+        const r = await api.get(`/api/ai/people?limit=2000&sort=${sort}&dir=${dir}`);
         if (!r.success) return;
         _peopleCache = Array.isArray(r.people) ? r.people : [];
         await _renderPeopleGrid();
@@ -1448,7 +1508,7 @@ async function _renderPeopleGrid() {
     const unlabeled = _peopleFilter.unlabeledOnly;
     const videosOnly = _peopleFilter.videosOnly;
     const hideLQ = _peopleFilter.hideLowQuality;
-    const sortBy = _peopleFilter.sortBy || 'face_count';
+    // Already in the requested order (server-side sort).
     const filtered = _peopleCache.filter((p) => {
         if (unlabeled && p.label) return false;
         if (videosOnly && !(Number(p.video_face_count) > 0)) return false;
@@ -1460,11 +1520,6 @@ async function _renderPeopleGrid() {
         }
         return true;
     });
-    if (sortBy === 'avg_quality') {
-        filtered.sort((a, b) => (Number(b.avg_quality) || 0) - (Number(a.avg_quality) || 0));
-    } else if (sortBy === 'name') {
-        filtered.sort((a, b) => (a.label || `zzz${a.id}`).localeCompare(b.label || `zzz${b.id}`));
-    }
 
     const countText = $('#ai-people-count-text') || count;
     if (countText) {
@@ -1543,7 +1598,8 @@ async function _renderPeopleGrid() {
     // the epsilon being too high and merging everyone together.
     if (epsilonWarn) {
         const totalFaces = _peopleCache.reduce((s, p) => s + (Number(p.face_count) || 0), 0);
-        const maxCluster = Math.max(..._peopleCache.map((p) => Number(p.face_count) || 0));
+        let maxCluster = 0;
+        for (const p of _peopleCache) maxCluster = Math.max(maxCluster, Number(p.face_count) || 0);
         const dominance = totalFaces > 0 ? maxCluster / totalFaces : 0;
         // Also warn when fewer than expected clusters exist — a common sign
         // of over-merging is having 1–3 clusters for a large library.
@@ -1588,6 +1644,7 @@ async function _renderPeopleGrid() {
             frag.appendChild(card);
         }
         grid.appendChild(frag);
+        _queueCropImages(grid);
         if (_selectedPerson) {
             const sel = grid.querySelector(`[data-person="${_selectedPerson}"]`);
             if (sel) sel.classList.add('ring-2', 'ring-tg-blue/50', 'bg-tg-blue/10');
@@ -1633,7 +1690,7 @@ function _personTile(p) {
     const faceCount = Number(p.face_count) || 0;
     const safeName = escapeHtml(name);
 
-    const faceUrl = !isUnclassified && p.id > 0 ? `/api/ai/person/${p.id}/face?w=128` : '';
+    const faceUrl = !isUnclassified && p.id > 0 ? _personFaceUrl(p, 128) : '';
     const fallbackUrl = p.cover_download_id ? `/api/thumbs/${p.cover_download_id}?w=128` : '';
 
     let imgHtml;
@@ -1641,7 +1698,7 @@ function _personTile(p) {
         const fb = fallbackUrl
             ? `this.onerror=null;this.src='${escapeHtml(fallbackUrl)}'`
             : "this.onerror=null;this.replaceWith(Object.assign(document.createElement('i'),{className:'ri-user-line text-2xl text-tg-textSecondary/40'}))";
-        imgHtml = `<img src="${escapeHtml(faceUrl)}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover" onerror="${fb}">`;
+        imgHtml = `<img data-crop-src="${escapeHtml(faceUrl)}" alt="${safeName}" class="w-full h-full object-cover" onerror="${fb}">`;
     } else if (fallbackUrl) {
         imgHtml = `<img src="${fallbackUrl}" alt="${safeName}" loading="lazy" class="w-full h-full object-cover">`;
     } else {
@@ -1691,7 +1748,10 @@ async function _showPersonPhotos() {
     const detailAvatar = $('#ai-person-detail-avatar');
     if (detailAvatar) {
         if (_selectedPerson > 0) {
-            detailAvatar.innerHTML = `<img src="/api/ai/person/${_selectedPerson}/face?w=80" alt="${escapeHtml(_selectedPersonName)}" loading="lazy" class="w-full h-full object-cover" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('i'),{className:'ri-user-line text-lg text-tg-textSecondary/40'}))">`;
+            const sel = _peopleCache.find((p) => p.id === _selectedPerson) || {
+                id: _selectedPerson,
+            };
+            detailAvatar.innerHTML = `<img src="${escapeHtml(_personFaceUrl(sel, 80))}" alt="${escapeHtml(_selectedPersonName)}" loading="lazy" class="w-full h-full object-cover" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('i'),{className:'ri-user-line text-lg text-tg-textSecondary/40'}))">`;
         } else {
             detailAvatar.innerHTML = `<i class="ri-user-line text-lg text-tg-textSecondary/40"></i>`;
         }
@@ -1841,9 +1901,9 @@ async function _mergeSelectedPerson() {
     // don't cause a multi-second innerHTML freeze on open.
     const makeMergeCard = (p) => {
         const name = escapeHtml(p.label || `Person #${p.id}`);
-        const faceUrl = p.id > 0 ? `/api/ai/person/${p.id}/face?w=64` : '';
+        const faceUrl = p.id > 0 ? _personFaceUrl(p, 64) : '';
         const imgHtml = faceUrl
-            ? `<img src="${faceUrl}" class="w-full h-full object-cover" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-base text-tg-textSecondary/40\\'></i>'">`
+            ? `<img data-crop-src="${escapeHtml(faceUrl)}" class="w-full h-full object-cover" onerror="this.onerror=null;this.parentElement.innerHTML='<i class=\\'ri-user-line text-base text-tg-textSecondary/40\\'></i>'">`
             : `<i class="ri-user-line text-base text-tg-textSecondary/40"></i>`;
         return `<button type="button" data-pid="${p.id}"
             class="ai-merge-card flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-xl hover:bg-tg-blue/10 active:bg-tg-blue/20 transition-colors">
@@ -1882,6 +1942,7 @@ async function _mergeSelectedPerson() {
             if (!listEl) return;
             // Cap at 80 visible rows — search narrows results quickly.
             listEl.innerHTML = list.slice(0, 80).map(makeMergeCard).join('');
+            _queueCropImages(listEl);
             const empty = list.length === 0;
             if (emptyEl) emptyEl.classList.toggle('hidden', !empty);
             listEl.querySelectorAll('.ai-merge-card').forEach((btn) => {

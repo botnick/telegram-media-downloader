@@ -440,7 +440,7 @@ def test_video_file_not_found_returns_200_with_error(
     def _raise_fnf(path, allow_roots, **kwargs):
         raise FileNotFoundError("cv2 cannot open")
 
-    monkeypatch.setattr(app_mod, "extract_video_frames", _raise_fnf)
+    monkeypatch.setattr(app_mod, "iter_video_frames", _raise_fnf)
     resp = client.post(
         "/detect/video",
         json={"path": str(temp_root / "missing.mp4")},
@@ -459,7 +459,7 @@ def test_video_no_frames_extracted_returns_200_with_error(
     monkeypatch.setattr(insight, "_APP", MagicMock())
     monkeypatch.setattr(insight, "_APP_ERROR", None)
 
-    monkeypatch.setattr(app_mod, "extract_video_frames", lambda *a, **kw: [])
+    monkeypatch.setattr(app_mod, "iter_video_frames", lambda *a, **kw: iter([]))
     resp = client.post(
         "/detect/video",
         json={"path": str(temp_root / "empty.mp4")},
