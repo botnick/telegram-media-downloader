@@ -24,6 +24,7 @@ import { ws } from './ws.js';
 import { escapeHtml, showToast } from './utils.js';
 import { t as i18nT, tf as i18nTf, applyToDOM as applyI18n } from './i18n.js';
 import { confirmSheet } from './sheet.js';
+import { whenHistoryIdle } from './overlay-history.js';
 
 const PRESETS = [
     { value: 100, key: 'backfill.preset.last_100', fallback: 'Last 100' },
@@ -104,7 +105,11 @@ export function deepLinkFromModal(groupId, limit) {
     if (customInput) customInput.value = '';
     // Hand off to the router — the route handler calls showBackfillPage()
     // which renders everything in the right order.
-    location.hash = `#/backfill/${encodeURIComponent(String(groupId))}`;
+    // The Group Settings modal was just closed, which steps back over its
+    // history entry asynchronously — navigate once that has landed.
+    whenHistoryIdle(() => {
+        location.hash = `#/backfill/${encodeURIComponent(String(groupId))}`;
+    });
 }
 
 // ────────────────────────────────────────────────────────────────────

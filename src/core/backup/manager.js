@@ -46,6 +46,9 @@ const DEFAULT_WORKERS_PER_DEST =
         ? Math.min(20, Math.floor(Number(process.env.BACKUP_WORKERS_PER_DEST)))
         : 3;
 
+// Rows per keyset page in the mirror catch-up walk.
+const MIRROR_BATCH = 500;
+
 // ---- Public API surface ----------------------------------------------------
 
 const events = new EventEmitter();
@@ -175,9 +178,11 @@ export function addDestination(input) {
 }
 
 /**
- * Partial update of a destination. The `config` field, if present,
- * is fully replaced (not merged) and re-encrypted. Boots / kills the
- * worker as the `enabled` flag flips.
+ * Partial update of a destination. The `config` field, if present, is
+ * merged over the stored config and re-encrypted — the edit form leaves
+ * secret fields blank ("leave blank to keep"), so a blank or absent
+ * secret keeps its stored value. Boots / kills the worker as the
+ * `enabled` flag flips.
  */
 export function updateDestination(id, patch = {}) {
     const dest = _loadDestRowOrThrow(id);
@@ -200,7 +205,18 @@ export function updateDestination(id, patch = {}) {
     if (patch.config) {
         const shareSecret = _getShareSecret();
         if (!shareSecret) throw new Error('share secret not initialised');
-        const blob = encryptConfig(patch.config, shareSecret);
+        let merged = {};
+        try {
+            merged = _decryptCfgOrThrow(dest);
+        } catch {
+            /* undecryptable (shareSecret rotated) — the operator re-enters everything */
+        }
+        const secrets = _secretFields(dest.provider);
+        for (const [key, value] of Object.entries(patch.config)) {
+            if (secrets.has(key) && (value == null || value === '')) continue;
+            merged[key] = value;
+        }
+        const blob = encryptConfig(merged, shareSecret);
         updates.push('config_blob = ?');
         params.push(blob);
     }
@@ -276,6 +292,26 @@ export function getDestinationStatus(id, now = Date.now()) {
 }
 
 /**
+ * Non-secret config fields of a destination, for pre-filling the edit
+ * form. Secret fields (per the provider's configSchema) are never
+ * returned. Empty when the stored blob can't be decrypted.
+ */
+export function getDestinationConfig(id) {
+    const dest = _loadDestRowOrThrow(id);
+    let cfg;
+    try {
+        cfg = _decryptCfgOrThrow(dest);
+    } catch {
+        return {};
+    }
+    const out = {};
+    for (const field of PROVIDER_CLASSES[dest.provider]?.configSchema || []) {
+        if (!field.secret && cfg[field.name] != null) out[field.name] = cfg[field.name];
+    }
+    return out;
+}
+
+/**
  * Run a one-shot backup. For `manual` and `snapshot` modes this enqueues
  * a fresh archive job; for `mirror` mode it sweeps every download row
  * that doesn't have a job yet.
@@ -289,26 +325,46 @@ export async function runBackup(id) {
         return { started: true, mode: dest.mode };
     }
     // Mirror catch-up: enqueue every DB download whose backup hasn't
-    // been done yet. Stream the rows — `.all()` over a million-row library
-    // would push the in-process JS heap past the V8 limit on small VMs
-    // (Synology, single-vCPU droplets) and crash inside `Statement::JS_all`.
-    let enqueued = 0;
-    const iter = getDb()
-        .prepare(`
-        SELECT id, file_name, file_path, file_size FROM downloads
-         WHERE file_path IS NOT NULL
+    // been done yet. Keyset-paginated `.all()` batches — one unbounded
+    // `.all()` would blow the heap on a million-row library, and an open
+    // `.iterate()` cursor keeps the connection busy so the enqueue INSERTs
+    // threw "This database connection is busy executing a query". One
+    // transaction per batch + a yield between batches keeps the walk from
+    // stalling the event loop.
+    const db = getDb();
+    const pageStmt = db.prepare(`
+        SELECT id, file_path FROM downloads
+         WHERE file_path IS NOT NULL AND id > ?
          ORDER BY id ASC
-    `)
-        .iterate();
-    for (const row of iter) {
-        if (queue.hasJobForDownload(id, row.id)) continue;
-        queue.enqueue({
-            destinationId: id,
-            downloadId: row.id,
-            remotePath: _mirrorRemotePath(row),
-        });
-        enqueued += 1;
+         LIMIT ?
+    `);
+    const enqueueBatch = db.transaction((rows) => {
+        let n = 0;
+        for (const row of rows) {
+            if (queue.hasJobForDownload(id, row.id)) continue;
+            queue.enqueue({
+                destinationId: id,
+                downloadId: row.id,
+                remotePath: _mirrorRemotePath(row),
+            });
+            n += 1;
+        }
+        return n;
+    });
+    let enqueued = 0;
+    let afterId = 0;
+    while (true) {
+        const rows = pageStmt.all(afterId, MIRROR_BATCH);
+        if (!rows.length) break;
+        enqueued += enqueueBatch(rows);
+        afterId = rows[rows.length - 1].id;
+        if (rows.length < MIRROR_BATCH) break;
+        await new Promise((r) => setImmediate(r));
     }
+    // The catch-up succeeded, so an old error badge is stale. Jobs that
+    // still fail from here set it again. The dashboard re-reads it on the
+    // worker's `backup_queue_drained` broadcast.
+    db.prepare('UPDATE backup_destinations SET last_error = NULL WHERE id = ?').run(Number(id));
     _wakeWorker(id);
     _log({
         source: 'backup',
@@ -586,6 +642,28 @@ class Worker {
             return;
         }
 
+        // A missing / unreadable source can't be fixed by retrying: fail
+        // this job only, without flagging the whole destination as errored.
+        try {
+            await fsp.access(localPath, fs.constants.R_OK);
+        } catch (e) {
+            const msg = `local file ${e.code === 'ENOENT' ? 'missing' : 'unreadable'}: ${localPath}`;
+            queue.markFailed(job.id, msg);
+            _broadcast({
+                type: 'backup_error',
+                destinationId: this.destinationId,
+                jobId: job.id,
+                error: msg,
+                willRetry: false,
+            });
+            _log({
+                source: 'backup',
+                level: 'warn',
+                msg: `job #${job.id} on dest #${this.destinationId} failed: ${msg}`,
+            });
+            return;
+        }
+
         provider = new ProviderClass();
         try {
             await provider.init(cfg, ctx);
@@ -602,6 +680,16 @@ class Worker {
                 if (head && !dest.encryption && head.size === localSize && localSize > 0) {
                     queue.markDone(job.id, { bytes: head.size, remotePath });
                     _bumpDestStats(this.destinationId, head.size, 1);
+                    if (job.snapshot_path && dest.mode === 'snapshot') {
+                        await _applySnapshotRetention(
+                            dest,
+                            job,
+                            remotePath,
+                            head.size,
+                            provider,
+                            ctx,
+                        );
+                    }
                     _broadcast({
                         type: 'backup_done',
                         destinationId: this.destinationId,
@@ -640,7 +728,17 @@ class Worker {
                 ctx,
             );
             queue.markDone(job.id, { bytes: result.bytes, remotePath: result.remotePath });
-            _bumpDestStats(this.destinationId, result.bytes, 1, true);
+            _bumpDestStats(this.destinationId, result.bytes, 1);
+            if (job.snapshot_path && dest.mode === 'snapshot') {
+                await _applySnapshotRetention(
+                    dest,
+                    job,
+                    result.remotePath || remotePath,
+                    result.bytes,
+                    provider,
+                    ctx,
+                );
+            }
             _broadcast({
                 type: 'backup_done',
                 destinationId: this.destinationId,
@@ -717,10 +815,16 @@ function _scheduleSnapshot(dest) {
     // with `*` and integer values. For full cron grammar we'd pull a
     // dependency, but the dashboard restricts the field to a small set
     // of presets in practice. We re-evaluate every 30 s, which is plenty
-    // since the smallest cron unit is a minute.
+    // since the smallest cron unit is a minute — but that also means two
+    // ticks land in every matching minute, so remember the minute we fired.
+    let firedMinute = -1;
     const handle = setInterval(() => {
         if (_snapshotInflight.has(dest.id)) return;
-        if (_cronMatches(dest.cron, new Date())) {
+        const now = new Date();
+        const minute = Math.floor(now.getTime() / 60_000);
+        if (minute === firedMinute) return;
+        if (_cronMatches(dest.cron, now)) {
+            firedMinute = minute;
             _kickSnapshotRun(_loadDestRow(dest.id)).catch((e) => {
                 _log({
                     source: 'backup',
@@ -791,18 +895,7 @@ async function _kickSnapshotRun(dest) {
             remotePath,
         });
         _wakeWorker(dest.id);
-        // Apply retention — keep the last N archives on the remote.
-        // Done after a short delay so the just-uploaded file is included
-        // in the listing.
-        setTimeout(() => {
-            _applyRetention(dest.id).catch((e) => {
-                _log({
-                    source: 'backup',
-                    level: 'warn',
-                    msg: `retention prune failed for #${dest.id}: ${e.message}`,
-                });
-            });
-        }, 60 * 1000);
+        // Retention runs once the upload lands — see _applySnapshotRetention.
         _log({
             source: 'backup',
             level: 'info',
@@ -969,39 +1062,91 @@ async function _writeTarGz(srcDir, archivePath) {
     await finished;
 }
 
-async function _applyRetention(destinationId) {
-    const dest = _loadDestRow(destinationId);
-    if (!dest || !dest.enabled) return;
-    if (dest.mode !== 'snapshot') return;
-    const keep = Math.max(1, Number(dest.retain_count) || 7);
-    let cfg;
+// Archives this module names — retention never touches anything else.
+const SNAPSHOT_NAME_RE = /^snapshot-\d{8}-\d{6}\.tar\.gz$/;
+
+/**
+ * Snapshot-mode retention, run right after a snapshot upload landed (or
+ * was skipped because the remote already had it):
+ *   1. delete the local staging archive under data/backups/, unless another
+ *      queued job still needs the same file;
+ *   2. prune remote `snapshots/snapshot-YYYYMMDD-HHMMSS.tar.gz` down to
+ *      retain_count (newest by the timestamp in the name — some providers
+ *      report mtime 0);
+ *   3. set the Files / Size counters to what's left on the remote.
+ * Never throws — the upload itself already succeeded.
+ */
+async function _applySnapshotRetention(dest, job, remotePath, bytes, provider, ctx) {
+    const destId = dest.id;
+    const warn = (msg) => _log({ source: 'backup', level: 'warn', msg });
+
+    const local = job.snapshot_path;
     try {
-        cfg = _decryptCfgOrThrow(dest);
-    } catch {
-        return;
+        if (
+            path.dirname(path.resolve(local)) === path.resolve(SNAPSHOTS_DIR) &&
+            SNAPSHOT_NAME_RE.test(path.basename(local))
+        ) {
+            const stillQueued = getDb()
+                .prepare(`
+                SELECT 1 FROM backup_jobs
+                 WHERE snapshot_path = ? AND id != ? AND status IN ('pending', 'uploading')
+                 LIMIT 1
+            `)
+                .get(local, job.id);
+            if (!stillQueued) await fsp.unlink(local);
+        }
+    } catch (e) {
+        if (e.code !== 'ENOENT') warn(`could not delete ${local}: ${e.message}`);
     }
-    const ProviderClass = PROVIDER_CLASSES[dest.provider];
-    if (!ProviderClass) return;
-    const provider = new ProviderClass();
-    const ctx = { destinationId, log: _log, signal: new AbortController().signal };
+
     try {
-        await provider.init(cfg, ctx);
-        const items = [];
+        const snaps = [];
         for await (const item of provider.list('snapshots/', ctx)) {
-            items.push(item);
+            const name = String(item.name || '')
+                .replace(/\\/g, '/')
+                .replace(/^\/+/, '');
+            const base = path.posix.basename(name);
+            if (name === `snapshots/${base}` && SNAPSHOT_NAME_RE.test(base)) {
+                snaps.push({ name, base, size: Number(item.size) || 0 });
+            }
         }
-        items.sort((a, b) => b.mtime - a.mtime);
-        const toDelete = items.slice(keep);
-        for (const item of toDelete) {
-            await provider.delete(item.name, ctx).catch(() => {});
-            _log({
-                source: 'backup',
-                level: 'info',
-                msg: `retention pruned ${item.name} on #${destinationId}`,
-            });
+        // A listing can lag the upload that just finished.
+        const uploaded = path.posix.basename(String(remotePath).replace(/\\/g, '/'));
+        if (SNAPSHOT_NAME_RE.test(uploaded) && !snaps.some((s) => s.base === uploaded)) {
+            snaps.push({ name: `snapshots/${uploaded}`, base: uploaded, size: Number(bytes) || 0 });
         }
-    } finally {
-        await provider.close().catch(() => {});
+        snaps.sort((a, b) => (a.base < b.base ? 1 : a.base > b.base ? -1 : 0));
+
+        const keep = Math.max(1, Number(dest.retain_count) || 7);
+        const remaining = snaps.slice(0, keep);
+        let pruned = 0;
+        for (const item of snaps.slice(keep)) {
+            try {
+                await provider.delete(item.name, ctx);
+                pruned += 1;
+            } catch (e) {
+                remaining.push(item);
+                warn(`retention could not delete ${item.name} on #${destId}: ${e.message}`);
+            }
+        }
+        const failed = snaps.length - keep - pruned;
+        _log({
+            source: 'backup',
+            level: 'info',
+            msg:
+                `retention on #${destId}: listed ${snaps.length}, kept ${Math.min(keep, snaps.length)}, ` +
+                `pruned ${pruned}${failed > 0 ? `, ${failed} delete(s) failed` : ''}`,
+        });
+        const totalBytes = remaining.reduce((sum, s) => sum + s.size, 0);
+        getDb()
+            .prepare('UPDATE backup_destinations SET total_files = ?, total_bytes = ? WHERE id = ?')
+            .run(remaining.length, totalBytes, Number(destId));
+        _broadcast({
+            type: 'backup_destination_updated',
+            destination: _scrubDest(_loadDestRow(destId)),
+        });
+    } catch (e) {
+        warn(`retention failed for #${destId}: ${e.message}`);
     }
 }
 
@@ -1020,6 +1165,11 @@ function _decryptCfgOrThrow(dest) {
     const shareSecret = _getShareSecret();
     if (!shareSecret) throw new Error('share secret not initialised');
     return decryptConfig(dest.config_blob, shareSecret);
+}
+
+function _secretFields(provider) {
+    const schema = PROVIDER_CLASSES[provider]?.configSchema || [];
+    return new Set(schema.filter((f) => f.secret).map((f) => f.name));
 }
 
 function _scrubDest(row) {

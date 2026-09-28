@@ -971,6 +971,19 @@ function initSchema() {
         );
     }
 
+    // One-off: long videos used to be marked seekbar-"failed" when the
+    // sprite encode timed out (the timeout read as a broken file). Drop the
+    // failed markers once so the next seekbar scan retries them; files that
+    // really are broken get marked again.
+    try {
+        if (!db.prepare("SELECT 1 FROM kv WHERE key = 'seekbar_failed_reset'").get()) {
+            db.prepare("DELETE FROM seekbar_sprites WHERE format = 'failed'").run();
+            db.prepare(
+                "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES ('seekbar_failed_reset', 'true', ?)",
+            ).run(Date.now());
+        }
+    } catch {}
+
     // FK enforcement is per-connection in SQLite — flip it on once we know
     // the table exists. Without this, ON DELETE CASCADE silently no-ops.
     try {
@@ -1313,8 +1326,9 @@ export function getAllDownloads(limit = 50, offset = 0, type = 'all', opts = {})
 }
 
 export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts = {}) {
-    let query =
-        'SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id WHERE d.group_id = ?';
+    // One WHERE for the page and the COUNT, so every filter (type, pinned)
+    // applies to the pagination total too.
+    let where = ' WHERE d.group_id = ?';
     const params = [groupId];
 
     if (type !== 'all') {
@@ -1325,33 +1339,26 @@ export function getDownloads(groupId, limit = 50, offset = 0, type = 'all', opts
             audio: 'audio',
         };
         if (typeMap[type]) {
-            query += ' AND d.file_type = ?';
+            where += ' AND d.file_type = ?';
             params.push(typeMap[type]);
         }
     }
 
-    if (opts.pinnedOnly) query += ' AND d.pinned = 1';
+    if (opts.pinnedOnly) where += ' AND d.pinned = 1';
 
-    query += opts.pinnedFirst
-        ? ' ORDER BY d.pinned DESC, d.created_at DESC LIMIT ? OFFSET ?'
-        : ' ORDER BY d.created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    const orderBy = opts.pinnedFirst
+        ? ' ORDER BY d.pinned DESC, d.created_at DESC'
+        : ' ORDER BY d.created_at DESC';
 
     const rows = getDb()
-        .prepare(query)
-        .all(...params);
-
-    let countQuery = 'SELECT COUNT(*) as total FROM downloads d WHERE d.group_id = ?';
-    const countParams = [groupId];
-
-    if (params.length > 3) {
-        countQuery += ' AND d.file_type = ?';
-        countParams.push(params[1]);
-    }
+        .prepare(
+            `SELECT d.*, sb.duration_sec FROM downloads d LEFT JOIN seekbar_sprites sb ON sb.download_id = d.id${where}${orderBy} LIMIT ? OFFSET ?`,
+        )
+        .all(...params, limit, offset);
 
     const total = getDb()
-        .prepare(countQuery)
-        .get(...countParams).total;
+        .prepare(`SELECT COUNT(*) as total FROM downloads d${where}`)
+        .get(...params).total;
 
     return { files: rows, total };
 }

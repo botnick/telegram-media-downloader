@@ -23,7 +23,7 @@ import {
     pageSeekbarSprites,
     upsertSeekbarSprite,
 } from '../db.js';
-import { generateForDownload, getSeekbarConfig } from './generator.js';
+import { generateForDownload, getSeekbarConfig, isPermanentSeekbarError } from './generator.js';
 
 const PAGE_SIZE = 100;
 const CONCURRENCY = 6;
@@ -106,7 +106,6 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
             const meta = await generateForDownload(row, cfg, {
                 overwrite: 'if-changed',
                 signal,
-                sync: true,
             });
             if (meta && !meta.pending && !meta.skipped) generated++;
             else {
@@ -115,13 +114,9 @@ export async function buildAllSeekbar({ onProgress, signal } = {}) {
             }
         } catch (_e) {
             errored++;
-            if (
-                /does not contain any stream|no video stream|Invalid data found|Invalid NAL|moov atom not found/i.test(
-                    _e?.message || '',
-                )
-            ) {
-                _markFailed(row);
-            }
+            // Only a file that can never produce a sprite is marked; timeouts
+            // and sidecar hiccups are retried by the next scan.
+            if (isPermanentSeekbarError(_e?.message)) _markFailed(row);
         }
         processed++;
     };

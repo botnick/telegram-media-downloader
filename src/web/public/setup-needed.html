@@ -12,7 +12,6 @@
             document.documentElement.classList.add(dark ? 'theme-dark' : 'theme-light');
         })();
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html.theme-dark body { background-color: #0F172A; color: #E2E8F0; }
         html.theme-light body { background-color: #F4F4F5; color: #1F2937; }
@@ -22,6 +21,10 @@
         html.theme-light .text-gray-400, html.theme-light .text-gray-500 { color: #65737E !important; }
         html.theme-light pre { background: #0F172A !important; }
     </style>
+    <!-- Prebuilt Tailwind utilities (`npm run build:css`). Kept last in
+         <head> so utilities win same-specificity ties, exactly like the
+         old Play CDN <style> that was appended at the end of <head>. -->
+    <link rel="stylesheet" href="/css/tailwind.css">
 </head>
 <body class="flex items-center justify-center min-h-screen p-6">
     <div class="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">

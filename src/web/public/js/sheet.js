@@ -14,6 +14,7 @@
 //   handle.close();
 
 import { t as i18nT } from './i18n.js';
+import { pushOverlay, popOverlay } from './overlay-history.js';
 
 const FOCUSABLE_SELECTOR = [
     'a[href]',
@@ -190,9 +191,16 @@ export function openSheet(opts) {
     closeBtn?.addEventListener('click', close);
 
     let closed = false;
+    // Back (Android / browser) closes a dismissible sheet like Esc does.
+    let overlayToken = dismissible ? pushOverlay(() => close()) : null;
     function close() {
         if (closed) return;
         closed = true;
+        if (overlayToken != null) {
+            const t = overlayToken;
+            overlayToken = null;
+            popOverlay(t);
+        }
         releaseTrap();
         releaseDrag();
         root.removeEventListener('click', onBackdropClick);
