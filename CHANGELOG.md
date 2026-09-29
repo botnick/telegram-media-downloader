@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format is based on 
 - **`npm install` installs tgdl-core**: it downloads the pinned `core-v0.2.0` build for your platform and checks it against the release's `SHA256SUMS`, or builds it when Go is installed. `npm run install:core` runs the same step by hand; `TGDL_CORE_SKIP_INSTALL=1` skips it.
 - **A banner when tgdl-core can't run** (missing binary, failed download, unsupported platform, or it keeps crashing) with the exact fix. The same text is in `GET /api/system/health` → `goCore.problem` and in the log.
 - `scripts/bench-gocore.js` compares the old Node code with tgdl-core for hashing, the integrity sweep, folder walks and face clustering. It reports wall time and event-loop delay. See [docs/GO-CORE.md](docs/GO-CORE.md#measured).
+- **Configurable Content-Security-Policy.** Settings → Dashboard security now has a CSP editor: enable/disable, report-only mode, and the full source list per directive, applied on the next request. Saved as `web.csp`; installs without it keep today's exact header. `frame-ancestors` changes drop `X-Frame-Options` so embedding works. `TGDL_CSP=off` disables the CSP regardless of the setting (recovery).
 
 ### Changed
 - **tgdl-core, the app's Go engine, now does the heavy file work, and it is required.** It handles:
@@ -17,9 +18,7 @@ All notable changes to this project are documented here. The format is based on 
   - Re-index from disk;
   - the disk-usage figure shown while the library is empty;
   - face clustering.
-
   The Node code it replaced is removed: the hash worker pool, the `fs.stat` sweep, the folder walks and the DBSCAN worker. Results don't change. Tests prove it against the removed Node code, against Node's own `fs.stat` / `fs.readdir` on the machine they run on, and against frozen fixtures. That covers the exact error codes Verify files relies on before it removes a library entry.
-
   The dashboard stays responsive while these jobs run. Face clustering uses every core: 5,000 faces take ~0.3 s instead of ~7 s, and 20,000 take ~4 s instead of ~2 min. Folder walks are 6–7× faster. See [docs/GO-CORE.md](docs/GO-CORE.md).
 - **If tgdl-core can't run, the app still starts and everything else works** (dashboard, `/api/auth_check`, downloads).
   - Verify files, Re-index from disk, Find duplicates and Re-cluster answer `503 TGDL_CORE_UNAVAILABLE` with the fix instead of starting.

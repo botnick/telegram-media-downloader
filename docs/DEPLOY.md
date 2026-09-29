@@ -197,6 +197,10 @@ Pre-flight check before flipping the toggle:
 
 The setting persists in the `kv['config']` row of `data/db.sqlite` under `web.forceHttps`. To roll back without the dashboard, edit the row via `sqlite3` and restart the container.
 
+### Content Security Policy
+
+**Settings → Dashboard security → Content Security Policy** lets you turn the CSP off, switch it to report-only, or edit the allowed sources of each directive (one per line, e.g. add a site to `frame-ancestors` to embed the dashboard in an iframe). Changes apply on the next request. The setting is stored as `web.csp`; with no `web.csp` the built-in defaults apply. If a bad policy locks you out of the dashboard, start the server with `TGDL_CSP=off` to disable the CSP regardless of the saved setting, then fix it in Settings.
+
 For HSTS preload (chrome global list), submit your domain at <https://hstspreload.org> after the header has been live for at least a few weeks. The dashboard does **not** add `preload` to the HSTS header automatically — preload is a one-way commitment that needs operator opt-in.
 
 ## Running a sidecar on another machine
