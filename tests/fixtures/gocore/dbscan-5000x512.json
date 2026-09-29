@@ -1,0 +1,11 @@
+{
+    "generator": "synthFaces(5000, {seed: 20260929, dim: 512, k: 60, noise: 0.045, strangers: 0.2})",
+    "opts": {
+        "eps": 1.05,
+        "minPts": 2
+    },
+    "clusters": 60,
+    "noiseCount": 989,
+    "largest": 82,
+    "sha256": "30ec4d1756d12967fe36f479b1432d1e6798109628040ddf2237cf56ab98b0fd"
+}

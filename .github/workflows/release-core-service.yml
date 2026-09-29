@@ -71,6 +71,15 @@ jobs:
           /tmp/smoke/tgdl-core version | grep -q " ${GITHUB_REF_NAME#core-v} "
           echo abc > /tmp/smoke/abc.txt
           /tmp/smoke/tgdl-core hash /tmp/smoke/abc.txt | grep -q '^edeaaff3f1774ad2888673770c6d64097e391bc362d7d6fb34982ddf0efd18cb '
+          # serve: every feature advertised, stat-batch answers like fs.stat
+          TGDL_CORE_TOKEN=t TGDL_CORE_ALLOW_ROOTS=/tmp/smoke /tmp/smoke/tgdl-core serve > /tmp/smoke/listen.json &
+          for i in $(seq 50); do grep -q listening /tmp/smoke/listen.json && break; sleep 0.1; done
+          addr=$(jq -r .addr /tmp/smoke/listen.json)
+          curl -sf "http://$addr/health" | jq -e '.features == ["hash","stat","walk","dbscan"]'
+          curl -sf -H 'X-API-Token: t' -d '{"paths":["/tmp/smoke/abc.txt","/tmp/smoke/nope","/etc/passwd"]}' \
+            "http://$addr/v1/fs/stat-batch" \
+            | jq -e '.results[0].size == 4 and .results[1].code == "ENOENT" and .results[2].code == "EOUTSIDE"'
+          kill %1
           (cd core-service/dist && sha256sum -c SHA256SUMS)
           ls -lh core-service/dist
 

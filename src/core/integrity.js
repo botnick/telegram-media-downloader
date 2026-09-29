@@ -15,6 +15,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { getDb, insertDownload, purgeOrphanPeople } from './db.js';
+import { statMany, uvError, walkTree } from './gocore/fs.js';
 import { sanitizeName } from './downloader.js';
 import { getDownloadsDir } from './paths.js';
 import { purgeThumbsForDownload } from './thumbs.js';
@@ -107,15 +108,35 @@ export async function sweep(onProgress, { auto = false } = {}) {
               ORDER BY id DESC
               LIMIT ?`,
         );
-        while (true) {
+        // Rows are still read and decided page by page (progress, yields and
+        // every rule below are per page, as before), but the stats for up
+        // to STAT_AHEAD_ROWS rows come from tgdl-core in one request: a
+        // round trip per page would cost more main-thread time than the
+        // stats themselves.
+        const STAT_AHEAD_ROWS = 1024;
+        let exhausted = false;
+        while (!exhausted) {
             // `.all()` opens + closes the statement synchronously; the
             // connection is free by the time the async stat checks run.
-            const page = pageStmt.all(beforeId, PAGE_SIZE);
-            if (!page.length) break;
-            const checks = await Promise.all(
-                page.map(async (r) => {
+            const pages = [];
+            let ahead = 0;
+            while (!exhausted && (ahead === 0 || ahead + PAGE_SIZE <= STAT_AHEAD_ROWS)) {
+                const page = pageStmt.all(beforeId, PAGE_SIZE);
+                if (!page.length) {
+                    exhausted = true;
+                    break;
+                }
+                pages.push(page);
+                ahead += page.length;
+                beforeId = Number(page[page.length - 1].id);
+                if (page.length < PAGE_SIZE) exhausted = true;
+            }
+            if (!pages.length) break;
+            const targets = pages.map((page) => {
+                const pageTargets = [];
+                for (const r of page) {
                     let rel = String(r.file_path || '').replace(/\\/g, '/');
-                    if (!rel) return null;
+                    if (!rel) continue;
                     // Tolerate the legacy `data/downloads/` prefix that some
                     // older rows still carry — same fix that
                     // safeResolveDownload() does in the request path.
@@ -123,31 +144,48 @@ export async function sweep(onProgress, { auto = false } = {}) {
                         rel = rel.slice('data/downloads/'.length);
                     // Federated-dedup rows point at a peer's copy; there is
                     // nothing local to stat.
-                    if (rel.startsWith('_clusterref/')) return null;
+                    if (rel.startsWith('_clusterref/')) continue;
                     // Absolute or `../` paths come from a custom download
                     // path outside DOWNLOADS_DIR — stat where they point
                     // instead of pruning them for their shape.
-                    const abs = path.resolve(DOWNLOADS_DIR, rel);
-                    try {
-                        const st = await fs.stat(abs);
-                        if (st.size <= 0) return r.id;
+                    pageTargets.push({ r, abs: path.resolve(DOWNLOADS_DIR, rel) });
+                }
+                return pageTargets;
+            });
+            // fs.stat of those rows, done by tgdl-core with Node's own
+            // error codes. If it can't answer, stop here: nothing has been
+            // pruned or rewritten yet.
+            let stats;
+            try {
+                stats = await statMany(targets.flat().map((t) => t.abs));
+            } catch (e) {
+                console.warn(
+                    `[integrity] file check unavailable (${e?.message || e}) — sweep stopped, nothing pruned`,
+                );
+                return { ...result, skipped: true, reason: 'core_unavailable' };
+            }
+            let k = 0;
+            for (let p = 0; p < pages.length; p++) {
+                for (const { r } of targets[p]) {
+                    const st = stats[k++];
+                    if (st.ok) {
+                        if (st.size <= 0) {
+                            deleteIds.push(r.id);
+                            continue;
+                        }
                         // Backfill or correct the stored file_size if it's
                         // null / 0 / wrong. Tolerance > 0 for the rare case
                         // an editor / re-encode legitimately changed bytes.
                         const stored = Number(r.file_size) || 0;
                         if (stored !== st.size) sizeFixes.push({ id: r.id, size: st.size });
-                        return null;
-                    } catch (e) {
-                        return MISSING_CODES.has(e?.code) ? r.id : null;
+                    } else if (MISSING_CODES.has(st.code)) {
+                        deleteIds.push(r.id);
                     }
-                }),
-            );
-            for (const id of checks) if (id) deleteIds.push(id);
-            processed += page.length;
-            beforeId = Number(page[page.length - 1].id);
-            _emit({ processed, total, stage: 'scanning' });
-            await new Promise((r) => setImmediate(r));
-            if (page.length < PAGE_SIZE) break;
+                }
+                processed += pages[p].length;
+                _emit({ processed, total, stage: 'scanning' });
+                await new Promise((r) => setImmediate(r));
+            }
         }
 
         if (sizeFixes.length) {
@@ -364,69 +402,78 @@ export async function reindexFromDisk(configGroups, onProgress) {
         startedAt: Date.now(),
     };
     try {
-        let topEntries = [];
-        try {
-            topEntries = await fs.readdir(DOWNLOADS_DIR, { withFileTypes: true });
-        } catch {
+        // tgdl-core lists the tree (fs.readdir withFileTypes order and
+        // kinds) and stats the files; the rules below are unchanged.
+        const top = await walkTree(DOWNLOADS_DIR, { maxDepth: 1 });
+        if (top.events.some((ev) => ev.t === 'e' && ev.p === '')) {
             // No downloads dir → nothing to do, succeed quietly.
             return { ...result, finishedAt: Date.now() };
         }
-        const groupDirs = topEntries.filter((e) => e.isDirectory() && e.name !== '.deleted');
+        const groupDirs = top.events
+            .filter((ev) => ev.t === 'd' && ev.p !== '.deleted')
+            .map((ev) => ev.p);
         result.groups = groupDirs.length;
         let groupsDone = 0;
-        for (const gd of groupDirs) {
-            const folderName = gd.name;
+        for (const folderName of groupDirs) {
             const resolved = resolveGroupId(folderName, configGroups);
             const groupId = resolved ? resolved.id : `unknown:${folderName}`;
             const groupName = resolved ? resolved.name : folderName;
 
             // Two-deep walk: <group>/<typeFolder>/<file>. Files at the
             // top level of <group>/ (rare, but happens with hand-pasted
-            // archives) get bucketed by extension.
-            const subEntries = await fs.readdir(path.join(DOWNLOADS_DIR, folderName), {
-                withFileTypes: true,
-            });
-            for (const sub of subEntries) {
-                if (sub.isDirectory()) {
-                    const typeFolder = sub.name;
+            // archives) get bucketed by extension. Events arrive in the
+            // order the nested readdir loops visited them.
+            const groupAbs = path.join(DOWNLOADS_DIR, folderName);
+            const { events } = await walkTree(groupAbs, { maxDepth: 2, stat: 'files' });
+            const rootErr = events.find((ev) => ev.t === 'e' && ev.p === '');
+            // An unreadable group folder fails the run, as its readdir did.
+            if (rootErr) throw uvError(rootErr.code, 'scandir', groupAbs);
+            let sinceYield = 0;
+            for (const ev of events) {
+                // Files only (links, devices and deeper folders are skipped;
+                // an unreadable type folder has no entries).
+                if (ev.t !== 'f' || ev.k !== 'file') continue;
+                const parts = ev.p.split('/');
+                const fileName = parts[parts.length - 1];
+                if (fileName.endsWith('.part')) continue;
+                if (parts.length === 2) {
+                    const typeFolder = parts[0];
                     const folderType = TYPE_FOLDER_TO_FILETYPE[typeFolder] || null;
-                    let files = [];
-                    try {
-                        files = await fs.readdir(path.join(DOWNLOADS_DIR, folderName, typeFolder), {
-                            withFileTypes: true,
-                        });
-                    } catch {
-                        continue;
-                    }
-                    for (const f of files) {
-                        if (!f.isFile() || f.name.endsWith('.part')) continue;
-                        const fullAbs = path.join(DOWNLOADS_DIR, folderName, typeFolder, f.name);
-                        const relPath = path.posix
-                            .join(folderName, typeFolder, f.name)
-                            .replace(/\\/g, '/');
-                        await _ingestOne({
-                            result,
-                            fullAbs,
-                            relPath,
-                            fileName: f.name,
-                            groupId,
-                            groupName,
-                            fileType:
-                                folderType || fileTypeFromExt(path.extname(f.name).toLowerCase()),
-                        });
-                    }
-                } else if (sub.isFile() && !sub.name.endsWith('.part')) {
-                    const fullAbs = path.join(DOWNLOADS_DIR, folderName, sub.name);
-                    const relPath = path.posix.join(folderName, sub.name).replace(/\\/g, '/');
-                    await _ingestOne({
+                    const fullAbs = path.join(DOWNLOADS_DIR, folderName, typeFolder, fileName);
+                    const relPath = path.posix
+                        .join(folderName, typeFolder, fileName)
+                        .replace(/\\/g, '/');
+                    _ingestOne({
                         result,
                         fullAbs,
+                        st: ev,
                         relPath,
-                        fileName: sub.name,
+                        fileName,
                         groupId,
                         groupName,
-                        fileType: fileTypeFromExt(path.extname(sub.name).toLowerCase()),
+                        fileType:
+                            folderType || fileTypeFromExt(path.extname(fileName).toLowerCase()),
                     });
+                } else if (parts.length === 1) {
+                    const fullAbs = path.join(DOWNLOADS_DIR, folderName, fileName);
+                    const relPath = path.posix.join(folderName, fileName).replace(/\\/g, '/');
+                    _ingestOne({
+                        result,
+                        fullAbs,
+                        st: ev,
+                        relPath,
+                        fileName,
+                        groupId,
+                        groupName,
+                        fileType: fileTypeFromExt(path.extname(fileName).toLowerCase()),
+                    });
+                } else {
+                    continue;
+                }
+                // Inserts are synchronous; let the event loop breathe.
+                if (++sinceYield >= 256) {
+                    sinceYield = 0;
+                    await new Promise((r) => setImmediate(r));
                 }
             }
             groupsDone++;
@@ -450,11 +497,12 @@ export async function reindexFromDisk(configGroups, onProgress) {
     }
 }
 
-async function _ingestOne({ result, fullAbs, relPath, fileName, groupId, groupName, fileType }) {
+// `st` is the walk's fs.stat of the file: { ok, size, isFile } or { code }.
+function _ingestOne({ result, fullAbs, st, relPath, fileName, groupId, groupName, fileType }) {
     result.scanned += 1;
     try {
-        const st = await fs.stat(fullAbs);
-        if (!st.isFile() || st.size <= 0) {
+        if (!st?.ok) throw uvError(st?.code || 'UNKNOWN', 'stat', fullAbs);
+        if (!st.isFile || st.size <= 0) {
             result.skipped += 1;
             return;
         }

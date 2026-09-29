@@ -4,9 +4,10 @@ export default defineConfig({
     test: {
         // tests/contract is its own suite (`npm run test:contract`).
         exclude: ['**/node_modules/**', '**/dist/**', '.claude/**', 'tests/contract/**'],
-        // Servers spawned by the e2e suites inherit this: without it they'd
-        // try to download the tgdl-core release on every run. Suites that
-        // test tgdl-core set TGDL_GO_CORE themselves (CI's Go job passes it).
-        env: { TGDL_GO_CORE: process.env.TGDL_GO_CORE ?? 'off' },
+        // tgdl-core (the Go engine) is required: build or find it once and
+        // pass it to every worker, and every server a suite spawns, as
+        // TGDL_CORE_BIN — so none of them tries to download a release. See
+        // the setup file.
+        globalSetup: ['./tests/setup/gocore.global.js'],
     },
 });

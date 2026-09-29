@@ -8,9 +8,7 @@
  *
  * Algorithm:           SHA-256
  * Encoding:            lowercase hex (64 chars)
- * Read strategy:       streaming via fs.createReadStream — works for
- *                      multi-GB files without OOM, doesn't depend on
- *                      mmap / sendfile semantics.
+ * Computed by:         tgdl-core (Go), streaming — multi-GB files are fine.
  *
  * Why SHA-256 (vs BLAKE2 / xxhash):
  *   - Ships in Node core, zero deps.
@@ -23,9 +21,6 @@
  * migration.
  */
 
-import crypto from 'crypto';
-import { createReadStream } from 'fs';
-
 export const CHECKSUM_ALGO = 'sha256';
 export const CHECKSUM_VERSION = 1;
 // Hex SHA-256 → exactly 64 lowercase characters. Anchor for sanity-check
@@ -34,53 +29,20 @@ export const CHECKSUM_HEX_LENGTH = 64;
 export const CHECKSUM_HEX_RE = /^[0-9a-f]{64}$/;
 
 /**
- * Stream-hash a file already on disk and return the hex digest.
+ * SHA-256 of a file already on disk, as lowercase hex — computed by
+ * tgdl-core (src/core/gocore/hash.js), off the event loop, with the same
+ * digest crypto.createHash('sha256') over fs.createReadStream gives.
+ *
+ * Rejects like fs would when the file can't be read (err.code ENOENT,
+ * EACCES, …), or with a GoCoreError (err.status 503) when tgdl-core isn't
+ * available; callers treat both as "no hash for this file".
  *
  * @param {string} absPath  Absolute path to the file
  * @returns {Promise<string>} Lowercase 64-char hex digest
- * @throws {Error} on read errors (caller decides whether to fall back)
  */
-export function sha256OfFile(absPath) {
-    return new Promise((resolve, reject) => {
-        const h = crypto.createHash(CHECKSUM_ALGO);
-        const s = createReadStream(absPath);
-        s.on('error', reject);
-        s.on('data', (chunk) => h.update(chunk));
-        s.on('end', () => resolve(h.digest('hex')));
-    });
-}
-
-/**
- * Worker-pool-backed equivalent of `sha256OfFile`. Same return value, same
- * algorithm, but runs the hash on a `worker_threads` pool so the main
- * event loop stays free for HTTP / WebSocket traffic during multi-GB
- * post-write hashing. Falls back to the inline streamer if the worker
- * pool is disabled (`HASH_WORKER_DISABLE=1`) or unavailable.
- *
- * Lazy import keeps this module's dep graph free of `worker_threads`
- * for tests / contexts that never opt into the pool.
- *
- * When the Go companion (tgdl-core) is running, `gocore/hash.js` decides
- * per call whether Go takes part (TGDL_GO_CORE / TGDL_GO_FEATURES, default
- * `shadow`: Node's digest is used, Go re-checks a sample). Any Go failure
- * falls back to the pool, so the result and the errors are the same as
- * without Go.
- *
- * @param {string} absPath
- * @returns {Promise<string>}
- */
-export async function sha256OfFileViaPool(absPath) {
-    const nodeHash = async () => {
-        const mod = await import('./hash-worker.js');
-        return mod.hashFile(absPath, CHECKSUM_ALGO);
-    };
-    let router = null;
-    try {
-        router = await import('./gocore/hash.js');
-    } catch {
-        router = null;
-    }
-    return router ? router.routeHash(absPath, nodeHash) : nodeHash();
+export async function sha256OfFile(absPath) {
+    const { hashFileViaCore } = await import('./gocore/hash.js');
+    return hashFileViaCore(absPath);
 }
 
 /** True when `s` looks like a value produced by sha256OfFile. */

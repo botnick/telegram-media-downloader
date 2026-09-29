@@ -1,8 +1,10 @@
 /**
  * Flat-buffer DBSCAN for face embeddings. Pure math — no fs / DB / sidecar
- * imports — so the same code runs in-process (small inputs, tests) and
- * inside `cluster-worker.js` (the scan runner's Phase B), where a
- * multi-minute clustering pass can't starve the dashboard's event loop.
+ * imports. Backs the synchronous `dbscan()` / `clusterFaces()` exports of
+ * faces.js; the scan runner's Phase B runs the Go port of this exact code
+ * in tgdl-core (core-service/internal/dbscan, via clusterFacesOffThread),
+ * and tests/gocore-dbscan.parity.test.js holds the two to identical
+ * labels and byte-identical centroids.
  *
  * Output is label-for-label identical to the original array-of-
  * Float32Array implementation that lived in faces.js:

@@ -1,106 +1,173 @@
 # Go core (`tgdl-core`)
 
-telegram-media-downloader is moving its heavy lifting from Node.js to a Go
-companion process, `tgdl-core` (source: [`core-service/`](../core-service/README.md)),
-one feature at a time. Each step ships behind a flag, runs in shadow mode
-first, and can be switched off without changing anything else.
+`tgdl-core` (source: [`core-service/`](../core-service/README.md)) is the
+app's Go engine. The Node app starts it, talks to it over HTTP on
+`127.0.0.1`, and relies on it for the work that used to block or burden
+Node's single thread:
 
-## Rules every feature follows
+| What | Where it's used | tgdl-core route |
+|---|---|---|
+| SHA-256 of a file | download-time duplicate check, Find duplicates, NSFW hash blocklist | `POST /v1/hash` |
+| `fs.stat` of many files | Verify files, the boot and hourly integrity sweep | `POST /v1/fs/stat-batch` |
+| recursive `fs.readdir` + `fs.stat` | Re-index from disk, the disk-usage figure while the library is empty | `POST /v1/fs/walk` |
+| DBSCAN over face embeddings | face scan, Re-cluster | `POST /v1/dbscan` |
+
+It is the **only** implementation of these. The Node code it replaced (the
+hash worker pool, the `Promise.all(fs.stat)` sweep, the recursive folder
+walks, the DBSCAN worker) is removed; Node keeps thin client calls.
+
+## Rules
 
 1. **Node is the single DB writer.** tgdl-core never opens `db.sqlite`.
-   It computes and returns results; Node decides what to store.
-2. **Every feature has a Node fallback.** Binary missing, download
-   failed, platform unsupported, crash, timeout, wrong answer shape, open
-   circuit breaker: the Node implementation runs, and callers see the
-   same results and the same errors as before.
-3. **Every feature has parity checks.** New features start in `shadow`:
-   Node's result is used and Go computes the same thing on a sample in
-   the background; mismatches are counted
-   (`tgdl_gocore_parity_mismatch_total{feature}`). A feature is only
-   defaulted to Go after shadow runs clean.
-4. **No contract changes for users.** Same data dir, DB schema, config,
-   env vars, HTTP/WS API, Docker entrypoint, ports and healthcheck.
-   Additions only.
-5. **tgdl-core can't outlive the app.** It exits when its stdin pipe
-   closes, is bound to `127.0.0.1`, and needs a per-spawn token for
-   everything but `/health`.
-6. **tgdl-core only reads where the app keeps media.** The app passes its
-   download folders as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as
-   written or after resolving symlinks) is refused with `EOUTSIDE`, and
-   Node handles that file as it always did. No roots = nothing is read.
+   It answers questions; Node decides what to store, prune or fix — every
+   rule (what gets pruned, size fixes, the >50 % guard, the
+   unavailable-downloads-folder guard, INSERT OR IGNORE order) stays in
+   Node, unchanged.
+2. **Same results as before, proven.** A feature moved to Go only after
+   tests showed identical results against the Node code it replaced (see
+   [Parity](#parity)); those checks keep running in every test run.
+3. **The error codes are Node's.** `fs.stat` answers carry the exact
+   `err.code` Node's libuv would report for the same path on the same OS.
+   The integrity sweep deletes a library entry only on `ENOENT` / `ENOTDIR`,
+   so this mapping is safety-critical: it is a port of libuv's own Windows
+   code path and error table, not Go's `os.Stat` (which, for example,
+   reports an offline network share as "does not exist" where Node says
+   `UNKNOWN`).
+4. **Only the app's media folders.** The app passes its download folders
+   as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as written or after
+   resolving links) gets `EOUTSIDE` and Node answers that one path with
+   plain `fs` — so the result is still exactly what `fs` says. That is a
+   link inside a download folder pointing elsewhere (a folder on another
+   disk, `/dev/null`, …); a dangling one is `ENOENT` either way, and the
+   integrity sweep never sees `EOUTSIDE` (it prunes only on `ENOENT` /
+   `ENOTDIR`). No roots = nothing is read.
+5. **Can't outlive the app.** It exits when its stdin pipe closes, binds
+   `127.0.0.1` only, and needs a per-spawn token for everything but
+   `/health`.
+6. **No contract changes for users.** Same data dir, DB schema, config,
+   HTTP/WS API (additions only, plus the `goCore` health block below), ports,
+   Docker entrypoint and healthcheck.
 
-## Modes
+## Installing it
 
-| Mode | What runs | Fallback |
-|---|---|---|
-| `off` | Node only; tgdl-core isn't even started when every feature is off. | — |
-| `shadow` *(default in this release)* | Node's result is used. ~1 in 20 calls (files ≤ 256 MB for hashing) are repeated in Go afterwards and compared. | n/a — Go never decides anything |
-| `on` | Go first. | Node on any error. |
-| `auto` | Like `on`; ~1 in 20 Go answers are re-checked by Node in the background. One mismatch demotes the feature to `shadow` until restart. | Node on any error. |
+- **Docker**: built into the image (`/app/bin/tgdl-core`).
+- **`npm install`**: `scripts/install-core.js` (the `postinstall` step, or
+  `npm run install:core`) downloads the pinned release `core-v<CORE_VERSION>`
+  for this platform into `data/core-service/bin/` and checks it against the
+  release's `SHA256SUMS`; if that isn't possible and Go is installed, it
+  builds it (`npm run build:core`). It never fails the install.
+- **At startup**, if it still isn't there, the app tries the download once
+  more.
+- Builds exist for Windows (x64, arm64), Linux (x64, arm64, ARMv7, x86)
+  and macOS (arm64, x64). Anywhere else: build with Go and set
+  `TGDL_CORE_BIN`.
 
-Set it with, first match wins:
+Lookup order, env overrides (`TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL`,
+`TGDL_CORE_ALLOW_ROOTS`, `TGDL_CORE_SKIP_INSTALL`): see
+[core-service/README.md](../core-service/README.md#how-the-app-finds-it).
 
-1. `TGDL_GO_FEATURES="hash=on"` — per feature, env
-2. `TGDL_GO_CORE=off|shadow|on|auto` — all features, env
-3. `config.advanced.goCore.features` — per feature, e.g. `{ "hash": "on" }`
-4. `config.advanced.goCore.mode`
-5. the default (`shadow`)
+## When it can't run
 
-`POST /api/config` with `{"advanced":{"goCore":{"mode":"off"}}}` applies
-at once (tgdl-core stops or starts); `null` removes the block.
+The server still starts; the dashboard and `/api/auth_check` never wait
+for tgdl-core (it's started from the listen callback, not awaited).
+
+- The dashboard shows a banner with the exact fix; the same text is in
+  `GET /api/system/health` → `goCore.problem` and in the log (`[go-core]`,
+  once).
+- Verify files, Re-index from disk, Find duplicates and Re-cluster answer
+  `503 {"code":"TGDL_CORE_UNAVAILABLE","error":"… Fix: …"}` instead of
+  starting.
+- A finished download is stored without a hash (as after a read error
+  before); Find duplicates fills it in later.
+- The integrity sweep stops before changing anything
+  (`reason: "core_unavailable"`) — nothing is pruned.
+- `/api/stats` keeps its last disk-usage figure.
+- While tgdl-core is starting or restarting (crash → restart after 2 s …
+  5 min backoff; three failed health probes → restart), calls wait for it
+  up to 15 s instead of failing.
+- An older binary without a feature (e.g. 0.1.0, which only hashes) is
+  reported as outdated with the fix; a stale `npm run build:core` binary is
+  passed over for the downloaded one.
+
+`TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `config.advanced.goCore` and
+`HASH_WORKER_DISABLE` from earlier versions are ignored (a one-line note in
+the log if set).
 
 ## Watching it
 
-- `GET /api/system/health` → `goCore`: mode and its source, process state
-  (`running`, `binary_missing`, `downloading`, `unsupported`, `exited`,
-  `disabled`, …), version, binary path and source, restarts, and per
-  feature the effective route (`node` / `shadow` / `go`), breaker state and
-  counters (Go answers, Node answers, fallbacks, parity checks,
-  mismatches, skipped comparisons).
-- `/metrics`: `tgdl_gocore_calls_total{feature,result}` (`ok`,
-  `file_error`, `outside`, `timeout`, `error`), `tgdl_gocore_parity_checks_total{feature}`,
-  `tgdl_gocore_parity_mismatch_total{feature}`.
-- Logs: `[go-core] …` lines (start, restarts, breaker trips, mismatches).
+- `GET /api/system/health` → `goCore`: `state` (`running`, `starting`,
+  `downloading`, `binary_missing`, `unsupported`, `exited`, `unhealthy`,
+  `stopped`), `problem` (`{message, fix}` or null), `version` /
+  `expectedVersion`, `platform`, `binary` (path + source), `allowRoots`,
+  `restarts`, `features.<hash|stat|walk|dbscan>.available`.
+- `GET /api/monitor/status` → `core`: `{state, fix}` while someone needs to
+  act (drives the banner; no local paths).
+- `/metrics`: `tgdl_gocore_calls_total{feature,result}` — `feature` is
+  `hash` / `stat` / `walk` / `dbscan`, `result` is `ok`, `file_error`,
+  `outside`, `timeout` or `error`.
 
-Circuit breaker: 5 service failures (timeouts, dropped connections, 5xx,
-401, malformed answers) within 60 s turn the feature off until the next
-successful health probe (every 30 s). "This file can't be read" and
-"outside the allowed roots" answers don't count. Three failed health probes in a row restart the process,
-with exponential backoff (2 s … 5 min).
+## Parity
+
+Every test run builds tgdl-core from the same commit and checks it against
+the Node code it replaced and against Node itself:
+
+| Suite | Checks |
+|---|---|
+| `tests/gocore-fs.errors.test.js` | **Safety-critical.** Every situation the OS lets it set up — missing file / folder, a file used as a folder, trailing dot / space, reserved characters and names, 255 / 256-char names, paths over 260 and over 32 767 chars, links in / out / dangling / looping, ACL-denied files and folders, a file locked by another process, pre-1970 and post-2038 timestamps, and on Windows `pagefile.sys`, a missing drive, an offline share, an app-execution alias — answered by `stat-batch` and by Node's own `fs.stat`, live: identical, or exactly `EOUTSIDE` where that is expected (paths and links out of the root, NTFS streams, reserved device names), which the app then answers itself; the app-side result is identical in every case and never `EOUTSIDE`. |
+| `tests/gocore-integrity.parity.test.js` | `integrity.sweep` prunes exactly the rows and fixes exactly the sizes the old `Promise.all(fs.stat)` block did, for every row shape (legacy prefixes, federated rows, absolute / `../` paths, links out of the folder, folders where files should be, …). |
+| `tests/gocore-walk.parity.test.js` | Re-index from disk inserts the same rows in the same order with the same counters as the old nested `fs.readdir` walk (hidden files, `.part`, `.deleted`, links, deeper folders, duplicate message ids, unreadable folders — same thrown error); the disk-usage total equals the old recursive walk. Also against a frozen fixture. |
+| `tests/gocore-dbscan.parity.test.js` | Same clusters, members, order, noise count and byte-identical centroids as `ai/dbscan.js` on the existing DBSCAN fixtures and edge cases, and on a seeded 5 000 × 512 set against a frozen digest of `dbscan.js`'s output. |
+| `tests/gocore-hash.parity.test.js` | Digests equal `crypto.createHash` (empty, 1 byte, 1 MiB ± 1, 50 MB, Thai / emoji names, paths over 260 chars, concurrent load); unreadable files fail with the same `err.code` and message as `fs`. |
+| `tests/gocore-client.test.js`, `gocore-boot.e2e`, `gocore-dedup.e2e`, `gocore-install` | Failure handling (malformed / cut-off answers are errors, never results; 503 + fix when missing; crash mid-request; no orphan process), boot without a binary, the maintenance jobs end to end, the verified download and the platform slugs. |
+
+The Go side has its own unit tests (`cd core-service && go test ./...`),
+including the DBSCAN port against a reference implementation with 1, 2, 8
+and 16 workers.
+
+## Measured
+
+`node scripts/bench-gocore.js` on an i9-13900K (32 threads), Windows 11,
+NTFS on NVMe, warm cache, Node 22. Every pair produced identical results.
+"Loop" is the main event loop while the job runs: delay p99 / max
+(`monitorEventLoopDelay`) and utilisation — what the dashboard feels.
+
+| Job | Old Node code | tgdl-core | Loop p99 / max, util (Node → Go) |
+|---|---|---|---|
+| Integrity sweep, 50 000 rows (pages of 64) | 0.19 s | 0.27 s | 1.2 / 1.2 ms, 100 % → 2.7 / 2.8 ms, 30 % |
+| Disk-usage walk, 50 000 files | 1.32 s | 0.22 s | 1.1 / 1.3 ms, 38 % → 2.4 / 2.6 ms, 1 % |
+| Re-index walk, 50 000 files | 2.45 s | 0.34 s | 1.2 / 1.3 ms, 43 % → 2.6 / 3.1 ms, 23 % |
+| DBSCAN 5 000 × 512 | 7.4 s (worker thread) | 0.26 s | 2.3 / 4.2 ms, 1 % → 4.0 / 5.5 ms, 3 % |
+| DBSCAN 20 000 × 512 | 129.9 s (worker thread) | 3.6 s | 2.2 / 10 ms, 1 % → 4.5 / 8.5 ms, 1 % |
+| SHA-256, 2 GB, one file at a time | 3.1 s (main thread) | 2.0 s | 2.7 / 8.2 ms, 64 % → 2.4 / 3.6 ms, 4 % |
+
+- The sweep's stats are cheap on a warm local disk (a few µs each through
+  libuv's thread pool), so there the round trips cost about what the stats
+  do: tgdl-core is a little slower in wall time but uses under a third of
+  the main thread. It fetches up to 1 024 rows' stats per request for that
+  reason. On a cold cache, a spinning disk or a network share, where each
+  stat waits on the disk, its 16 parallel stats (libuv: 4) are the
+  difference.
+- DBSCAN uses every core but one; the result doesn't depend on how many.
+- tgdl-core's working set: 8 MB idle, ~20 MB for the 50 000-file stat
+  sweep and walks, 34 MB for DBSCAN 5 000 × 512, 75 MB for 20 000 × 512
+  (it holds the 40 MB of embeddings).
+- Phase 1 hashing numbers (worker pool vs tgdl-core, 8 in flight): 6.6–7.6
+  GB/s for tgdl-core vs 3.1–5.1 GB/s for the pool; see the v2.28.0 docs.
 
 ## Roadmap
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Process lifecycle, flags, breaker, metrics, packaging; SHA-256 file hashing (download-time dedup, duplicate scan, NSFW blocklist) | **this release** (default `shadow`) |
-| 2 | File-system sweeps (integrity walk, disk-usage scan, orphan detection) and face-clustering DBSCAN | next |
+| 1 | Process lifecycle, packaging; SHA-256 hashing (shadow parity) | **done** — v2.28.0 |
+| 2 | tgdl-core required and the only implementation: hashing, integrity stat sweep, folder walks (re-index, disk usage), face-clustering DBSCAN; installed by `npm install`; parity proven by tests | **this release** (tgdl-core 0.2.0) |
 | 3 | MTProto byte plane — Go streams file bytes from Telegram to disk; Node keeps sessions, the queue and the DB | planned |
 | 4 | Backup providers (S3, SFTP, FTP, Google Drive, Dropbox, local) as Go uploaders | planned |
-| 5 | Go front server for static files, `/files` and Range streaming, proxying the API to Node | planned |
-| 6 | Engine (monitor / downloader orchestration) in Go | gated on spikes proving the earlier phases in production |
+| 5 | Go front server for static files, `/files` and Range streaming, proxying the API to Node | in progress (separate branch) |
+| 6 | Engine (monitor / downloader orchestration) in Go | gated on the earlier phases in production |
 
-Each phase starts in `shadow` with parity checks and keeps its Node path
-until the Go path has run clean in the field.
+Each later phase follows the same rule as phase 2: Node code is removed
+only once tests prove the Go path gives identical results.
 
 The end state — the whole backend in Go, no Node at runtime, gated by the
 black-box API contract suite in `tests/contract/` — is planned in
 [GO-MIGRATION.md](GO-MIGRATION.md).
-
-## Measured (phase 1)
-
-`scripts/bench-gocore-hash.js`, warm page cache, i9-13900K / Windows 11 /
-Node 22, pool size 8 on both sides; all engines produced identical
-digests:
-
-| Set | Engine | 1 at a time | 8 in flight | Loop p99 | Loop utilisation (8 in flight) |
-|---|---|---|---|---|---|
-| 402 files, 2.2 GB | Node worker pool | 459–862 MB/s | 3.1–4.7 GB/s | 2.6–2.9 ms | 2–3 % |
-| | Node main thread | 626–991 MB/s | ~2.0 GB/s | 1.2 ms | 99 % |
-| | tgdl-core | ~1.75 GB/s | 6.6 GB/s | 2.7–3.0 ms | 18–23 % |
-| 22 files, 3.8 GB | Node worker pool | 634 MB/s | 5.1 GB/s | 2.6 ms | 1 % |
-| | tgdl-core | 1.83 GB/s | 7.6 GB/s | 2.5 ms | 4 % |
-
-tgdl-core used 16–32 MB RSS. The extra loop time with many small files
-is the HTTP round trip (~0.2 ms of main-thread work per file); it never
-blocks the loop (p99 delay equals the worker pool's). On a disk-bound
-NAS both engines are limited by the disk.

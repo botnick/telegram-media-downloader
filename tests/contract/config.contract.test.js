@@ -266,7 +266,7 @@ describe('POST /api/config saves', () => {
         await t.exchange('GET config cluster merged', 'GET', '/api/config');
     });
 
-    it('advanced.goCore is sanitised and null removes it', async () => {
+    it('advanced.goCore (obsolete since tgdl-core 0.2.0) is accepted and dropped', async () => {
         const t = h.t;
         await t.exchange('POST advanced.goCore', 'POST', '/api/config', {
             body: { advanced: { goCore: { mode: 'bogus', features: { hash: 'on', nope: 'on' } } } },

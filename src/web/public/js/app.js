@@ -13,6 +13,7 @@ import { ws } from './ws.js';
 import { initTheme, getTheme, setTheme } from './theme.js';
 import { initStatusBar } from './statusbar.js';
 import * as Notifications from './notifications.js';
+import { initCoreBanner } from './core-banner.js';
 import { initOnboarding, refreshOnboarding } from './onboarding.js';
 import { initOnboardingDismiss } from './onboarding-dismiss.js';
 import {
@@ -626,6 +627,7 @@ async function init() {
     const isAdmin = state.role === 'admin';
     initStatusBar();
     if (isAdmin) {
+        initCoreBanner();
         initOnboarding();
         // Must initialise AFTER initOnboarding so our monitor-status
         // subscriber lands later in the Set and runs after the banner

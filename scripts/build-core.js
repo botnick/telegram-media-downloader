@@ -28,13 +28,17 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const SVC_DIR = path.join(REPO_ROOT, 'core-service');
 const MODULE = 'github.com/botnick/telegram-media-downloader/core-service';
 
+// slug → [GOOS, GOARCH, extra env]. linux-arm is ARMv7 (Raspberry Pi 2+,
+// most 32-bit ARM NAS); GOARM=7 needs no C toolchain either.
 const TARGETS = {
     'win-x64': ['windows', 'amd64'],
     'win-arm64': ['windows', 'arm64'],
     'linux-x64': ['linux', 'amd64'],
     'linux-arm64': ['linux', 'arm64'],
+    'linux-arm': ['linux', 'arm', { GOARM: '7' }],
     'linux-x86': ['linux', '386'],
     'mac-arm64': ['darwin', 'arm64'],
+    'mac-x64': ['darwin', 'amd64'],
 };
 
 const args = process.argv.slice(2);
@@ -42,7 +46,7 @@ const release = args.includes('--release');
 const versionArg = args.find((a) => a.startsWith('--version='));
 const VERSION = versionArg ? versionArg.slice('--version='.length) : CORE_VERSION;
 
-function goBuild(goos, goarch, outPath) {
+function goBuild(goos, goarch, outPath, extraEnv = {}) {
     const ldflags = `-s -w -X ${MODULE}/internal/version.Version=${VERSION}`;
     const res = spawnSync(
         'go',
@@ -50,13 +54,13 @@ function goBuild(goos, goarch, outPath) {
         {
             cwd: SVC_DIR,
             stdio: 'inherit',
-            env: { ...process.env, CGO_ENABLED: '0', GOOS: goos, GOARCH: goarch },
+            env: { ...process.env, CGO_ENABLED: '0', GOOS: goos, GOARCH: goarch, ...extraEnv },
         },
     );
     if (res.error?.code === 'ENOENT') {
         console.error(
-            '[build:core] `go` not found on PATH. Install Go (https://go.dev/dl/) and retry.\n' +
-                'Without tgdl-core the app hashes files with its Node worker pool as before.',
+            '[build:core] `go` not found on PATH. Install Go 1.22+ (https://go.dev/dl/) and retry,\n' +
+                'or run `npm run install:core` to download the prebuilt tgdl-core instead.',
         );
         process.exit(127);
     }
@@ -80,10 +84,12 @@ function hostTarget() {
     const goos =
         process.env.GOOS || { win32: 'windows', darwin: 'darwin' }[process.platform] || 'linux';
     const goarch =
-        process.env.GOARCH || { x64: 'amd64', arm64: 'arm64', ia32: '386' }[process.arch];
+        process.env.GOARCH ||
+        { x64: 'amd64', arm64: 'arm64', ia32: '386', arm: 'arm' }[process.arch];
     const osPart = { windows: 'win', linux: 'linux', darwin: 'mac' }[goos] || goos;
-    const archPart = { amd64: 'x64', arm64: 'arm64', 386: 'x86' }[goarch] || goarch;
-    return { goos, goarch, slug: `${osPart}-${archPart}` };
+    const archPart = { amd64: 'x64', arm64: 'arm64', 386: 'x86', arm: 'arm' }[goarch] || goarch;
+    const extraEnv = goarch === 'arm' && !process.env.GOARM ? { GOARM: '7' } : {};
+    return { goos, goarch, extraEnv, slug: `${osPart}-${archPart}` };
 }
 
 async function main() {
@@ -93,12 +99,12 @@ async function main() {
     }
 
     if (!release) {
-        const { goos, goarch, slug } = hostTarget();
+        const { goos, goarch, extraEnv, slug } = hostTarget();
         const binDir = path.join(SVC_DIR, 'bin');
         mkdirSync(binDir, { recursive: true });
         const out = path.join(binDir, `tgdl-core-${slug}${goos === 'windows' ? '.exe' : ''}`);
         console.log(`[build:core] ${goos}/${goarch} v${VERSION} → ${out}`);
-        goBuild(goos, goarch, out);
+        goBuild(goos, goarch, out, extraEnv);
         if (!SUPPORTED_SLUGS.includes(slug)) {
             console.warn(
                 `[build:core] ${slug} is not a release target; point TGDL_CORE_BIN at the binary to use it.`,
@@ -113,12 +119,12 @@ async function main() {
     mkdirSync(distDir, { recursive: true });
     const sums = [];
     for (const slug of SUPPORTED_SLUGS) {
-        const [goos, goarch] = TARGETS[slug];
+        const [goos, goarch, extraEnv] = TARGETS[slug];
         const stage = mkdtempSync(path.join(distDir, `.stage-${slug}-`));
         try {
             const binName = goos === 'windows' ? 'tgdl-core.exe' : 'tgdl-core';
             console.log(`[build:core] ${slug} (${goos}/${goarch}) v${VERSION}`);
-            goBuild(goos, goarch, path.join(stage, binName));
+            goBuild(goos, goarch, path.join(stage, binName), extraEnv);
             const tarName = `tgdl-core-${slug}.tar.gz`;
             // Relative paths only: GNU tar on Windows reads `C:\…` as a
             // remote host.
