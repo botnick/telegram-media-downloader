@@ -33,6 +33,6 @@ relative_links:
 
 # Read by _includes/head_custom.html (JSON-LD). Bump on each app release.
 software:
-  version: 2.31.0
+  version: 2.32.0
   repository: https://github.com/botnick/telegram-media-downloader
   license: https://github.com/botnick/telegram-media-downloader/blob/main/LICENSE

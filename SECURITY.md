@@ -6,7 +6,7 @@ How to report a vulnerability in Telegram Media Downloader, what is in scope, an
 
 | Component | Supported |
 |---|---|
-| App | the latest release (currently 2.31.x) |
+| App | the latest release (currently 2.32.x) |
 | tgdl-core, faces-service, nsfw-service, seekbar-service | the latest release of each |
 
 Older versions do not receive fixes; update first (see [Updating](README.md#updating)).
