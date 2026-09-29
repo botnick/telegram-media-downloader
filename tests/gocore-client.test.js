@@ -258,6 +258,10 @@ describe('tgdl-core missing', () => {
         // stat can't be answered at all.
         const dbApi = await import('../src/core/db.js');
         const db = dbApi.getDb();
+        expect(
+            path.resolve(db.name).startsWith(path.resolve(TMP)),
+            `db.name ${db.name} escaped the temp dir`,
+        ).toBe(true);
         db.exec('DELETE FROM downloads');
         db.prepare(
             `INSERT INTO downloads (group_id, group_name, message_id, file_name, file_size, file_type, file_path)

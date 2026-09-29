@@ -11,7 +11,8 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { sanitizeName } from '../../src/core/downloader.js';
+// Lazy (inside the functions): a static import would load src/ modules before
+// a test sets TGDL_DATA_DIR, freezing the repo's own data dir into them.
 
 const MISSING_CODES = new Set(['ENOENT', 'ENOTDIR']);
 
@@ -68,12 +69,13 @@ function deriveMessageId(relPath, fileName) {
     const n = h.readUInt32BE(0) || 1;
     return -n;
 }
-function resolveGroupId(folderName, configGroups) {
+async function resolveGroupId(folderName, configGroups) {
     if (!Array.isArray(configGroups)) return null;
     for (const g of configGroups) {
         if (String(g.id) === folderName) return { id: String(g.id), name: g.name || folderName };
     }
     for (const g of configGroups) {
+        const { sanitizeName } = await import('../../src/core/downloader.js');
         const sanitised = sanitizeName(g.name || '');
         if (sanitised && sanitised === folderName) return { id: String(g.id), name: g.name };
     }
@@ -121,7 +123,7 @@ export async function oracleReindex(DOWNLOADS_DIR, configGroups, insert) {
     };
     for (const gd of groupDirs) {
         const folderName = gd.name;
-        const resolved = resolveGroupId(folderName, configGroups);
+        const resolved = await resolveGroupId(folderName, configGroups);
         const groupId = resolved ? resolved.id : `unknown:${folderName}`;
         const groupName = resolved ? resolved.name : folderName;
         const subEntries = await fs.readdir(path.join(DOWNLOADS_DIR, folderName), {

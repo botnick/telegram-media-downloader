@@ -60,6 +60,10 @@ beforeAll(async () => {
     delete process.env.TGDL_DOWNLOADS_DIR;
     const dbApi = await import('../src/core/db.js');
     db = dbApi.getDb();
+    expect(
+        path.resolve(db.name).startsWith(path.resolve(DATA_DIR)),
+        `db.name ${db.name} escaped the temp dir`,
+    ).toBe(true);
     integrity = await import('../src/core/integrity.js');
 });
 
