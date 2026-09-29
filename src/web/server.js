@@ -12469,7 +12469,10 @@ app.post('/api/config', async (req, res) => {
 
         // Refresh the cached rate-limit config so the toggle / RPM change
         // takes effect immediately instead of waiting for the 30s sweep.
-        if (req.body.web?.rateLimit) refreshRateLimitConfig();
+        if (req.body.web?.rateLimit) await refreshRateLimitConfig();
+        // And the tgdl-core front server has the new auth / Force HTTPS /
+        // rate-limit / CSP state before the caller sees the save succeed.
+        if (req.body.web) await pushFrontState().catch(() => {});
 
         // Restart the disk rotator if the user changed any diskManagement
         // field — picks up the new cap / enabled / interval on the very next
