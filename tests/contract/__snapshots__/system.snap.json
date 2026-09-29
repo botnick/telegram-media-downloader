@@ -28,41 +28,36 @@
           },
           "disk": null,
           "goCore": {
-            "allowRoots": null,
-            "binary": null,
+            "allowRoots": [
+              "<DATA>/downloads"
+            ],
+            "binary": {
+              "path": "<masked:string>",
+              "source": "<masked:string>"
+            },
             "error": null,
-            "expectedVersion": "0.1.0",
+            "expectedVersion": "<masked:string>",
             "features": {
+              "dbscan": {
+                "available": true
+              },
               "hash": {
-                "active": "node",
-                "breaker": {
-                  "openedAt": null,
-                  "recentFailures": 0,
-                  "state": "closed",
-                  "trips": 0
-                },
-                "demoted": false,
-                "fallbacks": 0,
-                "go": 0,
-                "lastMismatch": null,
-                "mode": "off",
-                "node": 0,
-                "outside": 0,
-                "parityChecks": 0,
-                "parityMismatches": 0,
-                "paritySkipped": 0,
-                "sampleEvery": 20,
-                "sampleMaxBytes": 268435456,
-                "source": "env"
+                "available": true
+              },
+              "stat": {
+                "available": true
+              },
+              "walk": {
+                "available": true
               }
             },
-            "mode": "off",
-            "modeSource": "env",
-            "pid": null,
+            "pid": "<pid:number>",
+            "platform": "<masked:string>",
+            "problem": null,
             "restarts": 0,
             "since": "<time:ms>",
-            "state": "disabled",
-            "version": null
+            "state": "running",
+            "version": "<masked:string>"
           },
           "process": {
             "memoryMB": {
@@ -98,7 +93,12 @@
         "system.loadAvg": "host load average",
         "system.totalMemMB": "host memory",
         "system.freeMemMB": "host memory",
-        "system.usedMemPercent": "host memory"
+        "system.usedMemPercent": "host memory",
+        "goCore.binary.path": "where this host found tgdl-core (dev build, install dir, TGDL_CORE_BIN)",
+        "goCore.binary.source": "how this host got tgdl-core (dev build vs npm-installed release)",
+        "goCore.platform": "host OS / CPU slug",
+        "goCore.version": "tgdl-core version, bumped with every core release",
+        "goCore.expectedVersion": "tgdl-core version, bumped with every core release"
       }
     },
     "GET system/health with one WS client": {
@@ -129,41 +129,36 @@
           },
           "disk": null,
           "goCore": {
-            "allowRoots": null,
-            "binary": null,
+            "allowRoots": [
+              "<DATA>/downloads"
+            ],
+            "binary": {
+              "path": "<masked:string>",
+              "source": "<masked:string>"
+            },
             "error": null,
-            "expectedVersion": "0.1.0",
+            "expectedVersion": "<masked:string>",
             "features": {
+              "dbscan": {
+                "available": true
+              },
               "hash": {
-                "active": "node",
-                "breaker": {
-                  "openedAt": null,
-                  "recentFailures": 0,
-                  "state": "closed",
-                  "trips": 0
-                },
-                "demoted": false,
-                "fallbacks": 0,
-                "go": 0,
-                "lastMismatch": null,
-                "mode": "off",
-                "node": 0,
-                "outside": 0,
-                "parityChecks": 0,
-                "parityMismatches": 0,
-                "paritySkipped": 0,
-                "sampleEvery": 20,
-                "sampleMaxBytes": 268435456,
-                "source": "env"
+                "available": true
+              },
+              "stat": {
+                "available": true
+              },
+              "walk": {
+                "available": true
               }
             },
-            "mode": "off",
-            "modeSource": "env",
-            "pid": null,
+            "pid": "<pid:number>",
+            "platform": "<masked:string>",
+            "problem": null,
             "restarts": 0,
             "since": "<time:ms>",
-            "state": "disabled",
-            "version": null
+            "state": "running",
+            "version": "<masked:string>"
           },
           "process": {
             "memoryMB": {
@@ -199,7 +194,12 @@
         "system.loadAvg": "host load average",
         "system.totalMemMB": "host memory",
         "system.freeMemMB": "host memory",
-        "system.usedMemPercent": "host memory"
+        "system.usedMemPercent": "host memory",
+        "goCore.binary.path": "where this host found tgdl-core (dev build, install dir, TGDL_CORE_BIN)",
+        "goCore.binary.source": "how this host got tgdl-core (dev build vs npm-installed release)",
+        "goCore.platform": "host OS / CPU slug",
+        "goCore.version": "tgdl-core version, bumped with every core release",
+        "goCore.expectedVersion": "tgdl-core version, bumped with every core release"
       }
     },
     "GET system/health guest → 403": {

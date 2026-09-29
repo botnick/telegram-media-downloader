@@ -5714,11 +5714,6 @@
               "minConcurrency": 1,
               "scalerIntervalSec": 5
             },
-            "goCore": {
-              "features": {
-                "hash": "on"
-              }
-            },
             "history": {
               "autoCatchUp": true,
               "autoCatchUpThreshold": 5,
