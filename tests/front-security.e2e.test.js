@@ -15,13 +15,15 @@
 //     request gets HSTS + upgrade-insecure-requests, local requests pass.
 //   - The /api rate limit counts requests tgdl-core could have answered
 //     itself (thumbnail hits), per client IP.
+//   - Security headers are Node's: a CSP saved in Settings is on the
+//     files tgdl-core serves itself.
 //   - /files bearer tokens: expired, forged, legacy.
 //   - Node's loopback port ignores a forged X-Tgdl-Front token.
 
 import crypto from 'crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { findOrBuildGoCore, GOCORE_TEST } from './helpers/gocore-bin.js';
+import { testCoreBin } from './helpers/gocore-bin.js';
 import { PARITY_SHARE_SECRET } from './helpers/front-parity.js';
 import {
     lanAddress,
@@ -89,7 +91,7 @@ async function same(p, req) {
 
 beforeAll(async () => {
     if (SKIP) return;
-    bin = await findOrBuildGoCore();
+    bin = testCoreBin(); // the tree's build (tests/setup/gocore.global.js)
 }, 300_000);
 
 afterAll(async () => {
@@ -138,7 +140,7 @@ describe.skipIf(SKIP)('front server: security behaviour is unchanged', () => {
 
         it('Node behind tgdl-core ignores a forged front token', async () => {
             const up = upstreamPort(p.front);
-            if (bin || GOCORE_TEST) expect(up).toBeTruthy();
+            expect(up).toBeTruthy();
             if (!up) return;
             // A wrong token: the address header is ignored, the request is
             // judged by its real (loopback) peer and its X-Forwarded-For.
@@ -262,10 +264,8 @@ describe.skipIf(SKIP)('front server: security behaviour is unchanged', () => {
             expect(t.status).toBe(200);
             // …and tgdl-core answered them itself.
             const after = await fastCounts(p);
-            if (GOCORE_TEST) {
-                expect(after.files - before.files).toBe(2);
-                expect(after.thumbs - before.thumbs).toBe(1);
-            }
+            expect(after.files - before.files).toBe(2);
+            expect(after.thumbs - before.thumbs).toBe(1);
         });
 
         it('a local plain-HTTP request passes without HSTS', async () => {
@@ -299,7 +299,38 @@ describe.skipIf(SKIP)('front server: security behaviour is unchanged', () => {
             expect((await same(p, thumb('198.51.100.1'))).status).toBe(429);
             expect((await same(p, thumb('198.51.100.2'))).status).toBe(200);
             // None of them was answered without Node counting it.
-            if (GOCORE_TEST) expect((await fastCounts(p)).thumbs).toBe(0);
+            expect((await fastCounts(p)).thumbs).toBe(0);
+        }, 60_000);
+    });
+
+    describe('security headers come from Node', () => {
+        it('a CSP saved in Settings is on the files tgdl-core serves itself', async () => {
+            const p = await pair({});
+            const defaults = JSON.parse(
+                (await rawRequest(p.front.port, { path: '/api/csp', headers: ADMIN })).body,
+            ).defaults;
+            defaults.directives['img-src'].push('https://img.example.com');
+            defaults.directives['frame-ancestors'].push('https://portal.example.com');
+            const saved = await both(p, {
+                method: 'POST',
+                path: '/api/config',
+                headers: ADMIN,
+                body: { web: { csp: defaults } },
+            });
+            expect(saved.map((r) => r.status)).toEqual([200, 200]);
+            // Pushed to tgdl-core right after the save (a few ms).
+            const before = await fastCounts(p);
+            let f;
+            for (let i = 0; i < 40; i++) {
+                f = await rawRequest(p.front.port, { path: CLIP, headers: ADMIN });
+                if (f.headers['content-security-policy']?.includes('img.example.com')) break;
+                await new Promise((r) => setTimeout(r, 50));
+            }
+            f = await same(p, { path: CLIP, headers: ADMIN });
+            expect(f.status).toBe(200);
+            expect(f.headers['content-security-policy']).toContain('https://img.example.com');
+            expect(f.headers['x-frame-options']).toBeUndefined();
+            expect((await fastCounts(p)).files).toBeGreaterThan(before.files);
         }, 60_000);
     });
 

@@ -3,18 +3,19 @@
 //   - tgdl-core killed: Node restarts it; the dashboard is back within a
 //     second and /api/auth_check (the Docker healthcheck) answers.
 //   - tgdl-core dying over and over (5 times in a minute): Node stops
-//     restarting it, binds PORT itself, logs why and shows a banner.
+//     restarting it, binds PORT itself, logs why and the dashboard banner
+//     says so.
 //   - PORT already taken: the process exits with the same fatal message
 //     as before (no silent fallback).
 //
-// Needs a tgdl-core binary (TGDL_GO_CORE_TEST=1, or a dev build).
+// Uses the tree's tgdl-core build (tests/setup/gocore.global.js).
 
 import { spawn } from 'child_process';
 import net from 'net';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { findOrBuildGoCore } from './helpers/gocore-bin.js';
+import { testCoreBin } from './helpers/gocore-bin.js';
 import {
     freePort,
     makeDataDir,
@@ -54,12 +55,7 @@ async function waitFor(fn, timeoutMs = 15_000) {
 
 beforeAll(async () => {
     if (SKIP) return;
-    bin = await findOrBuildGoCore();
-    if (!bin) {
-        const { resolveBinary } = await import('../src/core/gocore/spawn.js');
-        const b = resolveBinary();
-        bin = b && !b.missing ? b.path : null;
-    }
+    bin = testCoreBin(); // the tree's build (tests/setup/gocore.global.js)
     resolved = true;
 }, 300_000);
 
@@ -124,7 +120,11 @@ describe.skipIf(SKIP)('tgdl-core front server supervision', () => {
         expect((await rawRequest(port, { path: '/api/auth_check' })).status).toBe(200);
         const page = await rawRequest(port, { path: '/', headers: ADMIN });
         expect(page.status).toBe(200);
-        expect(page.body).toContain('id="tgdl-core-banner"');
+        // The dashboard banner says why.
+        const mon = JSON.parse(
+            (await rawRequest(port, { path: '/api/monitor/status', headers: ADMIN })).body,
+        );
+        expect(mon.core?.state).toBe('front_down');
         // Media still works — Node streams it itself now.
         const f = await rawRequest(port, {
             path: '/files/G1/videos/clip.mp4',

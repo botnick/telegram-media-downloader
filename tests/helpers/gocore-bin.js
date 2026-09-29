@@ -1,12 +1,12 @@
-// tgdl-core binary for the suites that run the real thing.
+// tgdl-core binary for the test run.
 //
-// Opt-in: those suites run only with TGDL_GO_CORE_TEST=1 (CI's
-// "node + tgdl-core" jobs set it). Then the binary is TGDL_CORE_BIN, the
-// dev build (core-service/bin, `npm run build:core`), or — with Go on
-// PATH — a build into the OS temp dir, cached by a hash of the Go
-// sources. Opted in but none of those works → the suite fails instead
-// of skipping. Without the flag `findOrBuildGoCore()` returns null and
-// the suites skip, so a plain `npm test` never builds or spawns it.
+// tgdl-core is a required part of the app, so the suite needs one:
+// TGDL_CORE_BIN when it points at a file, else the dev build
+// (core-service/bin, `npm run build:core`), else — with Go on PATH — a
+// build into the OS temp dir, cached by a hash of the Go sources (so an
+// edited .go file is always rebuilt). The vitest global setup
+// (tests/setup/gocore.global.js) resolves it once and exports it as
+// TGDL_CORE_BIN to every test worker and every server they spawn.
 
 import { spawnSync } from 'child_process';
 import crypto from 'crypto';
@@ -16,8 +16,8 @@ import path from 'path';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SVC_DIR = path.join(REPO_ROOT, 'core-service');
-
-export const GOCORE_TEST = process.env.TGDL_GO_CORE_TEST === '1';
+/** Where TGDL_CORE_BIN points when no binary could be found or built. */
+export const MISSING_BIN = path.join(os.tmpdir(), 'tgdl-core-test', 'no-tgdl-core-available');
 
 function usable(p) {
     try {
@@ -28,7 +28,7 @@ function usable(p) {
     }
 }
 
-function sourceHash() {
+export function sourceHash() {
     const h = crypto.createHash('sha256');
     const walk = (dir) => {
         for (const e of fs
@@ -47,20 +47,7 @@ function sourceHash() {
     return h.digest('hex').slice(0, 16);
 }
 
-async function locate() {
-    const explicit = process.env.TGDL_CORE_BIN;
-    if (explicit && usable(explicit)) return path.resolve(explicit);
-
-    const prev = process.env.TGDL_CORE_BIN;
-    delete process.env.TGDL_CORE_BIN;
-    try {
-        const { resolveBinary } = await import('../../src/core/gocore/spawn.js');
-        const found = resolveBinary();
-        if (found && !found.missing && found.source !== 'download') return found.path;
-    } finally {
-        if (prev !== undefined) process.env.TGDL_CORE_BIN = prev;
-    }
-
+function buildFromSource() {
     const exe = process.platform === 'win32' ? 'tgdl-core.exe' : 'tgdl-core';
     const dir = path.join(os.tmpdir(), 'tgdl-core-test', sourceHash());
     const out = path.join(dir, exe);
@@ -80,22 +67,36 @@ async function locate() {
     try {
         fs.renameSync(tmp, out);
     } catch {
-        // A parallel suite won the race; its binary is identical.
+        // A parallel run won the race; its binary is identical.
         fs.rmSync(tmp, { force: true });
     }
     return usable(out) ? out : null;
 }
 
-let _cached;
-
-/** Path to a tgdl-core binary, or null when TGDL_GO_CORE_TEST isn't set. */
-export async function findOrBuildGoCore() {
-    if (!GOCORE_TEST) return null;
-    if (_cached === undefined) _cached = await locate();
-    if (!_cached) {
-        throw new Error(
-            'TGDL_GO_CORE_TEST=1 but no tgdl-core: set TGDL_CORE_BIN, run `npm run build:core`, or put Go on PATH',
+/**
+ * Path to a tgdl-core built from this tree, or null. Prefers a fresh
+ * build from source (Go on PATH) over a dev build that may be stale.
+ */
+export function locateGoCore() {
+    const explicit = process.env.TGDL_CORE_BIN;
+    if (explicit && usable(explicit) && explicit !== MISSING_BIN) return path.resolve(explicit);
+    const built = buildFromSource();
+    if (built) return built;
+    const slug = { win32: 'win', linux: 'linux', darwin: 'mac' }[process.platform];
+    const arch = { x64: 'x64', arm64: 'arm64' }[process.arch];
+    if (slug && arch) {
+        const dev = path.join(
+            SVC_DIR,
+            'bin',
+            `tgdl-core-${slug}-${arch}${process.platform === 'win32' ? '.exe' : ''}`,
         );
+        if (usable(dev)) return dev;
     }
-    return _cached;
+    return null;
+}
+
+/** The binary the global setup picked (null when none is available). */
+export function testCoreBin() {
+    const p = process.env.TGDL_CORE_BIN;
+    return p && p !== MISSING_BIN && usable(p) ? p : null;
 }

@@ -2,10 +2,15 @@
  * tgdl-core lifecycle — find (or download) the Go binary, spawn it on
  * 127.0.0.1, health-check it, restart it, stop it.
  *
- * Everything here is best-effort: any failure leaves the client without
- * an endpoint, and every feature keeps running on its Node
- * implementation. Nothing in this module blocks server startup — the
- * server calls `startGoCore()` from its listen callback without awaiting.
+ * tgdl-core is a required part of the app: it is the only implementation
+ * of file hashing (download-time dedup, the duplicate scan, the NSFW
+ * blocklist), the integrity stat sweep, "Re-index from disk", the
+ * disk-usage scan and face clustering. Everything else — the dashboard,
+ * /api/auth_check, downloads — works without it, so nothing here blocks
+ * server startup or throws: the server calls `startGoCore()` from its
+ * listen callback without awaiting, and when tgdl-core can't run, the
+ * features that need it answer 503 with the fix (`getCoreProblem()`), the
+ * status is in GET /api/system/health → goCore, and the log says it once.
  *
  * Binary lookup, first hit wins:
  *
@@ -14,9 +19,10 @@
  *   2. /app/bin/tgdl-core                 Docker image (Linux)
  *   3. core-service/bin/tgdl-core-<slug>  `npm run build:core`
  *   4. data/core-service/bin/tgdl-core-<slug>
- *                                         downloaded from the GitHub release
- *                                         `core-v${CORE_VERSION}`, checked
- *                                         against its SHA256SUMS asset
+ *                                         `npm install` (scripts/install-core.js)
+ *                                         or the first start: downloaded from
+ *                                         the GitHub release `core-v${CORE_VERSION}`,
+ *                                         checked against its SHA256SUMS asset
  *
  * The child gets a minimal environment (token, port 0, pool size, the
  * directories it may read, the few OS variables a Go binary needs) —
@@ -35,31 +41,29 @@ import readline from 'readline';
 
 import { getDataDir, getDownloadsDir, getRepoRoot, resolveConfigDownloadPath } from '../paths.js';
 import * as client from './client.js';
-import {
-    anyFeatureEnabled,
-    invalidateConfig,
-    resolveGlobalMode,
-    setConfigReader,
-} from './flags.js';
-import { getHashStats } from './hash.js';
 
 /**
  * Pinned tgdl-core release. The GitHub Release `core-v<VER>` must carry
  * `tgdl-core-<slug>.tar.gz` for every slug below plus `SHA256SUMS`.
  * Bumping it makes existing installs download the new binary on boot.
  */
-export const CORE_VERSION = '0.1.0';
+export const CORE_VERSION = '0.3.0';
 export const SUPPORTED_SLUGS = Object.freeze([
     'win-x64',
     'win-arm64',
     'linux-x64',
     'linux-arm64',
+    'linux-arm',
     'linux-x86',
     'mac-arm64',
+    'mac-x64',
 ]);
+/** Features every tgdl-core this app runs must advertise on /health. */
+export const CORE_FEATURES = Object.freeze(['hash', 'stat', 'walk', 'dbscan']);
 export const DOCKER_BIN = '/app/bin/tgdl-core';
+export const RELEASE_PAGE = 'https://github.com/botnick/telegram-media-downloader/releases';
 
-const RELEASES = 'https://github.com/botnick/telegram-media-downloader/releases/download';
+const RELEASES = `${RELEASE_PAGE}/download`;
 const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
 const DOWNLOAD_REDIRECT_LIMIT = 5;
 const MAX_TARBALL_BYTES = 64 * 1024 * 1024;
@@ -89,12 +93,14 @@ let _healthTimer = null;
 let _healthFailures = 0;
 let _unwatchConfig = null;
 let _readConfig = null;
-let _lastConfigKeys = null;
+let _lastRootsKey = null;
 let _exitHookInstalled = false;
+let _legacyEnvNoted = false;
 
 function _log(level, msg) {
     const line = `[go-core] ${msg}`;
-    if (level === 'warn') console.warn(line);
+    if (level === 'error') console.error(line);
+    else if (level === 'warn') console.warn(line);
     else console.log(line);
 }
 
@@ -102,18 +108,30 @@ function _setState(partial) {
     const next = { ..._state, ...partial };
     if (partial.state && partial.state !== _state.state) next.since = Date.now();
     _state = next;
+    client.notifyStateChange();
 }
 
 // ---- Binary lookup ---------------------------------------------------------
 
-/** Release slug for this host, or null when no binary is built for it. */
-export function platformSlug(platform = process.platform, arch = process.arch) {
+/**
+ * Release slug for this host, or null when no binary is built for it.
+ * 32-bit ARM needs ARMv7 (the build uses GOARM=7).
+ */
+export function platformSlug(
+    platform = process.platform,
+    arch = process.arch,
+    armVersion = process.config?.variables?.arm_version,
+) {
     const os = { win32: 'win', linux: 'linux', darwin: 'mac' }[platform];
     if (!os) return null;
     let a = null;
     if (arch === 'x64') a = 'x64';
     else if (arch === 'arm64') a = 'arm64';
     else if (arch === 'ia32' && platform === 'linux') a = 'x86';
+    else if (arch === 'arm' && platform === 'linux') {
+        const v = Number.parseInt(armVersion, 10);
+        a = Number.isFinite(v) && v < 7 ? null : 'arm';
+    }
     if (!a) return null;
     const slug = `${os}-${a}`;
     return SUPPORTED_SLUGS.includes(slug) ? slug : null;
@@ -123,7 +141,8 @@ export function binaryFileName(slug, platform = process.platform) {
     return `tgdl-core-${slug}${platform === 'win32' ? '.exe' : ''}`;
 }
 
-function _downloadDir() {
+/** Where `npm install` / the first start put a downloaded binary. */
+export function downloadDir() {
     return path.join(getDataDir(), 'core-service', 'bin');
 }
 
@@ -151,7 +170,7 @@ function _readVersionMarker(binPath) {
  * `{ path, source: 'env', missing: true }` for a TGDL_CORE_BIN that
  * doesn't exist, or null.
  */
-export function resolveBinary() {
+export function resolveBinary({ skipDev = false } = {}) {
     const explicit = String(process.env.TGDL_CORE_BIN || '').trim();
     if (explicit) {
         const p = path.resolve(explicit);
@@ -166,8 +185,8 @@ export function resolveBinary() {
     if (!slug) return null;
     const name = binaryFileName(slug);
     const dev = path.join(getRepoRoot(), 'core-service', 'bin', name);
-    if (_isUsable(dev)) return { path: dev, source: 'dev' };
-    const downloaded = path.join(_downloadDir(), name);
+    if (!skipDev && _isUsable(dev)) return { path: dev, source: 'dev' };
+    const downloaded = path.join(downloadDir(), name);
     if (_isUsable(downloaded)) {
         return {
             path: downloaded,
@@ -178,9 +197,38 @@ export function resolveBinary() {
     return null;
 }
 
+/** `tgdl-core version` → "0.3.0", or null. */
+export function binaryVersion(binPath) {
+    return new Promise((resolve) => {
+        execFile(binPath, ['version'], { timeout: 10_000, windowsHide: true }, (err, stdout) => {
+            const m = /^tgdl-core (\S+)/.exec(String(stdout || ''));
+            resolve(err || !m ? null : m[1]);
+        });
+    });
+}
+
+/**
+ * resolveBinary(), except that a `npm run build:core` binary of another
+ * version (a stale dev build) is passed over for the downloaded one.
+ */
+export async function resolveCurrentBinary({ log = _log } = {}) {
+    let bin = resolveBinary();
+    if (bin?.source === 'dev') {
+        const v = await binaryVersion(bin.path);
+        if (v !== CORE_VERSION) {
+            log(
+                'warn',
+                `${bin.path} is tgdl-core ${v || '(unknown version)'}, this app needs ${CORE_VERSION}; not using it (\`npm run build:core\` rebuilds it)`,
+            );
+            bin = resolveBinary({ skipDev: true });
+        }
+    }
+    return bin;
+}
+
 // ---- Download --------------------------------------------------------------
 
-function _releaseBase() {
+export function releaseBase() {
     const override = String(process.env.TGDL_CORE_RELEASE_URL || '').trim();
     if (override) return override.replace(/\/+$/, '');
     return `${RELEASES}/core-v${CORE_VERSION}`;
@@ -312,13 +360,16 @@ async function _extract(tarPath, destDir) {
     await _extractTarballNodeFallback(tarPath, destDir);
 }
 
-async function _download(slug) {
-    const dir = _downloadDir();
+/**
+ * Download the pinned tgdl-core for `slug` into `dir`, verify it against
+ * the release's SHA256SUMS and write the `.version` marker. Returns the
+ * binary's path. Used at startup and by scripts/install-core.js.
+ */
+export async function downloadCore(slug, { dir = downloadDir(), log = _log } = {}) {
     await fsp.mkdir(dir, { recursive: true });
-    const base = _releaseBase();
+    const base = releaseBase();
     const tarName = `tgdl-core-${slug}.tar.gz`;
-    _setState({ state: 'downloading', error: null });
-    _log('info', `downloading ${tarName} (core-v${CORE_VERSION})`);
+    log('info', `downloading ${tarName} (core-v${CORE_VERSION})`);
 
     const sums = parseSha256Sums(await _get(`${base}/SHA256SUMS`, { maxBytes: 64 * 1024 }));
     const expected = sums[tarName];
@@ -349,6 +400,118 @@ async function _download(slug) {
     } finally {
         await fsp.rm(staging, { recursive: true, force: true }).catch(() => {});
     }
+}
+
+// ---- What's wrong and how to fix it ------------------------------------------
+
+/** The one-paragraph fix for a missing / unusable binary on this host. */
+export function installFix(slug = platformSlug()) {
+    if (!slug) {
+        return (
+            `No prebuilt tgdl-core exists for ${process.platform}/${process.arch}. ` +
+            'Install Go 1.22+ (https://go.dev/dl/), run `npm run build:core`, set ' +
+            'TGDL_CORE_BIN to the binary it prints, and restart the app.'
+        );
+    }
+    return (
+        'Run `npm run install:core` in the app folder (needs access to github.com), ' +
+        'or install Go 1.22+ and run `npm run build:core`, then restart the app. ' +
+        `Offline: download tgdl-core-${slug}.tar.gz from ${RELEASE_PAGE}/tag/core-v${CORE_VERSION}, ` +
+        'extract it and set TGDL_CORE_BIN to the binary.'
+    );
+}
+
+/**
+ * Why tgdl-core isn't serving right now, or null when it is.
+ * `{ state, message, fix, starting }`.
+ */
+export function getCoreProblem() {
+    const s = _state.state;
+    const starting =
+        !_stopped &&
+        (Boolean(_startingPromise) ||
+            Boolean(_restartTimer) ||
+            s === 'starting' ||
+            s === 'downloading' ||
+            s === 'idle');
+    if (s === 'running' && client.getEndpoint()) {
+        const missing = CORE_FEATURES.filter((f) => !client.isAvailable(f));
+        if (!missing.length) return null;
+        return {
+            state: 'outdated',
+            starting: false,
+            message: `tgdl-core ${_state.version || '?'} is running, but this app needs ${CORE_VERSION} (missing: ${missing.join(', ')}).`,
+            fix:
+                _state.binary?.source === 'env'
+                    ? `Point TGDL_CORE_BIN at a tgdl-core ${CORE_VERSION} binary and restart the app.`
+                    : _state.binary?.source === 'dev'
+                      ? 'Run `npm run build:core` and restart the app.'
+                      : installFix(),
+        };
+    }
+    let message;
+    let fix = null;
+    switch (s) {
+        case 'binary_missing':
+            message = `tgdl-core, the app's file engine, is missing: ${_state.error || 'not installed'}.`;
+            fix =
+                _state.binary?.source === 'env'
+                    ? 'Point TGDL_CORE_BIN at an existing tgdl-core binary (or unset it) and restart the app.'
+                    : installFix();
+            break;
+        case 'unsupported':
+            message = `tgdl-core isn't available for ${process.platform}/${process.arch}.`;
+            fix = installFix(null);
+            break;
+        case 'stopped':
+            message = 'tgdl-core is stopped (the app is shutting down).';
+            break;
+        case 'starting':
+        case 'downloading':
+        case 'idle':
+            message = 'tgdl-core is starting — try again in a few seconds.';
+            break;
+        default:
+            message = `tgdl-core is not running (${_state.error || s}); it restarts automatically.`;
+            fix = 'If this persists, check the [go-core] lines in the log.';
+    }
+    return { state: s, starting, message: fix ? `${message} Fix: ${fix}` : message, fix };
+}
+
+/**
+ * For the dashboard banner (GET /api/monitor/status → core, also sent to
+ * guests): only problems that need someone to act, and no local paths.
+ */
+export function getCoreBanner() {
+    const p = getCoreProblem();
+    if (!p || p.starting || !p.fix) return null;
+    return { state: p.state, fix: p.fix };
+}
+
+client.setStatusProvider(() => {
+    const p = getCoreProblem();
+    const idle = _state.state === 'idle' && !_startingPromise && !_stopped;
+    return p
+        ? { starting: p.starting, idle, message: p.message }
+        : { starting: false, idle: false, message: 'tgdl-core is running' };
+});
+
+// A feature used before the server started tgdl-core — the CLI
+// downloader, scripts, tests: start it now. Without a config reader the
+// allowed roots are the downloads folders (+ TGDL_CORE_ALLOW_ROOTS); a
+// file under a custom download.path is then hashed in-process (EOUTSIDE),
+// with the same result.
+client.setAutoStart(() => {
+    startGoCore().catch(() => {});
+});
+
+function _reportProblem() {
+    const p = getCoreProblem();
+    if (!p?.fix) return;
+    _log(
+        'error',
+        `${p.message}\n[go-core] Until then file hashing, Verify files, Re-index from disk, the disk-usage fallback and face clustering are unavailable; everything else works.`,
+    );
 }
 
 // ---- Spawn -----------------------------------------------------------------
@@ -383,17 +546,16 @@ function _safeConfig() {
 }
 
 /**
- * Directories tgdl-core may read files from (TGDL_CORE_ALLOW_ROOTS) —
- * everywhere the app hashes from:
- *   - getDownloadsDir(): the downloader's default target, dedup's base;
+ * Directories tgdl-core may read (TGDL_CORE_ALLOW_ROOTS):
+ *   - getDownloadsDir(): the downloader's default target, dedup's base,
+ *     what integrity / re-index / the disk-usage scan walk;
  *   - <data dir>/downloads: nsfw.js resolves relative rows there, even
  *     when TGDL_DOWNLOADS_DIR points elsewhere;
  *   - config.download.path when it is custom (resolved like the
  *     downloader does, relative to the working directory);
  *   - extra roots from this process's own TGDL_CORE_ALLOW_ROOTS.
- * Hashing happens on final paths only (after the .part rename), so no
- * temp directory is needed. A file anywhere else gets EOUTSIDE from
- * tgdl-core and is hashed by Node, exactly as before.
+ * A path anywhere else gets EOUTSIDE and the caller answers it with plain
+ * fs (see hash.js / fs.js), exactly as before.
  */
 export function allowRoots(config = _safeConfig()) {
     const out = [];
@@ -535,23 +697,36 @@ async function _spawn(bin) {
 
     const ev = await _waitForListening(child);
     if (_child !== child) return false;
-    client.setEndpoint(`http://${ev.addr}`, token, []);
+    client.setEndpoint(`http://${ev.addr}`, token, [], ev.version ?? null);
     const h = await _probe();
     if (_child !== child) return false;
-    client.markHealthy(h);
     _healthFailures = 0;
+    client.markHealthy(h);
     _setState({
         state: 'running',
         error: null,
         pid: child.pid,
         version: h.version ?? ev.version ?? null,
     });
+    _log('info', `tgdl-core ${h.version} running (pid ${child.pid}, ${bin.source} binary)`);
     if (h.version && h.version !== CORE_VERSION) {
         _log('warn', `running tgdl-core ${h.version}, this app expects ${CORE_VERSION}`);
     }
-    _log('info', `tgdl-core ${h.version} running (pid ${child.pid}, ${bin.source} binary)`);
+    _reportProblem(); // an outdated binary without the features this app needs
     _startHealthMonitor(child);
     return true;
+}
+
+function _scheduleRestart() {
+    _restarts++;
+    const delay = Math.min(RESTART_MAX_MS, RESTART_BASE_MS * 2 ** (_restarts - 1));
+    clearTimeout(_restartTimer);
+    _restartTimer = setTimeout(() => {
+        _restartTimer = null;
+        if (!_stopped && !_child) startGoCore().catch(() => {});
+    }, delay);
+    _restartTimer.unref?.();
+    return delay;
 }
 
 function _onExit(child, code, sig) {
@@ -560,18 +735,11 @@ function _onExit(child, code, sig) {
     _stopHealthMonitor();
     client.clearEndpoint();
     const ranMs = Date.now() - _childStartedAt;
+    if (ranMs > STABLE_RUN_MS) _restarts = 0;
+    const delay = _stopped ? 0 : _scheduleRestart();
     _setState({ state: 'exited', error: `exit code=${code} signal=${sig || ''}`, pid: null });
     if (_stopped) return;
-    if (ranMs > STABLE_RUN_MS) _restarts = 0;
-    _restarts++;
-    const delay = Math.min(RESTART_MAX_MS, RESTART_BASE_MS * 2 ** (_restarts - 1));
     _log('warn', `tgdl-core exited (code=${code} signal=${sig || ''}); restarting in ${delay} ms`);
-    clearTimeout(_restartTimer);
-    _restartTimer = setTimeout(() => {
-        _restartTimer = null;
-        if (!_stopped && !_child) startGoCore().catch(() => {});
-    }, delay);
-    _restartTimer.unref?.();
 }
 
 function _startHealthMonitor(child) {
@@ -581,8 +749,8 @@ function _startHealthMonitor(child) {
         try {
             const h = await client.health();
             _healthFailures = 0;
-            client.markHealthy(h);
             if (_state.state !== 'running') _setState({ state: 'running', error: null });
+            client.markHealthy(h);
         } catch (e) {
             _healthFailures++;
             _setState({ state: 'unhealthy', error: String(e?.message || e).slice(0, 200) });
@@ -619,26 +787,30 @@ function _killChild() {
 
 // ---- Public API ------------------------------------------------------------
 
-function _configKeys() {
-    const cfg = _safeConfig();
-    return {
-        flags: JSON.stringify(cfg?.advanced?.goCore ?? null),
-        roots: JSON.stringify(allowRoots(cfg)),
-    };
+function _noteLegacyEnv() {
+    if (_legacyEnvNoted) return;
+    _legacyEnvNoted = true;
+    const set = ['TGDL_GO_CORE', 'TGDL_GO_FEATURES'].filter((k) =>
+        String(process.env[k] ?? '').trim(),
+    );
+    if (set.length) {
+        _log(
+            'info',
+            `${set.join(' / ')} no longer change anything: tgdl-core now always handles hashing, file checks and face clustering. The variable can be removed.`,
+        );
+    }
 }
 
 async function _start() {
-    if (!anyFeatureEnabled()) {
-        _setState({ state: 'disabled', error: null, pid: null });
-        return false;
-    }
-    let bin = resolveBinary();
+    _noteLegacyEnv();
+    let bin = await resolveCurrentBinary();
     if (bin?.missing) {
         _setState({
             state: 'binary_missing',
             error: `TGDL_CORE_BIN does not point at an executable file: ${bin.path}`,
             binary: { path: bin.path, source: bin.source },
         });
+        _reportProblem();
         return false;
     }
     const slug = platformSlug();
@@ -648,20 +820,22 @@ async function _start() {
                 state: 'unsupported',
                 error: `no tgdl-core build for ${process.platform}/${process.arch}`,
             });
+            _reportProblem();
             return false;
         }
+        _setState({ state: 'downloading', error: null });
         try {
-            bin = { path: await _download(slug), source: 'download' };
+            bin = { path: await downloadCore(slug), source: 'download' };
         } catch (e) {
             const msg = String(e?.message || e).slice(0, 300);
             if (bin?.stale) {
                 _log(
                     'warn',
-                    `update to core-v${CORE_VERSION} failed (${msg}); using the old binary`,
+                    `update to core-v${CORE_VERSION} failed (${msg}); using the installed tgdl-core for now`,
                 );
             } else {
-                _setState({ state: 'binary_missing', error: `download failed: ${msg}` });
-                _log('warn', `tgdl-core unavailable, Node handles everything: ${msg}`);
+                _setState({ state: 'binary_missing', error: `download failed (${msg})` });
+                _reportProblem();
                 return false;
             }
         }
@@ -674,48 +848,40 @@ async function _start() {
         _log('warn', `tgdl-core failed to start: ${msg}`);
         const child = _child;
         _killChild();
-        _setState({ state: 'unhealthy', error: msg, pid: null });
         // A child that died on its own already scheduled a restart via
         // _onExit; one we just killed did not (it is no longer _child).
-        if (child && !_stopped && !_restartTimer) {
-            _restarts++;
-            const delay = Math.min(RESTART_MAX_MS, RESTART_BASE_MS * 2 ** (_restarts - 1));
-            _restartTimer = setTimeout(() => {
-                _restartTimer = null;
-                if (!_stopped && !_child) startGoCore().catch(() => {});
-            }, delay);
-            _restartTimer.unref?.();
-        }
+        if (child && !_stopped && !_restartTimer) _scheduleRestart();
+        _setState({ state: 'unhealthy', error: msg, pid: null });
         return false;
     }
 }
 
+function _rootsKey() {
+    return JSON.stringify(allowRoots(_safeConfig()));
+}
+
 /**
- * Start tgdl-core if any feature wants it. Never throws; resolves true
- * when the process is up and healthy. Safe to call repeatedly.
+ * Start tgdl-core. Never throws; resolves true when the process is up and
+ * healthy. Safe to call repeatedly.
  *
  * @param {object} [opts]
  * @param {() => object} [opts.readConfig]   returns the app config
- *        (advanced.goCore for the flags, download.path for the roots)
+ *        (download.path for the allowed roots)
  * @param {(cb: Function) => Function} [opts.watchConfig]  config.watchConfig
  */
 export async function startGoCore(opts = {}) {
     if (opts.readConfig) {
         _readConfig = opts.readConfig;
-        setConfigReader(() => _readConfig?.()?.advanced?.goCore);
-        _lastConfigKeys = _configKeys();
+        _lastRootsKey = _rootsKey();
         if (opts.watchConfig && !_unwatchConfig) {
             try {
                 _unwatchConfig = opts.watchConfig(() => {
-                    const keys = _configKeys();
-                    const prev = _lastConfigKeys;
-                    _lastConfigKeys = keys;
-                    const rootsChanged = keys.roots !== prev?.roots;
-                    if (keys.flags === prev?.flags && !rootsChanged) return;
-                    invalidateConfig();
+                    const key = _rootsKey();
+                    if (key === _lastRootsKey) return;
+                    _lastRootsKey = key;
                     // New download folder: restart so tgdl-core gets the
-                    // new allow-list (until then Node hashes those files).
-                    refreshGoCore({ restart: rootsChanged }).catch(() => {});
+                    // new allow-list.
+                    restartGoCore().catch(() => {});
                 });
             } catch {
                 _unwatchConfig = null;
@@ -733,28 +899,21 @@ export async function startGoCore(opts = {}) {
             return false;
         } finally {
             _startingPromise = null;
+            client.notifyStateChange();
         }
     })();
+    client.notifyStateChange();
     return _startingPromise;
 }
 
-/**
- * Re-evaluate after a config change: start when a feature was switched
- * on, stop when all are off, restart when `restart` (new allow-roots).
- */
-export async function refreshGoCore({ restart = false } = {}) {
-    invalidateConfig();
-    if (!anyFeatureEnabled()) {
-        clearTimeout(_restartTimer);
-        _restartTimer = null;
-        _killChild();
-        _setState({ state: 'disabled', error: null, pid: null });
-        return false;
-    }
-    if (restart && _child) {
+/** Restart tgdl-core (new allow-roots). */
+export async function restartGoCore() {
+    if (_child) {
         _killChild();
         _setState({ state: 'exited', error: 'restarting for new allow-roots', pid: null });
     }
+    clearTimeout(_restartTimer);
+    _restartTimer = null;
     return startGoCore();
 }
 
@@ -769,21 +928,53 @@ export function stopGoCore() {
     _setState({ state: 'stopped', error: null, pid: null });
 }
 
+/**
+ * Express middleware for routes that can't run without tgdl-core: waits a
+ * few seconds while it is starting, then answers 503 with the fix.
+ */
+export function requireGoCore(...features) {
+    const need = features.length ? features : CORE_FEATURES;
+    return async (req, res, next) => {
+        try {
+            for (const f of need) await client.ensureReady(f, { waitMs: 10_000 });
+            next();
+        } catch (e) {
+            res.status(503).json({
+                error: e?.message || 'tgdl-core is not available',
+                code: 'TGDL_CORE_UNAVAILABLE',
+            });
+        }
+    };
+}
+
 /** Status block for GET /api/system/health (`goCore`). */
 export function getGoCoreStatus() {
-    const g = resolveGlobalMode();
+    const problem = getCoreProblem();
+    const features = {};
+    for (const f of CORE_FEATURES) features[f] = { available: client.isAvailable(f) };
     return {
-        mode: g.mode,
-        modeSource: g.source,
         state: _state.state,
         since: _state.since,
         error: _state.error,
         pid: _state.pid,
         version: _state.version,
         expectedVersion: CORE_VERSION,
+        platform: platformSlug(),
         binary: _state.binary,
         allowRoots: _state.allowRoots ?? null,
         restarts: _restarts,
-        features: { hash: getHashStats() },
+        features,
+        problem:
+            problem && !problem.starting ? { message: problem.message, fix: problem.fix } : null,
     };
+}
+
+/** Test hook: forget process-wide state (no child may be running). */
+export function _resetForTests() {
+    _state = { ..._state, state: 'idle', error: null, pid: null, version: null, binary: null };
+    _restarts = 0;
+    _stopped = false;
+    clearTimeout(_restartTimer);
+    _restartTimer = null;
+    _legacyEnvNoted = false;
 }

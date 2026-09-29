@@ -58,8 +58,14 @@ func TestHealthIsOpen(t *testing.T) {
 		t.Fatalf("unexpected body %v", body)
 	}
 	feats, _ := body["features"].([]any)
-	if len(feats) != 1 || feats[0] != "hash" {
+	want := []string{"hash", "stat", "walk", "dbscan"}
+	if len(feats) != len(want) {
 		t.Fatalf("features = %v", body["features"])
+	}
+	for i, f := range want {
+		if feats[i] != f {
+			t.Fatalf("features = %v, want %v", body["features"], want)
+		}
 	}
 }
 
@@ -68,6 +74,9 @@ func TestEverythingElseNeedsToken(t *testing.T) {
 	for _, c := range []struct{ method, path, tok string }{
 		{"POST", "/v1/hash", ""},
 		{"POST", "/v1/hash", "wrong"},
+		{"POST", "/v1/fs/stat-batch", ""},
+		{"POST", "/v1/fs/walk", ""},
+		{"POST", "/v1/dbscan", ""},
 		{"GET", "/v1/stats", ""},
 		{"GET", "/nope", ""},
 		{"POST", "/health", ""},

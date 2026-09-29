@@ -76,7 +76,8 @@ import {
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager, hasAccountSessions } from '../core/accounts.js';
-import { loadConfig, saveConfig, watchConfig } from '../config/manager.js';
+import { loadConfig, saveConfig, watchConfig, getDefaultCsp } from '../config/manager.js';
+import { buildSecurityHeaders, validateCsp } from './lib/security-headers.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
@@ -141,7 +142,14 @@ import {
     health as seekbarClientHealth,
     probeHwaccel as probeSeekbarHwaccel,
 } from '../core/seekbar/client.js';
-import { getGoCoreStatus, startGoCore, stopGoCore } from '../core/gocore/spawn.js';
+import { diskUsage as coreDiskUsage } from '../core/gocore/fs.js';
+import {
+    getCoreBanner,
+    getGoCoreStatus,
+    requireGoCore,
+    startGoCore,
+    stopGoCore,
+} from '../core/gocore/spawn.js';
 import {
     frontStats,
     frontToken,
@@ -150,7 +158,6 @@ import {
     startFront,
     stopFront,
 } from '../core/gocore/front.js';
-import { sanitizeConfigBlock as sanitizeGoCoreConfig } from '../core/gocore/flags.js';
 import { countSeekbarSprites, countVideoDownloads, getSeekbarSprite } from '../core/db.js';
 import { normalizeSidecarUrl, probeSidecar } from '../core/sidecar-remote.js';
 import {
@@ -442,31 +449,32 @@ _wsBroadcaster.startHeartbeat();
 // catalogue is empty. We can't trust `data/disk_usage.json` alone because
 // older builds wrote it sparingly and never invalidated on `Purge all`, so a
 // purged dashboard would footer-report a multi-week-old "930 KB" snapshot.
+//
+// tgdl-core walks the tree: every directory entered (links to directories
+// are not), every other entry fs.stat'ed and counted when it is a file,
+// unreadable directories and vanished files skipped. Resolves null when
+// tgdl-core can't answer, so the caller keeps its current figure.
+let _diskScanWarned = '';
 async function scanDirectorySize(dir) {
-    let total = 0;
-    async function walk(current) {
-        let entries;
-        try {
-            entries = await fs.readdir(current, { withFileTypes: true });
-        } catch {
-            return;
+    try {
+        return await coreDiskUsage(dir, { readyWaitMs: 3_000 });
+    } catch (e) {
+        const msg = String(e?.message || e);
+        if (msg !== _diskScanWarned) {
+            _diskScanWarned = msg;
+            console.warn('[stats] disk-usage scan unavailable:', msg);
         }
-        for (const entry of entries) {
-            const fullPath = path.join(current, entry.name);
-            if (entry.isDirectory()) {
-                await walk(fullPath);
-                continue;
-            }
-            try {
-                const st = await fs.stat(fullPath);
-                if (st.isFile()) total += st.size;
-            } catch {
-                /* file disappeared mid-scan */
-            }
-        }
+        return null;
     }
-    await walk(dir);
-    return total;
+}
+
+/** Last disk-usage figure written by writeDiskUsageCache / the downloader. */
+function readDiskUsageCache() {
+    try {
+        return Number(kvGet('disk_usage')?.size) || 0;
+    } catch {
+        return 0;
+    }
 }
 
 function writeDiskUsageCache(size) {
@@ -668,68 +676,32 @@ app.use(_forceHttpsMw);
 // `frame-src: 'self'` lets the viewer's PDF container point an iframe
 // at `/files/<path>?inline=1#toolbar=1` so the browser's native PDF
 // viewer renders it without leaving the dashboard.
+// The CSP itself is built by lib/security-headers.js from web.csp (defaults
+// live in config/manager.js) so the operator can edit it live from Settings.
 const _helmet = helmet({
     // HSTS managed by the forceHttps middleware above — helmet must not
     // override the max-age=0 clear header when the operator disables HTTPS.
     hsts: false,
-    contentSecurityPolicy: {
-        useDefaults: true,
-        directives: {
-            'default-src': ["'self'"],
-            'script-src': [
-                "'self'",
-                "'unsafe-inline'",
-                'https://cdn.jsdelivr.net',
-                'https://cdnjs.cloudflare.com',
-            ],
-            // The SPA uses inline onclick / oninput handlers in index.html
-            // (toggle UI, range-slider value updaters, modal close-buttons).
-            // Helmet's defaults set script-src-attr to 'none' which would
-            // block them; allow inline here until the markup is migrated to
-            // addEventListener.
-            'script-src-attr': ["'unsafe-inline'"],
-            'style-src': [
-                "'self'",
-                "'unsafe-inline'",
-                'https://cdn.jsdelivr.net',
-                'https://cdnjs.cloudflare.com',
-                'https://fonts.googleapis.com',
-            ],
-            'style-src-attr': ["'unsafe-inline'"],
-            'font-src': [
-                "'self'",
-                'data:',
-                'https://fonts.gstatic.com',
-                'https://cdn.jsdelivr.net',
-            ],
-            'img-src': ["'self'", 'data:', 'blob:'],
-            'media-src': ["'self'", 'blob:'],
-            'connect-src': ["'self'", 'ws:', 'wss:'],
-            'object-src': ["'none'"],
-            'frame-src': ["'self'"],
-            'frame-ancestors': ["'self'"],
-            'upgrade-insecure-requests': null,
-        },
-    },
+    contentSecurityPolicy: false,
+    // X-Frame-Options is set together with the CSP below so it can be
+    // dropped when frame-ancestors is customised.
+    xFrameOptions: false,
     crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: 'same-origin' },
 });
 app.use(_helmet);
 
-// Dynamic CSP: re-inject upgrade-insecure-requests only when forceHttps is
-// active and the response is already on a secure channel. Helmet's static
-// middleware can't vary per-request, so we patch the header after it runs.
-const _dynamicCspMw = async (req, res, next) => {
+// CSP + X-Frame-Options. Read per request (config cache is invalidated on
+// save), so edits apply on the next request. `upgrade-insecure-requests` is
+// added only when forceHttps is on and the request is already secure.
+const _cspMw = async (req, res, next) => {
     const config = await readConfigSafe();
-    if (config.web?.forceHttps && req.secure) {
-        const orig = res.getHeader('Content-Security-Policy');
-        if (orig && !String(orig).includes('upgrade-insecure-requests')) {
-            res.setHeader('Content-Security-Policy', `${orig};upgrade-insecure-requests`);
-        }
-    }
+    const { csp, xFrameOptions } = buildSecurityHeaders(config, { secure: req.secure });
+    if (csp) res.setHeader(csp.name, csp.value);
+    if (xFrameOptions) res.setHeader('X-Frame-Options', xFrameOptions);
     next();
 };
-app.use(_dynamicCspMw);
+app.use(_cspMw);
 
 // HTTP caching policy. Browsers (and intermediaries like Cloudflare) will
 // happily serve a 200 from disk for several seconds even on responses with
@@ -804,7 +776,7 @@ app.use(_cachePolicyMw);
 // answers /files, /photos and thumbnail hits itself with the headers this
 // chain produces for them — captured from these functions at every state
 // push (config change), never copied into Go (_frontState).
-const _frontHeaderChain = [_forceHttpsMw, _helmet, _dynamicCspMw, _cachePolicyMw];
+const _frontHeaderChain = [_forceHttpsMw, _helmet, _cspMw, _cachePolicyMw];
 
 // Defense-in-depth: a coarse global rate limit on every API path. The login
 // endpoint has its own stricter limiter below (which is NOT user-toggleable
@@ -2196,26 +2168,8 @@ function _serveCacheBusted(reqPath, mime, rewrite, res) {
         }
     }
     res.setHeader('Content-Type', mime);
-    res.send(_frontProblem && mime.startsWith('text/html') ? _withFrontBanner(body) : body);
+    res.send(body);
     return true;
-}
-
-// Shown on every page while this process serves PORT itself because the
-// tgdl-core front server isn't running (see _serveOnPortDirectly).
-function _withFrontBanner(html) {
-    const esc = (v) =>
-        String(v).replace(
-            /[&<>"']/g,
-            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-        );
-    const banner =
-        '<div id="tgdl-core-banner" role="alert" style="position:sticky;top:0;z-index:2147483647;' +
-        'padding:10px 16px;background:#7f1d1d;color:#fff;font:14px/1.45 system-ui,sans-serif;text-align:center">' +
-        '<strong>tgdl-core is not running</strong> (' +
-        esc(_frontProblem) +
-        '). The dashboard works, but videos, images and thumbnails are served by the slower built-in server. ' +
-        'Reinstall (the Docker image and <code>npm install</code> include tgdl-core) or run <code>npm run build:core</code>, then restart.</div>';
-    return html.replace(/<body[^>]*>/i, (m) => m + banner);
 }
 
 app.use((req, res, next) => {
@@ -2515,6 +2469,12 @@ async function _buildMonitorStatusSnapshot() {
               : (config.groups || []).filter((g) => g.enabled).length === 0
                 ? 'enable-group'
                 : null;
+    // tgdl-core can't run (missing binary, unsupported platform, …):
+    // the dashboard shows a persistent banner with the fix. Only present
+    // while there is a problem, so the status shape is otherwise unchanged.
+    // Same banner when only its front server can't be kept running.
+    const coreBanner = getCoreBanner() || _frontBanner();
+    if (coreBanner) status.core = coreBanner;
     return status;
 }
 
@@ -3851,8 +3811,14 @@ async function _computeStatsPayload(role) {
     const config = loadConfig();
     let diskUsage = Number(dbStats.totalSize) || 0;
     if (diskUsage <= 0) {
-        diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
-        writeDiskUsageCache(diskUsage);
+        const scanned = await scanDirectorySize(DOWNLOADS_DIR);
+        if (scanned !== null) {
+            diskUsage = scanned;
+            writeDiskUsageCache(diskUsage);
+        } else {
+            // tgdl-core can't answer right now: keep the last figure.
+            diskUsage = readDiskUsageCache();
+        }
     }
     let accountCount = 0;
     try {
@@ -4066,8 +4032,13 @@ async function _stats_legacy_block_removed(req, res) {
 
         let diskUsage = Number(dbStats.totalSize) || 0;
         if (diskUsage <= 0) {
-            diskUsage = await scanDirectorySize(DOWNLOADS_DIR);
-            writeDiskUsageCache(diskUsage);
+            const scanned = await scanDirectorySize(DOWNLOADS_DIR);
+            if (scanned !== null) {
+                diskUsage = scanned;
+                writeDiskUsageCache(diskUsage);
+            } else {
+                diskUsage = readDiskUsageCache();
+            }
         }
 
         // Account count: reflect the on-disk session files even when no
@@ -6818,7 +6789,7 @@ app.get('/api/maintenance/db/integrity/status', async (req, res) => {
 // open for a while. POST returns 200 immediately; progress + result land
 // over WS as `files_verify_progress` / `files_verify_done`. Page hydrates
 // running state from `/files/verify/status` on mount.
-app.post('/api/maintenance/files/verify', async (req, res) => {
+app.post('/api/maintenance/files/verify', requireGoCore('stat'), async (req, res) => {
     const t = _jobTrackers.filesVerify;
     const r = t.tryStart(async ({ onProgress }) => {
         const result = await integrity.sweep(onProgress);
@@ -6871,7 +6842,7 @@ app.get('/api/maintenance/files/verify/stats', async (req, res) => {
 // which component owned the job. Now there's one tracker. Prefix
 // 'reindex' is preserved so the duplicates page's listeners need no
 // change.
-app.post('/api/maintenance/reindex', async (req, res) => {
+app.post('/api/maintenance/reindex', requireGoCore('walk'), async (req, res) => {
     const tracker = _jobTrackers.reindex;
     const r = tracker.tryStart(async ({ onProgress }) => {
         const cfg = await readConfigSafe();
@@ -6971,7 +6942,7 @@ app.get('/api/maintenance/db/vacuum/status', async (req, res) => {
 // duration tracking. WS event prefix stays 'dedup' — the duplicates
 // page's existing `dedup_progress` / `dedup_done` listeners are
 // unaffected.
-app.post('/api/maintenance/dedup/scan', async (req, res) => {
+app.post('/api/maintenance/dedup/scan', requireGoCore('hash'), async (req, res) => {
     const tracker = _jobTrackers.dedupScan;
     const r = tracker.tryStart(async ({ onProgress, signal }) => {
         const result = await dedupFindDuplicates({
@@ -9124,7 +9095,7 @@ app.post('/api/ai/faces/install-deps', async (req, res) => {
 // libraries this lands in Phase B immediately. For partially-indexed
 // libraries (a scan was cancelled mid-way), Phase A picks up where it
 // left off — same as clicking "Scan now".
-app.post('/api/ai/faces/recluster', async (_req, res) => {
+app.post('/api/ai/faces/recluster', requireGoCore('dbscan'), async (_req, res) => {
     try {
         const cfg = _aiCfg();
         if (aiIsScanRunning('faces')) {
@@ -11989,6 +11960,15 @@ app.get('/api/rescue/stats', async (req, res) => {
     }
 });
 
+// CSP editor support: shipped defaults (for "Reset") + whether TGDL_CSP=off
+// is overriding the saved setting. Admin-only (not in the guest allow-list).
+app.get('/api/csp', (req, res) => {
+    res.json({
+        defaults: getDefaultCsp(),
+        envOff: String(process.env.TGDL_CSP || '').toLowerCase() === 'off',
+    });
+});
+
 // 7b. Config Update
 app.post('/api/config', async (req, res) => {
     try {
@@ -12051,6 +12031,13 @@ app.post('/api/config', async (req, res) => {
             delete safeWeb.password;
             if (!currentConfig.web?.passwordHash) delete safeWeb.passwordHash;
             else safeWeb.passwordHash = currentConfig.web.passwordHash;
+            if (req.body.web.csp === null) {
+                delete safeWeb.csp; // reset to defaults
+            } else if (req.body.web.csp !== undefined) {
+                const v = validateCsp(req.body.web.csp);
+                if (!v.ok) return res.status(400).json({ error: v.error });
+                safeWeb.csp = v.value;
+            }
             newConfig.web = safeWeb;
         }
 
@@ -12438,23 +12425,9 @@ app.post('/api/config', async (req, res) => {
             sk.pathMap = typeof sk.pathMap === 'string' ? sk.pathMap.slice(0, 4096) : '';
             delete sk.apiTokenSet;
 
-            // Go companion flags (`advanced.goCore`: { mode, features }).
-            // Only stored once somebody sets them, so existing configs
-            // stay as they are; `null` clears the block. TGDL_GO_CORE /
-            // TGDL_GO_FEATURES still win over whatever is saved here.
-            if (inc.goCore !== undefined || cur.goCore !== undefined) {
-                const base = cur.goCore && typeof cur.goCore === 'object' ? cur.goCore : {};
-                const patch = inc.goCore && typeof inc.goCore === 'object' ? inc.goCore : {};
-                const gc =
-                    inc.goCore === null
-                        ? null
-                        : sanitizeGoCoreConfig({
-                              ...base,
-                              ...patch,
-                              features: { ...(base.features || {}), ...(patch.features || {}) },
-                          });
-                if (gc) merged.goCore = gc;
-            }
+            // `advanced.goCore` (the old tgdl-core mode switches) is no
+            // longer read; like any key not listed above it is dropped on
+            // the next save.
 
             newConfig.advanced = merged;
         }
@@ -13962,6 +13935,19 @@ async function _serveOnPortDirectly(reason) {
     );
 }
 
+// The dashboard banner (monitor status `core`) while this process serves
+// PORT itself although tgdl-core as such is fine. No local paths: the
+// status also reaches guests.
+function _frontBanner() {
+    // A missing / outdated binary is tgdl-core's own banner (getCoreBanner);
+    // once it runs, the next restart brings the front server up too.
+    if (!_frontProblem || getFrontStatus().state === 'binary_missing') return null;
+    return {
+        state: 'front_down',
+        fix: "tgdl-core's web server keeps stopping. Check the [go-front] lines in the log, then restart the app.",
+    };
+}
+
 // What tgdl-core must agree with to answer media requests itself.
 async function _frontState() {
     const config = await readConfigSafe();
@@ -13998,6 +13984,12 @@ async function _startHttp() {
     // already at Node's 16 KiB limit (tgdl-core enforces that limit).
     server.maxHeaderSize = 16 * 1024 + 1024;
     await _listenOn(server, 0, '127.0.0.1');
+    // Where the OS hands out ephemeral ports from low numbers (Windows can
+    // start at 1024), don't let this listener sit on PORT itself.
+    if (server.address().port === port) {
+        await new Promise((r) => server.close(r));
+        await _listenOn(server, 0, '127.0.0.1');
+    }
     const thumbsDir = path.join(DATA_DIR, 'thumbs');
     const r = await startFront({
         port,
@@ -14091,9 +14083,10 @@ ${tip}
         console.warn('[seekbar-sidecar] wiring failed:', e?.message || e);
     }
 
-    // Go companion (tgdl-core) — find / download / spawn in the
-    // background. Never awaited: until it is healthy (or when it never
-    // is) every feature runs on its Node implementation.
+    // tgdl-core (the Go file engine) — find / download / spawn in the
+    // background. Never awaited, so boot time and /api/auth_check don't
+    // depend on it; features that need it wait briefly for it or answer
+    // 503 with the fix.
     import('../config/manager.js')
         .then(({ watchConfig }) =>
             startGoCore({

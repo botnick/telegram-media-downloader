@@ -35,11 +35,11 @@ No golden is re-recorded to make Go pass: goldens are recorded from the
 Node target only (`npm run test:contract:update` refuses any other target).
 If Go is right and Node is wrong, fix Node first, re-record from Node, then
 port. (The Go front server of wave A is started by the Node app, so the
-default target already runs through it — CI builds tgdl-core for the
-contract job — and a front server that can't start fails the suite: the
-app then answers PORT itself and every page carries the "tgdl-core is not
-running" banner. `CONTRACT_TARGET=go` is for the standalone Go server of
-the later waves.)
+default target already runs through it: CI builds tgdl-core for the
+contract job and sets `TGDL_FRONT_REQUIRED=1`, which the harness passes
+through, so a front server that can't start fails the run instead of
+Node answering PORT itself. `CONTRACT_TARGET=go` is for the standalone Go
+server of the later waves.)
 
 | Domain | Scenario files |
 |---|---|

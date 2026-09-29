@@ -107,6 +107,9 @@ const PASS_ENV = [
     'CommonProgramFiles',
     'NUMBER_OF_PROCESSORS',
     'PROCESSOR_ARCHITECTURE',
+    // CI: the app exits instead of answering PORT from Node when the
+    // tgdl-core front server can't start, so a run is really through it.
+    'TGDL_FRONT_REQUIRED',
 ];
 
 function targetEnv({ port, dataDir, extra = {}, nodeEnv = 'test' }) {

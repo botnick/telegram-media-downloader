@@ -9,15 +9,14 @@
 // compared: a change to Node's headers that tgdl-core doesn't follow fails
 // here even after the fixture is re-captured.
 //
-// With TGDL_GO_CORE_TEST=1 (CI's "node + tgdl-core" jobs) the suite
-// requires the front server to be running; without a binary the app
-// serves PORT itself and the same comparison runs against Node alone.
+// tgdl-core is required: the run uses the tree's build (the vitest global
+// setup), and the front server must really answer.
 
 import fs from 'fs';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { GOCORE_TEST, findOrBuildGoCore } from './helpers/gocore-bin.js';
+import { testCoreBin } from './helpers/gocore-bin.js';
 import { PARITY_CASES, caseDiffs, diff, normalize, runAll } from './helpers/front-parity.js';
 import {
     NO_CORE_BIN,
@@ -46,7 +45,7 @@ let fastAnswers = null;
 
 beforeAll(async () => {
     if (SKIP) return;
-    const bin = await findOrBuildGoCore(); // null unless TGDL_GO_CORE_TEST=1
+    const bin = testCoreBin(); // the tree's build (tests/setup/gocore.global.js)
     dataDir = makeDataDir('tgdl-front-parity-');
     seedParity(dataDir);
     const port = await freePort();
@@ -86,14 +85,12 @@ afterAll(async () => {
 
 describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
     it('runs through tgdl-core when the suite asks for it', () => {
-        if (GOCORE_TEST) {
-            expect(frontRunning).toBe(true);
-            // tgdl-core answered each kind itself (with the headers Node
-            // pushed), not just proxied everything.
-            expect(fastAnswers.files).toBeGreaterThan(0);
-            expect(fastAnswers.photos).toBeGreaterThan(0);
-            expect(fastAnswers.thumbs).toBeGreaterThan(0);
-        }
+        expect(frontRunning).toBe(true);
+        // tgdl-core answered each kind itself (with the headers Node
+        // pushed), not just proxied everything.
+        expect(fastAnswers.files).toBeGreaterThan(0);
+        expect(fastAnswers.photos).toBeGreaterThan(0);
+        expect(fastAnswers.thumbs).toBeGreaterThan(0);
     });
 
     it('every case matches the frozen Node responses', () => {

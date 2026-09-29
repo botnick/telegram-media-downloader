@@ -20,6 +20,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      # tgdl-core (core-service/) is a required part of the app: the test
+      # run builds it from this tree (tests/setup/gocore.global.js), so the
+      # suites always exercise the Go code in the same commit.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache: false
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
@@ -34,6 +41,10 @@ jobs:
           # better-sqlite3 sometimes spews a single noise line on Windows;
           # treat the run as failed only on real errors.
           FORCE_COLOR: '1'
+          # Every server a suite spawns serves PORT through the tgdl-core
+          # front server; exit instead of quietly falling back to Node on
+          # PORT (gocore-boot, which tests exactly that, unsets it).
+          TGDL_FRONT_REQUIRED: '1'
 
   # Black-box API contract suite (tests/contract): every HTTP route and WS
   # event recorded from the Node server, compared against the committed
@@ -64,6 +75,7 @@ jobs:
       - run: npm run test:contract
         env:
           CONTRACT_TARGET: node
+          TGDL_FRONT_REQUIRED: '1'
           FORCE_COLOR: '1'
 
   # tgdl-core (core-service/, Go): format, vet, tests, and a build for
@@ -89,70 +101,8 @@ jobs:
       - name: Cross-build every release target
         run: |
           set -e
-          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 linux/386 darwin/arm64; do
-            GOOS=${t%/*} GOARCH=${t#*/} go vet ./...
-            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} go build -trimpath -o /dev/null ./cmd/tgdl-core
+          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 linux/arm linux/386 darwin/arm64 darwin/amd64; do
+            GOOS=${t%/*} GOARCH=${t#*/} GOARM=7 go vet ./...
+            CGO_ENABLED=0 GOOS=${t%/*} GOARCH=${t#*/} GOARM=7 go build -trimpath -o /dev/null ./cmd/tgdl-core
             echo "ok $t"
           done
-
-  # The Node suites that touch hashing, with a freshly built tgdl-core in
-  # `on` mode, so Go really answers. TGDL_GO_CORE_TEST=1 enables the
-  # suites that run the real binary (they skip in the plain lint + test
-  # job) and turns "no binary" into a failure.
-  gocore-node:
-    name: node + tgdl-core on ${{ matrix.os }}
-    needs: go
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.25'
-          cache: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build:core
-      - run: npx vitest run gocore hash-worker dedup-delete maintenance.dedup-jobtracker
-        env:
-          TGDL_GO_CORE: 'on'
-          TGDL_GO_CORE_TEST: '1'
-          FORCE_COLOR: '1'
-
-  # The whole suite with the tgdl-core front server on PORT (Node behind
-  # it). Every server a suite spawns must really run it:
-  # TGDL_FRONT_REQUIRED=1 makes the app exit instead of serving PORT from
-  # Node when tgdl-core can't start (gocore-boot, which tests exactly that,
-  # unsets it). The lint + test job above runs the same suites without a
-  # binary, i.e. Node on PORT.
-  front-node:
-    name: node + tgdl-core front on ${{ matrix.os }}
-    needs: go
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.25'
-          cache: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run build:core
-      - run: npx vitest run
-        env:
-          TGDL_FRONT_REQUIRED: '1'
-          TGDL_GO_CORE_TEST: '1'
-          FORCE_COLOR: '1'

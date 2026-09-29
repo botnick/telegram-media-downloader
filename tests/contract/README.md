@@ -89,7 +89,8 @@ broadcasts. Result: the GitHub update check, sidecar/model downloads, fake
 backup hosts and `*.invalid` peers all fail instantly and identically on a
 dev box, a CI runner or an air-gapped host, and parallel test servers never
 discover each other. The target also gets a minimal environment (nothing
-from your shell leaks in), `TZ=UTC`, `TGDL_GO_CORE=off` and proxy
+from your shell leaks in except `TGDL_FRONT_REQUIRED`, which CI sets so the
+app exits rather than answer PORT without the tgdl-core front server), `TZ=UTC`, `TGDL_GO_CORE=off` and proxy
 variables pointing at a dead port. A Go target needs the same isolation
 (see docs/GO-MIGRATION.md).
 

@@ -23,7 +23,7 @@ import http from 'http';
 import path from 'path';
 import readline from 'readline';
 
-import { resolveBinary } from './spawn.js';
+import { CORE_VERSION, resolveCurrentBinary } from './spawn.js';
 
 const LISTEN_TIMEOUT_MS = 10_000;
 const HEALTH_INTERVAL_MS = 10_000;
@@ -255,12 +255,17 @@ function _waitForEvent(child) {
 }
 
 async function _spawnOnce() {
-    const bin = resolveBinary();
-    if (!bin || bin.missing) {
+    // The binary tgdl-core's own process uses (spawn.js): TGDL_CORE_BIN, the
+    // Docker image's, a current `npm run build:core`, or the installed
+    // release — a stale one of an older version has no front server.
+    const bin = await resolveCurrentBinary({ log: _log });
+    if (!bin || bin.missing || bin.stale) {
         const err = new Error(
             bin?.missing
                 ? `TGDL_CORE_BIN does not point at an executable file: ${bin.path}`
-                : `no tgdl-core binary for ${process.platform}/${process.arch} (run \`npm run build:core\` or reinstall)`,
+                : bin?.stale
+                  ? `the installed tgdl-core is older than ${CORE_VERSION} (reinstall, or restart once the app has downloaded it)`
+                  : `no tgdl-core binary for ${process.platform}/${process.arch} (run \`npm install\` or \`npm run build:core\`)`,
         );
         err.code = 'ENOBINARY';
         throw err;

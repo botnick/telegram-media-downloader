@@ -29,7 +29,7 @@ import {
     getNsfwStats,
     checkNsfwBlocklistHashes,
 } from './db.js';
-import { sha256OfFile, sha256OfFileViaPool } from './checksum.js';
+import { sha256OfFile } from './checksum.js';
 import { getSpritePath, getMetaFilePath } from './seekbar/generator.js';
 import { getDataDir, getRepoRoot } from './paths.js';
 import {
@@ -851,14 +851,8 @@ async function _drainBg() {
                 let hash = row.file_hash;
                 if (!hash && abs) {
                     try {
-                        // Same path as download-time hashing: worker
-                        // pool (and tgdl-core when enabled), then the
-                        // in-process streamer if that fails.
-                        try {
-                            hash = await sha256OfFileViaPool(abs);
-                        } catch {
-                            hash = await sha256OfFile(abs);
-                        }
+                        // Same path as download-time hashing (tgdl-core).
+                        hash = await sha256OfFile(abs);
                         // Persist so future checks skip the file I/O.
                         try {
                             db.prepare(

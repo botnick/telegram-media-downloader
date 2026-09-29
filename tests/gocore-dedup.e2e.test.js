@@ -1,18 +1,17 @@
-// End to end with the real server and the real tgdl-core in `on` mode:
-// the duplicate scan hashes rows that have no file_hash yet; every
-// digest it stores must equal Node's, and /metrics must show that Go
-// did the work. Runs with TGDL_GO_CORE_TEST=1 (CI's "node + tgdl-core"
-// jobs); skipped otherwise.
+// End to end with the real server and the real tgdl-core: the duplicate
+// scan hashes rows that have no file_hash yet; every digest it stores must
+// equal crypto.createHash's, and /metrics must show that tgdl-core did the
+// work. Then Verify files and Re-index from disk run through it as well.
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import net from 'net';
 import os from 'os';
 import path from 'path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { findOrBuildGoCore } from './helpers/gocore-bin.js';
+import { requireCoreBin } from './helpers/gocore-raw.js';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const SERVER_PATH = path.join(REPO_ROOT, 'src', 'web', 'server.js');
@@ -21,7 +20,6 @@ const DATA = fs.mkdtempSync(path.join(os.tmpdir(), 'tgdl-gocore-e2e-'));
 const DL = path.join(DATA, 'downloads');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let bin = null;
 let child;
 let base;
 let cookie = '';
@@ -81,10 +79,19 @@ async function seed() {
     delete process.env.TGDL_DATA_DIR;
 }
 
+async function waitFor(url, done) {
+    let st;
+    for (let i = 0; i < 300; i++) {
+        st = (await api('GET', url)).json;
+        if (st && done(st)) return st;
+        await sleep(100);
+    }
+    return st;
+}
+
 beforeAll(async () => {
     if (SKIP) return;
-    bin = await findOrBuildGoCore();
-    if (!bin) return;
+    const bin = requireCoreBin();
     await seed();
     const port = await freePort();
     base = `http://127.0.0.1:${port}`;
@@ -95,7 +102,6 @@ beforeAll(async () => {
             TGDL_DATA_DIR: DATA,
             NODE_ENV: 'test',
             TGDL_DISABLE_AUTOSTART: '1',
-            TGDL_GO_CORE: 'on',
             TGDL_CORE_BIN: bin,
         },
         cwd: REPO_ROOT,
@@ -132,22 +138,19 @@ afterAll(async () => {
     } catch {}
 }, 30_000);
 
-describe.skipIf(SKIP)('dedup scan hashes through tgdl-core', () => {
-    it('stores Node-identical digests and Go did the hashing', {
+describe.skipIf(SKIP)('maintenance jobs run through tgdl-core', () => {
+    it('dedup scan stores identical digests and tgdl-core did the hashing', {
         timeout: 60_000,
-    }, async ({ skip }) => {
-        if (!bin) skip();
+    }, async () => {
         const h = (await api('GET', '/api/system/health')).json;
         expect(h.goCore.state).toBe('running');
-        expect(h.goCore.features.hash.mode).toBe('on');
-
-        await api('POST', '/api/maintenance/dedup/scan');
-        let st;
-        for (let i = 0; i < 300; i++) {
-            st = (await api('GET', '/api/maintenance/dedup/status')).json;
-            if (st && !st.running) break;
-            await sleep(100);
+        expect(h.goCore.problem).toBe(null);
+        for (const f of ['hash', 'stat', 'walk', 'dbscan']) {
+            expect(h.goCore.features[f].available, f).toBe(true);
         }
+
+        expect((await api('POST', '/api/maintenance/dedup/scan')).status).toBe(200);
+        const st = await waitFor('/api/maintenance/dedup/status', (s) => !s.running);
         expect(st.running).toBe(false);
         expect(st.result.hashed).toBe(expected.size);
 
@@ -165,8 +168,34 @@ describe.skipIf(SKIP)('dedup scan hashes through tgdl-core', () => {
         const text = await (await fetch(`${base}/metrics`)).text();
         const ok = /tgdl_gocore_calls_total\{feature="hash",result="ok"\} (\d+)/.exec(text);
         expect(Number(ok?.[1])).toBeGreaterThanOrEqual(expected.size);
-        const after = (await api('GET', '/api/system/health')).json.goCore.features.hash;
-        expect(after.go).toBeGreaterThanOrEqual(expected.size);
-        expect(after.fallbacks).toBe(0);
+    });
+
+    it('Verify files prunes exactly the missing row; Re-index walks the tree', {
+        timeout: 60_000,
+    }, async () => {
+        const victim = [...expected.keys()][0];
+        const { default: Database } = await import('better-sqlite3');
+        let d = new Database(path.join(DATA, 'db.sqlite'), { readonly: true });
+        const rel = d.prepare('SELECT file_path FROM downloads WHERE id = ?').get(victim).file_path;
+        d.close();
+        fs.rmSync(path.join(DL, rel));
+
+        expect((await api('POST', '/api/maintenance/files/verify')).status).toBe(200);
+        const v = await waitFor(
+            '/api/maintenance/files/verify/status',
+            (s) => !s.running && s.result,
+        );
+        expect(v.result.pruned).toBe(1);
+        d = new Database(path.join(DATA, 'db.sqlite'), { readonly: true });
+        expect(d.prepare('SELECT COUNT(*) AS n FROM downloads').get().n).toBe(expected.size - 1);
+        d.close();
+
+        expect((await api('POST', '/api/maintenance/reindex')).status).toBe(200);
+        const r = await waitFor('/api/maintenance/reindex/status', (s) => !s.running);
+        expect(r.running).toBe(false);
+
+        const text = await (await fetch(`${base}/metrics`)).text();
+        expect(text).toMatch(/tgdl_gocore_calls_total\{feature="stat",result="ok"\} [1-9]/);
+        expect(text).toMatch(/tgdl_gocore_calls_total\{feature="walk",result="ok"\} [1-9]/);
     });
 });

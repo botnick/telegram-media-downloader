@@ -2,7 +2,7 @@
 //
 // Release builds stamp Version at link time:
 //
-//	go build -ldflags "-X github.com/botnick/telegram-media-downloader/core-service/internal/version.Version=0.1.0"
+//	go build -ldflags "-X github.com/botnick/telegram-media-downloader/core-service/internal/version.Version=0.3.0"
 //
 // The default matches the source tree so a plain `go build` reports the
 // version the Node side pins (CORE_VERSION in src/core/gocore/spawn.js).
@@ -12,8 +12,8 @@ package version
 const Service = "tgdl-core"
 
 // Version is overridden with -ldflags on release builds.
-var Version = "0.1.0"
+var Version = "0.3.0"
 
 // Features lists what this build can do; the Node side only routes a
 // feature to Go when /health advertises it.
-var Features = []string{"hash"}
+var Features = []string{"hash", "stat", "walk", "dbscan"}
