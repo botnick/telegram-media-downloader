@@ -318,17 +318,15 @@ describe.skipIf(SKIP)('front server: security behaviour is unchanged', () => {
                 body: { web: { csp: defaults } },
             });
             expect(saved.map((r) => r.status)).toEqual([200, 200]);
-            // Pushed to tgdl-core right after the save (a few ms).
+            // The save answers once tgdl-core has the new headers.
             const before = await fastCounts(p);
-            let f;
-            for (let i = 0; i < 40; i++) {
-                f = await rawRequest(p.front.port, { path: CLIP, headers: ADMIN });
-                if (f.headers['content-security-policy']?.includes('img.example.com')) break;
-                await new Promise((r) => setTimeout(r, 50));
-            }
-            f = await same(p, { path: CLIP, headers: ADMIN });
+            const f = await same(p, { path: CLIP, headers: ADMIN });
             expect(f.status).toBe(200);
-            expect(f.headers['content-security-policy']).toContain('https://img.example.com');
+            const imgSrc = String(f.headers['content-security-policy'] || '')
+                .split(';')
+                .map((d) => d.trim().split(/\s+/))
+                .find((d) => d[0] === 'img-src');
+            expect(imgSrc).toContain('https://img.example.com');
             expect(f.headers['x-frame-options']).toBeUndefined();
             expect((await fastCounts(p)).files).toBeGreaterThan(before.files);
         }, 60_000);
