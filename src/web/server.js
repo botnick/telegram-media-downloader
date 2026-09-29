@@ -263,7 +263,7 @@ import { createSwrCache } from './lib/swr-cache.js';
 import { lookupEntityAcrossClients } from './lib/entity-lookup.js';
 import * as chatAccess from '../core/chat-access.js';
 import { destinationKey } from '../core/forwarder.js';
-import { createWsBroadcaster } from './lib/ws-broadcaster.js';
+import { createWsBroadcaster, runtimeEventMessage } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
@@ -2434,7 +2434,8 @@ app.delete('/api/accounts/:id', async (req, res) => {
 // authenticated WebSocket clients.
 
 runtime.on('state', (s) => broadcast({ type: 'monitor_state', state: s.state, error: s.error }));
-runtime.on('event', (e) => broadcast({ type: 'monitor_event', ...e }));
+// Engine events go out under their own type (see runtimeEventMessage).
+runtime.on('event', (e) => broadcast(runtimeEventMessage(e)));
 
 // Catch-up backfill — fired by monitor when boot-time inspection finds a
 // group whose newest stored message_id lags Telegram's current top by

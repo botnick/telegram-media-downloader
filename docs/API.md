@@ -268,9 +268,9 @@ The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidec
 |---|---|
 | `monitor_state`        | `{state, error?}` |
 | `monitor_status_push`  | Full `/api/monitor/status` snapshot every 3 s. |
-| `monitor_event`        | `{type, payload}` for download_start/_complete/_error, scale, queue_length, etc. |
-| `download_progress`    | `{key, groupId, fileName, progress, received, total, bps}` |
-| `download_complete`    | `{key, groupId, fileName, fileSize, deduped?}` |
+| `download_progress`    | `{payload: {key, groupId, fileName, progress, received, total, bps}}` |
+| `download_complete`    | `{payload: {key, groupId, fileName, fileSize, deduped?}}` |
+| `download_start` / `download_error` / `queue_length` / `queue_changed` / `scale` / `rate_wait` / `flood_wait` / `forward_error` / `rescued` / `monitor_download` / `monitor_urls` / `monitor_error` / `monitor_started` | Engine events, like the two above: each goes out under its own type with the event's data in `payload` (`queue_length`: `{length}`, `download_error`: `{job, error}`, `rate_wait` / `flood_wait`: `{seconds}`). There is no `monitor_event` envelope (older docs listed one; it was never sent). |
 | `stats_push`           | Full `/api/stats` snapshot every 30 s. |
 | `file_deleted`         | `{path, id?}` |
 | `bulk_delete`          | `{unlinked, dbDeleted, ids?}` |

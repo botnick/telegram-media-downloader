@@ -31,6 +31,21 @@ export const WS_HEARTBEAT_MS = 30_000;
 
 const OPEN = 1;
 
+/**
+ * The dashboard message for a runtime engine event (`runtime.on('event')`,
+ * always `{ type, payload }`): it goes out under the event's own type —
+ * `{ type: 'download_complete', payload }` — which is what the SPA
+ * subscribes to (app.js, queue.js, chat-details.js) and what the coalescing
+ * above keys on. server.js used to write `{ type: 'monitor_event', ...e }`,
+ * whose spread replaced the envelope type anyway, so `monitor_event` itself
+ * was never sent. An event without a string type (none today) keeps the
+ * envelope name instead of going out untyped.
+ */
+export function runtimeEventMessage(e) {
+    const type = typeof e?.type === 'string' && e.type ? e.type : 'monitor_event';
+    return { type, payload: e?.payload };
+}
+
 /** Latest-wins key for high-rate message types; null = send immediately. */
 export function defaultCoalesceKey(msg) {
     switch (msg?.type) {
