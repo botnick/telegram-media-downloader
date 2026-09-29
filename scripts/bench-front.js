@@ -108,8 +108,6 @@ async function start(mode, dataDir) {
         PORT: String(port),
         TGDL_DATA_DIR: dataDir,
         NODE_ENV: 'test',
-        TGDL_DISABLE_AUTOSTART: '1',
-        TGDL_GO_CORE: 'off',
     };
     if (mode === 'node') env.TGDL_CORE_BIN = NO_CORE_BIN;
     const hook = pathToFileURL(path.join(REPO, 'scripts', 'bench', 'burn-hook.mjs')).href;

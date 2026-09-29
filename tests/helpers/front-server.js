@@ -54,8 +54,6 @@ export async function startServer({ dataDir, port, env = {}, timeoutMs = 60_000 
             PORT: String(port),
             TGDL_DATA_DIR: dataDir,
             NODE_ENV: 'test',
-            TGDL_DISABLE_AUTOSTART: '1',
-            TGDL_GO_CORE: 'off',
             ...env,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
