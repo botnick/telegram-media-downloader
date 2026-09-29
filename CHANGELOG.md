@@ -9,6 +9,13 @@ All notable changes to this project are documented here. The format is based on 
 - Nothing to do when upgrading: same port, Docker healthcheck, `TRUST_PROXY` behaviour and reverse-proxy setup ([docs/DEPLOY.md](docs/DEPLOY.md#reverse-proxy)). If tgdl-core can't run, the Node server answers the port itself as before and every page shows a banner saying why.
 - `GET /api/system/health?front=1` adds `goCoreFront` (state, restarts, request counters); the default payload is unchanged.
 
+## [2.29.1] — 2026-09-29
+
+Security fixes: the update endpoint now requires an admin, saving a group no longer broadcasts secrets to every dashboard (guests included), re-authentication requires the admin password, and the API rate limit applies from boot. Everyone should update.
+
+### Service worker
+- `VERSION = 'v2291'`
+
 ## [2.29.0] — 2026-09-29
 
 Chats the app can no longer read — deleted, banned, private or left, moved to a supergroup — are now paused instead of retried, so they stop using Telegram's limits. The dashboard says why and what to do (Check again, switch account, follow the new group, stop monitoring), with a Needs attention list and automatic re-checks.

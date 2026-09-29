@@ -185,7 +185,9 @@ flowchart LR
     fs[(downloads/)]
     tg[(Telegram MTProto)]
     faces[faces-service]
+    nsfw[nsfw-service]
     seekbar[seekbar-service]
+    core[tgdl-core]
 
     user <-- REST + WS --> server
     server -- start/stop --> runtime
@@ -197,8 +199,19 @@ flowchart LR
     downloader -- inserts --> db
     db -- reads --> server
     server -- detect --> faces
+    server -- classify --> nsfw
     server -- sprite --> seekbar
+    server -- hash / fs --> core
+    core -- reads --> fs
 ```
+
+The app is a Node.js server plus optional companions:
+- **faces-service** (Python): face detection.
+- **nsfw-service** (Python): NSFW classification.
+- **seekbar-service** (Go): video hover previews.
+- **tgdl-core** (Go): moves heavy file work (hashing, scans) off Node's event loop.
+
+faces, nsfw and seekbar can also run on another machine (see [External AI Sidecar](#external-ai-sidecar)). Whenever a companion is missing or fails, the app falls back to its built-in code. See [docs/GO-CORE.md](docs/GO-CORE.md) for the Go roadmap.
 
 ---
 
