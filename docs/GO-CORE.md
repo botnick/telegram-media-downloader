@@ -11,7 +11,7 @@ Node's single thread:
 | `fs.stat` of many files | Verify files, the boot and hourly integrity sweep | `POST /v1/fs/stat-batch` |
 | recursive `fs.readdir` + `fs.stat` | Re-index from disk, the disk-usage figure while the library is empty | `POST /v1/fs/walk` |
 | DBSCAN over face embeddings | face scan, Re-cluster | `POST /v1/dbscan` |
-| the dashboard port | `/files`, `/photos`, cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
+| the dashboard port | every `/files` and `/photos` byte and cached thumbnails served from Go; everything else proxied to Node | `tgdl-core front` ([below](#front-server-tgdl-core-front)) |
 
 It is the **only** implementation of these. The Node code it replaced (the
 hash worker pool, the `Promise.all(fs.stat)` sweep, the recursive folder
@@ -90,8 +90,10 @@ for tgdl-core (it's started from the listen callback, not awaited).
 - An older binary without a feature (e.g. 0.1.0, which only hashes) is
   reported as outdated with the fix; a stale `npm run build:core` binary is
   passed over for the downloaded one.
-- The front server can't run either: Node answers `PORT` itself (see
-  [Front server](#front-server-tgdl-core-front)).
+- The front server can't run either: Node answers `PORT` itself for the
+  dashboard, but `/files`, `/photos` and thumbnails answer
+  `503 {"code":"TGDL_CORE_UNAVAILABLE"}` — Node has no file serving of its
+  own (see [Front server](#front-server-tgdl-core-front)).
 
 `TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `config.advanced.goCore` and
 `HASH_WORKER_DISABLE` from earlier versions are ignored (a one-line note in
@@ -166,7 +168,7 @@ NTFS on NVMe, warm cache, Node 22. Every pair produced identical results.
 | 2 | tgdl-core required and the only implementation: hashing, integrity stat sweep, folder walks (re-index, disk usage), face-clustering DBSCAN; installed by `npm install`; parity proven by tests | **this release** (tgdl-core 0.2.0) |
 | 3 | MTProto byte plane — Go streams file bytes from Telegram to disk; Node keeps sessions, the queue and the DB | planned |
 | 4 | Backup providers (S3, SFTP, FTP, Google Drive, Dropbox, local) as Go uploaders | planned |
-| 5 | Go front server on `PORT`: `/files` and Range streaming, `/photos`, thumbnail cache hits; everything else proxied to Node | **this release** (tgdl-core 0.3.0 — see [Front server](#front-server-tgdl-core-front)) |
+| 5 | Go front server on `PORT`: `/files` and Range streaming, `/photos`, thumbnail cache hits; everything else proxied to Node. Node's own file serving is removed | **this release** (tgdl-core 0.4.0 — see [Front server](#front-server-tgdl-core-front)) |
 | 6 | Engine (monitor / downloader orchestration) in Go | gated on the earlier phases in production |
 
 Each later phase follows the same rule as phase 2: Node code is removed
@@ -183,12 +185,17 @@ tgdl-core owns the app's `PORT`; the Node server listens on
 Docker healthcheck, same responses (status, headers, body) as when Node
 answered `PORT` itself.
 
-**What it answers itself** — `GET`/`HEAD` of a local file under
-`/files/…`, an avatar under `/photos/…` and a cached thumbnail
-(`/api/thumbs/:id`), when it is certain Node would serve it: a valid file
-token or a session cookie that doesn't need renewal, the dashboard's auth
-set up, with Force HTTPS on only for a secure request, and (thumbnails)
-with the `/api` rate limit off, so the limiter still counts every request.
+**What it answers itself** — a local file under `/files/…` (any method,
+as Express's handler was), an avatar under `/photos/…` and a cached
+thumbnail (`/api/thumbs/:id`), for a valid file token or a session cookie,
+the dashboard's auth set up, with Force HTTPS on only for a secure request
+or one from the machine itself, and (thumbnails) with the `/api` rate limit
+off, so the limiter still counts every request. That includes the rare
+cases: a session in the last quarter of its lifetime, a missing file
+(`404 File not found`), `If-Match` / `If-Unmodified-Since` (`412`), an
+unsatisfiable range (`416`, `Content-Range: bytes */<size>`), the error
+answers `400` / `403`, and symlinks — followed, but only inside the
+allowed roots (`TGDL_CORE_ALLOW_ROOTS`: downloads, photos, thumbnail cache).
 Range (single and suffix ranges, `If-Range`), conditional requests,
 `Content-Type`, `Content-Disposition` (RFC 5987) follow `send` / Express
 exactly; the security and cache headers (HSTS, CSP and the rest of
@@ -196,15 +203,27 @@ helmet, `Cache-Control`, `Vary`) are the ones Node's own middlewares
 produce, pushed to tgdl-core on every config change — tgdl-core
 hardcodes none.
 
+**What Go never does: write the database.** What only Node may do reaches
+it as one small call after the answer went out (`POST /__tgdl/notify` on
+Node's loopback port, authenticated with the per-spawn token, in a header
+clients can't send, and de-duplicated for 30 s):
+
+- `renew` — the session is in the last quarter of its lifetime; Node
+  extends it (`renewSession`). The media response carries no `Set-Cookie`;
+  the next dashboard request renews the cookie as usual.
+- `missing` — Node re-checks, deletes the row and broadcasts `file_deleted`
+  (unchanged rules: not when the folder is missing too).
+
 **Everything else goes to Node**, streamed without buffering (bodies of
 unknown length flushed as they come, WebSocket upgrades tunnelled byte
-for byte, the path and query passed exactly as sent). That includes every case
-above tgdl-core isn't certain about — a session due for sliding renewal,
-a missing file (Node prunes the row and answers 404), HEIC inline
-transcoding, `_clusterref` / `?peer=` files, `If-Match`, an unsatisfiable
-range. When Node's answer is a file (`/files`, HEIC cache, thumbnails,
-`/photos`, `/share`), Node decides status and headers and hands the byte
-range back (`X-Tgdl-Accel`), so file bytes never cross Node's event loop.
+for byte, the path and query passed exactly as sent). For media that is
+only what needs Node's libraries or secrets: inline HEIC transcoding
+(`?inline=1` on `.heic`, sharp — a transform, not file serving),
+`_clusterref` / `?peer=` files (the cluster bridge), thumbnail generation
+on a cache miss, `/share`, and every request the dashboard's auth refuses
+(login redirect, 401, setup). Node no longer has a local `/files` branch,
+`/photos` handler, thumbnail cache-hit fast path or `X-Tgdl-Accel`
+hand-back.
 
 **Security model**
 
@@ -222,7 +241,8 @@ range back (`X-Tgdl-Accel`), so file bytes never cross Node's event loop.
   setup page, Force HTTPS and the rate limits behave exactly as before.
   `X-Tgdl-*` headers sent by a client are dropped.
 - Files are served only inside the allowed roots (downloads, photos,
-  thumbnail cache); a symlink or junction that leaves them goes to Node.
+  thumbnail cache); a symlink or junction is followed, one that leaves
+  them is refused (`403`).
 - Timeouts are Node's: 70 s for request headers, 65 s keep-alive, no
   write timeout (a video streams as long as it plays), 16 KiB of headers.
 
@@ -230,17 +250,19 @@ range back (`X-Tgdl-Accel`), so file bytes never cross Node's event loop.
 health checks in a row (after 50 ms, then up to 5 s). If it can't be kept
 running (binary missing, won't start, 5 exits in a minute) Node binds
 `PORT` itself and logs why, and the dashboard banner says so, so the
-dashboard and `/api/auth_check` (the healthcheck) keep working. A port
+dashboard and `/api/auth_check` (the healthcheck) keep working. Media
+routes then answer `503 TGDL_CORE_UNAVAILABLE` — there is no Node
+file-serving fallback. A port
 already in use is fatal with the same message as before.
 
 **Watching it** — `GET /api/system/health?front=1` → `goCoreFront`:
 state, pid, restarts, and counters (answered itself per kind, proxied,
-accel, WebSockets, bytes, errors).
+WebSockets, bytes, errors).
 
 **Parity gates** — the API contract suite (`npm run test:contract`) runs
 through the front server; `tests/front-parity.e2e.test.js` replays 115
 frozen v2.28 responses (Range, 304 / 412 / 416, HEAD, tokens, guests,
-renewals, HEIC, thumbnails, static assets with compression, WebSockets); `tests/front-security.e2e.test.js`
+renewals, HEIC, thumbnails, static assets with compression, WebSockets; seven cases were re-recorded when Go took over the rare ones, see the fixture's `note`); `tests/front-security.e2e.test.js`
 compares the security behaviour with Node alone (trust proxy variants,
 `/api/auth/setup` local-only, forged private headers, forceHttps, rate
 limits, file tokens); the Go unit tests check the ports of `range-parser`,
@@ -255,7 +277,7 @@ Windows 11 / Node 22, warm page cache, one run. "Busy" = Node's event
 loop blocked 450 ms out of every 500 ms (a CPU burn preloaded into the
 server), requests sent open-loop every 25 ms.
 
-| | Node on PORT (before) | tgdl-core front |
+| | Node on PORT (before 0.4; measured on 2.30) | tgdl-core front |
 |---|---|---|
 | Video, 4 MiB ranges, 1 client | 264 MB/s | 599 MB/s |
 | Video, 4 MiB ranges, 4 clients | 696 MB/s | 1,883 MB/s |

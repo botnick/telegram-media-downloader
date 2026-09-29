@@ -2,7 +2,7 @@
     "capturedFrom": "v2.28.0-2-g6791480; re-captured on v2.29.1 for the .125 s seed mtime (only the mtime-derived ETags changed)",
     "node": "v22.17.1",
     "platform": "win32/x64",
-    "note": "Responses of the Node-only server. See tests/helpers/front-parity.js.",
+    "note": "Responses of the Node-only server. See tests/helpers/front-parity.js. Seven cases were re-recorded from tgdl-core 0.4.0, which now answers them itself: files If-Match fail and If-Unmodified-Since fail (412 instead of the app error handler's 500), files dotfile and files directory (a plain 404 instead of an error page), and the three renewal cases (no Set-Cookie on the media response; Node extends the session afterwards).",
     "cases": {
         "files inline": {
             "status": 200,
@@ -1171,21 +1171,16 @@
             ]
         },
         "files If-Match fail": {
-            "status": 500,
+            "status": 412,
             "headers": [
                 ["accept-ranges", "bytes"],
                 ["cache-control", "private, max-age=2592000, immutable"],
                 ["connection", "keep-alive"],
-                [
-                    "content-disposition",
-                    "attachment; filename=\"clip.mp4\"; filename*=UTF-8''clip.mp4"
-                ],
-                ["content-length", "31"],
+                ["content-length", "0"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
                 ],
-                ["content-type", "video/mp4; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
                 ["etag", "W/\"40000-18f4cbb3825\""],
@@ -1201,48 +1196,41 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "31:c853afab200360784bfac5b455b26a0b8ba66412397fed29d5c8c1863696608c",
+            "body": "0:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Accept-Ranges",
+                "Cache-Control",
+                "Connection",
                 "Content-Security-Policy",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
+                "Last-Modified",
                 "Origin-Agent-Cluster",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Content-Disposition",
-                "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
-                "Content-Length",
                 "Date",
-                "Connection",
-                "Keep-Alive"
+                "Content-Length"
             ]
         },
         "files If-Unmodified-Since fail": {
-            "status": 500,
+            "status": 412,
             "headers": [
                 ["accept-ranges", "bytes"],
                 ["cache-control", "private, max-age=2592000, immutable"],
                 ["connection", "keep-alive"],
-                [
-                    "content-disposition",
-                    "attachment; filename=\"clip.mp4\"; filename*=UTF-8''clip.mp4"
-                ],
-                ["content-length", "31"],
+                ["content-length", "0"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
                 ],
-                ["content-type", "video/mp4; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
                 ["etag", "W/\"40000-18f4cbb3825\""],
@@ -1258,30 +1246,28 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "31:c853afab200360784bfac5b455b26a0b8ba66412397fed29d5c8c1863696608c",
+            "body": "0:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Accept-Ranges",
+                "Cache-Control",
+                "Connection",
                 "Content-Security-Policy",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
+                "Last-Modified",
                 "Origin-Agent-Cluster",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Content-Disposition",
-                "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
-                "Content-Length",
                 "Date",
-                "Connection",
-                "Keep-Alive"
+                "Content-Length"
             ]
         },
         "files HEAD range": {
@@ -1678,10 +1664,6 @@
                 ["last-modified", "Mon, 06 May 2024 07:08:09 GMT"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
-                [
-                    "set-cookie",
-                    "tg_dl_session=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc; Max-Age=2592000; Path=/; Expires=<date>; HttpOnly; SameSite=Strict"
-                ],
                 ["strict-transport-security", "max-age=0"],
                 ["x-content-type-options", "nosniff"],
                 ["x-dns-prefetch-control", "off"],
@@ -1692,29 +1674,28 @@
             ],
             "body": "262144:2eb9719f36111fdb9e89034ab0d459e035a2a24864b1b28053332ef40d72701c",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Accept-Ranges",
+                "Cache-Control",
+                "Connection",
+                "Content-Disposition",
+                "Content-Length",
                 "Content-Security-Policy",
+                "Content-Type",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
+                "Last-Modified",
                 "Origin-Agent-Cluster",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Set-Cookie",
-                "Content-Disposition",
-                "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
-                "Content-Length",
-                "Date",
-                "Connection",
-                "Keep-Alive"
+                "Date"
             ]
         },
         "files expired session": {
@@ -2487,23 +2468,19 @@
             ]
         },
         "files dotfile": {
-            "status": 500,
+            "status": 404,
             "headers": [
                 ["cache-control", "private, max-age=2592000, immutable"],
                 ["connection", "keep-alive"],
-                [
-                    "content-disposition",
-                    "attachment; filename=\".hidden.txt\"; filename*=UTF-8''.hidden.txt"
-                ],
-                ["content-length", "21"],
+                ["content-length", "14"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
                 ],
-                ["content-type", "application/json; charset=utf-8"],
+                ["content-type", "text/html; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
-                ["etag", "W/\"15-5KajTCx0AJD0xogoSeOjjV2M8K0\""],
+                ["etag", "W/\"e-oi6cO2qfXHDeT3akZIEOy6H7l8M\""],
                 ["keep-alive", "timeout=65"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
@@ -2515,28 +2492,27 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "21:e28bf7d9fcc22cdfde0c7c8f31e3648a4847e7bda9cb69f309f24257eee3dd41",
+            "body": "14:3521021a2e875fbc52ae82e2a3fea5024d507bbc919f504ca8521292c3fe14d3",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Cache-Control",
+                "Connection",
+                "Content-Length",
                 "Content-Security-Policy",
+                "Content-Type",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
                 "Origin-Agent-Cluster",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Content-Disposition",
-                "Content-Type",
-                "Content-Length",
-                "ETag",
-                "Date",
-                "Connection",
-                "Keep-Alive"
+                "Date"
             ]
         },
         "files missing (prune)": {
@@ -2688,12 +2664,15 @@
             "headers": [
                 ["cache-control", "private, max-age=2592000, immutable"],
                 ["connection", "keep-alive"],
-                ["content-disposition", "attachment; filename=\"G1\"; filename*=UTF-8''G1"],
-                ["content-length", "147"],
-                ["content-security-policy", "default-src 'none'"],
+                ["content-length", "14"],
+                [
+                    "content-security-policy",
+                    "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
+                ],
                 ["content-type", "text/html; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
+                ["etag", "W/\"e-oi6cO2qfXHDeT3akZIEOy6H7l8M\""],
                 ["keep-alive", "timeout=65"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
@@ -2705,27 +2684,27 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "147:7fb0c5f7a7d9d56e19a1144ca3cbb2a9a45f1411cd966db10c8e09066c85bc41",
+            "body": "14:3521021a2e875fbc52ae82e2a3fea5024d507bbc919f504ca8521292c3fe14d3",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Cache-Control",
+                "Connection",
+                "Content-Length",
                 "Content-Security-Policy",
+                "Content-Type",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
                 "Origin-Agent-Cluster",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Content-Disposition",
-                "Content-Type",
-                "Content-Length",
-                "Date",
-                "Connection",
-                "Keep-Alive"
+                "Date"
             ]
         },
         "files root": {
@@ -3609,10 +3588,6 @@
                 ["last-modified", "Mon, 06 May 2024 07:08:09 GMT"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
-                [
-                    "set-cookie",
-                    "tg_dl_session=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd; Max-Age=2592000; Path=/; Expires=<date>; HttpOnly; SameSite=Strict"
-                ],
                 ["strict-transport-security", "max-age=0"],
                 ["x-content-type-options", "nosniff"],
                 ["x-dns-prefetch-control", "off"],
@@ -3623,28 +3598,27 @@
             ],
             "body": "269:5f6642e8a192bde8c2f729dbcff4ff887a15fb3111ee3479d3e66f26261423bd",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Accept-Ranges",
+                "Cache-Control",
+                "Connection",
+                "Content-Length",
                 "Content-Security-Policy",
+                "Content-Type",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
+                "Last-Modified",
                 "Origin-Agent-Cluster",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Set-Cookie",
-                "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
-                "Content-Length",
-                "Date",
-                "Connection",
-                "Keep-Alive"
+                "Date"
             ]
         },
         "photos dir": {
@@ -4662,10 +4636,6 @@
                 ["origin-agent-cluster", "?1"],
                 ["pragma", "no-cache"],
                 ["referrer-policy", "no-referrer"],
-                [
-                    "set-cookie",
-                    "tg_dl_session=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee; Max-Age=2592000; Path=/; Expires=<date>; HttpOnly; SameSite=Strict"
-                ],
                 ["strict-transport-security", "max-age=0"],
                 ["vary", "Cookie"],
                 ["x-content-type-options", "nosniff"],
@@ -4677,30 +4647,29 @@
             ],
             "body": "616:e7ba3beba00bc00946092f8fae0b5fde03d3e674c4dad4401d688bab710e8496",
             "headerNames": [
-                "Strict-Transport-Security",
+                "Accept-Ranges",
+                "Cache-Control",
+                "Connection",
+                "Content-Length",
                 "Content-Security-Policy",
+                "Content-Type",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
+                "ETag",
+                "Keep-Alive",
+                "Last-Modified",
                 "Origin-Agent-Cluster",
+                "Pragma",
                 "Referrer-Policy",
+                "Strict-Transport-Security",
+                "Vary",
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
                 "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
-                "Cache-Control",
-                "Pragma",
-                "Vary",
-                "Set-Cookie",
-                "Content-Type",
-                "ETag",
-                "Last-Modified",
-                "Accept-Ranges",
-                "Content-Length",
-                "Date",
-                "Connection",
-                "Keep-Alive"
+                "Date"
             ]
         },
         "thumb POST": {

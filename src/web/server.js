@@ -286,11 +286,11 @@ import { createWsBroadcaster, runtimeEventMessage } from './lib/ws-broadcaster.j
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
+    VIA_FRONT,
     captureHeaders,
+    frontNotifyHandler,
     frontRequestMiddleware,
     installClientAddressView,
-    installSendAccel,
-    markAccel,
     stripFrontHeaders,
 } from './lib/front-bridge.js';
 import {
@@ -625,8 +625,18 @@ if (_trustProxyRaw === undefined) {
 // the `trust proxy` setting above against the real client, exactly as if
 // it had connected here directly (see lib/front-bridge.js).
 installClientAddressView(app);
-installSendAccel();
 app.use(frontRequestMiddleware(frontToken));
+// What tgdl-core tells Node after answering a request itself: only Node
+// writes the database (renewSession, the auto-prune of a missing file).
+app.use(
+    frontNotifyHandler(frontToken, {
+        renew: (token) => {
+            const session = validateSession(token);
+            if (session) slideSession(token, session);
+        },
+        missing: (reqPath) => pruneMissingDownload(reqPath),
+    }),
+);
 
 // Force HTTPS — opt-in via config.web.forceHttps (default off, plain HTTP).
 // Skips localhost so it doesn't lock you out of local dev. `req.secure`
@@ -1143,6 +1153,19 @@ function isPublicPath(p) {
     return PUBLIC_PATH_PREFIXES.some((pre) => p === pre || p.startsWith(pre));
 }
 
+// Sliding renewal: extend the session if less than 25% of its original TTL
+// remains. Returns that TTL when it did (for the cookie), else 0. tgdl-core
+// asks for the same when it serves a request in that window itself.
+function slideSession(token, session) {
+    const originalTtl = session.expiresAt - session.issuedAt;
+    const remaining = session.expiresAt - Date.now();
+    if (originalTtl > 0 && remaining < originalTtl * 0.25) {
+        renewSession(token, Date.now() + originalTtl);
+        return originalTtl;
+    }
+    return 0;
+}
+
 async function checkAuth(req, res, next) {
     const config = await readConfigSafe();
     const enabled = config.web?.enabled !== false; // default ON
@@ -1178,13 +1201,9 @@ async function checkAuth(req, res, next) {
     const session = validateSession(token);
     if (session) {
         req.role = session.role;
-        // Sliding renewal: extend if less than 25% of the original TTL remains.
-        const originalTtl = session.expiresAt - session.issuedAt;
-        const remaining = session.expiresAt - Date.now();
-        if (originalTtl > 0 && remaining < originalTtl * 0.25) {
-            const newExpiry = Date.now() + originalTtl;
-            renewSession(token, newExpiry);
-            res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: originalTtl });
+        const renewedTtl = slideSession(token, session);
+        if (renewedTtl) {
+            res.cookie('tg_dl_session', token, { ...SESSION_COOKIE_OPTS, maxAge: renewedTtl });
         }
         return next();
     }
@@ -2153,8 +2172,6 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
         // Hand off to express's static-style sendFile which supports Range.
         // sendFile sets Content-Type from the extension, which is what we
         // want — sniff-protection lives in helmet's nosniff header.
-        // Through the tgdl-core front server the bytes are streamed by it.
-        markAccel(req, res);
         return res.sendFile(r.real, (err) => {
             if (err && !res.headersSent) next(err);
         });
@@ -2274,14 +2291,10 @@ app.use((req, res, next) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/files/')) return next();
     return _publicStatic(req, res, next);
 });
-app.use(
-    '/photos',
-    (req, res, next) => {
-        markAccel(req, res);
-        next();
-    },
-    express.static(PHOTOS_DIR),
-);
+// /photos is served by tgdl-core's front server (avatars, express.static's
+// semantics); what it declines — a missing file, a directory, a dotfile —
+// falls through to the 404 page below, as static always did.
+app.use('/photos', requireFront);
 
 // Serve CHANGELOG.md from the project root for the in-app changelog
 // viewer (changelog-viewer.js). Read on every request so a `git pull`
@@ -7270,7 +7283,7 @@ const THUMB_MISS_WINDOW_MS = 15 * 60_000;
 const THUMB_MISS_FLOOR = 200;
 const THUMB_MISS_COOLDOWN_MS = 30 * 60_000;
 let _thumbMissBatch = { count: 0, resetAt: 0, lastWarnedAt: 0 };
-app.get('/api/thumbs/:id', async (req, res) => {
+app.get('/api/thumbs/:id', requireFront, async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
         if (!Number.isInteger(id) || id <= 0) {
@@ -7334,7 +7347,6 @@ app.get('/api/thumbs/:id', async (req, res) => {
         if (req.headers['if-none-match'] === etag || req.headers['if-modified-since'] === lastMod) {
             return res.status(304).end();
         }
-        markAccel(req, res);
         return res.sendFile(thumb.path, (err) => {
             if (err && !res.headersSent) res.status(500).end();
         });
@@ -13306,10 +13318,62 @@ app.get('/api/groups/refresh-photos/status', async (req, res) => {
 });
 
 // ============ FILE SERVING ============
-// Serve files from data/downloads. Uses safeResolveDownload to reject path
-// traversal, NUL bytes, and symlink escapes. Adds Content-Disposition so a
-// rogue HTML file can't be rendered inline (the browser still inlines images
-// and videos via the explicit ?inline=1 query parameter the SPA passes).
+// Local files (/files/<path> under data/downloads) are served by tgdl-core's
+// front server (core-service/internal/front): tokens, sessions, Range,
+// conditional requests, Content-Disposition, and the 400 / 403 / 404
+// answers. What stays here needs Node: the cluster bridge, federated
+// `?peer=` fetches, and the inline HEIC transcode (sharp). Everything
+// checkAuth refuses never gets this far.
+
+// Media has nothing to be served from without tgdl-core on PORT: answer
+// the way the tgdl-core-backed routes do while it can't run.
+function mediaUnavailable(res) {
+    res.status(503).json({
+        error: 'tgdl-core is not serving this port, so media is unavailable. Reinstall tgdl-core or run "npm run build:core", then restart the app.',
+        code: 'TGDL_CORE_UNAVAILABLE',
+    });
+}
+function requireFront(req, res, next) {
+    if (req[VIA_FRONT] !== undefined) return next();
+    mediaUnavailable(res);
+}
+
+// A file the front server found missing (its 404 already went out): drop
+// the rows that point at it and tell the dashboard. STRICT match on
+// file_path only — matching by file_name was unsafe because two groups can
+// hold files with the same timestamp-based basename, and a 404 on one would
+// mass-delete the other's rows. Not done when the file's folder is missing
+// too: the disk is more likely unmounted (or the group folder renamed) than
+// the file deleted, so the rows stay.
+async function pruneMissingDownload(reqPath) {
+    const r = await safeResolveDownload(reqPath);
+    if (r.ok || r.reason !== 'missing') return;
+    // ('missing' already implies the path passed the containment checks;
+    // re-check so nothing outside DOWNLOADS_DIR is probed.)
+    const downloadsRoot = path.resolve(DOWNLOADS_DIR);
+    const parentDir = path.dirname(path.resolve(downloadsRoot, reqPath));
+    if (!parentDir.startsWith(downloadsRoot + path.sep) || !existsSync(parentDir)) return;
+    const fwd = reqPath.replace(/\\/g, '/');
+    const bwd = fwd.replace(/\//g, '\\');
+    const db = getDb();
+    const matchIds = db
+        .prepare('SELECT id FROM downloads WHERE file_path = ? OR file_path = ?')
+        .all(fwd, bwd)
+        .map((row) => row.id);
+    if (!matchIds.length) return;
+    const seekbarMap = collectSeekbarPaths(matchIds);
+    const result = db
+        .prepare(`DELETE FROM downloads WHERE file_path = ? OR file_path = ?`)
+        .run(fwd, bwd);
+    if (result.changes > 0) {
+        for (const id of matchIds) {
+            purgeThumbsForDownload(id).catch(() => {});
+            purgeSeekbarForDownload(id, seekbarMap.get(id)).catch(() => {});
+        }
+        broadcast({ type: 'file_deleted', path: fwd, autoPruned: true });
+    }
+}
+
 app.use('/files', async (req, res, next) => {
     try {
         let reqPath;
@@ -13383,96 +13447,33 @@ app.use('/files', async (req, res, next) => {
             return streamFromPeer(req, res, peerIdParam, peerSidePath);
         }
 
+        // Local file: tgdl-core answers it. Only the HEIC / HEIF inline view
+        // is Node's — browsers don't render the format natively (Safari
+        // excepted, and even there only on iOS / macOS), so it is transcoded
+        // to JPEG via sharp's built-in libheif and cached; the second open is
+        // a plain stream. A download (`?inline=1` absent) keeps the original
+        // bytes and is tgdl-core's.
         const r = await safeResolveDownload(reqPath);
-        if (!r.ok) {
-            // Distinguish "genuinely missing" from "blocked for safety" so
-            // users see "File not found" instead of a misleading "Forbidden"
-            // when a file was rotated/deleted but the DB row lingered.
-            const status = r.reason === 'missing' ? 404 : 403;
-            // Auto-prune the DB row for genuinely-missing files so the
-            // gallery stops listing them on next refresh. STRICT match on
-            // file_path only — matching by file_name was unsafe because
-            // two groups can hold files with the same timestamp-based
-            // basename, and a 404 on one would mass-delete the other's
-            // rows. Done in the background so the HTTP response isn't
-            // blocked by the DB write.
-            // If the file's folder is missing as well, the disk is more likely
-            // unmounted (or the group folder renamed) than the file deleted,
-            // so leave the rows alone.
-            // ('missing' already implies the path passed the containment
-            // checks; re-check so nothing outside DOWNLOADS_DIR is probed.)
-            const downloadsRoot = path.resolve(DOWNLOADS_DIR);
-            const parentDir = path.dirname(path.resolve(downloadsRoot, reqPath));
-            const insideRoot = parentDir.startsWith(downloadsRoot + path.sep);
-            if (r.reason === 'missing' && insideRoot && existsSync(parentDir)) {
-                queueMicrotask(() => {
-                    try {
-                        const fwd = reqPath.replace(/\\/g, '/');
-                        const bwd = fwd.replace(/\//g, '\\');
-                        const db = getDb();
-                        const matchIds = db
-                            .prepare(
-                                'SELECT id FROM downloads WHERE file_path = ? OR file_path = ?',
-                            )
-                            .all(fwd, bwd)
-                            .map((r) => r.id);
-                        if (!matchIds.length) return;
-                        const seekbarMap = collectSeekbarPaths(matchIds);
-                        const result = db
-                            .prepare(`DELETE FROM downloads WHERE file_path = ? OR file_path = ?`)
-                            .run(fwd, bwd);
-                        if (result.changes > 0) {
-                            for (const id of matchIds) {
-                                purgeThumbsForDownload(id).catch(() => {});
-                                purgeSeekbarForDownload(id, seekbarMap.get(id)).catch(() => {});
-                            }
-                            broadcast({ type: 'file_deleted', path: fwd, autoPruned: true });
-                        }
-                    } catch {
-                        /* never let a stray request crash the server */
-                    }
-                });
-            }
-            return res.status(status).send(r.reason === 'missing' ? 'File not found' : 'Forbidden');
-        }
-
-        const inline = req.query.inline === '1';
-        const baseName = path.basename(r.real);
-        // RFC 5987 — `filename*` for UTF-8, plus an ASCII fallback for legacy
-        // clients. Some browsers / proxies still parse the basic `filename=`
-        // first, so omitting it leaves the file with a generic name.
-        const dispKind = inline ? 'inline' : 'attachment';
-        const asciiName = baseName.replace(/[^\x20-\x7e]/g, '_');
-        res.setHeader(
-            'Content-Disposition',
-            `${dispKind}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(baseName)}`,
-        );
-
-        // HEIC / HEIF inline view — browsers don't render the format
-        // natively (Safari excepted, and even there only on iOS / macOS).
-        // For inline requests we transcode on the fly to JPEG via sharp's
-        // built-in libheif (compiled into the prebuilt sharp binary), and
-        // cache the result so the second open is a static stream. Disk
-        // download (`?inline=1` absent) keeps the original .heic bytes.
-        const heicExt = path.extname(r.real).toLowerCase();
-        if (inline && (heicExt === '.heic' || heicExt === '.heif')) {
+        const heicExt = r.ok ? path.extname(r.real).toLowerCase() : '';
+        if (req.query.inline === '1' && (heicExt === '.heic' || heicExt === '.heif')) {
+            if (req[VIA_FRONT] === undefined) return mediaUnavailable(res);
+            const baseName = path.basename(r.real);
+            res.setHeader(
+                'Content-Disposition',
+                `inline; filename="${baseName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(baseName)}`,
+            );
             try {
                 const cachePath = await _heicInlineCache(r.real);
                 res.setHeader('Content-Type', 'image/jpeg');
                 res.setHeader('Cache-Control', 'private, max-age=86400');
-                markAccel(req, res);
                 return res.sendFile(cachePath);
             } catch (e) {
                 console.warn('[heic] inline transcode failed:', baseName, e?.message || e);
-                // Fall through to raw .heic — Safari users still get the file.
+                // Fall through to the raw .heic — Safari users still get the file.
+                return res.sendFile(r.real);
             }
         }
-        // With the tgdl-core front server, send still decides status and
-        // headers here, and tgdl-core streams the bytes (lib/front-bridge.js).
-        // Most local file requests never reach this line: tgdl-core answers
-        // them itself.
-        markAccel(req, res);
-        res.sendFile(r.real);
+        return mediaUnavailable(res);
     } catch (e) {
         next();
     }
@@ -14084,8 +14085,10 @@ server.on('error', _fatalListen);
 // client address (lib/front-bridge.js).
 //
 // When tgdl-core can't run — binary missing, fails to start, or keeps
-// exiting — this process binds PORT itself (`_publicServer`), serves
-// everything as before, logs why and shows a banner in the dashboard.
+// exiting — this process binds PORT itself (`_publicServer`) for the
+// dashboard and /api/auth_check, logs why and shows a banner in the
+// dashboard. Media routes answer 503 TGDL_CORE_UNAVAILABLE: there is no
+// Node file serving.
 let _publicServer = null;
 let _frontProblem = null;
 
@@ -14132,23 +14135,37 @@ async function _frontState() {
     const config = await readConfigSafe();
     const web = config.web || {};
     const forceHttps = Boolean(web.forceHttps);
-    // tgdl-core answers only when the request is secure or forceHttps is
-    // off, so one header set per route is all it needs.
-    const headersFor = (p, route) =>
-        captureHeaders(_frontHeaderChain, { path: p, secure: forceHttps }, route);
+    // tgdl-core answers a request that is secure, or any request when
+    // forceHttps is off: one header set per route. With forceHttps on, a
+    // plain-HTTP request from the machine itself gets through too (no HSTS
+    // on it): a second set per route, keyed "<route>.local".
+    const routes = {
+        files: ['/files/x'],
+        photos: ['/photos/x'],
+        // + what GET /api/thumbs/:id sets before its per-file validators
+        thumbs: ['/api/thumbs/1', (res) => res.setHeader('Cache-Control', THUMB_CACHE_CONTROL)],
+    };
+    const headers = {};
+    for (const [name, [p, route]] of Object.entries(routes)) {
+        headers[name] = await captureHeaders(
+            _frontHeaderChain,
+            { path: p, secure: forceHttps },
+            route,
+        );
+        if (forceHttps) {
+            headers[`${name}.local`] = await captureHeaders(
+                _frontHeaderChain,
+                { path: p, secure: false, ip: '127.0.0.1' },
+                route,
+            );
+        }
+    }
     return {
         authReady: web.enabled !== false && isAuthConfigured(web),
         forceHttps,
         rateLimit: _rateLimitConfig.enabled === true,
         shareSecret: getShareSecretForFront() || '',
-        headers: {
-            files: await headersFor('/files/x'),
-            photos: await headersFor('/photos/x'),
-            // + what GET /api/thumbs/:id sets before its per-file validators
-            thumbs: await headersFor('/api/thumbs/1', (res) =>
-                res.setHeader('Cache-Control', THUMB_CACHE_CONTROL),
-            ),
-        },
+        headers,
     };
 }
 

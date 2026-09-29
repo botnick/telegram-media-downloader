@@ -5,9 +5,9 @@
 // same header values, same body bytes.
 //
 // Then the same list is sent to the app without tgdl-core (Node answering
-// PORT itself, as it does when the binary is missing) and both runs are
-// compared: a change to Node's headers that tgdl-core doesn't follow fails
-// here even after the fixture is re-captured.
+// PORT itself, as it does when the binary is missing): everything that is
+// not media must match the front run, and media answers 503
+// TGDL_CORE_UNAVAILABLE — Node has no local file serving of its own.
 //
 // tgdl-core is required: the run uses the tree's build (the vitest global
 // setup), and the front server must really answer.
@@ -16,8 +16,17 @@ import fs from 'fs';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import Database from 'better-sqlite3';
+
 import { testCoreBin } from './helpers/gocore-bin.js';
-import { PARITY_CASES, caseDiffs, diff, normalize, runAll } from './helpers/front-parity.js';
+import {
+    PARITY_CASES,
+    PARITY_SESSIONS,
+    caseDiffs,
+    diff,
+    normalize,
+    runAll,
+} from './helpers/front-parity.js';
 import {
     NO_CORE_BIN,
     freePort,
@@ -93,6 +102,31 @@ describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
         expect(fastAnswers.thumbs).toBeGreaterThan(0);
     });
 
+    it('sessions tgdl-core served in their renewal window are extended by Node afterwards', async () => {
+        // tgdl-core answered without a Set-Cookie and told Node, which alone
+        // writes the database (checked once the async notify has landed).
+        const db = new Database(path.join(dataDir, 'db.sqlite'), { readonly: true });
+        try {
+            const row = db.prepare(
+                'SELECT issued_at, expires_at FROM web_sessions WHERE token = ?',
+            );
+            for (const name of ['renewFiles', 'renewPhotos', 'renewThumbs']) {
+                const token = PARITY_SESSIONS.find((x) => x.name === name).token;
+                const until = Date.now() + 5_000;
+                let left = 0;
+                do {
+                    const r = row.get(token);
+                    left = r.expires_at - Date.now();
+                    if (left > (r.expires_at - r.issued_at) * 0.25) break;
+                    await new Promise((res) => setTimeout(res, 100));
+                } while (Date.now() < until);
+                expect(left, name).toBeGreaterThan(20 * 24 * 3600 * 1000);
+            }
+        } finally {
+            db.close();
+        }
+    });
+
     it('every case matches the frozen Node responses', () => {
         const failures = [];
         const caseOnly = [];
@@ -116,15 +150,24 @@ describe.skipIf(SKIP)('front server parity with the Node-only server', () => {
         expect(failures, failures.join('\n')).toEqual([]);
     });
 
-    it('every case matches Node answering the same request today', () => {
+    it('without tgdl-core Node answers the rest the same, and media with 503', () => {
+        const media = /^(files|photos|thumb)/;
         const failures = [];
         for (const c of PARITY_CASES) {
             const exp = normalize(direct[c.name], c);
-            const act = normalize(results[c.name], c);
-            const d = diff(exp, act);
-            if (!d.length) continue;
-            failures.push(`${c.name}\n    ${d.join('\n    ')}`);
+            if (media.test(c.name)) {
+                // Node has no local media to serve: authentication is still
+                // its own (redirect / 401), the cluster bridge and ?peer=
+                // fetches too; every other case is 503 TGDL_CORE_UNAVAILABLE.
+                const ok = [302, 400, 401, 403, 404, 410, 500, 503].includes(exp.status);
+                if (!ok) failures.push(`${c.name}: status ${exp.status} without tgdl-core`);
+                continue;
+            }
+            const d = diff(exp, normalize(results[c.name], c));
+            if (d.length) failures.push(`${c.name}\n    ${d.join('\n    ')}`);
         }
         expect(failures, failures.join('\n')).toEqual([]);
+        expect(direct['files inline'].status).toBe(503);
+        expect(direct['photos'].status).toBe(503);
     });
 });

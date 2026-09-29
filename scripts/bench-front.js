@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Benchmark the tgdl-core front server against Node answering PORT itself.
+ * Benchmark the tgdl-core front server against Node answering PORT itself
+ * (`node` mode needs a tree from before 0.4.0: Node no longer serves media).
  *
  *   node scripts/bench-front.js [--size-mb 1024] [--requests 300] [--json out.json]
  *

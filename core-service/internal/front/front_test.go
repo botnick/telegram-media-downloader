@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -52,6 +53,7 @@ type harness struct {
 
 	mu    sync.Mutex
 	calls []upstreamCall
+	notes []string // "kind value" of every notify post
 	reply func(w http.ResponseWriter, r *http.Request)
 }
 
@@ -74,6 +76,7 @@ func newHarness(t *testing.T) *harness {
 	h.put(h.downloads, "G1/videos/clip.mp4", pattern(10000))
 	h.put(h.downloads, "G1/docs/.hidden", []byte("x"))
 	h.put(h.photos, "-100123.jpg", []byte("jpegbytes"))
+	h.put(h.downloads, "G1/x.heic", []byte("heic"))
 	h.put(h.thumbs, thumbName(1), []byte("RIFFwebpbytes"))
 	h.put(h.outside, "secret.txt", []byte("secret"))
 
@@ -86,6 +89,17 @@ func newHarness(t *testing.T) *harness {
 		if raw := r.Header.Get(fakeNodeRaw); raw != "" {
 			uri = raw
 			r.Header.Del(fakeNodeRaw)
+		}
+		if uri == notifyPath {
+			var ev map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&ev)
+			h.mu.Lock()
+			if r.Header.Get(hdrNotify) == "front-token" {
+				h.notes = append(h.notes, ev["kind"]+" "+ev["value"])
+			}
+			h.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
 		h.mu.Lock()
 		h.calls = append(h.calls, upstreamCall{r.Method, uri, r.Host, r.Header.Clone()})
@@ -199,17 +213,38 @@ func testHeaders(forceHTTPS bool) map[string][][2]string {
 	with := func(extra ...[2]string) [][2]string {
 		return append([][2]string{{"Strict-Transport-Security", hsts}, {"Content-Security-Policy", csp}, {"X-DNS-Prefetch-Control", "off"}}, extra...)
 	}
-	return map[string][][2]string{
+	m := map[string][][2]string{
 		"files":  with([2]string{"Cache-Control", testFilesCC}),
 		"photos": with([2]string{"Cache-Control", testPhotosCC}),
 		"thumbs": with([2]string{"Cache-Control", testThumbCC}, [2]string{"Pragma", "no-cache"}, [2]string{"Vary", "Cookie"}),
 	}
+	if forceHTTPS {
+		// What a plain-HTTP request from the machine itself gets: no HSTS.
+		m["files.local"] = [][2]string{{"X-Local", "1"}, {"Cache-Control", testFilesCC}}
+	}
+	return m
 }
 
 func (h *harness) upstreamCalls() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.calls)
+}
+
+// waitNotes waits for n notify posts and returns them.
+func (h *harness) waitNotes(n int) []string {
+	h.t.Helper()
+	for i := 0; i < 200; i++ {
+		h.mu.Lock()
+		got := append([]string(nil), h.notes...)
+		h.mu.Unlock()
+		if len(got) >= n {
+			return got
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.t.Fatalf("expected %d notify posts", n)
+	return nil
 }
 
 func (h *harness) lastCall() upstreamCall {
@@ -336,11 +371,35 @@ func TestFastFileRanges(t *testing.T) {
 	if h.upstreamCalls() != 0 {
 		t.Fatal("request reached Node")
 	}
-	// Unsatisfiable (Node's error handler answers) and If-Match: Node.
-	h.do("GET", "/files/G1/videos/clip.mp4", map[string]string{"Cookie": c["Cookie"], "Range": "bytes=99999-"})
-	h.do("GET", "/files/G1/videos/clip.mp4", map[string]string{"Cookie": c["Cookie"], "If-Match": `"x"`})
-	if h.upstreamCalls() != 2 {
-		t.Fatalf("416 / 412 cases: %d upstream calls, want 2", h.upstreamCalls())
+	// Unsatisfiable: the app's 416. If-Match / If-Unmodified-Since: 412.
+	res, body := h.do("GET", "/files/G1/videos/clip.mp4", map[string]string{"Cookie": c["Cookie"], "Range": "bytes=99999-"})
+	if res.StatusCode != 416 || res.Header.Get("Content-Range") != "bytes */10000" || res.Header.Get("Cache-Control") != "no-store" ||
+		res.Header.Get("Content-Type") != "text/plain; charset=utf-8" || string(body) != "Range Not Satisfiable" ||
+		res.Header.Get("ETag") != "" || res.Header.Get("Content-Disposition") != "" {
+		t.Errorf("416: %d %v %q", res.StatusCode, res.Header, body)
+	}
+	for _, tc := range []struct {
+		name string
+		hdr  map[string]string
+		want int
+	}{
+		{"If-Match other", map[string]string{"If-Match": `"x"`}, 412},
+		{"If-Match *", map[string]string{"If-Match": "*"}, 200},
+		{"If-Unmodified-Since before", map[string]string{"If-Unmodified-Since": "Sun, 05 May 2024 07:08:09 GMT"}, 412},
+		{"If-Unmodified-Since after", map[string]string{"If-Unmodified-Since": "Tue, 07 May 2024 07:08:09 GMT"}, 200},
+		{"If-Unmodified-Since garbage", map[string]string{"If-Unmodified-Since": "soon"}, 200},
+	} {
+		tc.hdr["Cookie"] = c["Cookie"]
+		res, _ := h.do("GET", "/files/G1/videos/clip.mp4", tc.hdr)
+		if res.StatusCode != tc.want {
+			t.Errorf("%s: %d, want %d", tc.name, res.StatusCode, tc.want)
+		}
+		if tc.want == 412 && (res.Header.Get("Content-Type") != "" || res.Header.Get("Cache-Control") != testFilesCC) {
+			t.Errorf("%s: 412 headers %v", tc.name, res.Header)
+		}
+	}
+	if h.upstreamCalls() != 0 {
+		t.Fatal("416 / 412 must not reach Node")
 	}
 }
 
@@ -376,7 +435,7 @@ func TestAuthDecisions(t *testing.T) {
 		{"guest cookie", "/files/G1/videos/clip.mp4", cookie(tokGuest), true},
 		{"file token", "/files/G1/videos/clip.mp4?token=" + url.QueryEscape(good), nil, true},
 		{"no auth", "/files/G1/videos/clip.mp4", nil, false},
-		{"renewal window", "/files/G1/videos/clip.mp4", cookie(tokRenew), false},
+		{"renewal window", "/files/G1/videos/clip.mp4", cookie(tokRenew), true},
 		{"expired", "/files/G1/videos/clip.mp4", cookie(tokExpired), false},
 		{"unknown token", "/files/G1/videos/clip.mp4", cookie(strings.Repeat("e", 64)), false},
 		{"escaped cookie", "/files/G1/videos/clip.mp4", map[string]string{"Cookie": "tg_dl_session=%61" + tokAdmin[1:]}, false},
@@ -384,14 +443,14 @@ func TestAuthDecisions(t *testing.T) {
 		{"token twice", "/files/G1/videos/clip.mp4?token=" + url.QueryEscape(good) + "&token=x", nil, false},
 		{"peer", "/files/G1/videos/clip.mp4?peer=x", cookie(tokAdmin), false},
 		{"clusterref", "/files/_clusterref/p/1", cookie(tokAdmin), false},
-		{"dotfile", "/files/G1/docs/.hidden", cookie(tokAdmin), false},
-		{"traversal", "/files/G1/..%2F..%2Fdb.sqlite", cookie(tokAdmin), false},
-		{"missing (Node prunes)", "/files/G1/videos/gone.mp4", cookie(tokAdmin), false},
-		{"directory", "/files/G1", cookie(tokAdmin), false},
+		{"dotfile", "/files/G1/docs/.hidden", cookie(tokAdmin), true},
+		{"traversal", "/files/G1/..%2F..%2Fdb.sqlite", cookie(tokAdmin), true},
+		{"missing (Node prunes)", "/files/G1/videos/gone.mp4", cookie(tokAdmin), true},
+		{"directory", "/files/G1", cookie(tokAdmin), true},
 		{"heic inline", "/files/G1/x.heic?inline=1", cookie(tokAdmin), false},
-		{"legacy prefix", "/files/data/downloads/G1/videos/clip.mp4", cookie(tokAdmin), false},
-		{"upper-case prefix", "/FILES/G1/videos/clip.mp4", cookie(tokAdmin), false},
-		{"POST", "/files/G1/videos/clip.mp4", cookie(tokAdmin), false},
+		{"legacy prefix", "/files/data/downloads/G1/videos/clip.mp4", cookie(tokAdmin), true},
+		{"upper-case prefix", "/FILES/G1/videos/clip.mp4", cookie(tokAdmin), true},
+		{"POST", "/files/G1/videos/clip.mp4", cookie(tokAdmin), true},
 	} {
 		before := h.upstreamCalls()
 		method := "GET"
@@ -420,7 +479,7 @@ func TestNoFastPathWithoutState(t *testing.T) {
 func TestForceHTTPS(t *testing.T) {
 	h := newHarness(t)
 	h.setState(State{AuthReady: true, ForceHTTPS: true, ShareSecret: secretHex})
-	h.do("GET", "/files/G1/videos/clip.mp4", cookie(tokAdmin))
+	h.do("GET", "/files/G1/videos/clip.mp4", map[string]string{"Cookie": cookie(tokAdmin)["Cookie"], "X-Forwarded-For": "203.0.113.9"})
 	if h.upstreamCalls() != 1 {
 		t.Fatal("plain HTTP with forceHttps must go to Node")
 	}
@@ -513,60 +572,6 @@ func TestProxyForwardsClientView(t *testing.T) {
 	}
 }
 
-func TestAccel(t *testing.T) {
-	h := newHarness(t)
-	target := filepath.Join(h.downloads, "G1", "videos", "clip.mp4")
-	h.reply = func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "video/mp4")
-		w.Header().Set("ETag", `W/"x"`)
-		w.Header().Set(hdrAccel, url.PathEscape(target))
-		w.Header().Set(hdrAccelRange, "10-20")
-		w.Header().Set("Content-Range", "bytes 10-29/10000")
-		w.WriteHeader(206)
-	}
-	res, body := h.do("GET", "/share/1?s=x", nil)
-	if res.StatusCode != 206 || string(body) != string(pattern(10000)[10:30]) || res.Header.Get("Content-Length") != "20" {
-		t.Fatalf("accel: %d %d bytes %v", res.StatusCode, len(body), res.Header)
-	}
-	for k := range res.Header {
-		if strings.HasPrefix(strings.ToLower(k), "x-tgdl") {
-			t.Errorf("private header leaked: %s", k)
-		}
-	}
-	// Outside the allowed roots: refused.
-	outside := filepath.Join(h.outside, "secret.txt")
-	h.reply = func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(hdrAccel, url.PathEscape(outside))
-		w.Header().Set(hdrAccelRange, "0-6")
-		w.WriteHeader(200)
-	}
-	res, body = h.do("GET", "/share/2?s=x", nil)
-	if res.StatusCode != 500 || strings.Contains(string(body), "secret") {
-		t.Fatalf("outside root: %d %q", res.StatusCode, body)
-	}
-	// Past the end of the file: refused.
-	h.reply = func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(hdrAccel, url.PathEscape(target))
-		w.Header().Set(hdrAccelRange, "9990-100")
-		w.WriteHeader(200)
-	}
-	if res, _ = h.do("GET", "/share/3?s=x", nil); res.StatusCode != 500 {
-		t.Fatalf("range past EOF: %d", res.StatusCode)
-	}
-}
-
-func TestSymlinkNotFastPath(t *testing.T) {
-	h := newHarness(t)
-	link := filepath.Join(h.downloads, "G1", "link.txt")
-	if err := os.Symlink(filepath.Join(h.outside, "secret.txt"), link); err != nil {
-		t.Skip("symlinks unavailable:", err)
-	}
-	h.do("GET", "/files/G1/link.txt", cookie(tokAdmin))
-	if h.upstreamCalls() != 1 {
-		t.Fatal("a symlink must be left to Node")
-	}
-}
-
 func TestUpgradeTunnelIsByteExact(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -649,39 +654,6 @@ func TestConfigFromEnv(t *testing.T) {
 	env["TGDL_CORE_TOKEN"] = ""
 	if _, err := FromEnv(get); err == nil {
 		t.Fatal("missing control token accepted")
-	}
-}
-
-func TestDecodeRel(t *testing.T) {
-	for raw, ok := range map[string]bool{
-		"G1/videos/clip.mp4":     true,
-		"G1/%C3%BC.jpg":          true,
-		"G1/a%2Fb.jpg":           true,
-		"G1//a.jpg":              false,
-		"G1/../a.jpg":            false,
-		"G1/./a.jpg":             false,
-		"G1/.a":                  false,
-		"G1/a.":                  false,
-		"G1\\a.jpg":              false,
-		"C:/a.jpg":               false,
-		"G1/%E0%A4%A.jpg":        false,
-		"G1/%FF.jpg":             false,
-		"G1/a%00.jpg":            false,
-		"G1/a%0A.jpg":            false,
-		"":                       false,
-		"G1/a%20b.jpg":           true,
-		"G1/trailing%20/a.jpg":   false,
-		"G1/sub.dir/x.mp4":       true,
-		"_clusterref/abc/1":      true, // decoded fine; fastFiles sends it to Node
-		"data/downloads/a.mp4":   true, // likewise (legacy prefix)
-		"G1/%2e%2e/secret.txt":   false,
-		"G1/..%5C..%5Csecret":    false,
-		"G1/name%3Awith%3Acolon": false,
-	} {
-		_, got := decodeRel(raw)
-		if got != ok {
-			t.Errorf("decodeRel(%q) = %v, want %v", raw, got, ok)
-		}
 	}
 }
 

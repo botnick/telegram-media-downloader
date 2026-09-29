@@ -12,20 +12,18 @@ import (
 )
 
 // The fast path only ever answers "allowed". Every other outcome of
-// checkAuth — redirect to /login.html, 401, 503 setup-required, the
-// sliding renewal with its Set-Cookie, deleting an expired row, a
-// malformed cookie turning into a 500 — is produced by Node, because the
-// request is proxied whenever the front server is not certain.
+// checkAuth — redirect to /login.html, 401, 503 setup-required, deleting an
+// expired row, a malformed cookie turning into a 500 — is produced by Node,
+// because the request is proxied whenever the front server is not certain.
+// The sliding renewal is the exception: Go serves, and tells Node (notify.go).
 
 const sessionCookie = "tg_dl_session"
 
-// Safety margins: close to expiry or to the renewal threshold, let Node
-// decide (a request is never answered by Go where Node, a few milliseconds
-// later, would have renewed or refused).
+// Safety margin: close to expiry, let Node decide (a request is never
+// answered by Go where Node, a few milliseconds later, would have refused).
 const (
-	expiryMarginMs  = 5_000
-	renewalMarginMs = 5_000
-	tokenMarginSec  = 2
+	expiryMarginMs = 5_000
+	tokenMarginSec = 2
 )
 
 func nowMs() float64 { return float64(time.Now().UnixMilli()) }
@@ -56,9 +54,9 @@ func sessionCookieValue(h http.Header) (value string, present bool, ok bool) {
 }
 
 // cookieAllows reports whether the session cookie authenticates the
-// request without side effects: the row exists, is not expired and is not
-// in the last quarter of its lifetime (Node would extend it and send a new
-// cookie). role is "admin" or "guest".
+// request: the row exists and is not expired. A session in the last quarter
+// of its lifetime is served too; Node is told to extend it (Node would have
+// renewed it and sent the cookie again). role is "admin" or "guest".
 func (s *Server) cookieAllows(r *http.Request) (role string, allowed bool) {
 	token, present, ok := sessionCookieValue(r.Header)
 	if !ok || !present || token == "" || s.sessions == nil {
@@ -76,10 +74,8 @@ func (s *Server) cookieAllows(r *http.Request) (role string, allowed bool) {
 	if sess.expiresAt <= now+expiryMarginMs {
 		return "", false // expired (Node deletes the row) or about to
 	}
-	ttl := sess.expiresAt - sess.issuedAt
-	remaining := sess.expiresAt - now
-	if ttl > 0 && remaining-renewalMarginMs < ttl*0.25 {
-		return "", false // Node renews it and sets the cookie again
+	if ttl := sess.expiresAt - sess.issuedAt; ttl > 0 && sess.expiresAt-now < ttl*0.25 {
+		s.notify("renew", token)
 	}
 	if sess.role == "guest" {
 		return "guest", true
@@ -130,8 +126,9 @@ func (q query) has(name string) bool {
 }
 
 // fileTokenRole mirrors verifyFileToken in src/core/share.js for tokens
-// in the form the app mints ("<exp>.<base64url HMAC>", exp a plain decimal
-// integer). Other spellings Number() would also accept are left to Node.
+// in the form the app mints ("<exp>.<base64url HMAC>", exp a decimal
+// integer, leading zeros as Number() reads them). Other spellings Number()
+// would also accept (hex, exponent, fractions) are not tokens here.
 func fileTokenRole(secret []byte, token string) (string, bool) {
 	if len(secret) == 0 {
 		return "", false
@@ -141,7 +138,11 @@ func fileTokenRole(secret []byte, token string) (string, bool) {
 		return "", false
 	}
 	expStr, sig := token[:dot], token[dot+1:]
-	if len(expStr) > 15 || expStr[0] == '0' || !isDigits(expStr) {
+	if !isDigits(expStr) {
+		return "", false
+	}
+	expStr = strings.TrimLeft(expStr, "0") // Number("0123") is 123: the signature covers that
+	if expStr == "" || len(expStr) > 15 {
 		return "", false
 	}
 	exp, err := strconv.ParseInt(expStr, 10, 64)

@@ -47,7 +47,7 @@ import * as client from './client.js';
  * `tgdl-core-<slug>.tar.gz` for every slug below plus `SHA256SUMS`.
  * Bumping it makes existing installs download the new binary on boot.
  */
-export const CORE_VERSION = '0.3.0';
+export const CORE_VERSION = '0.4.0';
 export const SUPPORTED_SLUGS = Object.freeze([
     'win-x64',
     'win-arm64',
@@ -197,7 +197,7 @@ export function resolveBinary({ skipDev = false } = {}) {
     return null;
 }
 
-/** `tgdl-core version` → "0.3.0", or null. */
+/** `tgdl-core version` → "0.4.0", or null. */
 export function binaryVersion(binPath) {
     return new Promise((resolve) => {
         execFile(binPath, ['version'], { timeout: 10_000, windowsHide: true }, (err, stdout) => {

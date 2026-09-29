@@ -1,26 +1,25 @@
 // Package front is tgdl-core's front server (`tgdl-core front`): it owns
-// the app's public port, answers the media routes itself and hands every
+// the app's public port, serves the media routes itself and hands every
 // other request to the Node server on 127.0.0.1.
 //
-// Node stays the authority. Go answers a request itself only when it is
-// certain Node would have answered it the same way with no side effects:
+//   - GET/HEAD /files/<path> (local files, any method in fact, as
+//     Express's handler is), /photos/<name> and /api/thumbs/<id> cache
+//     hits, for a request that is authenticated by a file token or a
+//     session cookie;
+//   - everything that decides the response — Range, conditional requests
+//     (412 and 416 included), Content-Type, Content-Disposition, the error
+//     answers 400 / 403 / 404 — reproduces the Node code path (send /
+//     serve-static / checkAuth); the security and cache headers (HSTS,
+//     CSP and the rest of helmet, Cache-Control) are the ones Node's own
+//     middlewares produce, pushed over the control channel on every
+//     config change;
+//   - symlinks are followed inside TGDL_CORE_ALLOW_ROOTS.
 //
-//   - GET/HEAD /files/<path> (local files), /photos/<name> and
-//     /api/thumbs/<id> cache hits, for a request that is authenticated by
-//     a file token or a session cookie that needs no renewal;
-//   - everything that decides the response — Range, conditional
-//     requests, Content-Type, Content-Disposition — reproduces the Node
-//     code path (send / serve-static / checkAuth) exactly; the security
-//     and cache headers (HSTS, CSP and the rest of helmet, Cache-Control)
-//     are the ones Node's own middlewares produce, pushed over the control
-//     channel on every config change; any branch it doesn't reproduce (416, 412,
-//     redirects, 401s, renewals, HEIC transcoding, auto-prune on 404, …)
-//     goes to Node.
-//
-// For a proxied request Node may still hand the byte streaming back
-// ("X-Tgdl-Accel", like nginx's X-Accel-Redirect): Node has run its whole
-// middleware chain and `send`, and Go writes Node's headers and streams
-// the byte range from disk, so file bytes never cross Node's event loop.
+// Go never writes the database. What only Node may do is posted to it after
+// the answer went out (notify.go): a session's sliding renewal, pruning the
+// row of a file that is gone. What needs Node's libraries stays a proxied
+// request: inline HEIC transcoding (sharp), the cluster bridge and ?peer=
+// fetches, and everything checkAuth refuses (401, login redirect, setup).
 //
 // Node sees every proxied request as it would have seen the client: the
 // Host and X-Forwarded-* headers are passed through untouched and the
@@ -47,7 +46,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -75,6 +73,7 @@ type Server struct {
 	startedAt time.Time
 	listen    string
 	rawHeader string // see rawtarget.go
+	notes     notifier
 }
 
 type frontStats struct {
@@ -83,7 +82,6 @@ type frontStats struct {
 	fastPhoto atomic.Int64
 	fastThumb atomic.Int64
 	proxied   atomic.Int64
-	accel     atomic.Int64
 	tunnels   atomic.Int64
 	openWS    atomic.Int64
 	bytes     atomic.Int64
@@ -91,30 +89,8 @@ type frontStats struct {
 	dbErrors  atomic.Int64
 }
 
-// rootDir is a directory the fast path serves from, with its real path
-// (Node's fs.realpath of it) resolved lazily — the directory may not exist
-// yet when tgdl-core starts.
-type rootDir struct {
-	lex  string
-	mu   sync.Mutex
-	real string
-}
-
-func (d *rootDir) realPath() (string, bool) {
-	if d.lex == "" {
-		return "", false
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.real == "" {
-		r, err := realDir(d.lex)
-		if err != nil {
-			return "", false
-		}
-		d.real = r
-	}
-	return d.real, true
-}
+// rootDir is a directory the fast path serves from.
+type rootDir struct{ lex string }
 
 // New builds a Server from cfg.
 func New(cfg Config, log *slog.Logger) *Server {
@@ -132,6 +108,7 @@ func New(cfg Config, log *slog.Logger) *Server {
 		thumbs:    rootDir{lex: cfg.ThumbsDir},
 		startedAt: time.Now(),
 		rawHeader: "X-Tgdl-Raw-" + randomHex(12),
+		notes:     newNotifier(),
 	}
 	if !s.trust.exact {
 		log.Warn("TRUST_PROXY not reproduced by the front server; with forceHttps on, media requests go through Node", "value", cfg.TrustProxy)
@@ -281,7 +258,6 @@ func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 			"thumbs": st.fastThumb.Load(),
 		},
 		"proxied":    st.proxied.Load(),
-		"accel":      st.accel.Load(),
 		"websockets": map[string]int64{"total": st.tunnels.Load(), "open": st.openWS.Load()},
 		"bytes":      st.bytes.Load(),
 		"errors":     st.errors.Load(),

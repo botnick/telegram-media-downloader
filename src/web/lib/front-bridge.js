@@ -19,21 +19,16 @@
  *      rate-limit keys, /api/auth/setup's localhost rule — is the same as
  *      when the client connected to Node directly.
  *
- *   3. installSendAccel / markAccel — for a response a route marks,
- *      `send` (res.sendFile, express.static) runs as always — conditional
- *      requests, Range, 416, every header — but instead of piping the file
- *      it answers with X-Tgdl-Accel (path) + X-Tgdl-Accel-Range
- *      ("<start>-<length>") and no body; tgdl-core streams those bytes.
+ *   3. frontNotifyHandler — tgdl-core answers some requests itself and tells
+ *      Node afterwards, because Node alone writes the database (a session
+ *      due for renewal, a file that is gone). The post carries the same
+ *      per-spawn token, in a header a client cannot send.
  */
 
 import crypto from 'crypto';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
 
 /** req[VIA_FRONT] = the client's address, for requests proxied by tgdl-core. */
 export const VIA_FRONT = Symbol.for('tgdl.front.clientAddr');
-const ACCEL = Symbol.for('tgdl.front.accel');
 
 function safeEqual(a, b) {
     const x = Buffer.from(String(a));
@@ -99,50 +94,51 @@ export function installClientAddressView(app) {
     }
 }
 
-let _accelInstalled = false;
+/** Where tgdl-core posts its events, and the header that authenticates them. */
+export const NOTIFY_PATH = '/__tgdl/notify';
+const NOTIFY_HEADER = 'x-tgdl-notify';
+const NOTIFY_MAX_BYTES = 16 * 1024;
 
 /**
- * Patch `send`'s stream step (the copy Express and serve-static use) so a
- * marked response is handed to tgdl-core instead of piped.
+ * Express middleware for POST NOTIFY_PATH: accepts an event only with the
+ * per-spawn token, then hands `{ kind, value }` to `handlers[kind]`.
+ * Without the token it does nothing (the request continues as any other,
+ * i.e. is refused by the auth middleware): the front server drops every
+ * X-Tgdl-* header a client sends.
  */
-export function installSendAccel() {
-    if (_accelInstalled) return;
-    _accelInstalled = true;
-    const expressMain = require.resolve('express');
-    const reqExpress = createRequire(expressMain);
-    const protos = new Set();
-    for (const load of [
-        () => reqExpress('send'),
-        () => createRequire(reqExpress.resolve('serve-static'))('send'),
-    ]) {
-        try {
-            const send = load();
-            protos.add(Object.getPrototypeOf(send({ headers: {} }, '/')));
-        } catch {
-            /* not installed separately */
-        }
-    }
-    for (const proto of protos) {
-        const orig = proto.stream;
-        proto.stream = function stream(filePath, opts) {
-            const res = this.res;
-            if (!res?.[ACCEL] || res.headersSent) return orig.call(this, filePath, opts);
-            const length = Number(res.getHeader('Content-Length')) || 0;
-            res.removeHeader('Content-Length');
-            res.setHeader('X-Tgdl-Accel', encodeURIComponent(filePath));
-            res.setHeader('X-Tgdl-Accel-Range', `${Number(opts?.start) || 0}-${length}`);
-            res.end();
-            this.emit('end');
-        };
-    }
-}
-
-/**
- * Hand the body of this response to tgdl-core when the request came
- * through it. Call right before res.sendFile / express.static.
- */
-export function markAccel(req, res) {
-    if (req[VIA_FRONT] !== undefined) res[ACCEL] = true;
+export function frontNotifyHandler(getToken, handlers) {
+    return (req, res, next) => {
+        if (req.method !== 'POST' || req.path !== NOTIFY_PATH) return next();
+        const tok = req.headers[NOTIFY_HEADER];
+        const want = getToken();
+        if (!want || typeof tok !== 'string' || !safeEqual(tok, want)) return next();
+        delete req.headers[NOTIFY_HEADER];
+        // Tiny JSON body; read here, before any body parser or rate limit.
+        let data = '';
+        req.setEncoding('utf8');
+        req.on('data', (c) => {
+            data += c;
+            if (data.length > NOTIFY_MAX_BYTES) req.destroy();
+        });
+        req.on('end', () => {
+            let ev = null;
+            try {
+                ev = JSON.parse(data);
+            } catch {}
+            const fn =
+                typeof ev?.kind === 'string' && Object.hasOwn(handlers, ev.kind)
+                    ? handlers[ev.kind]
+                    : null;
+            if (typeof fn === 'function' && typeof ev.value === 'string') {
+                Promise.resolve()
+                    .then(() => fn(ev.value))
+                    .catch((e) =>
+                        console.warn('[go-front] notify', ev.kind, 'failed:', e?.message || e),
+                    );
+            }
+            res.status(204).end();
+        });
+    };
 }
 
 /**
@@ -151,7 +147,7 @@ export function markAccel(req, res) {
  * may add what the route sets. Pushed to tgdl-core so the responses it
  * builds itself carry exactly the set Node would send.
  */
-export async function captureHeaders(chain, { path, secure }, route) {
+export async function captureHeaders(chain, { path, secure, ip = '192.0.2.1' }, route) {
     const list = [];
     const find = (n) => list.findIndex(([k]) => k.toLowerCase() === String(n).toLowerCase());
     const res = {
@@ -185,8 +181,8 @@ export async function captureHeaders(chain, { path, secure }, route) {
         headers: { host: 'tgdl-core' },
         secure,
         protocol: secure ? 'https' : 'http',
-        ip: '192.0.2.1',
-        socket: { remoteAddress: '192.0.2.1' },
+        ip,
+        socket: { remoteAddress: ip },
     };
     for (const mw of chain) {
         let called = false;

@@ -7,12 +7,14 @@
  *       every parity case and write the normalised responses of Node
  *       answering PORT itself (no tgdl-core). This is how the frozen Node
  *       fixture was made (v2.28, before the Go front server existed);
- *       re-running it on a later tree records that tree.
+ *       re-running it on a later tree records that tree (not any more for
+ *       media: Node alone answers those with 503 now).
  *
  *   node scripts/front-parity.js diff
  *       Start the app twice on two seeded dirs — as it runs by default
  *       (tgdl-core in front) and with Node answering on PORT itself (no
- *       tgdl-core binary) — and print every difference.
+ *       tgdl-core binary) — and print every difference (media routes differ
+ *       by design: Node alone answers 503 TGDL_CORE_UNAVAILABLE).
  *
  * Extra environment for the server passes through (TRUST_PROXY,
  * COMPRESSION_LEVEL, TGDL_CORE_BIN, …).
