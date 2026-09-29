@@ -83,8 +83,17 @@ async function fastCounts(p) {
     return JSON.parse(r.body)?.goCoreFront?.stats?.fast ?? null;
 }
 
+const MEDIA = /^\/(files|photos)\/|^\/api\/thumbs\//;
+
 async function same(p, req) {
     const [f, n] = await both(p, req);
+    // Node alone has no local media to serve: what tgdl-core serves itself
+    // is 503 TGDL_CORE_UNAVAILABLE there. Everything before the route
+    // (authentication, forceHttps, the rate limit) still has to match.
+    if (MEDIA.test(req.path) && n.status === 503 && n.body.includes('TGDL_CORE_UNAVAILABLE')) {
+        expect(f.status, `${req.method || 'GET'} ${req.path}`).not.toBe(503);
+        return f;
+    }
     expect(visible(f), `${req.method || 'GET'} ${req.path}`).toEqual(visible(n));
     return f;
 }

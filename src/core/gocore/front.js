@@ -3,7 +3,8 @@
  *
  * The Node server listens on 127.0.0.1:<random>; `tgdl-core front` owns
  * the public PORT. It serves /files, /photos and thumbnail cache hits
- * itself and proxies everything else here (see core-service/internal/front
+ * itself (never writing the database: Node is told afterwards, see
+ * lib/front-bridge.js) and proxies everything else here (see core-service/internal/front
  * and docs/GO-CORE.md). This module spawns it, hands it what it needs
  * (environment at spawn; the share secret and the auth-relevant config
  * over the token-gated control channel, never argv/env), restarts it, and

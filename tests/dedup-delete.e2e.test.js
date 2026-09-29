@@ -195,7 +195,9 @@ describe.skipIf(SKIP)('delete paths keep shared files (e2e)', () => {
         expect(
             (await fetch(`${BASE}/files/G9/images/gone.jpg`, { headers: { cookie } })).status,
         ).toBe(404);
-        await sleep(500);
+        // The front server tells Node to prune after its 404 went out: poll.
+        for (let i = 0; i < 100 && (await rowIds()).includes(ids.gone8); i++) await sleep(100);
+        await sleep(300); // …and the G9 notify (which must not prune anything)
         const left = await rowIds();
         expect(left).not.toContain(ids.gone8);
         expect(left).toContain(ids.gone9);

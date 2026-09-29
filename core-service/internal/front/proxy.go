@@ -9,9 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -21,33 +19,11 @@ import (
 const (
 	hdrFront      = "X-Tgdl-Front"       // per-spawn token: "this request came through tgdl-core"
 	hdrClientAddr = "X-Tgdl-Client-Addr" // the client's socket address, Node's spelling
-	hdrAccel      = "X-Tgdl-Accel"       // response: stream this file (encodeURIComponent'd path)
-	hdrAccelRange = "X-Tgdl-Accel-Range" // response: "<start>-<length>" bytes of it
 )
-
-type accelKey struct{}
-
-// accelSlot carries a file Node asked us to stream from ModifyResponse to
-// the ResponseWriter wrapper that writes the body.
-type accelSlot struct {
-	f     *os.File
-	start int64
-	n     int64
-}
-
-var errAccel = errors.New("invalid accel response from Node")
 
 func (s *Server) forward(w http.ResponseWriter, r *http.Request) {
 	s.stats.proxied.Add(1)
-	slot := &accelSlot{}
-	r = r.WithContext(context.WithValue(r.Context(), accelKey{}, slot))
-	pw := &proxyWriter{ResponseWriter: w, r: r, s: s, slot: slot}
-	defer func() {
-		if slot.f != nil {
-			_ = slot.f.Close()
-		}
-	}()
-	s.proxy.ServeHTTP(pw, r)
+	s.proxy.ServeHTTP(&proxyWriter{ResponseWriter: w, r: r}, r)
 }
 
 // rewrite builds the request to Node: same method, target, Host and
@@ -76,54 +52,13 @@ func (s *Server) rewrite(pr *httputil.ProxyRequest) {
 	pr.Out.Header[hdrClientAddr] = []string{s.clientAddr(pr.In)}
 }
 
-// modifyResponse strips the private headers from Node's answer and, when
-// Node handed the byte streaming back, opens the file.
+// modifyResponse strips the private headers from Node's answer.
 func (s *Server) modifyResponse(resp *http.Response) error {
-	accel := resp.Header.Get(hdrAccel)
-	rng := resp.Header.Get(hdrAccelRange)
 	for k := range resp.Header {
 		if strings.HasPrefix(k, "X-Tgdl-") {
 			delete(resp.Header, k)
 		}
 	}
-	if accel == "" {
-		return nil
-	}
-	slot, _ := resp.Request.Context().Value(accelKey{}).(*accelSlot)
-	if slot == nil || (resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent) ||
-		resp.Header.Get("Content-Encoding") != "" {
-		return errAccel
-	}
-	p, err := url.PathUnescape(accel)
-	if err != nil {
-		return errAccel
-	}
-	a, b, ok := strings.Cut(rng, "-")
-	start, err1 := strconv.ParseInt(a, 10, 64)
-	n, err2 := strconv.ParseInt(b, 10, 64)
-	if !ok || err1 != nil || err2 != nil || start < 0 || n < 0 {
-		return errAccel
-	}
-	resolved, err := s.roots.Resolve(p)
-	if err != nil {
-		s.log.Warn("accel path refused", "path", p, "err", err)
-		return errAccel
-	}
-	f, err := openShared(resolved)
-	if err != nil {
-		return errAccel
-	}
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() < start+n {
-		_ = f.Close()
-		return errAccel
-	}
-	s.stats.accel.Add(1)
-	slot.f, slot.start, slot.n = f, start, n
-	resp.Header.Set("Content-Length", strconv.FormatInt(n, 10))
-	resp.ContentLength = n
-	_ = resp.Body.Close()
-	resp.Body = http.NoBody
 	return nil
 }
 
@@ -132,23 +67,16 @@ func (s *Server) proxyError(w http.ResponseWriter, r *http.Request, err error) {
 		return // the client went away
 	}
 	s.stats.errors.Add(1)
-	if errors.Is(err, errAccel) {
-		s.log.Warn("accel failed", "path", r.URL.Path, "err", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
 	s.log.Warn("proxy error", "path", r.URL.Path, "err", err)
 	w.WriteHeader(http.StatusBadGateway)
 }
 
 // proxyWriter restores what httputil.ReverseProxy drops or Go's server
 // would add on the way out (Node's Connection / Keep-Alive pair, header
-// spelling, no Content-Type sniffing), and streams an accel body.
+// spelling, no Content-Type sniffing).
 type proxyWriter struct {
 	http.ResponseWriter
 	r           *http.Request
-	s           *Server
-	slot        *accelSlot
 	wroteHeader bool
 }
 
@@ -169,17 +97,11 @@ func (pw *proxyWriter) WriteHeader(code int) {
 	keep304Headers(h, code)
 	setConnectionHeaders(pw.ResponseWriter, pw.r)
 	pw.ResponseWriter.WriteHeader(code)
-	if pw.slot != nil && pw.slot.f != nil && pw.r.Method != http.MethodHead {
-		pw.s.copyRange(pw.ResponseWriter, pw.slot.f, pw.slot.start, pw.slot.n)
-	}
 }
 
 func (pw *proxyWriter) Write(b []byte) (int, error) {
 	if !pw.wroteHeader {
 		pw.WriteHeader(http.StatusOK)
-	}
-	if pw.slot != nil && pw.slot.f != nil {
-		return len(b), nil
 	}
 	return pw.ResponseWriter.Write(b)
 }

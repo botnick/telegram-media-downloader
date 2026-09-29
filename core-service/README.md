@@ -45,7 +45,7 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 |---|---|---|
 | `TGDL_CORE_TOKEN` | — (required) | Shared secret; every route except `/health` needs it as `X-API-Token`. The app mints a new one per spawn. |
 | `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes the downloads dir, `<data dir>/downloads` and a custom `download.path`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app reads that path itself. |
-| `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.3.0","pid":123}`. |
+| `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.4.0","pid":123}`. |
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
@@ -63,7 +63,7 @@ proxied to the Node server on `127.0.0.1` (see
 | `TGDL_CORE_TOKEN` | Control-channel token (`X-API-Token`), required. |
 | `TGDL_FRONT_LISTEN` | Public address, `:<PORT>`. Can't bind → exit status 3 and `{"event":"error","code":"EADDRINUSE",…}` on stdout. |
 | `TGDL_FRONT_UPSTREAM` | The Node server, `127.0.0.1:<port>` (loopback only). |
-| `TGDL_FRONT_UPSTREAM_TOKEN` | Sent to Node as `X-Tgdl-Front` with the client's address; Node trusts that address only with this token. |
+| `TGDL_FRONT_UPSTREAM_TOKEN` | Sent to Node as `X-Tgdl-Front` with the client's address; Node trusts that address only with this token. The same token authenticates the events Go posts to Node afterwards (`X-Tgdl-Notify`: session renewal, a missing file to prune) — Go never writes the database. |
 | `TGDL_FRONT_TRUST_PROXY` | The app's Express `trust proxy` value (`TRUST_PROXY`, default `loopback`). |
 | `TGDL_FRONT_DB` | `db.sqlite`, opened read-only for `web_sessions`. |
 | `TGDL_FRONT_DOWNLOADS_DIR`, `TGDL_FRONT_PHOTOS_DIR`, `TGDL_FRONT_THUMBS_DIR` | What `/files`, `/photos` and `/api/thumbs/:id` resolve against. |
@@ -252,6 +252,10 @@ with Go and point `TGDL_CORE_BIN` at it.
 
 ## Changelog
 
+- **0.4.0** — `front` answers the rare cases itself: 412 / 416 / ranges,
+  symlinks inside `TGDL_CORE_ALLOW_ROOTS`, a missing file (404) and a session
+  due for renewal. Node is told afterwards (it alone writes the database);
+  the `X-Tgdl-Accel` hand-back is gone.
 - **0.3.0** — `front`: the app's front server on `PORT` — `/files`,
   `/photos` and cached thumbnails served from Go, everything else proxied
   to the Node server ([Front server](#front-server-front)).

@@ -100,7 +100,7 @@ describe.skipIf(SKIP)('tgdl-core front server supervision', () => {
         expect(f.status).toBe(200);
     }, 60_000);
 
-    it('gives up after repeated exits and serves PORT from Node, with a banner', async () => {
+    it('gives up after repeated exits and serves PORT from Node (no media), with a banner', async () => {
         if (!resolved || !bin || !srv) return;
         const port = srv.port;
         for (let i = 0; i < 6; i++) {
@@ -125,13 +125,13 @@ describe.skipIf(SKIP)('tgdl-core front server supervision', () => {
             (await rawRequest(port, { path: '/api/monitor/status', headers: ADMIN })).body,
         );
         expect(mon.core?.state).toBe('front_down');
-        // Media still works — Node streams it itself now.
+        // Media has nothing to be served from now: 503, not a Node fallback.
         const f = await rawRequest(port, {
             path: '/files/G1/videos/clip.mp4',
             headers: { ...ADMIN, Range: 'bytes=0-9' },
         });
-        expect(f.status).toBe(206);
-        expect(f.headers['content-range']).toBe('bytes 0-9/262144');
+        expect(f.status).toBe(503);
+        expect(JSON.parse(f.body).code).toBe('TGDL_CORE_UNAVAILABLE');
         expect(srv.log()).toMatch(/giving up on tgdl-core front/);
     }, 90_000);
 

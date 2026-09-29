@@ -16,6 +16,7 @@ type sendPlan struct {
 	start   int64
 	length  int64
 	body    bool
+	text    string // a body of its own (the 416 message)
 }
 
 var (
@@ -28,10 +29,11 @@ var (
 // when the route called res.sendFile; typePath is the path send was given
 // (its extension picks the Content-Type).
 //
-// ok is false for every branch the fast path leaves to Node: If-Match /
-// If-Unmodified-Since (412 handling), an unsatisfiable range (send's 416
-// becomes the app's error handler's 500), and validators or dates whose
-// JavaScript parsing it doesn't reproduce.
+// The status is 200, 206, 304, 412 (If-Match / If-Unmodified-Since, as
+// http.ServeContent answers it) or 416 (the answer the app's error handler
+// gives send's unsatisfiable range). ok is false only for a request header
+// or date whose JavaScript parsing isn't reproduced; the caller then
+// declines (photos, thumbnails) or ignores the validators (/files).
 func planSend(r *http.Request, preset hdrList, size int64, mtime time.Time, typePath string) (sendPlan, bool) {
 	h := preset.clone()
 	lastMod, mtimeMs := sendTimes(mtime)
@@ -45,8 +47,14 @@ func planSend(r *http.Request, preset hdrList, size int64, mtime time.Time, type
 	ifUnmod, ok2 := nodeHeader(r.Header, "If-Unmodified-Since")
 	inm, ok3 := nodeHeader(r.Header, "If-None-Match")
 	ims, ok4 := nodeHeader(r.Header, "If-Modified-Since")
-	if !ok1 || !ok2 || !ok3 || !ok4 || ifMatch != "" || ifUnmod != "" {
+	if !ok1 || !ok2 || !ok3 || !ok4 {
 		return sendPlan{}, false
+	}
+	if preconditionFailed(h, ifMatch, ifUnmod) {
+		for _, k := range []string{"Content-Disposition", "Content-Type", "Content-Length"} {
+			h.del(k)
+		}
+		return sendPlan{status: http.StatusPreconditionFailed, headers: h}, true
 	}
 	if inm != "" || ims != "" {
 		fresh, ok := isFresh(r, h, inm, ims)
@@ -76,7 +84,7 @@ func planSend(r *http.Request, preset hdrList, size int64, mtime time.Time, type
 			st = rangeMalformed
 		}
 		if st == rangeUnsatisfiable {
-			return sendPlan{}, false
+			return unsatisfiablePlan(h, size), true
 		}
 		if st == 0 && len(ranges) == 1 {
 			a, b := int64(ranges[0].start), int64(ranges[0].end)
@@ -89,7 +97,46 @@ func planSend(r *http.Request, preset hdrList, size int64, mtime time.Time, type
 	return sendPlan{status: status, headers: h, start: start, length: length, body: r.Method != http.MethodHead}, true
 }
 
-// isFresh mirrors fresh 0.5 (send's isCachable is always true here: the
+// unsatisfiablePlan is the app's 416: Content-Range "bytes */<size>", a
+// text body, none of the file's own headers, and no caching.
+func unsatisfiablePlan(h hdrList, size int64) sendPlan {
+	for _, k := range []string{"Content-Type", "Content-Length", "Content-Disposition", "ETag", "Last-Modified"} {
+		h.del(k)
+	}
+	h.set("Content-Range", "bytes */"+strconv.FormatInt(size, 10))
+	h.set("Cache-Control", "no-store")
+	h.set("Content-Type", "text/plain; charset=utf-8")
+	return sendPlan{status: http.StatusRequestedRangeNotSatisfiable, headers: h, text: "Range Not Satisfiable"}
+}
+
+// preconditionFailed is SendStream#isPreconditionFailure: If-Match wins;
+// otherwise If-Unmodified-Since (an unparseable date is ignored).
+func preconditionFailed(h hdrList, ifMatch, ifUnmod string) bool {
+	if ifMatch != "" {
+		etag, _ := h.get("ETag")
+		if etag == "" {
+			return true
+		}
+		if ifMatch == "*" {
+			return false
+		}
+		for _, m := range parseTokenList(ifMatch) {
+			if m == etag || m == "W/"+etag || "W/"+m == etag {
+				return false
+			}
+		}
+		return true
+	}
+	t, ok := parseHTTPDateStrict(ifUnmod)
+	if ifUnmod == "" || !ok {
+		return false
+	}
+	lm, _ := h.get("Last-Modified")
+	l, ok := parseHTTPDateStrict(lm)
+	return !ok || l > t
+}
+
+// isFresh mirrors fresh 0.5(send's isCachable is always true here: the
 // status is still 200). ok is false when a date can't be compared the way
 // Date.parse would.
 func isFresh(r *http.Request, h hdrList, inm, ims string) (fresh bool, ok bool) {
