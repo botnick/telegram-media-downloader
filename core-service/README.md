@@ -12,19 +12,24 @@ it for:
 | `walk` | `POST /v1/fs/walk` | Re-index from disk, the disk-usage fallback of `/api/stats` |
 | `dbscan` | `POST /v1/dbscan` | face clustering (scan runner Phase B) |
 
+A second process of the same binary, `tgdl-core front`, serves the app's
+`PORT` ([Front server](#front-server-front)).
+
 It is the only implementation of these — the Node code it replaced is gone
 — so every answer must be the one Node gave: same digests, the same
 `fs.stat` / `fs.readdir` results and error codes, the same clusters. See
 [docs/GO-CORE.md](../docs/GO-CORE.md) for how that is proven and what the
 app does when tgdl-core can't run.
 
-tgdl-core never opens `db.sqlite` (Node is the only writer), and it only
-reads inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`).
+tgdl-core never writes `db.sqlite` (Node is the only writer; the front
+server reads `web_sessions` over a read-only connection), and it only
+reads files inside the directories the app allows (`TGDL_CORE_ALLOW_ROOTS`).
 
 ## Commands
 
 ```
 tgdl-core serve               run the HTTP service (settings from env, below)
+tgdl-core front               run the front server on the app's PORT (env, below)
 tgdl-core version             print "tgdl-core <version> <os>/<arch> <go version>"
 tgdl-core hash [--json] <path>...
                               print SHA-256 digests like sha256sum (debugging)
@@ -40,10 +45,37 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 |---|---|---|
 | `TGDL_CORE_TOKEN` | — (required) | Shared secret; every route except `/health` needs it as `X-API-Token`. The app mints a new one per spawn. |
 | `TGDL_CORE_ALLOW_ROOTS` | empty = refuse everything | Directories files may be read from, separated like `PATH` (`:` on Linux / macOS, `;` on Windows; quote an entry containing `;` on Windows). The app passes the downloads dir, `<data dir>/downloads` and a custom `download.path`, plus anything in its own `TGDL_CORE_ALLOW_ROOTS`. Anything else is refused with `EOUTSIDE` and the app reads that path itself. |
-| `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.2.0","pid":123}`. |
+| `TGDL_CORE_PORT` | `0` | Port on `127.0.0.1`; `0` picks a free one. The bound address is printed as one JSON line on stdout: `{"event":"listening","addr":"127.0.0.1:NNNNN","version":"0.3.0","pid":123}`. |
 | `TGDL_CORE_WATCH_STDIN` | off | `1`: exit when stdin reaches EOF. The app keeps the pipe open, so when the app dies (crash, `kill -9`, Task Manager) tgdl-core exits instead of lingering as an orphan — Windows doesn't reap children with their parent. |
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
+
+## Front server (`front`)
+
+`tgdl-core front` serves the app's public `PORT`: local media from
+`/files`, `/photos` and the thumbnail cache itself, everything else
+proxied to the Node server on `127.0.0.1` (see
+[docs/GO-CORE.md](../docs/GO-CORE.md#front-server-tgdl-core-front)). Code in
+`internal/front`. The app starts it with these (never argv):
+
+| Variable | Meaning |
+|---|---|
+| `TGDL_CORE_TOKEN` | Control-channel token (`X-API-Token`), required. |
+| `TGDL_FRONT_LISTEN` | Public address, `:<PORT>`. Can't bind → exit status 3 and `{"event":"error","code":"EADDRINUSE",…}` on stdout. |
+| `TGDL_FRONT_UPSTREAM` | The Node server, `127.0.0.1:<port>` (loopback only). |
+| `TGDL_FRONT_UPSTREAM_TOKEN` | Sent to Node as `X-Tgdl-Front` with the client's address; Node trusts that address only with this token. |
+| `TGDL_FRONT_TRUST_PROXY` | The app's Express `trust proxy` value (`TRUST_PROXY`, default `loopback`). |
+| `TGDL_FRONT_DB` | `db.sqlite`, opened read-only for `web_sessions`. |
+| `TGDL_FRONT_DOWNLOADS_DIR`, `TGDL_FRONT_PHOTOS_DIR`, `TGDL_FRONT_THUMBS_DIR` | What `/files`, `/photos` and `/api/thumbs/:id` resolve against. |
+| `TGDL_CORE_ALLOW_ROOTS` | Every file served must be inside one of these. |
+| `TGDL_CORE_PORT`, `TGDL_CORE_WATCH_STDIN`, `TGDL_CORE_LOG_LEVEL` | As for `serve`. |
+
+Control channel (`127.0.0.1:<TGDL_CORE_PORT>`, `X-API-Token`):
+`GET /health`, `POST /v1/front/state` (Node pushes the share secret,
+whether auth is set up, Force HTTPS, the `/api` rate-limit switch and the
+response headers its middlewares produce for each fast-path route — on
+boot and on every config change, re-checked every 2 s), `GET
+/v1/front/stats`.
 
 ## HTTP API
 
@@ -220,6 +252,9 @@ with Go and point `TGDL_CORE_BIN` at it.
 
 ## Changelog
 
+- **0.3.0** — `front`: the app's front server on `PORT` — `/files`,
+  `/photos` and cached thumbnails served from Go, everything else proxied
+  to the Node server ([Front server](#front-server-front)).
 - **0.2.0** — `stat` (`/v1/fs/stat-batch`), `walk` (`/v1/fs/walk`) and
   `dbscan` (`/v1/dbscan`); builds for `linux-arm` (ARMv7) and `mac-x64`;
   containment no longer hangs on a UNC share root and no longer re-resolves

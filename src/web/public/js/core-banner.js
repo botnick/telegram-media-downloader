@@ -43,10 +43,16 @@ function render(core) {
     );
     const body = document.createElement('div');
     body.className = 'text-tg-textSecondary text-xs mt-1';
-    body.textContent = i18nT(
-        'core.banner.body',
-        'File hashing and duplicate checks, Verify files, Re-index from disk and face grouping are paused until it runs. Everything else works.',
-    );
+    body.textContent =
+        core.state === 'front_down'
+            ? i18nT(
+                  'core.banner.frontBody',
+                  'Videos, photos and thumbnails are served by the slower built-in server until it runs. Everything else works.',
+              )
+            : i18nT(
+                  'core.banner.body',
+                  'File hashing and duplicate checks, Verify files, Re-index from disk and face grouping are paused until it runs. Everything else works.',
+              );
     const fix = document.createElement('div');
     fix.className = 'text-xs mt-1 font-mono break-words';
     fix.textContent = core.fix;

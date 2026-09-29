@@ -35,6 +35,7 @@ import (
 
 const usage = `usage:
   tgdl-core serve              run the HTTP service on 127.0.0.1
+  tgdl-core front              run the front server on the app's port (see internal/front)
   tgdl-core version            print the version
   tgdl-core hash [--json] <path>...
                                print SHA-256 digests
@@ -72,6 +73,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	case "front":
+		return runFront(stdin, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintf(stdout, "%s %s %s/%s %s\n", version.Service, version.Version, runtime.GOOS, runtime.GOARCH, runtime.Version())
 		return 0

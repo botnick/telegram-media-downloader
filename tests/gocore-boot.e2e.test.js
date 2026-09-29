@@ -1,5 +1,6 @@
 // tgdl-core is required, but the app must still boot without it: the
-// dashboard and /api/auth_check work at once, the problem and its fix are
+// dashboard and /api/auth_check work at once (Node serves PORT itself, as
+// the front server can't run either), the problem and its fix are
 // reported (health block, banner field, log), the features that need
 // tgdl-core answer 503 with the fix — and nothing crash-loops.
 //
@@ -68,6 +69,9 @@ async function bootServer(extraEnv) {
     dirs.push(dataDir);
     const port = await freePort();
     const env = { ...process.env, ...extraEnv, PORT: String(port), TGDL_DATA_DIR: dataDir };
+    // These cases boot without tgdl-core on purpose (CI requires the front
+    // server everywhere else).
+    delete env.TGDL_FRONT_REQUIRED;
     for (const [k, v] of Object.entries(extraEnv)) if (v === undefined) delete env[k];
     env.NODE_ENV = 'test';
     const t0 = Date.now();
@@ -157,6 +161,12 @@ describe.skipIf(SKIP)('boot without a usable tgdl-core', () => {
         // The dashboard banner gets the fix (no local paths).
         const mon = await get('/api/monitor/status');
         expect(mon.core).toEqual({ state: 'binary_missing', fix: h.goCore.problem.fix });
+
+        // No front server either: Node serves PORT itself and logs why.
+        const hf = await get('/api/system/health?front=1');
+        expect(hf.goCoreFront.state).toBe('binary_missing');
+        expect(hf.goCoreFront.servedByNode).toMatch(/TGDL_CORE_BIN/);
+        expect(s.log()).toMatch(/tgdl-core is not serving port/);
 
         for (const url of [
             '/api/maintenance/files/verify',

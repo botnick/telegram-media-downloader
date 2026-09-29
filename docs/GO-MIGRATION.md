@@ -34,9 +34,12 @@ counts). The coverage checker (`inventory.contract.test.js`) must pass too.
 No golden is re-recorded to make Go pass: goldens are recorded from the
 Node target only (`npm run test:contract:update` refuses any other target).
 If Go is right and Node is wrong, fix Node first, re-record from Node, then
-port. (The narrower front-server parity fixture on the `feat/go-front`
-branch — 115 requests — predates this suite; the front server should adopt
-`CONTRACT_TARGET=go` as its gate.)
+port. (The Go front server of wave A is started by the Node app, so the
+default target already runs through it: CI builds tgdl-core for the
+contract job and sets `TGDL_FRONT_REQUIRED=1`, which the harness passes
+through, so a front server that can't start fails the run instead of
+Node answering PORT itself. `CONTRACT_TARGET=go` is for the standalone Go
+server of the later waves.)
 
 | Domain | Scenario files |
 |---|---|
@@ -128,9 +131,12 @@ browser ──► Go front server ──┬─► Go handlers (domains already m
   CSP, `Strict-Transport-Security: max-age=0` unless forceHttps), gzip / br /
   deflate negotiation with the same exclusions, forceHttps + `TRUST_PROXY`,
   and the proxy to Node for the rest.
-- Exit: the whole suite passes with `CONTRACT_TARGET=go` (front server +
-  Node child). `static`, `files`, `share`, `security` and `auth` are the
-  files that exercise the front server directly.
+- Exit: the whole suite passes through the front server (the default
+  target, with tgdl-core built). `static`, `files`, `share`, `security`
+  and `auth` are the files that exercise it directly. Shipped:
+  `/files`, `/photos` and thumbnail cache hits with Range, conditional
+  requests, file-token and session auth; the rest (static SPA, `/share`,
+  compression, auto-prune) is still answered by Node through it.
 
 ### B — Go DB layer and the read APIs
 

@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Changed
+- **Videos, photos and thumbnails are served by tgdl-core (0.3.0) and keep playing while the server is busy.** tgdl-core now answers the dashboard port and serves `/files`, `/photos` and cached thumbnails itself; everything else goes to the Node server behind it on `127.0.0.1`. Responses are the same as before — status codes, headers, cookies, auth, Range and caching — checked by the API contract suite and a 115-request parity suite. Measured on one machine: video ranges 2.3–2.7× faster (4 clients: 696 → 1,883 MB/s), and while Node is busy (event loop blocked 90 % of the time) a video chunk's first byte arrives in ~1 ms instead of ~220 ms (p99 5 ms instead of 450 ms). See [docs/GO-CORE.md](docs/GO-CORE.md#front-server-tgdl-core-front).
+- Nothing to do when upgrading: same port, Docker healthcheck, `TRUST_PROXY` behaviour and reverse-proxy setup ([docs/DEPLOY.md](docs/DEPLOY.md#reverse-proxy)). If tgdl-core can't run, the Node server answers the port itself and the dashboard banner says why.
+- `GET /api/system/health?front=1` adds `goCoreFront` (state, restarts, request counters); the default payload is unchanged.
+
 ### Security
 - **The shared cluster token no longer authenticates a peer that was never paired.** A cluster API request signed with the token was accepted for any `X-Peer-Id`. The legacy fallback now applies only when the id is an already-paired peer; anything else gets 401. Paired peers and the pairing handshake are unchanged.
 
