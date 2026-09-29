@@ -564,9 +564,19 @@ export async function runAutoUpdate(opts = {}) {
     return { success: true, backup, ping, integrity, verify };
 }
 
-/** Create the shared token file at boot so the sidecar can read it. */
+/**
+ * Create the shared token file at boot so the sidecar can read it. The
+ * folder is made even when the token comes from the env: Synology's Docker
+ * won't start a container whose bind-mount source folder is missing.
+ */
 export function ensureWatchtowerToken() {
-    if (process.env.WATCHTOWER_URL) _resolveWatchtowerToken();
+    if (!process.env.WATCHTOWER_URL) return;
+    try {
+        mkdirSync(path.dirname(WT_TOKEN_FILE), { recursive: true });
+    } catch {
+        /* read-only FS; the token still resolves from the env */
+    }
+    _resolveWatchtowerToken();
 }
 
 export const _internals = {
