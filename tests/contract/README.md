@@ -21,6 +21,7 @@ npm run contract:schema               # re-freeze fixtures/schema.sql after a DB
 | `CONTRACT_TARGET` | `node` (default): spawns `node src/web/server.js`. `go`: spawns `$CONTRACT_GO_BIN` (default `core-service/bin/tgdl-server[.exe]`). `url`: attaches to `$CONTRACT_URL` (nothing spawned or seeded — seed the server's data dir with `node scripts/contract-seed.mjs <dir>` and restart it between files; `$CONTRACT_DATA_DIR` enables path masking; scenarios that need their own seed/env/extra server refuse to run). |
 | `CONTRACT_UPDATE=1` | Record instead of compare (Node only — use `npm run test:contract:update`). |
 | `CONTRACT_WORKERS` | Files run in parallel (default 4). Each file runs its own server(s). |
+| `TGDL_CORE_BIN` | tgdl-core binary handed to every Node target. Default: found or built once by the global setup, like `npm test` (Go on PATH, or `npm run build:core`). A binary `npm install` downloaded into `<repo>/data` isn't seen by a target on its temp data dir. |
 
 `npm test` excludes this directory; CI runs it as its own job on Ubuntu and
 Windows.

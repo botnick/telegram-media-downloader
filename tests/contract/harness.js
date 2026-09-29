@@ -107,6 +107,8 @@ const PASS_ENV = [
     'CommonProgramFiles',
     'NUMBER_OF_PROCESSORS',
     'PROCESSOR_ARCHITECTURE',
+    // The tgdl-core binary the global setup found or built.
+    'TGDL_CORE_BIN',
 ];
 
 function targetEnv({ port, dataDir, extra = {}, nodeEnv = 'test' }) {
