@@ -47,7 +47,7 @@ func checkSize(n, dim int) error {
 	if dim > MaxDim {
 		return fmt.Errorf("%w: dim must be at most %d", errTooLarge, MaxDim)
 	}
-	if n*dim > maxValues {
+	if int64(n)*int64(dim) > maxValues {
 		return fmt.Errorf("%w: n*dim must be at most %d", errTooLarge, maxValues)
 	}
 	return nil
@@ -175,7 +175,7 @@ func readBody(r io.Reader, p params) ([]float32, []float64, error) {
 	if dim > MaxDim {
 		return nil, nil, checkSize(n, dim)
 	}
-	if n*dim > maxValues {
+	if int64(n)*int64(dim) > maxValues {
 		return nil, nil, checkSize(n, dim)
 	}
 	data := make([]float32, n*dim)
