@@ -36,8 +36,11 @@ walks, the DBSCAN worker) is removed; Node keeps thin client calls.
 4. **Only the app's media folders.** The app passes its download folders
    as `TGDL_CORE_ALLOW_ROOTS`; a path outside them (as written or after
    resolving links) gets `EOUTSIDE` and Node answers that one path with
-   plain `fs` — so the result is still exactly what `fs` says. No roots =
-   nothing is read.
+   plain `fs` — so the result is still exactly what `fs` says. That is a
+   link inside a download folder pointing elsewhere (a folder on another
+   disk, `/dev/null`, …); a dangling one is `ENOENT` either way, and the
+   integrity sweep never sees `EOUTSIDE` (it prunes only on `ENOENT` /
+   `ENOTDIR`). No roots = nothing is read.
 5. **Can't outlive the app.** It exits when its stdin pipe closes, binds
    `127.0.0.1` only, and needs a per-spawn token for everything but
    `/health`.
@@ -110,7 +113,7 @@ the Node code it replaced and against Node itself:
 
 | Suite | Checks |
 |---|---|
-| `tests/gocore-fs.errors.test.js` | **Safety-critical.** Every situation the OS lets it set up — missing file / folder, a file used as a folder, trailing dot / space, reserved characters and names, 255 / 256-char names, paths over 260 and over 32 767 chars, links in / out / dangling / looping, ACL-denied files and folders, a file locked by another process, pre-1970 and post-2038 timestamps, and on Windows `pagefile.sys`, a missing drive, an offline share, an app-execution alias — answered by `stat-batch` and by Node's own `fs.stat`, live: identical, or `EOUTSIDE` for the few the app then answers itself; the app-side result is identical in every case. |
+| `tests/gocore-fs.errors.test.js` | **Safety-critical.** Every situation the OS lets it set up — missing file / folder, a file used as a folder, trailing dot / space, reserved characters and names, 255 / 256-char names, paths over 260 and over 32 767 chars, links in / out / dangling / looping, ACL-denied files and folders, a file locked by another process, pre-1970 and post-2038 timestamps, and on Windows `pagefile.sys`, a missing drive, an offline share, an app-execution alias — answered by `stat-batch` and by Node's own `fs.stat`, live: identical, or exactly `EOUTSIDE` where that is expected (paths and links out of the root, NTFS streams, reserved device names), which the app then answers itself; the app-side result is identical in every case and never `EOUTSIDE`. |
 | `tests/gocore-integrity.parity.test.js` | `integrity.sweep` prunes exactly the rows and fixes exactly the sizes the old `Promise.all(fs.stat)` block did, for every row shape (legacy prefixes, federated rows, absolute / `../` paths, links out of the folder, folders where files should be, …). |
 | `tests/gocore-walk.parity.test.js` | Re-index from disk inserts the same rows in the same order with the same counters as the old nested `fs.readdir` walk (hidden files, `.part`, `.deleted`, links, deeper folders, duplicate message ids, unreadable folders — same thrown error); the disk-usage total equals the old recursive walk. Also against a frozen fixture. |
 | `tests/gocore-dbscan.parity.test.js` | Same clusters, members, order, noise count and byte-identical centroids as `ai/dbscan.js` on the existing DBSCAN fixtures and edge cases, and on a seeded 5 000 × 512 set against a frozen digest of `dbscan.js`'s output. |

@@ -41,6 +41,8 @@ const servers = [];
 
 /** A fake tgdl-core. `routes[path](req, raw, res)`; /health is built in. */
 async function fakeCore(routes, { features = ['hash', 'stat', 'walk', 'dbscan'] } = {}) {
+    // A Map, so a request path can only ever pick one of the given routes.
+    const routeMap = new Map(Object.entries(routes));
     const srv = http.createServer((req, res) => {
         if (req.url === '/health') {
             res.setHeader('content-type', 'application/json');
@@ -50,8 +52,10 @@ async function fakeCore(routes, { features = ['hash', 'stat', 'walk', 'dbscan'] 
         const chunks = [];
         req.on('data', (c) => chunks.push(c));
         req.on('end', () => {
-            const route = routes[req.url.split('?')[0]];
-            if (!route) return json(res, 404, { error: { code: 'ENOTFOUND' } });
+            const route = routeMap.get(req.url.split('?')[0]);
+            if (typeof route !== 'function') {
+                return json(res, 404, { error: { code: 'ENOTFOUND' } });
+            }
             route(req, Buffer.concat(chunks), res);
         });
     });

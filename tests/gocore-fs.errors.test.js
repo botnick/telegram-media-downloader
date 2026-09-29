@@ -4,14 +4,29 @@
 // So: for every situation we can set up on this OS, tgdl-core's answer
 // must be exactly what Node's own fs.stat says, live, on this machine.
 //
-// The only allowed difference is EOUTSIDE (tgdl-core refusing a path that
-// is not inside the directories it may read: a link out of the root, an
-// NTFS alternate data stream, a reserved device name); the app answers
-// those with fs.stat itself — the `statMany` half of this file checks
-// that the end result is then identical for every case too.
+// The only allowed difference is EOUTSIDE, and only where it is expected
+// (`escapes`): tgdl-core refuses a path that is not inside the directories
+// it may read — a path outside the root, a link inside the root whose
+// target is outside it (a folder on another disk, /dev/null, …), an NTFS
+// alternate data stream, a reserved device name. Those cases must answer
+// exactly EOUTSIDE. The app then stats that one path with fs.stat itself
+// (src/core/gocore/fs.js statMany), so the `statMany` half of this file
+// checks that the app-level result equals fs.stat for every case, and
+// that EOUTSIDE never reaches integrity.js (which prunes only on
+// ENOENT / ENOTDIR). A link out of the root whose target is missing is not
+// refused: it is ENOENT like fs.stat says, and pruned exactly as before.
+//
+// Linux / macOS notes. Go stats with lstat(2) then stat(2) for links, so
+// FIFOs and sockets are never opened (no blocking) and read as neither
+// file nor folder, like fs.stat. Folders without search permission give
+// EACCES for both — or succeed for both when the tests run as root; the
+// comparison is live either way. Case is whatever the file system does
+// (both see the same). /proc and /dev are only reachable through a link,
+// which is the /dev/null case below.
 
 import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -25,12 +40,13 @@ const ROOT = path.join(BASE, 'root');
 const OUTSIDE = path.join(BASE, 'outside');
 const J = (...p) => path.join(ROOT, ...p);
 
-/** name → { path, outsideOk?: true } */
+/** name → { path, escapes?: true } (escapes: tgdl-core must say EOUTSIDE) */
 const cases = {};
 const cleanups = [];
 let core;
 let sysCore;
 let lockHolder = null;
+let socketServer = null;
 
 function add(name, p, opts = {}) {
     cases[name] = { path: p, ...opts };
@@ -107,7 +123,7 @@ beforeAll(async () => {
         'path over 32767 chars',
         J(...Array.from({ length: 140 }, (_, i) => `c${i}${'y'.repeat(240)}`)),
     );
-    add('outside the root', path.join(OUTSIDE, 'o.txt'), { outsideOk: true });
+    add('outside the root', path.join(OUTSIDE, 'o.txt'), { escapes: true });
 
     // Links (junctions on Windows need no privilege; symlinks may).
     const dirLinkType = WIN ? 'junction' : 'dir';
@@ -116,8 +132,8 @@ beforeAll(async () => {
         add('file through a directory link', J('link-in', 'file.txt'));
     }
     if (tryLink(OUTSIDE, J('link-out'), dirLinkType)) {
-        add('directory link out of the root', J('link-out'), { outsideOk: true });
-        add('file through a link out of the root', J('link-out', 'o.txt'), { outsideOk: true });
+        add('directory link out of the root', J('link-out'), { escapes: true });
+        add('file through a link out of the root', J('link-out', 'o.txt'), { escapes: true });
     }
     fs.mkdirSync(J('gone'));
     if (tryLink(J('gone'), J('link-dangling'), dirLinkType)) {
@@ -125,6 +141,13 @@ beforeAll(async () => {
         add('child of a dangling link', J('link-dangling', 'x'));
     }
     fs.rmdirSync(J('gone'));
+    // Out of the root and dangling: fs.stat says ENOENT, so must tgdl-core
+    // (the sweep prunes that row, as it always did).
+    fs.mkdirSync(path.join(OUTSIDE, 'gone'));
+    if (tryLink(path.join(OUTSIDE, 'gone'), J('link-out-dangling'), dirLinkType)) {
+        add('dangling link out of the root', J('link-out-dangling'));
+    }
+    fs.rmdirSync(path.join(OUTSIDE, 'gone'));
     if (tryLink(J('dir', 'file.txt'), J('sym-file'), 'file')) {
         add('file symlink', J('sym-file'));
         tryLink(J('nope.txt'), J('sym-dangling'), 'file') &&
@@ -137,16 +160,19 @@ beforeAll(async () => {
             add('child of a symlink loop', J('loop-a', 'x'));
         }
         tryLink(path.join(OUTSIDE, 'o.txt'), J('sym-out'), 'file') &&
-            add('file symlink out of the root', J('sym-out'), { outsideOk: true });
+            add('file symlink out of the root', J('sym-out'), { escapes: true });
     }
 
     if (WIN) {
         for (const c of ['?', '*', '<', '>', '|', '"']) add(`name with ${c}`, J('dir', `a${c}b`));
-        add('alternate data stream (missing)', J('dir', 'file.txt:stream'), { outsideOk: true });
-        add('alternate data stream ::$DATA', J('dir', 'file.txt::$DATA'), { outsideOk: true });
-        add('reserved name NUL', J('dir', 'NUL'), { outsideOk: true });
-        add('reserved name CON', J('dir', 'CON'), { outsideOk: true });
-        add('reserved-looking COM1.txt', J('dir', 'COM1.txt'), { outsideOk: true });
+        add('alternate data stream (missing)', J('dir', 'file.txt:stream'), { escapes: true });
+        add('alternate data stream ::$DATA', J('dir', 'file.txt::$DATA'), { escapes: true });
+        add('reserved name NUL', J('dir', 'NUL'), { escapes: true });
+        add('reserved name CON', J('dir', 'CON'), { escapes: true });
+        // Not a reserved name to Go's filepath.IsLocal, so it is stat'ed and
+        // must answer exactly like fs.stat (a device on older Windows, a
+        // plain name on Windows 11).
+        add('reserved-looking COM1.txt', J('dir', 'COM1.txt'));
         // ACLs: read-attributes denied, everything denied, a folder that
         // can't be listed or traversed.
         const user = process.env.USERNAME;
@@ -201,8 +227,17 @@ beforeAll(async () => {
         add('component of 300 chars', J('dir', 'z'.repeat(300)));
         add('path with a NUL-free long component chain', J('dir', ...Array(80).fill('q')));
         if (spawnSync('mkfifo', [J('fifo')]).status === 0) add('named pipe (FIFO)', J('fifo'));
-        add('/dev/null-like device (inside root via link)', J('devnull'));
-        tryLink('/dev/null', J('devnull'), 'file');
+        try {
+            socketServer = net.createServer();
+            await new Promise((resolve, reject) => {
+                socketServer.once('error', reject);
+                socketServer.listen(J('sock'), resolve);
+            });
+            add('unix socket', J('sock'));
+        } catch {}
+        if (tryLink('/dev/null', J('devnull'), 'file')) {
+            add('link to /dev/null (out of the root)', J('devnull'), { escapes: true });
+        }
     }
 
     core = await startRawCore([ROOT]);
@@ -213,6 +248,9 @@ afterAll(async () => {
     sysCore?.stop();
     try {
         lockHolder?.kill();
+    } catch {}
+    try {
+        socketServer?.close();
     } catch {}
     for (const c of cleanups) {
         try {
@@ -234,23 +272,25 @@ describe('stat-batch answers exactly like fs.stat', () => {
         const names = Object.keys(cases);
         const paths = names.map((n) => cases[n].path);
         const go = await goStat(core, paths);
-        const rows = [];
+        const failures = [];
         for (let i = 0; i < names.length; i++) {
             const node = await nodeStat(paths[i]);
             const g = go[i];
-            const same = JSON.stringify(g) === JSON.stringify(node);
-            const outside = g.code === 'EOUTSIDE' && cases[names[i]].outsideOk;
-            rows.push({ name: names[i], node: node.code || 'ok', go: g.code || 'ok', same });
-            if (!same && !outside) {
-                throw new Error(
-                    `${names[i]}: node=${JSON.stringify(node)} go=${JSON.stringify(g)}`,
+            const want = cases[names[i]].escapes ? { code: 'EOUTSIDE' } : node;
+            if (JSON.stringify(g) !== JSON.stringify(want)) {
+                failures.push(
+                    `${names[i]}: node=${JSON.stringify(node)} go=${JSON.stringify(g)}` +
+                        (cases[names[i]].escapes ? ' (expected EOUTSIDE)' : ''),
                 );
             }
-            // Never prune what Node wouldn't, never miss what Node would
-            // (an EOUTSIDE is answered by fs.stat in the app, below).
-            if (!outside) expect(MISSING_CODES.has(g.code)).toBe(MISSING_CODES.has(node.code));
+            // Never prune what Node wouldn't, never miss what Node would.
+            if (!cases[names[i]].escapes) {
+                expect(MISSING_CODES.has(g.code)).toBe(MISSING_CODES.has(node.code));
+            }
         }
-        expect(rows.length).toBeGreaterThan(20);
+        if (failures.length) throw new Error(failures.join('\n'));
+        expect(names.length).toBeGreaterThan(20);
+        expect(names.filter((n) => cases[n].escapes).length).toBeGreaterThan(0);
     });
 
     it('the app-side statMany (EOUTSIDE answered by fs.stat) equals fs.stat for every case', async () => {
@@ -259,10 +299,12 @@ describe('stat-batch answers exactly like fs.stat', () => {
         const names = Object.keys(cases);
         const got = await statMany(names.map((n) => cases[n].path));
         for (let i = 0; i < names.length; i++) {
-            expect({ name: names[i], r: got[i] }).toEqual({
-                name: names[i],
-                r: await nodeStat(cases[names[i]].path),
-            });
+            const node = await nodeStat(cases[names[i]].path);
+            expect({ name: names[i], r: got[i] }).toEqual({ name: names[i], r: node });
+            // What integrity.js sees: never EOUTSIDE, and a prune exactly
+            // when fs.stat would have pruned.
+            expect(got[i].code).not.toBe('EOUTSIDE');
+            expect(MISSING_CODES.has(got[i].code)).toBe(MISSING_CODES.has(node.code));
         }
         const { stopGoCore } = await import('../src/core/gocore/spawn.js');
         stopGoCore();

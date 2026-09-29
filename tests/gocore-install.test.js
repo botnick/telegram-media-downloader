@@ -38,11 +38,13 @@ beforeAll(async () => {
         .update(fs.readFileSync(path.join(RELEASE, tarName)))
         .digest('hex');
     sums = `${digest}  ${tarName}\n`;
+    // The fake release serves exactly these files, nothing picked by the URL.
+    const assets = new Map([[tarName, path.join(RELEASE, tarName)]]);
     server = http.createServer((req, res) => {
         const name = decodeURIComponent(req.url.split('/').pop());
         if (name === 'SHA256SUMS') return res.end(sums);
-        const p = path.join(RELEASE, name);
-        if (!fs.existsSync(p)) {
+        const p = assets.get(name);
+        if (!p) {
             res.statusCode = 404;
             return res.end();
         }
@@ -69,9 +71,9 @@ describe('release download', () => {
         const p = await spawnMod.downloadCore(slug, { dir, log: () => {} });
         expect(p).toBe(path.join(dir, spawnMod.binaryFileName(slug)));
         expect(fs.readFileSync(`${p}.version`, 'utf8').trim()).toBe(spawnMod.CORE_VERSION);
-        expect(execFileSync(p, ['version'], { encoding: 'utf8' })).toMatch(
-            new RegExp(`^tgdl-core ${spawnMod.CORE_VERSION.replace(/\./g, '\\.')} `),
-        );
+        const banner = `tgdl-core ${spawnMod.CORE_VERSION} `;
+        const out = execFileSync(p, ['version'], { encoding: 'utf8' });
+        expect(out.slice(0, banner.length)).toBe(banner);
         // No staging leftovers.
         expect(fs.readdirSync(dir).filter((n) => n.startsWith('.staging-'))).toEqual([]);
     });
