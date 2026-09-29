@@ -19,7 +19,7 @@ import {
     getClusterToken,
     fingerprintFor,
     consumePairingCode,
-    deriveSecretFromPairingCode,
+    pairingCodeKey,
 } from './identity.js';
 import { signRequest } from './hmac.js';
 import { upsertPeer, getPeer, generateSharedSecret, setSharedSecret } from './peers.js';
@@ -78,7 +78,11 @@ export async function initiateHandshake({
                 message: 'Pairing code must be 6-16 alphanumeric characters',
             };
         }
-        tok = deriveSecretFromPairingCode(code);
+        // Signed with a key derived from the code alone; the receiver
+        // checks it against the codes it issued. (Older versions derived
+        // it from this peer's own cluster token, which the receiver never
+        // accepted.)
+        tok = pairingCodeKey(code);
     } else {
         tok = String(token || '').trim();
         if (!/^[0-9a-f]{32,}$/i.test(tok)) {
@@ -148,18 +152,21 @@ export async function initiateHandshake({
         payload = null;
     }
     if (!res.ok) {
-        const code = res.status === 401 ? 'token_invalid' : 'remote_error';
+        let code = res.status === 401 ? 'token_invalid' : 'remote_error';
+        let message = payload?.error || `Remote returned HTTP ${res.status}`;
+        if (pairingCode && res.status === 401) {
+            code = 'pairing_code_rejected';
+            message =
+                'The other peer refused the pairing code: it expired (codes last 5 minutes), was already used, or was typed wrong. ' +
+                'A peer running an older version cannot accept pairing codes: update it, or pair with its cluster token.';
+        }
         recordClusterAudit({
             kind: 'handshake',
             ok: false,
             peerId: payload?.peer_id || null,
             detail: `outbound to ${cleanUrl} → HTTP ${res.status}`,
         });
-        return {
-            ok: false,
-            code,
-            message: payload?.error || `Remote returned HTTP ${res.status}`,
-        };
+        return { ok: false, code, message };
     }
     if (!payload?.peer_id || !payload?.name) {
         return { ok: false, code: 'bad_response', message: 'Remote did not return identity' };

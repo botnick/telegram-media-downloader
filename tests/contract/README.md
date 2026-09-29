@@ -84,8 +84,8 @@ else. The real login / setup / reset flows have their own scenarios.
 
 The Node target runs with `--import fixtures/sandbox.mjs`: DNS answers
 `ENOTFOUND` for every name but localhost, TCP to non-loopback IPs is
-refused, and the cluster's UDP LAN discovery binds loopback and drops its
-broadcasts. Result: the GitHub update check, sidecar/model downloads, fake
+refused, and the cluster's UDP LAN discovery binds an ephemeral loopback
+port and drops its broadcasts. Result: the GitHub update check, sidecar/model downloads, fake
 backup hosts and `*.invalid` peers all fail instantly and identically on a
 dev box, a CI runner or an air-gapped host, and parallel test servers never
 discover each other. The target also gets a minimal environment (nothing
@@ -270,18 +270,7 @@ never silently in the Go port.
   (`data/models`) ignore `TGDL_DATA_DIR` and live under `<repo>/data`.
 - Face crops and sprites send `Pragma: no-cache` together with
   `Cache-Control: … immutable`; `/files/*` answers any HTTP method.
-- Cluster: `POST /api/cluster/sign-url` stores `expires_at` in ms but signs
-  seconds, so every minted direct-stream URL answers `401 bad_sig`;
-  `GET /api/cluster/peer-thumbs/:id` sends a JSON object labelled
-  `image/webp` (with the absolute thumb-cache path) instead of the image;
-  the pairing-code handshake always fails (`401 bad_signature`: the
-  initiator signs with the code-derived secret, the receiver only accepts
-  the per-pair secret or the cluster token); the lazy engine starter is
-  registered after the cluster routes, so sync / WS channel / discovery /
-  failover only start after `POST /api/cluster/failover/run` or an unknown
-  `/api/cluster` path, and inbound `/ws/cluster` events reach the DB but not
-  the dashboard until then; the legacy cluster-token fallback verifies any
-  `X-Peer-Id`.
+- Cluster: the legacy cluster-token fallback verifies any `X-Peer-Id`.
 - Express' own errors (e.g. an undecodable path parameter) go through the
   last-resort handler and answer 500 instead of their status.
 - Backup: `unlock` accepts any passphrase (even empty); `run` on a disabled

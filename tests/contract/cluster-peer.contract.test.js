@@ -325,51 +325,96 @@ describe('handshake', () => {
 
     it('pairing codes', async () => {
         const t = h.t;
-        const EPS = '00000000-0000-4000-8000-0000000000e5';
-        const code = (await t.request('POST', '/api/cluster/identity/pairing-code')).json.code;
-        const derived = crypto
-            .createHmac('sha256', SEED.clusterToken)
-            .update(`pairing:${code}`)
-            .digest('hex');
-        const body = {
-            peer_id: EPS,
-            name: 'peer-epsilon',
-            url: 'http://peer-epsilon.invalid:3000',
+        const issue = async () =>
+            (await t.request('POST', '/api/cluster/identity/pairing-code')).json.code;
+        // identity.pairingCodeKey(): what initiators sign a pairing-code
+        // handshake with — derived from the code alone, since the initiator
+        // doesn't hold this node's cluster token.
+        const codeKey = (code) =>
+            crypto.createHmac('sha256', 'tgdl-cluster-pairing-code').update(code).digest('hex');
+        // What older initiators signed with: the code + THEIR cluster token
+        // (matches here only because this caller holds the same token).
+        const tokenDerived = (code) =>
+            crypto.createHmac('sha256', SEED.clusterToken).update(`pairing:${code}`).digest('hex');
+        const bodyFor = (peerId, name, code) => ({
+            peer_id: peerId,
+            name,
+            url: `http://${name}.invalid:3000`,
             pairing_code: code,
-        };
-        // What initiateHandshake() does for a pairing code: sign with the
-        // code-derived secret. The receiver only checks the cluster token /
-        // per-pair secret, so this is refused today.
-        // The code is random: recorded as <pairing-code>.
-        const recordBody = { ...body, pairing_code: '<pairing-code>' };
+        });
+        // Codes are random: recorded as <pairing-code>.
+        const shown = (body) => ({ ...body, pairing_code: '<pairing-code>' });
+
+        const EPS = '00000000-0000-4000-8000-0000000000e5';
+        const c1 = await issue();
+        const b1 = bodyFor(EPS, 'peer-epsilon', c1);
         await peer(
-            'handshake signed with pairing-code secret → 401',
+            'handshake signed with the pairing-code key → paired',
             'POST',
             '/api/cluster/handshake',
             {
-                key: derived,
+                key: codeKey(c1),
                 peerId: EPS,
-                body,
-                recordBody,
+                body: b1,
+                recordBody: shown(b1),
             },
         );
+        await peer('pairing code is single-use → 401', 'POST', '/api/cluster/handshake', {
+            key: codeKey(c1),
+            peerId: EPS,
+            body: b1,
+            recordBody: shown(b1),
+        });
+
+        const ZETA = '00000000-0000-4000-8000-0000000000e6';
+        const c2 = await issue();
+        const b2 = bodyFor(ZETA, 'peer-zeta', c2);
+        await peer(
+            'handshake signed with the token-derived pairing secret (older initiator) → paired',
+            'POST',
+            '/api/cluster/handshake',
+            { key: tokenDerived(c2), peerId: ZETA, body: b2, recordBody: shown(b2) },
+        );
+
+        const ETA = '00000000-0000-4000-8000-0000000000e7';
+        const c3 = await issue();
+        const b3 = bodyFor(ETA, 'peer-eta', c3);
         await peer(
             'handshake with pairing code, signed with token',
             'POST',
             '/api/cluster/handshake',
             {
                 key: 'token',
-                peerId: EPS,
-                body,
-                recordBody,
+                peerId: ETA,
+                body: b3,
+                recordBody: shown(b3),
             },
         );
-        await peer('pairing code is single-use → 400', 'POST', '/api/cluster/handshake', {
-            key: 'token',
-            peerId: EPS,
-            body,
-            recordBody,
-        });
+        await peer(
+            'pairing code is single-use (token-signed) → 400',
+            'POST',
+            '/api/cluster/handshake',
+            {
+                key: 'token',
+                peerId: ETA,
+                body: b3,
+                recordBody: shown(b3),
+            },
+        );
+
+        const THETA = '00000000-0000-4000-8000-0000000000e8';
+        const b4 = bodyFor(THETA, 'peer-theta', 'ZZZZ2345');
+        await peer(
+            'handshake with a code this node never issued → 401',
+            'POST',
+            '/api/cluster/handshake',
+            {
+                key: codeKey('ZZZZ2345'),
+                peerId: THETA,
+                body: b4,
+            },
+        );
+        await peersView('peers after pairing-code handshakes');
     });
 });
 
@@ -428,15 +473,11 @@ describe('file bridge and thumbnails', () => {
     });
 
     it('peer thumbs', async () => {
-        // Today the route res.send()s the {path, width, mtime} object that
-        // getOrCreateThumb() returns — a JSON body labelled image/webp —
-        // instead of the WebP bytes. Recorded as-is (see report).
-        const thumbJson = {
-            bodyMode: 'json',
-            mask: { mtime: 'mtime of the thumbnail file generated during this run' },
-        };
-        await peer('peer thumb photo', 'GET', '/api/cluster/peer-thumbs/1', thumbJson);
-        await peer('peer thumb w=320', 'GET', '/api/cluster/peer-thumbs/2?w=320', thumbJson);
+        // The WebP bytes from the thumbnail cache (generated during the
+        // run — recorded as format + size).
+        const thumb = { bodyMode: 'image' };
+        await peer('peer thumb photo', 'GET', '/api/cluster/peer-thumbs/1', thumb);
+        await peer('peer thumb w=320', 'GET', '/api/cluster/peer-thumbs/2?w=320', thumb);
         await peer('peer thumb document → 404', 'GET', '/api/cluster/peer-thumbs/10');
         await peer('peer thumb unknown id → 404', 'GET', '/api/cluster/peer-thumbs/999');
         await peer('peer thumb bad id → 400', 'GET', '/api/cluster/peer-thumbs/abc');
@@ -462,14 +503,19 @@ describe('sign-url', () => {
             as: 'anon',
         });
         const links = await t.request('GET', '/api/share/links?downloadId=1');
-        const row = links.json.links.find((l) => l.label === 'cluster:00000000');
+        // The link this sign-url minted (/share/<id>?s=…).
+        const mintedId = Number(minted.pathname.split('/')[2]);
+        const row = links.json.links.find((l) => l.id === mintedId);
         t.store.record('minted share link row (derived)', {
             derived: {
                 label: row.label,
                 ttlWindow:
                     res.json.expiresAt - Date.now() <= 120_000 &&
                     res.json.expiresAt - Date.now() > 100_000,
-                storedExpiresAtIsMilliseconds: row.expiresAt > 1e12,
+                // share_links.expires_at is epoch seconds, like every
+                // other share link; the response's expiresAt stays in ms.
+                storedExpiresAtIsSeconds: row.expiresAt === res.json.exp,
+                expIsExpiresAtInSeconds: res.json.expiresAt === res.json.exp * 1000,
             },
         });
     });

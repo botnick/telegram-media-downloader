@@ -133,8 +133,12 @@ export function verifyRequest(req, { expectedToken = null, now = null } = {}) {
     // peers that haven't re-paired yet, and finally accept an explicit
     // expectedToken from the handshake bootstrap path. A request matches
     // if it verifies under ANY of the three keys.
+    // `expectedToken` may be a list (a pairing-code handshake: the
+    // code-derived keys, see identity.pairingKeysFor).
     const candidates = [];
-    if (expectedToken) candidates.push(expectedToken);
+    for (const tok of Array.isArray(expectedToken) ? expectedToken : [expectedToken]) {
+        if (tok && !candidates.includes(tok)) candidates.push(tok);
+    }
     const pairSecret = getSharedSecret(peerId);
     if (pairSecret) candidates.push(pairSecret);
     const legacy = getClusterToken();

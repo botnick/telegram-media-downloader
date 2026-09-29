@@ -6,15 +6,14 @@
 //   { type, payload, ts, sig: hex(HMAC(pair-secret, "<type>|<ts>|sha256(JSON(payload))")) }
 // then records the dashboard WS events they cause.
 //
-// Outbound: alpha's URL points at a fake peer in this process. Once the
-// node's cluster engines are started it dials the fake peer's /ws/cluster
-// and pushes signed events (download_deleted, config_changed,
-// failover_completed) that the fake peer records.
-//
-// The engines (and the dashboard relay of inbound events) only start when
-// a request reaches the lazy `app.use('/api/cluster', …)` starter, which
-// today only POST /api/cluster/failover/run (or an unknown /api/cluster
-// path) does — so the first scenario records the channel BEFORE that.
+// Outbound: alpha's URL points at a fake peer in this process. The seed
+// pairs peers, so the node's cluster engines start at boot: it dials the
+// fake peer's /ws/cluster right away and pushes signed events
+// (download_deleted, config_changed, failover_completed) that the fake
+// peer records. (They used to start only when a request reached a lazy
+// starter registered after the cluster routes — in practice only
+// POST /api/cluster/failover/run — and inbound events reached the DB but
+// not the dashboard until then.)
 //
 // Recorded as { ws: 'cluster', sent, received, events } (see
 // inventory.contract.test.js): `sent` = types pushed into /ws/cluster,
@@ -190,6 +189,34 @@ const ROW = (id, name) => ({
     nsfw_score: null,
 });
 
+// First: the /ws/cluster auth scenarios below close an inbound link as
+// alpha, which marks it offline.
+describe('engines start at boot; outbound connection to the paired peer', () => {
+    it('the node dials alpha without any cluster request', async () => {
+        const t = h.t;
+        await until(() => outbound.connections.length >= 1, { what: 'node dials the fake peer' });
+        // The node marks alpha online once its outbound link opens.
+        await until(
+            async () =>
+                (await t.request('GET', '/api/cluster/peers')).json.peers.find(
+                    (p) => p.peerId === ALPHA.peerId,
+                )?.status === 'online',
+            { what: 'alpha online after the boot-time dial' },
+        );
+        t.store.record('outbound connect at boot', {
+            ws: 'cluster',
+            sent: [],
+            received: [],
+            connections: outbound.connections,
+        });
+        await t.exchange(
+            'failover run (beta never seen → nothing to take over)',
+            'POST',
+            '/api/cluster/failover/run',
+        );
+    });
+});
+
 describe('/ws/cluster connect-time auth', () => {
     it('refuses missing, forged, stale and unpaired credentials', async () => {
         const t = h.t;
@@ -217,56 +244,6 @@ describe('/ws/cluster connect-time auth', () => {
     });
 });
 
-describe('inbound events before the cluster engines start', () => {
-    it('are applied to the DB but not relayed to the dashboard', async () => {
-        const t = h.t;
-        const dash = await dashboard(t);
-        const peerWs = await inbound(t);
-        await push(peerWs, dash, signedMsg('download_added', ROW(900, 'R_0900.jpg')), 0);
-        await push(peerWs, dash, signedMsg('peer_status', { status: 'busy' }), 0);
-        peerWs.close();
-        await sleep(300);
-        t.store.record('inbound before engine start', {
-            ws: 'cluster',
-            sent: ['download_added', 'peer_status'],
-            received: [],
-            events: relevant(dash.drain()).map((m) => t.norm.value(m)),
-            note: 'the relay to dashboard clients is only wired by the lazy /api/cluster engine starter',
-        });
-        dash.close();
-        await t.exchange(
-            'peer catalog has the pushed row',
-            'GET',
-            `/api/cluster/downloads?peerId=${ALPHA.peerId}`,
-        );
-    });
-});
-
-describe('engines start; outbound connection to the paired peer', () => {
-    it('failover/run starts them and the node dials alpha', async () => {
-        const t = h.t;
-        const dash = await dashboard(t);
-        await t.exchange(
-            'failover run (starts engines; beta never seen → nothing to take over)',
-            'POST',
-            '/api/cluster/failover/run',
-        );
-        await until(() => outbound.connections.length >= 1, { what: 'node dials the fake peer' });
-        await until(() => relevant(dash.messages).some((m) => m.type === 'peer_status'), {
-            what: 'peer_status online on the dashboard',
-        });
-        await sleep(200);
-        t.store.record('outbound connect', {
-            ws: 'cluster',
-            sent: [],
-            received: [],
-            connections: outbound.connections,
-            events: relevant(dash.drain()).map((m) => t.norm.value(m)),
-        });
-        dash.close();
-    });
-});
-
 describe('inbound events once the engines run', () => {
     it('each accepted type and the dashboard events it causes', async () => {
         const t = h.t;
@@ -287,6 +264,11 @@ describe('inbound events once the engines run', () => {
         };
         await step('ping', signedMsg('ping', {}), 0);
         await step('download_added', signedMsg('download_added', ROW(901, 'R_0901.jpg')), 1);
+        await t.exchange(
+            'peer catalog has the pushed row',
+            'GET',
+            `/api/cluster/downloads?peerId=${ALPHA.peerId}`,
+        );
         await step(
             'download_updated',
             signedMsg('download_updated', { ...ROW(901, 'R_0901b.jpg'), file_size: 4242 }),

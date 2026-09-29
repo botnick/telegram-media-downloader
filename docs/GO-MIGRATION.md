@@ -162,7 +162,15 @@ browser ──► Go front server ──┬─► Go handlers (domains already m
 - Backup: the six providers (tgdl-core phase 4), queue, snapshots, the
   `TGDC` credential blobs.
 - Cluster: HMAC request signing, handshake / pairing codes, sync engine,
-  `/ws/cluster`, failover, sweep, federated search, LAN discovery.
+  `/ws/cluster`, failover, sweep, federated search, LAN discovery. Wire
+  compatibility with Node peers of every version: a pairing-code handshake
+  is signed with `HMAC-SHA256("tgdl-cluster-pairing-code", CODE)` and the
+  receiver also accepts `HMAC-SHA256(cluster_token, "pairing:" + CODE)`;
+  `sign-url` answers `{url, expiresAt (ms), exp (s)}` and a peer answer
+  without `exp` means "stream through the proxy"; a peer thumbnail that
+  isn't image bytes is replaced by the placeholder; the engines run from
+  boot while at least one peer is paired, and a failed dial is not a
+  status change.
 - Exit: every non-Telegram file passes on `go`.
 
 ### D — the Telegram engine on gotd

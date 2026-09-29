@@ -125,8 +125,8 @@ All five are admin-only. `POST /api/history` for a chat that can't be reached an
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/api/thumbs/:id`           | `?w=120\|200\|240\|320\|480` — server-generated WebP. Image source → sharp; video source → ffmpeg first-frame. `Cache-Control: public, max-age=86400, immutable`. Allowed for guest sessions. |
-| `GET` | `/api/cluster/peer-thumbs/:remoteId`        | HMAC-only peer-to-peer thumb handler. Sibling of `/api/thumbs/:id` for federation. |
-| `GET` | `/api/cluster/thumbs/:peerId/:remoteId`     | Cookie-authed browser proxy that signs a request to peer's `peer-thumbs` and streams the response. Returns a 1×1 placeholder PNG with `Cache-Control: public, max-age=60` when the peer is offline. |
+| `GET` | `/api/cluster/peer-thumbs/:remoteId`        | HMAC-only peer-to-peer thumb handler: the WebP bytes (`image/webp`, `?w=` like `/api/thumbs/:id`). Sibling of `/api/thumbs/:id` for federation. |
+| `GET` | `/api/cluster/thumbs/:peerId/:remoteId`     | Cookie-authed browser proxy that signs a request to peer's `peer-thumbs` and streams the response. Returns a 1×1 placeholder PNG with `Cache-Control: public, max-age=60` when the peer is offline or answers something that isn't an image (older versions sent a JSON object here). |
 
 ## Share links
 

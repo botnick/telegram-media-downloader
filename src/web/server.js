@@ -225,6 +225,7 @@ import {
     setClusterToken,
     getSelfIdentity,
     issuePairingCode,
+    pairingKeysFor,
 } from '../core/cluster/identity.js';
 import { verifyRequest as verifyPeerHmac } from '../core/cluster/hmac.js';
 import {
@@ -498,6 +499,10 @@ server.on('upgrade', async (req, socket, head) => {
                     socket.destroy();
                     return;
                 }
+                // A paired peer is talking to us: make sure the channel's
+                // dashboard relay (and the other engines) are up, so its
+                // events reach the dashboard and not just the DB.
+                _ensureClusterEngines();
                 wss.handleUpgrade(req, socket, head, (ws) => {
                     ws._clusterPeer = verifiedPeer;
                     clusterWs.registerInboundWs(verifiedPeer, ws);
@@ -10758,8 +10763,82 @@ app.post('/api/backup/jobs/:id/retry', async (req, res) => {
 // route needs both an entry in PUBLIC_API_PATHS *and* a verifyPeerHmac
 // call in the handler — never one without the other.
 
-function _peerHmacGate(req, res) {
-    const v = verifyPeerHmac(req);
+// ---- Cluster engines: sync poll, /ws/cluster channel, LAN discovery,
+// failover watcher ------------------------------------------------------
+//
+// They run while the cluster is in use — at least one paired, non-revoked
+// peer — so an install that never paired anything opens no socket and
+// sends no LAN beacon. Started (each idempotent):
+//   - at boot when a peer is paired (server.listen callback), so a
+//     restarted node syncs again without anyone opening the dashboard;
+//   - by any /api/cluster request once a peer is paired (the middleware
+//     below, registered ahead of every cluster route);
+//   - right after a handshake pairs a peer (either direction);
+//   - when a paired peer opens /ws/cluster to us (the upgrade handler), so
+//     its events reach the dashboard.
+// The middleware used to be registered after the cluster routes, so only
+// POST /api/cluster/failover/run or an unknown /api/cluster path reached
+// it and the engines normally never ran.
+let _clusterSyncStarted = false;
+function _ensureSyncEngineStarted() {
+    if (_clusterSyncStarted) return;
+    _clusterSyncStarted = true;
+    try {
+        startSyncEngine({ intervalMs: 30_000 });
+    } catch (e) {
+        console.warn('[cluster] sync engine start failed:', e?.message || e);
+    }
+}
+let _clusterDiscoveryStarted = false;
+function _ensureClusterDiscoveryStarted() {
+    if (_clusterDiscoveryStarted) return;
+    _clusterDiscoveryStarted = true;
+    try {
+        const port = Number(process.env.PORT) || 3000;
+        const proto = process.env.PUBLIC_PROTO || 'http';
+        const host = process.env.PUBLIC_HOST || `localhost:${port}`;
+        const selfUrl = process.env.PUBLIC_URL || `${proto}://${host}`;
+        clusterDiscovery.startDiscovery({ selfUrl });
+    } catch (e) {
+        console.warn('[cluster] discovery start failed:', e?.message || e);
+    }
+}
+let _clusterFailoverStarted = false;
+function _ensureClusterFailoverStarted() {
+    if (_clusterFailoverStarted) return;
+    _clusterFailoverStarted = true;
+    try {
+        startFailoverWatcher();
+    } catch (e) {
+        console.warn('[cluster] failover watcher start failed:', e?.message || e);
+    }
+}
+let _clusterEnginesStarted = false;
+function _clusterHasPairedPeer() {
+    try {
+        return listPeers().some((p) => p && p.status !== 'revoked');
+    } catch {
+        return false;
+    }
+}
+function _ensureClusterEngines({ ifPaired = true } = {}) {
+    if (_clusterEnginesStarted) return true;
+    if (ifPaired && !_clusterHasPairedPeer()) return false;
+    _clusterEnginesStarted = true;
+    _ensureSyncEngineStarted();
+    _ensureClusterWsInit();
+    _ensureClusterDiscoveryStarted();
+    _ensureClusterFailoverStarted();
+    return true;
+}
+
+app.use('/api/cluster', (_req, _res, next) => {
+    _ensureClusterEngines();
+    next();
+});
+
+function _peerHmacGate(req, res, opts) {
+    const v = verifyPeerHmac(req, opts);
     if (!v.ok) {
         recordClusterAudit({
             kind: 'request',
@@ -10778,7 +10857,15 @@ function _peerHmacGate(req, res) {
 app.post('/api/cluster/handshake', async (req, res) => {
     // The very first signed call from a new remote peer — no peer row
     // exists yet, so we verify against our local cluster token directly.
-    const v = _peerHmacGate(req, res);
+    // A handshake that carries one of our unexpired pairing codes may
+    // instead be signed with a key derived from that code (the initiator
+    // doesn't hold our token) — see identity.pairingKeysFor. It used to be
+    // checked against the token only, so every pairing-code handshake got
+    // 401 bad_signature.
+    const pairingCode = typeof req.body?.pairing_code === 'string' ? req.body.pairing_code : null;
+    const v = _peerHmacGate(req, res, {
+        expectedToken: pairingCode ? pairingKeysFor(pairingCode) : null,
+    });
     if (!v) return;
     try {
         const body = req.body || {};
@@ -10800,6 +10887,7 @@ app.post('/api/cluster/handshake', async (req, res) => {
         // just stored about them). The response carries OUR identity for
         // the caller to record symmetrically.
         res.json(peer);
+        _ensureClusterEngines();
     } catch (e) {
         const status = e?.status || 500;
         res.status(status).json({ error: e?.message || String(e), code: e?.code || 'error' });
@@ -10908,6 +10996,7 @@ app.post('/api/cluster/peers', async (req, res) => {
             return res.status(400).json({ error: r.message, code: r.code });
         }
         res.json({ peer: r.peer });
+        _ensureClusterEngines();
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
@@ -11141,11 +11230,14 @@ app.get('/api/cluster/peer-thumbs/:remoteId', async (req, res) => {
             res.setHeader('Cache-Control', 'no-store');
             return res.status(404).type('text/plain').send('No thumb');
         }
+        // getOrCreateThumb() resolves to `{ path, width, mtime }` — the
+        // WebP file in the thumbnail cache. This route used to res.send()
+        // that object: a JSON body (with our absolute cache path) labelled
+        // image/webp. Send the file's bytes.
+        const bytes = await fs.readFile(thumb.path);
         res.setHeader('Content-Type', 'image/webp');
         res.setHeader('Cache-Control', 'private, no-store');
-        if (Buffer.isBuffer(thumb)) return res.send(thumb);
-        if (typeof thumb === 'string') return res.sendFile(thumb);
-        return res.send(thumb);
+        return res.end(bytes);
     } catch (e) {
         recordClusterAudit({
             kind: 'thumb',
@@ -11165,6 +11257,18 @@ const _PEER_THUMB_PLACEHOLDER = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
     'base64',
 );
+
+// The image type of a thumbnail body by its magic bytes (WebP — what the
+// thumbnail cache holds — plus PNG / JPEG), or null.
+function _imageKindOf(buf) {
+    if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+    if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') {
+        return 'image/webp';
+    }
+    if (buf[0] === 0x89 && buf.toString('latin1', 1, 4) === 'PNG') return 'image/png';
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    return null;
+}
 
 function _sendPeerThumbPlaceholder(res) {
     res.setHeader('Content-Type', 'image/png');
@@ -11197,12 +11301,16 @@ app.get('/api/cluster/thumbs/:peerId/:remoteId', async (req, res) => {
         if (!upstream.ok) {
             return _sendPeerThumbPlaceholder(res);
         }
-        const ct = upstream.headers.get('content-type') || 'image/webp';
-        res.setHeader('Content-Type', ct);
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        // Peers before the peer-thumbs fix answer 200 with a JSON object
+        // labelled image/webp. Only pass real image bytes on (and never
+        // cache anything else for a day).
+        const kind = _imageKindOf(buf);
+        if (!kind) return _sendPeerThumbPlaceholder(res);
+        res.setHeader('Content-Type', kind);
         // Browser HTTP cache only — content-addressed by (peer, remoteId, w),
         // so a stale cache hit is impossible during the URL's lifetime.
         res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-        const buf = Buffer.from(await upstream.arrayBuffer());
         res.send(buf);
     } catch (e) {
         recordClusterAudit({
@@ -11231,13 +11339,20 @@ app.post('/api/cluster/sign-url', async (req, res, next) => {
         // requesting peer's browser will fetch this directly. Reuse the
         // existing share infra so revocation + access counters stay one
         // unified source of truth.
-        const expiresAt = Date.now() + Math.max(10, Math.min(3600, Number(ttlSec) || 60)) * 1000;
+        // share_links.expires_at is epoch SECONDS (what /share verifies the
+        // signature against and compares with "now" in seconds). This used
+        // to store milliseconds while signing seconds, so no minted URL
+        // ever verified (401 bad_sig). The response keeps `expiresAt` in
+        // ms (its wire format) and adds `exp` (epoch seconds), which also tells the
+        // requesting peer that the URL works (see requestSignedShareUrl).
+        const ttl = Math.max(10, Math.min(3600, Number(ttlSec) || 60));
+        const expSec = Math.floor(Date.now() / 1000) + ttl;
+        const expiresAt = expSec * 1000;
         const linkRow = createShareLink({
             downloadId: Number(row.id),
-            expiresAt,
+            expiresAt: expSec,
             label: `cluster:${v.peerId.slice(0, 8)}`,
         });
-        const expSec = Math.floor(expiresAt / 1000);
         const baseUrl = (() => {
             const proto =
                 req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
@@ -11247,6 +11362,7 @@ app.post('/api/cluster/sign-url', async (req, res, next) => {
         res.set('Cache-Control', 'no-store').json({
             url: baseUrl + buildShareUrlPath(linkRow.id, expSec),
             expiresAt,
+            exp: expSec,
         });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
@@ -11538,52 +11654,6 @@ app.get('/api/cluster/stats', async (_req, res) => {
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
-});
-
-// Start the sync engine on first cluster route hit. It will poll every
-// 30s; idempotent if already running.
-let _clusterSyncStarted = false;
-function _ensureSyncEngineStarted() {
-    if (_clusterSyncStarted) return;
-    _clusterSyncStarted = true;
-    try {
-        startSyncEngine({ intervalMs: 30_000 });
-    } catch (e) {
-        console.warn('[cluster] sync engine start failed:', e?.message || e);
-    }
-}
-let _clusterDiscoveryStarted = false;
-function _ensureClusterDiscoveryStarted() {
-    if (_clusterDiscoveryStarted) return;
-    _clusterDiscoveryStarted = true;
-    try {
-        const port = Number(process.env.PORT) || 3000;
-        const proto = process.env.PUBLIC_PROTO || 'http';
-        const host = process.env.PUBLIC_HOST || `localhost:${port}`;
-        const selfUrl = process.env.PUBLIC_URL || `${proto}://${host}`;
-        clusterDiscovery.startDiscovery({ selfUrl });
-    } catch (e) {
-        console.warn('[cluster] discovery start failed:', e?.message || e);
-    }
-}
-
-let _clusterFailoverStarted = false;
-function _ensureClusterFailoverStarted() {
-    if (_clusterFailoverStarted) return;
-    _clusterFailoverStarted = true;
-    try {
-        startFailoverWatcher();
-    } catch (e) {
-        console.warn('[cluster] failover watcher start failed:', e?.message || e);
-    }
-}
-
-app.use('/api/cluster', (_req, _res, next) => {
-    _ensureSyncEngineStarted();
-    _ensureClusterWsInit();
-    _ensureClusterDiscoveryStarted();
-    _ensureClusterFailoverStarted();
-    next();
 });
 
 // Manual failover sweep (admin) — useful when an operator wants to
@@ -13200,9 +13270,12 @@ app.use('/files', async (req, res, next) => {
                     const url = await requestSignedShareUrl(ref.peerId, ownerRow.file_path);
                     return res.redirect(302, url);
                 } catch (e) {
-                    return res
-                        .status(502)
-                        .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    // An older peer's URL wouldn't verify: proxy instead.
+                    if (e?.code !== 'LEGACY_SIGN_URL') {
+                        return res
+                            .status(502)
+                            .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    }
                 }
             }
             return streamFromPeer(req, res, ref.peerId, ownerRow.file_path);
@@ -13229,9 +13302,12 @@ app.use('/files', async (req, res, next) => {
                     const url = await requestSignedShareUrl(peerIdParam, peerSidePath);
                     return res.redirect(302, url);
                 } catch (e) {
-                    return res
-                        .status(502)
-                        .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    // An older peer's URL wouldn't verify: proxy instead.
+                    if (e?.code !== 'LEGACY_SIGN_URL') {
+                        return res
+                            .status(502)
+                            .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    }
                 }
             }
             return streamFromPeer(req, res, peerIdParam, peerSidePath);
@@ -14223,6 +14299,10 @@ ${tip}
             startDrain().catch(() => {});
         }
     } catch {}
+
+    // Cluster engines resume on their own when a peer is paired (see
+    // _ensureClusterEngines); an install without peers starts nothing.
+    if (_ensureClusterEngines()) console.log('[cluster] engines started (paired peers)');
 
     // Resume the realtime monitor if it was running before the last
     // shutdown. The start/stop endpoints persist monitor.autoStart to

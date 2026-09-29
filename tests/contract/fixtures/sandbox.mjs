@@ -7,9 +7,10 @@
 //     (GitHub update check, sidecar/model downloads, fake backup hosts,
 //     *.invalid peer URLs).
 //   - TCP: connects to a non-loopback IP literal fail with ECONNREFUSED.
-//   - UDP: cluster LAN discovery binds loopback and its broadcasts are
-//     dropped, so parallel test servers (and real instances on the LAN)
-//     never see each other.
+//   - UDP: cluster LAN discovery binds an ephemeral loopback port (not
+//     the shared discovery port every test server with paired peers would
+//     otherwise bind) and its broadcasts are dropped, so parallel test
+//     servers (and real instances on the LAN) never see each other.
 // A Go target needs the equivalent from its environment (network
 // namespace with only `lo`, or HTTP(S)_PROXY to a dead port) — see
 // docs/GO-MIGRATION.md.
@@ -84,10 +85,12 @@ dgram.Socket.prototype.bind = function sandboxBind(...args) {
     if (args.length === 0 || typeof args[0] === 'function') {
         args.unshift(0, '127.0.0.1');
     } else if (args[0] && typeof args[0] === 'object') {
-        args[0] = { ...args[0], address: '127.0.0.1' };
+        args[0] = { ...args[0], port: 0, address: '127.0.0.1' };
     } else if (typeof args[1] === 'string') {
+        args[0] = 0;
         args[1] = '127.0.0.1';
     } else {
+        args[0] = 0;
         args.splice(1, 0, '127.0.0.1');
     }
     return origBind.apply(this, args);
