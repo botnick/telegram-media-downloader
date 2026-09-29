@@ -338,7 +338,7 @@ function resolveIdent(code, callIdx, ident) {
     const start = Math.max(0, code.lastIndexOf('\n', callIdx - 1) - 3000);
     const window = code.slice(start, callIdx);
     const re = new RegExp(
-        `(?:const|let|var)\\s+${ident.replace(/[$.]/g, '\\$&')}\\s*=([^;]+);`,
+        `(?:const|let|var)\\s+${ident.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}\\s*=([^;]+);`,
         'g',
     );
     let m;
