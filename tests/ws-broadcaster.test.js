@@ -6,6 +6,7 @@ import {
     createWsBroadcaster,
     WS_MAX_BUFFERED_BYTES,
     WS_COALESCE_WINDOW_MS,
+    runtimeEventMessage,
 } from '../src/web/lib/ws-broadcaster.js';
 
 class FakeWs extends EventEmitter {
@@ -222,5 +223,40 @@ describe('backpressure + heartbeat', () => {
         b.heartbeat();
         expect(closing.sent).toEqual([]);
         expect(closing.pings).toBe(0);
+    });
+});
+
+// server.js relays engine events with broadcast(runtimeEventMessage(e)).
+// It used to write `{ type: 'monitor_event', ...e }`: the spread replaced
+// the envelope type, so `monitor_event` (documented in docs/API.md) never
+// went out. The SPA subscribes to the engine's own types.
+describe('runtimeEventMessage', () => {
+    it('relays an engine event under its own type, as the SPA subscribes to it', () => {
+        const runtime = new EventEmitter();
+        runtime.on('event', (e) => b.broadcast(runtimeEventMessage(e)));
+        const job = { key: '1:7:photo', groupId: '1', fileName: 'a.jpg' };
+        runtime.emit('event', { type: 'download_start', payload: job });
+        runtime.emit('event', { type: 'download_progress', payload: { ...job, received: 5 } });
+        runtime.emit('event', { type: 'download_complete', payload: job });
+        runtime.emit('event', { type: 'queue_length', payload: { length: 0 } });
+        vi.advanceTimersByTime(WS_COALESCE_WINDOW_MS);
+        // app.js / chat-details.js read `m.payload.groupId`, queue.js
+        // `msg.payload.key` and `msg.payload.length`.
+        expect(first().sent).toEqual([
+            { type: 'download_start', payload: job },
+            { type: 'download_progress', payload: { ...job, received: 5 } },
+            { type: 'download_complete', payload: job },
+            { type: 'queue_length', payload: { length: 0 } },
+        ]);
+        expect(first().types()).not.toContain('monitor_event');
+    });
+
+    it('never sends a message without a type', () => {
+        expect(runtimeEventMessage({ payload: { a: 1 } })).toEqual({
+            type: 'monitor_event',
+            payload: { a: 1 },
+        });
+        expect(runtimeEventMessage({ type: '', payload: 1 }).type).toBe('monitor_event');
+        expect(runtimeEventMessage(null)).toEqual({ type: 'monitor_event', payload: undefined });
     });
 });

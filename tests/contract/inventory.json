@@ -1588,13 +1588,6 @@
       "skip": "engine event: only a running Telegram engine (monitor / downloader / rate limiter) emits it; needs the fake-Telegram seam (docs/GO-MIGRATION.md, wave D)"
     },
     {
-      "type": "monitor_event",
-      "sources": [
-        "src/web/server.js"
-      ],
-      "skip": "never emitted: runtime events are broadcast as `{ type: \"monitor_event\", ...e }` and the spread overrides type with the event's own name"
-    },
-    {
       "type": "monitor_started",
       "sources": [
         "src/core/runtime.js"

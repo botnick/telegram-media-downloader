@@ -103,7 +103,7 @@ All five are admin-only. `POST /api/history` for a chat that can't be reached an
 | `POST`   | `/api/downloads/pin`                | `{ids:[…], pinned}` — pin / unpin many rows in one request (max 5000 ids, else 413). Returns the ids that exist. |
 | `POST`   | `/api/downloads/:id/pin`            | `{pinned}` — one row. |
 | `DELETE` | `/api/file?path=…`                  | Single file. |
-| `DELETE` | `/api/purge/all`                    | Factory reset. |
+| `DELETE` | `/api/purge/all`                    | Factory reset. Body `{"confirm": "DELETE ALL"}` (exactly); without it `400 {code: "CONFIRM_REQUIRED"}` and nothing is touched. Starts a job: `{started: true}`, progress on `purge_all_progress` / `purge_all_done`. |
 
 ## Direct downloads
 
@@ -125,8 +125,8 @@ All five are admin-only. `POST /api/history` for a chat that can't be reached an
 | Method | Path | Notes |
 |---|---|---|
 | `GET` | `/api/thumbs/:id`           | `?w=120\|200\|240\|320\|480` — server-generated WebP. Image source → sharp; video source → ffmpeg first-frame. `Cache-Control: public, max-age=86400, immutable`. Allowed for guest sessions. |
-| `GET` | `/api/cluster/peer-thumbs/:remoteId`        | HMAC-only peer-to-peer thumb handler. Sibling of `/api/thumbs/:id` for federation. |
-| `GET` | `/api/cluster/thumbs/:peerId/:remoteId`     | Cookie-authed browser proxy that signs a request to peer's `peer-thumbs` and streams the response. Returns a 1×1 placeholder PNG with `Cache-Control: public, max-age=60` when the peer is offline. |
+| `GET` | `/api/cluster/peer-thumbs/:remoteId`        | HMAC-only peer-to-peer thumb handler: the WebP bytes (`image/webp`, `?w=` like `/api/thumbs/:id`). Sibling of `/api/thumbs/:id` for federation. |
+| `GET` | `/api/cluster/thumbs/:peerId/:remoteId`     | Cookie-authed browser proxy that signs a request to peer's `peer-thumbs` and streams the response. Returns a 1×1 placeholder PNG with `Cache-Control: public, max-age=60` when the peer is offline or answers something that isn't an image (older versions sent a JSON object here). |
 
 ## Share links
 
@@ -239,17 +239,17 @@ The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidec
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET`  | `/api/update/status`             | Capability probe — `{available, inDocker, watchtowerConfigured, watchtowerUrl}`. |
+| `GET`  | `/api/update/status`             | Any signed-in session (guests too — the status bar's update sheet reads it); 401 without one. Capability probe — `{available, inDocker, watchtowerConfigured, watchtowerUrl, overlayStallMs}`. |
 | `POST` | `/api/update`                    | Admin only. Runs a 5-step pipeline: ping watchtower (5 s HEAD) → live-DB `PRAGMA quick_check` → snapshot to `data/backups/db-pre-update-<UTC>.sqlite` → verify the snapshot is openable + clean (bad files are deleted) → POST watchtower's `/v1/update`. Returns 200 `{started:true}` on success or 4xx/5xx with a structured `code`: `AUTO_UPDATE_UNAVAILABLE`, `WATCHTOWER_UNREACHABLE`, `DB_CORRUPT`, `BACKUP_FAILED`, `BACKUP_VERIFY_FAILED`, `TRIGGER_FAILED`, or `ALREADY_RUNNING`. |
 | `GET`  | `/api/update/history`            | Admin only. Last N (default 25, max 200) update attempts from the `update_history` table — `{from_version, to_version, started_at, finished_at, status, error_code, error_msg, backup_path, backup_bytes}`. `status` is `triggered` (in-flight, not yet finalised), `success` (new container booted on a different version), `failed` (pre-flight or trigger threw), or `stalled` (watchtower acked but the swap never landed within 10 min). |
-| `GET`  | `/api/auto-update/status`        | Live `JobTracker` snapshot for the in-flight `/api/update` run (running flag, stage, durations, last error). |
+| `GET`  | `/api/auto-update/status`        | Admin only. Live `JobTracker` snapshot for the in-flight `/api/update` run (running flag, stage, durations, last error). |
 
 ## Config & proxy
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET`  | `/api/config`     | `apiHash` + `password` redacted; `apiHashSet` boolean replaces hash. |
-| `POST` | `/api/config`     | Deep-merge updates; `advanced.*` namespaces are clamped per-field on save and re-applied at runtime via `config_updated`. |
+| `GET`  | `/api/config`     | Admin only. Secrets are write-only: `web.password` / `web.passwordHash` are left out, and `telegram.apiHash`, `web.shareSecret`, `web.guestPasswordHash`, `proxy.password`, `advanced.nsfw.apiToken`, `advanced.seekbar.apiToken` and `advanced.ai.faces.sidecarToken` are replaced by a `<name>Set` boolean (`apiHashSet`, `shareSecretSet`, `guestPasswordHashSet`, `passwordSet`, `apiTokenSet`, `sidecarTokenSet`). |
+| `POST` | `/api/config`     | Deep-merge updates; `advanced.*` namespaces are clamped per-field on save and re-applied at runtime via `config_updated`. A secret left out of the body keeps its saved value (send `proxy.password: null` to clear it); the `<name>Set` flags are ignored. |
 | `POST` | `/api/proxy/test` | `{host, port}` → 5-s TCP probe. |
 
 ## File serving
@@ -268,9 +268,9 @@ The dashboard proxies these via `/api/ai/preload-model/…` above, but the sidec
 |---|---|
 | `monitor_state`        | `{state, error?}` |
 | `monitor_status_push`  | Full `/api/monitor/status` snapshot every 3 s. |
-| `monitor_event`        | `{type, payload}` for download_start/_complete/_error, scale, queue_length, etc. |
-| `download_progress`    | `{key, groupId, fileName, progress, received, total, bps}` |
-| `download_complete`    | `{key, groupId, fileName, fileSize, deduped?}` |
+| `download_progress`    | `{payload: {key, groupId, fileName, progress, received, total, bps}}` |
+| `download_complete`    | `{payload: {key, groupId, fileName, fileSize, deduped?}}` |
+| `download_start` / `download_error` / `queue_length` / `queue_changed` / `scale` / `rate_wait` / `flood_wait` / `forward_error` / `rescued` / `monitor_download` / `monitor_urls` / `monitor_error` / `monitor_started` | Engine events, like the two above: each goes out under its own type with the event's data in `payload` (`queue_length`: `{length}`, `download_error`: `{job, error}`, `rate_wait` / `flood_wait`: `{seconds}`). There is no `monitor_event` envelope (older docs listed one; it was never sent). |
 | `stats_push`           | Full `/api/stats` snapshot every 30 s. |
 | `file_deleted`         | `{path, id?}` |
 | `bulk_delete`          | `{unlinked, dbDeleted, ids?}` |

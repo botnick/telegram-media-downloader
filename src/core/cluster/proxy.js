@@ -207,5 +207,13 @@ export async function requestSignedShareUrl(
     }
     const payload = await res.json();
     if (!payload?.url) throw new Error('peer did not return a signed url');
+    // Peers before the sign-url fix answer without `exp`; the URL they
+    // mint never verifies (they stored the expiry in ms but signed it in
+    // seconds). The caller streams through the proxy instead.
+    if (!(Number.isFinite(payload.exp) && payload.exp > 0)) {
+        const err = new Error('peer mints direct-stream URLs that do not verify (older version)');
+        err.code = 'LEGACY_SIGN_URL';
+        throw err;
+    }
     return payload.url;
 }

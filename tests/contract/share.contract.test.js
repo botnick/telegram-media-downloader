@@ -129,10 +129,10 @@ describe('public /share route', () => {
             as: 'anon',
             headers: { range: 'bytes=0-9' },
         });
-        await t.exchange('share unsatisfiable range', 'GET', `/share/1?s=${s1}`, {
+        // 416, and not counted as an access (see the list after serving).
+        await t.exchange('share unsatisfiable range → 416', 'GET', `/share/1?s=${s1}`, {
             as: 'anon',
             headers: { range: 'bytes=9000-9999' },
-            bodyMode: 'text',
         });
         await t.exchange('share HEAD', 'HEAD', `/share/1?s=${s1}`, { as: 'anon' });
         await t.exchange('share legacy v1 exp+sig', 'GET', `/share/1?exp=${FAR_S}&sig=${s1}`, {
@@ -219,7 +219,7 @@ describe('admin API: revoke', () => {
 });
 
 describe('share rate limiter', () => {
-    it('config advanced.share.rateLimitMax does not reach the registered limiter today', async () => {
+    it('config advanced.share.rateLimitMax applies from boot', async () => {
         const t2 = await h.extra({
             configPatch(cfg) {
                 cfg.advanced.share = { rateLimitMax: 2, rateLimitWindowMs: 60_000 };
@@ -234,7 +234,7 @@ describe('share rate limiter', () => {
                 {
                     as: 'anon',
                     bodyMode: 'none',
-                    note: 'rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter',
+                    note: 'rateLimitMax=2 in config: the third request is refused',
                 },
             );
         }

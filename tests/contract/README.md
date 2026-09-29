@@ -21,6 +21,7 @@ npm run contract:schema               # re-freeze fixtures/schema.sql after a DB
 | `CONTRACT_TARGET` | `node` (default): spawns `node src/web/server.js`. `go`: spawns `$CONTRACT_GO_BIN` (default `core-service/bin/tgdl-server[.exe]`). `url`: attaches to `$CONTRACT_URL` (nothing spawned or seeded — seed the server's data dir with `node scripts/contract-seed.mjs <dir>` and restart it between files; `$CONTRACT_DATA_DIR` enables path masking; scenarios that need their own seed/env/extra server refuse to run). |
 | `CONTRACT_UPDATE=1` | Record instead of compare (Node only — use `npm run test:contract:update`). |
 | `CONTRACT_WORKERS` | Files run in parallel (default 4). Each file runs its own server(s). |
+| `TGDL_CORE_BIN` | tgdl-core binary handed to every Node target. Default: found or built once by the global setup, like `npm test` (Go on PATH, or `npm run build:core`). A binary `npm install` downloaded into `<repo>/data` isn't seen by a target on its temp data dir. |
 
 `npm test` excludes this directory; CI runs it as its own job on Ubuntu and
 Windows.
@@ -84,8 +85,8 @@ else. The real login / setup / reset flows have their own scenarios.
 
 The Node target runs with `--import fixtures/sandbox.mjs`: DNS answers
 `ENOTFOUND` for every name but localhost, TCP to non-loopback IPs is
-refused, and the cluster's UDP LAN discovery binds loopback and drops its
-broadcasts. Result: the GitHub update check, sidecar/model downloads, fake
+refused, and the cluster's UDP LAN discovery binds an ephemeral loopback
+port and drops its broadcasts. Result: the GitHub update check, sidecar/model downloads, fake
 backup hosts and `*.invalid` peers all fail instantly and identically on a
 dev box, a CI runner or an air-gapped host, and parallel test servers never
 discover each other. The target also gets a minimal environment (nothing
@@ -166,9 +167,8 @@ They cover host details (Node/platform/CPU/memory in system health, ffmpeg
 and hardware-acceleration probes, Python in the AI doctor), encoder-dependent
 byte sizes of generated thumbnails and sprites, directory-walk order that
 differs between NTFS and ext4, SQLite page accounting after VACUUM (the
-relations are recorded instead), V8 / body-parser error wording, network
-stack error texts, random auth-flow ids, and the current UTC minute in
-bulk-ZIP file names.
+relations are recorded instead), network stack error texts, random
+auth-flow ids, and the current UTC minute in bulk-ZIP file names.
 
 Where a mask would lose a relation, the scenario records a **derived fact**
 instead (`t.store.record(label, {...})`): share-link signatures are
@@ -247,24 +247,11 @@ Rules that keep runs deterministic:
 Recorded as today's behaviour. Fix them in Node first (then re-record),
 never silently in the Go port.
 
-- `GET /api/update/status`, `/api/auto-update/status` and
-  `/api/update/history` are registered before the auth middleware and answer
-  anonymous callers (only `POST /api/update` was closed on this branch).
-- `GET /api/config` returns `web.shareSecret`, `web.guestPasswordHash` and
-  `proxy.password` to admin sessions; `/api/maintenance/config/raw` doesn't
-  redact `shareSecret` or `guestPasswordHash`.
 - Guests can read `GET /api/groups/:id/files`, `/stats`, `/purge/status` and
   `/refresh-info/status` (the guest allow-list matches the `/api/groups`
   prefix).
-- `DELETE /api/purge/all` (factory reset) has no `{ confirm: true }` guard.
-- An unsatisfiable or inverted `Range` on `/files/*` and `/share/*` answers
-  500 (with the file's Content-Type) instead of 416; on `/share` it still
-  counts as an access.
-- `advanced.share.rateLimitMax` / `rateLimitWindowMs` never take effect
-  (the route keeps the limiter it was registered with).
-- Body-parser errors (malformed JSON, a JSON `null` body, > 2 MB) answer 500
-  instead of 400 / 413; a JSON array body to `POST /api/config` is spread
-  into the config as index keys.
+- A JSON array body to `POST /api/config` is spread into the config as index
+  keys.
 - `POST /api/downloads/bulk-delete {ids:[null]}` starts a job (`Number(null)`
   is 0).
 - `GET /api/system/health` always reports `disk: null` (`JSON.parse` on an
@@ -285,18 +272,7 @@ never silently in the Go port.
   (`data/models`) ignore `TGDL_DATA_DIR` and live under `<repo>/data`.
 - Face crops and sprites send `Pragma: no-cache` together with
   `Cache-Control: … immutable`; `/files/*` answers any HTTP method.
-- Cluster: `POST /api/cluster/sign-url` stores `expires_at` in ms but signs
-  seconds, so every minted direct-stream URL answers `401 bad_sig`;
-  `GET /api/cluster/peer-thumbs/:id` sends a JSON object labelled
-  `image/webp` (with the absolute thumb-cache path) instead of the image;
-  the pairing-code handshake always fails (`401 bad_signature`: the
-  initiator signs with the code-derived secret, the receiver only accepts
-  the per-pair secret or the cluster token); the lazy engine starter is
-  registered after the cluster routes, so sync / WS channel / discovery /
-  failover only start after `POST /api/cluster/failover/run` or an unknown
-  `/api/cluster` path, and inbound `/ws/cluster` events reach the DB but not
-  the dashboard until then; the legacy cluster-token fallback verifies any
-  `X-Peer-Id`.
+- Cluster: the legacy cluster-token fallback verifies any `X-Peer-Id`.
 - Express' own errors (e.g. an undecodable path parameter) go through the
   last-resort handler and answer 500 instead of their status.
 - Backup: `unlock` accepts any passphrase (even empty); `run` on a disabled

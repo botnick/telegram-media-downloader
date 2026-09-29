@@ -3,10 +3,10 @@
 // without WATCHTOWER_* env) the update run fails its capability check, is
 // audited as a failed row and reported through the tracker + WS.
 //
-// NOTE: all /api/update*, /api/auto-update/status routes are registered
-// before the global checkAuth / guestGate middleware, so today they answer
-// guests and anonymous callers too (POST /api/update included). The goldens
-// record that as-is; see the report / docs for the bug.
+// The /api/update*, /api/auto-update/status routes are registered before
+// the global checkAuth / guestGate middleware and gate themselves: no
+// session → 401; guests keep the capability probe (the status-bar update
+// chooser reads it) and get 403 on the rest.
 
 import { describe, it } from 'vitest';
 import { sleep, useContract } from './harness.js';
@@ -17,10 +17,10 @@ describe('update capability and history', () => {
     it('status probe', async () => {
         const t = h.t;
         await t.exchange('GET update/status', 'GET', '/api/update/status');
-        await t.exchange('GET update/status guest (no auth gate)', 'GET', '/api/update/status', {
+        await t.exchange('GET update/status guest (update chooser)', 'GET', '/api/update/status', {
             as: 'guest',
         });
-        await t.exchange('GET update/status anon (no auth gate)', 'GET', '/api/update/status', {
+        await t.exchange('GET update/status anon → 401', 'GET', '/api/update/status', {
             as: 'anon',
         });
     });
@@ -28,14 +28,12 @@ describe('update capability and history', () => {
     it('idle tracker', async () => {
         const t = h.t;
         await t.exchange('GET auto-update/status (idle)', 'GET', '/api/auto-update/status');
-        await t.exchange(
-            'GET auto-update/status guest (no auth gate)',
-            'GET',
-            '/api/auto-update/status',
-            {
-                as: 'guest',
-            },
-        );
+        await t.exchange('GET auto-update/status guest → 403', 'GET', '/api/auto-update/status', {
+            as: 'guest',
+        });
+        await t.exchange('GET auto-update/status anon → 401', 'GET', '/api/auto-update/status', {
+            as: 'anon',
+        });
     });
 
     it('history paging', async () => {
@@ -53,20 +51,23 @@ describe('update capability and history', () => {
             'GET',
             '/api/update/history?limit=-5',
         );
-        await t.exchange('GET update/history guest (no auth gate)', 'GET', '/api/update/history', {
+        await t.exchange('GET update/history guest → 403', 'GET', '/api/update/history', {
             as: 'guest',
+        });
+        await t.exchange('GET update/history anon → 401', 'GET', '/api/update/history', {
+            as: 'anon',
         });
     });
 });
 
 describe('POST /api/update', () => {
-    it('reachable by guest and anonymous callers (registered before checkAuth)', async () => {
+    it('refused to guest and anonymous callers', async () => {
         const t = h.t;
-        await t.exchange('POST update guest (no auth gate) → started', 'POST', '/api/update', {
+        await t.exchange('POST update guest → 403', 'POST', '/api/update', {
             as: 'guest',
             body: {},
         });
-        await t.exchange('POST update anon (no auth gate) → started', 'POST', '/api/update', {
+        await t.exchange('POST update anon → 401', 'POST', '/api/update', {
             as: 'anon',
             body: {},
         });

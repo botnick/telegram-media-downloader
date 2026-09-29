@@ -12,9 +12,11 @@
 // The fake peer listens on an ephemeral port; its URL is rewritten to
 // `http://<FAKE_PEER>` in recorded bodies (see swapFake).
 //
-// POST /api/cluster/failover/run is the ONLY cluster route that reaches the
-// lazy `app.use('/api/cluster', …)` engine starter (sync / WS / discovery /
-// failover watcher) — so it runs last here.
+// The seed pairs two peers, so the cluster engines (sync poll, /ws/cluster
+// channel, LAN discovery, failover watcher) start at boot. Their timers
+// (30 s sync, 60 s failover) outlive this file's server, and the channel's
+// dials to the *.invalid peers fail without changing anything (a dial that
+// never connected isn't a status change).
 
 import crypto from 'crypto';
 import fs from 'fs';
@@ -114,6 +116,12 @@ const fake = http.createServer((req, res) => {
                 peerId: GAMMA_ID,
                 q,
             });
+        }
+        // What peers before the peer-thumbs fix answer: the thumbnail
+        // record as JSON, labelled image/webp.
+        if (u.pathname === '/api/cluster/peer-thumbs/7002') {
+            res.writeHead(200, { 'content-type': 'image/webp' });
+            return res.end(JSON.stringify({ path: '/data/thumbs/7002.webp', width: 320 }));
         }
         if (u.pathname.startsWith('/api/cluster/peer-thumbs/')) {
             res.writeHead(200, { 'content-type': 'image/webp' });
@@ -239,12 +247,14 @@ describe('identity, token, pairing code', () => {
         const res = await ex('pairing-code', 'POST', '/api/cluster/identity/pairing-code', {
             mask: { code: 'random 8-char pairing code (crypto.randomBytes)' },
         });
+        // `expiresAt` is the server's clock + 5 min; the test reads its own
+        // clock afterwards. Two processes can disagree by a few ms (seen on
+        // Windows), so the upper bound allows 1 s of skew.
+        const left = res.json.expiresAt - Date.now();
         h.t.store.record('pairing-code shape (derived)', {
             derived: {
                 code: /^[0-9A-HJ-NP-Z]{8}$/.test(res.json.code),
-                ttlMs:
-                    res.json.expiresAt - Date.now() > 4 * 60_000 &&
-                    res.json.expiresAt - Date.now() <= 5 * 60_000,
+                ttlMs: left > 4 * 60_000 && left <= 5 * 60_000 + 1_000,
             },
         });
     });
@@ -435,6 +445,11 @@ describe('catalog sync, merged downloads, stats, search, thumbs', () => {
         );
         await ex('peer thumb bad id → 400', 'GET', `/api/cluster/thumbs/${ALPHA.peerId}/abc`);
         await ex('peer thumb gamma → proxied', 'GET', `/api/cluster/thumbs/${GAMMA_ID}/7001?w=320`);
+        await ex(
+            'peer thumb from an older peer (JSON labelled image/webp) → placeholder',
+            'GET',
+            `/api/cluster/thumbs/${GAMMA_ID}/7002`,
+        );
         h.t.store.record('thumb fetch the node sent to gamma (derived)', {
             received: fakeReceived.map((r) => describeReceived(h.t, r, gammaSecret)),
         });
@@ -517,7 +532,7 @@ describe('peer removal and failover', () => {
         await ex('peers after delete', 'GET', '/api/cluster/peers');
     });
 
-    it('failover log and manual run (starts the cluster engines)', async () => {
+    it('failover log and manual run', async () => {
         await ex('failover log', 'GET', '/api/cluster/failover-log');
         await ex('failover log limit=1', 'GET', '/api/cluster/failover-log?limit=1');
         await ex('failover run (nothing to take over)', 'POST', '/api/cluster/failover/run');

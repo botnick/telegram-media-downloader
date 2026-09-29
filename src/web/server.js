@@ -5,7 +5,7 @@
 
 import express from 'express';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { MemoryStore as RateLimitMemoryStore } from 'express-rate-limit';
 import net from 'net';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
@@ -241,6 +241,7 @@ import {
     setClusterToken,
     getSelfIdentity,
     issuePairingCode,
+    pairingKeysFor,
 } from '../core/cluster/identity.js';
 import { verifyRequest as verifyPeerHmac } from '../core/cluster/hmac.js';
 import {
@@ -279,7 +280,7 @@ import { createSwrCache } from './lib/swr-cache.js';
 import { lookupEntityAcrossClients } from './lib/entity-lookup.js';
 import * as chatAccess from '../core/chat-access.js';
 import { destinationKey } from '../core/forwarder.js';
-import { createWsBroadcaster } from './lib/ws-broadcaster.js';
+import { createWsBroadcaster, runtimeEventMessage } from './lib/ws-broadcaster.js';
 import { lruCap } from '../core/util/streaming.js';
 import { compressionLevelFromEnv, createCompression } from './lib/http-compression.js';
 import {
@@ -290,6 +291,12 @@ import {
     markAccel,
     stripFrontHeaders,
 } from './lib/front-bridge.js';
+import {
+    bodyParserErrorResponse,
+    isUnsatisfiableRange,
+    rangeNotSatisfiableOf,
+    sendRangeNotSatisfiable,
+} from './lib/http-errors.js';
 import {
     recordClusterAudit,
     listClusterAudit,
@@ -522,6 +529,10 @@ async function _onUpgrade(req, socket, head) {
                     socket.destroy();
                     return;
                 }
+                // A paired peer is talking to us: make sure the channel's
+                // dashboard relay (and the other engines) are up, so its
+                // events reach the dashboard and not just the DB.
+                _ensureClusterEngines();
                 wss.handleUpgrade(req, socket, head, (ws) => {
                     ws._clusterPeer = verifiedPeer;
                     clusterWs.registerInboundWs(verifiedPeer, ws);
@@ -1779,19 +1790,35 @@ app.get('/api/version/check', async (req, res) => {
 // `data/backups/`, then signals the watchtower sidecar to pull + recreate
 // this container. Returns 200 immediately; the actual swap happens out of
 // band moments later (the SPA's WS reconnect logic detects the cycle).
+//
+// Every route here is registered before the global checkAuth / guestGate, so
+// each one gates itself through `_updateRouteSession()`: no session → 401.
+// The capability probe stays readable by guests — the "Update available"
+// chooser in the status bar is shown to every session and reads it. The
+// job status, the audit log and the kickoff are admin-only (the SPA only
+// uses them on the admin-only Maintenance pages).
+function _updateRouteSession(req, res, { adminOnly = false } = {}) {
+    const session = validateSession(req.cookies?.tg_dl_session);
+    if (!session) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return null;
+    }
+    if (adminOnly && session.role !== 'admin') {
+        res.status(403).json({ error: 'Admin only', adminRequired: true });
+        return null;
+    }
+    return session;
+}
+
 app.get('/api/update/status', async (req, res) => {
+    if (!_updateRouteSession(req, res)) return;
     res.json(autoUpdateStatus());
 });
 
 app.post('/api/update', async (req, res) => {
-    // Registered before the global checkAuth / guestGate (like the rest of
-    // the update routes), so it gates itself: an update snapshots the DB and
-    // asks watchtower to recreate the container — admin sessions only.
-    const session = validateSession(req.cookies?.tg_dl_session);
-    if (!session) return res.status(401).json({ error: 'Unauthorized' });
-    if (session.role !== 'admin') {
-        return res.status(403).json({ error: 'Admin only', adminRequired: true });
-    }
+    // An update snapshots the DB and asks watchtower to recreate the
+    // container — admin sessions only.
+    if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     const tracker = _jobTrackers.autoUpdate;
     const fromVersion = _readCurrentVersion();
     const r = tracker.tryStart(async () => {
@@ -1838,6 +1865,7 @@ app.post('/api/update', async (req, res) => {
 });
 
 app.get('/api/auto-update/status', async (req, res) => {
+    if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     res.json(_jobTrackers.autoUpdate.getStatus());
 });
 
@@ -1845,6 +1873,7 @@ app.get('/api/auto-update/status', async (req, res) => {
 // "Recent updates" panel in the maintenance UI + lets operators spot
 // repeat failures (e.g. watchtower mis-token on every retry).
 app.get('/api/update/history', async (req, res) => {
+    if (!_updateRouteSession(req, res, { adminOnly: true })) return;
     try {
         const limit = Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 25));
         res.json({ history: listUpdateHistory({ limit }) });
@@ -1975,43 +2004,62 @@ app.get('/metrics', (req, res) => {
 // behave identically to /files/*). Cache-Control: no-store keeps a
 // shared CDN/proxy from hijacking the bytes for the next visitor.
 //
-// express-rate-limit v7 does not support function values for windowMs/limit,
-// so we use static defaults and rebuild the limiter on config change.
-const _shareRateCfg = { windowMs: 60_000, limit: 60 };
+// `advanced.share.rateLimitMax` / `rateLimitWindowMs` are applied the way
+// the global API limit is (see refreshRateLimitConfig): read from config
+// at boot, every 30 s and right after POST /api/config, into an in-memory
+// copy the limiter reads per request. The route calls the current limiter
+// through a wrapper — it used to capture the boot-time instance, so a
+// rebuilt one never took effect and the configured values were ignored.
+// express-rate-limit v7 takes a function for `limit` but not for
+// `windowMs` (its MemoryStore is built with it), so a new window swaps in
+// a fresh limiter + store; a new limit alone keeps the counters.
+const SHARE_RATE_DEFAULTS = { windowMs: 60_000, limit: 60 };
+const _shareRateCfg = { ...SHARE_RATE_DEFAULTS };
+let _shareLimiterStore = null;
 function _buildShareLimiter() {
+    try {
+        _shareLimiterStore?.shutdown();
+    } catch {
+        /* old store's timer — nothing to keep */
+    }
+    _shareLimiterStore = new RateLimitMemoryStore();
     return rateLimit({
         windowMs: _shareRateCfg.windowMs,
-        limit: _shareRateCfg.limit,
+        limit: () => _shareRateCfg.limit,
+        store: _shareLimiterStore,
         standardHeaders: 'draft-7',
         legacyHeaders: false,
         message: { error: 'Too many requests — slow down.' },
     });
 }
-let shareLimiter = _buildShareLimiter();
+let _shareLimiter = _buildShareLimiter();
+const shareLimiter = (req, res, next) => _shareLimiter(req, res, next);
 
-// Tiny cache around the last-loaded config so the rate-limit getters
-// don't sync-read disk on every share request. Refreshed by the
-// config_updated WS broadcast handler below + on first use.
-let _shareConfigCache = null;
-function _currentShareConfig() {
-    if (!_shareConfigCache) {
-        try {
-            _shareConfigCache = loadConfig().advanced?.share || {};
-        } catch {
-            _shareConfigCache = {};
-        }
-    }
-    return _shareConfigCache;
-}
-function _invalidateShareConfigCache() {
-    _shareConfigCache = null;
-    const sh = _currentShareConfig();
+function _applyShareRateLimit(sh = {}) {
     const ms = Number(sh.rateLimitWindowMs);
     const lim = Number(sh.rateLimitMax);
-    _shareRateCfg.windowMs = Number.isFinite(ms) && ms > 0 ? ms : 60_000;
-    _shareRateCfg.limit = Number.isFinite(lim) && lim > 0 ? lim : 60;
-    shareLimiter = _buildShareLimiter();
+    const windowMs = Number.isFinite(ms) && ms > 0 ? Math.floor(ms) : SHARE_RATE_DEFAULTS.windowMs;
+    _shareRateCfg.limit =
+        Number.isFinite(lim) && lim > 0 ? Math.floor(lim) : SHARE_RATE_DEFAULTS.limit;
+    if (windowMs !== _shareRateCfg.windowMs) {
+        _shareRateCfg.windowMs = windowMs;
+        _shareLimiter = _buildShareLimiter();
+    }
 }
+
+// Re-read on every call (the periodic refresh must see edits made
+// elsewhere — CLI, cluster config sync). Sync on purpose: called at module
+// load, where an awaited continuation could run before later
+// declarations (the TDZ trap refreshRateLimitConfig fell into).
+function _refreshShareRateLimit() {
+    try {
+        _applyShareRateLimit(loadConfig().advanced?.share || {});
+    } catch {
+        /* keep last-known-good */
+    }
+}
+_refreshShareRateLimit();
+setInterval(_refreshShareRateLimit, 30 * 1000).unref();
 
 // v2 URL shape: `/share/<linkId>?s=<sig>` (or `/share/<linkId>/<filename>?s=<sig>`
 // when `buildShareUrlPath()` was called with a friendly slug). The signature
@@ -2065,9 +2113,6 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
             return res.status(404).type('text/plain').send('File not found');
         }
 
-        // Bump access counter — cheap, non-blocking on errors.
-        bumpShareLinkAccess(linkId);
-
         // Anti-CDN cache + don't allow shared caches to cache. Bytes are
         // gated per-token; if the token is later revoked, no cache layer
         // should keep handing the file out.
@@ -2078,6 +2123,18 @@ app.get(['/share/:linkId', '/share/:linkId/:fileName'], shareLimiter, async (req
         // here, but a video tag in an iframe could fingerprint the user).
         res.setHeader('X-Frame-Options', 'DENY');
         res.setHeader('Referrer-Policy', 'no-referrer');
+
+        // A Range the file can't satisfy is refused before the access is
+        // counted (sendFile would answer the same 416 below, but after the
+        // bump).
+        const size = (await fs.stat(r.real).catch(() => null))?.size;
+        if (Number.isFinite(size) && isUnsatisfiableRange(req, size)) {
+            res.setHeader('Accept-Ranges', 'bytes');
+            return sendRangeNotSatisfiable(res, `bytes */${size}`);
+        }
+
+        // Bump access counter — cheap, non-blocking on errors.
+        bumpShareLinkAccess(linkId);
 
         // Force download when ?download=1, otherwise let the browser pick
         // (mirrors /files/* semantics so an image/video plays inline by
@@ -2407,7 +2464,8 @@ app.delete('/api/accounts/:id', async (req, res) => {
 // authenticated WebSocket clients.
 
 runtime.on('state', (s) => broadcast({ type: 'monitor_state', state: s.state, error: s.error }));
-runtime.on('event', (e) => broadcast({ type: 'monitor_event', ...e }));
+// Engine events go out under their own type (see runtimeEventMessage).
+runtime.on('event', (e) => broadcast(runtimeEventMessage(e)));
 
 // Catch-up backfill — fired by monitor when boot-time inspection finds a
 // group whose newest stored message_id lags Telegram's current top by
@@ -6490,7 +6548,19 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
 // Fire-and-forget — a full library wipe is the slowest, most destructive
 // admin action we have. Returns 200 immediately; final counts via
 // `purge_all_done`. Single-flight via the shared tracker.
+//
+// The body must carry `{ "confirm": "DELETE ALL" }` (the dashboard sends
+// it after its two confirmation sheets). A bare DELETE — a stray script, a
+// dashboard tab from before this guard — gets a 400 that says what to do,
+// and nothing is touched.
+const PURGE_ALL_CONFIRM = 'DELETE ALL';
 app.delete('/api/purge/all', async (req, res) => {
+    if (req.body?.confirm !== PURGE_ALL_CONFIRM) {
+        return res.status(400).json({
+            error: `Factory reset not confirmed: send {"confirm": "${PURGE_ALL_CONFIRM}"} in the request body. If you used the dashboard, reload the page and try again.`,
+            code: 'CONFIRM_REQUIRED',
+        });
+    }
     const tracker = _jobTrackers.purgeAll;
     const r = tracker.tryStart(async ({ onProgress }) => {
         let totalFiles = 0;
@@ -10754,8 +10824,82 @@ app.post('/api/backup/jobs/:id/retry', async (req, res) => {
 // route needs both an entry in PUBLIC_API_PATHS *and* a verifyPeerHmac
 // call in the handler — never one without the other.
 
-function _peerHmacGate(req, res) {
-    const v = verifyPeerHmac(req);
+// ---- Cluster engines: sync poll, /ws/cluster channel, LAN discovery,
+// failover watcher ------------------------------------------------------
+//
+// They run while the cluster is in use — at least one paired, non-revoked
+// peer — so an install that never paired anything opens no socket and
+// sends no LAN beacon. Started (each idempotent):
+//   - at boot when a peer is paired (server.listen callback), so a
+//     restarted node syncs again without anyone opening the dashboard;
+//   - by any /api/cluster request once a peer is paired (the middleware
+//     below, registered ahead of every cluster route);
+//   - right after a handshake pairs a peer (either direction);
+//   - when a paired peer opens /ws/cluster to us (the upgrade handler), so
+//     its events reach the dashboard.
+// The middleware used to be registered after the cluster routes, so only
+// POST /api/cluster/failover/run or an unknown /api/cluster path reached
+// it and the engines normally never ran.
+let _clusterSyncStarted = false;
+function _ensureSyncEngineStarted() {
+    if (_clusterSyncStarted) return;
+    _clusterSyncStarted = true;
+    try {
+        startSyncEngine({ intervalMs: 30_000 });
+    } catch (e) {
+        console.warn('[cluster] sync engine start failed:', e?.message || e);
+    }
+}
+let _clusterDiscoveryStarted = false;
+function _ensureClusterDiscoveryStarted() {
+    if (_clusterDiscoveryStarted) return;
+    _clusterDiscoveryStarted = true;
+    try {
+        const port = Number(process.env.PORT) || 3000;
+        const proto = process.env.PUBLIC_PROTO || 'http';
+        const host = process.env.PUBLIC_HOST || `localhost:${port}`;
+        const selfUrl = process.env.PUBLIC_URL || `${proto}://${host}`;
+        clusterDiscovery.startDiscovery({ selfUrl });
+    } catch (e) {
+        console.warn('[cluster] discovery start failed:', e?.message || e);
+    }
+}
+let _clusterFailoverStarted = false;
+function _ensureClusterFailoverStarted() {
+    if (_clusterFailoverStarted) return;
+    _clusterFailoverStarted = true;
+    try {
+        startFailoverWatcher();
+    } catch (e) {
+        console.warn('[cluster] failover watcher start failed:', e?.message || e);
+    }
+}
+let _clusterEnginesStarted = false;
+function _clusterHasPairedPeer() {
+    try {
+        return listPeers().some((p) => p && p.status !== 'revoked');
+    } catch {
+        return false;
+    }
+}
+function _ensureClusterEngines({ ifPaired = true } = {}) {
+    if (_clusterEnginesStarted) return true;
+    if (ifPaired && !_clusterHasPairedPeer()) return false;
+    _clusterEnginesStarted = true;
+    _ensureSyncEngineStarted();
+    _ensureClusterWsInit();
+    _ensureClusterDiscoveryStarted();
+    _ensureClusterFailoverStarted();
+    return true;
+}
+
+app.use('/api/cluster', (_req, _res, next) => {
+    _ensureClusterEngines();
+    next();
+});
+
+function _peerHmacGate(req, res, opts) {
+    const v = verifyPeerHmac(req, opts);
     if (!v.ok) {
         recordClusterAudit({
             kind: 'request',
@@ -10774,7 +10918,15 @@ function _peerHmacGate(req, res) {
 app.post('/api/cluster/handshake', async (req, res) => {
     // The very first signed call from a new remote peer — no peer row
     // exists yet, so we verify against our local cluster token directly.
-    const v = _peerHmacGate(req, res);
+    // A handshake that carries one of our unexpired pairing codes may
+    // instead be signed with a key derived from that code (the initiator
+    // doesn't hold our token) — see identity.pairingKeysFor. It used to be
+    // checked against the token only, so every pairing-code handshake got
+    // 401 bad_signature.
+    const pairingCode = typeof req.body?.pairing_code === 'string' ? req.body.pairing_code : null;
+    const v = _peerHmacGate(req, res, {
+        expectedToken: pairingCode ? pairingKeysFor(pairingCode) : null,
+    });
     if (!v) return;
     try {
         const body = req.body || {};
@@ -10796,6 +10948,7 @@ app.post('/api/cluster/handshake', async (req, res) => {
         // just stored about them). The response carries OUR identity for
         // the caller to record symmetrically.
         res.json(peer);
+        _ensureClusterEngines();
     } catch (e) {
         const status = e?.status || 500;
         res.status(status).json({ error: e?.message || String(e), code: e?.code || 'error' });
@@ -10904,6 +11057,7 @@ app.post('/api/cluster/peers', async (req, res) => {
             return res.status(400).json({ error: r.message, code: r.code });
         }
         res.json({ peer: r.peer });
+        _ensureClusterEngines();
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
@@ -11137,11 +11291,14 @@ app.get('/api/cluster/peer-thumbs/:remoteId', async (req, res) => {
             res.setHeader('Cache-Control', 'no-store');
             return res.status(404).type('text/plain').send('No thumb');
         }
+        // getOrCreateThumb() resolves to `{ path, width, mtime }` — the
+        // WebP file in the thumbnail cache. This route used to res.send()
+        // that object: a JSON body (with our absolute cache path) labelled
+        // image/webp. Send the file's bytes.
+        const bytes = await fs.readFile(thumb.path);
         res.setHeader('Content-Type', 'image/webp');
         res.setHeader('Cache-Control', 'private, no-store');
-        if (Buffer.isBuffer(thumb)) return res.send(thumb);
-        if (typeof thumb === 'string') return res.sendFile(thumb);
-        return res.send(thumb);
+        return res.end(bytes);
     } catch (e) {
         recordClusterAudit({
             kind: 'thumb',
@@ -11161,6 +11318,18 @@ const _PEER_THUMB_PLACEHOLDER = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
     'base64',
 );
+
+// The image type of a thumbnail body by its magic bytes (WebP — what the
+// thumbnail cache holds — plus PNG / JPEG), or null.
+function _imageKindOf(buf) {
+    if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+    if (buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP') {
+        return 'image/webp';
+    }
+    if (buf[0] === 0x89 && buf.toString('latin1', 1, 4) === 'PNG') return 'image/png';
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    return null;
+}
 
 function _sendPeerThumbPlaceholder(res) {
     res.setHeader('Content-Type', 'image/png');
@@ -11193,12 +11362,16 @@ app.get('/api/cluster/thumbs/:peerId/:remoteId', async (req, res) => {
         if (!upstream.ok) {
             return _sendPeerThumbPlaceholder(res);
         }
-        const ct = upstream.headers.get('content-type') || 'image/webp';
-        res.setHeader('Content-Type', ct);
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        // Peers before the peer-thumbs fix answer 200 with a JSON object
+        // labelled image/webp. Only pass real image bytes on (and never
+        // cache anything else for a day).
+        const kind = _imageKindOf(buf);
+        if (!kind) return _sendPeerThumbPlaceholder(res);
+        res.setHeader('Content-Type', kind);
         // Browser HTTP cache only — content-addressed by (peer, remoteId, w),
         // so a stale cache hit is impossible during the URL's lifetime.
         res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-        const buf = Buffer.from(await upstream.arrayBuffer());
         res.send(buf);
     } catch (e) {
         recordClusterAudit({
@@ -11227,13 +11400,20 @@ app.post('/api/cluster/sign-url', async (req, res, next) => {
         // requesting peer's browser will fetch this directly. Reuse the
         // existing share infra so revocation + access counters stay one
         // unified source of truth.
-        const expiresAt = Date.now() + Math.max(10, Math.min(3600, Number(ttlSec) || 60)) * 1000;
+        // share_links.expires_at is epoch SECONDS (what /share verifies the
+        // signature against and compares with "now" in seconds). This used
+        // to store milliseconds while signing seconds, so no minted URL
+        // ever verified (401 bad_sig). The response keeps `expiresAt` in
+        // ms (its wire format) and adds `exp` (epoch seconds), which also tells the
+        // requesting peer that the URL works (see requestSignedShareUrl).
+        const ttl = Math.max(10, Math.min(3600, Number(ttlSec) || 60));
+        const expSec = Math.floor(Date.now() / 1000) + ttl;
+        const expiresAt = expSec * 1000;
         const linkRow = createShareLink({
             downloadId: Number(row.id),
-            expiresAt,
+            expiresAt: expSec,
             label: `cluster:${v.peerId.slice(0, 8)}`,
         });
-        const expSec = Math.floor(expiresAt / 1000);
         const baseUrl = (() => {
             const proto =
                 req.headers['x-forwarded-proto'] || (req.socket?.encrypted ? 'https' : 'http');
@@ -11243,6 +11423,7 @@ app.post('/api/cluster/sign-url', async (req, res, next) => {
         res.set('Cache-Control', 'no-store').json({
             url: baseUrl + buildShareUrlPath(linkRow.id, expSec),
             expiresAt,
+            exp: expSec,
         });
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
@@ -11534,52 +11715,6 @@ app.get('/api/cluster/stats', async (_req, res) => {
     } catch (e) {
         res.status(500).json({ error: e?.message || String(e) });
     }
-});
-
-// Start the sync engine on first cluster route hit. It will poll every
-// 30s; idempotent if already running.
-let _clusterSyncStarted = false;
-function _ensureSyncEngineStarted() {
-    if (_clusterSyncStarted) return;
-    _clusterSyncStarted = true;
-    try {
-        startSyncEngine({ intervalMs: 30_000 });
-    } catch (e) {
-        console.warn('[cluster] sync engine start failed:', e?.message || e);
-    }
-}
-let _clusterDiscoveryStarted = false;
-function _ensureClusterDiscoveryStarted() {
-    if (_clusterDiscoveryStarted) return;
-    _clusterDiscoveryStarted = true;
-    try {
-        const port = Number(process.env.PORT) || 3000;
-        const proto = process.env.PUBLIC_PROTO || 'http';
-        const host = process.env.PUBLIC_HOST || `localhost:${port}`;
-        const selfUrl = process.env.PUBLIC_URL || `${proto}://${host}`;
-        clusterDiscovery.startDiscovery({ selfUrl });
-    } catch (e) {
-        console.warn('[cluster] discovery start failed:', e?.message || e);
-    }
-}
-
-let _clusterFailoverStarted = false;
-function _ensureClusterFailoverStarted() {
-    if (_clusterFailoverStarted) return;
-    _clusterFailoverStarted = true;
-    try {
-        startFailoverWatcher();
-    } catch (e) {
-        console.warn('[cluster] failover watcher start failed:', e?.message || e);
-    }
-}
-
-app.use('/api/cluster', (_req, _res, next) => {
-    _ensureSyncEngineStarted();
-    _ensureClusterWsInit();
-    _ensureClusterDiscoveryStarted();
-    _ensureClusterFailoverStarted();
-    next();
 });
 
 // Manual failover sweep (admin) — useful when an operator wants to
@@ -11876,6 +12011,8 @@ app.get('/api/maintenance/config/raw', async (req, res) => {
         if (config.telegram?.apiHash) config.telegram.apiHash = '••••••• (redacted)';
         if (config.web?.passwordHash) config.web.passwordHash = '••••••• (redacted)';
         if (config.web?.password) config.web.password = '••••••• (redacted)';
+        if (config.web?.guestPasswordHash) config.web.guestPasswordHash = '••••••• (redacted)';
+        if (config.web?.shareSecret) config.web.shareSecret = '••••••• (redacted)';
         if (config.proxy?.password) config.proxy.password = '••••••• (redacted)';
         for (const block of [config.advanced?.nsfw, config.advanced?.seekbar]) {
             if (block?.apiToken) block.apiToken = '••••••• (redacted)';
@@ -11908,6 +12045,19 @@ app.get('/api/config', async (req, res) => {
         if (safe.web) {
             delete safe.web.password;
             delete safe.web.passwordHash;
+            // Write-only secrets, same shape as the sidecar tokens below: a
+            // `<name>Set` presence flag instead of the value. The share
+            // secret signs share links / file tokens and keys the backup
+            // credential blobs; the guest hash is managed by
+            // /api/auth/guest-password. POST keeps both when they're left out.
+            safe.web.shareSecretSet = !!safe.web.shareSecret;
+            delete safe.web.shareSecret;
+            safe.web.guestPasswordHashSet = !!safe.web.guestPasswordHash;
+            delete safe.web.guestPasswordHash;
+        }
+        if (safe.proxy && typeof safe.proxy === 'object') {
+            safe.proxy.passwordSet = !!safe.proxy.password;
+            delete safe.proxy.password;
         }
         // Sidecar tokens are write-only from the dashboard's point of view.
         for (const block of [safe.advanced?.nsfw, safe.advanced?.seekbar]) {
@@ -12022,6 +12172,8 @@ app.post('/api/config', async (req, res) => {
             // field to remove it.
             const merged = { ...(currentConfig.proxy || {}), ...req.body.proxy };
             for (const k of Object.keys(merged)) if (merged[k] === null) delete merged[k];
+            // Read-only flag from GET /api/config, never stored.
+            delete merged.passwordSet;
             newConfig.proxy = merged;
         }
         if (req.body.web) {
@@ -12031,6 +12183,10 @@ app.post('/api/config', async (req, res) => {
             delete safeWeb.password;
             if (!currentConfig.web?.passwordHash) delete safeWeb.passwordHash;
             else safeWeb.passwordHash = currentConfig.web.passwordHash;
+            // Read-only flags from GET /api/config, never stored. The values
+            // they stand for stay as saved unless the body names them.
+            delete safeWeb.shareSecretSet;
+            delete safeWeb.guestPasswordHashSet;
             if (req.body.web.csp === null) {
                 delete safeWeb.csp; // reset to defaults
             } else if (req.body.web.csp !== undefined) {
@@ -12455,7 +12611,7 @@ app.post('/api/config', async (req, res) => {
         // so a save takes effect immediately without a process restart.
         try {
             applyShareLimits(newConfig.advanced?.share || {});
-            _invalidateShareConfigCache();
+            _applyShareRateLimit(newConfig.advanced?.share || {});
         } catch {}
 
         // Reset the lazy AccountManager singleton if Telegram credentials
@@ -13180,9 +13336,12 @@ app.use('/files', async (req, res, next) => {
                     const url = await requestSignedShareUrl(ref.peerId, ownerRow.file_path);
                     return res.redirect(302, url);
                 } catch (e) {
-                    return res
-                        .status(502)
-                        .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    // An older peer's URL wouldn't verify: proxy instead.
+                    if (e?.code !== 'LEGACY_SIGN_URL') {
+                        return res
+                            .status(502)
+                            .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    }
                 }
             }
             return streamFromPeer(req, res, ref.peerId, ownerRow.file_path);
@@ -13209,9 +13368,12 @@ app.use('/files', async (req, res, next) => {
                     const url = await requestSignedShareUrl(peerIdParam, peerSidePath);
                     return res.redirect(302, url);
                 } catch (e) {
-                    return res
-                        .status(502)
-                        .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    // An older peer's URL wouldn't verify: proxy instead.
+                    if (e?.code !== 'LEGACY_SIGN_URL') {
+                        return res
+                            .status(502)
+                            .json({ error: 'storage_offline', message: e?.message || String(e) });
+                    }
                 }
             }
             return streamFromPeer(req, res, peerIdParam, peerSidePath);
@@ -13814,6 +13976,16 @@ wss.on('connection', (ws) => {
 // Must be registered after all routes/middleware and before listen().
 app.use((err, req, res, _next) => {
     if (res.headersSent) return;
+    // send() (behind res.sendFile: /files, /share, the cluster file bridge,
+    // thumbnails) reports a Range the file can't satisfy as a 416 error —
+    // a client error, answered as RFC 9110 asks, not a 500.
+    const unsatisfiable = rangeNotSatisfiableOf(err);
+    if (unsatisfiable) return sendRangeNotSatisfiable(res, unsatisfiable);
+    // express.json() (mounted for every route) fails a malformed JSON body,
+    // a JSON `null` (strict mode) or one over the 2 MB limit before any
+    // route runs: 400 / 413, not a server error.
+    const bodyError = bodyParserErrorResponse(err);
+    if (bodyError) return res.status(bodyError.status).json(bodyError.body);
     log({
         source: 'http',
         level: 'error',
@@ -14330,6 +14502,10 @@ ${tip}
             startDrain().catch(() => {});
         }
     } catch {}
+
+    // Cluster engines resume on their own when a peer is paired (see
+    // _ensureClusterEngines); an install without peers starts nothing.
+    if (_ensureClusterEngines()) console.log('[cluster] engines started (paired peers)');
 
     // Resume the realtime monitor if it was running before the last
     // shutdown. The start/stop endpoints persist monitor.autoStart to

@@ -549,7 +549,7 @@
         "bytes": 14
       }
     },
-    "range unsatisfiable": {
+    "range unsatisfiable → 416": {
       "route": "GET /files/*",
       "request": {
         "method": "GET",
@@ -559,21 +559,17 @@
           "range": "bytes=5000-6000"
         }
       },
-      "status": 500,
+      "status": 416,
       "headers": {
         "accept-ranges": "bytes",
-        "cache-control": "private, max-age=2592000, immutable",
-        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "cache-control": "no-store",
         "content-range": "bytes */2414",
-        "content-type": "video/mp4; charset=utf-8",
-        "etag": "W/\"96e-18cc820d888\"",
-        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+        "content-type": "text/plain; charset=utf-8"
       },
       "security": "e30ca64edb",
       "body": {
-        "text": "{\"error\":\"Range Not Satisfiable\"}"
-      },
-      "note": "today: 500 from the global error handler, not 416"
+        "text": "Range Not Satisfiable"
+      }
     },
     "range multiple ranges": {
       "route": "GET /files/*",
@@ -627,7 +623,7 @@
         "bytes": 2414
       }
     },
-    "range inverted": {
+    "range inverted → 416": {
       "route": "GET /files/*",
       "request": {
         "method": "GET",
@@ -637,21 +633,17 @@
           "range": "bytes=50-10"
         }
       },
-      "status": 500,
+      "status": 416,
       "headers": {
         "accept-ranges": "bytes",
-        "cache-control": "private, max-age=2592000, immutable",
-        "content-disposition": "inline; filename=\"VID_0006.mp4\"; filename*=UTF-8''VID_0006.mp4",
+        "cache-control": "no-store",
         "content-range": "bytes */2414",
-        "content-type": "video/mp4; charset=utf-8",
-        "etag": "W/\"96e-18cc820d888\"",
-        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT"
+        "content-type": "text/plain; charset=utf-8"
       },
       "security": "e30ca64edb",
       "body": {
-        "text": "{\"error\":\"Range Not Satisfiable\"}"
-      },
-      "note": "today: 500 from the global error handler, not 416"
+        "text": "Range Not Satisfiable"
+      }
     },
     "If-Range matching etag honours range": {
       "route": "GET /files/*",

@@ -27,6 +27,12 @@ export default defineConfig({
     root,
     test: {
         include: ['tests/contract/**/*.contract.test.js'],
+        // tgdl-core is required (#94): find or build it once, like
+        // `npm test`, and hand it to every target as TGDL_CORE_BIN. A
+        // target runs on a temp TGDL_DATA_DIR, so it can't see a binary
+        // `npm install` downloaded into <repo>/data/core-service/bin (and
+        // the network sandbox stops it downloading one).
+        globalSetup: ['./tests/setup/gocore.global.js'],
         exclude: ['**/node_modules/**'],
         testTimeout: 60_000,
         hookTimeout: 120_000,
