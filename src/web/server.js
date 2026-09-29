@@ -2452,8 +2452,10 @@ async function _buildMonitorStatusSnapshot() {
                 ? 'enable-group'
                 : null;
     // tgdl-core can't run (missing binary, unsupported platform, …):
-    // the dashboard shows a persistent banner with the fix.
-    status.core = getCoreBanner();
+    // the dashboard shows a persistent banner with the fix. Only present
+    // while there is a problem, so the status shape is otherwise unchanged.
+    const coreBanner = getCoreBanner();
+    if (coreBanner) status.core = coreBanner;
     return status;
 }
 

@@ -203,6 +203,6 @@ describe.skipIf(SKIP)('boot without a usable tgdl-core', () => {
         const mon = await (
             await fetch(`${s.base}/api/monitor/status`, { headers: { cookie } })
         ).json();
-        if (h.goCore.state !== 'running') expect(mon.core).toBe(null);
+        if (h.goCore.state !== 'running') expect(mon.core).toBeUndefined();
     });
 });

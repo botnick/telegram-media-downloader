@@ -45,7 +45,7 @@ A wrong phone number / code / password keeps the step's state and sets `error` p
 
 | Method | Path | Notes |
 |---|---|---|
-| `GET`  | `/api/monitor/status` | `{state, queue, active, workers, accounts, stats, uptimeMs, hint, core}`. `core` is `null`, or `{state, fix}` while tgdl-core (the app's Go engine) can't run — the dashboard shows it as a banner. Also broadcast over WS as `monitor_status_push` every 3 s when at least one client is connected. |
+| `GET`  | `/api/monitor/status` | `{state, queue, active, workers, accounts, stats, uptimeMs, hint}`, plus `core: {state, fix}` only while tgdl-core (the app's Go engine) can't run — the dashboard shows it as a banner. Also broadcast over WS as `monitor_status_push` every 3 s when at least one client is connected. |
 | `POST` | `/api/monitor/start`  | Loads `AccountManager`, starts realtime monitor in-process. |
 | `POST` | `/api/monitor/stop`   | Cleans up watchers + the worker pool. |
 
