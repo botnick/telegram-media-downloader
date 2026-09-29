@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.32.1] — 2026-09-30
+
+One-click update works again on the watchtower sidecar; LOCATION_INVALID downloads recover.
+
 ### Fixed
 - **One-click update no longer reports "ping timed out" while it is actually updating.** The pre-flight ping sent `HEAD /v1/update`, which watchtower treats as a real update request: it started pulling the new image and held the reply past the 5 s cap, so the dashboard showed a failure although the update then went through. The ping now asks `/` (any reply means the sidecar is up), and a trigger that is still pulling after 15 s counts as started.
 - **`LOCATION_INVALID` downloads recover or fail cleanly.** Like an expired file reference, it now re-fetches the message and retries with the fresh media. If the message or its media was deleted, the job fails at once with "Media no longer available on Telegram" instead of retrying the stale location five times.
@@ -13,6 +17,8 @@ All notable changes to this project are documented here. The format is based on 
 ### Documentation
 - **Docs refresh.** README has a FAQ and a clearer overview; every guide has front matter and an intro line, and stale flags (the removed `faces-openvino` profile, `TGDL_GO_CORE` and `TGDL_GO_FEATURES`) are gone. The docs are published with GitHub Pages from `/docs`; `llms.txt` (root and `docs/`) indexes them for AI assistants. CONTRIBUTING and SECURITY list the Go toolchain (`npm run build:core`), the contract suite (`npm run test:contract`) and the supported version.
 
+### Service worker
+- `VERSION = 'v2321'`
 ## [2.32.0] — 2026-09-30
 
 tgdl-core serves every media byte; Node no longer serves files itself.
