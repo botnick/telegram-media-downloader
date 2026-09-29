@@ -157,17 +157,11 @@ describe.skipIf(SKIP)('cluster e2e — two real instances', () => {
         expect(r.status).toBe(401);
     });
 
-    it('signed health probe succeeds', async () => {
+    it('rejects a cluster-token-signed probe from a never-paired peer id with 401', async () => {
         const ts = Date.now();
         const headers = _signHeaders('GET', '/api/cluster/health', ts, '', PEER_A_ID);
         const r = await fetch(`http://127.0.0.1:${PORT_B}/api/cluster/health`, { headers });
-        if (r.status !== 200) {
-            const txt = await r.text();
-            throw new Error(`health probe failed ${r.status}: ${txt}`);
-        }
-        const j = await r.json();
-        expect(j.ok).toBe(true);
-        expect(j.peer_id).toBe(PEER_B_ID);
+        expect(r.status).toBe(401);
     }, 30_000);
 
     it('signed handshake from A → B succeeds, both peers see each other', async () => {
@@ -203,6 +197,19 @@ describe.skipIf(SKIP)('cluster e2e — two real instances', () => {
         dbB.close();
         expect(row).toBeTruthy();
         expect(row.peer_id).toBe(PEER_A_ID);
+    }, 30_000);
+
+    it('signed health probe from a paired peer succeeds', async () => {
+        const ts = Date.now();
+        const headers = _signHeaders('GET', '/api/cluster/health', ts, '', PEER_A_ID);
+        const r = await fetch(`http://127.0.0.1:${PORT_B}/api/cluster/health`, { headers });
+        if (r.status !== 200) {
+            const txt = await r.text();
+            throw new Error(`health probe failed ${r.status}: ${txt}`);
+        }
+        const j = await r.json();
+        expect(j.ok).toBe(true);
+        expect(j.peer_id).toBe(PEER_B_ID);
     }, 30_000);
 
     it('signed delta-sync request returns the rows the peer holds', async () => {

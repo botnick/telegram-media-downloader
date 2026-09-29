@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Security
+- **The shared cluster token no longer authenticates a peer that was never paired.** A cluster API request signed with the token was accepted for any `X-Peer-Id`. The legacy fallback now applies only when the id is an already-paired peer; anything else gets 401. Paired peers and the pairing handshake are unchanged.
+
 ### Changed
 - **The Install update button works without a compose profile.** The `watchtower` service is now part of the default `docker-compose.yml` (already so in the Synology file). It is idle: HTTP-API-only, no periodic polling unless `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true`, no published ports, label-scoped. Existing users re-download the compose file once; old files keep working unchanged.
 - **README has an "Updating" section** (Install update button, or `docker compose pull && docker compose up -d`); the Docker docs link to it.
