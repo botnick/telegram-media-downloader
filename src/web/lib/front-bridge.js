@@ -125,7 +125,10 @@ export function frontNotifyHandler(getToken, handlers) {
             try {
                 ev = JSON.parse(data);
             } catch {}
-            const fn = typeof ev?.kind === 'string' ? handlers[ev.kind] : null;
+            const fn =
+                typeof ev?.kind === 'string' && Object.hasOwn(handlers, ev.kind)
+                    ? handlers[ev.kind]
+                    : null;
             if (typeof fn === 'function' && typeof ev.value === 'string') {
                 Promise.resolve()
                     .then(() => fn(ev.value))
