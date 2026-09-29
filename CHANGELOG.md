@@ -5,10 +5,11 @@ All notable changes to this project are documented here. The format is based on 
 ## [Unreleased]
 
 ### Changed
-- **Videos, photos and thumbnails are served by tgdl-core (0.3.0) and keep playing while the server is busy.** tgdl-core now answers the dashboard port and serves `/files`, `/photos` and cached thumbnails itself; everything else goes to the Node server behind it on `127.0.0.1`. Responses are the same as before — status codes, headers, cookies, auth, Range and caching — checked by the API contract suite and a 115-request parity suite. Measured on one machine: video ranges 2.3–2.7× faster (4 clients: 696 → 1,883 MB/s), and while Node is busy (event loop blocked 90 % of the time) a video chunk's first byte arrives in ~1 ms instead of ~220 ms (p99 5 ms instead of 450 ms). See [docs/GO-CORE.md](docs/GO-CORE.md#front-server-tgdl-core-front).
-- Nothing to do when upgrading: same port, Docker healthcheck, `TRUST_PROXY` behaviour and reverse-proxy setup ([docs/DEPLOY.md](docs/DEPLOY.md#reverse-proxy)). If tgdl-core can't run, the Node server answers the port itself for the dashboard and `/api/auth_check`, the dashboard banner says why, and media routes answer `503 TGDL_CORE_UNAVAILABLE`.
 - **tgdl-core 0.4.0 serves every media byte; Node's own file serving is gone.** tgdl-core now also answers what it used to hand back to Node: `412` (`If-Match` / `If-Unmodified-Since`, which used to be a 500), `416`, ranges, symlinks inside the allowed roots, a missing file (`404`) and a session in its renewal window. It never writes the database: it tells Node afterwards (a session to extend, a missing file to prune and broadcast). A media response in the renewal window carries no `Set-Cookie`; the next dashboard request renews the cookie. Inline HEIC stays a Node transform (sharp) that tgdl-core proxies. Removed from Node: the local `/files` branch, `/photos` serving, thumbnail cache-hit fast path and the `X-Tgdl-Accel` hand-back. A dotfile or a directory under `/files` is now a plain `404 File not found`.
-- `GET /api/system/health?front=1` adds `goCoreFront` (state, restarts, request counters); the default payload is unchanged.
+
+## [2.31.0] — 2026-09-30
+
+Videos, photos and thumbnails are served by tgdl-core (Go) and keep playing while the server is busy; one-click updates work out of the box on Docker; cluster peers must be paired.
 
 ### Security
 - **The shared cluster token no longer authenticates a peer that was never paired.** A cluster API request signed with the token was accepted for any `X-Peer-Id`. The legacy fallback now applies only when the id is an already-paired peer; anything else gets 401. Paired peers and the pairing handshake are unchanged.
@@ -17,10 +18,17 @@ All notable changes to this project are documented here. The format is based on 
 - **The Install update button works without a compose profile.** The `watchtower` service is now part of the default `docker-compose.yml` (already so in the Synology file). It is idle: HTTP-API-only, no periodic polling unless `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true`, no published ports, label-scoped. Existing users re-download the compose file once; old files keep working unchanged.
 - **README has an "Updating" section** (Install update button, or `docker compose pull && docker compose up -d`); the Docker docs link to it.
 
+### Changed
+- **The Install update button works without a compose profile.** The `watchtower` service is now part of the default `docker-compose.yml` (already so in the Synology file). It is idle: HTTP-API-only, no periodic polling unless `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true`, no published ports, label-scoped. Existing users re-download the compose file once; old files keep working unchanged.
+- **README has an "Updating" section** (Install update button, or `docker compose pull && docker compose up -d`); the Docker docs link to it.
+
 ### Fixed
+- **The bundled watchtower needs no token setup.** The app generates a random token once (`data/watchtower/api-token`), watchtower reads it from that file (the fork supports file-path secrets) and starts only after the app is healthy, so it no longer exits and restart-loops with an empty token. A `WATCHTOWER_HTTP_API_TOKEN` in `.env` still overrides it.
 - **Watchtower failed on Docker Engine 29+** with "client version 1.25 is too old". The archived `containrrr/watchtower:1.7.1` is replaced by the maintained fork `nickfedor/watchtower:1.22`, which negotiates the API version (same labels, `/v1/update` endpoint and bearer token; the endpoint is enabled with `WATCHTOWER_HTTP_API_ENDPOINTS=update`).
 - **Removed the `faces-openvino` profile.** It pointed at `ghcr.io/botnick/tgdl-faces:openvino-latest`, which was never published.
 
+### Service worker
+- `VERSION = 'v2310'`
 ## [2.30.0] — 2026-09-30
 
 tgdl-core, the Go engine, now does the heavy file work (hashing, file checks, folder walks, face clustering); the Content-Security-Policy is editable in Settings; cluster pairing, direct streams and background engines work; API security fixes.

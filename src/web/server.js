@@ -193,7 +193,9 @@ import {
 // survives. The stub constants that used to live here (aiStartEmbedScan,
 // aiStartTagsScan, aiEmbedText, aiTopK, aiLoadVecOnce, AI_EMBED_DEFAULTS,
 // …) were deleted along with the routes that called them.
-import { runAutoUpdate, autoUpdateStatus } from '../core/updater.js';
+import { runAutoUpdate, autoUpdateStatus, ensureWatchtowerToken } from '../core/updater.js';
+
+ensureWatchtowerToken();
 import { getRescueSweeper } from '../core/rescue.js';
 import { getRescueStats } from '../core/db.js';
 import {

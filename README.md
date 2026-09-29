@@ -259,7 +259,7 @@ All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy
 | `TGDL_DOWNLOADS_DIR` | _(unset)_ | Split downloads onto separate disk |
 | `TGDL_DEBUG` | _(unset)_ | `1` = verbose logging |
 | `FFMPEG_HWACCEL` | _(empty)_ | `cuda` / `vaapi` / `qsv` / `videotoolbox` |
-| `WATCHTOWER_HTTP_API_TOKEN` | _(unset)_ | Install-update sidecar token |
+| `WATCHTOWER_HTTP_API_TOKEN` | _(auto-generated)_ | Optional override for the Install-update sidecar token |
 | `FACES_SERVICE_URL` | `http://tgdl-faces:8011` | Face clustering sidecar |
 | `TGDL_NSFW_SIDECAR_URL` | _(unset)_ | External NSFW classifier URL |
 | `SEEKBAR_SIDECAR_URL` | _(unset)_ | Seekbar sidecar URL |
@@ -272,7 +272,7 @@ Full env-var reference (27+ knobs) in [docs/AI.md](docs/AI.md).
 
 ## Updating
 
-- **In the app:** Settings → Maintenance → **Install update** (Docker; needs `WATCHTOWER_HTTP_API_TOKEN` in `.env`).
+- **In the app:** Settings → Maintenance → **Install update** (Docker; no setup, token is auto-generated).
 - **Manually:** `docker compose pull && docker compose up -d`
 
 New versions need no config changes; migrations run automatically. Existing users: re-download `docker-compose.yml` once so the button works without a profile. Details in [docs/DEPLOY.md](docs/DEPLOY.md#updating).
@@ -390,7 +390,7 @@ Paste the `t.me/...` URL into the dashboard's link drawer. Supports channel, gro
 <details>
 <summary><b>How does auto-update work?</b></summary>
 
-Idle watchtower sidecar (in the default compose file). Set `WATCHTOWER_HTTP_API_TOKEN` in `.env`. DB is snapshotted before every update. The dashboard never touches the Docker socket.
+Idle watchtower sidecar (in the default compose file). Token is auto-generated (set `WATCHTOWER_HTTP_API_TOKEN` in `.env` to override). DB is snapshotted before every update. The dashboard never touches the Docker socket.
 </details>
 
 <details>

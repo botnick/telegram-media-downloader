@@ -355,3 +355,38 @@ describe('runAutoUpdate', () => {
         } catch {}
     });
 });
+
+describe('watchtower token resolution', () => {
+    const ORIG = { ...process.env };
+    afterEach(() => {
+        process.env = { ...ORIG };
+    });
+
+    it('prefers the env token over the file', async () => {
+        const { _internals: u } = await import('../src/core/updater.js');
+        process.env.WATCHTOWER_URL = 'http://watchtower:8080/';
+        process.env.WATCHTOWER_HTTP_API_TOKEN = ' from-env ';
+        expect(u._watchtowerEndpoint()).toEqual({
+            url: 'http://watchtower:8080',
+            token: 'from-env',
+        });
+    });
+
+    it('generates a token file once and reuses it when env is unset', async () => {
+        const { _internals: u } = await import('../src/core/updater.js');
+        fs.rmSync(u.WT_TOKEN_FILE, { force: true });
+        delete process.env.WATCHTOWER_HTTP_API_TOKEN;
+        process.env.WATCHTOWER_URL = 'http://watchtower:8080';
+        const t1 = u._resolveWatchtowerToken();
+        expect(t1).toMatch(/^[0-9a-f]{64}$/);
+        expect(fs.readFileSync(u.WT_TOKEN_FILE, 'utf8')).toBe(t1);
+        expect(u._resolveWatchtowerToken()).toBe(t1);
+        expect(u._watchtowerEndpoint().token).toBe(t1);
+    });
+
+    it('has no endpoint without WATCHTOWER_URL', async () => {
+        const { _internals: u } = await import('../src/core/updater.js');
+        delete process.env.WATCHTOWER_URL;
+        expect(u._watchtowerEndpoint()).toBeNull();
+    });
+});
