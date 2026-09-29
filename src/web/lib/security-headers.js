@@ -89,9 +89,11 @@ export function buildSecurityHeaders(config, opts = {}) {
     }
 
     const enabled = !off && csp?.enabled !== false;
+    // Saved directives override the defaults one by one; a directive left out
+    // keeps its default, an empty list removes it.
     const directives =
         csp?.directives && typeof csp.directives === 'object'
-            ? csp.directives
+            ? { ...DEFAULT_CSP_DIRECTIVES, ...csp.directives }
             : DEFAULT_CSP_DIRECTIVES;
 
     // X-Frame-Options stays as today unless frame-ancestors was customised;

@@ -15,6 +15,21 @@ describe('buildSecurityHeaders', () => {
         expect(r.xFrameOptions).toBe('SAMEORIGIN');
     });
 
+    it('a partial directives object keeps the other defaults; [] removes one', () => {
+        const partial = buildSecurityHeaders(
+            { web: { csp: { directives: { 'img-src': ["'self'", 'https://i.example'] } } } },
+            { env },
+        );
+        expect(partial.csp.value).toContain("object-src 'none'");
+        expect(partial.csp.value).toContain("img-src 'self' https://i.example");
+        expect(partial.xFrameOptions).toBe('SAMEORIGIN');
+        const removed = buildSecurityHeaders(
+            { web: { csp: { directives: { 'frame-src': [] } } } },
+            { env },
+        );
+        expect(removed.csp.value).not.toContain('frame-src');
+    });
+
     it('explicit defaults produce the same header', () => {
         const r = buildSecurityHeaders({ web: { csp: getDefaultCsp() } }, { env });
         expect(r.csp.value).toBe(LEGACY);
