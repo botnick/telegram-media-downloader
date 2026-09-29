@@ -1,3 +1,9 @@
+---
+title: "API"
+description: "HTTP and WebSocket API reference for the Telegram Media Downloader dashboard."
+nav_order: 7
+---
+
 # REST API
 
 Base URL: `http://localhost:3000` (or whatever you bound the dashboard to).

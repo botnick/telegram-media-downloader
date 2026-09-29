@@ -1,3 +1,9 @@
+---
+title: "AI: faces and NSFW"
+description: "Face clustering and NSFW review sidecars: local, Docker profiles or an external GPU host."
+nav_order: 4
+---
+
 # AI subsystem
 
 Face detection + face clustering — backed by a small Python sidecar
@@ -145,15 +151,14 @@ pip install -e faces-service/[openvino]    # Intel OpenVINO
 ### Docker / DSM / Synology GPU variants
 
 The compose file ships three mutually-exclusive profiles for the
-faces sidecar — pick the one that matches your host hardware:
+faces sidecar — pick the one that matches your host hardware (Intel OpenVINO has no Docker image; use the pip install below):
 
 | Profile | Image tag | Hardware | Compose command |
 |---|---|---|---|
 | `faces` | `ghcr.io/botnick/tgdl-faces:latest` | CPU only (default; works everywhere) | `docker compose --profile faces up -d` |
 | `faces-cuda` | `ghcr.io/botnick/tgdl-faces:cuda-latest` | NVIDIA + nvidia-container-toolkit | `docker compose --profile faces-cuda up -d` |
-| `faces-openvino` | `ghcr.io/botnick/tgdl-faces:openvino-latest` | Intel iGPU/dGPU/NPU via /dev/dri | `docker compose --profile faces-openvino up -d` |
 
-All three bind to `container_name: tgdl-faces` and port 8011 inside
+Both bind to `container_name: tgdl-faces` and port 8011 inside
 the compose network so the main app's `FACES_SERVICE_URL=http://
 tgdl-faces:8011` resolves to whichever variant you bring up. Compose
 refuses to start more than one at a time.

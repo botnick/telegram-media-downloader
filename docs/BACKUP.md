@@ -1,3 +1,9 @@
+---
+title: "Backup"
+description: "Back up the downloaded Telegram library to S3, SFTP, FTP, Google Drive, Dropbox or a local mount, with optional encryption."
+nav_order: 5
+---
+
 # Backup destinations
 
 Mirror your downloaded library to off-host storage so a wiped disk, a

@@ -1,3 +1,9 @@
+---
+title: "Cluster"
+description: "Pair several Telegram Media Downloader instances into one federated library with failover and cluster-wide search."
+nav_order: 6
+---
+
 # Cluster mode
 
 > **v2.10** — per-peer tokens, real-time WS push, LAN auto-discovery,

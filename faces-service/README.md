@@ -43,7 +43,7 @@ Matches the seekbar health response shape:
 {
   "ok": true,
   "service": "faces-service",
-  "version": "0.1.0",
+  "version": "0.5.1",
   "platform": "linux",
   "arch": "x86_64",
   "ready": true,

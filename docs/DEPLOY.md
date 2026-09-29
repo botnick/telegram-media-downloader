@@ -1,3 +1,9 @@
+---
+title: "Deploy"
+description: "Install Telegram Media Downloader with Docker or on bare metal: reverse proxies, updates, split disks, sidecars on another machine, systemd and PM2."
+nav_order: 2
+---
+
 # Deployment
 
 The dashboard listens on `:3000` by default. Don't expose it directly to the public internet — put it behind a reverse proxy with TLS.
@@ -69,7 +75,7 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 
 ## Updating
 
-See [Updating in the README](../README.md#updating). In short: **Settings → Maintenance → Install update**, or `docker compose pull && docker compose up -d`. New versions need no config changes; migrations run automatically.
+See [Updating in the README](https://github.com/botnick/telegram-media-downloader/blob/main/README.md#updating). In short: **Settings → Maintenance → Install update**, or `docker compose pull && docker compose up -d`. New versions need no config changes; migrations run automatically.
 
 ### Install update button
 

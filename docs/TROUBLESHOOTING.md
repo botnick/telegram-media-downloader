@@ -1,4 +1,12 @@
+---
+title: "Troubleshooting"
+description: "Common Telegram Media Downloader errors and how to fix them, starting with npm run doctor."
+nav_order: 3
+---
+
 # Troubleshooting
+
+Fixes for the problems people hit most often when installing, running and updating Telegram Media Downloader.
 
 ## First stop: `npm run doctor`
 

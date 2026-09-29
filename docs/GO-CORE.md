@@ -1,6 +1,12 @@
+---
+title: "tgdl-core (Go engine)"
+description: "What tgdl-core does, how it is installed and supervised, and how it serves media as the front server."
+nav_order: 9
+---
+
 # Go core (`tgdl-core`)
 
-`tgdl-core` (source: [`core-service/`](../core-service/README.md)) is the
+`tgdl-core` (source: [`core-service/`](https://github.com/botnick/telegram-media-downloader/blob/main/core-service/README.md)) is the
 app's Go engine. The Node app starts it, talks to it over HTTP on
 `127.0.0.1`, and relies on it for the work that used to block or burden
 Node's single thread:
@@ -66,7 +72,7 @@ walks, the DBSCAN worker) is removed; Node keeps thin client calls.
 
 Lookup order, env overrides (`TGDL_CORE_BIN`, `TGDL_CORE_RELEASE_URL`,
 `TGDL_CORE_ALLOW_ROOTS`, `TGDL_CORE_SKIP_INSTALL`): see
-[core-service/README.md](../core-service/README.md#how-the-app-finds-it).
+[core-service/README.md](https://github.com/botnick/telegram-media-downloader/blob/main/core-service/README.md#how-the-app-finds-it).
 
 ## When it can't run
 
@@ -165,10 +171,10 @@ NTFS on NVMe, warm cache, Node 22. Every pair produced identical results.
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Process lifecycle, packaging; SHA-256 hashing (shadow parity) | **done** — v2.28.0 |
-| 2 | tgdl-core required and the only implementation: hashing, integrity stat sweep, folder walks (re-index, disk usage), face-clustering DBSCAN; installed by `npm install`; parity proven by tests | **this release** (tgdl-core 0.2.0) |
+| 2 | tgdl-core required and the only implementation: hashing, integrity stat sweep, folder walks (re-index, disk usage), face-clustering DBSCAN; installed by `npm install`; parity proven by tests | **done** — tgdl-core 0.2.0 |
 | 3 | MTProto byte plane — Go streams file bytes from Telegram to disk; Node keeps sessions, the queue and the DB | planned |
 | 4 | Backup providers (S3, SFTP, FTP, Google Drive, Dropbox, local) as Go uploaders | planned |
-| 5 | Go front server on `PORT`: `/files` and Range streaming, `/photos`, thumbnail cache hits; everything else proxied to Node. Node's own file serving is removed | **this release** (tgdl-core 0.4.0 — see [Front server](#front-server-tgdl-core-front)) |
+| 5 | Go front server on `PORT`: `/files` and Range streaming, `/photos`, thumbnail cache hits; everything else proxied to Node. Node's own file serving is removed | **done** — tgdl-core 0.4.0 (see [Front server](#front-server-tgdl-core-front)) |
 | 6 | Engine (monitor / downloader orchestration) in Go | gated on the earlier phases in production |
 
 Each later phase follows the same rule as phase 2: Node code is removed

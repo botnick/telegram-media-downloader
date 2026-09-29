@@ -9,12 +9,14 @@
 <h1 align="center">Telegram Media Downloader</h1>
 
 <p align="center">
-  Self-hosted tool to download photos, videos, documents, voice messages, GIFs, stickers, and Stories<br>
-  from any Telegram channel, group, or DM — including private ones. No bots, no quotas, no cloud.
+  <b>A self-hosted Telegram media downloader with a web dashboard.</b><br>
+  Download Telegram channel and group media, or back up any chat you belong to — photos, videos, documents,<br>
+  voice messages, GIFs, stickers and Stories — with your own account. Runs in Docker or on Node.js. No bot, no cloud.
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#faq">FAQ</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#dashboard-preview">Dashboard</a> &bull;
   <a href="docs/CLUSTER.md">Cluster</a> &bull;
@@ -87,7 +89,9 @@
 
 ## Quick Start
 
-### Docker (recommended)
+### Docker (recommended, about 60 seconds)
+
+Needs Docker with Compose and a Telegram `apiId` / `apiHash` from [my.telegram.org](https://my.telegram.org).
 
 ```bash
 git clone https://github.com/botnick/telegram-media-downloader.git
@@ -147,7 +151,7 @@ npm ci && npm start
 
 | Feature | Backend | Description |
 |---------|---------|-------------|
-| **Face clustering** | Python sidecar (insightface + DBSCAN) | Detect and group faces from photos and videos. GPU-accelerated. Local or [remote sidecar](#external-ai-sidecar). |
+| **Face clustering** | Python sidecar (insightface) + tgdl-core (DBSCAN) | Detect and group faces from photos and videos. GPU-accelerated. Local or [remote sidecar](#external-ai-sidecar). |
 | **Seekbar previews** | Go sidecar (ffmpeg) | Netflix-style hover thumbnails on the video scrub bar. Local or [remote sidecar](#external-ai-sidecar). |
 | **NSFW detection** | HuggingFace WASM or remote sidecar | Local CPU classifier with review UI and whitelist, or offload to a [remote GPU](#external-ai-sidecar) |
 | **Duplicate finder** | SHA-256 + GROUP BY | Full-library scan with bulk delete |
@@ -205,13 +209,14 @@ flowchart LR
     core -- reads --> fs
 ```
 
-The app is a Node.js server plus optional companions:
-- **faces-service** (Python): face detection.
+The app is a Node.js server (Express, SQLite, gramJS) plus **tgdl-core**, a required Go binary, and three optional sidecars.
+
+- **tgdl-core** (Go, required): hashing, integrity checks, folder walks and face clustering (DBSCAN). It is also the front server on `PORT`: it serves every media byte (`/files`, photos, thumbnails, Range requests) and proxies everything else to Node. `npm install` downloads it (checksum-verified) or builds it; the Docker image includes it.
+- **faces-service** (Python): face detection and embeddings.
 - **nsfw-service** (Python): NSFW classification.
 - **seekbar-service** (Go): video hover previews.
-- **tgdl-core** (Go): moves heavy file work (hashing, scans) off Node's event loop.
 
-faces, nsfw and seekbar can also run on another machine (see [External AI Sidecar](#external-ai-sidecar)). Whenever a companion is missing or fails, the app falls back to its built-in code. See [docs/GO-CORE.md](docs/GO-CORE.md) for the Go roadmap.
+Each sidecar runs locally or as an External one on another machine (see [External AI Sidecar](#external-ai-sidecar)); when one is missing or fails, its feature falls back to the built-in code or stays off. Details: [Architecture](docs/ARCHITECTURE.md), [tgdl-core](docs/GO-CORE.md) and the [Go migration plan](docs/GO-MIGRATION.md).
 
 ---
 
@@ -254,7 +259,7 @@ All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TGDL_PORT` | `3000` | Dashboard port |
+| `TGDL_PORT` | `3000` | Dashboard port (host side in the compose file) |
 | `TGDL_DATA_DIR` | `./data` | Base data directory |
 | `TGDL_DOWNLOADS_DIR` | _(unset)_ | Split downloads onto separate disk |
 | `TGDL_DEBUG` | _(unset)_ | `1` = verbose logging |
@@ -264,7 +269,7 @@ All config lives in SQLite (`kv['config']`), editable from the dashboard. Legacy
 | `TGDL_NSFW_SIDECAR_URL` | _(unset)_ | External NSFW classifier URL |
 | `SEEKBAR_SIDECAR_URL` | _(unset)_ | Seekbar sidecar URL |
 
-Full env-var reference (27+ knobs) in [docs/AI.md](docs/AI.md).
+Full env-var reference in [docs/DEPLOY.md](docs/DEPLOY.md#environment-variables) and [docs/AI.md](docs/AI.md).
 
 </details>
 
@@ -279,10 +284,10 @@ New versions need no config changes; migrations run automatically. Existing user
 
 ---
 
-## Docker Compose Profiles
+## Docker Compose profiles
 
 ```bash
-# Base (dashboard + engine)
+# Base (dashboard, tgdl-core and the idle update sidecar)
 docker compose up -d
 
 # + AI face clustering (CPU)
@@ -290,7 +295,6 @@ docker compose --profile faces up -d
 
 # + AI face clustering (NVIDIA GPU)
 docker compose --profile faces-cuda up -d
-
 ```
 
 ---
@@ -329,7 +333,7 @@ Expose via Cloudflare Tunnel or any reverse proxy, then paste the URLs in **Main
 | `npm run history` | Bulk backfill from terminal |
 | `npm run doctor` | Diagnostics (Node, SQLite, ffmpeg, sidecars) |
 | `npm run auth` | Reset dashboard password |
-| `npm test` | Run 5700+ vitest specs |
+| `npm test` | Run the vitest suite |
 
 ---
 
@@ -351,53 +355,45 @@ data/
 
 ## FAQ
 
-<details>
-<summary><b>How is this different from a Telegram bot?</b></summary>
+### How do I download all media from a Telegram channel?
 
-Bots use the Bot API with file-size caps (50 MB upload / 4 GB download). This tool uses the **User API (MTProto)** — it authenticates as your account and can access everything you see on your phone, including private channels.
-</details>
+Add your Telegram account (Settings > Accounts), open **Chats**, pick the channel and start a **backfill**. You can limit it by date or message count. The dashboard then shows every file in the queue with progress, speed and ETA. To keep the archive current, enable the realtime monitor for that chat.
 
-<details>
-<summary><b>Will my account get banned?</b></summary>
+### Can it download from private channels and groups?
 
-Built-in rate limiting (default 15 req/min) and FloodWait handling minimize risk. Don't lower limits aggressively or run dozens of accounts on one IP.
-</details>
+Yes, if the Telegram account you sign in with is a member. The tool acts as that account over the Telegram user API (MTProto), so it reads what you can read in the Telegram app.
 
-<details>
-<summary><b>Can I download from private channels?</b></summary>
+### How is this different from a Telegram bot?
 
-Yes. If your Telegram account is a member, this tool can download from it.
-</details>
+Bots use the Bot API, which limits file sizes and only sees chats the bot was added to. This tool logs in as your user account through MTProto, so it has no bot-style file-size cap and sees your own chats.
 
-<details>
-<summary><b>Can I download Stories?</b></summary>
+### Is my Telegram session safe?
 
-Yes. Click the camera icon, enter a username, pick which Stories to save.
-</details>
+Sessions are encrypted at rest (AES-256-GCM) in `data/sessions/`, with the key in `data/secret.key`. Nothing is sent to a cloud service run by this project. The dashboard fails closed: without a password nobody gets in. Put it behind HTTPS if you expose it, and back up `secret.key` (losing it makes saved sessions unrecoverable). See [SECURITY.md](SECURITY.md).
 
-<details>
-<summary><b>Can I capture self-destructing media?</b></summary>
+### Will my account get banned?
 
-Yes. TTL messages are detected and front-loaded in the queue before they expire.
-</details>
+Built-in rate limiting (default 15 requests per minute) and FloodWait handling keep traffic modest. Avoid lowering the limits aggressively or running many accounts from one IP. No tool can promise zero risk.
 
-<details>
-<summary><b>How do I download a single message?</b></summary>
+### Does it run on a Raspberry Pi or a Synology NAS?
 
-Paste the `t.me/...` URL into the dashboard's link drawer. Supports channel, group, forum-topic, and private links.
-</details>
+Yes on Synology (the repo ships `docker-compose.synology.yml`). The published Docker image targets linux/amd64; on ARM boards such as a Raspberry Pi, run it from source with Node.js 22+ (`npm ci && npm start`), because tgdl-core has ARMv7 and arm64 Linux builds that `npm install` fetches for you. See [Deploy](docs/DEPLOY.md) for Synology notes and low-power tuning.
 
-<details>
-<summary><b>How does auto-update work?</b></summary>
+### Can I download Stories or self-destructing media?
 
-Idle watchtower sidecar (in the default compose file). Token is auto-generated (set `WATCHTOWER_HTTP_API_TOKEN` in `.env` to override). DB is snapshotted before every update. The dashboard never touches the Docker socket.
-</details>
+Yes to both. Stories are fetched from the Stories button by username. Self-destructing (TTL) media is detected and moved to the front of the queue before it expires.
 
-<details>
-<summary><b>What platforms does it run on?</b></summary>
+### How do I download a single message or a t.me link?
 
-Windows, Linux, macOS, Raspberry Pi, Synology NAS, and Docker (amd64 + arm64).
-</details>
+Paste the `t.me/...` link into the dashboard's link drawer. Channel, group, forum-topic and private links are supported.
+
+### How do I update it?
+
+In Docker, use **Settings > Maintenance > Install update** or run `docker compose pull && docker compose up -d`. See [Updating](#updating).
+
+### Where are the files stored, and can I back them up?
+
+Downloads live under `data/downloads/<chat>/` (or `TGDL_DOWNLOADS_DIR` on another disk). Optional backups go to S3-compatible storage, SFTP, Google Drive, Dropbox or a local mount, with client-side encryption. See [Backup](docs/BACKUP.md).
 
 ---
 
@@ -405,6 +401,20 @@ Windows, Linux, macOS, Raspberry Pi, Synology NAS, and Docker (amd64 + arm64).
 
 | Document | Description |
 |----------|-------------|
+| [Deploy](docs/DEPLOY.md) | Docker, bare metal, reverse proxies (Caddy, nginx, Traefik), env vars |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
+| [Architecture](docs/ARCHITECTURE.md) | How the pieces fit together |
+| [tgdl-core](docs/GO-CORE.md) | The Go engine and front server |
+| [Go migration plan](docs/GO-MIGRATION.md) | Roadmap for a pure-Go backend |
+| [AI: faces and NSFW](docs/AI.md) | Sidecars, GPU, external hosts |
+| [Backup](docs/BACKUP.md) | S3, SFTP, FTP, Google Drive, Dropbox, local |
+| [Cluster mode](docs/CLUSTER.md) | Multi-machine federated library |
+| [API reference](docs/API.md) | HTTP + WebSocket endpoints |
+| [Changelog](CHANGELOG.md) | Release notes |
+
+The same docs are published as a searchable site from `/docs` via GitHub Pages, and [`llms.txt`](llms.txt) gives AI assistants a curated index.
+
+----------|-------------|
 | [Architecture](docs/ARCHITECTURE.md) | System design deep-dive |
 | [API Reference](docs/API.md) | HTTP + WebSocket endpoints |
 | [Cluster Mode](docs/CLUSTER.md) | Multi-machine federated library |
@@ -419,8 +429,10 @@ Windows, Linux, macOS, Raspberry Pi, Synology NAS, and Docker (amd64 + arm64).
 
 ```bash
 npm ci
-npm run lint    # biome lint
-npm test        # 5700+ vitest specs
+npm run build:core     # optional: build tgdl-core from source (needs Go)
+npm run lint           # biome lint
+npm test               # vitest specs
+npm run test:contract  # API contract suite
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
@@ -433,8 +445,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
 
 Not affiliated with Telegram. Uses the public MTProto User API via [GramJS](https://github.com/gram-js/gramjs).
 
----
-
-<p align="center">
-  <b>Keywords:</b> Telegram downloader, Telegram channel scraper, Telegram media backup, download Telegram videos, download Telegram photos, Telegram archive tool, self-hosted Telegram, Telegram bulk download, Telegram private channel downloader, t.me link downloader, Telegram TTL downloader, Telegram Stories downloader, Telegram NSFW filter, Telegram cluster mode, Telegram face recognition, Telegram seekbar preview, Docker Telegram downloader, Raspberry Pi Telegram, NAS Telegram downloader, open-source Telegram tool
-</p>

@@ -9,4 +9,4 @@ pre-commit:
     jobs:
         - name: biome-check
           glob: '*.{js,jsx,ts,tsx,mjs,cjs,json,jsonc,css,html}'
-          run: bun x biome check --write {staged_files} && git add {staged_files}
+          run: bun x biome check --write --no-errors-on-unmatched {staged_files} && git add {staged_files}
