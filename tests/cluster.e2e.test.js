@@ -79,7 +79,6 @@ async function _spawnInstance(port, peerId) {
         PORT: String(port),
         TGDL_DATA_DIR: dir,
         NODE_ENV: 'test',
-        TGDL_DISABLE_AUTOSTART: '1',
     };
     const child = spawn(process.execPath, [SERVER_PATH], {
         env,

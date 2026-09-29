@@ -94,7 +94,6 @@ beforeAll(async () => {
             PORT: String(port),
             TGDL_DATA_DIR: DATA,
             NODE_ENV: 'test',
-            TGDL_DISABLE_AUTOSTART: '1',
             TGDL_GO_CORE: 'on',
             TGDL_CORE_BIN: bin,
         },
