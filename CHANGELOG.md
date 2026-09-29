@@ -4,9 +4,15 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+## [2.32.0] — 2026-09-30
+
+tgdl-core serves every media byte; Node no longer serves files itself.
+
 ### Changed
 - **tgdl-core 0.4.0 serves every media byte; Node's own file serving is gone.** tgdl-core now also answers what it used to hand back to Node: `412` (`If-Match` / `If-Unmodified-Since`, which used to be a 500), `416`, ranges, symlinks inside the allowed roots, a missing file (`404`) and a session in its renewal window. It never writes the database: it tells Node afterwards (a session to extend, a missing file to prune and broadcast). A media response in the renewal window carries no `Set-Cookie`; the next dashboard request renews the cookie. Inline HEIC stays a Node transform (sharp) that tgdl-core proxies. Removed from Node: the local `/files` branch, `/photos` serving, thumbnail cache-hit fast path and the `X-Tgdl-Accel` hand-back. A dotfile or a directory under `/files` is now a plain `404 File not found`.
 
+### Service worker
+- `VERSION = 'v2320'`
 ## [2.31.0] — 2026-09-30
 
 Videos, photos and thumbnails are served by tgdl-core (Go) and keep playing while the server is busy; one-click updates work out of the box on Docker; cluster peers must be paired.
