@@ -3,7 +3,7 @@
  *
  * The dashboard never touches `/var/run/docker.sock` — that would make
  * an RCE in the web UI equivalent to root on the host. Instead, the
- * official `containrrr/watchtower` image runs as a sidecar container
+ * `nickfedor/watchtower` image (maintained fork of containrrr/watchtower) runs as a sidecar container
  * with the socket and an authenticated HTTP API; this module is a thin
  * client that runs the following ordered pre-flight + handoff:
  *
@@ -446,7 +446,7 @@ export async function runAutoUpdate(opts = {}) {
     if (!status.available) {
         const why = !status.inDocker
             ? 'Auto-update only works inside Docker (the dashboard process is not running in a container).'
-            : 'Watchtower sidecar is not configured. Enable the `auto-update` profile in docker-compose.yml and set WATCHTOWER_HTTP_API_TOKEN in .env.';
+            : 'Watchtower sidecar is not configured. Use the bundled docker-compose.yml (it includes the watchtower service) and set WATCHTOWER_HTTP_API_TOKEN in .env.';
         const err = new Error(why);
         err.code = 'AUTO_UPDATE_UNAVAILABLE';
         throw err;
@@ -461,7 +461,7 @@ export async function runAutoUpdate(opts = {}) {
         const code = ping.code || 'WATCHTOWER_UNREACHABLE';
         const hint =
             code === 'WATCHTOWER_UNAUTHENTICATED'
-                ? 'Re-generate WATCHTOWER_HTTP_API_TOKEN in .env (it must match the watchtower sidecar) and restart the auto-update profile.'
+                ? 'Re-generate WATCHTOWER_HTTP_API_TOKEN in .env (it must match the watchtower sidecar) and recreate the watchtower service.'
                 : 'The sidecar may be down or the WATCHTOWER_URL / token is wrong.';
         const err = new Error(`Watchtower preflight failed — ${ping.msg}. ${hint}`);
         err.code = code;

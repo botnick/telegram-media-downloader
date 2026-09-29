@@ -102,17 +102,19 @@ services:
         max-size: "1m"
         max-file: "3"
 
+  # Idle updater for the dashboard's Install update button (API-only, no
+  # polling, no ports). nickfedor fork: the archived containrrr image fails
+  # on Docker Engine 29+ ("client version 1.25 is too old").
   watchtower:
-    image: containrrr/watchtower:1.7.1
+    image: nickfedor/watchtower:1.22
     container_name: telegram-downloader-updater
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - WATCHTOWER_HTTP_API=true
-      - WATCHTOWER_HTTP_API_UPDATE=true
+      - WATCHTOWER_HTTP_API_ENDPOINTS=update
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=false
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=${WATCHTOWER_HTTP_API_PERIODIC_POLLS:-false}
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_INCLUDE_RESTARTING=true

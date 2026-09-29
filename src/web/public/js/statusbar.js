@@ -346,7 +346,7 @@ export async function _openUpdateChooser(latest, releaseUrl) {
                            ? i18nT('update.not_docker', 'Auto-update only works inside Docker.')
                            : i18nT(
                                  'update.no_watchtower',
-                                 'Watchtower sidecar is not configured. See docker-compose.yml comments to enable the auto-update profile.',
+                                 'Watchtower sidecar is not configured. Set WATCHTOWER_HTTP_API_TOKEN in .env and run docker compose up -d.',
                              )
 }">
               <i class="ri-download-cloud-2-line"></i><span>${i18nT('update.install_disabled', 'Install (unavailable)')}</span>
@@ -362,7 +362,7 @@ export async function _openUpdateChooser(latest, releaseUrl) {
                       )
                     : i18nT(
                           'update.help_no_watchtower_html',
-                          'To enable: <code>docker compose --profile auto-update up -d</code> after setting <code>WATCHTOWER_HTTP_API_TOKEN</code> in <code>.env</code>. See <code>docker-compose.yml</code> for the full setup.',
+                          'To enable: <code>docker compose up -d</code> after setting <code>WATCHTOWER_HTTP_API_TOKEN</code> in <code>.env</code>. See <code>docker-compose.yml</code> for the full setup.',
                       )
             }
         </div>`

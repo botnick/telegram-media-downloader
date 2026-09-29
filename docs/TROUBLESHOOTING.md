@@ -110,7 +110,7 @@ The model classifier is an optional feature. Run `npm install @huggingface/trans
 
 ## "Install update" button is greyed out
 
-Two reasons: either the dashboard isn't running inside Docker (`/.dockerenv` heuristic), or the watchtower sidecar isn't reachable. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` and start with `docker compose --profile auto-update up -d`. The button hover-tip explains which check failed.
+Two reasons: either the dashboard isn't running inside Docker (`/.dockerenv` heuristic), or the watchtower sidecar isn't reachable. Set `WATCHTOWER_HTTP_API_TOKEN` in `.env` and run `docker compose up -d`. The button hover-tip explains which check failed.
 
 ## Share link returns "Share link is not valid"
 
