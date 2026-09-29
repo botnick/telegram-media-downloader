@@ -1,3 +1,9 @@
+---
+title: "Audit"
+description: "Historical security and reliability audit notes, frozen at the v2.0 release."
+nav_order: 11
+---
+
 # Project Audit — Telegram Media Downloader
 
 > **Last updated:** 2026-04-26 (audit frozen at the v1.x → v2.0 cut)
@@ -275,4 +281,4 @@ A 1.5-day **M0 milestone** can land all 6 above; full hardening + feature parity
 
 **All Critical and High findings are resolved.** A handful of Medium/Low entries are still open as warnings (see `npm run lint`); they are tracked as warnings rather than errors so contributors can land changes without chasing pre-existing style debt.
 
-For the per-feature surface that landed in v2.0, see [`CHANGELOG.md`](../CHANGELOG.md).
+For the per-feature surface that landed in v2.0, see [`CHANGELOG.md`](https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md).

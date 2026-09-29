@@ -1,0 +1,33 @@
+# Telegram Media Downloader
+
+> Self-hosted Telegram media downloader with a web dashboard. It downloads and backs up photos, videos, documents, voice messages, GIFs, stickers and Stories from Telegram channels, groups and DMs (including private ones you belong to) using your own account over MTProto. Runs in Docker or on Node.js; MIT licensed.
+
+The app is Node.js (Express, SQLite, gramJS) plus tgdl-core, a required Go binary that does hashing, integrity checks, folder walks, face clustering and serves every media byte as the front server on PORT. Optional sidecars, each runnable locally or on another machine: faces-service (Python, face clustering), nsfw-service (Python, NSFW review), seekbar-service (Go, video hover previews).
+
+## Start here
+
+- [README](https://github.com/botnick/telegram-media-downloader/blob/main/README.md): features, Docker quick start, updating, FAQ
+- [Deploy](https://github.com/botnick/telegram-media-downloader/blob/main/docs/DEPLOY.md): Docker, bare metal, reverse proxies, environment variables
+- [Troubleshooting](https://github.com/botnick/telegram-media-downloader/blob/main/docs/TROUBLESHOOTING.md): common errors and fixes
+
+## Docs
+
+- [Architecture](https://github.com/botnick/telegram-media-downloader/blob/main/docs/ARCHITECTURE.md): how the pieces fit together
+- [tgdl-core (Go engine)](https://github.com/botnick/telegram-media-downloader/blob/main/docs/GO-CORE.md): what it does and how it is supervised
+- [Go migration plan](https://github.com/botnick/telegram-media-downloader/blob/main/docs/GO-MIGRATION.md): roadmap for a pure-Go backend
+- [AI: faces and NSFW](https://github.com/botnick/telegram-media-downloader/blob/main/docs/AI.md): sidecars, GPU, external hosts
+- [Backup](https://github.com/botnick/telegram-media-downloader/blob/main/docs/BACKUP.md): S3, SFTP, FTP, Google Drive, Dropbox, local
+- [Cluster](https://github.com/botnick/telegram-media-downloader/blob/main/docs/CLUSTER.md): federate several instances
+- [API](https://github.com/botnick/telegram-media-downloader/blob/main/docs/API.md): HTTP and WebSocket reference
+
+## Project
+
+- [Changelog](https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md)
+- [Contributing](https://github.com/botnick/telegram-media-downloader/blob/main/CONTRIBUTING.md)
+- [Security policy](https://github.com/botnick/telegram-media-downloader/blob/main/SECURITY.md)
+
+## Optional
+
+- [Releases](https://github.com/botnick/telegram-media-downloader/releases)
+- [Docker image](https://github.com/botnick/telegram-media-downloader/pkgs/container/telegram-media-downloader)
+- [Audit notes](https://github.com/botnick/telegram-media-downloader/blob/main/docs/AUDIT.md)

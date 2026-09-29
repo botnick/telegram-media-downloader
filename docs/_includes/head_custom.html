@@ -1,0 +1,16 @@
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": {{ site.title | jsonify }},
+  "description": {{ site.description | strip | jsonify }},
+  "applicationCategory": "MultimediaApplication",
+  "operatingSystem": "Linux, Windows, macOS, Docker",
+  "license": {{ site.software.license | jsonify }},
+  "downloadUrl": {{ site.software.repository | append: "/releases/latest" | jsonify }},
+  "softwareVersion": {{ site.software.version | jsonify }},
+  "codeRepository": {{ site.software.repository | jsonify }},
+  "url": {{ site.url | append: site.baseurl | jsonify }},
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>

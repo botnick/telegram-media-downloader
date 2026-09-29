@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Documentation
+- **Docs refresh.** README has a FAQ and a clearer overview; every guide has front matter and an intro line, and stale flags (the removed `faces-openvino` profile, `TGDL_GO_CORE` and `TGDL_GO_FEATURES`) are gone. The docs are published with GitHub Pages from `/docs`; `llms.txt` (root and `docs/`) indexes them for AI assistants. CONTRIBUTING and SECURITY list the Go toolchain (`npm run build:core`), the contract suite (`npm run test:contract`) and the supported version.
+
 ## [2.32.0] — 2026-09-30
 
 tgdl-core serves every media byte; Node no longer serves files itself.

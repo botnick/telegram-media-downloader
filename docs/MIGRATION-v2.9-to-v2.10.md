@@ -1,3 +1,9 @@
+---
+title: "Migrating v2.9 to v2.10"
+description: "How to re-pair cluster peers when upgrading from v2.9 to v2.10."
+nav_order: 12
+---
+
 # Migrating cluster pairings from v2.9 to v2.10
 
 v2.10 replaces the global "shared cluster token" model with **per-peer

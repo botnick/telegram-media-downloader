@@ -1,4 +1,13 @@
+---
+title: "Documentation"
+description: "Documentation for Telegram Media Downloader: a self-hosted Telegram channel and group media downloader with a web dashboard, Docker images and an optional Go engine."
+nav_order: 1
+permalink: /docs/
+---
+
 # Documentation
+
+Guides for [Telegram Media Downloader](https://github.com/botnick/telegram-media-downloader), a self-hosted tool that downloads and archives Telegram channel, group and DM media through a web dashboard. New here? Start with the [Docker quick start](https://github.com/botnick/telegram-media-downloader#quick-start) and [DEPLOY.md](DEPLOY.md).
 
 | Guide | What it covers |
 |---|---|
@@ -9,12 +18,12 @@
 | [CLUSTER.md](CLUSTER.md) | Pairing several instances into a federated library |
 | [API.md](API.md) | HTTP + WebSocket API reference |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How the pieces fit together — for contributors |
-| [GO-CORE.md](GO-CORE.md) | `tgdl-core`, the app's Go engine: what it does, how it is installed and supervised, how parity is proven, roadmap |
+| [GO-CORE.md](GO-CORE.md) | `tgdl-core`, the app's required Go binary: hashing, integrity checks, folder walks, face clustering and the front server that serves every media byte |
 | [GO-MIGRATION.md](GO-MIGRATION.md) | The plan for a pure-Go backend: waves, the API contract gate, data-compatibility rules |
 | [AUDIT.md](AUDIT.md) | Security / reliability audit notes |
 | [MIGRATION-v2.9-to-v2.10.md](MIGRATION-v2.9-to-v2.10.md) | Upgrade notes for that release |
 
-Release notes: [CHANGELOG.md](../CHANGELOG.md) (also shown in the dashboard — click the version in the status bar) and [GitHub Releases](https://github.com/botnick/telegram-media-downloader/releases).
+Release notes: [CHANGELOG.md](https://github.com/botnick/telegram-media-downloader/blob/main/CHANGELOG.md) (also shown in the dashboard — click the version in the status bar) and [GitHub Releases](https://github.com/botnick/telegram-media-downloader/releases).
 
 ## Components and releases
 

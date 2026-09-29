@@ -1,0 +1,38 @@
+title: Telegram Media Downloader
+description: >-
+  Self-hosted Telegram media downloader with a web dashboard. Download and back
+  up photos, videos and files from Telegram channels, groups and DMs. Docker,
+  PWA, dedup, face clustering, NSFW review, cluster mode.
+url: https://botnick.github.io
+baseurl: /telegram-media-downloader
+lang: en
+
+remote_theme: just-the-docs/just-the-docs
+color_scheme: dark
+search_enabled: true
+heading_anchors: true
+aux_links:
+  GitHub: https://github.com/botnick/telegram-media-downloader
+  Releases: https://github.com/botnick/telegram-media-downloader/releases
+gh_edit_link: true
+gh_edit_link_text: Edit this page on GitHub
+gh_edit_repository: https://github.com/botnick/telegram-media-downloader
+gh_edit_branch: main
+gh_edit_source: docs
+gh_edit_view_mode: tree
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-remote-theme
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: false
+
+# Read by _includes/head_custom.html (JSON-LD). Bump on each app release.
+software:
+  version: 2.32.0
+  repository: https://github.com/botnick/telegram-media-downloader
+  license: https://github.com/botnick/telegram-media-downloader/blob/main/LICENSE

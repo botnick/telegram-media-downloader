@@ -1,3 +1,9 @@
+---
+title: "Go migration plan"
+description: "The plan for moving the backend from Node.js to Go without users noticing: waves, the API contract gate and data-compatibility rules."
+nav_order: 10
+---
+
 # Moving the backend to pure Go
 
 The backend is moving from Node.js to Go, domain by domain, behind a Go
@@ -17,7 +23,7 @@ domains, and the gate every move has to pass.
 ## The gate: the API contract suite
 
 `tests/contract/` is a black-box suite recorded from today's Node server
-(see [its README](../tests/contract/README.md)). It starts the server under
+(see [its README](https://github.com/botnick/telegram-media-downloader/blob/main/tests/contract/README.md)). It starts the server under
 test on a fresh deterministic seed, talks to it over HTTP and WebSocket
 only, normalises the answers and compares them with the golden snapshots in
 `tests/contract/__snapshots__/`.

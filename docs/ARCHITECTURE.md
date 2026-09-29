@@ -1,3 +1,9 @@
+---
+title: "Architecture"
+description: "How the Node.js app, tgdl-core (Go) and the sidecars fit together."
+nav_order: 8
+---
+
 # Architecture
 
 Two top-level entry points share state through `data/`:
