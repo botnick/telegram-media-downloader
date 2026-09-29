@@ -914,26 +914,40 @@ export class DownloadManager extends EventEmitter {
                 );
             }
 
+            // A stale media location (expired/invalid file reference, or
+            // LOCATION_INVALID after the media changed) only heals by
+            // re-fetching the message; retrying the old one fails the same way.
             if (
-                error.message?.includes('FILE_REFERENCE_EXPIRED') ||
-                error.errorMessage === 'FILE_REFERENCE_EXPIRED'
+                /FILE_REFERENCE_(EXPIRED|INVALID)|LOCATION_INVALID/.test(
+                    `${error.errorMessage || ''} ${error.message || ''}`,
+                )
             ) {
                 if (attempt < maxRetries) {
+                    let refreshed = false;
+                    let fresh;
                     try {
                         const refreshClient = job.client || this.client;
                         const messages = await refreshClient.getMessages(job.message.peerId, {
                             ids: [job.message.id],
                         });
-                        if (messages && messages.length > 0) {
-                            job.message = messages[0];
-                            return this.download(job, attempt + 1);
-                        }
+                        fresh = messages?.[0];
+                        refreshed = true;
                     } catch (e) {
                         if (e?.accessError) throw e;
                         // Refreshing the file reference is where a lost chat
                         // usually shows up (CHANNEL_PRIVATE on getMessages).
                         const cls = classifyChatError(job.groupId, e);
                         if (cls.definite) throw this._accessFailure(job, cls);
+                    }
+                    if (fresh?.media) {
+                        job.message = fresh;
+                        return this.download(job, attempt + 1);
+                    }
+                    // The message or its media is gone — no retry can fetch it.
+                    if (refreshed) {
+                        throw new Error(
+                            `Media no longer available on Telegram (${error.errorMessage || error.message})`,
+                        );
                     }
                 }
             }

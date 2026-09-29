@@ -421,6 +421,21 @@ describe('downloader', () => {
         expect(client.getMessages).toHaveBeenCalledTimes(1);
     });
 
+    it('LOCATION_INVALID on media that was deleted fails once, without blind retries', async () => {
+        const client = {
+            downloadMedia: vi.fn(async () => {
+                throw rpc('LOCATION_INVALID');
+            }),
+            getMessages: vi.fn(async () => [undefined]),
+        };
+        const dm = new DownloadManager(client, { download: { retries: 5 } }, null);
+        await expect(
+            dm.download(job(-100905, client, { message: { id: 1, photo: {}, peerId: {} } })),
+        ).rejects.toThrow(/no longer available/);
+        expect(client.downloadMedia).toHaveBeenCalledTimes(1);
+        expect(client.getMessages).toHaveBeenCalledTimes(1);
+    });
+
     it('a queued job of an unreachable chat is skipped without a download call', async () => {
         const client = { downloadMedia: vi.fn(async () => {}) };
         const dm = new DownloadManager(client, { download: { concurrent: 1 } }, null);
