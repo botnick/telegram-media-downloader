@@ -13,6 +13,12 @@ All notable changes to this project are documented here. The format is based on 
 - **A malformed JSON body answers 400, an oversized one 413**, not 500. Every API route: a body that isn't valid JSON (or is a bare `null` / string) gets `400 {"error":"Malformed JSON body"}`, one over the 2 MB limit `413 {"error":"Request body too large"}`, an unsupported charset or encoding 415.
 - **The share-link rate limit settings take effect.** The `advanced.share.rateLimitMax` and `rateLimitWindowMs` config keys were never applied — `/share/*` kept the built-in 60 requests per minute. They now apply from startup and right after a save (a new window starts fresh counters; a new limit keeps them), and are re-read every 30 s like the dashboard API limit.
 
+## [2.29.1] — 2026-09-29
+
+Security fixes: the update endpoint now requires an admin, saving a group no longer broadcasts secrets to every dashboard (guests included), re-authentication requires the admin password, and the API rate limit applies from boot. Everyone should update.
+
+### Service worker
+- `VERSION = 'v2291'`
 ## [2.29.0] — 2026-09-29
 
 Chats the app can no longer read — deleted, banned, private or left, moved to a supergroup — are now paused instead of retried, so they stop using Telegram's limits. The dashboard says why and what to do (Check again, switch account, follow the new group, stop monitoring), with a Needs attention list and automatic re-checks.

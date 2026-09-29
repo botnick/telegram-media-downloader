@@ -413,7 +413,9 @@ export async function startTarget(opts = {}) {
                 method: req.method,
                 path: norm.str(req.path),
                 as: req.as ?? 'admin',
-                ...(req.headers ? { headers: norm.value(req.headers) } : {}),
+                ...(req.headers
+                    ? { headers: norm.value(maskRequestEtags(req.headers, staticMtimes)) }
+                    : {}),
                 ...(req.body !== undefined
                     ? { body: requestBodyRecord(norm.value(req.body)) }
                     : {}),
@@ -643,3 +645,22 @@ export async function until(fn, { timeoutMs = 20_000, intervalMs = 100, what = '
 }
 
 export { sleep };
+
+// Conditional request headers echo an etag the server handed out earlier.
+// A static SPA asset's etag carries its checkout mtime and on-disk size
+// (line endings differ between Windows and Linux checkouts), so mask it
+// the same way the response etag is masked; seeded files keep theirs.
+function maskRequestEtags(headers, staticMtimes) {
+    const out = { ...headers };
+    for (const k of Object.keys(out)) {
+        if (!['if-none-match', 'if-match', 'if-range'].includes(k.toLowerCase())) continue;
+        const m = /^W\/"([0-9a-f]+)-([0-9a-f]+)"$/.exec(String(out[k]));
+        if (m && !staticMtimes?.has(parseInt(m[2], 16))) out[k] = 'W/"<size-hex>-<mtime-hex>"';
+        // Express body etag: a hash of the body, which can carry the app
+        // version (e.g. /api/version) and so changes with every release.
+        else if (/^W\/"[0-9a-f]+-[A-Za-z0-9+/=]{27}"$/.test(String(out[k]))) {
+            out[k] = 'W/"<express-etag>"';
+        }
+    }
+    return out;
+}

@@ -304,7 +304,7 @@
         "path": "/css/main.css",
         "as": "anon",
         "headers": {
-          "if-none-match": "W/\"36106-1a0e9d4546e\""
+          "if-none-match": "W/\"<size-hex>-<mtime-hex>\""
         }
       },
       "status": 304,
@@ -758,7 +758,7 @@
         "path": "/api/version",
         "as": "anon",
         "headers": {
-          "if-none-match": "W/\"32-fAyh/tblsUOXqcDk0AR6/ktHqUI\""
+          "if-none-match": "W/\"<express-etag>\""
         }
       },
       "status": 304,
