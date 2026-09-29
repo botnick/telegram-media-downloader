@@ -12,6 +12,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LEGACY_CONFIG_PATH = path.join(__dirname, '../../data/config.json');
 const KV_KEY = 'config';
 
+// Default Content-Security-Policy directives (data, not code). Order is the
+// order the header is emitted in. `web.csp.directives` in the stored config
+// replaces this wholesale; a missing `web.csp` means these defaults.
+// Not part of DEFAULT_CONFIG on purpose: keeping it out of the persisted tree
+// means later releases can change the defaults for installs that never
+// customised them.
+export const DEFAULT_CSP_DIRECTIVES = Object.freeze({
+    'default-src': ["'self'"],
+    'base-uri': ["'self'"],
+    'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
+    'form-action': ["'self'"],
+    'frame-ancestors': ["'self'"],
+    'img-src': ["'self'", 'data:', 'blob:'],
+    'object-src': ["'none'"],
+    'script-src': [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',
+        'https://cdnjs.cloudflare.com',
+    ],
+    'script-src-attr': ["'unsafe-inline'"],
+    'style-src': [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',
+        'https://cdnjs.cloudflare.com',
+        'https://fonts.googleapis.com',
+    ],
+    'style-src-attr': ["'unsafe-inline'"],
+    'media-src': ["'self'", 'blob:'],
+    'connect-src': ["'self'", 'ws:', 'wss:'],
+    'frame-src': ["'self'"],
+});
+
+export function getDefaultCsp() {
+    return {
+        enabled: true,
+        reportOnly: false,
+        directives: JSON.parse(JSON.stringify(DEFAULT_CSP_DIRECTIVES)),
+    };
+}
+
 const DEFAULT_CONFIG = {
     telegram: {
         apiId: '',

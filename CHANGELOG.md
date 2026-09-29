@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Added
+- **Configurable Content-Security-Policy.** Settings → Dashboard security now has a CSP editor: enable/disable, report-only mode, and the full source list per directive, applied on the next request. Saved as `web.csp`; installs without it keep today's exact header. `frame-ancestors` changes drop `X-Frame-Options` so embedding works. `TGDL_CSP=off` disables the CSP regardless of the setting (recovery).
+
 ## [2.29.1] — 2026-09-29
 
 Security fixes: the update endpoint now requires an admin, saving a group no longer broadcasts secrets to every dashboard (guests included), re-authentication requires the admin password, and the API rate limit applies from boot. Everyone should update.
