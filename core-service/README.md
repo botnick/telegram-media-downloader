@@ -36,6 +36,33 @@ in `ps`), plus the few OS variables a Go binary needs (`PATH`,
 | `HASH_WORKER_POOL_SIZE` | `min(8, max(2, ⌊cpus/2⌋))` | Files hashed at once. Same parsing as the Node worker pool (`parseInt`, values ≥ 1 capped at 32). |
 | `TGDL_CORE_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`, to stderr. |
 
+## Front server (`front`)
+
+`tgdl-core front` serves the app's public `PORT`: local media from
+`/files`, `/photos` and the thumbnail cache itself, everything else
+proxied to the Node server on `127.0.0.1` (see
+[docs/GO-CORE.md](../docs/GO-CORE.md#front-server-tgdl-core-front)). Code in
+`internal/front`. The app starts it with these (never argv):
+
+| Variable | Meaning |
+|---|---|
+| `TGDL_CORE_TOKEN` | Control-channel token (`X-API-Token`), required. |
+| `TGDL_FRONT_LISTEN` | Public address, `:<PORT>`. Can't bind → exit status 3 and `{"event":"error","code":"EADDRINUSE",…}` on stdout. |
+| `TGDL_FRONT_UPSTREAM` | The Node server, `127.0.0.1:<port>` (loopback only). |
+| `TGDL_FRONT_UPSTREAM_TOKEN` | Sent to Node as `X-Tgdl-Front` with the client's address; Node trusts that address only with this token. |
+| `TGDL_FRONT_TRUST_PROXY` | The app's Express `trust proxy` value (`TRUST_PROXY`, default `loopback`). |
+| `TGDL_FRONT_DB` | `db.sqlite`, opened read-only for `web_sessions`. |
+| `TGDL_FRONT_DOWNLOADS_DIR`, `TGDL_FRONT_PHOTOS_DIR`, `TGDL_FRONT_THUMBS_DIR` | What `/files`, `/photos` and `/api/thumbs/:id` resolve against. |
+| `TGDL_CORE_ALLOW_ROOTS` | Every file served must be inside one of these. |
+| `TGDL_CORE_PORT`, `TGDL_CORE_WATCH_STDIN`, `TGDL_CORE_LOG_LEVEL` | As for `serve`. |
+
+Control channel (`127.0.0.1:<TGDL_CORE_PORT>`, `X-API-Token`):
+`GET /health`, `POST /v1/front/state` (Node pushes the share secret,
+whether auth is set up, Force HTTPS, the `/api` rate-limit switch and the
+response headers its middlewares produce for each fast-path route — on
+boot and on every config change, re-checked every 2 s), `GET
+/v1/front/stats`.
+
 ## HTTP API
 
 All responses are JSON. Errors are `{"error":{"code":"ENOENT","message":"…"}}`.

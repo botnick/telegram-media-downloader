@@ -182,6 +182,13 @@ server {
 
 Behind a proxy, set `TRUST_PROXY=1` in the container env so the rate-limiter sees the real client IP.
 
+What answers on the dashboard port (3000 in the container, `PORT` on bare metal) is `tgdl-core`, the app's Go front server; the Node server listens on `127.0.0.1` behind it. Nothing changes for the proxy — point it at the same port as before:
+
+- **Client IP / `TRUST_PROXY`** work exactly as before: `X-Forwarded-For` / `-Proto` / `-Host` reach the app untouched, together with the address of whoever connected, and the app applies `TRUST_PROXY` (default: trust only loopback) to them just as when Node listened on the port. Proxy on the same host → the default already trusts it; proxy on another host or container → set `TRUST_PROXY` (e.g. `1` for one hop). `X-Tgdl-*` request headers are reserved and dropped.
+- **Timeouts**: 70 s for the request headers and 65 s keep-alive (Node's values); no timeout on a response body, so a video streams as long as it plays. Keep the proxy's upstream keep-alive under 65 s, or let it retry idle connections (nginx and Caddy do).
+- **Streaming**: nothing is buffered — video ranges and bulk ZIP downloads flow as they're produced; WebSockets (`/ws`, `/ws/cluster`) are passed through.
+- **HTTP/1.1** on the port, as before; TLS and HTTP/2 stay at the proxy.
+
 ### Force HTTPS (TLS lockdown)
 
 Once the reverse proxy has a working TLS cert, lock the dashboard to HTTPS in **Settings → Privacy & Net → Dashboard security → Force HTTPS**. Effects:
