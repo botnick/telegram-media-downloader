@@ -1,0 +1,2205 @@
+{
+  "entries": {
+    "list all": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 1,
+              "createdAt": 1717200200000,
+              "downloadId": 2,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0002.jpg",
+              "fileSize": 3228,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "label": "revoked",
+              "lastAccessedAt": null,
+              "revokedAt": 1717300000000,
+              "url": "http://<HOST>/share/3?s=<sig:1>"
+            },
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "derived: seeded link signatures": {
+      "derived": {
+        "1": true,
+        "2": true,
+        "3": true
+      }
+    },
+    "list by downloadId": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?downloadId=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "list without revoked": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?includeRevoked=0",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 2
+        }
+      }
+    },
+    "list limit 1": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "limit": 1,
+          "links": [
+            {
+              "accessCount": 1,
+              "createdAt": 1717200200000,
+              "downloadId": 2,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0002.jpg",
+              "fileSize": 3228,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "label": "revoked",
+              "lastAccessedAt": null,
+              "revokedAt": 1717300000000,
+              "url": "http://<HOST>/share/3?s=<sig:1>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "list limit 1 offset 1": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?limit=1&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "limit": 1,
+          "links": [
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            }
+          ],
+          "offset": 1,
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "list search label": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?q=grandma",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "list search group name": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?q=Gamma",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "list search no match": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?q=zzz",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [],
+          "offset": 0,
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "list junk paging params": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?limit=abc&offset=-5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 1,
+              "createdAt": 1717200200000,
+              "downloadId": 2,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0002.jpg",
+              "fileSize": 3228,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "label": "revoked",
+              "lastAccessedAt": null,
+              "revokedAt": 1717300000000,
+              "url": "http://<HOST>/share/3?s=<sig:1>"
+            },
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "list limit above cap": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?limit=5000",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 2000,
+          "links": [
+            {
+              "accessCount": 1,
+              "createdAt": 1717200200000,
+              "downloadId": 2,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0002.jpg",
+              "fileSize": 3228,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "label": "revoked",
+              "lastAccessedAt": null,
+              "revokedAt": 1717300000000,
+              "url": "http://<HOST>/share/3?s=<sig:1>"
+            },
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "list guest → 403": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "list anon → 401": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "create without downloadId → 400": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "downloadId required"
+        }
+      }
+    },
+    "create downloadId 0 → 400": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 0
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "downloadId required"
+        }
+      }
+    },
+    "create downloadId abc → 400": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": "abc"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "downloadId required"
+        }
+      }
+    },
+    "create unknown download → 404": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 9999
+        }
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Download not found"
+        }
+      }
+    },
+    "create guest → 403": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "guest",
+        "body": {
+          "downloadId": 1
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "create 1 h with messy label": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 9,
+          "label": "week\tlink\nnew  ",
+          "ttlSeconds": 3600
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 9,
+            "expiresAt": "<time:s>",
+            "fileName": "IMG_0009.jpg",
+            "fileSize": 2679,
+            "fileType": "photo",
+            "groupId": "-1001000000002",
+            "groupName": "Beta Videos",
+            "id": 4,
+            "label": "week link new",
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/4?s=<sig:4>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create never expires (ttl 0)": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 11,
+          "ttlSeconds": 0
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 11,
+            "expiresAt": 0,
+            "fileName": "notes.txt",
+            "fileSize": 38,
+            "fileType": "document",
+            "groupId": "-1001000000003",
+            "groupName": "Gamma Docs",
+            "id": 5,
+            "label": null,
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/5?s=<sig:5>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create ttl \"0\" string": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 11,
+          "ttlSeconds": "0"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 11,
+            "expiresAt": 0,
+            "fileName": "notes.txt",
+            "fileSize": 38,
+            "fileType": "document",
+            "groupId": "-1001000000003",
+            "groupName": "Gamma Docs",
+            "id": 6,
+            "label": null,
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/6?s=<sig:6>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create ttl below floor → 60 s": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 12,
+          "ttlSeconds": 10
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 12,
+            "expiresAt": "<time:s>",
+            "fileName": "bundle.zip",
+            "fileSize": 246,
+            "fileType": "document",
+            "groupId": "-1001000000003",
+            "groupName": "Gamma Docs",
+            "id": 7,
+            "label": null,
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/7?s=<sig:7>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create ttl above ceiling → 90 d": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 12,
+          "ttlSeconds": 999999999
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 12,
+            "expiresAt": "<time:s>",
+            "fileName": "bundle.zip",
+            "fileSize": 246,
+            "fileType": "document",
+            "groupId": "-1001000000003",
+            "groupName": "Gamma Docs",
+            "id": 8,
+            "label": null,
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/8?s=<sig:8>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create default ttl → 7 d": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": "13",
+          "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 13,
+            "expiresAt": "<time:s>",
+            "fileName": "notes.txt.gz",
+            "fileSize": 55,
+            "fileType": "document",
+            "groupId": "-1001000000003",
+            "groupName": "Gamma Docs",
+            "id": 9,
+            "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/9?s=<sig:9>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create negative ttl → default": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 13,
+          "label": 42,
+          "ttlSeconds": -5
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 13,
+            "expiresAt": "<time:s>",
+            "fileName": "notes.txt.gz",
+            "fileSize": 55,
+            "fileType": "document",
+            "groupId": "-1001000000003",
+            "groupName": "Gamma Docs",
+            "id": 10,
+            "label": null,
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/10?s=<sig:10>"
+          },
+          "success": true
+        }
+      }
+    },
+    "create blank label → null": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "body": {
+          "downloadId": 14,
+          "label": "   ",
+          "ttlSeconds": 120
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "link": {
+            "accessCount": 0,
+            "createdAt": "<time:ms>",
+            "downloadId": 14,
+            "expiresAt": "<time:s>",
+            "fileName": "IMG_0014.jpg",
+            "fileSize": 3365,
+            "fileType": "photo",
+            "groupId": "-1001000000004",
+            "groupName": "Delta Mixed",
+            "id": 11,
+            "label": null,
+            "lastAccessedAt": null,
+            "revokedAt": null,
+            "url": "http://<HOST>/share/11?s=<sig:11>"
+          },
+          "success": true
+        }
+      }
+    },
+    "derived: new link expiry and signature": {
+      "derived": {
+        "create 1 h with messy label": {
+          "id": 4,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create never expires (ttl 0)": {
+          "id": 5,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create ttl \"0\" string": {
+          "id": 6,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create ttl below floor → 60 s": {
+          "id": 7,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create ttl above ceiling → 90 d": {
+          "id": 8,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create default ttl → 7 d": {
+          "id": 9,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create negative ttl → default": {
+          "id": 10,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        },
+        "create blank label → null": {
+          "id": 11,
+          "sigMatchesHmac": true,
+          "ttlApplied": true,
+          "createdAtIsEpochMs": true
+        }
+      }
+    },
+    "list after creating": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?limit=20",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 20,
+          "links": [
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 14,
+              "expiresAt": "<time:s>",
+              "fileName": "IMG_0014.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000004",
+              "groupName": "Delta Mixed",
+              "id": 11,
+              "label": null,
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/11?s=<sig:11>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 13,
+              "expiresAt": "<time:s>",
+              "fileName": "notes.txt.gz",
+              "fileSize": 55,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 10,
+              "label": null,
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/10?s=<sig:10>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 13,
+              "expiresAt": "<time:s>",
+              "fileName": "notes.txt.gz",
+              "fileSize": 55,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 9,
+              "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/9?s=<sig:9>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 12,
+              "expiresAt": "<time:s>",
+              "fileName": "bundle.zip",
+              "fileSize": 246,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 8,
+              "label": null,
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/8?s=<sig:8>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 12,
+              "expiresAt": "<time:s>",
+              "fileName": "bundle.zip",
+              "fileSize": 246,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 7,
+              "label": null,
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/7?s=<sig:7>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 11,
+              "expiresAt": 0,
+              "fileName": "notes.txt",
+              "fileSize": 38,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 6,
+              "label": null,
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/6?s=<sig:6>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 11,
+              "expiresAt": 0,
+              "fileName": "notes.txt",
+              "fileSize": 38,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 5,
+              "label": null,
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/5?s=<sig:5>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": "<time:ms>",
+              "downloadId": 9,
+              "expiresAt": "<time:s>",
+              "fileName": "IMG_0009.jpg",
+              "fileSize": 2679,
+              "fileType": "photo",
+              "groupId": "-1001000000002",
+              "groupName": "Beta Videos",
+              "id": 4,
+              "label": "week link new",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/4?s=<sig:4>"
+            },
+            {
+              "accessCount": 1,
+              "createdAt": 1717200200000,
+              "downloadId": 2,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0002.jpg",
+              "fileSize": 3228,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 3,
+              "label": "revoked",
+              "lastAccessedAt": null,
+              "revokedAt": 1717300000000,
+              "url": "http://<HOST>/share/3?s=<sig:1>"
+            },
+            {
+              "accessCount": 3,
+              "createdAt": 1717200100000,
+              "downloadId": 10,
+              "expiresAt": 1717286400,
+              "fileName": "report.pdf",
+              "fileSize": 314,
+              "fileType": "document",
+              "groupId": "-1001000000003",
+              "groupName": "Gamma Docs",
+              "id": 2,
+              "label": "expired report",
+              "lastAccessedAt": 1717200200000,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/2?s=<sig:2>"
+            },
+            {
+              "accessCount": 0,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": null,
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 11
+        }
+      }
+    },
+    "share v2 inline": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=59, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "share v2 with filename slug": {
+      "route": "GET /share/:linkId/:fileName",
+      "request": {
+        "method": "GET",
+        "path": "/share/1/IMG_0001.jpg?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=58, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "share ?download=1": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>&download=1",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=57, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "share ?download=true": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>&download=true",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "attachment; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=56, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "share range": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>",
+        "as": "anon",
+        "headers": {
+          "range": "bytes=0-9"
+        }
+      },
+      "status": 206,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "10",
+        "content-range": "bytes 0-9/3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=55, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "1fd11d9824002b6b53d1da017f27c8297312d42b0321f06c0fba3ad69ca27e9e",
+        "bytes": 10
+      }
+    },
+    "share unsatisfiable range": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>",
+        "as": "anon",
+        "headers": {
+          "range": "bytes=9000-9999"
+        }
+      },
+      "status": 500,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-range": "bytes */3365",
+        "content-type": "image/jpeg; charset=utf-8",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=54, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "text": "{\"error\":\"Range Not Satisfiable\"}"
+      }
+    },
+    "share HEAD": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "HEAD",
+        "path": "/share/1?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=53, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": null
+    },
+    "share legacy v1 exp+sig": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?exp=4102444800&sig=<sig:3>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=52, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "share with a dashboard cookie too": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=51, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
+      }
+    },
+    "share without signature → 400": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1",
+        "as": "anon"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=50, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Invalid share link"
+      }
+    },
+    "share non-numeric id → 400": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/abc?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=49, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Invalid share link"
+      }
+    },
+    "share id 0 → 400": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/0?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 400,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=48, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Invalid share link"
+      }
+    },
+    "share wrong signature → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:12>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=47, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_sig",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share short signature → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=abc",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=46, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_sig",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share signature of another link → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:1>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=45, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_sig",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share expired → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/2?s=<sig:2>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=44, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "expired",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share revoked → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/3?s=<sig:1>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=43, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "revoked",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share unknown id → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/999?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=42, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "not_found",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share v1 with mismatching exp → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?exp=4102444801&sig=<sig:13>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=41, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_sig",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share v1 without exp → 401": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?sig=<sig:3>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=40, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_sig",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "share never-expiring link": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/12?s=<sig:14>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"report.pdf\"; filename*=UTF-8''report.pdf",
+        "content-length": "314",
+        "content-type": "application/pdf",
+        "etag": "W/\"13a-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=39, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "59bd5693f4f7221ff4c88d1ddb7ea602deeb1e93fcacec1bad885745ac64dad6",
+        "bytes": 314
+      }
+    },
+    "share unicode file name": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/13?s=<sig:15>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"________ ___.jpg\"; filename*=UTF-8''%E0%B8%A0%E0%B8%B2%E0%B8%9E%E0%B8%97%E0%B8%94%E0%B8%AA%E0%B8%AD%E0%B8%9A%20%E0%B8%A3%E0%B8%B9%E0%B8%9B.jpg",
+        "content-length": "3228",
+        "content-type": "image/jpeg",
+        "etag": "W/\"c9c-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=38, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "sha256": "592740c55e9edac92d2336501461b6cda8c8ae4db22909a5c9ff13ceaa383f8c",
+        "bytes": 3228
+      }
+    },
+    "share file missing on disk → 404": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/14?s=<sig:16>",
+        "as": "anon"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=37, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "link 1 counters after serving": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?downloadId=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 9,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": "<time:ms>",
+              "revokedAt": null,
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "revoke link 1": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "revoked": true,
+          "success": true
+        }
+      }
+    },
+    "revoke link 1 again": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "revoked": false,
+          "success": true
+        }
+      }
+    },
+    "revoke unknown id": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/9999",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "revoked": false,
+          "success": true
+        }
+      }
+    },
+    "revoke bad id → 400": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/abc",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid id"
+        }
+      }
+    },
+    "revoke id 0 → 400": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/0",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid id"
+        }
+      }
+    },
+    "revoke guest → 403": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/4",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "revoked link no longer serves": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:3>",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "ratelimit": "limit=60, remaining=36, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "revoked",
+          "error": "Share link is not valid"
+        }
+      }
+    },
+    "list after revoke": {
+      "route": "GET /api/share/links",
+      "request": {
+        "method": "GET",
+        "path": "/api/share/links?downloadId=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "links": [
+            {
+              "accessCount": 9,
+              "createdAt": 1717200000000,
+              "downloadId": 1,
+              "expiresAt": 4102444800,
+              "fileName": "IMG_0001.jpg",
+              "fileSize": 3365,
+              "fileType": "photo",
+              "groupId": "-1001000000001",
+              "groupName": "Alpha Photos",
+              "id": 1,
+              "label": "for grandma",
+              "lastAccessedAt": "<time:ms>",
+              "revokedAt": "<time:ms>",
+              "url": "http://<HOST>/share/1?s=<sig:3>"
+            }
+          ],
+          "offset": 0,
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "limited server: share request 1 of 3": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:1>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=59, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "bytes": 3365
+      },
+      "note": "rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter"
+    },
+    "limited server: share request 2 of 3": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:1>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=58, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "bytes": 3365
+      },
+      "note": "rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter"
+    },
+    "limited server: share request 3 of 3": {
+      "route": "GET /share/:linkId",
+      "request": {
+        "method": "GET",
+        "path": "/share/1?s=<sig:1>",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "ratelimit": "limit=60, remaining=57, reset=<s>",
+        "ratelimit-policy": "60;w=60"
+      },
+      "security": "122656cc3b",
+      "body": {
+        "bytes": 3365
+      },
+      "note": "rateLimitMax=2 in config; today the route keeps the boot-time 60/min limiter"
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "122656cc3b": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

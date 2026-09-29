@@ -12,10 +12,32 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 - **tgdl-core, the app's Go engine, now does the heavy file work, and it is required.** It handles:
+  - file hashing (download-time duplicate check, Find duplicates, the NSFW hash blocklist);
+  - Verify files and the boot and hourly integrity sweep;
+  - Re-index from disk;
+  - the disk-usage figure shown while the library is empty;
+  - face clustering.
+
+  The Node code it replaced is removed: the hash worker pool, the `fs.stat` sweep, the folder walks and the DBSCAN worker. Results don't change. Tests prove it against the removed Node code, against Node's own `fs.stat` / `fs.readdir` on the machine they run on, and against frozen fixtures. That covers the exact error codes Verify files relies on before it removes a library entry.
+
+  The dashboard stays responsive while these jobs run. Face clustering uses every core: 5,000 faces take ~0.3 s instead of ~7 s, and 20,000 take ~4 s instead of ~2 min. Folder walks are 6–7× faster. See [docs/GO-CORE.md](docs/GO-CORE.md).
 - **If tgdl-core can't run, the app still starts and everything else works** (dashboard, `/api/auth_check`, downloads).
+  - Verify files, Re-index from disk, Find duplicates and Re-cluster answer `503 TGDL_CORE_UNAVAILABLE` with the fix instead of starting.
+  - A finished download is stored without a hash, as after a read error before.
+  - The integrity sweep removes nothing.
+  - Nothing crash-loops.
 - `TGDL_GO_CORE`, `TGDL_GO_FEATURES`, `config.advanced.goCore` and `HASH_WORKER_DISABLE` no longer do anything. They are harmless if set, and a saved `advanced.goCore` block is dropped the next time settings are saved.
 - **`GET /api/system/health` → `goCore`:**
+  - loses `mode` and `modeSource`, and the per-feature shadow and breaker counters;
+  - gains `problem`, `platform` and `features.<hash|stat|walk|dbscan>.available`.
 - **`/metrics`:** `tgdl_gocore_parity_*` is gone, and `tgdl_gocore_calls_total` now also counts `feature="stat"`, `"walk"` and `"dbscan"`.
+
+## [2.29.1] — 2026-09-29
+
+Security fixes: the update endpoint now requires an admin, saving a group no longer broadcasts secrets to every dashboard (guests included), re-authentication requires the admin password, and the API rate limit applies from boot. Everyone should update.
+
+### Service worker
+- `VERSION = 'v2291'`
 
 ## [2.29.0] — 2026-09-29
 

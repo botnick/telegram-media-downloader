@@ -1,0 +1,3805 @@
+{
+  "entries": {
+    "providers": {
+      "route": "GET /api/backup/providers",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/providers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "providers": [
+            {
+              "configSchema": [
+                {
+                  "help": "Absolute path to the destination directory. The dashboard process must have read+write permissions there.",
+                  "label": "Root path",
+                  "name": "rootPath",
+                  "placeholder": "/mnt/nas/tgdl-backup",
+                  "required": true,
+                  "type": "text"
+                }
+              ],
+              "displayName": "Local filesystem / NAS mount",
+              "name": "local"
+            },
+            {
+              "configSchema": [
+                {
+                  "help": "Full URL. AWS users can leave blank to use the default. R2: https://<acct>.r2.cloudflarestorage.com. B2: https://s3.<region>.backblazeb2.com.",
+                  "label": "Endpoint URL",
+                  "name": "endpoint",
+                  "placeholder": "https://s3.us-east-1.amazonaws.com",
+                  "type": "text"
+                },
+                {
+                  "help": "R2: \"auto\". B2: matches the endpoint.",
+                  "label": "Region",
+                  "name": "region",
+                  "placeholder": "us-east-1",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "Bucket",
+                  "name": "bucket",
+                  "placeholder": "tgdl-backup",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "Access key ID",
+                  "name": "accessKeyId",
+                  "required": true,
+                  "secret": true,
+                  "type": "text"
+                },
+                {
+                  "label": "Secret access key",
+                  "name": "secretAccessKey",
+                  "required": true,
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "Object keys will be stored under this prefix. Trailing slash optional.",
+                  "label": "Prefix (optional)",
+                  "name": "prefix",
+                  "placeholder": "tgdl/",
+                  "type": "text"
+                },
+                {
+                  "help": "MinIO and some self-hosted gateways require path-style. Cloud S3 / R2 / B2 don't.",
+                  "label": "Force path-style addressing",
+                  "name": "forcePathStyle",
+                  "options": [
+                    {
+                      "label": "Auto (off for AWS, on for MinIO)",
+                      "value": "auto"
+                    },
+                    {
+                      "label": "On",
+                      "value": "true"
+                    },
+                    {
+                      "label": "Off",
+                      "value": "false"
+                    }
+                  ],
+                  "type": "select"
+                }
+              ],
+              "displayName": "S3-compatible (AWS / R2 / B2 / MinIO / Wasabi)",
+              "name": "s3"
+            },
+            {
+              "configSchema": [
+                {
+                  "label": "Host",
+                  "name": "host",
+                  "placeholder": "nas.lan",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "Port",
+                  "name": "port",
+                  "placeholder": "22",
+                  "type": "number"
+                },
+                {
+                  "label": "Username",
+                  "name": "username",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "help": "Provide a password OR a private key, not both. If both, the key wins.",
+                  "label": "Password",
+                  "name": "password",
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "label": "Private key (PEM)",
+                  "name": "privateKey",
+                  "placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+                  "secret": true,
+                  "type": "textarea"
+                },
+                {
+                  "help": "Only needed if the private key is encrypted.",
+                  "label": "Key passphrase",
+                  "name": "passphrase",
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "Absolute path on the remote where uploads land. Will be auto-created.",
+                  "label": "Remote root",
+                  "name": "remoteRoot",
+                  "placeholder": "/home/user/tgdl-backup",
+                  "required": true,
+                  "type": "text"
+                }
+              ],
+              "displayName": "SFTP (SSH file transfer)",
+              "name": "sftp"
+            },
+            {
+              "configSchema": [
+                {
+                  "label": "Host",
+                  "name": "host",
+                  "placeholder": "ftp.example.com",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "Port",
+                  "name": "port",
+                  "placeholder": "21",
+                  "type": "number"
+                },
+                {
+                  "label": "Username",
+                  "name": "username",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "help": "Empty for anonymous FTP.",
+                  "label": "Password",
+                  "name": "password",
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "Most modern hosts use Explicit FTPS. Plain FTP transmits credentials in cleartext.",
+                  "label": "TLS mode",
+                  "name": "secure",
+                  "options": [
+                    {
+                      "label": "Plain FTP (no TLS)",
+                      "value": "false"
+                    },
+                    {
+                      "label": "Explicit FTPS — AUTH TLS on port 21",
+                      "value": "control"
+                    },
+                    {
+                      "label": "Implicit FTPS — TLS from connect on port 990",
+                      "value": "true"
+                    }
+                  ],
+                  "type": "select"
+                },
+                {
+                  "help": "Absolute path on the remote where uploads land. Auto-created.",
+                  "label": "Remote root",
+                  "name": "remoteRoot",
+                  "placeholder": "/tgdl-backup",
+                  "required": true,
+                  "type": "text"
+                }
+              ],
+              "displayName": "FTP / FTPS",
+              "name": "ftp"
+            },
+            {
+              "configSchema": [
+                {
+                  "help": "From Google Cloud Console → Credentials → OAuth client ID (Desktop app).",
+                  "label": "OAuth client ID",
+                  "name": "clientId",
+                  "placeholder": "...apps.googleusercontent.com",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "OAuth client secret",
+                  "name": "clientSecret",
+                  "required": true,
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "Generate via the Google OAuth Playground — see the walkthrough below.",
+                  "label": "OAuth refresh token",
+                  "name": "refreshToken",
+                  "required": true,
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "A folder with this name is auto-created at My Drive root if folderId is empty.",
+                  "label": "Backup folder name",
+                  "name": "folderName",
+                  "placeholder": "tgdl-backup",
+                  "type": "text"
+                },
+                {
+                  "help": "Paste the destination folder ID from its Drive URL if you've already made one.",
+                  "label": "Folder ID (optional)",
+                  "name": "folderId",
+                  "placeholder": "leave blank to create one",
+                  "type": "text"
+                }
+              ],
+              "displayName": "Google Drive",
+              "name": "gdrive"
+            },
+            {
+              "configSchema": [
+                {
+                  "help": "Found in Dropbox developer console → Apps → Settings tab.",
+                  "label": "App key",
+                  "name": "appKey",
+                  "required": true,
+                  "type": "text"
+                },
+                {
+                  "label": "App secret",
+                  "name": "appSecret",
+                  "required": true,
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "Long-lived token from the OAuth flow. See the walkthrough below.",
+                  "label": "Refresh token",
+                  "name": "refreshToken",
+                  "required": true,
+                  "secret": true,
+                  "type": "password"
+                },
+                {
+                  "help": "Absolute path inside the app folder (or full Dropbox if your app has full-access scope).",
+                  "label": "Remote root path",
+                  "name": "remoteRoot",
+                  "placeholder": "/tgdl-backup",
+                  "required": true,
+                  "type": "text"
+                }
+              ],
+              "displayName": "Dropbox",
+              "name": "dropbox"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "providers as guest → 403": {
+      "route": "GET /api/backup/providers",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/providers",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "destinations as anon → 401": {
+      "route": "GET /api/backup/destinations",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "destinations (seeded, newest first)": {
+      "route": "GET /api/backup/destinations",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destinations": [
+            {
+              "createdAt": 1717200002000,
+              "cron": null,
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 3,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": null,
+              "mode": "mirror",
+              "name": "NAS over SFTP",
+              "provider": "sftp",
+              "retainCount": 7,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200001000,
+              "cron": "0 3 * * *",
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 2,
+              "lastError": "getaddrinfo ENOTFOUND s3.invalid",
+              "lastFailureAt": 1717459200000,
+              "lastSuccessAt": null,
+              "mode": "snapshot",
+              "name": "Offsite S3",
+              "provider": "s3",
+              "retainCount": 7,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200000000,
+              "cron": null,
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 1,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": 1717372800000,
+              "mode": "mirror",
+              "name": "Local mirror",
+              "provider": "local",
+              "retainCount": 7,
+              "totalBytes": 7066,
+              "totalFiles": 2
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "config #1 (secrets omitted)": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/config",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "config": {
+            "rootPath": "<DATA>/backup-target"
+          },
+          "success": true
+        }
+      }
+    },
+    "status #1": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 0,
+          "enabled": false,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 1,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": 1717372800000,
+          "mode": "mirror",
+          "name": "Local mirror",
+          "paused": false,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 7066,
+          "totalFiles": 2
+        }
+      }
+    },
+    "config #2 (secrets omitted)": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/2/config",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "config": {
+            "bucket": "tgdl-contract",
+            "endpoint": "https://s3.invalid",
+            "prefix": "tgdl/",
+            "region": "auto"
+          },
+          "success": true
+        }
+      }
+    },
+    "status #2": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/2/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 0,
+          "enabled": false,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 2,
+          "lastError": "getaddrinfo ENOTFOUND s3.invalid",
+          "lastFailureAt": 1717459200000,
+          "lastSuccessAt": null,
+          "mode": "snapshot",
+          "name": "Offsite S3",
+          "paused": false,
+          "processing": 0,
+          "provider": "s3",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "config #3 (secrets omitted)": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/3/config",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "config": {
+            "host": "nas.invalid",
+            "port": 22,
+            "remoteRoot": "/srv/tgdl",
+            "username": "backup"
+          },
+          "success": true
+        }
+      }
+    },
+    "status #3": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/3/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 0,
+          "enabled": false,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 3,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": null,
+          "mode": "mirror",
+          "name": "NAS over SFTP",
+          "paused": false,
+          "processing": 0,
+          "provider": "sftp",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "config unknown id → 404": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/999/config",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "config id 0 → 400": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/0/config",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "status non-numeric id → 400": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/abc/status",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "status unknown id → 404": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/999/status",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "jobs #1": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/jobs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3228,
+              "destination_id": 1,
+              "download_id": 2,
+              "error": null,
+              "finished_at": 1717372803000,
+              "id": 2,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0002.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372802000,
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3365,
+              "destination_id": 1,
+              "download_id": 1,
+              "error": null,
+              "finished_at": 1717372801000,
+              "id": 1,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0001.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372800000,
+              "status": "done"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "jobs #1 limit=1 offset=1": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/jobs?limit=1&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3365,
+              "destination_id": 1,
+              "download_id": 1,
+              "error": null,
+              "finished_at": 1717372801000,
+              "id": 1,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0001.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372800000,
+              "status": "done"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "jobs #2 status=failed": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/2/jobs?status=failed",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 5,
+              "bytes_uploaded": 0,
+              "destination_id": 2,
+              "download_id": null,
+              "error": "getaddrinfo ENOTFOUND s3.invalid",
+              "finished_at": 1717459205000,
+              "id": 3,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": null,
+              "snapshot_path": "snapshot-2024-06-04.tar",
+              "started_at": 1717459200000,
+              "status": "failed"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "jobs #2 status=done": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/2/jobs?status=done",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [],
+          "success": true
+        }
+      }
+    },
+    "jobs unknown destination → empty": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/999/jobs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [],
+          "success": true
+        }
+      }
+    },
+    "jobs bad id → 400": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/-1/jobs",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "recent jobs": {
+      "route": "GET /api/backup/jobs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/jobs/recent",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 5,
+              "bytes_uploaded": 0,
+              "destination_id": 2,
+              "destination_name": "Offsite S3",
+              "download_id": null,
+              "error": "getaddrinfo ENOTFOUND s3.invalid",
+              "finished_at": 1717459205000,
+              "id": 3,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "provider": "s3",
+              "remote_path": null,
+              "snapshot_path": "snapshot-2024-06-04.tar",
+              "started_at": 1717459200000,
+              "status": "failed"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3228,
+              "destination_id": 1,
+              "destination_name": "Local mirror",
+              "download_id": 2,
+              "error": null,
+              "finished_at": 1717372803000,
+              "id": 2,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "provider": "local",
+              "remote_path": "Alpha Photos/images/IMG_0002.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372802000,
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3365,
+              "destination_id": 1,
+              "destination_name": "Local mirror",
+              "download_id": 1,
+              "error": null,
+              "finished_at": 1717372801000,
+              "id": 1,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "provider": "local",
+              "remote_path": "Alpha Photos/images/IMG_0001.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372800000,
+              "status": "done"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "recent jobs limit=1": {
+      "route": "GET /api/backup/jobs/recent",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/jobs/recent?limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 5,
+              "bytes_uploaded": 0,
+              "destination_id": 2,
+              "destination_name": "Offsite S3",
+              "download_id": null,
+              "error": "getaddrinfo ENOTFOUND s3.invalid",
+              "finished_at": 1717459205000,
+              "id": 3,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "provider": "s3",
+              "remote_path": null,
+              "snapshot_path": "snapshot-2024-06-04.tar",
+              "started_at": 1717459200000,
+              "status": "failed"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "create empty body → 400": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "name required"
+        }
+      }
+    },
+    "create unknown provider → 400": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "admin",
+        "body": {
+          "name": "x",
+          "provider": "nope"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "unknown provider \"nope\""
+        }
+      }
+    },
+    "create snapshot without cron → 400": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "admin",
+        "body": {
+          "config": {
+            "rootPath": "/x"
+          },
+          "mode": "snapshot",
+          "name": "snap",
+          "provider": "local"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "snapshot mode requires a cron expression"
+        }
+      }
+    },
+    "create as guest → 403": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "guest",
+        "body": {
+          "name": "g",
+          "provider": "local"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "create disabled local with relative root (#4)": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "admin",
+        "body": {
+          "config": {
+            "rootPath": "relative/path"
+          },
+          "enabled": false,
+          "name": "Relative root",
+          "provider": "local"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": null,
+            "enabled": false,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 4,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "mirror",
+            "name": "Relative root",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "id": 4,
+          "success": true
+        }
+      }
+    },
+    "test #4 relative root → ok:false": {
+      "route": "POST /api/backup/destinations/:id/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/test",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "detail": "rootPath must be an absolute path",
+          "ok": false,
+          "success": true
+        }
+      }
+    },
+    "test #1 local → ok": {
+      "route": "POST /api/backup/destinations/:id/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/1/test",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "detail": "Wrote + removed probe at <DATA>/backup-target/.tgdl-test-probe",
+          "ok": true,
+          "success": true
+        }
+      }
+    },
+    "test #2 s3 unreachable": {
+      "route": "POST /api/backup/destinations/:id/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/2/test",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "detail": "<masked:string>",
+          "ok": false,
+          "success": true
+        }
+      },
+      "masked": {
+        "detail": "third-party client library error text (AWS SDK / ssh2) for an unresolvable host"
+      }
+    },
+    "test #3 sftp unreachable": {
+      "route": "POST /api/backup/destinations/:id/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/3/test",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "detail": "<masked:string>",
+          "ok": false,
+          "success": true
+        }
+      },
+      "masked": {
+        "detail": "third-party client library error text (AWS SDK / ssh2) for an unresolvable host"
+      }
+    },
+    "test unknown id → 500": {
+      "route": "POST /api/backup/destinations/:id/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/999/test",
+        "as": "admin"
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "test bad id → 400": {
+      "route": "POST /api/backup/destinations/:id/test",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/x/test",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "update bad id → 400": {
+      "route": "PUT /api/backup/destinations/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/backup/destinations/abc",
+        "as": "admin",
+        "body": {
+          "name": "x"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "update unknown id → 400": {
+      "route": "PUT /api/backup/destinations/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/backup/destinations/999",
+        "as": "admin",
+        "body": {
+          "name": "x"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "update invalid mode → 400": {
+      "route": "PUT /api/backup/destinations/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/backup/destinations/4",
+        "as": "admin",
+        "body": {
+          "mode": "bogus"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid mode \"bogus\""
+        }
+      }
+    },
+    "pause unknown id → 500": {
+      "route": "POST /api/backup/destinations/:id/pause",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/999/pause",
+        "as": "admin"
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "resume unknown id → 500": {
+      "route": "POST /api/backup/destinations/:id/resume",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/999/resume",
+        "as": "admin"
+      },
+      "status": 500,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "encryption without passphrase → 400": {
+      "route": "POST /api/backup/destinations/:id/encryption",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/encryption",
+        "as": "admin",
+        "body": {
+          "enabled": true
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "passphrase required to enable encryption"
+        }
+      }
+    },
+    "unlock when not encrypted → 400": {
+      "route": "POST /api/backup/destinations/:id/unlock",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/unlock",
+        "as": "admin",
+        "body": {
+          "passphrase": "pw"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "encryption is not enabled for this destination"
+        }
+      }
+    },
+    "encryption unknown id → 400": {
+      "route": "POST /api/backup/destinations/:id/encryption",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/999/encryption",
+        "as": "admin",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "destination #999 not found"
+        }
+      }
+    },
+    "enable #1": {
+      "route": "PUT /api/backup/destinations/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/backup/destinations/1",
+        "as": "admin",
+        "body": {
+          "enabled": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": 1717200000000,
+            "cron": null,
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 1,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": 1717372800000,
+            "mode": "mirror",
+            "name": "Local mirror",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 7066,
+            "totalFiles": 2
+          },
+          "success": true
+        }
+      }
+    },
+    "run #1 (mirror catch-up)": {
+      "route": "POST /api/backup/destinations/:id/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/1/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws: enable + mirror run #1": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "destination": {
+            "createdAt": 1717200000000,
+            "cron": null,
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 1,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": 1717372800000,
+            "mode": "mirror",
+            "name": "Local mirror",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 7066,
+            "totalFiles": 2
+          },
+          "type": "backup_destination_updated"
+        },
+        {
+          "level": "info",
+          "msg": "destination updated — #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "level": "info",
+          "msg": "destination updated (#1)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 1,
+          "type": "backup_queue_drained"
+        },
+        {
+          "level": "info",
+          "msg": "mirror catch-up enqueued 18 jobs for #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 4820,
+          "destinationId": 1,
+          "downloadId": 3,
+          "jobId": 4,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 4820,
+          "destinationId": 1,
+          "downloadId": 3,
+          "jobId": 4,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Alpha Photos/images/IMG_0003.png (4820 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 1300,
+          "destinationId": 1,
+          "downloadId": 4,
+          "jobId": 5,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 1300,
+          "destinationId": 1,
+          "downloadId": 4,
+          "jobId": 5,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Alpha Photos/images/IMG_0004.webp (1300 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 3970,
+          "destinationId": 1,
+          "downloadId": 5,
+          "jobId": 6,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 3970,
+          "destinationId": 1,
+          "downloadId": 5,
+          "jobId": 6,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Alpha Photos/images/IMG_0005.jpg (3970 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 2414,
+          "destinationId": 1,
+          "downloadId": 6,
+          "jobId": 7,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 2414,
+          "destinationId": 1,
+          "downloadId": 6,
+          "jobId": 7,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Alpha Photos/videos/VID_0006.mp4 (2414 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 2171,
+          "destinationId": 1,
+          "downloadId": 7,
+          "jobId": 8,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 2171,
+          "destinationId": 1,
+          "downloadId": 7,
+          "jobId": 8,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Beta Videos/videos/VID_0007.mp4 (2171 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 2414,
+          "destinationId": 1,
+          "downloadId": 8,
+          "jobId": 9,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 2414,
+          "destinationId": 1,
+          "downloadId": 8,
+          "jobId": 9,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Beta Videos/videos/VID_0008.mp4 (2414 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 2679,
+          "destinationId": 1,
+          "downloadId": 9,
+          "jobId": 10,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 2679,
+          "destinationId": 1,
+          "downloadId": 9,
+          "jobId": 10,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Beta Videos/images/IMG_0009.jpg (2679 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 314,
+          "destinationId": 1,
+          "downloadId": 10,
+          "jobId": 11,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 314,
+          "destinationId": 1,
+          "downloadId": 10,
+          "jobId": 11,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Gamma Docs/documents/report.pdf (314 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 38,
+          "destinationId": 1,
+          "downloadId": 11,
+          "jobId": 12,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 38,
+          "destinationId": 1,
+          "downloadId": 11,
+          "jobId": 12,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Gamma Docs/documents/notes.txt (38 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 246,
+          "destinationId": 1,
+          "downloadId": 12,
+          "jobId": 13,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 246,
+          "destinationId": 1,
+          "downloadId": 12,
+          "jobId": 13,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Gamma Docs/documents/bundle.zip (246 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 55,
+          "destinationId": 1,
+          "downloadId": 13,
+          "jobId": 14,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 55,
+          "destinationId": 1,
+          "downloadId": 13,
+          "jobId": 14,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Gamma Docs/documents/notes.txt.gz (55 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 3365,
+          "destinationId": 1,
+          "downloadId": 14,
+          "jobId": 15,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 3365,
+          "destinationId": 1,
+          "downloadId": 14,
+          "jobId": 15,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Delta Mixed/images/IMG_0014.jpg (3365 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytes": 3365,
+          "destinationId": 1,
+          "downloadId": 15,
+          "jobId": 16,
+          "skipped": true,
+          "type": "backup_done"
+        },
+        {
+          "bytesUploaded": 3228,
+          "destinationId": 1,
+          "downloadId": 16,
+          "jobId": 17,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 3228,
+          "destinationId": 1,
+          "downloadId": 16,
+          "jobId": 17,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Delta Mixed/images/ภาพทดสอบ รูป.jpg (3228 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 2679,
+          "destinationId": 1,
+          "downloadId": 17,
+          "jobId": 18,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 2679,
+          "destinationId": 1,
+          "downloadId": 17,
+          "jobId": 18,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Delta Mixed/images/IMG_0017.jpg (2679 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 4820,
+          "destinationId": 1,
+          "downloadId": 18,
+          "jobId": 19,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 4820,
+          "destinationId": 1,
+          "downloadId": 18,
+          "jobId": 19,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Epsilon Archive/images/IMG_0018.png (4820 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 1300,
+          "destinationId": 1,
+          "downloadId": 19,
+          "jobId": 20,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 1300,
+          "destinationId": 1,
+          "downloadId": 19,
+          "jobId": 20,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Epsilon Archive/images/IMG_0019.webp (1300 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": 2171,
+          "destinationId": 1,
+          "downloadId": 20,
+          "jobId": 21,
+          "type": "backup_progress"
+        },
+        {
+          "bytes": 2171,
+          "destinationId": 1,
+          "downloadId": 20,
+          "jobId": 21,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded Epsilon Archive/videos/VID_0020.mp4 (2171 B) → #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 1,
+          "type": "backup_queue_drained"
+        }
+      ]
+    },
+    "status #1 after run": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 18,
+          "enabled": true,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 1,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": "<time:ms>",
+          "mode": "mirror",
+          "name": "Local mirror",
+          "paused": false,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 48415,
+          "totalFiles": 20
+        }
+      }
+    },
+    "jobs #1 after run": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/jobs?limit=100",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 1,
+              "bytes_uploaded": 2171,
+              "destination_id": 1,
+              "download_id": 20,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 21,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Epsilon Archive/videos/VID_0020.mp4",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 1300,
+              "destination_id": 1,
+              "download_id": 19,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 20,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Epsilon Archive/images/IMG_0019.webp",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 4820,
+              "destination_id": 1,
+              "download_id": 18,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 19,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Epsilon Archive/images/IMG_0018.png",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 2679,
+              "destination_id": 1,
+              "download_id": 17,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 18,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Delta Mixed/images/IMG_0017.jpg",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3228,
+              "destination_id": 1,
+              "download_id": 16,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 17,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3365,
+              "destination_id": 1,
+              "download_id": 15,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 16,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Delta Mixed/images/IMG_0014.jpg",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3365,
+              "destination_id": 1,
+              "download_id": 14,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 15,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Delta Mixed/images/IMG_0014.jpg",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 55,
+              "destination_id": 1,
+              "download_id": 13,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 14,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Gamma Docs/documents/notes.txt.gz",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 246,
+              "destination_id": 1,
+              "download_id": 12,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 13,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Gamma Docs/documents/bundle.zip",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 38,
+              "destination_id": 1,
+              "download_id": 11,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 12,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Gamma Docs/documents/notes.txt",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 314,
+              "destination_id": 1,
+              "download_id": 10,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 11,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Gamma Docs/documents/report.pdf",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 2679,
+              "destination_id": 1,
+              "download_id": 9,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 10,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Beta Videos/images/IMG_0009.jpg",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 2414,
+              "destination_id": 1,
+              "download_id": 8,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 9,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Beta Videos/videos/VID_0008.mp4",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 2171,
+              "destination_id": 1,
+              "download_id": 7,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 8,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Beta Videos/videos/VID_0007.mp4",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 2414,
+              "destination_id": 1,
+              "download_id": 6,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 7,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/videos/VID_0006.mp4",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3970,
+              "destination_id": 1,
+              "download_id": 5,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 6,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0005.jpg",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 1300,
+              "destination_id": 1,
+              "download_id": 4,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 5,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0004.webp",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 4820,
+              "destination_id": 1,
+              "download_id": 3,
+              "error": null,
+              "finished_at": "<time:ms>",
+              "id": 4,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0003.png",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3228,
+              "destination_id": 1,
+              "download_id": 2,
+              "error": null,
+              "finished_at": 1717372803000,
+              "id": 2,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0002.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372802000,
+              "status": "done"
+            },
+            {
+              "attempts": 1,
+              "bytes_uploaded": 3365,
+              "destination_id": 1,
+              "download_id": 1,
+              "error": null,
+              "finished_at": 1717372801000,
+              "id": 1,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Alpha Photos/images/IMG_0001.jpg",
+              "snapshot_path": null,
+              "started_at": 1717372800000,
+              "status": "done"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "destinations after run": {
+      "route": "GET /api/backup/destinations",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destinations": [
+            {
+              "createdAt": "<time:ms>",
+              "cron": null,
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 4,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": null,
+              "mode": "mirror",
+              "name": "Relative root",
+              "provider": "local",
+              "retainCount": 7,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200002000,
+              "cron": null,
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 3,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": null,
+              "mode": "mirror",
+              "name": "NAS over SFTP",
+              "provider": "sftp",
+              "retainCount": 7,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200001000,
+              "cron": "0 3 * * *",
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 2,
+              "lastError": "getaddrinfo ENOTFOUND s3.invalid",
+              "lastFailureAt": 1717459200000,
+              "lastSuccessAt": null,
+              "mode": "snapshot",
+              "name": "Offsite S3",
+              "provider": "s3",
+              "retainCount": 7,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200000000,
+              "cron": null,
+              "enabled": true,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 1,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": "<time:ms>",
+              "mode": "mirror",
+              "name": "Local mirror",
+              "provider": "local",
+              "retainCount": 7,
+              "totalBytes": 48415,
+              "totalFiles": 20
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "files mirrored into <DATA>/backup-target": {
+      "derived": [
+        "Alpha Photos/images/IMG_0003.png 4820",
+        "Alpha Photos/images/IMG_0004.webp 1300",
+        "Alpha Photos/images/IMG_0005.jpg 3970",
+        "Alpha Photos/videos/VID_0006.mp4 2414",
+        "Beta Videos/images/IMG_0009.jpg 2679",
+        "Beta Videos/videos/VID_0007.mp4 2171",
+        "Beta Videos/videos/VID_0008.mp4 2414",
+        "Delta Mixed/images/IMG_0014.jpg 3365",
+        "Delta Mixed/images/IMG_0017.jpg 2679",
+        "Delta Mixed/images/ภาพทดสอบ รูป.jpg 3228",
+        "Epsilon Archive/images/IMG_0018.png 4820",
+        "Epsilon Archive/images/IMG_0019.webp 1300",
+        "Epsilon Archive/videos/VID_0020.mp4 2171",
+        "Gamma Docs/documents/bundle.zip 246",
+        "Gamma Docs/documents/notes.txt 38",
+        "Gamma Docs/documents/notes.txt.gz 55",
+        "Gamma Docs/documents/report.pdf 314"
+      ]
+    },
+    "run #1 again": {
+      "route": "POST /api/backup/destinations/:id/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/1/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws: second run #1": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "level": "info",
+          "msg": "mirror catch-up enqueued 0 jobs for #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 1,
+          "type": "backup_queue_drained"
+        }
+      ]
+    },
+    "run disabled #2": {
+      "route": "POST /api/backup/destinations/:id/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/2/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "run unknown id → 200": {
+      "route": "POST /api/backup/destinations/:id/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/998/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws: run disabled / unknown": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "level": "error",
+          "msg": "run failed for #2: destination is disabled",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "level": "error",
+          "msg": "run failed for #998: destination #998 not found",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        }
+      ]
+    },
+    "pause #1": {
+      "route": "POST /api/backup/destinations/:id/pause",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/1/pause",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "status #1 paused": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 18,
+          "enabled": true,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 1,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": "<time:ms>",
+          "mode": "mirror",
+          "name": "Local mirror",
+          "paused": true,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 48415,
+          "totalFiles": 20
+        }
+      }
+    },
+    "resume #1": {
+      "route": "POST /api/backup/destinations/:id/resume",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/1/resume",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "status #1 resumed": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/1/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 18,
+          "enabled": true,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 1,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": "<time:ms>",
+          "mode": "mirror",
+          "name": "Local mirror",
+          "paused": false,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 48415,
+          "totalFiles": 20
+        }
+      }
+    },
+    "ws: pause + resume #1": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "destination": {
+            "createdAt": 1717200000000,
+            "cron": null,
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 1,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": "<time:ms>",
+            "mode": "mirror",
+            "name": "Local mirror",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 48415,
+            "totalFiles": 20
+          },
+          "type": "backup_destination_updated"
+        },
+        {
+          "level": "info",
+          "msg": "paused #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destination": {
+            "createdAt": 1717200000000,
+            "cron": null,
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 1,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": "<time:ms>",
+            "mode": "mirror",
+            "name": "Local mirror",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 48415,
+            "totalFiles": 20
+          },
+          "type": "backup_destination_updated"
+        },
+        {
+          "level": "info",
+          "msg": "resumed #1",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 1,
+          "type": "backup_queue_drained"
+        }
+      ]
+    },
+    "encryption on #4": {
+      "route": "POST /api/backup/destinations/:id/encryption",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/encryption",
+        "as": "admin",
+        "body": {
+          "enabled": true,
+          "passphrase": "contract-passphrase"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": null,
+            "enabled": false,
+            "encryption": true,
+            "encryptionUnlocked": true,
+            "id": 4,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "mirror",
+            "name": "Relative root",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "success": true
+        }
+      }
+    },
+    "unlock #4": {
+      "route": "POST /api/backup/destinations/:id/unlock",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/unlock",
+        "as": "admin",
+        "body": {
+          "passphrase": "contract-passphrase"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "unlock #4 empty passphrase (accepted)": {
+      "route": "POST /api/backup/destinations/:id/unlock",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/unlock",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "passphrase required"
+        }
+      }
+    },
+    "status #4 encrypted": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/4/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 0,
+          "enabled": false,
+          "encryption": true,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 4,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": null,
+          "mode": "mirror",
+          "name": "Relative root",
+          "paused": false,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "encryption off #4": {
+      "route": "POST /api/backup/destinations/:id/encryption",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/4/encryption",
+        "as": "admin",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": null,
+            "enabled": false,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 4,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "mirror",
+            "name": "Relative root",
+            "provider": "local",
+            "retainCount": 7,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "success": true
+        }
+      }
+    },
+    "retry job #3": {
+      "route": "POST /api/backup/jobs/:id/retry",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/jobs/3/retry",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "jobs #2 after retry": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/2/jobs",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 0,
+              "bytes_uploaded": 0,
+              "destination_id": 2,
+              "download_id": null,
+              "error": null,
+              "finished_at": null,
+              "id": 3,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": null,
+              "snapshot_path": "snapshot-2024-06-04.tar",
+              "started_at": null,
+              "status": "pending"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "retry unknown job": {
+      "route": "POST /api/backup/jobs/:id/retry",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/jobs/999/retry",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": false
+        }
+      }
+    },
+    "retry bad id → 400": {
+      "route": "POST /api/backup/jobs/:id/retry",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/jobs/abc/retry",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "update #2 name + non-secret config": {
+      "route": "PUT /api/backup/destinations/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/backup/destinations/2",
+        "as": "admin",
+        "body": {
+          "config": {
+            "bucket": "other-bucket",
+            "secretAccessKey": ""
+          },
+          "name": "Offsite S3 (renamed)",
+          "retainCount": 400
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": 1717200001000,
+            "cron": "0 3 * * *",
+            "enabled": false,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 2,
+            "lastError": "getaddrinfo ENOTFOUND s3.invalid",
+            "lastFailureAt": 1717459200000,
+            "lastSuccessAt": null,
+            "mode": "snapshot",
+            "name": "Offsite S3 (renamed)",
+            "provider": "s3",
+            "retainCount": 365,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "success": true
+        }
+      }
+    },
+    "config #2 after update": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/2/config",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "config": {
+            "bucket": "other-bucket",
+            "endpoint": "https://s3.invalid",
+            "prefix": "tgdl/",
+            "region": "auto"
+          },
+          "success": true
+        }
+      }
+    },
+    "delete #4": {
+      "route": "DELETE /api/backup/destinations/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/backup/destinations/4",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "delete unknown id": {
+      "route": "DELETE /api/backup/destinations/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/backup/destinations/999",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": false
+        }
+      }
+    },
+    "delete bad id → 400": {
+      "route": "DELETE /api/backup/destinations/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/backup/destinations/abc",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "bad id"
+        }
+      }
+    },
+    "ws: delete destinations": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "destinationId": 4,
+          "type": "backup_destination_removed"
+        },
+        {
+          "level": "info",
+          "msg": "destination removed — #4",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "level": "info",
+          "msg": "destination removed (#4)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 999,
+          "type": "backup_destination_removed"
+        },
+        {
+          "level": "info",
+          "msg": "destination removed — #999",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "level": "info",
+          "msg": "destination removed (#999)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        }
+      ]
+    },
+    "destinations after delete": {
+      "route": "GET /api/backup/destinations",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destinations": [
+            {
+              "createdAt": 1717200002000,
+              "cron": null,
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 3,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": null,
+              "mode": "mirror",
+              "name": "NAS over SFTP",
+              "provider": "sftp",
+              "retainCount": 7,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200001000,
+              "cron": "0 3 * * *",
+              "enabled": false,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 2,
+              "lastError": "getaddrinfo ENOTFOUND s3.invalid",
+              "lastFailureAt": 1717459200000,
+              "lastSuccessAt": null,
+              "mode": "snapshot",
+              "name": "Offsite S3 (renamed)",
+              "provider": "s3",
+              "retainCount": 365,
+              "totalBytes": 0,
+              "totalFiles": 0
+            },
+            {
+              "createdAt": 1717200000000,
+              "cron": null,
+              "enabled": true,
+              "encryption": false,
+              "encryptionUnlocked": true,
+              "id": 1,
+              "lastError": null,
+              "lastFailureAt": null,
+              "lastSuccessAt": "<time:ms>",
+              "mode": "mirror",
+              "name": "Local mirror",
+              "provider": "local",
+              "retainCount": 7,
+              "totalBytes": 48415,
+              "totalFiles": 20
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "create enabled local mirror (#5)": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "admin",
+        "body": {
+          "config": {
+            "rootPath": "<DATA>/backup-new"
+          },
+          "name": "New mirror",
+          "provider": "local",
+          "retainCount": 3
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": null,
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 5,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "mirror",
+            "name": "New mirror",
+            "provider": "local",
+            "retainCount": 3,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "id": 5,
+          "success": true
+        }
+      }
+    },
+    "ws: create enabled mirror": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": null,
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 5,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "mirror",
+            "name": "New mirror",
+            "provider": "local",
+            "retainCount": 3,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "type": "backup_destination_added"
+        },
+        {
+          "level": "info",
+          "msg": "destination added — local/New mirror (#5)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "level": "info",
+          "msg": "destination created (#5)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 5,
+          "type": "backup_queue_drained"
+        }
+      ]
+    },
+    "config #5": {
+      "route": "GET /api/backup/destinations/:id/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/5/config",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "config": {
+            "rootPath": "<DATA>/backup-new"
+          },
+          "success": true
+        }
+      }
+    },
+    "run #5 with one source file missing": {
+      "route": "POST /api/backup/destinations/:id/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/5/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws: run #5 — failed job": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "destinationId": 5,
+          "error": "local file missing: <DATA>/downloads/Gamma Docs/documents/notes.txt.gz",
+          "jobId": 34,
+          "type": "backup_error",
+          "willRetry": false
+        },
+        {
+          "level": "warn",
+          "msg": "job #34 on dest #5 failed: local file missing: <DATA>/downloads/Gamma Docs/documents/notes.txt.gz",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        }
+      ]
+    },
+    "run #5 tally (derived)": {
+      "derived": {
+        "done": 19,
+        "errors": 1
+      }
+    },
+    "jobs #5 status=failed": {
+      "route": "GET /api/backup/destinations/:id/jobs",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/5/jobs?status=failed",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "jobs": [
+            {
+              "attempts": 1,
+              "bytes_uploaded": 0,
+              "destination_id": 5,
+              "download_id": 13,
+              "error": "local file missing: <DATA>/downloads/Gamma Docs/documents/notes.txt.gz",
+              "finished_at": "<time:ms>",
+              "id": 34,
+              "max_attempts": 5,
+              "next_retry_at": null,
+              "remote_path": "Gamma Docs/documents/notes.txt.gz",
+              "snapshot_path": null,
+              "started_at": "<time:ms>",
+              "status": "failed"
+            }
+          ],
+          "success": true
+        }
+      }
+    },
+    "status #5 after run": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/5/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 19,
+          "enabled": true,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 1,
+          "id": 5,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": "<time:ms>",
+          "mode": "mirror",
+          "name": "New mirror",
+          "paused": false,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": 47887,
+          "totalFiles": 19
+        }
+      }
+    },
+    "create snapshot destination (#6)": {
+      "route": "POST /api/backup/destinations",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations",
+        "as": "admin",
+        "body": {
+          "config": {
+            "rootPath": "<DATA>/backup-snap"
+          },
+          "cron": "0 3 * * *",
+          "mode": "snapshot",
+          "name": "Nightly",
+          "provider": "local",
+          "retainCount": 2
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": "0 3 * * *",
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 6,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "snapshot",
+            "name": "Nightly",
+            "provider": "local",
+            "retainCount": 2,
+            "totalBytes": 0,
+            "totalFiles": 0
+          },
+          "id": 6,
+          "success": true
+        }
+      }
+    },
+    "run snapshot #6": {
+      "route": "POST /api/backup/destinations/:id/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/backup/destinations/6/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws: snapshot run #6": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": "0 3 * * *",
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 6,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": null,
+            "mode": "snapshot",
+            "name": "Nightly",
+            "provider": "local",
+            "retainCount": 2,
+            "totalBytes": "<masked:number>",
+            "totalFiles": 0
+          },
+          "type": "backup_destination_added"
+        },
+        {
+          "level": "info",
+          "msg": "destination added — local/Nightly (#6)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "level": "info",
+          "msg": "destination created (#6)",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 6,
+          "type": "backup_queue_drained"
+        },
+        {
+          "level": "info",
+          "msg": "snapshot built <DATA>/backups/snapshot-<YYYYMMDD-HHMMSS>.tar.gz → enqueued for #6",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "bytesUploaded": "<masked:number>",
+          "destinationId": 6,
+          "downloadId": null,
+          "jobId": 42,
+          "type": "backup_progress"
+        },
+        {
+          "level": "info",
+          "msg": "retention on #6: listed 1, kept 1, pruned 0",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destination": {
+            "createdAt": "<time:ms>",
+            "cron": "0 3 * * *",
+            "enabled": true,
+            "encryption": false,
+            "encryptionUnlocked": true,
+            "id": 6,
+            "lastError": null,
+            "lastFailureAt": null,
+            "lastSuccessAt": "<time:ms>",
+            "mode": "snapshot",
+            "name": "Nightly",
+            "provider": "local",
+            "retainCount": 2,
+            "totalBytes": "<masked:number>",
+            "totalFiles": 1
+          },
+          "type": "backup_destination_updated"
+        },
+        {
+          "bytes": "<masked:number>",
+          "destinationId": 6,
+          "downloadId": null,
+          "jobId": 42,
+          "type": "backup_done"
+        },
+        {
+          "level": "info",
+          "msg": "uploaded snapshots/snapshot-<YYYYMMDD-HHMMSS>.tar.gz (<bytes> B) → #6",
+          "source": "backup",
+          "ts": "<time:ms>",
+          "type": "log"
+        },
+        {
+          "destinationId": 6,
+          "type": "backup_queue_drained"
+        }
+      ],
+      "masked": {
+        "bytes": "size of a tar.gz of the live DB (kv timestamps, session rows) — differs run to run",
+        "bytesUploaded": "size of a tar.gz of the live DB — differs run to run",
+        "destination.totalBytes": "size of a tar.gz of the live DB — differs run to run"
+      },
+      "note": "snapshot archive name/size in log lines rewritten to placeholders (wall clock + gzip of live DB)"
+    },
+    "snapshot job #6 (derived)": {
+      "derived": {
+        "count": 1,
+        "status": "done",
+        "attempts": 1,
+        "remotePathShape": true,
+        "snapshotPathShape": true,
+        "stagingArchiveDeleted": true,
+        "uploadedBytesMatchFile": true,
+        "remoteFiles": 1
+      }
+    },
+    "status #6": {
+      "route": "GET /api/backup/destinations/:id/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/backup/destinations/6/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "completed24h": 1,
+          "enabled": true,
+          "encryption": false,
+          "encryptionUnlocked": true,
+          "failed24h": 0,
+          "id": 6,
+          "lastError": null,
+          "lastFailureAt": null,
+          "lastSuccessAt": "<time:ms>",
+          "mode": "snapshot",
+          "name": "Nightly",
+          "paused": false,
+          "processing": 0,
+          "provider": "local",
+          "queued": 0,
+          "running": false,
+          "success": true,
+          "totalBytes": "<masked:number>",
+          "totalFiles": 1
+        }
+      },
+      "masked": {
+        "totalBytes": "size of a tar.gz of the live DB — differs run to run"
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

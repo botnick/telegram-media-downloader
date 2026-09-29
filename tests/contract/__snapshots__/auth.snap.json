@@ -1,0 +1,1543 @@
+{
+  "entries": {
+    "auth_check anon": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "auth_check admin": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": true,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": "admin",
+          "setupRequired": false
+        }
+      }
+    },
+    "auth_check guest": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": true,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": "guest",
+          "setupRequired": false
+        }
+      }
+    },
+    "auth_check unknown token": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "custom-cookie"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "auth_check malformed cookie header": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "custom-cookie"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "anon GET /api/downloads → 401": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "anon POST /api/config → 401": {
+      "route": "POST /api/config",
+      "request": {
+        "method": "POST",
+        "path": "/api/config",
+        "as": "anon",
+        "body": {
+          "pollingInterval": 5
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "anon GET / → login redirect": {
+      "route": "GET /",
+      "request": {
+        "method": "GET",
+        "path": "/",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "anon GET /files/x → login redirect": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0001.jpg",
+        "as": "anon"
+      },
+      "status": 302,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/plain; charset=utf-8",
+        "location": "/login.html",
+        "vary": "Accept"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Found. Redirecting to /login.html"
+      }
+    },
+    "anon GET /login.html": {
+      "route": "GET /login.html",
+      "request": {
+        "method": "GET",
+        "path": "/login.html",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "vary": "Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "textSha256": "2c2072d5ed6a435af06f0b07c4e0a9fd3a29962d61b2c18a0055f298de056396",
+        "chars": 16898
+      }
+    },
+    "anon GET /api/version (public)": {
+      "route": "GET /api/version",
+      "request": {
+        "method": "GET",
+        "path": "/api/version",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "builtAt": null,
+          "commit": "dev",
+          "version": "<version>"
+        }
+      }
+    },
+    "anon GET unknown api path → 401": {
+      "route": null,
+      "request": {
+        "method": "GET",
+        "path": "/api/does-not-exist",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "admin GET unknown api path": {
+      "route": null,
+      "request": {
+        "method": "GET",
+        "path": "/api/does-not-exist",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /api/does-not-exist</pre>\n</body>\n</html>\n"
+      }
+    },
+    "admin POST unknown api path": {
+      "route": null,
+      "request": {
+        "method": "POST",
+        "path": "/api/does-not-exist",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /api/does-not-exist</pre>\n</body>\n</html>\n"
+      }
+    },
+    "admin GET unknown static path": {
+      "route": null,
+      "request": {
+        "method": "GET",
+        "path": "/nope/not-here.txt",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "vary": "Accept-Encoding"
+      },
+      "security": "29db244183",
+      "body": {
+        "text": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot GET /nope/not-here.txt</pre>\n</body>\n</html>\n"
+      }
+    },
+    "guest GET /api/downloads (allowed)": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "enabled": true,
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "sizeFormatted": "18.65 KB",
+            "totalFiles": 6,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "photoUrl": null,
+            "sizeFormatted": "7.09 KB",
+            "totalFiles": 3,
+            "type": null
+          },
+          {
+            "enabled": false,
+            "id": "-1001000000003",
+            "name": "Gamma Docs",
+            "photoUrl": null,
+            "sizeFormatted": "653 B",
+            "totalFiles": 4,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "photoUrl": null,
+            "sizeFormatted": "12.34 KB",
+            "totalFiles": 4,
+            "type": null
+          },
+          {
+            "enabled": false,
+            "id": "-1001000000005",
+            "name": "Epsilon Archive",
+            "photoUrl": null,
+            "sizeFormatted": "8.1 KB",
+            "totalFiles": 3,
+            "type": null
+          }
+        ]
+      }
+    },
+    "guest GET /api/config → 403": {
+      "route": "GET /api/config",
+      "request": {
+        "method": "GET",
+        "path": "/api/config",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest POST /api/config → 403": {
+      "route": "POST /api/config",
+      "request": {
+        "method": "POST",
+        "path": "/api/config",
+        "as": "guest",
+        "body": {
+          "pollingInterval": 5
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest DELETE /api/file → 403": {
+      "route": "DELETE /api/file",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/file",
+        "as": "guest",
+        "body": {
+          "path": "Alpha Photos/images/IMG_0001.jpg"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest GET unknown api path → 403": {
+      "route": null,
+      "request": {
+        "method": "GET",
+        "path": "/api/does-not-exist",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest GET /api/monitor/status (allowed)": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 0,
+          "active": 0,
+          "error": null,
+          "hint": "configure-api",
+          "queue": 0,
+          "startedAt": null,
+          "state": "stopped",
+          "stats": null,
+          "uptimeMs": "<uptimeMs:number>",
+          "workers": 0
+        }
+      }
+    },
+    "POST with foreign Origin → 403": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "headers": {
+          "origin": "http://evil.example"
+        },
+        "body": {
+          "downloadId": 1
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Cross-origin request blocked"
+        }
+      }
+    },
+    "POST with malformed Origin → 403": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "headers": {
+          "origin": "not a url"
+        },
+        "body": {
+          "downloadId": 1
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid Origin/Referer"
+        }
+      }
+    },
+    "DELETE with foreign Referer → 403": {
+      "route": "DELETE /api/share/links/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/share/links/1",
+        "as": "admin",
+        "headers": {
+          "referer": "https://evil.example/page"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Cross-origin request blocked"
+        }
+      }
+    },
+    "POST with localhost Origin aliasing 127.0.0.1 → handled": {
+      "route": "POST /api/share/links",
+      "request": {
+        "method": "POST",
+        "path": "/api/share/links",
+        "as": "admin",
+        "headers": {
+          "origin": "http://<HOST>"
+        },
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "downloadId required"
+        }
+      }
+    },
+    "login without body → 400": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=9, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password required"
+        }
+      }
+    },
+    "login with empty password → 400": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": ""
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=8, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password required"
+        }
+      }
+    },
+    "login with wrong password → 401": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "definitely-wrong"
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=7, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Invalid password"
+        }
+      }
+    },
+    "login admin → 200 + cookie": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=6, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "<session-token>",
+            "attributes": {
+              "expires": "<time:http>",
+              "httponly": true,
+              "max-age": "604800",
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "role": "admin",
+          "success": true
+        }
+      }
+    },
+    "auth_check with the issued cookie": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "issued-admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": true,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": "admin",
+          "setupRequired": false
+        }
+      }
+    },
+    "login guest → 200 guest role": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "contract-guest-pass"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=5, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "<session-token>",
+            "attributes": {
+              "expires": "<time:http>",
+              "httponly": true,
+              "max-age": "604800",
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "role": "guest",
+          "success": true
+        }
+      }
+    },
+    "change-password anon → 401": {
+      "route": "POST /api/auth/change-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "as": "anon",
+        "body": {
+          "currentPassword": "contract-admin-pass",
+          "newPassword": "another-password-1"
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=4, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "change-password guest → 403": {
+      "route": "POST /api/auth/change-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "as": "guest",
+        "body": {
+          "currentPassword": "contract-admin-pass",
+          "newPassword": "another-password-1"
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=3, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "change-password missing fields → 400": {
+      "route": "POST /api/auth/change-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "as": "admin",
+        "body": {
+          "currentPassword": "contract-admin-pass"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=2, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "currentPassword and newPassword required"
+        }
+      }
+    },
+    "change-password short → 400": {
+      "route": "POST /api/auth/change-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "as": "admin",
+        "body": {
+          "currentPassword": "contract-admin-pass",
+          "newPassword": "short"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=1, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "New password must be at least 8 characters"
+        }
+      }
+    },
+    "change-password wrong current → 401": {
+      "route": "POST /api/auth/change-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/change-password",
+        "as": "admin",
+        "body": {
+          "currentPassword": "wrong-current-pw",
+          "newPassword": "another-password-1"
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=0, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Current password is incorrect"
+        }
+      }
+    },
+    "login 11th attempt → 429": {
+      "route": "POST /api/login",
+      "request": {
+        "method": "POST",
+        "path": "/api/login",
+        "as": "anon",
+        "body": {
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 429,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=0, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "retry-after": "<seconds>",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Too many login attempts. Try again in 15 minutes."
+        }
+      }
+    },
+    "reset/request while limited → 429": {
+      "route": "POST /api/auth/reset/request",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/reset/request",
+        "as": "anon"
+      },
+      "status": 429,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=10, remaining=0, reset=<s>",
+        "ratelimit-policy": "10;w=900",
+        "retry-after": "<seconds>",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Too many login attempts. Try again in 15 minutes."
+        }
+      }
+    },
+    "logout with issued cookie": {
+      "route": "POST /api/logout",
+      "request": {
+        "method": "POST",
+        "path": "/api/logout",
+        "as": "issued-admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "",
+            "attributes": {
+              "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+              "httponly": true,
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "auth_check after logout": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "issued-admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": true,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "logout without a session": {
+      "route": "POST /api/logout",
+      "request": {
+        "method": "POST",
+        "path": "/api/logout",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "set-cookie": [
+          {
+            "name": "tg_dl_session",
+            "value": "",
+            "attributes": {
+              "expires": "Thu, 01 Jan 1970 00:00:00 GMT",
+              "httponly": true,
+              "path": "/",
+              "samesite": "Strict"
+            }
+          }
+        ],
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true
+        }
+      }
+    },
+    "setup when configured → 409": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "body": {
+          "password": "brand-new-password"
+        }
+      },
+      "status": 409,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=19, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Already configured — use POST /api/auth/change-password"
+        }
+      }
+    },
+    "setup with short password → 400": {
+      "route": "POST /api/auth/setup",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/setup",
+        "as": "anon",
+        "body": {
+          "password": "x"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "ratelimit": "limit=20, remaining=18, reset=<s>",
+        "ratelimit-policy": "20;w=900",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Password must be at least 8 characters"
+        }
+      }
+    },
+    "ws upgrade by session kind": {
+      "ws": "dashboard",
+      "upgrade": {
+        "anon": 401,
+        "unknownToken": 401,
+        "admin": "open",
+        "guest": "open"
+      }
+    },
+    "guest-password anon → 401": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "anon",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "guest-password guest → 403": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "guest",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "guest-password empty body → 400": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Provide one of: password, enabled, clear"
+        }
+      }
+    },
+    "guest-password short → 400": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "password": "short"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Guest password must be at least 8 characters"
+        }
+      }
+    },
+    "guest-password equal to admin → 400": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "password": "contract-admin-pass"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "SAME_AS_ADMIN",
+          "error": "Guest password must differ from the admin password"
+        }
+      }
+    },
+    "guest-password disable": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "configured": true,
+          "enabled": false,
+          "success": true
+        }
+      }
+    },
+    "guest session revoked after disable": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": false,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "auth_check shows guest disabled": {
+      "route": "GET /api/auth_check",
+      "request": {
+        "method": "GET",
+        "path": "/api/auth_check",
+        "as": "anon"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "authenticated": false,
+          "configured": true,
+          "enabled": true,
+          "guestEnabled": false,
+          "role": null,
+          "setupRequired": false
+        }
+      }
+    },
+    "guest-password enable": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "enabled": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "configured": true,
+          "enabled": true,
+          "success": true
+        }
+      }
+    },
+    "guest-password set new": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "password": "new-guest-password"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "configured": true,
+          "enabled": true,
+          "success": true
+        }
+      }
+    },
+    "guest-password clear": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "clear": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "configured": false,
+          "enabled": false,
+          "success": true
+        }
+      }
+    },
+    "guest-password enable without a password → 400": {
+      "route": "POST /api/auth/guest-password",
+      "request": {
+        "method": "POST",
+        "path": "/api/auth/guest-password",
+        "as": "admin",
+        "body": {
+          "enabled": true
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Set a guest password before enabling guest access"
+        }
+      }
+    },
+    "ws events from guest-password changes": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "config_updated"
+        },
+        {
+          "type": "config_updated"
+        },
+        {
+          "type": "config_updated"
+        },
+        {
+          "type": "config_updated"
+        }
+      ]
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "29db244183": {
+      "content-security-policy": "default-src 'none'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

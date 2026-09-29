@@ -42,6 +42,29 @@ jobs:
           # treat the run as failed only on real errors.
           FORCE_COLOR: '1'
 
+  # Black-box API contract suite (tests/contract): every HTTP route and WS
+  # event recorded from the Node server, compared against the committed
+  # goldens. Its own job — `npm test` stays fast. Each Go domain switches
+  # over only once this passes with CONTRACT_TARGET=go (docs/GO-MIGRATION.md).
+  contract:
+    name: API contract (Node target) on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:contract
+        env:
+          CONTRACT_TARGET: node
+          FORCE_COLOR: '1'
+
   # tgdl-core (core-service/, Go): format, vet, tests, and a build for
   # every release target (CGO off, so cross-builds need no toolchain).
   go:

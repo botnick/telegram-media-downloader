@@ -1,0 +1,675 @@
+{
+  "entries": {
+    "accounts admin": {
+      "route": "GET /api/accounts",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "id": "bob",
+            "isDefault": true,
+            "name": "bob",
+            "phone": "",
+            "username": ""
+          },
+          {
+            "id": "alice",
+            "isDefault": false,
+            "name": "Alice Example",
+            "phone": "+10000000001",
+            "username": "alice_ex"
+          }
+        ]
+      }
+    },
+    "accounts guest → 403": {
+      "route": "GET /api/accounts",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "accounts anon → 401": {
+      "route": "GET /api/accounts",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "monitor/status counts session files when creds are missing": {
+      "route": "GET /api/monitor/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/monitor/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accounts": 2,
+          "active": 0,
+          "error": null,
+          "hint": "configure-api",
+          "queue": 0,
+          "startedAt": null,
+          "state": "stopped",
+          "stats": null,
+          "uptimeMs": "<uptimeMs:number>",
+          "workers": 0
+        }
+      }
+    },
+    "auth/begin without API creds → 503": {
+      "route": "POST /api/accounts/auth/begin",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/begin",
+        "as": "admin",
+        "body": {
+          "label": "carol"
+        }
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "auth/phone without API creds → 400": {
+      "route": "POST /api/accounts/auth/phone",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/phone",
+        "as": "admin",
+        "body": {
+          "phone": "+10000000002",
+          "sessionId": "abc"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "auth/code without API creds → 400": {
+      "route": "POST /api/accounts/auth/code",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/code",
+        "as": "admin",
+        "body": {
+          "code": "12345",
+          "sessionId": "abc"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "auth/2fa without API creds → 400": {
+      "route": "POST /api/accounts/auth/2fa",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/2fa",
+        "as": "admin",
+        "body": {
+          "password": "pw",
+          "sessionId": "abc"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "auth/cancel without API creds → 400": {
+      "route": "POST /api/accounts/auth/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/cancel",
+        "as": "admin",
+        "body": {
+          "sessionId": "abc"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Telegram API credentials not configured"
+        }
+      }
+    },
+    "auth/:sessionId without API creds → 503": {
+      "route": "GET /api/accounts/auth/:sessionId",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts/auth/abc",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "delete account without API creds → 503": {
+      "route": "DELETE /api/accounts/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/accounts/alice",
+        "as": "admin"
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NO_API_CREDS",
+          "error": "Telegram API credentials not configured. Add telegram.apiId and telegram.apiHash in Settings first."
+        }
+      }
+    },
+    "auth/begin guest → 403": {
+      "route": "POST /api/accounts/auth/begin",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/begin",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "delete account anon → 401": {
+      "route": "DELETE /api/accounts/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/accounts/alice",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "[creds] accounts without a sessions dir": {
+      "route": "GET /api/accounts",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": []
+      }
+    },
+    "[creds] delete unknown account → 404": {
+      "route": "DELETE /api/accounts/:id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/accounts/nobody",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Account not found"
+        }
+      }
+    },
+    "[creds] auth/phone unknown session → 400": {
+      "route": "POST /api/accounts/auth/phone",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/phone",
+        "as": "admin",
+        "body": {
+          "phone": "+10000000002",
+          "sessionId": "deadbeefdeadbeef"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Auth session not found"
+        }
+      }
+    },
+    "[creds] auth/:sessionId unknown → 404": {
+      "route": "GET /api/accounts/auth/:sessionId",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts/auth/deadbeefdeadbeef",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Auth session not found"
+        }
+      }
+    },
+    "[creds] auth/cancel unknown session": {
+      "route": "POST /api/accounts/auth/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/cancel",
+        "as": "admin",
+        "body": {
+          "sessionId": "deadbeefdeadbeef"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": false,
+          "reason": "not_found"
+        }
+      }
+    },
+    "[creds] auth/begin (DC refused, returns after retries)": {
+      "route": "POST /api/accounts/auth/begin",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/begin",
+        "as": "admin",
+        "body": {
+          "label": "Carol Test"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "sessionId": "<masked:string>",
+          "state": "phone"
+        }
+      },
+      "masked": {
+        "sessionId": "random auth-flow id (crypto.randomBytes(8))"
+      }
+    },
+    "[creds] auth/:sessionId right after begin": {
+      "route": "GET /api/accounts/auth/:sessionId",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts/auth/<sessionId>",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "accountId": null,
+          "code": null,
+          "error": null,
+          "hint": null,
+          "seconds": null,
+          "state": "phone"
+        }
+      }
+    },
+    "[creds] auth/phone empty phone → 400": {
+      "route": "POST /api/accounts/auth/phone",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/phone",
+        "as": "admin",
+        "body": {
+          "phone": "   ",
+          "sessionId": "<sessionId>"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Phone required"
+        }
+      }
+    },
+    "[creds] auth/code in phone state → 400": {
+      "route": "POST /api/accounts/auth/code",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/code",
+        "as": "admin",
+        "body": {
+          "code": "12345",
+          "sessionId": "<sessionId>"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Wrong state: phone"
+        }
+      }
+    },
+    "[creds] auth/2fa in phone state → 400": {
+      "route": "POST /api/accounts/auth/2fa",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/2fa",
+        "as": "admin",
+        "body": {
+          "password": "pw",
+          "sessionId": "<sessionId>"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Wrong state: phone"
+        }
+      }
+    },
+    "[creds] auth/cancel": {
+      "route": "POST /api/accounts/auth/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/cancel",
+        "as": "admin",
+        "body": {
+          "sessionId": "<sessionId>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": true
+        }
+      }
+    },
+    "[creds] auth/:sessionId after cancel → 404": {
+      "route": "GET /api/accounts/auth/:sessionId",
+      "request": {
+        "method": "GET",
+        "path": "/api/accounts/auth/<sessionId>",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Auth session not found"
+        }
+      }
+    },
+    "[creds] auth/cancel again → not_found": {
+      "route": "POST /api/accounts/auth/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/accounts/auth/cancel",
+        "as": "admin",
+        "body": {
+          "sessionId": "<sessionId>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "ok": false,
+          "reason": "not_found"
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

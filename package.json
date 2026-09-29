@@ -1,6 +1,6 @@
 {
     "name": "telegram-media-downloader",
-    "version": "2.29.0",
+    "version": "2.29.1",
     "description": "Self-hosted Telegram media downloader — CLI + Web dashboard. MIT, no quotas.",
     "type": "module",
     "main": "src/index.js",
@@ -48,6 +48,10 @@
         "build:css": "tailwindcss -c scripts/tailwind.config.cjs -i scripts/tailwind.input.css -o src/web/public/css/tailwind.css",
         "test": "vitest run",
         "test:watch": "vitest",
+        "test:contract": "vitest run --config tests/contract/vitest.config.js",
+        "test:contract:update": "node scripts/contract-run.mjs --update",
+        "contract:inventory": "node scripts/contract-inventory.mjs",
+        "contract:schema": "node scripts/contract-schema.mjs",
         "prepare": "lefthook install || exit 0"
     },
     "repository": {

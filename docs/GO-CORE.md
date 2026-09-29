@@ -167,3 +167,7 @@ NTFS on NVMe, warm cache, Node 22. Every pair produced identical results.
 
 Each later phase follows the same rule as phase 2: Node code is removed
 only once tests prove the Go path gives identical results.
+
+The end state — the whole backend in Go, no Node at runtime, gated by the
+black-box API contract suite in `tests/contract/` — is planned in
+[GO-MIGRATION.md](GO-MIGRATION.md).

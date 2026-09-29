@@ -1,0 +1,2693 @@
+{
+  "entries": {
+    "nsfw status": {
+      "route": "GET /api/maintenance/nsfw/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "candidates": 2,
+          "enabled": true,
+          "error": null,
+          "fileTypes": [
+            "photo"
+          ],
+          "finishedAt": null,
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "running": false,
+          "scanned": 5,
+          "startedAt": null,
+          "threshold": 0.6,
+          "total": 0,
+          "totalEligible": 12,
+          "whitelisted": 1
+        }
+      }
+    },
+    "results default": {
+      "route": "GET /api/maintenance/nsfw/results",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/results",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45
+            }
+          ],
+          "success": true,
+          "threshold": 0.6,
+          "total": 2,
+          "totalPages": 1
+        }
+      }
+    },
+    "results page 2 limit 1": {
+      "route": "GET /api/maintenance/nsfw/results",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/results?page=2&limit=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 2,
+          "rows": [
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45
+            }
+          ],
+          "success": true,
+          "threshold": 0.6,
+          "total": 2,
+          "totalPages": 2
+        }
+      }
+    },
+    "results limit clamps to 200": {
+      "route": "GET /api/maintenance/nsfw/results",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/results?limit=5000&page=0",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45
+            }
+          ],
+          "success": true,
+          "threshold": 0.6,
+          "total": 2,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 tiers-meta": {
+      "route": "GET /api/maintenance/nsfw/v2/tiers-meta",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/tiers-meta",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "tiers": [
+            {
+              "id": "def_not",
+              "label": "Definitely not 18+",
+              "max": 0.3,
+              "min": 0
+            },
+            {
+              "id": "maybe_not",
+              "label": "Probably not 18+",
+              "max": 0.5,
+              "min": 0.3
+            },
+            {
+              "id": "uncertain",
+              "label": "Borderline / review",
+              "max": 0.7,
+              "min": 0.5
+            },
+            {
+              "id": "maybe",
+              "label": "Probably 18+",
+              "max": 0.9,
+              "min": 0.7
+            },
+            {
+              "id": "def",
+              "label": "Definitely 18+",
+              "max": 1.01,
+              "min": 0.9
+            }
+          ]
+        }
+      }
+    },
+    "v2 tiers": {
+      "route": "GET /api/maintenance/nsfw/v2/tiers",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/tiers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "scanned": 5,
+          "threshold": 0.6,
+          "tiers": {
+            "def": 1,
+            "def_not": 1,
+            "maybe": 1,
+            "maybe_not": 1,
+            "uncertain": 0
+          },
+          "tiers_meta": [
+            {
+              "id": "def_not",
+              "label": "Definitely not 18+",
+              "max": 0.3,
+              "min": 0
+            },
+            {
+              "id": "maybe_not",
+              "label": "Probably not 18+",
+              "max": 0.5,
+              "min": 0.3
+            },
+            {
+              "id": "uncertain",
+              "label": "Borderline / review",
+              "max": 0.7,
+              "min": 0.5
+            },
+            {
+              "id": "maybe",
+              "label": "Probably 18+",
+              "max": 0.9,
+              "min": 0.7
+            },
+            {
+              "id": "def",
+              "label": "Definitely 18+",
+              "max": 1.01,
+              "min": 0.9
+            }
+          ],
+          "totalEligible": 12,
+          "unscanned": 7,
+          "whitelisted": 1
+        }
+      }
+    },
+    "v2 histogram default bins": {
+      "route": "GET /api/maintenance/nsfw/v2/histogram",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/histogram",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bins": 20,
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            0
+          ]
+        }
+      }
+    },
+    "v2 histogram bins=5": {
+      "route": "GET /api/maintenance/nsfw/v2/histogram",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/histogram?bins=5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bins": 5,
+          "counts": [
+            1,
+            0,
+            1,
+            1,
+            2
+          ]
+        }
+      }
+    },
+    "v2 histogram bins=abc": {
+      "route": "GET /api/maintenance/nsfw/v2/histogram",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/histogram?bins=abc",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bins": 20,
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            1,
+            1,
+            0
+          ]
+        }
+      }
+    },
+    "v2 list default": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "nsfw_checked_at": 1717200002000,
+              "nsfw_score": 0.72,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "nsfw_checked_at": 1717200003000,
+              "nsfw_score": 0.93,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 4,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list tier=def_not": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?tier=def_not",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list tier=maybe_not": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?tier=maybe_not",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list tier=uncertain": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?tier=uncertain",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [],
+          "total": 0,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list tier=maybe": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?tier=maybe",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "nsfw_checked_at": 1717200002000,
+              "nsfw_score": 0.72,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list tier=def": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?tier=def",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "nsfw_checked_at": 1717200003000,
+              "nsfw_score": 0.93,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 1,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list unknown tier (ignored)": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?tier=bogus",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "nsfw_checked_at": 1717200002000,
+              "nsfw_score": 0.72,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "nsfw_checked_at": 1717200003000,
+              "nsfw_score": 0.93,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 4,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list include_whitelisted": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?include_whitelisted=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "nsfw_checked_at": 1717200002000,
+              "nsfw_score": 0.72,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 5,
+              "nsfw_checked_at": 1717200004000,
+              "nsfw_score": 0.88,
+              "nsfw_whitelist": 1
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "nsfw_checked_at": 1717200003000,
+              "nsfw_score": 0.93,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 5,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list group filter": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?group=-1001000000001&kind=photo",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 1,
+              "nsfw_checked_at": 1717200000000,
+              "nsfw_score": 0.05,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 2,
+              "nsfw_checked_at": 1717200001000,
+              "nsfw_score": 0.45,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "nsfw_checked_at": 1717200002000,
+              "nsfw_score": 0.72,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "nsfw_checked_at": 1717200003000,
+              "nsfw_score": 0.93,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 4,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list kind=video": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?kind=video",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 1,
+          "rows": [],
+          "total": 0,
+          "totalPages": 1
+        }
+      }
+    },
+    "v2 list page 2 limit 2": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list?page=2&limit=2",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "page": 2,
+          "rows": [
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 3,
+              "nsfw_checked_at": 1717200002000,
+              "nsfw_score": 0.72,
+              "nsfw_whitelist": 0
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "group_id": "-1001000000001",
+              "group_name": "Alpha Photos",
+              "id": 4,
+              "nsfw_checked_at": 1717200003000,
+              "nsfw_score": 0.93,
+              "nsfw_whitelist": 0
+            }
+          ],
+          "total": 4,
+          "totalPages": 2
+        }
+      }
+    },
+    "v2 bulk status idle": {
+      "route": "GET /api/maintenance/nsfw/v2/bulk/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/bulk/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "nsfwBulk",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "blocklist stats": {
+      "route": "GET /api/maintenance/nsfw/blocklist/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/blocklist/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "count": 1
+        }
+      }
+    },
+    "model-status (sidecar configured, nothing loaded)": {
+      "route": "GET /api/maintenance/nsfw/model-status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/model-status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dtype": null,
+          "error": null,
+          "finishedAt": null,
+          "model": null,
+          "progress": null,
+          "ready": false,
+          "sidecar": {
+            "features": null,
+            "pathMapRules": 0,
+            "sources": {
+              "pathMap": "config",
+              "token": "config",
+              "url": "config"
+            },
+            "tokenSet": true,
+            "transfer": "path",
+            "url": "http://nsfw.invalid:9"
+          },
+          "startedAt": null,
+          "state": "idle",
+          "success": true
+        }
+      }
+    },
+    "status as guest → 403": {
+      "route": "GET /api/maintenance/nsfw/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/status",
+        "as": "guest"
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "v2 list as anon → 401": {
+      "route": "GET /api/maintenance/nsfw/v2/list",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/list",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "whitelist as guest → 403": {
+      "route": "POST /api/maintenance/nsfw/whitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/whitelist",
+        "as": "guest",
+        "body": {
+          "ids": [
+            1
+          ]
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "sidecar-test without url → 400": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "url_required",
+          "ok": false
+        }
+      }
+    },
+    "sidecar-test file:// url → 400": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "file:///etc/passwd"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "invalid_scheme",
+          "ok": false
+        }
+      }
+    },
+    "sidecar-test unreachable host": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "http://nsfw-other.invalid:1"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "unknown",
+          "authRequired": null,
+          "device": null,
+          "error": "fetch failed",
+          "features": [],
+          "model": null,
+          "ok": false,
+          "pathMode": null,
+          "reachable": false,
+          "ready": false,
+          "tokenSent": false,
+          "transfer": "base64",
+          "version": null
+        }
+      }
+    },
+    "sidecar-test saved url reuses the saved token": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "http://nsfw.invalid:9/"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "unknown",
+          "authRequired": null,
+          "device": null,
+          "error": "fetch failed",
+          "features": [],
+          "model": null,
+          "ok": false,
+          "pathMode": null,
+          "reachable": false,
+          "ready": false,
+          "tokenSent": true,
+          "transfer": "base64",
+          "version": null
+        }
+      }
+    },
+    "sidecar-test fake sidecar, right token": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {
+          "token": "nsfw-token",
+          "url": "<fake-sidecar>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "ok",
+          "authRequired": true,
+          "device": "cpu",
+          "error": null,
+          "features": [
+            "upload"
+          ],
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "ok": true,
+          "pathMode": false,
+          "reachable": true,
+          "ready": true,
+          "tokenSent": true,
+          "transfer": "upload",
+          "version": "1.0.0-fake"
+        }
+      }
+    },
+    "sidecar-test fake sidecar, no token": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {
+          "url": "<fake-sidecar>",
+          "useSavedToken": false
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "failed",
+          "authRequired": true,
+          "device": "cpu",
+          "error": "token_required",
+          "features": [
+            "upload"
+          ],
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "ok": false,
+          "pathMode": false,
+          "reachable": true,
+          "ready": true,
+          "tokenSent": false,
+          "transfer": "upload",
+          "version": "1.0.0-fake"
+        }
+      }
+    },
+    "sidecar-test fake sidecar, wrong token": {
+      "route": "POST /api/maintenance/nsfw/sidecar-test",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/sidecar-test",
+        "as": "admin",
+        "body": {
+          "token": "bad",
+          "url": "<fake-sidecar>"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "auth": "failed",
+          "authRequired": true,
+          "device": "cpu",
+          "error": "token_rejected",
+          "features": [
+            "upload"
+          ],
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "ok": false,
+          "pathMode": false,
+          "reachable": true,
+          "ready": true,
+          "tokenSent": true,
+          "transfer": "upload",
+          "version": "1.0.0-fake"
+        }
+      }
+    },
+    "preload (remote sidecar unreachable)": {
+      "route": "POST /api/maintenance/nsfw/preload",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/preload",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "remote": true,
+          "sidecarHealth": {
+            "error": "fetch failed",
+            "ok": false
+          },
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "model-status after preload": {
+      "route": "GET /api/maintenance/nsfw/model-status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/model-status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dtype": null,
+          "error": "fetch failed",
+          "finishedAt": "<time:ms>",
+          "model": "remote",
+          "progress": null,
+          "ready": false,
+          "sidecar": {
+            "features": null,
+            "pathMapRules": 0,
+            "sources": {
+              "pathMap": "config",
+              "token": "config",
+              "url": "config"
+            },
+            "tokenSet": true,
+            "transfer": "path",
+            "url": "http://nsfw.invalid:9"
+          },
+          "startedAt": "<time:ms>",
+          "state": "error",
+          "success": true
+        }
+      }
+    },
+    "scan start": {
+      "route": "POST /api/maintenance/nsfw/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "status after the failed scan": {
+      "route": "GET /api/maintenance/nsfw/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "candidates": 2,
+          "enabled": true,
+          "error": "sidecar unreachable: fetch failed",
+          "fileTypes": [
+            "photo"
+          ],
+          "finishedAt": "<time:ms>",
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "running": false,
+          "scanned": 5,
+          "startedAt": "<time:ms>",
+          "threshold": 0.6,
+          "total": 7,
+          "totalEligible": 12,
+          "whitelisted": 1
+        }
+      }
+    },
+    "scan cancel when idle": {
+      "route": "POST /api/maintenance/nsfw/scan/cancel",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/scan/cancel",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "cancelled": false,
+          "success": true
+        }
+      }
+    },
+    "ws events: scan with unreachable sidecar": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "candidates": 2,
+          "error": null,
+          "finishedAt": null,
+          "keep": 3,
+          "running": true,
+          "scanned": 0,
+          "startedAt": "<time:ms>",
+          "total": 7,
+          "type": "nsfw_progress"
+        },
+        {
+          "candidates": 2,
+          "error": "sidecar unreachable: fetch failed",
+          "finishedAt": "<time:ms>",
+          "keep": 3,
+          "running": false,
+          "scanned": 0,
+          "startedAt": "<time:ms>",
+          "total": 7,
+          "type": "nsfw_done"
+        }
+      ]
+    },
+    "whitelist without ids → 400": {
+      "route": "POST /api/maintenance/nsfw/whitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/whitelist",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids array required"
+        }
+      }
+    },
+    "whitelist with no valid ids → 400": {
+      "route": "POST /api/maintenance/nsfw/whitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/whitelist",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "x",
+            -1,
+            0
+          ]
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No valid ids supplied"
+        }
+      }
+    },
+    "whitelist row 2": {
+      "route": "POST /api/maintenance/nsfw/whitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/whitelist",
+        "as": "admin",
+        "body": {
+          "ids": [
+            2,
+            "2"
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "success": true,
+          "updated": 1
+        }
+      }
+    },
+    "ws events: whitelist": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "candidates": 1,
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 5,
+          "totalEligible": 12,
+          "type": "nsfw_progress",
+          "whitelisted": 2
+        }
+      ]
+    },
+    "v2 unwhitelist ids [2, 5]": {
+      "route": "POST /api/maintenance/nsfw/v2/unwhitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/unwhitelist",
+        "as": "admin",
+        "body": {
+          "ids": [
+            2,
+            5
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "v2 bulk status after unwhitelist": {
+      "route": "GET /api/maintenance/nsfw/v2/bulk/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/bulk/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "nsfwBulk",
+          "progress": {
+            "op": "unwhitelist",
+            "processed": 2,
+            "stage": "updating",
+            "total": 2
+          },
+          "result": {
+            "op": "unwhitelist",
+            "requested": 2,
+            "updated": 2
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "v2 bulk-whitelist tier=maybe": {
+      "route": "POST /api/maintenance/nsfw/v2/bulk-whitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/bulk-whitelist",
+        "as": "admin",
+        "body": {
+          "tier": "maybe"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "v2 unwhitelist tier=maybe (forces includeWhitelisted)": {
+      "route": "POST /api/maintenance/nsfw/v2/unwhitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/unwhitelist",
+        "as": "admin",
+        "body": {
+          "tier": "maybe"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "v2 bulk-whitelist empty selection": {
+      "route": "POST /api/maintenance/nsfw/v2/bulk-whitelist",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/bulk-whitelist",
+        "as": "admin",
+        "body": {
+          "scoreMin": 0.99
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "v2 reclassify row 3": {
+      "route": "POST /api/maintenance/nsfw/v2/reclassify",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/reclassify",
+        "as": "admin",
+        "body": {
+          "ids": [
+            3
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "v2 bulk-delete without confirm → 400": {
+      "route": "POST /api/maintenance/nsfw/v2/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/bulk-delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            4
+          ]
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "v2 bulk-delete tier=def": {
+      "route": "POST /api/maintenance/nsfw/v2/bulk-delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/v2/bulk-delete",
+        "as": "admin",
+        "body": {
+          "confirm": true,
+          "tier": "def"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "v2 tiers after bulk ops": {
+      "route": "GET /api/maintenance/nsfw/v2/tiers",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/tiers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "scanned": 3,
+          "threshold": 0.6,
+          "tiers": {
+            "def": 0,
+            "def_not": 1,
+            "maybe": 1,
+            "maybe_not": 1,
+            "uncertain": 0
+          },
+          "tiers_meta": [
+            {
+              "id": "def_not",
+              "label": "Definitely not 18+",
+              "max": 0.3,
+              "min": 0
+            },
+            {
+              "id": "maybe_not",
+              "label": "Probably not 18+",
+              "max": 0.5,
+              "min": 0.3
+            },
+            {
+              "id": "uncertain",
+              "label": "Borderline / review",
+              "max": 0.7,
+              "min": 0.5
+            },
+            {
+              "id": "maybe",
+              "label": "Probably 18+",
+              "max": 0.9,
+              "min": 0.7
+            },
+            {
+              "id": "def",
+              "label": "Definitely 18+",
+              "max": 1.01,
+              "min": 0.9
+            }
+          ],
+          "totalEligible": 11,
+          "unscanned": 8,
+          "whitelisted": 0
+        }
+      }
+    },
+    "v2 bulk status after delete": {
+      "route": "GET /api/maintenance/nsfw/v2/bulk/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/bulk/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 6,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "nsfwBulk",
+          "progress": {
+            "op": "delete",
+            "processed": 1,
+            "stage": "deleting",
+            "total": 1
+          },
+          "result": {
+            "deleted": 1,
+            "freedBytes": 1300,
+            "missingFiles": 0,
+            "op": "delete",
+            "removed": 1,
+            "requested": 1
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 6
+        }
+      }
+    },
+    "ws events: v2 bulk operations": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "nsfw_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "candidates": 2,
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 5,
+          "totalEligible": 12,
+          "type": "nsfw_progress",
+          "whitelisted": 0
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "nsfwBulk",
+          "op": "unwhitelist",
+          "requested": 2,
+          "type": "nsfw_bulk_done",
+          "updated": 2
+        },
+        {
+          "type": "nsfw_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "candidates": 2,
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 5,
+          "totalEligible": 12,
+          "type": "nsfw_progress",
+          "whitelisted": 2
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "nsfwBulk",
+          "op": "whitelist",
+          "requested": 2,
+          "type": "nsfw_bulk_done",
+          "updated": 2
+        },
+        {
+          "type": "nsfw_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "candidates": 2,
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 5,
+          "totalEligible": 12,
+          "type": "nsfw_progress",
+          "whitelisted": 0
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "nsfwBulk",
+          "op": "unwhitelist",
+          "requested": 2,
+          "type": "nsfw_bulk_done",
+          "updated": 2
+        },
+        {
+          "type": "nsfw_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "ids": [],
+          "kind": "nsfwBulk",
+          "op": "whitelist",
+          "type": "nsfw_bulk_done",
+          "updated": 0
+        },
+        {
+          "type": "nsfw_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "cleared": 1,
+          "durationMs": "<durationMs:number>",
+          "kind": "nsfwBulk",
+          "op": "reclassify",
+          "requested": 1,
+          "type": "nsfw_bulk_done"
+        },
+        {
+          "type": "nsfw_bulk_progress",
+          "collapsed": true
+        },
+        {
+          "count": 1,
+          "type": "bulk_delete"
+        },
+        {
+          "candidates": 2,
+          "keep": 1,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 3,
+          "totalEligible": 11,
+          "type": "nsfw_progress",
+          "whitelisted": 0
+        },
+        {
+          "deleted": 1,
+          "durationMs": "<durationMs:number>",
+          "freedBytes": 1300,
+          "kind": "nsfwBulk",
+          "missingFiles": 0,
+          "op": "delete",
+          "removed": 1,
+          "requested": 1,
+          "type": "nsfw_bulk_done"
+        }
+      ],
+      "collapsed": [
+        "nsfw_bulk_progress"
+      ]
+    },
+    "delete without ids → 400": {
+      "route": "POST /api/maintenance/nsfw/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/delete",
+        "as": "admin",
+        "body": {
+          "ids": []
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "ids array required"
+        }
+      }
+    },
+    "delete with no valid ids → 400": {
+      "route": "POST /api/maintenance/nsfw/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            "abc"
+          ]
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "No valid ids supplied"
+        }
+      }
+    },
+    "delete row 2": {
+      "route": "POST /api/maintenance/nsfw/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            2
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "freedBytes": 3228,
+          "missingFiles": 0,
+          "removed": 1,
+          "success": true
+        }
+      }
+    },
+    "delete an already-deleted row": {
+      "route": "POST /api/maintenance/nsfw/delete",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/delete",
+        "as": "admin",
+        "body": {
+          "ids": [
+            2
+          ]
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "freedBytes": 0,
+          "missingFiles": 0,
+          "removed": 0,
+          "success": true
+        }
+      }
+    },
+    "file of row 2 is gone": {
+      "route": "GET /files/*",
+      "request": {
+        "method": "GET",
+        "path": "/files/Alpha%20Photos/images/IMG_0002.jpg",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "private, max-age=2592000, immutable",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\""
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "File not found"
+      }
+    },
+    "blocklist stats after deletes": {
+      "route": "GET /api/maintenance/nsfw/blocklist/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/blocklist/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "count": 3
+        }
+      }
+    },
+    "status after deletes": {
+      "route": "GET /api/maintenance/nsfw/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "candidates": 1,
+          "enabled": true,
+          "error": "sidecar unreachable: fetch failed",
+          "fileTypes": [
+            "photo"
+          ],
+          "finishedAt": "<time:ms>",
+          "keep": 1,
+          "lastCheckedAt": 1717200004000,
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "running": false,
+          "scanned": 2,
+          "startedAt": "<time:ms>",
+          "threshold": 0.6,
+          "total": 7,
+          "totalEligible": 10,
+          "whitelisted": 0
+        }
+      }
+    },
+    "ws events: legacy delete": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "count": 1,
+          "type": "bulk_delete"
+        },
+        {
+          "candidates": 1,
+          "keep": 1,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 2,
+          "totalEligible": 10,
+          "type": "nsfw_progress",
+          "whitelisted": 0
+        },
+        {
+          "count": 1,
+          "type": "bulk_delete"
+        },
+        {
+          "candidates": 1,
+          "keep": 1,
+          "lastCheckedAt": 1717200004000,
+          "running": false,
+          "scanned": 2,
+          "totalEligible": 10,
+          "type": "nsfw_progress",
+          "whitelisted": 0
+        }
+      ]
+    },
+    "blocklist wipe without confirm → 400": {
+      "route": "DELETE /api/maintenance/nsfw/blocklist",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/maintenance/nsfw/blocklist",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Pass {\"confirm\": true} in the request body to proceed."
+        }
+      }
+    },
+    "blocklist wipe": {
+      "route": "DELETE /api/maintenance/nsfw/blocklist",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/maintenance/nsfw/blocklist",
+        "as": "admin",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "removed": 3,
+          "success": true
+        }
+      }
+    },
+    "blocklist stats after wipe": {
+      "route": "GET /api/maintenance/nsfw/blocklist/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/blocklist/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "count": 0
+        }
+      }
+    },
+    "model cache wipe": {
+      "route": "DELETE /api/maintenance/nsfw/cache",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/maintenance/nsfw/cache",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": 1014,
+          "files": 2,
+          "success": true
+        }
+      }
+    },
+    "model cache wipe again (empty)": {
+      "route": "DELETE /api/maintenance/nsfw/cache",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/maintenance/nsfw/cache",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "bytes": 0,
+          "files": 0,
+          "success": true
+        }
+      }
+    },
+    "model-status after cache wipe": {
+      "route": "GET /api/maintenance/nsfw/model-status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/model-status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "dtype": null,
+          "error": null,
+          "finishedAt": null,
+          "model": null,
+          "progress": null,
+          "ready": false,
+          "sidecar": {
+            "features": null,
+            "pathMapRules": 0,
+            "sources": {
+              "pathMap": "config",
+              "token": "config",
+              "url": "config"
+            },
+            "tokenSet": true,
+            "transfer": "path",
+            "url": "http://nsfw.invalid:9"
+          },
+          "startedAt": null,
+          "state": "idle",
+          "success": true
+        }
+      }
+    },
+    "off: scan → 503": {
+      "route": "POST /api/maintenance/nsfw/scan",
+      "request": {
+        "method": "POST",
+        "path": "/api/maintenance/nsfw/scan",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 503,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "NSFW_DISABLED",
+          "error": "NSFW review is disabled. Open Maintenance → NSFW review and toggle it on first."
+        }
+      }
+    },
+    "off: status": {
+      "route": "GET /api/maintenance/nsfw/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "candidates": 2,
+          "enabled": false,
+          "error": null,
+          "fileTypes": [
+            "photo"
+          ],
+          "finishedAt": null,
+          "keep": 3,
+          "lastCheckedAt": 1717200004000,
+          "model": "AdamCodd/vit-base-nsfw-detector",
+          "running": false,
+          "scanned": 5,
+          "startedAt": null,
+          "threshold": 0.6,
+          "total": 0,
+          "totalEligible": 12,
+          "whitelisted": 1
+        }
+      }
+    },
+    "off: v2 tiers (default threshold)": {
+      "route": "GET /api/maintenance/nsfw/v2/tiers",
+      "request": {
+        "method": "GET",
+        "path": "/api/maintenance/nsfw/v2/tiers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "scanned": 5,
+          "threshold": 0.6,
+          "tiers": {
+            "def": 1,
+            "def_not": 1,
+            "maybe": 1,
+            "maybe_not": 1,
+            "uncertain": 0
+          },
+          "tiers_meta": [
+            {
+              "id": "def_not",
+              "label": "Definitely not 18+",
+              "max": 0.3,
+              "min": 0
+            },
+            {
+              "id": "maybe_not",
+              "label": "Probably not 18+",
+              "max": 0.5,
+              "min": 0.3
+            },
+            {
+              "id": "uncertain",
+              "label": "Borderline / review",
+              "max": 0.7,
+              "min": 0.5
+            },
+            {
+              "id": "maybe",
+              "label": "Probably 18+",
+              "max": 0.9,
+              "min": 0.7
+            },
+            {
+              "id": "def",
+              "label": "Definitely 18+",
+              "max": 1.01,
+              "min": 0.9
+            }
+          ],
+          "totalEligible": 12,
+          "unscanned": 7,
+          "whitelisted": 1
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}

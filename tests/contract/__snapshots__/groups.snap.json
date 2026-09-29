@@ -1,0 +1,2811 @@
+{
+  "entries": {
+    "groups admin": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "mirroredOn": [
+              "00000000-0000-4000-8000-0000000000a1"
+            ],
+            "name": "Alpha Photos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "accounts": [],
+              "checkedAt": 1717718400000,
+              "checks": 1,
+              "code": "USER_NOT_PARTICIPANT",
+              "detail": "account left the chat",
+              "firstSeenAt": 1717718400000,
+              "migratedTo": null,
+              "nextCheckAt": 4102444800000,
+              "state": "left"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": false,
+              "voice": false
+            },
+            "id": "-1001000000003",
+            "name": "Gamma Docs",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "rescueMode": "on",
+            "type": null
+          },
+          {
+            "_resolveFailedAt": 1718841600000,
+            "_resolveFailedReason": "resolve:CHANNEL_PRIVATE",
+            "access": {
+              "accounts": [],
+              "checkedAt": 1718841600000,
+              "checks": 0,
+              "code": "CHANNEL_PRIVATE",
+              "detail": null,
+              "firstSeenAt": 1718841600000,
+              "legacy": true,
+              "migratedTo": null,
+              "nextCheckAt": null,
+              "state": "private"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000006",
+            "name": "Zeta Suspended",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "suspended": true,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1009000000001",
+            "name": "Remote Chat",
+            "peerId": "00000000-0000-4000-8000-0000000000a1",
+            "peerName": "peer-alpha",
+            "photoUrl": null,
+            "type": null
+          }
+        ]
+      }
+    },
+    "groups guest": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "accounts": [],
+              "checkedAt": 1717718400000,
+              "checks": 1,
+              "code": "USER_NOT_PARTICIPANT",
+              "detail": "account left the chat",
+              "firstSeenAt": 1717718400000,
+              "migratedTo": null,
+              "nextCheckAt": 4102444800000,
+              "state": "left"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": false,
+              "voice": false
+            },
+            "id": "-1001000000003",
+            "name": "Gamma Docs",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "rescueMode": "on",
+            "type": null
+          },
+          {
+            "_resolveFailedAt": 1718841600000,
+            "_resolveFailedReason": "resolve:CHANNEL_PRIVATE",
+            "access": {
+              "accounts": [],
+              "checkedAt": 1718841600000,
+              "checks": 0,
+              "code": "CHANNEL_PRIVATE",
+              "detail": null,
+              "firstSeenAt": 1718841600000,
+              "legacy": true,
+              "migratedTo": null,
+              "nextCheckAt": null,
+              "state": "private"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000006",
+            "name": "Zeta Suspended",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "suspended": true,
+            "type": null
+          }
+        ]
+      }
+    },
+    "groups anon → 401": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "stats alpha": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {
+            "photo": 5,
+            "video": 1
+          },
+          "firstMessageId": 101,
+          "lastDownloadAt": "2024-01-15 10:00:00",
+          "lastMessageId": 106,
+          "success": true,
+          "totalBytes": 19097,
+          "totalFiles": 6
+        }
+      }
+    },
+    "stats epsilon (db-only group)": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000005/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {
+            "photo": 2,
+            "video": 1
+          },
+          "firstMessageId": 118,
+          "lastDownloadAt": "2024-05-03 10:00:00",
+          "lastMessageId": 120,
+          "success": true,
+          "totalBytes": 8291,
+          "totalFiles": 3
+        }
+      }
+    },
+    "stats unknown group → zeros": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1009999999999/stats",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {},
+          "firstMessageId": null,
+          "lastDownloadAt": null,
+          "lastMessageId": null,
+          "success": true,
+          "totalBytes": 0,
+          "totalFiles": 0
+        }
+      }
+    },
+    "stats as guest (allow-listed prefix)": {
+      "route": "GET /api/groups/:id/stats",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000002/stats",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "byType": {
+            "photo": 1,
+            "video": 2
+          },
+          "firstMessageId": 107,
+          "lastDownloadAt": "2024-02-03 10:00:00",
+          "lastMessageId": 109,
+          "success": true,
+          "totalBytes": 7264,
+          "totalFiles": 3
+        }
+      }
+    },
+    "files alpha default page": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/files",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [
+            {
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6,
+              "message_id": 106,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "id": 5,
+              "message_id": 105,
+              "nsfw_score": 0.88
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 4,
+              "message_id": 104,
+              "nsfw_score": 0.93
+            },
+            {
+              "created_at": "2024-01-12 10:00:00",
+              "file_name": "IMG_0003.png",
+              "file_path": "Alpha Photos/images/IMG_0003.png",
+              "file_size": 4820,
+              "file_type": "photo",
+              "id": 3,
+              "message_id": 103,
+              "nsfw_score": 0.72
+            },
+            {
+              "created_at": "2024-01-11 10:00:00",
+              "file_name": "IMG_0002.jpg",
+              "file_path": "Alpha Photos/images/IMG_0002.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 2,
+              "message_id": 102,
+              "nsfw_score": 0.45
+            },
+            {
+              "created_at": "2024-01-10 10:00:00",
+              "file_name": "IMG_0001.jpg",
+              "file_path": "Alpha Photos/images/IMG_0001.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 1,
+              "message_id": 101,
+              "nsfw_score": 0.05
+            }
+          ],
+          "success": true,
+          "total": 6
+        }
+      }
+    },
+    "files alpha limit=2 offset=1": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/files?limit=2&offset=1",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "limit": 2,
+          "offset": 1,
+          "rows": [
+            {
+              "created_at": "2024-01-14 10:00:00",
+              "file_name": "IMG_0005.jpg",
+              "file_path": "Alpha Photos/images/IMG_0005.jpg",
+              "file_size": 3970,
+              "file_type": "photo",
+              "id": 5,
+              "message_id": 105,
+              "nsfw_score": 0.88
+            },
+            {
+              "created_at": "2024-01-13 10:00:00",
+              "file_name": "IMG_0004.webp",
+              "file_path": "Alpha Photos/images/IMG_0004.webp",
+              "file_size": 1300,
+              "file_type": "photo",
+              "id": 4,
+              "message_id": 104,
+              "nsfw_score": 0.93
+            }
+          ],
+          "success": true,
+          "total": 6
+        }
+      }
+    },
+    "files alpha type=video": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/files?type=video",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [
+            {
+              "created_at": "2024-01-15 10:00:00",
+              "file_name": "VID_0006.mp4",
+              "file_path": "Alpha Photos/videos/VID_0006.mp4",
+              "file_size": 2414,
+              "file_type": "video",
+              "id": 6,
+              "message_id": 106,
+              "nsfw_score": null
+            }
+          ],
+          "success": true,
+          "total": 1
+        }
+      }
+    },
+    "files delta (unicode name, dedup ref)": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000004/files",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [
+            {
+              "created_at": "2024-04-04 10:00:00",
+              "file_name": "IMG_0017.jpg",
+              "file_path": "Delta Mixed/images/IMG_0017.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 17,
+              "message_id": 117,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-04-03 10:00:00",
+              "file_name": "ภาพทดสอบ รูป.jpg",
+              "file_path": "Delta Mixed/images/ภาพทดสอบ รูป.jpg",
+              "file_size": 3228,
+              "file_type": "photo",
+              "id": 16,
+              "message_id": 116,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-04-02 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 15,
+              "message_id": 115,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-04-01 10:00:00",
+              "file_name": "IMG_0014.jpg",
+              "file_path": "Delta Mixed/images/IMG_0014.jpg",
+              "file_size": 3365,
+              "file_type": "photo",
+              "id": 14,
+              "message_id": 114,
+              "nsfw_score": null
+            }
+          ],
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "files bad limit/offset fall back": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000003/files?limit=abc&offset=-5",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null
+            }
+          ],
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "files limit clamps to 500": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000003/files?limit=9999",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 500,
+          "offset": 0,
+          "rows": [
+            {
+              "created_at": "2024-03-04 10:00:00",
+              "file_name": "notes.txt.gz",
+              "file_path": "Gamma Docs/documents/notes.txt.gz",
+              "file_size": 55,
+              "file_type": "document",
+              "id": 13,
+              "message_id": 113,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-03-03 10:00:00",
+              "file_name": "bundle.zip",
+              "file_path": "Gamma Docs/documents/bundle.zip",
+              "file_size": 246,
+              "file_type": "document",
+              "id": 12,
+              "message_id": 112,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-03-02 10:00:00",
+              "file_name": "notes.txt",
+              "file_path": "Gamma Docs/documents/notes.txt",
+              "file_size": 38,
+              "file_type": "document",
+              "id": 11,
+              "message_id": 111,
+              "nsfw_score": null
+            },
+            {
+              "created_at": "2024-03-01 10:00:00",
+              "file_name": "report.pdf",
+              "file_path": "Gamma Docs/documents/report.pdf",
+              "file_size": 314,
+              "file_type": "document",
+              "id": 10,
+              "message_id": 110,
+              "nsfw_score": null
+            }
+          ],
+          "success": true,
+          "total": 4
+        }
+      }
+    },
+    "files unknown group": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1009999999999/files",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": false,
+          "limit": 50,
+          "offset": 0,
+          "rows": [],
+          "success": true,
+          "total": 0
+        }
+      }
+    },
+    "files as guest": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000002/files?limit=1",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "hasMore": true,
+          "limit": 1,
+          "offset": 0,
+          "rows": [
+            {
+              "created_at": "2024-02-03 10:00:00",
+              "file_name": "IMG_0009.jpg",
+              "file_path": "Beta Videos/images/IMG_0009.jpg",
+              "file_size": 2679,
+              "file_type": "photo",
+              "id": 9,
+              "message_id": 109,
+              "nsfw_score": null
+            }
+          ],
+          "success": true,
+          "total": 3
+        }
+      }
+    },
+    "files anon → 401": {
+      "route": "GET /api/groups/:id/files",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000002/files",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "photo alpha (cached jpg)": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/photo",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "content-length": "2679",
+        "content-type": "image/jpeg",
+        "etag": "W/\"a77-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+        "bytes": 2679
+      }
+    },
+    "photo alpha as guest": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/photo",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "accept-ranges": "bytes",
+        "cache-control": "private, max-age=86400, stale-while-revalidate=604800",
+        "content-length": "2679",
+        "content-type": "image/jpeg",
+        "etag": "W/\"a77-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "f78c180360822069553455a2ae518b020563fae46c6c2805550bf8f9c8b8ecf1",
+        "bytes": 2679
+      }
+    },
+    "photo beta (none, no Telegram) → 404": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000002/photo",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Not found"
+      }
+    },
+    "photo gamma (chat not reachable) → 404": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000003/photo",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Not found"
+      }
+    },
+    "photo non-numeric id → 400": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/abc/photo",
+        "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "Invalid id"
+      }
+    },
+    "photo synthetic unknown: id → 404": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/unknown%3ASome_Folder/photo",
+        "as": "admin"
+      },
+      "status": 404,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "text": "No photo for synthetic group id"
+      }
+    },
+    "photo anon → 401": {
+      "route": "GET /api/groups/:id/photo",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/-1001000000001/photo",
+        "as": "anon"
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "put alpha: filters, topics, rescue, accounts": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000001",
+        "as": "admin",
+        "body": {
+          "autoForward": {
+            "destination": "@somewhere",
+            "enabled": true
+          },
+          "backupPeerId": "",
+          "filters": {
+            "files": true,
+            "stickers": true
+          },
+          "forwardAccount": "",
+          "monitorAccount": "acc-1",
+          "ownerPeerId": "00000000-0000-4000-8000-0000000000a1",
+          "rescueMode": "off",
+          "rescueRetentionHours": 1000,
+          "topics": {
+            "enabled": true,
+            "ids": [
+              "5",
+              "x",
+              7
+            ]
+          }
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "autoForward": {
+              "destination": "@somewhere",
+              "enabled": true
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": true,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "monitorAccount": "acc-1",
+            "name": "Alpha Photos",
+            "ownerPeerId": "00000000-0000-4000-8000-0000000000a1",
+            "rescueMode": "off",
+            "rescueRetentionHours": 720,
+            "topics": {
+              "enabled": true,
+              "ids": [
+                5,
+                7
+              ]
+            }
+          },
+          "success": true
+        }
+      }
+    },
+    "ws admin after put alpha": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "config_updated"
+        }
+      ]
+    },
+    "ws guest after put alpha": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "type": "config_updated"
+        }
+      ],
+      "note": "config_updated carries the full config (password hashes, shareSecret) to every socket, guests included"
+    },
+    "put alpha: clear topics, invalid rescue values": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000001",
+        "as": "admin",
+        "body": {
+          "monitorAccount": "",
+          "rescueMode": "bogus",
+          "rescueRetentionHours": 0,
+          "topics": null
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "autoForward": {
+              "destination": "@somewhere",
+              "enabled": true
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": true,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "ownerPeerId": "00000000-0000-4000-8000-0000000000a1"
+          },
+          "success": true
+        }
+      }
+    },
+    "put beta: rename + disable": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000002",
+        "as": "admin",
+        "body": {
+          "enabled": false,
+          "name": "Beta Renamed"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000002",
+            "name": "Beta Renamed"
+          },
+          "success": true
+        }
+      }
+    },
+    "put new group with a name": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000077",
+        "as": "admin",
+        "body": {
+          "enabled": false,
+          "name": "Brand New Chat"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": false,
+            "filters": {
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000077,
+            "name": "Brand New Chat",
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            }
+          },
+          "success": true
+        }
+      }
+    },
+    "put new group without a name (no Telegram to resolve)": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000078",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": false,
+            "filters": {
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000078,
+            "name": "Unknown",
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            }
+          },
+          "success": true
+        }
+      }
+    },
+    "put new group enabled (auto-backfill needs an account)": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000079",
+        "as": "admin",
+        "body": {
+          "enabled": true,
+          "name": "Group 79"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": true,
+            "filters": {
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000079,
+            "name": "Group 79",
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            }
+          },
+          "success": true
+        }
+      }
+    },
+    "put new non-negative id kept as string": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/12345",
+        "as": "admin",
+        "body": {
+          "name": "User Chat"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": false,
+            "filters": {
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "videos": true,
+              "voice": false
+            },
+            "id": "12345",
+            "name": "User Chat",
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            }
+          },
+          "success": true
+        }
+      }
+    },
+    "put suspended enable → 403": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000006",
+        "as": "admin",
+        "body": {
+          "enabled": true
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "GROUP_SUSPENDED",
+          "error": "Cannot re-enable a suspended group — the channel/group was deleted or banned on Telegram"
+        }
+      }
+    },
+    "put suspended rename is fine": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000006",
+        "as": "admin",
+        "body": {
+          "name": "Zeta Still Suspended"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "group": {
+            "_resolveFailedAt": 1718841600000,
+            "_resolveFailedReason": "resolve:CHANNEL_PRIVATE",
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000006",
+            "name": "Zeta Still Suspended",
+            "suspended": true
+          },
+          "success": true
+        }
+      }
+    },
+    "put guest → 403": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000001",
+        "as": "guest",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "put anon → 401": {
+      "route": "PUT /api/groups/:id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/groups/-1001000000001",
+        "as": "anon",
+        "body": {
+          "enabled": false
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    },
+    "groups admin after edits": {
+      "route": "GET /api/groups",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "access": {
+              "state": "ok"
+            },
+            "autoForward": {
+              "destination": "@somewhere",
+              "enabled": true
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": true,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000001",
+            "mirroredOn": [
+              "00000000-0000-4000-8000-0000000000a1"
+            ],
+            "name": "Alpha Photos",
+            "ownerPeerId": "00000000-0000-4000-8000-0000000000a1",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": false,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000002",
+            "name": "Beta Renamed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "accounts": [],
+              "checkedAt": 1717718400000,
+              "checks": 1,
+              "code": "USER_NOT_PARTICIPANT",
+              "detail": "account left the chat",
+              "firstSeenAt": 1717718400000,
+              "migratedTo": null,
+              "nextCheckAt": 4102444800000,
+              "state": "left"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": false,
+              "stickers": false,
+              "urls": true,
+              "videos": false,
+              "voice": false
+            },
+            "id": "-1001000000003",
+            "name": "Gamma Docs",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": false,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "rescueMode": "on",
+            "type": null
+          },
+          {
+            "_resolveFailedAt": 1718841600000,
+            "_resolveFailedReason": "resolve:CHANNEL_PRIVATE",
+            "access": {
+              "accounts": [],
+              "checkedAt": 1718841600000,
+              "checks": 0,
+              "code": "CHANNEL_PRIVATE",
+              "detail": null,
+              "firstSeenAt": 1718841600000,
+              "legacy": true,
+              "migratedTo": null,
+              "nextCheckAt": null,
+              "state": "private"
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "-1001000000006",
+            "name": "Zeta Still Suspended",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "suspended": true,
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000077,
+            "name": "Brand New Chat",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            },
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000078,
+            "name": "Unknown chat (#-1001000000078)",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            },
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": true,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": -1001000000079,
+            "name": "Unknown chat (#-1001000000079)",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            },
+            "type": null
+          },
+          {
+            "access": {
+              "state": "ok"
+            },
+            "autoForward": {
+              "deleteAfterForward": false,
+              "destination": null,
+              "enabled": false
+            },
+            "enabled": false,
+            "filters": {
+              "audio": false,
+              "files": true,
+              "gifs": false,
+              "links": true,
+              "photos": true,
+              "stickers": false,
+              "urls": true,
+              "videos": true,
+              "voice": false
+            },
+            "id": "12345",
+            "name": "User Chat",
+            "peerId": null,
+            "peerName": null,
+            "photoUrl": null,
+            "topics": {
+              "enabled": false,
+              "ids": []
+            },
+            "trackUsers": {
+              "enabled": false,
+              "users": []
+            },
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1009000000001",
+            "name": "Remote Chat",
+            "peerId": "00000000-0000-4000-8000-0000000000a1",
+            "peerName": "peer-alpha",
+            "photoUrl": null,
+            "type": null
+          }
+        ]
+      }
+    },
+    "refresh-info status idle": {
+      "route": "GET /api/groups/refresh-info/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/refresh-info/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "refresh-info start": {
+      "route": "POST /api/groups/refresh-info",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/refresh-info",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws refresh-info": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "groups_refresh_info_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 3,
+          "progress": {
+            "processed": 3,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 4,
+          "progress": {
+            "processed": 4,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 5,
+          "progress": {
+            "processed": 5,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 6,
+          "progress": {
+            "processed": 6,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 7,
+          "progress": {
+            "processed": 7,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 8,
+          "progress": {
+            "processed": 8,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 9,
+          "progress": {
+            "processed": 9,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshInfo",
+          "processed": 10,
+          "progress": {
+            "processed": 10,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": null,
+          "running": true,
+          "stage": "resolving",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 10,
+          "type": "groups_refresh_info_progress",
+          "updated": 0
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "groupsRefreshInfo",
+          "scanned": 10,
+          "type": "groups_refresh_info_done",
+          "updated": 0,
+          "updates": []
+        }
+      ]
+    },
+    "refresh-info status done": {
+      "route": "GET /api/groups/refresh-info/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/refresh-info/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "groupsRefreshInfo",
+          "progress": {
+            "processed": 10,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": {
+            "scanned": 10,
+            "updated": 0,
+            "updates": []
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "refresh-info guest → 403": {
+      "route": "POST /api/groups/refresh-info",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/refresh-info",
+        "as": "guest",
+        "body": {}
+      },
+      "status": 403,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "adminRequired": true,
+          "error": "Admin only"
+        }
+      }
+    },
+    "refresh-info status as guest (allow-listed prefix)": {
+      "route": "GET /api/groups/refresh-info/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/refresh-info/status",
+        "as": "guest"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "groupsRefreshInfo",
+          "progress": {
+            "processed": 10,
+            "stage": "resolving",
+            "total": 10,
+            "updated": 0
+          },
+          "result": {
+            "scanned": 10,
+            "updated": 0,
+            "updates": []
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "refresh-photos status idle": {
+      "route": "GET /api/groups/refresh-photos/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/refresh-photos/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "refresh-photos start": {
+      "route": "POST /api/groups/refresh-photos",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/refresh-photos",
+        "as": "admin",
+        "body": {}
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "started": true,
+          "success": true
+        }
+      }
+    },
+    "ws refresh-photos": {
+      "ws": "dashboard",
+      "events": [
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "progress": {},
+          "result": null,
+          "running": true,
+          "stage": "starting",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 0,
+          "progress": {
+            "processed": 0,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 1,
+          "progress": {
+            "processed": 1,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 2,
+          "progress": {
+            "processed": 2,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 3,
+          "progress": {
+            "processed": 3,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 4,
+          "progress": {
+            "processed": 4,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 5,
+          "progress": {
+            "processed": 5,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 6,
+          "progress": {
+            "processed": 6,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 7,
+          "progress": {
+            "processed": 7,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 8,
+          "progress": {
+            "processed": 8,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "groupsRefreshPhotos",
+          "processed": 9,
+          "progress": {
+            "processed": 9,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": null,
+          "running": true,
+          "stage": "downloading",
+          "startedAt": "<time:ms>",
+          "successes": 0,
+          "total": 9,
+          "type": "groups_refresh_photos_progress"
+        },
+        {
+          "durationMs": "<durationMs:number>",
+          "kind": "groupsRefreshPhotos",
+          "results": [
+            {
+              "id": "-1001000000001",
+              "url": "/photos/-1001000000001.jpg"
+            },
+            {
+              "id": "-1001000000002",
+              "url": null
+            },
+            {
+              "id": "-1001000000003",
+              "url": null
+            },
+            {
+              "id": "-1001000000004",
+              "url": null
+            },
+            {
+              "id": "-1001000000006",
+              "url": null
+            },
+            {
+              "id": -1001000000077,
+              "url": null
+            },
+            {
+              "id": -1001000000078,
+              "url": null
+            },
+            {
+              "id": -1001000000079,
+              "url": null
+            },
+            {
+              "id": "12345",
+              "url": null
+            }
+          ],
+          "type": "groups_refresh_photos_done"
+        }
+      ]
+    },
+    "refresh-photos status done": {
+      "route": "GET /api/groups/refresh-photos/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/groups/refresh-photos/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 1,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": "<time:ms>",
+          "kind": "groupsRefreshPhotos",
+          "progress": {
+            "processed": 9,
+            "stage": "downloading",
+            "total": 9
+          },
+          "result": {
+            "results": [
+              {
+                "id": "-1001000000001",
+                "url": "/photos/-1001000000001.jpg"
+              },
+              {
+                "id": "-1001000000002",
+                "url": null
+              },
+              {
+                "id": "-1001000000003",
+                "url": null
+              },
+              {
+                "id": "-1001000000004",
+                "url": null
+              },
+              {
+                "id": "-1001000000006",
+                "url": null
+              },
+              {
+                "id": -1001000000077,
+                "url": null
+              },
+              {
+                "id": -1001000000078,
+                "url": null
+              },
+              {
+                "id": -1001000000079,
+                "url": null
+              },
+              {
+                "id": "12345",
+                "url": null
+              }
+            ]
+          },
+          "running": false,
+          "stage": "done",
+          "startedAt": "<time:ms>",
+          "successes": 1
+        }
+      }
+    },
+    "refresh-photos anon → 401": {
+      "route": "POST /api/groups/refresh-photos",
+      "request": {
+        "method": "POST",
+        "path": "/api/groups/refresh-photos",
+        "as": "anon",
+        "body": {}
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "error": "Unauthorized"
+        }
+      }
+    }
+  },
+  "securityProfiles": {
+    "e30ca64edb": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    }
+  }
+}
