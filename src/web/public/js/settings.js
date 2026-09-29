@@ -2082,7 +2082,7 @@ async function refreshUpdateStatus() {
                     '· ' +
                     i18nT(
                         'maintenance.update.no_watchtower',
-                        'enable the auto-update profile to use this',
+                        'set WATCHTOWER_HTTP_API_TOKEN in .env to use this',
                     );
             }
         }

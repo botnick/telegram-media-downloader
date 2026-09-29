@@ -45,7 +45,7 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `THUMBS_IMG_CONCURRENCY`        | `4`                 | Parallel image-thumb jobs. Each one holds a libuv pool thread for its whole run, so keep it well below `UV_THREADPOOL_SIZE`. Raise it together with the pool on many-core hosts to build thumbnails faster. |
 | `THUMBS_VID_CONCURRENCY`        | `6`                 | Parallel video-thumb jobs (ffmpeg pins a CPU core). |
 | `UV_THREADPOOL_SIZE`            | `16` (Docker image, `runner.js` / `runner.sh`, PM2 config); Node default `4` otherwise | libuv worker pool shared by file I/O, `sendFile` streams, hashing, DNS and sharp thumbnail jobs. Read once at process start, so set it in the environment (not in config). With the old default of 4, a thumbnail burst queued every file read behind it. |
-| `WATCHTOWER_HTTP_API_TOKEN`     | unset               | Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this + booting with the `auto-update` compose profile lights up the **Install update** button. |
+| `WATCHTOWER_HTTP_API_TOKEN`     | unset               | Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this lights up the **Install update** button. |
 | `WATCHTOWER_URL`                | `http://watchtower:8080` | Internal address of the watchtower sidecar. |
 | `TGDL_MEM_LIMIT`                | `8g`                | Hard cgroup memory ceiling for the dashboard container (`deploy.resources.limits.memory`). Pair with `TGDL_HEAP_MB` so the V8 heap stays comfortably under the container limit. Drop to `2g` / `4g` on small hosts. |
 | `TGDL_HEAP_MB`                  | `8192`              | V8 `--max-old-space-size` in MB. 8 GiB lets a one-shot SELECT over a 1M-row dedup / integrity sweep complete without hitting the heap limit. Must stay strictly below `TGDL_MEM_LIMIT` (rule of thumb: leave ≥ 256 MiB for native allocations from better-sqlite3 / sharp / ffmpeg / libvips). |
@@ -67,35 +67,24 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `SEEKBAR_API_TOKEN`             | auto-generated      | Bearer token the dashboard sends as `X-API-Token` to the seekbar sidecar. Auto-generated per process; set explicitly only when running the sidecar standalone. |
 | `SEEKBAR_HWACCEL`               | `auto`              | `auto` / `cuda` / `qsv` / `vaapi` / `videotoolbox` / `v4l2m2m` / `none`. Forwarded to the sidecar's ffmpeg pipeline. |
 
-## One-click in-dashboard auto-update (opt-in)
+## Updating
 
-> **Maintenance status, late 2026.** Upstream `containrrr/watchtower` is in low-maintenance mode (the project banner reads "no longer actively maintained"). The integration here keeps working — the HTTP API and the docker socket contract have not changed in years — but if you want a more actively maintained sidecar the recommended drop-in is **[`whats-up-docker`](https://github.com/fmartinou/whats-up-docker)** (configures the same docker-compose label scoping; the dashboard's "Install update" button is feature-flagged via `WATCHTOWER_*` env vars but the protocol is just HTTP-trigger-then-docker-compose-up, so a thin shim works against any successor). The simplest path that doesn't depend on either sidecar is the manual upgrade documented below.
+See [Updating in the README](../README.md#updating). In short: **Settings → Maintenance → Install update**, or `docker compose pull && docker compose up -d`. New versions need no config changes; migrations run automatically.
 
-The bundled `docker-compose.yml` ships a `watchtower` service under the `auto-update` profile. The dashboard never touches `/var/run/docker.sock` itself — it sends an authenticated HTTP request to the sidecar, which has a read-only socket mount and is scoped to the labeled container.
+### Install update button
 
-```bash
-# 1. Generate a strong random token
-openssl rand -hex 32 > .token
-# 2. Put it in .env next to docker-compose.yml
-echo "WATCHTOWER_HTTP_API_TOKEN=$(cat .token)" >> .env
-rm .token
-# 3. Boot with the profile enabled
-docker compose --profile auto-update up -d
-```
-
-Once enabled, **Settings → Maintenance → Install update** pulls the latest image and recreates the container. The `data/` volume (SQLite db + sessions) survives the swap; the SQLite database is snapshotted to `data/backups/` first.
-
-Without the token (or without the profile), the **Install update** button stays disabled and the dashboard falls back to linking the GitHub release page.
-
-### Manual upgrade (always works, zero sidecar)
-
-If you'd rather skip the watchtower / whats-up-docker wiring entirely:
+The bundled `docker-compose.yml` runs a `watchtower` service by default (no profile). It is idle: HTTP-API-only, no periodic polling, no published ports, and scoped to containers with the `com.centurylinklabs.watchtower.enable=true` label. The dashboard never touches `/var/run/docker.sock`; it sends an authenticated request to the sidecar, which has a read-only socket mount.
 
 ```bash
-docker compose pull && docker compose up -d
+echo "WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)" >> .env
+docker compose up -d
 ```
 
-That's it — `pull_policy: always` in `docker-compose.yml` plus the published `:latest` tag mean a fresh image lands on every restart. Run from a cron / systemd timer / Synology Task Scheduler if you want it nightly.
+The image is the maintained fork `nickfedor/watchtower`. The archived `containrrr/watchtower:1.7.1` fails on Docker Engine 29+ with `client version 1.25 is too old`. If you keep an older compose file, re-download it (or change the image and replace `WATCHTOWER_HTTP_API_UPDATE=true` with `WATCHTOWER_HTTP_API_ENDPOINTS=update`, drop `profiles:`).
+
+Scheduled updates are opt-in: set `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true` and `WATCHTOWER_SCHEDULE` (cron, e.g. `0 0 4 * * *`) on the watchtower service.
+
+The SQLite database is snapshotted to `data/backups/` before every update. Without the token the button stays disabled and the dashboard links to the GitHub release page.
 
 ## Hardware-accelerated video thumbnails (optional, advanced)
 

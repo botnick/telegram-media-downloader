@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Changed
+- **The Install update button works without a compose profile.** The `watchtower` service is now part of the default `docker-compose.yml` (already so in the Synology file). It is idle: HTTP-API-only, no periodic polling unless `WATCHTOWER_HTTP_API_PERIODIC_POLLS=true`, no published ports, label-scoped. Existing users re-download the compose file once; old files keep working unchanged.
+- **README has an "Updating" section** (Install update button, or `docker compose pull && docker compose up -d`); the Docker docs link to it.
+
+### Fixed
+- **Watchtower failed on Docker Engine 29+** with "client version 1.25 is too old". The archived `containrrr/watchtower:1.7.1` is replaced by the maintained fork `nickfedor/watchtower:1.22`, which negotiates the API version (same labels, `/v1/update` endpoint and bearer token; the endpoint is enabled with `WATCHTOWER_HTTP_API_ENDPOINTS=update`).
+- **Removed the `faces-openvino` profile.** It pointed at `ghcr.io/botnick/tgdl-faces:openvino-latest`, which was never published.
+
 ## [2.30.0] — 2026-09-30
 
 tgdl-core, the Go engine, now does the heavy file work (hashing, file checks, folder walks, face clustering); the Content-Security-Policy is editable in Settings; cluster pairing, direct streams and background engines work; API security fixes.
