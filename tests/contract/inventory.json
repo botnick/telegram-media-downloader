@@ -1038,6 +1038,11 @@
       "kind": "route"
     },
     {
+      "key": "GET /api/csp",
+      "kind": "route",
+      "skip": "CSP editor helper (shipped defaults + TGDL_CSP flag); exercised by tests/csp-settings.e2e.test.js"
+    },
+    {
       "key": "POST /api/config",
       "kind": "route"
     },

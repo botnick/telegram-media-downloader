@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format is based on 
 - **Cluster: federated thumbnails show.** A peer answered a thumbnail request with a JSON description of the file (including its local cache path) labelled `image/webp` instead of the image. It sends the WebP now; a thumbnail from an older peer shows the placeholder instead of a broken image.
 - **The WebSocket docs listed a `monitor_event` message that was never sent.** Engine events (`download_start`, `download_progress`, `download_complete`, `queue_length`, …) go out under their own type with the data in `payload` — what the dashboard listens to; the relay's `{ type: 'monitor_event', ...event }` spread hid that by overwriting its own type. The relay now builds that message explicitly (nothing changes on the wire) and [docs/API.md](docs/API.md#websocket) lists the real types.
 
+### Added
+- **Configurable Content-Security-Policy.** Settings → Dashboard security now has a CSP editor: enable/disable, report-only mode, and the full source list per directive, applied on the next request. Saved as `web.csp`; installs without it keep today's exact header. `frame-ancestors` changes drop `X-Frame-Options` so embedding works. `TGDL_CSP=off` disables the CSP regardless of the setting (recovery).
+
 ## [2.29.1] — 2026-09-29
 
 Security fixes: the update endpoint now requires an admin, saving a group no longer broadcasts secrets to every dashboard (guests included), re-authentication requires the admin password, and the API rate limit applies from boot. Everyone should update.

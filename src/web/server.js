@@ -76,7 +76,8 @@ import {
 import { sanitizeName } from '../core/downloader.js';
 import { SecureSession } from '../core/security.js';
 import { AccountManager, hasAccountSessions } from '../core/accounts.js';
-import { loadConfig, saveConfig } from '../config/manager.js';
+import { loadConfig, saveConfig, getDefaultCsp } from '../config/manager.js';
+import { buildSecurityHeaders, validateCsp } from './lib/security-headers.js';
 import { runtime } from '../core/runtime.js';
 import { getDiskRotator } from '../core/disk-rotator.js';
 import * as integrity from '../core/integrity.js';
@@ -646,66 +647,30 @@ app.use(async (req, res, next) => {
 // `frame-src: 'self'` lets the viewer's PDF container point an iframe
 // at `/files/<path>?inline=1#toolbar=1` so the browser's native PDF
 // viewer renders it without leaving the dashboard.
+// The CSP itself is built by lib/security-headers.js from web.csp (defaults
+// live in config/manager.js) so the operator can edit it live from Settings.
 app.use(
     helmet({
         // HSTS managed by the forceHttps middleware above — helmet must not
         // override the max-age=0 clear header when the operator disables HTTPS.
         hsts: false,
-        contentSecurityPolicy: {
-            useDefaults: true,
-            directives: {
-                'default-src': ["'self'"],
-                'script-src': [
-                    "'self'",
-                    "'unsafe-inline'",
-                    'https://cdn.jsdelivr.net',
-                    'https://cdnjs.cloudflare.com',
-                ],
-                // The SPA uses inline onclick / oninput handlers in index.html
-                // (toggle UI, range-slider value updaters, modal close-buttons).
-                // Helmet's defaults set script-src-attr to 'none' which would
-                // block them; allow inline here until the markup is migrated to
-                // addEventListener.
-                'script-src-attr': ["'unsafe-inline'"],
-                'style-src': [
-                    "'self'",
-                    "'unsafe-inline'",
-                    'https://cdn.jsdelivr.net',
-                    'https://cdnjs.cloudflare.com',
-                    'https://fonts.googleapis.com',
-                ],
-                'style-src-attr': ["'unsafe-inline'"],
-                'font-src': [
-                    "'self'",
-                    'data:',
-                    'https://fonts.gstatic.com',
-                    'https://cdn.jsdelivr.net',
-                ],
-                'img-src': ["'self'", 'data:', 'blob:'],
-                'media-src': ["'self'", 'blob:'],
-                'connect-src': ["'self'", 'ws:', 'wss:'],
-                'object-src': ["'none'"],
-                'frame-src': ["'self'"],
-                'frame-ancestors': ["'self'"],
-                'upgrade-insecure-requests': null,
-            },
-        },
+        contentSecurityPolicy: false,
+        // X-Frame-Options is set together with the CSP below so it can be
+        // dropped when frame-ancestors is customised.
+        xFrameOptions: false,
         crossOriginEmbedderPolicy: false,
         crossOriginResourcePolicy: { policy: 'same-origin' },
     }),
 );
 
-// Dynamic CSP: re-inject upgrade-insecure-requests only when forceHttps is
-// active and the response is already on a secure channel. Helmet's static
-// middleware can't vary per-request, so we patch the header after it runs.
+// CSP + X-Frame-Options. Read per request (config cache is invalidated on
+// save), so edits apply on the next request. `upgrade-insecure-requests` is
+// added only when forceHttps is on and the request is already secure.
 app.use(async (req, res, next) => {
     const config = await readConfigSafe();
-    if (config.web?.forceHttps && req.secure) {
-        const orig = res.getHeader('Content-Security-Policy');
-        if (orig && !String(orig).includes('upgrade-insecure-requests')) {
-            res.setHeader('Content-Security-Policy', `${orig};upgrade-insecure-requests`);
-        }
-    }
+    const { csp, xFrameOptions } = buildSecurityHeaders(config, { secure: req.secure });
+    if (csp) res.setHeader(csp.name, csp.value);
+    if (xFrameOptions) res.setHeader('X-Frame-Options', xFrameOptions);
     next();
 });
 
@@ -12049,6 +12014,15 @@ app.get('/api/rescue/stats', async (req, res) => {
     }
 });
 
+// CSP editor support: shipped defaults (for "Reset") + whether TGDL_CSP=off
+// is overriding the saved setting. Admin-only (not in the guest allow-list).
+app.get('/api/csp', (req, res) => {
+    res.json({
+        defaults: getDefaultCsp(),
+        envOff: String(process.env.TGDL_CSP || '').toLowerCase() === 'off',
+    });
+});
+
 // 7b. Config Update
 app.post('/api/config', async (req, res) => {
     try {
@@ -12117,6 +12091,13 @@ app.post('/api/config', async (req, res) => {
             // they stand for stay as saved unless the body names them.
             delete safeWeb.shareSecretSet;
             delete safeWeb.guestPasswordHashSet;
+            if (req.body.web.csp === null) {
+                delete safeWeb.csp; // reset to defaults
+            } else if (req.body.web.csp !== undefined) {
+                const v = validateCsp(req.body.web.csp);
+                if (!v.ok) return res.status(400).json({ error: v.error });
+                safeWeb.csp = v.value;
+            }
             newConfig.web = safeWeb;
         }
 
