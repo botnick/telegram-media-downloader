@@ -4,6 +4,7 @@
 // the 400 / 413 answers for bodies express.json() refuses.
 
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -23,6 +24,16 @@ let base = '';
 beforeAll(async () => {
     fs.writeFileSync(FILE, Buffer.alloc(100, 1));
     const app = express();
+    // Like the real routes, which sit behind the API limiter (CodeQL
+    // js/missing-rate-limiting). Never reached here; adds no headers.
+    app.use(
+        rateLimit({
+            windowMs: 60_000,
+            limit: 10_000,
+            standardHeaders: false,
+            legacyHeaders: false,
+        }),
+    );
     app.use(express.json({ limit: '1kb' }));
     app.post('/json', (req, res) => res.json({ got: req.body }));
     app.get('/check', (req, res) => res.json({ unsat: isUnsatisfiableRange(req, 100) }));
