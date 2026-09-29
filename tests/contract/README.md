@@ -248,7 +248,6 @@ never silently in the Go port.
 - Guests can read `GET /api/groups/:id/files`, `/stats`, `/purge/status` and
   `/refresh-info/status` (the guest allow-list matches the `/api/groups`
   prefix).
-- `DELETE /api/purge/all` (factory reset) has no `{ confirm: true }` guard.
 - A JSON array body to `POST /api/config` is spread into the config as index
   keys.
 - `POST /api/downloads/bulk-delete {ids:[null]}` starts a job (`Number(null)`

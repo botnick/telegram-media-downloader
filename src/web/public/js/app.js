@@ -4689,7 +4689,8 @@ async function purgeAll() {
 
     try {
         showToast(i18nT('purge.all.deleting', 'Deleting all data...'), 'info');
-        const r = await api.delete('/api/purge/all');
+        // The server refuses a factory reset without this exact phrase.
+        const r = await api.delete('/api/purge/all', { confirm: 'DELETE ALL' });
         if (!r?.started && !r?.success) throw new Error('Failed to start');
         // Final toast + state reset come from `purge_all_done` WS event.
     } catch (e) {

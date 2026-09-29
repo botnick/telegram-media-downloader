@@ -7,7 +7,8 @@
 //   - a malformed JSON body, a JSON null or a body over 2 MB answered 500
 //     instead of 400 / 413;
 //   - advanced.share.rateLimitMax / rateLimitWindowMs never reached the
-//     /share limiter (the route kept the one it was registered with).
+//     /share limiter (the route kept the one it was registered with);
+//   - DELETE /api/purge/all (factory reset) ran on a bare request.
 
 import { spawn } from 'child_process';
 import fs from 'fs';
@@ -219,5 +220,27 @@ describe.skipIf(SKIP)('contract findings (e2e)', () => {
         });
         expect((await req('GET', sharePath, { cookie: '' })).status).toBe(200);
         expect((await req('GET', sharePath, { cookie: '' })).status).toBe(429);
+    });
+
+    // Last: it wipes the library.
+    it('the factory reset needs {"confirm": "DELETE ALL"}', async () => {
+        const abs = path.join(DATA, 'downloads', FILE_REL);
+        for (const body of [undefined, {}, { confirm: true }, { confirm: 'delete all' }]) {
+            const r = await req('DELETE', '/api/purge/all', { body });
+            expect(r.status).toBe(400);
+            expect(r.json.code).toBe('CONFIRM_REQUIRED');
+            expect(r.json.error).toMatch(/"confirm": "DELETE ALL"/);
+        }
+        expect((await req('GET', '/api/purge/all/status')).json.stage).toBe('idle');
+        expect(fs.existsSync(abs)).toBe(true);
+
+        const ok = await req('DELETE', '/api/purge/all', { body: { confirm: 'DELETE ALL' } });
+        expect(ok.status).toBe(200);
+        expect(ok.json).toEqual({ success: true, started: true });
+        for (let i = 0; i < 80; i++) {
+            if ((await req('GET', '/api/purge/all/status')).json.stage === 'done') break;
+            await sleep(250);
+        }
+        expect(fs.existsSync(abs)).toBe(false);
     });
 });

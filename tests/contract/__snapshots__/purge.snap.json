@@ -1394,12 +1394,189 @@
         }
       }
     },
-    "purge all": {
+    "purge all without body → 400": {
       "route": "DELETE /api/purge/all",
       "request": {
         "method": "DELETE",
         "path": "/api/purge/all",
         "as": "admin"
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "CONFIRM_REQUIRED",
+          "error": "Factory reset not confirmed: send {\"confirm\": \"DELETE ALL\"} in the request body. If you used the dashboard, reload the page and try again."
+        }
+      }
+    },
+    "purge all confirm:true → 400": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "admin",
+        "body": {
+          "confirm": true
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "CONFIRM_REQUIRED",
+          "error": "Factory reset not confirmed: send {\"confirm\": \"DELETE ALL\"} in the request body. If you used the dashboard, reload the page and try again."
+        }
+      }
+    },
+    "purge all wrong phrase → 400": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "admin",
+        "body": {
+          "confirm": "delete all"
+        }
+      },
+      "status": 400,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "CONFIRM_REQUIRED",
+          "error": "Factory reset not confirmed: send {\"confirm\": \"DELETE ALL\"} in the request body. If you used the dashboard, reload the page and try again."
+        }
+      }
+    },
+    "purge all status still idle": {
+      "route": "GET /api/purge/all/status",
+      "request": {
+        "method": "GET",
+        "path": "/api/purge/all/status",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "attempts": 0,
+          "durationMs": "<durationMs:number>",
+          "error": null,
+          "failures": 0,
+          "finishedAt": 0,
+          "kind": "purgeAll",
+          "progress": {},
+          "result": null,
+          "running": false,
+          "stage": "idle",
+          "startedAt": 0,
+          "successes": 0
+        }
+      }
+    },
+    "downloads before purge all": {
+      "route": "GET /api/downloads",
+      "request": {
+        "method": "GET",
+        "path": "/api/downloads",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": [
+          {
+            "enabled": true,
+            "id": "-1001000000001",
+            "name": "Alpha Photos",
+            "photoUrl": "/photos/-1001000000001.jpg",
+            "sizeFormatted": "18.65 KB",
+            "totalFiles": 6,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1001000000002",
+            "name": "Beta Videos",
+            "photoUrl": null,
+            "sizeFormatted": "7.09 KB",
+            "totalFiles": 3,
+            "type": null
+          },
+          {
+            "enabled": false,
+            "id": "-1001000000003",
+            "name": "Gamma Docs",
+            "photoUrl": null,
+            "sizeFormatted": "653 B",
+            "totalFiles": 4,
+            "type": null
+          },
+          {
+            "enabled": true,
+            "id": "-1001000000004",
+            "name": "Delta Mixed",
+            "photoUrl": null,
+            "sizeFormatted": "12.34 KB",
+            "totalFiles": 4,
+            "type": null
+          },
+          {
+            "enabled": false,
+            "id": "-1001000000005",
+            "name": "Epsilon Archive",
+            "photoUrl": null,
+            "sizeFormatted": "8.1 KB",
+            "totalFiles": 3,
+            "type": null
+          }
+        ]
+      }
+    },
+    "purge all": {
+      "route": "DELETE /api/purge/all",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/purge/all",
+        "as": "admin",
+        "body": {
+          "confirm": "DELETE ALL"
+        }
       },
       "status": 200,
       "headers": {
@@ -1740,7 +1917,10 @@
       "request": {
         "method": "DELETE",
         "path": "/api/purge/all",
-        "as": "admin"
+        "as": "admin",
+        "body": {
+          "confirm": "DELETE ALL"
+        }
       },
       "status": 200,
       "headers": {

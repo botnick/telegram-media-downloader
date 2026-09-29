@@ -6483,7 +6483,19 @@ app.post('/api/groups/:id/delete-files', async (req, res) => {
 // Fire-and-forget — a full library wipe is the slowest, most destructive
 // admin action we have. Returns 200 immediately; final counts via
 // `purge_all_done`. Single-flight via the shared tracker.
+//
+// The body must carry `{ "confirm": "DELETE ALL" }` (the dashboard sends
+// it after its two confirmation sheets). A bare DELETE — a stray script, a
+// dashboard tab from before this guard — gets a 400 that says what to do,
+// and nothing is touched.
+const PURGE_ALL_CONFIRM = 'DELETE ALL';
 app.delete('/api/purge/all', async (req, res) => {
+    if (req.body?.confirm !== PURGE_ALL_CONFIRM) {
+        return res.status(400).json({
+            error: `Factory reset not confirmed: send {"confirm": "${PURGE_ALL_CONFIRM}"} in the request body. If you used the dashboard, reload the page and try again.`,
+            code: 'CONFIRM_REQUIRED',
+        });
+    }
     const tracker = _jobTrackers.purgeAll;
     const r = tracker.tryStart(async ({ onProgress }) => {
         let totalFiles = 0;

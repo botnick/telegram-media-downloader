@@ -103,7 +103,7 @@ All five are admin-only. `POST /api/history` for a chat that can't be reached an
 | `POST`   | `/api/downloads/pin`                | `{ids:[…], pinned}` — pin / unpin many rows in one request (max 5000 ids, else 413). Returns the ids that exist. |
 | `POST`   | `/api/downloads/:id/pin`            | `{pinned}` — one row. |
 | `DELETE` | `/api/file?path=…`                  | Single file. |
-| `DELETE` | `/api/purge/all`                    | Factory reset. |
+| `DELETE` | `/api/purge/all`                    | Factory reset. Body `{"confirm": "DELETE ALL"}` (exactly); without it `400 {code: "CONFIRM_REQUIRED"}` and nothing is touched. Starts a job: `{started: true}`, progress on `purge_all_progress` / `purge_all_done`. |
 
 ## Direct downloads
 

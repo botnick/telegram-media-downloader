@@ -250,9 +250,26 @@ describe('DELETE /api/purge/all (factory reset, own server)', () => {
     it('wipes files, rows, caches, config groups and avatars', async () => {
         const t2 = await h.extra();
         await t2.exchange('purge all status idle', 'GET', '/api/purge/all/status');
-        const events = await runJob(t2, 'purge all', 'DELETE', '/api/purge/all', undefined, {
-            doneType: 'purge_all_done',
+        // The reset needs `{ confirm: "DELETE ALL" }`; anything else is a
+        // 400 that starts nothing (the status below stays idle and the
+        // library intact until the confirmed run).
+        await t2.exchange('purge all without body → 400', 'DELETE', '/api/purge/all');
+        await t2.exchange('purge all confirm:true → 400', 'DELETE', '/api/purge/all', {
+            body: { confirm: true },
         });
+        await t2.exchange('purge all wrong phrase → 400', 'DELETE', '/api/purge/all', {
+            body: { confirm: 'delete all' },
+        });
+        await t2.exchange('purge all status still idle', 'GET', '/api/purge/all/status');
+        await t2.exchange('downloads before purge all', 'GET', '/api/downloads');
+        const events = await runJob(
+            t2,
+            'purge all',
+            'DELETE',
+            '/api/purge/all',
+            { confirm: 'DELETE ALL' },
+            { doneType: 'purge_all_done' },
+        );
         t2.recordWs('ws purge all', events, { ignore: WS_IGNORE });
         await t2.exchange('purge all status done', 'GET', '/api/purge/all/status');
         await t2.exchange('groups after purge all', 'GET', '/api/groups');
@@ -272,7 +289,7 @@ describe('DELETE /api/purge/all (factory reset, own server)', () => {
             'purge all again (empty library)',
             'DELETE',
             '/api/purge/all',
-            undefined,
+            { confirm: 'DELETE ALL' },
             {
                 doneType: 'purge_all_done',
             },
