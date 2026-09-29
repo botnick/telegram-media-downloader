@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Fixed
+- **Release notes show the newest versions right after an update.** The in-app viewer could show a copy of the changelog the browser kept for up to an hour, so a freshly updated dashboard listed older releases only. It now revalidates the file on every open.
+
 ## [2.32.1] — 2026-09-30
 
 One-click update works again on the watchtower sidecar; LOCATION_INVALID downloads recover.

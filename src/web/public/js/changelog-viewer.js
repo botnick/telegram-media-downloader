@@ -310,7 +310,9 @@ function renderCard(v, { open, installed }) {
 
 async function _load() {
     if (_cache) return _cache;
-    const res = await fetch('/CHANGELOG.md', { credentials: 'same-origin' });
+    // no-cache: revalidate (ETag → 304) so a copy the browser kept from
+    // before an update never hides the newer releases.
+    const res = await fetch('/CHANGELOG.md', { credentials: 'same-origin', cache: 'no-cache' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     _cache = await res.text();
     return _cache;
