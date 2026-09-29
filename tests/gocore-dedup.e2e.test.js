@@ -101,7 +101,6 @@ beforeAll(async () => {
             PORT: String(port),
             TGDL_DATA_DIR: DATA,
             NODE_ENV: 'test',
-            TGDL_DISABLE_AUTOSTART: '1',
             TGDL_CORE_BIN: bin,
         },
         cwd: REPO_ROOT,

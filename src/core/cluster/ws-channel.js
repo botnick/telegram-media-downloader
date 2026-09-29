@@ -373,10 +373,25 @@ function _connectOne(peer) {
         }
         _handleInbound(peer.peerId, msg);
     });
+    // `ws` emits 'error' and then 'close' for one failure: handle it once,
+    // or every failed attempt schedules two reconnects and the attempts to
+    // a dead peer double each round.
+    let closed = false;
+    let opened = false;
+    ws.on('open', () => {
+        opened = true;
+    });
     const onClose = () => {
+        if (closed) return;
+        closed = true;
         if (pingTimer) clearInterval(pingTimer);
         clearTimeout(pongDeadline);
-        if (state.status !== 'closing') {
+        // Only a link that was up going down is news. A dial that never
+        // connected leaves the peer's status to the sync poll / health
+        // probe — marking it offline here re-stamped last_seen_at (which
+        // failover reads as "heard from recently") and pushed a
+        // peer_status event on every reconnect attempt.
+        if (opened && state.status !== 'closing') {
             markOffline(peer.peerId);
             _broadcastLocal({ type: 'peer_status', peerId: peer.peerId, status: 'offline' });
         }

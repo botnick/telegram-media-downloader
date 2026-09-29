@@ -1,5 +1,39 @@
 {
   "entries": {
+    "outbound connect at boot": {
+      "ws": "cluster",
+      "sent": [],
+      "received": [],
+      "connections": [
+        {
+          "path": "/ws/cluster",
+          "peer": "00000000-0000-4000-8000-00000000c0de",
+          "connectSigValid": true
+        }
+      ]
+    },
+    "failover run (beta never seen → nothing to take over)": {
+      "route": "POST /api/cluster/failover/run",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/failover/run",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "applied": []
+        }
+      }
+    },
     "upgrade by credentials": {
       "ws": "cluster",
       "upgrade": {
@@ -12,16 +46,6 @@
         "clusterTokenInsteadOfPairSecret": 401,
         "validPairSecret": "open"
       }
-    },
-    "inbound before engine start": {
-      "ws": "cluster",
-      "sent": [
-        "download_added",
-        "peer_status"
-      ],
-      "received": [],
-      "events": [],
-      "note": "the relay to dashboard clients is only wired by the lazy /api/cluster engine starter"
     },
     "peer catalog has the pushed row": {
       "route": "GET /api/cluster/downloads",
@@ -46,17 +70,17 @@
               "cached_at": "<time:ms>",
               "created_at": 1722506400000,
               "file_hash": null,
-              "file_name": "R_0900.jpg",
-              "file_path": "Remote Chat/images/R_0900.jpg",
-              "file_size": 1900,
+              "file_name": "R_0901.jpg",
+              "file_path": "Remote Chat/images/R_0901.jpg",
+              "file_size": 1901,
               "file_type": "photo",
               "group_id": "-1009000000001",
               "group_name": "Remote Chat",
-              "message_id": 900,
+              "message_id": 901,
               "nsfw_score": null,
               "peer_id": "00000000-0000-4000-8000-0000000000a1",
               "peer_name": "peer-alpha",
-              "remote_id": 900,
+              "remote_id": 901,
               "status": "completed"
             },
             {
@@ -114,47 +138,6 @@
           "total": 4
         }
       }
-    },
-    "failover run (starts engines; beta never seen → nothing to take over)": {
-      "route": "POST /api/cluster/failover/run",
-      "request": {
-        "method": "POST",
-        "path": "/api/cluster/failover/run",
-        "as": "admin"
-      },
-      "status": 200,
-      "headers": {
-        "cache-control": "no-store, max-age=0",
-        "content-type": "application/json; charset=utf-8",
-        "etag": "W/\"<express-etag-of-body>\"",
-        "pragma": "no-cache",
-        "vary": "Cookie, Accept-Encoding"
-      },
-      "security": "e30ca64edb",
-      "body": {
-        "json": {
-          "applied": []
-        }
-      }
-    },
-    "outbound connect": {
-      "ws": "cluster",
-      "sent": [],
-      "received": [],
-      "connections": [
-        {
-          "path": "/ws/cluster",
-          "peer": "00000000-0000-4000-8000-00000000c0de",
-          "connectSigValid": true
-        }
-      ],
-      "events": [
-        {
-          "peerId": "00000000-0000-4000-8000-0000000000a1",
-          "status": "online",
-          "type": "peer_status"
-        }
-      ]
     },
     "inbound event relay": {
       "ws": "cluster",
@@ -585,23 +568,6 @@
         "json": {
           "rows": [
             {
-              "cached_at": "<time:ms>",
-              "created_at": 1722506400000,
-              "file_hash": null,
-              "file_name": "R_0900.jpg",
-              "file_path": "Remote Chat/images/R_0900.jpg",
-              "file_size": 1900,
-              "file_type": "photo",
-              "group_id": "-1009000000001",
-              "group_name": "Remote Chat",
-              "message_id": 900,
-              "nsfw_score": null,
-              "peer_id": "00000000-0000-4000-8000-0000000000a1",
-              "peer_name": "peer-alpha",
-              "remote_id": 900,
-              "status": "completed"
-            },
-            {
               "cached_at": 1717632010000,
               "created_at": 1717632002000,
               "file_hash": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
@@ -653,7 +619,7 @@
               "status": "completed"
             }
           ],
-          "total": 4
+          "total": 3
         }
       }
     },

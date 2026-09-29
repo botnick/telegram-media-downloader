@@ -518,10 +518,12 @@ export async function loadSettings() {
         bind('proxy-port', proxy.port || '');
         bind('proxy-username', proxy.username || '');
         bind('proxy-secret', proxy.secret || '');
-        // password is intentionally never echoed back; placeholder hint:
+        // The server never returns the password (only `passwordSet`), and
+        // saveProxy() leaves it out when the field is blank so the saved
+        // one is kept. Placeholder hint:
         const pw = document.getElementById('proxy-password');
         if (pw)
-            pw.placeholder = proxy.password
+            pw.placeholder = proxy.passwordSet
                 ? i18nT('settings.tg_api.saved_placeholder', '(saved — leave blank to keep)')
                 : '';
         const apiHashEl = document.getElementById('setting-api-hash');

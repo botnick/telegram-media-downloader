@@ -107,6 +107,8 @@ const PASS_ENV = [
     'CommonProgramFiles',
     'NUMBER_OF_PROCESSORS',
     'PROCESSOR_ARCHITECTURE',
+    // The tgdl-core binary the global setup found or built.
+    'TGDL_CORE_BIN',
 ];
 
 function targetEnv({ port, dataDir, extra = {}, nodeEnv = 'test' }) {
@@ -121,7 +123,6 @@ function targetEnv({ port, dataDir, extra = {}, nodeEnv = 'test' }) {
         LANG: 'C.UTF-8',
         LC_ALL: 'C.UTF-8',
         TGDL_GO_CORE: 'off',
-        TGDL_DISABLE_AUTOSTART: '1',
         TGDL_FACES_AUTO_DOWNLOAD: 'false',
         TGDL_FACES_AUTO_INSTALL: 'false',
         // For targets that honour proxy env (Go's net/http does): no egress.

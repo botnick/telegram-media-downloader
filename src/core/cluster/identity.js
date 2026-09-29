@@ -228,12 +228,42 @@ export function consumePairingCode(code) {
 }
 
 /**
- * Initiator-side: derive the same secret the receiver will derive from
- * a given code + the SHARED cluster token. Until per-peer tokens are
- * universal, both peers must hold the same `cluster_token`. The
- * pairing-code path simply reuses whatever the operator currently has;
- * fresh installs auto-generate one and "Use cluster's token" lets them
- * sync to an existing cluster.
+ * The key a pairing-code handshake is signed with: derived from the code
+ * alone, so an initiator can compute it without holding the receiver's
+ * cluster token (two fresh installs have different ones — the case pairing
+ * codes exist for). Knowing the code is what authorises the pairing; the
+ * code is single-use and expires after 5 minutes.
+ */
+export function pairingCodeKey(code) {
+    return crypto
+        .createHmac('sha256', 'tgdl-cluster-pairing-code')
+        .update(String(code).trim().toUpperCase())
+        .digest('hex');
+}
+
+/**
+ * Receiver-side: the keys a handshake carrying `code` may be signed with,
+ * while the code is issued and unexpired (nothing is consumed here —
+ * acceptHandshake() does that once the request is verified):
+ *   - pairingCodeKey(code): what initiators sign with since the fix;
+ *   - the stored cluster-token-derived secret: what older initiators sign
+ *     with (deriveSecretFromPairingCode), which matches when both peers
+ *     hold the same cluster token.
+ * Empty for an unknown / expired code.
+ */
+export function pairingKeysFor(code) {
+    if (!code || typeof code !== 'string') return [];
+    const key = code.trim().toUpperCase();
+    const entry = _readCodes()[key];
+    if (!entry?.expiresAt || entry.expiresAt < Date.now()) return [];
+    return [pairingCodeKey(key), entry.secret].filter(Boolean);
+}
+
+/**
+ * The key initiators before the fix signed a pairing-code handshake with:
+ * derived from the code + the INITIATOR's cluster token, so it only
+ * verifies at a receiver holding the same token. Kept so a receiver can
+ * still accept those (see pairingKeysFor).
  */
 export function deriveSecretFromPairingCode(code) {
     return crypto

@@ -2808,11 +2808,41 @@
         "bytes": 468
       }
     },
+    "peer thumb from an older peer (JSON labelled image/webp) → placeholder": {
+      "route": "GET /api/cluster/thumbs/:peerId/:remoteId",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/thumbs/<uuid:1>/7002",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "public, max-age=60",
+        "content-length": "68",
+        "content-type": "image/png",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "sha256": "63ef318d96b5d0d0ceba6e04a4e622b1158335cdc67c49e27839132c6f655058",
+        "bytes": 68
+      }
+    },
     "thumb fetch the node sent to gamma (derived)": {
       "received": [
         {
           "method": "GET",
           "path": "/api/cluster/peer-thumbs/7001?w=320",
+          "signedBy": "self",
+          "signatureValid": true,
+          "contentType": null,
+          "body": null
+        },
+        {
+          "method": "GET",
+          "path": "/api/cluster/peer-thumbs/7002",
           "signedBy": "self",
           "signatureValid": true,
           "contentType": null,

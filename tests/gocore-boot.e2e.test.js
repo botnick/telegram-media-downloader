@@ -70,7 +70,6 @@ async function bootServer(extraEnv) {
     const env = { ...process.env, ...extraEnv, PORT: String(port), TGDL_DATA_DIR: dataDir };
     for (const [k, v] of Object.entries(extraEnv)) if (v === undefined) delete env[k];
     env.NODE_ENV = 'test';
-    env.TGDL_DISABLE_AUTOSTART = '1';
     const t0 = Date.now();
     const child = spawn(process.execPath, [SERVER_PATH], {
         env,

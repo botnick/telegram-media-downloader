@@ -304,6 +304,9 @@ export const DYNAMIC_SITES = {
     'src/web/server.js|data': [],
     // server.js cluster ws bridge `(m) => global.__tgdlBroadcast(m)` / broadcast(m)
     'src/web/server.js|m': [],
+    // server.js runtime relay: each engine event under its own type — the
+    // runtime.js `emit('event', { type })` sites, parsed below
+    'src/web/server.js|runtimeEventMessage(e)': [],
     // core modules re-emitting a prepared payload (pass-through wrappers)
     'src/core/job-tracker.js|payload': [],
     'src/core/cluster/sweep.js|m': [],
@@ -420,9 +423,9 @@ export function parseWsEvents(root = REPO_ROOT) {
         let m;
         while ((m = re.exec(code))) add(m[1], `${rel}:${lineOf(code, m.index)}`);
     }
-    // Engine events relayed by `runtime.on('event', e => broadcast({ type:
-    // 'monitor_event', ...e }))` — the spread overrides `type`, so each
-    // runtime event goes out under its own name.
+    // Engine events relayed by `runtime.on('event', e =>
+    // broadcast(runtimeEventMessage(e)))`: each runtime event goes out
+    // under its own name.
     const runtimeFile = path.join(root, 'src', 'core', 'runtime.js');
     if (fs.existsSync(runtimeFile)) {
         const code = stripComments(fs.readFileSync(runtimeFile, 'utf8'));

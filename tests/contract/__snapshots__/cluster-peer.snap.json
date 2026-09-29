@@ -1029,7 +1029,40 @@
         }
       }
     },
-    "handshake signed with pairing-code secret → 401": {
+    "handshake signed with the pairing-code key → paired": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000e5/other-key",
+        "body": {
+          "name": "peer-epsilon",
+          "pairing_code": "<pairing-code>",
+          "peer_id": "<uuid:2>",
+          "url": "http://peer-epsilon.invalid:3000"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "fingerprint": "<hex64:3>",
+          "name": "contract-node",
+          "paired_at": "<time:ms>",
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "shared_secret_ack": null,
+          "version": null
+        }
+      }
+    },
+    "pairing code is single-use → 401": {
       "route": "POST /api/cluster/handshake",
       "request": {
         "method": "POST",
@@ -1058,17 +1091,17 @@
         }
       }
     },
-    "handshake with pairing code, signed with token": {
+    "handshake signed with the token-derived pairing secret (older initiator) → paired": {
       "route": "POST /api/cluster/handshake",
       "request": {
         "method": "POST",
         "path": "/api/cluster/handshake",
-        "as": "peer:00000000-0000-4000-8000-0000000000e5/token",
+        "as": "peer:00000000-0000-4000-8000-0000000000e6/other-key",
         "body": {
-          "name": "peer-epsilon",
+          "name": "peer-zeta",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:2>",
-          "url": "http://peer-epsilon.invalid:3000"
+          "peer_id": "<uuid:3>",
+          "url": "http://peer-zeta.invalid:3000"
         }
       },
       "status": 200,
@@ -1082,7 +1115,7 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
-          "fingerprint": "<hex64:3>",
+          "fingerprint": "<hex64:4>",
           "name": "contract-node",
           "paired_at": "<time:ms>",
           "peer_id": "00000000-0000-4000-8000-00000000c0de",
@@ -1091,17 +1124,50 @@
         }
       }
     },
-    "pairing code is single-use → 400": {
+    "handshake with pairing code, signed with token": {
       "route": "POST /api/cluster/handshake",
       "request": {
         "method": "POST",
         "path": "/api/cluster/handshake",
-        "as": "peer:00000000-0000-4000-8000-0000000000e5/token",
+        "as": "peer:00000000-0000-4000-8000-0000000000e7/token",
         "body": {
-          "name": "peer-epsilon",
+          "name": "peer-eta",
           "pairing_code": "<pairing-code>",
-          "peer_id": "<uuid:2>",
-          "url": "http://peer-epsilon.invalid:3000"
+          "peer_id": "<uuid:4>",
+          "url": "http://peer-eta.invalid:3000"
+        }
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "fingerprint": "<hex64:5>",
+          "name": "contract-node",
+          "paired_at": "<time:ms>",
+          "peer_id": "00000000-0000-4000-8000-00000000c0de",
+          "shared_secret_ack": null,
+          "version": null
+        }
+      }
+    },
+    "pairing code is single-use (token-signed) → 400": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000e7/token",
+        "body": {
+          "name": "peer-eta",
+          "pairing_code": "<pairing-code>",
+          "peer_id": "<uuid:4>",
+          "url": "http://peer-eta.invalid:3000"
         }
       },
       "status": 400,
@@ -1117,6 +1183,154 @@
         "json": {
           "code": "bad_pairing_code",
           "error": "pairing code expired or invalid"
+        }
+      }
+    },
+    "handshake with a code this node never issued → 401": {
+      "route": "POST /api/cluster/handshake",
+      "request": {
+        "method": "POST",
+        "path": "/api/cluster/handshake",
+        "as": "peer:00000000-0000-4000-8000-0000000000e8/other-key",
+        "body": {
+          "name": "peer-theta",
+          "pairing_code": "ZZZZ2345",
+          "peer_id": "<uuid:5>",
+          "url": "http://peer-theta.invalid:3000"
+        }
+      },
+      "status": 401,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "code": "bad_signature",
+          "error": "cluster auth failed"
+        }
+      }
+    },
+    "peers after pairing-code handshakes": {
+      "route": "GET /api/cluster/peers",
+      "request": {
+        "method": "GET",
+        "path": "/api/cluster/peers",
+        "as": "admin"
+      },
+      "status": 200,
+      "headers": {
+        "cache-control": "no-store, max-age=0",
+        "content-type": "application/json; charset=utf-8",
+        "etag": "W/\"<express-etag-of-body>\"",
+        "pragma": "no-cache",
+        "vary": "Cookie, Accept-Encoding"
+      },
+      "security": "e30ca64edb",
+      "body": {
+        "json": {
+          "peers": [
+            {
+              "fingerprint": "d5e9a34d82f28c4fd51bbb6580284bb10e4fbdd3ac39c6da1003a7ff678372ac",
+              "id": 1,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-alpha",
+              "notes": "primary peer",
+              "pairedAt": 1717200000000,
+              "peerId": "00000000-0000-4000-8000-0000000000a1",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-alpha.invalid:3000",
+              "version": "2.27.1",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "f81af245a7462d9df995034d2fe572b81951c03eb800eb76144962a0d4365381",
+              "id": 2,
+              "lastSeenAt": null,
+              "migrationRequired": true,
+              "name": "peer-beta",
+              "notes": null,
+              "pairedAt": 1717200001000,
+              "peerId": "00000000-0000-4000-8000-0000000000b2",
+              "role": "admin",
+              "status": "offline",
+              "streamMode": "direct",
+              "url": "http://<FAKE_PEER>",
+              "version": "2.26.3",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:2>",
+              "id": 3,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": false,
+              "name": "peer-delta renamed",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:1>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-delta.invalid:3000",
+              "version": "1.2.3",
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:3>",
+              "id": 5,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": true,
+              "name": "peer-epsilon",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:2>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-epsilon.invalid:3000",
+              "version": null,
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:4>",
+              "id": 6,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": true,
+              "name": "peer-zeta",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:3>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-zeta.invalid:3000",
+              "version": null,
+              "wsLastSeen": null
+            },
+            {
+              "fingerprint": "<hex64:5>",
+              "id": 7,
+              "lastSeenAt": "<time:ms>",
+              "migrationRequired": true,
+              "name": "peer-eta",
+              "notes": null,
+              "pairedAt": "<time:ms>",
+              "peerId": "<uuid:4>",
+              "role": "admin",
+              "status": "online",
+              "streamMode": "proxy",
+              "url": "http://peer-eta.invalid:3000",
+              "version": null,
+              "wsLastSeen": null
+            }
+          ]
         }
       }
     },
@@ -2310,21 +2524,17 @@
       "status": 200,
       "headers": {
         "cache-control": "private, no-store",
-        "content-type": "image/webp; charset=utf-8",
-        "etag": "W/\"<express-etag-of-body>\"",
+        "content-type": "image/webp",
         "pragma": "no-cache",
         "vary": "Cookie"
       },
       "security": "e30ca64edb",
       "body": {
-        "json": {
-          "mtime": "<masked:number>",
-          "path": "<DATA>/thumbs/<hex32:1>.webp",
-          "width": 320
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 213
         }
-      },
-      "masked": {
-        "mtime": "mtime of the thumbnail file generated during this run"
       }
     },
     "peer thumb w=320": {
@@ -2337,21 +2547,17 @@
       "status": 200,
       "headers": {
         "cache-control": "private, no-store",
-        "content-type": "image/webp; charset=utf-8",
-        "etag": "W/\"<express-etag-of-body>\"",
+        "content-type": "image/webp",
         "pragma": "no-cache",
         "vary": "Cookie"
       },
       "security": "e30ca64edb",
       "body": {
-        "json": {
-          "mtime": "<masked:number>",
-          "path": "<DATA>/thumbs/<hex32:2>.webp",
-          "width": 320
+        "image": {
+          "format": "webp",
+          "width": 320,
+          "height": 480
         }
-      },
-      "masked": {
-        "mtime": "mtime of the thumbnail file generated during this run"
       }
     },
     "peer thumb document → 404": {
@@ -2484,6 +2690,7 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
+          "exp": "<time:s>",
           "expiresAt": "<time:ms>",
           "url": "http://<HOST>/share/4?s=<sig:1>"
         }
@@ -2510,6 +2717,7 @@
       "security": "e30ca64edb",
       "body": {
         "json": {
+          "exp": "<time:s>",
           "expiresAt": "<time:ms>",
           "url": "https://dl.example.test/share/5?s=<sig:2>"
         }
@@ -2522,26 +2730,31 @@
         "path": "/share/4?s=<sig:1>",
         "as": "anon"
       },
-      "status": 401,
+      "status": 200,
       "headers": {
-        "content-type": "application/json; charset=utf-8",
-        "etag": "W/\"<express-etag-of-body>\"",
+        "accept-ranges": "bytes",
+        "cache-control": "private, no-store, no-cache, must-revalidate",
+        "content-disposition": "inline; filename=\"IMG_0001.jpg\"; filename*=UTF-8''IMG_0001.jpg",
+        "content-length": "3365",
+        "content-type": "image/jpeg",
+        "etag": "W/\"d25-18cc820d888\"",
+        "last-modified": "Tue, 02 Jan 2024 03:04:05 GMT",
+        "pragma": "no-cache",
         "ratelimit": "limit=60, remaining=59, reset=<s>",
         "ratelimit-policy": "60;w=60"
       },
-      "security": "e30ca64edb",
+      "security": "122656cc3b",
       "body": {
-        "json": {
-          "code": "bad_sig",
-          "error": "Share link is not valid"
-        }
+        "sha256": "7b4170fd5f9c052a9e48c65a0e0a6bd9ef56517218e5c96bf46513ca5d6b8bdc",
+        "bytes": 3365
       }
     },
     "minted share link row (derived)": {
       "derived": {
         "label": "cluster:00000000",
         "ttlWindow": true,
-        "storedExpiresAtIsMilliseconds": true
+        "storedExpiresAtIsSeconds": true,
+        "expIsExpiresAtInSeconds": true
       }
     },
     "relay empty envelope → 400": {
@@ -2603,7 +2816,7 @@
         "body": {
           "method": "GET",
           "path": "/api/cluster/health",
-          "to_peer_id": "<uuid:3>"
+          "to_peer_id": "<uuid:6>"
         }
       },
       "status": 404,
@@ -2911,7 +3124,7 @@
           "entries": [
             {
               "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
-              "id": 30,
+              "id": 35,
               "kind": "cross_delete",
               "ok": 1,
               "peer_id": "00000000-0000-4000-8000-0000000000a1",
@@ -2919,7 +3132,7 @@
             },
             {
               "detail": "Delta Mixed/images/IMG_0014.jpg (reason=-)",
-              "id": 31,
+              "id": 36,
               "kind": "cross_delete",
               "ok": 1,
               "peer_id": "00000000-0000-4000-8000-0000000000a1",
@@ -2927,7 +3140,7 @@
             },
             {
               "detail": "Gamma Docs/documents/notes.txt (reason=contract)",
-              "id": 29,
+              "id": 34,
               "kind": "cross_delete",
               "ok": 1,
               "peer_id": "00000000-0000-4000-8000-0000000000a1",
@@ -2957,6 +3170,20 @@
       "x-dns-prefetch-control": "off",
       "x-download-options": "noopen",
       "x-frame-options": "SAMEORIGIN",
+      "x-permitted-cross-domain-policies": "none",
+      "x-xss-protection": "0"
+    },
+    "122656cc3b": {
+      "content-security-policy": "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-resource-policy": "same-origin",
+      "origin-agent-cluster": "?1",
+      "referrer-policy": "no-referrer",
+      "strict-transport-security": "max-age=0",
+      "x-content-type-options": "nosniff",
+      "x-dns-prefetch-control": "off",
+      "x-download-options": "noopen",
+      "x-frame-options": "DENY",
       "x-permitted-cross-domain-policies": "none",
       "x-xss-protection": "0"
     }
