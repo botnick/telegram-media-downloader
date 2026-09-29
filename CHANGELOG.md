@@ -9,6 +9,9 @@ All notable changes to this project are documented here. The format is based on 
 - Nothing to do when upgrading: same port, Docker healthcheck, `TRUST_PROXY` behaviour and reverse-proxy setup ([docs/DEPLOY.md](docs/DEPLOY.md#reverse-proxy)). If tgdl-core can't run, the Node server answers the port itself and the dashboard banner says why.
 - `GET /api/system/health?front=1` adds `goCoreFront` (state, restarts, request counters); the default payload is unchanged.
 
+### Security
+- **The shared cluster token no longer authenticates a peer that was never paired.** A cluster API request signed with the token was accepted for any `X-Peer-Id`. The legacy fallback now applies only when the id is an already-paired peer; anything else gets 401. Paired peers and the pairing handshake are unchanged.
+
 ## [2.30.0] — 2026-09-30
 
 tgdl-core, the Go engine, now does the heavy file work (hashing, file checks, folder walks, face clustering); the Content-Security-Policy is editable in Settings; cluster pairing, direct streams and background engines work; API security fixes.
