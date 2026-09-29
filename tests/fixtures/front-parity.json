@@ -522,30 +522,24 @@
             ]
         },
         "files range unsatisfiable": {
-            "status": 500,
+            "status": 416,
             "headers": [
                 ["accept-ranges", "bytes"],
-                ["cache-control", "private, max-age=2592000, immutable"],
+                ["cache-control", "no-store"],
                 ["connection", "keep-alive"],
-                [
-                    "content-disposition",
-                    "attachment; filename=\"clip.mp4\"; filename*=UTF-8''clip.mp4"
-                ],
-                ["content-length", "33"],
                 ["content-range", "bytes */262144"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
                 ],
-                ["content-type", "video/mp4; charset=utf-8"],
+                ["content-type", "text/plain; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
-                ["etag", "W/\"40000-18f4cbb3825\""],
                 ["keep-alive", "timeout=65"],
-                ["last-modified", "Mon, 06 May 2024 07:08:09 GMT"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
                 ["strict-transport-security", "max-age=0"],
+                ["transfer-encoding", "chunked"],
                 ["x-content-type-options", "nosniff"],
                 ["x-dns-prefetch-control", "off"],
                 ["x-download-options", "noopen"],
@@ -553,10 +547,9 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "33:d1f3d3e2ac8aeb2a6705b9e7db3b40d52a49fb610d53906bcc0f86a8fb55260b",
+            "body": "21:4ed4808618d5db3e1b4d1481b2d704401a4c6b1e2b85e4420c9effdc5634a2b0",
             "headerNames": [
                 "Strict-Transport-Security",
-                "Content-Security-Policy",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
                 "Origin-Agent-Cluster",
@@ -564,47 +557,39 @@
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
-                "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
+                "Content-Security-Policy",
+                "X-Frame-Options",
                 "Cache-Control",
-                "Content-Disposition",
                 "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
                 "Content-Range",
-                "Content-Length",
+                "Content-Type",
                 "Date",
                 "Connection",
-                "Keep-Alive"
+                "Keep-Alive",
+                "Transfer-Encoding"
             ]
         },
         "files range malformed": {
-            "status": 500,
+            "status": 416,
             "headers": [
                 ["accept-ranges", "bytes"],
-                ["cache-control", "private, max-age=2592000, immutable"],
+                ["cache-control", "no-store"],
                 ["connection", "keep-alive"],
-                [
-                    "content-disposition",
-                    "attachment; filename=\"clip.mp4\"; filename*=UTF-8''clip.mp4"
-                ],
-                ["content-length", "33"],
                 ["content-range", "bytes */262144"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
                 ],
-                ["content-type", "video/mp4; charset=utf-8"],
+                ["content-type", "text/plain; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
-                ["etag", "W/\"40000-18f4cbb3825\""],
                 ["keep-alive", "timeout=65"],
-                ["last-modified", "Mon, 06 May 2024 07:08:09 GMT"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
                 ["strict-transport-security", "max-age=0"],
+                ["transfer-encoding", "chunked"],
                 ["x-content-type-options", "nosniff"],
                 ["x-dns-prefetch-control", "off"],
                 ["x-download-options", "noopen"],
@@ -612,10 +597,9 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "33:d1f3d3e2ac8aeb2a6705b9e7db3b40d52a49fb610d53906bcc0f86a8fb55260b",
+            "body": "21:4ed4808618d5db3e1b4d1481b2d704401a4c6b1e2b85e4420c9effdc5634a2b0",
             "headerNames": [
                 "Strict-Transport-Security",
-                "Content-Security-Policy",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
                 "Origin-Agent-Cluster",
@@ -623,20 +607,18 @@
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
-                "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
+                "Content-Security-Policy",
+                "X-Frame-Options",
                 "Cache-Control",
-                "Content-Disposition",
                 "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
                 "Content-Range",
-                "Content-Length",
+                "Content-Type",
                 "Date",
                 "Connection",
-                "Keep-Alive"
+                "Keep-Alive",
+                "Transfer-Encoding"
             ]
         },
         "files range other unit": {
@@ -2455,30 +2437,24 @@
             ]
         },
         "files empty range": {
-            "status": 500,
+            "status": 416,
             "headers": [
                 ["accept-ranges", "bytes"],
-                ["cache-control", "private, max-age=2592000, immutable"],
+                ["cache-control", "no-store"],
                 ["connection", "keep-alive"],
-                [
-                    "content-disposition",
-                    "attachment; filename=\"empty.bin\"; filename*=UTF-8''empty.bin"
-                ],
-                ["content-length", "33"],
                 ["content-range", "bytes */0"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
                 ],
-                ["content-type", "application/octet-stream; charset=utf-8"],
+                ["content-type", "text/plain; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
-                ["etag", "W/\"0-18f4cbb3825\""],
                 ["keep-alive", "timeout=65"],
-                ["last-modified", "Mon, 06 May 2024 07:08:09 GMT"],
                 ["origin-agent-cluster", "?1"],
                 ["referrer-policy", "no-referrer"],
                 ["strict-transport-security", "max-age=0"],
+                ["transfer-encoding", "chunked"],
                 ["x-content-type-options", "nosniff"],
                 ["x-dns-prefetch-control", "off"],
                 ["x-download-options", "noopen"],
@@ -2486,10 +2462,9 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "33:d1f3d3e2ac8aeb2a6705b9e7db3b40d52a49fb610d53906bcc0f86a8fb55260b",
+            "body": "21:4ed4808618d5db3e1b4d1481b2d704401a4c6b1e2b85e4420c9effdc5634a2b0",
             "headerNames": [
                 "Strict-Transport-Security",
-                "Content-Security-Policy",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
                 "Origin-Agent-Cluster",
@@ -2497,20 +2472,18 @@
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
-                "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
+                "Content-Security-Policy",
+                "X-Frame-Options",
                 "Cache-Control",
-                "Content-Disposition",
                 "Accept-Ranges",
-                "Last-Modified",
-                "ETag",
-                "Content-Type",
                 "Content-Range",
-                "Content-Length",
+                "Content-Type",
                 "Date",
                 "Connection",
-                "Keep-Alive"
+                "Keep-Alive",
+                "Transfer-Encoding"
             ]
         },
         "files dotfile": {
@@ -5854,11 +5827,11 @@
             ]
         },
         "json body error": {
-            "status": 500,
+            "status": 400,
             "headers": [
                 ["cache-control", "no-store, max-age=0"],
                 ["connection", "keep-alive"],
-                ["content-length", "81"],
+                ["content-length", "31"],
                 [
                     "content-security-policy",
                     "default-src 'self';base-uri 'self';font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net;form-action 'self';frame-ancestors 'self';img-src 'self' data: blob:;object-src 'none';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com;style-src-attr 'unsafe-inline';media-src 'self' blob:;connect-src 'self' ws: wss:;frame-src 'self'"
@@ -5866,7 +5839,7 @@
                 ["content-type", "application/json; charset=utf-8"],
                 ["cross-origin-opener-policy", "same-origin"],
                 ["cross-origin-resource-policy", "same-origin"],
-                ["etag", "W/\"51-sPmBV+ATzCIn2FCDEfoiUNENd+s\""],
+                ["etag", "W/\"1f-mmbNKNr5+JE5unTdzNmIUtedyt8\""],
                 ["keep-alive", "timeout=65"],
                 ["origin-agent-cluster", "?1"],
                 ["pragma", "no-cache"],
@@ -5880,10 +5853,9 @@
                 ["x-permitted-cross-domain-policies", "none"],
                 ["x-xss-protection", "0"]
             ],
-            "body": "81:8f2a538e17b18ce9daca29d87ea5a3341ec857857cec2f9741f335662f301b99",
+            "body": "31:52e37076519391ea46e923d907663276aa82547d995e9650383524f0c8f57029",
             "headerNames": [
                 "Strict-Transport-Security",
-                "Content-Security-Policy",
                 "Cross-Origin-Opener-Policy",
                 "Cross-Origin-Resource-Policy",
                 "Origin-Agent-Cluster",
@@ -5891,9 +5863,10 @@
                 "X-Content-Type-Options",
                 "X-DNS-Prefetch-Control",
                 "X-Download-Options",
-                "X-Frame-Options",
                 "X-Permitted-Cross-Domain-Policies",
                 "X-XSS-Protection",
+                "Content-Security-Policy",
+                "X-Frame-Options",
                 "Cache-Control",
                 "Pragma",
                 "Vary",
