@@ -183,7 +183,7 @@ describe('signature gate', () => {
         });
     });
 
-    it('accepts the per-pair secret and the legacy cluster token (for any peer id)', async () => {
+    it('accepts the per-pair secret and the legacy cluster token (paired peers only)', async () => {
         await peer('health signed with alpha secret', 'GET', '/api/cluster/health', {
             key: 'alpha',
         });
@@ -191,7 +191,7 @@ describe('signature gate', () => {
             key: 'token',
         });
         await peer(
-            'health signed with cluster token as unknown peer',
+            'health signed with cluster token as unknown peer → 401',
             'GET',
             '/api/cluster/health',
             {
