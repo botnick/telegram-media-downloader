@@ -47,7 +47,8 @@
  */
 
 import path from 'path';
-import { existsSync, promises as fs } from 'fs';
+import { existsSync, promises as fs, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { getDb } from './db.js';
@@ -88,11 +89,44 @@ const SNAPSHOT_TIMEOUT_MS = _envInt('UPDATE_SNAPSHOT_TIMEOUT_MS', 60_000);
 // link speed. Tunable via UPDATE_OVERLAY_STALL_MS.
 const OVERLAY_STALL_MS = _envInt('UPDATE_OVERLAY_STALL_MS', 120_000);
 
+// Auto-generated token shared with the watchtower sidecar. Lives in its own
+// subfolder so the sidecar can mount ONLY this folder (read-only), never the
+// DB / sessions in the rest of the data dir.
+const WT_TOKEN_FILE = path.resolve(DATA_DIR, 'watchtower', 'api-token');
+
+/**
+ * Token resolution: an explicit WATCHTOWER_HTTP_API_TOKEN wins (unchanged
+ * behaviour); otherwise read the generated file, creating it once when
+ * missing. Returns '' when neither is available.
+ */
+function _resolveWatchtowerToken() {
+    const env = (process.env.WATCHTOWER_HTTP_API_TOKEN || '').trim();
+    if (env) return env;
+    try {
+        return readFileSync(WT_TOKEN_FILE, 'utf8').trim();
+    } catch {
+        /* not created yet */
+    }
+    try {
+        mkdirSync(path.dirname(WT_TOKEN_FILE), { recursive: true });
+        // 'wx' = never overwrite a token another process just wrote.
+        writeFileSync(WT_TOKEN_FILE, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o644 });
+    } catch {
+        /* lost a race or read-only FS; re-read below */
+    }
+    try {
+        return readFileSync(WT_TOKEN_FILE, 'utf8').trim();
+    } catch {
+        return '';
+    }
+}
+
 // Watchtower endpoint defaults match docker-compose.yml's service name.
 function _watchtowerEndpoint() {
     const url = process.env.WATCHTOWER_URL;
-    const token = process.env.WATCHTOWER_HTTP_API_TOKEN;
-    if (!url || !token) return null;
+    if (!url) return null;
+    const token = _resolveWatchtowerToken();
+    if (!token) return null;
     // Strip trailing slash so we can string-concat the path.
     return { url: url.replace(/\/+$/, ''), token };
 }
@@ -527,9 +561,16 @@ export async function runAutoUpdate(opts = {}) {
     return { success: true, backup, ping, integrity, verify };
 }
 
+/** Create the shared token file at boot so the sidecar can read it. */
+export function ensureWatchtowerToken() {
+    if (process.env.WATCHTOWER_URL) _resolveWatchtowerToken();
+}
+
 export const _internals = {
     _snapshotDb,
     _watchtowerEndpoint,
+    _resolveWatchtowerToken,
+    WT_TOKEN_FILE,
     _pingWatchtower,
     _verifyDbIntegrity,
     _verifySnapshot,

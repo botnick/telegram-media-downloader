@@ -364,8 +364,9 @@ services:
   # One-click updater behind the dashboard's **Install update** button.
   # Runs by default but idle: HTTP-API-only mode, no periodic polling, no
   # published ports. It updates only when the button (or a `curl -X POST`
-  # with the token) asks. Set WATCHTOWER_HTTP_API_TOKEN in .env (see
-  # .env.example) — without it the sidecar exits and the button stays off.
+  # with the token) asks. No setup: the app generates a random token in
+  # ./data/watchtower/ and this service reads it from that file (starts after
+  # the app is healthy). A WATCHTOWER_HTTP_API_TOKEN in .env overrides it.
   #
   # Opt in to scheduled updates: put WATCHTOWER_HTTP_API_PERIODIC_POLLS=true
   # and WATCHTOWER_SCHEDULE="0 0 4 * * *" in .env and add the second to the
@@ -388,9 +389,16 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Only the generated token folder, never the DB/sessions.
+      - ./data/watchtower:/run/tgdl:ro
+    depends_on:
+      telegram-downloader:
+        condition: service_healthy
     environment:
       - WATCHTOWER_HTTP_API_ENDPOINTS=update
-      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      # Default = path of the token file the app generates; watchtower reads
+      # the file's contents. A token set in .env is used as-is instead.
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-/run/tgdl/api-token}
       - WATCHTOWER_HTTP_API_PERIODIC_POLLS=${WATCHTOWER_HTTP_API_PERIODIC_POLLS:-false}
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_CLEANUP=true
@@ -408,7 +416,7 @@ services:
 #   docker compose pull && docker compose up -d
 #
 # Upgrade (one-click): Settings → Maintenance → "Install update". Needs
-#   WATCHTOWER_HTTP_API_TOKEN in .env (openssl rand -hex 32).
+#   no setup (token is generated; WATCHTOWER_HTTP_API_TOKEN in .env overrides).
 #
 # Headless monitor (instead of web dashboard):
 #   docker compose run --rm \

@@ -45,7 +45,7 @@ Reports Node + ABI, config load, SQLite open, `data/` writability, port availabi
 | `THUMBS_IMG_CONCURRENCY`        | `4`                 | Parallel image-thumb jobs. Each one holds a libuv pool thread for its whole run, so keep it well below `UV_THREADPOOL_SIZE`. Raise it together with the pool on many-core hosts to build thumbnails faster. |
 | `THUMBS_VID_CONCURRENCY`        | `6`                 | Parallel video-thumb jobs (ffmpeg pins a CPU core). |
 | `UV_THREADPOOL_SIZE`            | `16` (Docker image, `runner.js` / `runner.sh`, PM2 config); Node default `4` otherwise | libuv worker pool shared by file I/O, `sendFile` streams, hashing, DNS and sharp thumbnail jobs. Read once at process start, so set it in the environment (not in config). With the old default of 4, a thumbnail burst queued every file read behind it. |
-| `WATCHTOWER_HTTP_API_TOKEN`     | unset               | Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this lights up the **Install update** button. |
+| `WATCHTOWER_HTTP_API_TOKEN`     | auto-generated      | Optional override. Bearer token shared between the dashboard and the optional watchtower sidecar. Setting this lights up the **Install update** button. |
 | `WATCHTOWER_URL`                | `http://watchtower:8080` | Internal address of the watchtower sidecar. |
 | `TGDL_MEM_LIMIT`                | `8g`                | Hard cgroup memory ceiling for the dashboard container (`deploy.resources.limits.memory`). Pair with `TGDL_HEAP_MB` so the V8 heap stays comfortably under the container limit. Drop to `2g` / `4g` on small hosts. |
 | `TGDL_HEAP_MB`                  | `8192`              | V8 `--max-old-space-size` in MB. 8 GiB lets a one-shot SELECT over a 1M-row dedup / integrity sweep complete without hitting the heap limit. Must stay strictly below `TGDL_MEM_LIMIT` (rule of thumb: leave ≥ 256 MiB for native allocations from better-sqlite3 / sharp / ffmpeg / libvips). |
@@ -74,6 +74,8 @@ See [Updating in the README](../README.md#updating). In short: **Settings → Ma
 ### Install update button
 
 The bundled `docker-compose.yml` runs a `watchtower` service by default (no profile). It is idle: HTTP-API-only, no periodic polling, no published ports, and scoped to containers with the `com.centurylinklabs.watchtower.enable=true` label. The dashboard never touches `/var/run/docker.sock`; it sends an authenticated request to the sidecar, which has a read-only socket mount.
+
+No setup is needed: the app generates a random token once in `data/watchtower/api-token` and the sidecar reads it from that file (it starts after the app is healthy). To use your own token instead, set it in `.env`; it overrides the generated one:
 
 ```bash
 echo "WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)" >> .env

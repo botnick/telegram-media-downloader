@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format is based on 
 - **README has an "Updating" section** (Install update button, or `docker compose pull && docker compose up -d`); the Docker docs link to it.
 
 ### Fixed
+- **The bundled watchtower needs no token setup.** The app generates a random token once (`data/watchtower/api-token`), watchtower reads it from that file (the fork supports file-path secrets) and starts only after the app is healthy, so it no longer exits and restart-loops with an empty token. A `WATCHTOWER_HTTP_API_TOKEN` in `.env` still overrides it.
 - **Watchtower failed on Docker Engine 29+** with "client version 1.25 is too old". The archived `containrrr/watchtower:1.7.1` is replaced by the maintained fork `nickfedor/watchtower:1.22`, which negotiates the API version (same labels, `/v1/update` endpoint and bearer token; the endpoint is enabled with `WATCHTOWER_HTTP_API_ENDPOINTS=update`).
 - **Removed the `faces-openvino` profile.** It pointed at `ghcr.io/botnick/tgdl-faces:openvino-latest`, which was never published.
 
